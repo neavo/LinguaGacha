@@ -68,7 +68,7 @@ class PlatformTester(Base):
             ]
 
         # 开始测试
-        requester = TranslatorRequester(config, platform)
+        requester = TranslatorRequester(config, platform, 0)
         for key in platform.get("api_key"):
             self.print("")
             self.info(f"正在测试密钥 - {key}")
