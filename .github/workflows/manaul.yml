@@ -27,7 +27,7 @@ jobs:
       id: check_version
       shell: pwsh
       run: |
-        $version = Get-Content -Path .\resource\version.txt
+        $version = Get-Content -Path version.txt
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Create Env
@@ -64,6 +64,7 @@ jobs:
 
         copy "01_启动应用.bat" ".\dist\LinguaGacha\"
         copy "main.py" ".\dist\LinguaGacha\"
+        copy "version.txt" ".\dist\LinguaGacha\"
 
     - name: Compress Archive NV
       shell: cmd
