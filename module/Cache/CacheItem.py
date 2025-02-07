@@ -9,10 +9,11 @@ class CacheItem(BaseData):
 
     class FileType():
 
-        TXT: str = "TXT"
-        TPP: str = "TPP"                                # Translator++
-        KVJSON: str = "KVJSON"                          # MTool
-        MESSAGEJSON: str = "MESSAGEJSON"                # SExtractor
+        TXT: str = "TXT"                                # .txt 文本文件
+        SRT: str = "SRT"                                # .srt 字幕文件
+        TPP: str = "TPP"                                # .xlsx Translator++
+        KVJSON: str = "KVJSON"                          # .json MTool
+        MESSAGEJSON: str = "MESSAGEJSON"                # .json SExtractor
 
     def __init__(self, args: dict) -> None:
         super().__init__()
@@ -20,8 +21,8 @@ class CacheItem(BaseData):
         # 默认值
         self.src: str = ""                                              # 原文
         self.dst: str = ""                                              # 译文
-        self.extra_field_src: str = ""                                  # 额外字段原文，MESSAGEJSON - name
-        self.extra_field_dst: str = ""                                  # 额外字段译文，MESSAGEJSON - name
+        self.extra_field_src: str = ""                                  # 额外字段原文，MESSAGEJSON - name，SRT - 时间轴
+        self.extra_field_dst: str = ""                                  # 额外字段译文，MESSAGEJSON - name，SRT - 时间轴
         self.row: int = 0                                               # 在原始文件中的行号
         self.file_type: str = ""                                        # 原始文件的类型
         self.file_path: str = ""                                        # 原始文件的相对路径

@@ -23,6 +23,7 @@ class FileHelper(Base):
 
         items = []
         items.extend(FileHelper.read_from_path_txt(path))
+        items.extend(FileHelper.read_from_path_srt(path))
         items.extend(FileHelper.read_from_path_tpp(path))
         items.extend(FileHelper.read_from_path_kvjson(path))
         items.extend(FileHelper.read_from_path_messagejson(path))
@@ -32,6 +33,7 @@ class FileHelper(Base):
     # 写
     def write_to_path(path: str, items: list[CacheItem]) -> None:
         FileHelper.write_to_path_txt(path, items)
+        FileHelper.write_to_path_srt(path, items)
         FileHelper.write_to_path_tpp(path, items)
         FileHelper.write_to_path_kvjson(path, items)
         FileHelper.write_to_path_messagejson(path, items)
@@ -80,6 +82,93 @@ class FileHelper(Base):
             os.makedirs(os.path.dirname(output_path), exist_ok = True)
             with open(output_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([item.get_dst() for item in items]))
+
+    # SRT
+    def read_from_path_srt(path: str) -> list[CacheItem]:
+        # 1
+        # 00:00:08,120 --> 00:00:10,460
+        # にゃにゃにゃ
+
+        # 2
+        # 00:00:14,000 --> 00:00:15,880
+        # えーこの部屋一人で使
+
+        # 3
+        # 00:00:15,880 --> 00:00:17,300
+        # えるとか最高じゃん
+
+        items = []
+        for root, _, files in os.walk(path):
+            for file in [file for file in files if file.endswith(".srt")]:
+                file_path = os.path.join(root, file)
+                with open(file_path, "r", encoding = "utf-8") as reader:
+                    chunks = re.split(r"\n{2,}", reader.read().strip())
+                    for chunk in chunks:
+                        lines = chunk.splitlines()
+
+                        # 格式校验
+                        # isdigit
+                        # 仅返回 True 如果字符串中的所有字符都是 Unicode 数字字符（例如：0-9），不包括带有上标的数字（如 ²）或带分隔符的数字（如罗马数字）。
+                        # isnumeric
+                        # 返回 True 如果字符串中的所有字符都是 Unicode 数值字符，包括 Unicode 数字、带有上标的数字和其他形式的数值字符（如罗马数字）。
+                        if len(lines) < 3 or not lines[0].isdigit():
+                            continue
+
+                        # 添加数据
+                        if lines[-1] != "":
+                            items.append(
+                                    CacheItem({
+                                        "src": lines[-1],
+                                        "dst": lines[-1],
+                                        "extra_field_src": lines[1],
+                                        "extra_field_dst": lines[1],
+                                        "row": str(lines[0]),
+                                        "file_type": CacheItem.FileType.SRT,
+                                        "file_path": os.path.relpath(file_path, path),
+                                    })
+                                )
+
+        return items
+
+    # SRT
+    def write_to_path_srt(path: str, items: list[CacheItem]) -> None:
+        # 1
+        # 00:00:08,120 --> 00:00:10,460
+        # にゃにゃにゃ
+
+        # 2
+        # 00:00:14,000 --> 00:00:15,880
+        # えーこの部屋一人で使
+
+        # 3
+        # 00:00:15,880 --> 00:00:17,300
+        # えるとか最高じゃん
+
+        target = [
+            item for item in items
+            if item.get_file_type() == CacheItem.FileType.SRT
+        ]
+
+        data: dict[str, list[str]] = {}
+        for item in target:
+            data.setdefault(item.get_file_path(), []).append(item)
+
+        for file_path, items in data.items():
+            output_path = os.path.join(path, file_path)
+            os.makedirs(os.path.dirname(output_path), exist_ok = True)
+
+            result = []
+            for item in items:
+                result.append([
+                    item.get_row(),
+                    item.get_extra_field_dst(),
+                    item.get_dst(),
+                ])
+
+            with open(output_path, "w", encoding = "utf-8") as writer:
+                for item in result:
+                    writer.write("\n".join(item))
+                    writer.write("\n\n")
 
     # T++
     def read_from_path_tpp(path: str) -> list[CacheItem]:
@@ -173,7 +262,7 @@ class FileHelper(Base):
             os.makedirs(os.path.dirname(output_path), exist_ok = True)
             work_book.save(output_path)
 
-    # kv json
+    # KV JSON
     def read_from_path_kvjson(path: str) -> list[CacheItem]:
         # {
         #     "「あ・・」": "「あ・・」",
@@ -213,7 +302,7 @@ class FileHelper(Base):
 
         return items
 
-    # kv json
+    # KV JSON
     def write_to_path_kvjson(path: str, items: list[CacheItem]) -> None:
         # {
         #     "「あ・・」": "「あ・・」",
@@ -244,7 +333,7 @@ class FileHelper(Base):
                     )
                 )
 
-    # message json
+    # Message JSON
     def read_from_path_messagejson(path: str) -> list[CacheItem]:
         # [
         #     {
@@ -291,7 +380,7 @@ class FileHelper(Base):
 
         return items
 
-    # message json
+    # Message JSON
     def write_to_path_messagejson(path: str, items: list[CacheItem]) -> None:
         # [
         #     {
