@@ -57,7 +57,7 @@ if __name__ == "__main__":
     app.setFont(font)
 
     # 创建全局窗口对象
-    with open("resource/version.txt", "r", encoding = "utf-8") as reader:
+    with open("version.txt", "r", encoding = "utf-8") as reader:
         version = reader.read().strip()
     app_fluent_window = AppFluentWindow(f"LinguaGacha {version}")
 
