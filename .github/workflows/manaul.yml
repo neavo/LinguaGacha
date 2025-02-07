@@ -56,15 +56,16 @@ jobs:
         xcopy "env" ".\dist\LinguaGacha\env" /E /I /Q /H /Y
         xcopy "base" ".\dist\LinguaGacha\base" /E /I /Q /H /Y
         xcopy "frontend" ".\dist\LinguaGacha\frontend" /E /I /Q /H /Y
-        xcopy "input" ".\dist\LinguaGacha\input" /E /I /Q /H /Y
         xcopy "module" ".\dist\LinguaGacha\module" /E /I /Q /H /Y
-        xcopy "output" ".\dist\LinguaGacha\output" /E /I /Q /H /Y
         xcopy "resource" ".\dist\LinguaGacha\resource" /E /I /Q /H /Y
         xcopy "widget" ".\dist\LinguaGacha\widget" /E /I /Q /H /Y
 
         copy "01_启动应用.bat" ".\dist\LinguaGacha\"
         copy "main.py" ".\dist\LinguaGacha\"
         copy "version.txt" ".\dist\LinguaGacha\"
+
+        mkdir .\dist\LinguaGacha\input
+        mkdir .\dist\LinguaGacha\output
 
     - name: Compress Archive NV
       shell: cmd
