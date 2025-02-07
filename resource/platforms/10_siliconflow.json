@@ -1,0 +1,14 @@
+{
+    "id": 10,
+    "name": "硅基流动",
+    "api_url": "https://api.siliconflow.cn/v1",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "OpenAI",
+    "model": "deepseek-ai/DeepSeek-V3",
+    "top_p": 0.95,
+    "temperature": 0.75,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}
