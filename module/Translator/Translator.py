@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import shutil
 import urllib
 import threading
 import concurrent.futures
@@ -119,10 +120,13 @@ class Translator(Base):
 
         # 生成缓存列表
         try:
+            # 根据 status 判断是否为继续翻译
             if status == Base.TranslationStatus.TRANSLATING:
                 self.cache_manager.load_from_file(self.config.get("output_folder"))
             else:
-                project, items = FileHelper.read_from_path(self.config.get("input_folder"))
+                shutil.rmtree(f"{self.config.get("output_folder")}/cache", ignore_errors = True)
+                file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))
+                project, items = file_helper.read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
 
@@ -313,7 +317,7 @@ class Translator(Base):
             [
                 os.remove(entry.path)
                 for entry in os.scandir(self.config.get("output_folder"))
-                if entry.is_file() and "结果检查_" in entry.path
+                if entry.is_file() and entry.path.startswith("结果检查_")
             ]
 
         # 检查结果
@@ -323,7 +327,8 @@ class Translator(Base):
         result_check.check_glossary("结果检查_术语表未生效的条目.json")
 
         # 写入文件
-        FileHelper.write_to_path(self.config.get("output_folder"), self.cache_manager.get_items())
+        file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))
+        file_helper.write_to_path(self.cache_manager.get_items())
         self.print("")
         self.info(f"翻译结果已保存至 {self.config.get("output_folder")} 目录 ...")
         self.print("")

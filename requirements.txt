@@ -7,8 +7,8 @@ google-generativeai
 tiktoken
 # opencc
 openpyxl
-# ebooklib
-# beautifulsoup4
+ebooklib
+beautifulsoup4
 
 # Tools
 rich
