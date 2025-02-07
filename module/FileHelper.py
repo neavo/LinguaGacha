@@ -157,16 +157,16 @@ class FileHelper(Base):
                         # 添加数据
                         if lines[-1] != "":
                             items.append(
-                                    CacheItem({
-                                        "src": lines[-1],
-                                        "dst": lines[-1],
-                                        "extra_field_src": lines[1],
-                                        "extra_field_dst": lines[1],
-                                        "row": str(lines[0]),
-                                        "file_type": CacheItem.FileType.SRT,
-                                        "file_path": rel_path,
-                                    })
-                                )
+                                CacheItem({
+                                    "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
+                                    "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
+                                    "extra_field_src": lines[1],
+                                    "extra_field_dst": lines[1],
+                                    "row": str(lines[0]),
+                                    "file_type": CacheItem.FileType.SRT,
+                                    "file_path": rel_path,
+                                })
+                            )
 
         return items
 
