@@ -317,7 +317,7 @@ class Translator(Base):
             [
                 os.remove(entry.path)
                 for entry in os.scandir(self.config.get("output_folder"))
-                if entry.is_file() and entry.path.startswith("结果检查_")
+                if entry.is_file() and entry.name.startswith("结果检查_")
             ]
 
         # 检查结果
