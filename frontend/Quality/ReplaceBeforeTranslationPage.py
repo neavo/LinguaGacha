@@ -32,7 +32,24 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
         # 默认配置
         self.default = {
             "replace_before_translation_enable": True,
-            "replace_before_translation_data" : [],
+            "replace_before_translation_data": [
+                {
+                    "src": "\\n[1]",
+                    "dst": "シズハ"
+                },
+                {
+                    "src": "\\N[1]",
+                    "dst": "シズハ"
+                },
+                {
+                    "src": "\\nn[1]",
+                    "dst": "小夜月"
+                },
+                {
+                    "src": "\\NN[1]",
+                    "dst": "小夜月"
+                }
+            ],
         }
 
         # 载入并保存默认配置
