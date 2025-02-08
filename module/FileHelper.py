@@ -554,7 +554,7 @@ class FileHelper(Base):
                 # 筛选出 tag 相同的元素
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()).replace("<p>", "<p style=\"opacity:0.4;\">"))
+                    lines.append(item.get_extra_field_src().replace("{CONTENT}", item.get_src()).replace("<p>", "<p style=\"opacity:0.4;\">"))
                     lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
