@@ -14,6 +14,7 @@ class CacheItem(BaseData):
         ASS: str = "ASS"                                # .ass 字幕文件
         TPP: str = "TPP"                                # .xlsx Translator++
         EPUB: str = "EPUB"                              # .epub
+        RENPY: str = "RENPY"                            # .rpy RenPy
         KVJSON: str = "KVJSON"                          # .json MTool
         MESSAGEJSON: str = "MESSAGEJSON"                # .json SExtractor
 

@@ -50,6 +50,7 @@ class FileHelper(Base):
             items.extend(self.read_from_path_srt(self.input_path, self.output_path))
             items.extend(self.read_from_path_tpp(self.input_path, self.output_path))
             items.extend(self.read_from_path_epub(self.input_path, self.output_path))
+            items.extend(self.read_from_path_renpy(self.input_path, self.output_path))
             items.extend(self.read_from_path_kvjson(self.input_path, self.output_path))
             items.extend(self.read_from_path_messagejson(self.input_path, self.output_path))
         except Exception as e:
@@ -65,6 +66,7 @@ class FileHelper(Base):
             self.write_to_path_srt(self.input_path, self.output_path, items)
             self.write_to_path_tpp(self.input_path, self.output_path, items)
             self.write_to_path_epub(self.input_path, self.output_path, items)
+            self.write_to_path_renpy(self.input_path, self.output_path, items)
             self.write_to_path_kvjson(self.input_path, self.output_path, items)
             self.write_to_path_messagejson(self.input_path, self.output_path, items)
         except Exception as e:
@@ -100,7 +102,7 @@ class FileHelper(Base):
         return items
 
     # TXT
-    def write_to_path_txt(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_txt(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         # 筛选
         target = [
             item for item in items
@@ -197,7 +199,7 @@ class FileHelper(Base):
         return items
 
     # ASS
-    def write_to_path_ass(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_ass(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         # [Script Info]
         # ; This is an Advanced Sub Station Alpha v4+ script.
         # Title:
@@ -311,7 +313,7 @@ class FileHelper(Base):
         return items
 
     # SRT
-    def write_to_path_srt(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_srt(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         # 1
         # 00:00:08,120 --> 00:00:10,460
         # にゃにゃにゃ
@@ -420,7 +422,7 @@ class FileHelper(Base):
         return items
 
     # T++
-    def write_to_path_tpp(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_tpp(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         target = [
             item for item in items
             if item.get_file_type() == CacheItem.FileType.TPP
@@ -508,7 +510,7 @@ class FileHelper(Base):
         return items
 
     # EPUB
-    def write_to_path_epub(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_epub(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
 
         def add_opacity_style(html: str) -> str:
             # 找到第一个 > 的位置
@@ -573,6 +575,148 @@ class FileHelper(Base):
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             epub.write_epub(abs_path, book, {})
 
+    # RENPY
+    def read_from_path_renpy(self, input_path: str, output_path: str) -> list[CacheItem]:
+        # # game/script8.rpy:16878
+        # translate chinese arabialogoff_e5798d9a:
+        #
+        #     # lo "And you...?{w=2.3}{nw}" with dissolve
+        #     lo "And you...?{w=2.3}{nw}" with dissolve
+        #
+        # # game/script/1-home/1-Perso_Home/elice.rpy:281
+        # translate schinese elice_ask_home_f01e3240_5:
+        #
+        #     # e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
+        #     e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
+        #
+        # # game/script8.rpy:33
+        # translate chinese update08_a626b58f:
+        #
+        #     # "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
+        #     "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
+        #
+        # translate chinese strings:
+        #
+        #     # game/script8.rpy:307
+        #     old "Accompany her to the inn"
+        #     new "Accompany her to the inn"
+        #
+        #     # game/script8.rpy:2173
+        #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
+        #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
+
+        # 查找文本中最后一对双引号包裹的文本
+        def find_content(text: str) -> str:
+            matches = re.findall(r'"(.*?)"', text)
+            if matches:
+                return matches[-1]
+            else:
+                return ""
+
+        items = []
+        for root, _, files in os.walk(input_path):
+            target = [
+                os.path.join(root, file).replace("\\", "/") for file in files
+                if file.lower().endswith(".rpy")
+            ]
+
+            for abs_path in target:
+                # 获取相对路径
+                rel_path = os.path.relpath(abs_path, input_path)
+
+                # 数据处理
+                with open(abs_path, "r", encoding = "utf-8") as reader:
+                    lines = [line.removesuffix("\n") for line in reader.readlines()]
+
+                skip_next = False
+                for line in lines:
+                    if skip_next == True:
+                        skip_next = False
+                        continue
+                    elif (line.startswith("    # ") and line.count("\"") >= 2) or line.startswith("    old "):
+                        skip_next = True
+                        content = find_content(line).replace("\\n", "\n")
+                        extra_field = line.replace(f"{content}", "{CONTENT}") if content != "" else line
+                    else:
+                        content = ""
+                        extra_field = line
+
+                    # 添加数据
+                    items.append(
+                        CacheItem({
+                            "src": content,
+                            "dst": content,
+                            "extra_field_src": extra_field,
+                            "extra_field_dst": extra_field,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.RENPY,
+                            "file_path": rel_path,
+                        })
+                    )
+
+        return items
+
+    # RENPY
+    def write_to_path_renpy(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
+        # # game/script8.rpy:16878
+        # translate chinese arabialogoff_e5798d9a:
+        #
+        #     # lo "And you...?{w=2.3}{nw}" with dissolve
+        #     lo "And you...?{w=2.3}{nw}" with dissolve
+        #
+        # # game/script/1-home/1-Perso_Home/elice.rpy:281
+        # translate schinese elice_ask_home_f01e3240_5:
+        #
+        #     # e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
+        #     e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
+        #
+        # # game/script8.rpy:33
+        # translate chinese update08_a626b58f:
+        #
+        #     # "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
+        #     "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
+        #
+        # translate chinese strings:
+        #
+        #     # game/script8.rpy:307
+        #     old "Accompany her to the inn"
+        #     new "Accompany her to the inn"
+        #
+        #     # game/script8.rpy:2173
+        #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
+        #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
+
+        # 筛选
+        target = [
+            item for item in items
+            if item.get_file_type() == CacheItem.FileType.RENPY
+        ]
+
+        # 按文件路径分组
+        data: dict[str, list[str]] = {}
+        for item in target:
+            data.setdefault(item.get_file_path(), []).append(item)
+
+        # 分别处理每个文件
+        for rel_path, items in data.items():
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
+            result = []
+            for item in items:
+                extra_field = item.get_extra_field_src()
+                if (extra_field.startswith("    # ") and extra_field.count("\"") >= 2):
+                    result.append(extra_field.replace("{CONTENT}", item.get_src()).replace("\n", "\\n"))
+                    result.append(extra_field.replace("    # ", "    ").replace("{CONTENT}", item.get_dst()).replace("\n", "\\n"))
+                elif extra_field.startswith("    old "):
+                    result.append(extra_field.replace("{CONTENT}", item.get_src()).replace("\n", "\\n"))
+                    result.append(extra_field.replace("    old ", "    new ").replace("{CONTENT}", item.get_dst()).replace("\n", "\\n"))
+                else:
+                    result.append(extra_field)
+
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                writer.write("\n".join(result))
+
     # KV JSON
     def read_from_path_kvjson(self, input_path: str, output_path: str) -> list[CacheItem]:
         # {
@@ -620,7 +764,7 @@ class FileHelper(Base):
         return items
 
     # KV JSON
-    def write_to_path_kvjson(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_kvjson(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         # {
         #     "「あ・・」": "「あ・・」",
         #     "「ごめん、ここ使う？」": "「ごめん、ここ使う？」",
@@ -704,7 +848,7 @@ class FileHelper(Base):
         return items
 
     # Message JSON
-    def write_to_path_messagejson(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+    def write_to_path_messagejson(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         # [
         #     {
         #         "message": "<fgName:pipo-fog004><fgLoopX:1><fgLoopY:1><fgSx:-2><fgSy:0.5>"
