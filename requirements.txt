@@ -5,7 +5,7 @@ openai
 anthropic
 google-generativeai
 tiktoken
-# opencc
+opencc
 openpyxl
 ebooklib
 beautifulsoup4

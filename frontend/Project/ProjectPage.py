@@ -9,6 +9,7 @@ from qfluentwidgets import FluentWindow
 from base.Base import Base
 from widget.ComboBoxCard import ComboBoxCard
 from widget.PushButtonCard import PushButtonCard
+from widget.SwitchButtonCard import SwitchButtonCard
 
 class ProjectPage(QWidget, Base):
 
@@ -30,6 +31,7 @@ class ProjectPage(QWidget, Base):
             "target_language": Base.Language.ZH,
             "input_folder": "./input",
             "output_folder": "./output",
+            "traditional_chinese_enable": False,
         }
 
         # 载入并保存默认配置
@@ -45,6 +47,7 @@ class ProjectPage(QWidget, Base):
         self.add_widget_target_language(self.vbox, config, window)
         self.add_widget_input_folder(self.vbox, config, window)
         self.add_widget_output_folder(self.vbox, config, window)
+        self.add_widget_traditional_chinese(self.vbox, config, window)
 
         # 填充
         self.vbox.addStretch(1)
@@ -146,5 +149,25 @@ class ProjectPage(QWidget, Base):
                 "",
                 widget_init,
                 widget_callback,
+            )
+        )
+
+    # 输出文件夹
+    def add_widget_traditional_chinese(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.set_checked(config.get("traditional_chinese_enable"))
+
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+            config = self.load_config()
+            config["traditional_chinese_enable"] = checked
+            self.save_config(config)
+
+        parent.addWidget(
+            SwitchButtonCard(
+                "使用繁体输出中文",
+                "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本",
+                init = init,
+                checked_changed = checked_changed,
             )
         )

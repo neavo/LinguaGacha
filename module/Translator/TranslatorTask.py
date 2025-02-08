@@ -2,6 +2,7 @@ import re
 import time
 import itertools
 
+import opencc
 import rapidjson as json
 from rich import box
 from rich.table import Table
@@ -17,6 +18,9 @@ from module.NormalizeHelper import NormalizeHelper
 from module.PunctuationHelper import PunctuationHelper
 
 class TranslatorTask(Base):
+
+    # 类变量
+    OPENCC = opencc.OpenCC("s2t")
 
     def __init__(self, config: dict, platform: dict, items: list[CacheItem], current_round: int) -> None:
         super().__init__()
@@ -115,6 +119,9 @@ class TranslatorTask(Base):
             # 译后替换
             dst_dict = self.replace_after_translation(dst_dict)
 
+            # 繁体输出
+            dst_dict = self.convert_to_traditional_chinese(dst_dict)
+
             # 拼接子句
             merged_dict = {}
             for k, v in dst_dict.items():
@@ -187,6 +194,16 @@ class TranslatorTask(Base):
             for v in replace_dict:
                 if v.get("src", "") in data[k]:
                     data[k] = data[k].replace(v.get("src", ""), v.get("dst", ""))
+
+        return data
+
+    # 繁体输出
+    def convert_to_traditional_chinese(self, data: dict[str, str]) -> dict:
+        if self.config.get("traditional_chinese_enable") == False:
+            return data
+
+        for k in data:
+            data[k] = TranslatorTask.OPENCC.convert(data.get(k))
 
         return data
 
