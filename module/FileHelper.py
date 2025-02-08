@@ -55,7 +55,6 @@ class FileHelper(Base):
         except Exception as e:
             self.error(f"文件读取失败 ... {e}", e if self.is_debug() else None)
 
-        self.debug(items[0])
         return project, items
 
     # 写
@@ -510,6 +509,14 @@ class FileHelper(Base):
 
     # EPUB
     def write_to_path_epub(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+
+        def add_opacity_style(html: str) -> str:
+            # 找到第一个 > 的位置
+            index = html.find(">")
+
+            # 替换第一个 >
+            return html[:index] + " style=\"opacity:0.4;\">" + html[index + 1:]
+
         # 筛选
         target = [
             item for item in items
@@ -535,8 +542,7 @@ class FileHelper(Base):
                     lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
-                if len(lines) > 0:
-                    doc.set_content("\n".join(lines).encode("utf-8"))
+                doc.set_content("\n".join(lines).encode("utf-8"))
 
             # 将修改后的数据写入文件
             abs_path = f"{output_path}/{rel_path}"
@@ -554,12 +560,12 @@ class FileHelper(Base):
                 # 筛选出 tag 相同的元素
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    lines.append(item.get_extra_field_src().replace("{CONTENT}", item.get_src()).replace("<p>", "<p style=\"opacity:0.4;\">"))
+                    if item.get_src() != "":
+                        lines.append(add_opacity_style(item.get_extra_field_src()).replace("{CONTENT}", item.get_src()))
                     lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
-                if len(lines) > 0:
-                    doc.set_content("\n".join(lines).encode("utf-8"))
+                doc.set_content("\n".join(lines).encode("utf-8"))
 
             # 将修改后的数据写入文件
             ext = os.path.splitext(rel_path)[-1]
