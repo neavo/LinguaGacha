@@ -33,7 +33,7 @@ jobs:
     - name: Create Env
       shell: cmd
       run: |
-        .\resource\aria2c.exe https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip -o python.zip
+        .\resource\aria2c.exe https://www.python.org/ftp/python/3.12.9/python-3.12.9-embed-amd64.zip -o python.zip
         powershell -Command "Expand-Archive -Path 'python.zip' -DestinationPath 'env'"
         powershell -Command "Remove-Item -Path 'python.zip' -Recurse -Force -ErrorAction SilentlyContinue"
 

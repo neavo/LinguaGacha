@@ -24,8 +24,7 @@ class CacheItem(BaseData):
         # 默认值
         self.src: str = ""                                              # 原文
         self.dst: str = ""                                              # 译文
-        self.extra_field_src: str = ""                                  # 额外字段原文，在以下类型中使用：SRT、MESSAGEJSON
-        self.extra_field_dst: str = ""                                  # 额外字段原文，在以下类型中使用：SRT、MESSAGEJSON
+        self.extra_field: str = ""                                      # 额外字段原文，在以下类型中使用：ASS、SRT、RENPY、MESSAGEJSON
         self.tag: str = ""                                              # 标签，在以下类型中使用：EPUB
         self.row: int = 0                                               # 在原始文件中的行号
         self.file_type: str = ""                                        # 原始文件的类型
@@ -68,29 +67,14 @@ class CacheItem(BaseData):
                 self.dst = str(dst)
 
     # 获取额外字段原文
-    def get_extra_field_src(self) -> str:
+    def get_extra_field(self) -> str:
         with self.lock:
-            return self.extra_field_src
+            return self.extra_field
 
     # 设置额外字段原文
-    def set_extra_field_src(self, extra_field_src: str) -> None:
+    def set_extra_field(self, extra_field: str) -> None:
         with self.lock:
-            self.extra_field_src = extra_field_src
-
-    # 获取额外字段译文
-    def get_extra_field_dst(self) -> str:
-        with self.lock:
-            return self.extra_field_dst
-
-    # 设置额外字段译文
-    def set_extra_field_dst(self, extra_field_dst: str) -> None:
-        with self.lock:
-            # 有时候模型的回复反序列化以后会是 int 等非字符类型，所以这里要强制转换成字符串
-            # TODO:可能需要更好的处理方式
-            if isinstance(extra_field_dst, str):
-                self.extra_field_dst = extra_field_dst
-            else:
-                self.extra_field_dst = str(extra_field_dst)
+            self.extra_field = extra_field
 
     # 获取标签
     def get_tag(self) -> str:

@@ -87,12 +87,11 @@ class FileHelper(Base):
 
                 # 数据处理
                 with open(abs_path, "r", encoding = "utf-8") as reader:
-                    for src in reader.readlines():
-                        src = str(src).removesuffix("\n")
+                    for line in [line.removesuffix("\n") for line in reader.readlines()]:
                         items.append(
                             CacheItem({
-                                "src": src,
-                                "dst": src,
+                                "src": line,
+                                "dst": line,
                                 "row": len(items),
                                 "file_type": CacheItem.FileType.TXT,
                                 "file_path": rel_path,
@@ -188,8 +187,7 @@ class FileHelper(Base):
                             CacheItem({
                                 "src": content.replace("\\N", "\n"),
                                 "dst": content.replace("\\N", "\n"),
-                                "extra_field_src": extra_field,
-                                "extra_field_dst": extra_field,
+                                "extra_field": extra_field,
                                 "row": len(items),
                                 "file_type": CacheItem.FileType.ASS,
                                 "file_path": rel_path,
@@ -235,7 +233,7 @@ class FileHelper(Base):
 
             result = []
             for item in items:
-                result.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst().replace("\n", "\\N")))
+                result.append(item.get_extra_field().replace("{CONTENT}", item.get_dst().replace("\n", "\\N")))
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
@@ -249,9 +247,9 @@ class FileHelper(Base):
             result = []
             for item in items:
                 result.append(
-                    item.get_extra_field_dst().replace("{CONTENT}", "{CONTENT}\\N{CONTENT}")
-                                              .replace("{CONTENT}", item.get_src().replace("\n", "\\N"), 1)
-                                              .replace("{CONTENT}", item.get_dst().replace("\n", "\\N"), 1)
+                    item.get_extra_field().replace("{CONTENT}", "{CONTENT}\\N{CONTENT}")
+                                          .replace("{CONTENT}", item.get_src().replace("\n", "\\N"), 1)
+                                          .replace("{CONTENT}", item.get_dst().replace("\n", "\\N"), 1)
                 )
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
@@ -302,8 +300,7 @@ class FileHelper(Base):
                                 CacheItem({
                                     "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
                                     "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
-                                    "extra_field_src": lines[1],
-                                    "extra_field_dst": lines[1],
+                                    "extra_field": lines[1],
                                     "row": str(lines[0]),
                                     "file_type": CacheItem.FileType.SRT,
                                     "file_path": rel_path,
@@ -346,7 +343,7 @@ class FileHelper(Base):
             for item in items:
                 result.append([
                     item.get_row(),
-                    item.get_extra_field_dst(),
+                    item.get_extra_field(),
                     item.get_dst(),
                 ])
 
@@ -365,7 +362,7 @@ class FileHelper(Base):
             for item in items:
                 result.append([
                     item.get_row(),
-                    item.get_extra_field_dst(),
+                    item.get_extra_field(),
                     f"{item.get_src()}\n{item.get_dst()}",
                 ])
 
@@ -500,8 +497,7 @@ class FileHelper(Base):
                                 "dst": content,
                                 "tag": id,
                                 "row": len(items),
-                                "extra_field_src": extra_field,
-                                "extra_field_dst": extra_field,
+                                "extra_field": extra_field,
                                 "file_type": CacheItem.FileType.EPUB,
                                 "file_path": rel_path,
                             })
@@ -541,7 +537,7 @@ class FileHelper(Base):
                 # 筛选出 tag 相同的元素
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
+                    lines.append(item.get_extra_field().replace("{CONTENT}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content("\n".join(lines).encode("utf-8"))
@@ -563,8 +559,8 @@ class FileHelper(Base):
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
                     if item.get_src() != "":
-                        lines.append(add_opacity_style(item.get_extra_field_src()).replace("{CONTENT}", item.get_src()))
-                    lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
+                        lines.append(add_opacity_style(item.get_extra_field()).replace("{CONTENT}", item.get_src()))
+                    lines.append(item.get_extra_field().replace("{CONTENT}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content("\n".join(lines).encode("utf-8"))
@@ -646,8 +642,7 @@ class FileHelper(Base):
                         CacheItem({
                             "src": content,
                             "dst": content,
-                            "extra_field_src": extra_field,
-                            "extra_field_dst": extra_field,
+                            "extra_field": extra_field,
                             "row": len(items),
                             "file_type": CacheItem.FileType.RENPY,
                             "file_path": rel_path,
@@ -704,7 +699,7 @@ class FileHelper(Base):
 
             result = []
             for item in items:
-                extra_field = item.get_extra_field_src()
+                extra_field = item.get_extra_field()
                 if (extra_field.startswith("    # ") and extra_field.count("\"") >= 2):
                     result.append(extra_field.replace("{CONTENT}", item.get_src()).replace("\n", "\\n"))
                     result.append(extra_field.replace("    # ", "    ").replace("{CONTENT}", item.get_dst()).replace("\n", "\\n"))
@@ -837,8 +832,7 @@ class FileHelper(Base):
                                 CacheItem({
                                     "src": v.get("message"),
                                     "dst": v.get("message"),
-                                    "extra_field_src": v.get("name", ""),
-                                    "extra_field_dst": v.get("name", ""),
+                                    "extra_field": v.get("name", ""),
                                     "row": len(items),
                                     "file_type": CacheItem.FileType.MESSAGEJSON,
                                     "file_path": rel_path,
@@ -877,7 +871,7 @@ class FileHelper(Base):
             result = []
             for item in items:
                 result.append({
-                    "name": item.get_extra_field_dst(),
+                    "name": item.get_extra_field(),
                     "message": item.get_dst(),
                 })
 
