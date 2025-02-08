@@ -11,6 +11,7 @@ class CacheItem(BaseData):
 
         TXT: str = "TXT"                                # .txt 文本文件
         SRT: str = "SRT"                                # .srt 字幕文件
+        ASS: str = "ASS"                                # .ass 字幕文件
         TPP: str = "TPP"                                # .xlsx Translator++
         EPUB: str = "EPUB"                              # .epub
         KVJSON: str = "KVJSON"                          # .json MTool

@@ -30,7 +30,6 @@ class FileHelper(Base):
         message = "This search incorrectly ignores the root element, and will be fixed in a future version"
     )
 
-
     def __init__(self, input_path: str, output_path: str) -> None:
         super().__init__()
 
@@ -47,6 +46,7 @@ class FileHelper(Base):
         items = []
         try:
             items.extend(self.read_from_path_txt(self.input_path, self.output_path))
+            items.extend(self.read_from_path_ass(self.input_path, self.output_path))
             items.extend(self.read_from_path_srt(self.input_path, self.output_path))
             items.extend(self.read_from_path_tpp(self.input_path, self.output_path))
             items.extend(self.read_from_path_epub(self.input_path, self.output_path))
@@ -55,12 +55,14 @@ class FileHelper(Base):
         except Exception as e:
             self.error(f"文件读取失败 ... {e}", e if self.is_debug() else None)
 
+        self.debug(items[0])
         return project, items
 
     # 写
     def write_to_path(self, items: list[CacheItem]) -> None:
         try:
             self.write_to_path_txt(self.input_path, self.output_path, items)
+            self.write_to_path_ass(self.input_path, self.output_path, items)
             self.write_to_path_srt(self.input_path, self.output_path, items)
             self.write_to_path_tpp(self.input_path, self.output_path, items)
             self.write_to_path_epub(self.input_path, self.output_path, items)
@@ -129,6 +131,131 @@ class FileHelper(Base):
                     item.get_src() if item.get_dst() == item.get_src() else f"{item.get_src()}\n{item.get_dst()}"
                     for item in items
                 ]))
+
+    # ASS
+    def read_from_path_ass(self, input_path: str, output_path: str) -> list[CacheItem]:
+        # [Script Info]
+        # ; This is an Advanced Sub Station Alpha v4+ script.
+        # Title:
+        # ScriptType: v4.00+
+        # PlayDepth: 0
+        # ScaledBorderAndShadow: Yes
+
+        # [V4+ Styles]
+        # Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+        # Style: Default,Arial,20,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,10,1
+
+        # [Events]
+        # Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+        # Dialogue: 0,0:00:08.12,0:00:10.46,Default,,0,0,0,,にゃにゃにゃ
+        # Dialogue: 0,0:00:14.00,0:00:15.88,Default,,0,0,0,,えーこの部屋一人で使\Nえるとか最高じゃん
+        # Dialogue: 0,0:00:15.88,0:00:17.30,Default,,0,0,0,,えるとか最高じゃん
+
+        items = []
+        for root, _, files in os.walk(input_path):
+            target = [
+                os.path.join(root, file).replace("\\", "/") for file in files
+                if file.lower().endswith(".ass")
+            ]
+
+            for abs_path in target:
+                # 获取相对路径
+                rel_path = os.path.relpath(abs_path, input_path)
+
+                # 数据处理
+                with open(abs_path, "r", encoding = "utf-8") as reader:
+                    lines = [line.strip() for line in reader.readlines()]
+
+                    # 格式字段的数量
+                    in_event = False
+                    format_field_num = -1
+                    for line in lines:
+                        # 判断是否进入事件块
+                        if line == "[Events]":
+                            in_event = True
+                        # 在事件块中寻找格式字段
+                        if in_event == True and line.startswith("Format:"):
+                            format_field_num = len(line.split(",")) - 1
+                            break
+
+                    for line in lines:
+                        content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
+                        extra_field = line.replace(f"{content}", "{CONTENT}") if content != "" else line
+
+                        # 添加数据
+                        items.append(
+                            CacheItem({
+                                "src": content.replace("\\N", "\n"),
+                                "dst": content.replace("\\N", "\n"),
+                                "extra_field_src": extra_field,
+                                "extra_field_dst": extra_field,
+                                "row": len(items),
+                                "file_type": CacheItem.FileType.ASS,
+                                "file_path": rel_path,
+                            })
+                        )
+
+        return items
+
+    # ASS
+    def write_to_path_ass(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+        # [Script Info]
+        # ; This is an Advanced Sub Station Alpha v4+ script.
+        # Title:
+        # ScriptType: v4.00+
+        # PlayDepth: 0
+        # ScaledBorderAndShadow: Yes
+
+        # [V4+ Styles]
+        # Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+        # Style: Default,Arial,20,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,10,1
+
+        # [Events]
+        # Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+        # Dialogue: 0,0:00:08.12,0:00:10.46,Default,,0,0,0,,にゃにゃにゃ
+        # Dialogue: 0,0:00:14.00,0:00:15.88,Default,,0,0,0,,えーこの部屋一人で使\Nえるとか最高じゃん
+        # Dialogue: 0,0:00:15.88,0:00:17.30,Default,,0,0,0,,えるとか最高じゃん
+
+        # 筛选
+        target = [
+            item for item in items
+            if item.get_file_type() == CacheItem.FileType.ASS
+        ]
+
+        # 按文件路径分组
+        data: dict[str, list[str]] = {}
+        for item in target:
+            data.setdefault(item.get_file_path(), []).append(item)
+
+        # 分别处理每个文件
+        for rel_path, items in data.items():
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
+            result = []
+            for item in items:
+                result.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst().replace("\n", "\\N")))
+
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                writer.write("\n".join(result))
+
+        # 分别处理每个文件（双语）
+        for rel_path, items in data.items():
+            ext = os.path.splitext(rel_path)[-1]
+            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.ass"))
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
+            result = []
+            for item in items:
+                result.append(
+                    item.get_extra_field_dst().replace("{CONTENT}", "{CONTENT}\\N{CONTENT}")
+                                              .replace("{CONTENT}", item.get_src().replace("\n", "\\N"), 1)
+                                              .replace("{CONTENT}", item.get_dst().replace("\n", "\\N"), 1)
+                )
+
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                writer.write("\n".join(result))
+
     # SRT
     def read_from_path_srt(self, input_path: str, output_path: str) -> list[CacheItem]:
         # 1
