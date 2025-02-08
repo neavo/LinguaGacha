@@ -100,21 +100,35 @@ class FileHelper(Base):
 
     # TXT
     def write_to_path_txt(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+        # 筛选
         target = [
             item for item in items
             if item.get_file_type() == CacheItem.FileType.TXT
         ]
 
+        # 按文件路径分组
         data: dict[str, list[str]] = {}
         for item in target:
             data.setdefault(item.get_file_path(), []).append(item)
 
+        # 分别处理每个文件
         for rel_path, items in data.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([item.get_dst() for item in items]))
 
+        # 分别处理每个文件（双语）
+        for rel_path, items in data.items():
+            ext = os.path.splitext(rel_path)[-1]
+            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.txt"))
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                writer.write("\n".join([
+                    item.get_src() if item.get_dst() == item.get_src() else f"{item.get_src()}\n{item.get_dst()}"
+                    for item in items
+                ]))
     # SRT
     def read_from_path_srt(self, input_path: str, output_path: str) -> list[CacheItem]:
         # 1
@@ -184,15 +198,18 @@ class FileHelper(Base):
         # 00:00:15,880 --> 00:00:17,300
         # えるとか最高じゃん
 
+        # 筛选
         target = [
             item for item in items
             if item.get_file_type() == CacheItem.FileType.SRT
         ]
 
+        # 按文件路径分组
         data: dict[str, list[str]] = {}
         for item in target:
             data.setdefault(item.get_file_path(), []).append(item)
 
+        # 分别处理每个文件
         for rel_path, items in data.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
@@ -203,6 +220,25 @@ class FileHelper(Base):
                     item.get_row(),
                     item.get_extra_field_dst(),
                     item.get_dst(),
+                ])
+
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                for item in result:
+                    writer.write("\n".join(item))
+                    writer.write("\n\n")
+
+        # 分别处理每个文件（双语）
+        for rel_path, items in data.items():
+            ext = os.path.splitext(rel_path)[-1]
+            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.srt"))
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
+            result = []
+            for item in items:
+                result.append([
+                    item.get_row(),
+                    item.get_extra_field_dst(),
+                    f"{item.get_src()}\n{item.get_dst()}",
                 ])
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
@@ -347,6 +383,7 @@ class FileHelper(Base):
 
     # EPUB
     def write_to_path_epub(self, input_path:str, output_path: str, items: list[CacheItem]) -> None:
+        # 筛选
         target = [
             item for item in items
             if item.get_file_type() == CacheItem.FileType.EPUB
@@ -376,6 +413,30 @@ class FileHelper(Base):
 
             # 将修改后的数据写入文件
             abs_path = f"{output_path}/{rel_path}"
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+            epub.write_epub(abs_path, book, {})
+
+        # 分别处理每个文件（双语）
+        for rel_path, items in data.items():
+            # 按行号排序
+            items = sorted(items, key = lambda x: x.get_row())
+
+            # 读取原始文件
+            book = epub.read_epub(f"{output_path}/cache/temp/{rel_path}")
+            for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                # 筛选出 tag 相同的元素
+                lines = []
+                for item in [item for item in items if item.get_tag() == doc.get_id()]:
+                    lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()).replace("<p>", "<p style=\"opacity:0.4;\">"))
+                    lines.append(item.get_extra_field_dst().replace("{CONTENT}", item.get_dst()))
+
+                # 将修改后的 HTML 内容重新填充回去
+                if len(lines) > 0:
+                    doc.set_content("\n".join(lines).encode("utf-8"))
+
+            # 将修改后的数据写入文件
+            ext = os.path.splitext(rel_path)[-1]
+            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.epub"))
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             epub.write_epub(abs_path, book, {})
 
