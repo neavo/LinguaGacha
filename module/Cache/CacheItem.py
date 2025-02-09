@@ -18,6 +18,9 @@ class CacheItem(BaseData):
         KVJSON: str = "KVJSON"                          # .json MTool
         MESSAGEJSON: str = "MESSAGEJSON"                # .json SExtractor
 
+    # 缓存 Token 数量
+    TOKEN_COUNT_CACHE: dict[str, int] = {}
+
     def __init__(self, args: dict) -> None:
         super().__init__()
 
@@ -37,9 +40,6 @@ class CacheItem(BaseData):
 
         # 线程锁
         self.lock = threading.Lock()
-
-        # 类变量
-        CacheItem.cache = CacheItem.cache if hasattr(CacheItem, "cache") else {}
 
     # 获取原文
     def get_src(self) -> str:
@@ -129,9 +129,29 @@ class CacheItem(BaseData):
     # 获取 Token 数量
     def get_token_count(self) -> int:
         with self.lock:
-            if self.src not in CacheItem.cache:
-                CacheItem.cache[self.src] = len(
-                    tiktoken.get_encoding("cl100k_base").encode(self.src)
-                )
+            if self.src not in CacheItem.TOKEN_COUNT_CACHE:
+                CacheItem.TOKEN_COUNT_CACHE[self.src] = len(tiktoken.get_encoding("cl100k_base").encode(self.src))
 
-            return CacheItem.cache[self.src]
+            return CacheItem.TOKEN_COUNT_CACHE[self.src]
+
+    # 将原文切片
+    def split_sub_lines(self) -> list[str]:
+        with self.lock:
+            return [sub_line for sub_line in self.src.split("\n") if sub_line.strip() != ""]
+
+    # 从切片中合并译文
+    def merge_sub_lines(self, dst_sub_lines: list[str]) -> tuple[str, list[str]]:
+        dst = ""
+        for src_sub_line in self.src.split("\n"):
+            if src_sub_line == "":
+                dst = dst + "\n"
+            elif src_sub_line.strip() == "":
+                dst = dst + src_sub_line + "\n"
+            else:
+                dst_sub_line = str(dst_sub_lines.pop(0))
+                if dst_sub_line == "":
+                    dst = dst + src_sub_line + "\n"
+                else:
+                    dst = dst + dst_sub_line + "\n"
+
+        return dst.removesuffix("\n"), dst_sub_lines

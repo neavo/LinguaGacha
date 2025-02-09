@@ -34,7 +34,10 @@ class TranslatorTask(Base):
         self.response_checker = ResponseChecker(self.config)
 
         # 生成原文文本字典
-        self.src_dict, self.sub_line_mapping_dict = self.generate_src_dict(items)
+        self.src_dict = {}
+        for item in items:
+            for sub_line in item.split_sub_lines():
+                self.src_dict[str(len(self.src_dict))] = sub_line
 
         # 正规化
         self.src_dict = self.normalize(self.src_dict)
@@ -122,15 +125,11 @@ class TranslatorTask(Base):
             # 繁体输出
             dst_dict = self.convert_to_traditional_chinese(dst_dict)
 
-            # 拼接子句
-            merged_dict = {}
-            for k, v in dst_dict.items():
-                i = self.sub_line_mapping_dict[k]
-                merged_dict[i] = merged_dict.get(i, "") + v
-
             # 更新缓存数据
-            for i, item in enumerate(self.items):
-                item.set_dst(merged_dict.get(str(i), ""))
+            dst_sub_lines = list(dst_dict.values())
+            for item in self.items:
+                dst, dst_sub_lines = item.merge_sub_lines(dst_sub_lines)
+                item.set_dst(dst)
                 item.set_status(Base.TranslationStatus.TRANSLATED)
 
             # 打印任务结果
@@ -213,19 +212,6 @@ class TranslatorTask(Base):
             dst_dict[k] = PunctuationHelper.check_and_replace(src_dict[k], dst_dict[k])
 
         return dst_dict
-
-    # 生成源字典
-    def generate_src_dict(self, items: list[CacheItem]) -> tuple[dict, dict]:
-        i = 0
-        src_dict = {}
-        sub_line_mapping_dict = {}
-        for k, item in enumerate(items):
-            for line in re.findall(r"(?:.+\n|.+$)", item.get_src()):
-                src_dict[str(i)] = line
-                sub_line_mapping_dict[str(i)] = str(k)
-                i = i + 1
-
-        return src_dict, sub_line_mapping_dict
 
     # 生成提示词
     def generate_prompt(self, src_dict: dict) -> tuple[list[dict], list[str]]:
