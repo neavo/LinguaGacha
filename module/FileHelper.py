@@ -180,7 +180,7 @@ class FileHelper(Base):
 
                     for line in lines:
                         content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
-                        extra_field = line.replace(f"{content}", "{CONTENT}") if content != "" else line
+                        extra_field = line.replace(f"{{CONTENT}}", "{{CONTENT}}") if content != "" else line
 
                         # 添加数据
                         items.append(
@@ -233,7 +233,7 @@ class FileHelper(Base):
 
             result = []
             for item in items:
-                result.append(item.get_extra_field().replace("{CONTENT}", item.get_dst().replace("\n", "\\N")))
+                result.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N")))
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
@@ -247,9 +247,9 @@ class FileHelper(Base):
             result = []
             for item in items:
                 result.append(
-                    item.get_extra_field().replace("{CONTENT}", "{CONTENT}\\N{CONTENT}")
-                                          .replace("{CONTENT}", item.get_src().replace("\n", "\\N"), 1)
-                                          .replace("{CONTENT}", item.get_dst().replace("\n", "\\N"), 1)
+                    item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
+                                          .replace("{{CONTENT}}", item.get_src().replace("\n", "\\N"), 1)
+                                          .replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
                 )
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
@@ -490,7 +490,7 @@ class FileHelper(Base):
                     bs = BeautifulSoup(doc.get_content(), "html.parser")
                     for line in str(bs).splitlines():
                         content = BeautifulSoup(line, "html.parser").get_text()
-                        extra_field = line.replace(f"{content}", "{CONTENT}") if content != "" else line
+                        extra_field = line.replace(f"{{CONTENT}}", "{{CONTENT}}") if content != "" else line
                         items.append(
                             CacheItem({
                                 "src": content,
@@ -537,7 +537,7 @@ class FileHelper(Base):
                 # 筛选出 tag 相同的元素
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    lines.append(item.get_extra_field().replace("{CONTENT}", item.get_dst()))
+                    lines.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content("\n".join(lines).encode("utf-8"))
@@ -559,8 +559,8 @@ class FileHelper(Base):
                 lines = []
                 for item in [item for item in items if item.get_tag() == doc.get_id()]:
                     if item.get_src() != "":
-                        lines.append(add_opacity_style(item.get_extra_field()).replace("{CONTENT}", item.get_src()))
-                    lines.append(item.get_extra_field().replace("{CONTENT}", item.get_dst()))
+                        lines.append(add_opacity_style(item.get_extra_field()).replace("{{CONTENT}}", item.get_src()))
+                    lines.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst()))
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content("\n".join(lines).encode("utf-8"))
@@ -603,11 +603,22 @@ class FileHelper(Base):
 
         # 查找文本中最后一对双引号包裹的文本
         def find_content(text: str) -> str:
-            matches = re.findall(r'"(.*?)"', text)
+            matches = re.findall(r"\"(.*?)(?<!\\)\"(?!\")", text)
+
             if matches:
-                return matches[-1]
+                # 获取最后一对引号中的子串
+                last_match = matches[-1]
+
+                # 找到最后一个目标子串的位置，包括引号
+                start_index = text.rfind('"' + last_match + '"')
+                end_index = start_index + len('"' + last_match + '"')
+
+                # 将剩余的字符串中目标子串的内容（不包括引号）替换为 {{CONTENT}}
+                modified_str = text[: start_index + 1] + "{{CONTENT}}" + text[end_index - 1 :]
+
+                return last_match, modified_str
             else:
-                return ""
+                return "", text
 
         items = []
         for root, _, files in os.walk(input_path):
@@ -629,10 +640,10 @@ class FileHelper(Base):
                     if skip_next == True:
                         skip_next = False
                         continue
-                    elif (line.startswith("    # ") and line.count("\"") >= 2) or line.startswith("    old "):
+                    elif line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
                         skip_next = True
-                        content = find_content(line).replace("\\n", "\n")
-                        extra_field = line.replace(f"{content}", "{CONTENT}") if content != "" else line
+                        content, extra_field = find_content(line)
+                        content = content.replace("\\n", "\n")
                     else:
                         content = ""
                         extra_field = line
@@ -700,12 +711,20 @@ class FileHelper(Base):
             result = []
             for item in items:
                 extra_field = item.get_extra_field()
-                if (extra_field.startswith("    # ") and extra_field.count("\"") >= 2):
-                    result.append(extra_field.replace("{CONTENT}", item.get_src()).replace("\n", "\\n"))
-                    result.append(extra_field.replace("    # ", "    ").replace("{CONTENT}", item.get_dst()).replace("\n", "\\n"))
-                elif extra_field.startswith("    old "):
-                    result.append(extra_field.replace("{CONTENT}", item.get_src()).replace("\n", "\\n"))
-                    result.append(extra_field.replace("    old ", "    new ").replace("{CONTENT}", item.get_dst()).replace("\n", "\\n"))
+                if "{{CONTENT}}" in extra_field and extra_field.startswith("    # "):
+                    result.append(
+                        extra_field.replace("{{CONTENT}}", item.get_src()).replace("\n", "\\n")
+                    )
+                    result.append(
+                        ("    " + extra_field.removeprefix("    # ")).replace("{{CONTENT}}", item.get_dst()).replace("\n", "\\n")
+                    )
+                elif "{{CONTENT}}" in extra_field and extra_field.startswith("    old "):
+                    result.append(
+                        extra_field.replace("{{CONTENT}}", item.get_src()).replace("\n", "\\n")
+                    )
+                    result.append(
+                        ("    new " + extra_field.removeprefix("    old ")).replace("{{CONTENT}}", item.get_dst()).replace("\n", "\\n")
+                    )
                 else:
                     result.append(extra_field)
 
