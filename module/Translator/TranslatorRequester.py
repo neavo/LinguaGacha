@@ -155,8 +155,8 @@ class TranslatorRequester(Base):
 
             # 提取回复内容
             message = response.choices[0].message
-            if "reasoning_content" in message:
-                response_think = message.get("reasoning_content").strip()
+            if hasattr(message, "reasoning_content") and isinstance(message.reasoning_content, str):
+                response_think = message.reasoning_content.replace("\n\n", "\n").strip()
                 response_result = message.content.strip()
             elif "</think>" in message.content:
                 splited = message.content.split("</think>")
