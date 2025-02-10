@@ -1,5 +1,6 @@
 import math
 from base.Base import Base
+from module.TextHelper import TextHelper
 
 class ResponseChecker(Base):
 
@@ -9,7 +10,7 @@ class ResponseChecker(Base):
         NONE: str = "没有有效数据"
         EMPTY_LINE: str = "译文包含空行"
         LINE_COUNT: str = "未通过行数检查"
-        SIMILARITY: str = "部分条目中原文译文相似"
+        UNTRANSLATED: str = "部分条目可能没有翻译"
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -38,17 +39,34 @@ class ResponseChecker(Base):
 
         # 部分条目中原文译文相似
         if len(dst_dict) > 1 and current_round <= self.round_threshold:
-            return self.chech_similarity(src_dict, dst_dict)
+            return self.chech_untranslated(src_dict, dst_dict)
 
         return None, None
 
-    # 部分条目中原文译文相似
-    def chech_similarity(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> str:
+    # 部分条目可能没有翻译
+    def chech_untranslated(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> str:
         data = []
         for src, dst in zip(src_dict.values(), dst_dict.values()):
-            if src == dst and "[占位符]" not in src:
-                data.append(1)
+            if src.strip() == dst.strip() and "[占位符]" not in src:
+                # 获取原文语言
+                source_language = self.config.get("source_language")
+
+                # 原文是日文时，只有至少包含一个平假名或片假名字符，才判断为漏翻
+                if source_language == Base.Language.JA:
+                    if TextHelper.has_any_hiragana(src) or TextHelper.has_any_katakanae(src):
+                        data.append(1)
+                    else:
+                        data.append(0)
+                # 原文是韩文时，只有至少包含一个谚文字符，才判断为漏翻
+                elif source_language == Base.Language.KO:
+                    if TextHelper.has_any_hiragana(src):
+                        data.append(1)
+                    else:
+                        data.append(0)
+                # 其他语言时，只要原文译文相同就可以判断为漏翻
+                else:
+                    data.append(1)
             else:
                 data.append(0)
 
-        return ResponseChecker.Error.SIMILARITY if sum(data) >= 1 else None, data
+        return ResponseChecker.Error.UNTRANSLATED if sum(data) >= 1 else None, data

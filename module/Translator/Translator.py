@@ -323,8 +323,8 @@ class Translator(Base):
         # 检查结果
         result_check = ResultChecker(self.config, self.cache_manager.get_items())
         result_check.check_code("结果检查_代码异常的条目.json", CodeSaver(self.config))
-        result_check.check_untranslated("结果检查_原文译文相同的条目.json")
         result_check.check_glossary("结果检查_术语表未生效的条目.json")
+        result_check.check_untranslated("结果检查_翻译状态异常的条目.json")
 
         # 写入文件
         file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))

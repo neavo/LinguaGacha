@@ -96,7 +96,7 @@ class TranslatorTask(Base):
             self.extra_log.append("模型回复内容：\n" + response_result)
 
         # 检查译文
-        if check_flag != None and check_flag not in (ResponseChecker.Error.SIMILARITY,):
+        if check_flag != None and check_flag not in (ResponseChecker.Error.UNTRANSLATED,):
             # 打印任务结果
             self.print(
                 self.generate_log_table(
@@ -168,7 +168,7 @@ class TranslatorTask(Base):
                 )
 
         # 返回任务结果
-        if check_flag != None and check_flag not in (ResponseChecker.Error.SIMILARITY,):
+        if check_flag != None and check_flag not in (ResponseChecker.Error.UNTRANSLATED,):
             return {
                 "check_flag": check_flag,
                 "row_count": 0,

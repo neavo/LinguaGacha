@@ -99,16 +99,19 @@ class TextHelper:
             or TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[0] <= char <= TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[1]
         )
 
-    # 判断字符是否为韩文字符
-    def is_korean(char: str) -> bool:
+    # 判断字符是否为谚文字符
+    def is_hangeul(char: str) -> bool:
         return (
-            TextHelper.is_cjk(char)
-            or TextHelper.HANGUL_JAMO[0] <= char <= TextHelper.HANGUL_JAMO[1]
+            TextHelper.HANGUL_JAMO[0] <= char <= TextHelper.HANGUL_JAMO[1]
             or TextHelper.HANGUL_JAMO_EXTENDED_A[0] <= char <= TextHelper.HANGUL_JAMO_EXTENDED_A[1]
             or TextHelper.HANGUL_JAMO_EXTENDED_B[0] <= char <= TextHelper.HANGUL_JAMO_EXTENDED_B[1]
             or TextHelper.HANGUL_SYLLABLES[0] <= char <= TextHelper.HANGUL_SYLLABLES[1]
             or TextHelper.HANGUL_COMPATIBILITY_JAMO[0] <= char <= TextHelper.HANGUL_COMPATIBILITY_JAMO[1]
         )
+
+    # 判断字符是否为韩文字符
+    def is_korean(char: str) -> bool:
+        return TextHelper.is_cjk(char) or TextHelper.is_hangeul(char)
 
     # 判断字符是否为平假名
     def is_hiragana(char: str) -> bool:
@@ -147,7 +150,7 @@ class TextHelper:
     def is_punctuation(char: str) -> bool:
         return TextHelper.is_cjk_punctuation(char) or TextHelper.is_latin_punctuation(char) or TextHelper.is_special_punctuation(char)
 
-    # 判断一个字符是否是汉字字符标点符号
+    # 判断一个字符是否是汉字标点符号
     def is_cjk_punctuation(char: str) -> bool:
         return (
             TextHelper.GENERAL_PUNCTUATION[0] <= char <= TextHelper.GENERAL_PUNCTUATION[1]
@@ -166,19 +169,23 @@ class TextHelper:
             or TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[0] <= char <= TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[1]
         )
 
-    # 判断一个字符是否是拉丁标点符号
+    # 判断一个字符是否是特殊标点符号
     def is_special_punctuation(char: str) -> bool:
         return char in TextHelper.SPECIAL_PUNCTUATION
 
-    # 检查字符串是否包含至少一个汉字字符组成
+    # 检查字符串是否包含至少一个汉字字符
     def has_any_cjk(text: str) -> bool:
         return any(TextHelper.is_cjk(char) for char in text)
 
-    # 检查字符串是否包含至少一个拉丁字符组成
+    # 检查字符串是否包含至少一个拉丁字符
     def has_any_latin(text: str) -> bool:
         return any(TextHelper.is_latin(char) for char in text)
 
-    # 检查字符串是否包含至少一个韩文字符组成
+    # 检查字符串是否包含至少一个谚文字符
+    def has_any_hangeul(text: str) -> bool:
+        return any(TextHelper.is_hangeul(char) for char in text)
+
+    # 检查字符串是否包含至少一个韩文字符（含汉字字符）
     def has_any_korean(text: str) -> bool:
         return any(TextHelper.is_korean(char) for char in text)
 
@@ -202,35 +209,39 @@ class TextHelper:
     def has_any_punctuation(text: str) -> bool:
         return any(TextHelper.is_punctuation(char) for char in text)
 
-    # 判断输入的字符串是否全部由汉字字符组成
+    # 判断输入的字符串是否全部为汉字字符
     def is_all_cjk(text: str) -> bool:
         return all(TextHelper.is_cjk(char) for char in text)
 
-    # 判断输入的字符串是否全部由拉丁字符组成
+    # 判断输入的字符串是否全部为拉丁字符
     def is_all_latin(text: str) -> bool:
         return all(TextHelper.is_latin(char) for char in text)
 
-    # 判断输入的字符串是否全部由韩文字符组成
+    # 判断输入的字符串是否全部为谚文字符
+    def is_all_hangeul(text: str) -> bool:
+        return all(TextHelper.is_all_hangeul(char) for char in text)
+
+    # 判断输入的字符串是否全部为韩文字符（含汉字字符）
     def is_all_korean(text: str) -> bool:
         return all(TextHelper.is_korean(char) for char in text)
 
-    # 判断字符串是否全部为平假名
+    # 判断字符串是否全部为平假名字符
     def is_all_hiragana(text: str) -> bool:
         return all(TextHelper.is_hiragana(char) for char in text)
 
-    # 判断字符串是否全部为片假名
+    # 判断字符串是否全部为片假名字符
     def is_all_katakana(text: str) -> bool:
         return all(TextHelper.is_katakana(char) for char in text)
 
-    # 判断输入的字符串是否全部由日文字符（含汉字字符）组成
+    # 判断输入的字符串是否全部为日文字符（含汉字字符）
     def is_all_japanese(text: str) -> bool:
         return all(TextHelper.is_japanese(char) for char in text)
 
-    # 判断输入的字符串是否全部由俄文字符组成
+    # 判断输入的字符串是否全部为俄文字符
     def is_all_russian(text: str) -> bool:
         return all(TextHelper.is_russian(char) for char in text)
 
-    # 判断输入的字符串是否全部由标点符号组成
+    # 判断输入的字符串是否全部为标点符号
     def is_all_punctuation(text: str) -> bool:
         return all(TextHelper.is_punctuation(char) for char in text)
 
