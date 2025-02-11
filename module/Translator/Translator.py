@@ -129,13 +129,14 @@ class Translator(Base):
                 project, items = file_helper.read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
-
-            # 检查数据是否为空
-            if self.cache_manager.get_item_count() == 0:
-                raise Exception("未在输入文件夹中找到数据 ...")
         except Exception as e:
             self.error("翻译项目数据载入失败 ... ", e)
             return None
+
+        # 检查数据是否为空
+        if self.cache_manager.get_item_count() == 0:
+            self.print("")
+            self.warning("没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ...")
 
         # 从头翻译时加载默认数据
         if status == Base.TranslationStatus.TRANSLATING:
@@ -176,13 +177,15 @@ class Translator(Base):
             if item_count_status_untranslated == 0:
                 self.print("")
                 self.info("所有文本均已翻译，翻译任务已结束 ...")
+                self.info("正在写入翻译数据，等稍候 ...")
                 self.print("")
                 break
 
             # 达到最大翻译轮次时
             if item_count_status_untranslated > 0 and current_round == self.config.get("max_round"):
                 self.print("")
-                self.warning("已达到最大翻译轮次，仍有部分文本未翻译，请检查结果 ...")
+                self.warning("已到最大翻译轮次，仍有部分文本未翻译，请检查翻译结果 ...")
+                self.warning("正在写入翻译数据，等稍候 ...")
                 self.print("")
                 break
 
@@ -268,6 +271,9 @@ class Translator(Base):
 
     # 规则过滤
     def rule_filter(self, items: list[CacheItem]) -> None:
+        if len(items) == 0:
+            return None
+
         # 筛选出无效条目并标记为已排除
         target = []
         self.print("")
@@ -285,6 +291,9 @@ class Translator(Base):
 
     # 语言过滤
     def language_filter(self, items: list[CacheItem]) -> None:
+        if len(items) == 0:
+            return None
+
         if self.config.get("source_language") == Base.Language.ZH:
             func = TextHelper.has_any_cjk
         elif self.config.get("source_language") == Base.Language.EN:
@@ -315,18 +324,18 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self) -> None:
         # 清理一下
-        if os.path.isdir(self.config.get("output_folder")) == True:
-            [
-                os.remove(entry.path)
-                for entry in os.scandir(self.config.get("output_folder"))
-                if entry.is_file() and entry.name.startswith("结果检查_")
-            ]
+        os.makedirs(self.config.get("output_folder"), exist_ok = True)
+        [
+            os.remove(entry.path)
+            for entry in os.scandir(self.config.get("output_folder"))
+            if entry.is_file() and entry.name.startswith("结果检查_")
+        ]
 
         # 检查结果
         result_check = ResultChecker(self.config, self.cache_manager.get_items())
         result_check.check_code("结果检查_代码异常的条目.json", CodeSaver(self.config))
-        result_check.check_glossary("结果检查_术语表未生效的条目.json")
         result_check.check_untranslated("结果检查_翻译状态异常的条目.json")
+        result_check.check_glossary("结果检查_术语表未生效的条目.json")
 
         # 写入文件
         file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))

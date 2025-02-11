@@ -48,14 +48,10 @@ class ResultChecker(Base):
                 result[src] = dst
 
         if len(result) == 0:
-            self.print("")
             self.info("已完成代码检查，未发现异常条目 ...")
-            self.print("")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.print("")
             self.info(f"已完成代码检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
-            self.print("")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
@@ -77,14 +73,10 @@ class ResultChecker(Base):
                     result.setdefault(f"{glossary_src} -> {glossary_dst}", {})[src] = dst
 
         if len(result) == 0:
-            self.print("")
             self.info("已完成术语表检查，未发现异常条目 ...")
-            self.print("")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.print("")
             self.info(f"已完成术语表检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
-            self.print("")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
@@ -96,13 +88,9 @@ class ResultChecker(Base):
                 result[src] = dst
 
         if len(result) == 0:
-            self.print("")
             self.info("已完成翻译检查，未发现异常条目 ...")
-            self.print("")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.print("")
             self.info(f"已完成翻译检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
-            self.print("")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))

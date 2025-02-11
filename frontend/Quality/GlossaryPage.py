@@ -1,9 +1,11 @@
 import rapidjson as json
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QFrame
+from PyQt5.QtCore import QUrl
+from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
@@ -11,13 +13,14 @@ from qfluentwidgets import FluentIcon
 from qfluentwidgets import MessageBox
 from qfluentwidgets import TableWidget
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.TableHelper import TableHelper
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class GlossaryPage(QFrame, Base):
+class GlossaryPage(QWidget, Base):
 
     # 表格每列对应的数据字段
     KEYS = (
@@ -113,6 +116,7 @@ class GlossaryPage(QFrame, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
+        self.command_bar_card.set_minimum_width(512)
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
@@ -120,6 +124,10 @@ class GlossaryPage(QFrame, Base):
         self.add_command_bar_action_save(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_reset(self.command_bar_card, config, window)
+        self.command_bar_card.add_stretch(1)
+        self.add_command_bar_action_kg(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # 导入
     def add_command_bar_action_import(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
@@ -249,3 +257,23 @@ class GlossaryPage(QFrame, Base):
         parent.add_action(
             Action(FluentIcon.DELETE, "重置", parent, triggered = triggered),
         )
+
+    # KG
+    def add_command_bar_action_kg(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
+        def connect() -> None:
+            QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
+
+        push_button = TransparentPushButton(FluentIcon.COMPLETED, "一键制作工具")
+        push_button.clicked.connect(connect)
+        parent.add_widget(push_button)
+
+    # WiKi
+    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
+        def connect() -> None:
+            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
+
+        push_button = TransparentPushButton(FluentIcon.SHARE, "功能说明")
+        push_button.clicked.connect(connect)
+        parent.add_widget(push_button)
