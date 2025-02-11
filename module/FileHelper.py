@@ -48,7 +48,7 @@ class FileHelper(Base):
             items.extend(self.read_from_path_txt(self.input_path, self.output_path))
             items.extend(self.read_from_path_ass(self.input_path, self.output_path))
             items.extend(self.read_from_path_srt(self.input_path, self.output_path))
-            items.extend(self.read_from_path_tpp(self.input_path, self.output_path))
+            items.extend(self.read_from_path_xlsx(self.input_path, self.output_path))
             items.extend(self.read_from_path_epub(self.input_path, self.output_path))
             items.extend(self.read_from_path_renpy(self.input_path, self.output_path))
             items.extend(self.read_from_path_kvjson(self.input_path, self.output_path))
@@ -64,7 +64,7 @@ class FileHelper(Base):
             self.write_to_path_txt(self.input_path, self.output_path, items)
             self.write_to_path_ass(self.input_path, self.output_path, items)
             self.write_to_path_srt(self.input_path, self.output_path, items)
-            self.write_to_path_tpp(self.input_path, self.output_path, items)
+            self.write_to_path_xlsx(self.input_path, self.output_path, items)
             self.write_to_path_epub(self.input_path, self.output_path, items)
             self.write_to_path_renpy(self.input_path, self.output_path, items)
             self.write_to_path_kvjson(self.input_path, self.output_path, items)
@@ -371,8 +371,8 @@ class FileHelper(Base):
                     writer.write("\n".join(item))
                     writer.write("\n\n")
 
-    # T++
-    def read_from_path_tpp(self, input_path: str, output_path: str) -> list[CacheItem]:
+    # XLSX
+    def read_from_path_xlsx(self, input_path: str, output_path: str) -> list[CacheItem]:
         items = []
         for root, _, files in os.walk(input_path):
             target = [
@@ -392,37 +392,44 @@ class FileHelper(Base):
                 if sheet.max_column == 0:
                     continue
 
-                # 跳过不包含 T++ 表头的表格
-                if sheet.cell(row = 1, column = 1).value != "Original Text":
-                    continue
-
-                for row in range(2, sheet.max_row + 1):
+                for row in range(1, sheet.max_row + 1):
                     src = sheet.cell(row = row, column = 1).value
                     dst = sheet.cell(row = row, column = 2).value
 
                     # 跳过读取失败的行
                     if src is None:
                         continue
-                    else:
-                        src = str(src)
 
-                    items.append(
-                        CacheItem({
-                            "src": src,
-                            "dst": dst if dst != None else src,
-                            "row": row,
-                            "file_type": CacheItem.FileType.TPP,
-                            "file_path": rel_path,
-                        })
-                    )
+                    # 根据是否已存在翻译数据来添加
+                    if dst is None:
+                        items.append(
+                            CacheItem({
+                                "src": str(src),
+                                "dst": str(src),
+                                "row": row,
+                                "file_type": CacheItem.FileType.XLSX,
+                                "file_path": rel_path,
+                            })
+                        )
+                    else:
+                        items.append(
+                            CacheItem({
+                                "src": str(src),
+                                "dst": str(dst),
+                                "row": row,
+                                "file_type": CacheItem.FileType.XLSX,
+                                "file_path": rel_path,
+                                "status": Base.TranslationStatus.EXCLUDED,
+                            })
+                        )
 
         return items
 
-    # T++
-    def write_to_path_tpp(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
+    # XLSX
+    def write_to_path_xlsx(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.TPP
+            if item.get_file_type() == CacheItem.FileType.XLSX
         ]
 
         data: dict[str, list[str]] = {}
@@ -433,15 +440,6 @@ class FileHelper(Base):
             # 新建工作表
             work_book = Workbook()
             active_sheet = work_book.active
-            active_sheet.append(
-                (
-                    "Original Text",
-                    "Initial",
-                    "Machine translation",
-                    "Better translation",
-                    "Best translation",
-                )
-            )
 
             # 将数据写入工作表
             for item in items:
