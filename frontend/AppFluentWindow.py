@@ -19,9 +19,10 @@ from frontend.AppSettingsPage import AppSettingsPage
 from frontend.Project.ProjectPage import ProjectPage
 from frontend.Project.PlatformPage import PlatformPage
 from frontend.Project.TranslationPage import TranslationPage
+from frontend.Setting.BasicSettingsPage import BasicSettingsPage
+from frontend.Setting.AdvanceFeaturePage import AdvanceFeaturePage
 from frontend.Quality.GlossaryPage import GlossaryPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
-from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Quality.ReplaceAfterTranslationPage import ReplaceAfterTranslationPage
 from frontend.Quality.ReplaceBeforeTranslationPage import ReplaceBeforeTranslationPage
 
@@ -158,6 +159,8 @@ class AppFluentWindow(FluentWindow, Base):
     def add_setting_pages(self) -> None:
         self.basic_settings_page = BasicSettingsPage("basic_settings_page", self)
         self.addSubInterface(self.basic_settings_page, FluentIcon.ZOOM, "基础设置", NavigationItemPosition.SCROLL)
+        self.advance_Feature_page = AdvanceFeaturePage("advance_Feature_page", self)
+        self.addSubInterface(self.advance_Feature_page, FluentIcon.COMMAND_PROMPT, "高级功能", NavigationItemPosition.SCROLL)
 
     # 添加第三节
     def add_quality_pages(self) -> None:

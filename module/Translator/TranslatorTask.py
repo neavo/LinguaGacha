@@ -1,6 +1,6 @@
-import re
 import time
 import itertools
+import threading
 
 import opencc
 import rapidjson as json
@@ -9,6 +9,7 @@ from rich.table import Table
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
+from module.Cache.CacheProject import CacheProject
 from module.Check.ResponseChecker import ResponseChecker
 from module.CodeSaver import CodeSaver
 from module.TextHelper import TextHelper
@@ -22,12 +23,16 @@ class TranslatorTask(Base):
     # 类变量
     OPENCC = opencc.OpenCC("s2t")
 
-    def __init__(self, config: dict, platform: dict, items: list[CacheItem]) -> None:
+    # 类线程锁
+    LOCK = threading.Lock()
+
+    def __init__(self, config: dict, platform: dict, project: CacheProject, items: list[CacheItem]) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
         self.config = config
+        self.project = project
         self.platform = platform
         self.code_saver = CodeSaver(self.config)
         self.response_checker = ResponseChecker(self.config)
@@ -47,12 +52,6 @@ class TranslatorTask(Base):
         # 代码救星预处理
         self.src_dict = self.code_saver.preprocess(self.src_dict)
 
-        # 生成请求提示词
-        if self.platform.get("api_format") != "SakuraLLM":
-            self.messages, self.extra_log = self.generate_prompt(self.src_dict)
-        else:
-            self.messages, self.extra_log = self.generate_prompt_sakura(self.src_dict)
-
     # 启动任务
     def start(self, current_round: int) -> dict:
         return self.request(self.src_dict, current_round)
@@ -70,6 +69,12 @@ class TranslatorTask(Base):
         if time.time() - task_start_time >= self.config.get("request_timeout"):
             return {}
 
+        # 生成请求提示词
+        if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
+            self.messages, self.extra_log = self.generate_prompt(self.src_dict)
+        else:
+            self.messages, self.extra_log = self.generate_prompt_sakura(self.src_dict)
+
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
         skip, response_think, response_result, prompt_tokens, completion_tokens = requester.request(self.messages)
@@ -84,7 +89,17 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        dst_dict: dict = TextHelper.safe_load_json_dict(response_result)
+        response_dict: dict = TextHelper.safe_load_json_dict(response_result)
+        if "0" in response_dict:
+            dst_dict = response_dict
+            glossary_auto = None
+        elif "translation" in response_dict:
+            dst_dict: dict = response_dict.get("translation", {})
+            glossary_auto: dict = response_dict.get("names", [])
+
+        # 检验一下是否是正确的数据结构
+        dst_dict = dst_dict if isinstance(dst_dict, dict) else {}
+        glossary_auto = glossary_auto if isinstance(glossary_auto, list) else []
 
         # 检查回复内容
         check_flag, check_results = self.response_checker.check(src_dict, dst_dict, current_round)
@@ -124,6 +139,10 @@ class TranslatorTask(Base):
 
             # 繁体输出
             dst_dict = self.convert_to_traditional_chinese(dst_dict)
+
+            # 更新术语表
+            with TranslatorTask.LOCK:
+                self.merge_glossary(glossary_auto)
 
             # 更新缓存数据
             updated_count = 0
@@ -190,6 +209,56 @@ class TranslatorTask(Base):
 
         return data
 
+    # 合并术语表
+    def merge_glossary(self, glossary_auto: list[dict]) -> list[dict]:
+        data: list[dict] = self.config.get("glossary_data")
+        if self.config.get("glossary_enable") == False or self.config.get("auto_glossary_enable") == False:
+            return data
+
+        # 提取现有术语表的原文列表
+        keys = {item.get("src", "") for item in data}
+
+        # 合并去重后的术语表
+        for item in glossary_auto:
+            src = item.get("src", "").strip()
+            dst = item.get("dst", "").strip()
+            info = item.get("info", "").strip()
+
+            # 有效性校验
+            if src == dst:
+                continue
+            if src == "" or dst == "" or info == "":
+                continue
+            if all(x not in info for x in ("男", "女")):
+                continue
+
+            # 将原文和译文都按标点切分
+            srcs = TextHelper.split_by_punctuation(src, split_by_space = False)
+            dsts = TextHelper.split_by_punctuation(dst, split_by_space = False)
+            if len(srcs) != len(dsts):
+                if not any(key in src or src in key for key in keys):
+                    data.append({
+                        "src": src,
+                        "dst": dst,
+                        "info": info,
+                    })
+            else:
+                for src, dst in zip(srcs, dsts):
+                    src = src.strip()
+                    dst = dst.strip()
+                    if src == dst:
+                        continue
+                    if src == "" or dst == "" or info == "":
+                        continue
+                    if not any(key in src or src in key for key in keys):
+                        data.append({
+                            "src": src,
+                            "dst": dst,
+                            "info": info,
+                        })
+
+        return data
+
     # 译前替换
     def replace_before_translation(self, data: dict[str, str]) -> dict:
         if self.config.get("replace_before_translation_enable") == False:
@@ -240,7 +309,11 @@ class TranslatorTask(Base):
         extra_log = []
 
         # 基础提示词
-        base = PromptBuilder.build_base(self.config, custom = self.config.get("custom_prompt_enable"))
+        base = PromptBuilder.build_base(
+            self.config,
+            custom_prompt = self.config.get("custom_prompt_enable"),
+            auto_glossary = self.config.get("auto_glossary_enable"),
+        )
 
         # 术语表
         if self.config.get("glossary_enable") == True:
@@ -260,7 +333,7 @@ class TranslatorTask(Base):
         })
 
         # 当目标为 google 系列接口时，转换 messages 的格式
-        if self.platform.get("api_format") == "Google":
+        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
             new = []
             for m in messages:
                 new.append({

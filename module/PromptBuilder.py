@@ -26,11 +26,19 @@ class PromptBuilder(Base):
 
         return PromptBuilder.suffix
 
+    def get_suffix_auto_glossary() -> str:
+        if getattr(PromptBuilder, "suffix_auto_glossary", None) == None:
+            with open("resource/prompt/suffix_auto_glossary.txt", "r", encoding = "utf-8") as reader:
+                PromptBuilder.suffix_auto_glossary = reader.read().strip()
+
+        return PromptBuilder.suffix_auto_glossary
+
     # 获取系统提示词
-    def build_base(config: dict, custom: bool) -> str:
+    def build_base(config: dict, custom_prompt: bool, auto_glossary: bool) -> str:
         PromptBuilder.get_base()
         PromptBuilder.get_prefix()
         PromptBuilder.get_suffix()
+        PromptBuilder.get_suffix_auto_glossary()
 
         if config.get("target_language") == Base.Language.ZH:
             target_language = "中文"
@@ -43,10 +51,19 @@ class PromptBuilder(Base):
         elif config.get("target_language") == Base.Language.RU:
             target_language = "俄文"
 
-        if custom == False:
-            return (PromptBuilder.prefix + "\n" + PromptBuilder.base + "\n" + PromptBuilder.suffix).replace("{target_language}", target_language)
+        # 判断是否启用自定义提示词
+        if custom_prompt == False:
+            base = PromptBuilder.base
         else:
-            return (PromptBuilder.prefix + "\n" + config.get("custom_prompt_data") + "\n" + PromptBuilder.suffix).replace("{target_language}", target_language)
+            base = config.get("custom_prompt_data")
+
+        # 判断是否启用自动术语表
+        if auto_glossary == False:
+            suffix = PromptBuilder.suffix
+        else:
+            suffix = PromptBuilder.suffix_auto_glossary
+
+        return (PromptBuilder.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", target_language)
 
     # 构造术语表
     def build_glossary(config: dict, input_dict: dict) -> tuple[str, str]:

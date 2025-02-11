@@ -310,8 +310,8 @@ class TextHelper:
         return re.sub(r"^\d+|\d+$", "", text)
 
     # 按标点符号分割字符串
-    def split_by_punctuation(text: str, with_space: bool) -> list[str]:
-        if with_space == False:
+    def split_by_punctuation(text: str, split_by_space: bool) -> list[str]:
+        if split_by_space == False:
             return re.split(""
                 + r"["
                 + rf"{TextHelper.GENERAL_PUNCTUATION[0]}-{TextHelper.GENERAL_PUNCTUATION[1]}"

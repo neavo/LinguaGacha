@@ -35,19 +35,11 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             "replace_before_translation_data": [
                 {
                     "src": "\\n[1]",
-                    "dst": "シズハ"
-                },
-                {
-                    "src": "\\N[1]",
-                    "dst": "シズハ"
+                    "dst": "示例姓名"
                 },
                 {
                     "src": "\\nn[1]",
-                    "dst": "小夜月"
-                },
-                {
-                    "src": "\\NN[1]",
-                    "dst": "小夜月"
+                    "dst": "示例昵称"
                 }
             ],
         }

@@ -166,12 +166,12 @@ class ArgsEditPage(MessageBoxBase, Base):
 
     # 添加链接
     def add_widget_url(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        if self.platform.get("api_format") == "SakuraLLM":
-            url = "https://github.com/SakuraLLM/SakuraLLM#%E6%8E%A8%E7%90%86"
-        elif self.platform.get("api_format") == "Anthropic":
+        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
+            url = "https://ai.google.dev/api/generate-content"
+        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
             url = "https://docs.anthropic.com/en/api/getting-started"
-        # elif self.platform.get("api_format") == "Google":
-        #     url = "https://ai.google.dev/api/generate-content"
+        elif self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
+            url = "https://github.com/SakuraLLM/SakuraLLM#%E6%8E%A8%E7%90%86"
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
 

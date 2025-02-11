@@ -29,7 +29,7 @@ class TranslatorRequester(Base):
         frequency_penalty = self.platform.get("frequency_penalty") if self.current_round == 0 else max(0.20, self.platform.get("frequency_penalty"))
 
         # 发起请求
-        if self.platform.get("api_format") == "SakuraLLM":
+        if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_sakura(
                 messages,
                 temperature,
@@ -37,7 +37,7 @@ class TranslatorRequester(Base):
                 presence_penalty,
                 frequency_penalty
             )
-        elif self.platform.get("api_format") == "Google":
+        elif self.platform.get("api_format") == Base.APIFormat.GOOGLE:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_google(
                 messages,
                 temperature,
@@ -45,7 +45,7 @@ class TranslatorRequester(Base):
                 presence_penalty,
                 frequency_penalty
             )
-        elif self.platform.get("api_format") == "Anthropic":
+        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_anthropic(
                 messages,
                 temperature,

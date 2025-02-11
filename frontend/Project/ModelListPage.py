@@ -87,13 +87,13 @@ class ModelListPage(MessageBoxBase, Base):
         result = []
 
         try:
-            if api_format == "Google":
+            if api_format == Base.APIFormat.GOOGLE:
                 genai.configure(
                     api_key = api_key,
                     transport = "rest"
                 )
                 return [model.name for model in genai.list_models()]
-            elif api_format == "Anthropic":
+            elif api_format == Base.APIFormat.ANTHROPIC:
                 client = anthropic.Anthropic(
                     api_key = api_key,
                     base_url = api_url

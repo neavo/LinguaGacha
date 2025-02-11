@@ -41,7 +41,7 @@ class PlatformTester(Base):
         success = []
 
         # 构造提示词
-        if platform.get("api_format") == "SakuraLLM":
+        if platform.get("api_format") == Base.APIFormat.SAKURALLM:
             messages = [
                 {
                     "role": "system",
@@ -52,7 +52,7 @@ class PlatformTester(Base):
                     "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
                 },
             ]
-        elif platform.get("api_format") == "Google":
+        elif platform.get("api_format") == Base.APIFormat.GOOGLE:
             messages = [
                 {
                     "role": "user",

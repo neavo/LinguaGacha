@@ -44,6 +44,14 @@ class Base():
         KO: int = "KO"
         RU: int = "RU"
 
+    # 语言
+    class APIFormat():
+
+        OPENAI: int = "OpenAI"
+        GOOGLE: int = "Google"
+        ANTHROPIC: int = "Anthropic"
+        SAKURALLM: int = "SakuraLLM"
+
     # 翻译状态
     class TranslationStatus():
 

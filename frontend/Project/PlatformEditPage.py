@@ -58,19 +58,19 @@ class PlatformEditPage(MessageBoxBase, Base):
         self.add_widget_name(self.vbox, config, window)
 
         # 接口地址
-        if self.platform.get("api_format") in ("OpenAI", "Anthropic", "SakuraLLM"):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_api_url(self.vbox, config, window)
 
         # 接口密钥
-        if self.platform.get("api_format") in ("OpenAI", "Google", "Anthropic"):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
             self.add_widget_api_key(self.vbox, config, window)
 
         # 接口格式
-        if self.platform.get("api_format") in ("OpenAI", "Anthropic"):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC):
             self.add_widget_format(self.vbox, config, window)
 
         # 模型名称
-        if self.platform.get("api_format") in ("OpenAI", "Google", "Anthropic"):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
             self.add_widget_model(self.vbox, config, window)
 
         # 填充
@@ -178,7 +178,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             ComboBoxCard(
                 "接口格式",
                 "请选择接口格式，大部分平台兼容 OpenAI 格式，部分平台的 Claude 模型则使用 Anthropic 格式",
-                ("OpenAI", "Anthropic"),
+                (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC),
                 init = init,
                 current_text_changed = current_text_changed,
             )

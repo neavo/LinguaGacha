@@ -201,7 +201,7 @@ class Translator(Base):
             tasks: list[TranslatorTask] = []
             self.print("")
             for chunk in tqdm(chunks, desc = "生成翻译任务", total = len(chunks)):
-                tasks.append(TranslatorTask(self.config, self.platform, chunk))
+                tasks.append(TranslatorTask(self.config, self.platform, self.cache_manager.get_project(), chunk))
             self.print("")
 
             # 输出开始翻译的日志
@@ -216,8 +216,10 @@ class Translator(Base):
                 self.print("")
                 self.info(f"生效中的 网络代理 - {self.config.get("proxy_url")}")
             self.print("")
-            if self.platform.get("api_format") != "SakuraLLM":
-                self.info(f"本次任务使用以下提示词：\n{PromptBuilder.build_base(self.config, custom = self.config.get("custom_prompt_enable"))}\n")
+            if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
+                auto_glossary_enable = self.config.get("auto_glossary_enable")
+                custom_prompt_enable = self.config.get("custom_prompt_enable")
+                self.info(f"本次任务使用以下提示词：\n{PromptBuilder.build_base(self.config, custom_prompt_enable, auto_glossary_enable)}\n")
             self.info(f"即将开始执行翻译任务，预计任务总数为 {len(tasks)}, 并发任务数为 {self.config.get("batch_size")}，请注意保持网络通畅 ...")
             self.print("")
 
