@@ -180,7 +180,7 @@ class FileHelper(Base):
 
                     for line in lines:
                         content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
-                        extra_field = line.replace(f"{{CONTENT}}", "{{CONTENT}}") if content != "" else line
+                        extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
 
                         # 添加数据
                         items.append(
@@ -488,7 +488,7 @@ class FileHelper(Base):
                     bs = BeautifulSoup(doc.get_content(), "html.parser")
                     for line in str(bs).splitlines():
                         content = BeautifulSoup(line, "html.parser").get_text()
-                        extra_field = line.replace(f"{{CONTENT}}", "{{CONTENT}}") if content != "" else line
+                        extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
                         items.append(
                             CacheItem({
                                 "src": content,
