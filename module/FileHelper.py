@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import random
@@ -484,35 +485,21 @@ class FileHelper(Base):
                 # 数据处理
                 book = epub.read_epub(abs_path)
                 for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-                    id = doc.get_id()
                     bs = BeautifulSoup(doc.get_content(), "html.parser")
-                    for line in str(bs).splitlines():
-                        content = BeautifulSoup(line, "html.parser").get_text()
-                        extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
-                        items.append(
-                            CacheItem({
-                                "src": content,
-                                "dst": content,
-                                "tag": id,
-                                "row": len(items),
-                                "extra_field": extra_field,
-                                "file_type": CacheItem.FileType.EPUB,
-                                "file_path": rel_path,
-                            })
-                        )
+                    for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                        items.append(CacheItem({
+                            "src": line.get_text(),
+                            "dst": line.get_text(),
+                            "tag": doc.get_id(),
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.EPUB,
+                            "file_path": rel_path,
+                        }))
 
         return items
 
     # EPUB
     def write_to_path_epub(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
-
-        def add_opacity_style(html: str) -> str:
-            # 找到第一个 > 的位置
-            index = html.find(">")
-
-            # 替换第一个 >
-            return html[:index] + " style=\"opacity:0.4;\">" + html[index + 1:]
-
         # 筛选
         target = [
             item for item in items
@@ -532,13 +519,20 @@ class FileHelper(Base):
             # 读取原始文件
             book = epub.read_epub(f"{output_path}/cache/temp/{rel_path}")
             for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-                # 筛选出 tag 相同的元素
-                lines = []
-                for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    lines.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst()))
+                bs = BeautifulSoup(doc.get_content(), "html.parser")
+
+                target = [item for item in items if item.get_tag() == doc.get_id()]
+                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                    item = target.pop(0)
+
+                    # 删除所有子节点，然后将新的内容填充进去
+                    if item.get_dst() != "":
+                        # for child in line.find_all(True):
+                        #     child.decompose()
+                        line.string = item.get_dst()
 
                 # 将修改后的 HTML 内容重新填充回去
-                doc.set_content("\n".join(lines).encode("utf-8"))
+                doc.set_content(str(bs).encode("utf-8"))
 
             # 将修改后的数据写入文件
             abs_path = f"{output_path}/{rel_path}"
@@ -553,19 +547,31 @@ class FileHelper(Base):
             # 读取原始文件
             book = epub.read_epub(f"{output_path}/cache/temp/{rel_path}")
             for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-                # 筛选出 tag 相同的元素
-                lines = []
-                for item in [item for item in items if item.get_tag() == doc.get_id()]:
-                    if item.get_src() != "":
-                        lines.append(add_opacity_style(item.get_extra_field()).replace("{{CONTENT}}", item.get_src()))
-                    lines.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst()))
+                bs = BeautifulSoup(doc.get_content(), "html.parser")
+
+                target = [item for item in items if item.get_tag() == doc.get_id()]
+                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                    item = target.pop(0)
+
+                    # 删除所有子节点，然后将新的内容填充进去
+                    if item.get_dst() != "":
+                        # for child in line.find_all(True):
+                        #     child.decompose()
+                        line.string = item.get_dst()
+
+                    # 避免重复的行
+                    if item.get_src() != item.get_dst():
+                        line_src = copy.copy(line)
+                        line_src.string = item.get_src()
+                        line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.4;"
+                        line.insert_before(line_src)
+                        line.insert_before("\n")
 
                 # 将修改后的 HTML 内容重新填充回去
-                doc.set_content("\n".join(lines).encode("utf-8"))
+                doc.set_content(str(bs).encode("utf-8"))
 
             # 将修改后的数据写入文件
-            ext = os.path.splitext(rel_path)[-1]
-            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.epub"))
+            abs_path = f"{output_path}/{rel_path}".replace(".epub", "_双语.epub")
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             epub.write_epub(abs_path, book, {})
 
