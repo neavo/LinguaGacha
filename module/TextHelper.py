@@ -35,27 +35,27 @@ class TextHelper:
     HANGUL_COMPATIBILITY_JAMO = ("\u3130", "\u318F")
 
     # 中日韩统一表意文字（包括扩展A, B, C, D, E区）
-    CJK = ("\u4E00", "\u9FFF")  # 基本区
-    CJK_EXT_A = ("\u3400", "\u4DBF")  # 扩展A区
-    CJK_EXT_B = ("\u20000", "\u2A6DF")  # 扩展B区
-    CJK_EXT_C = ("\u2A700", "\u2B73F")  # 扩展C区
-    CJK_EXT_D = ("\u2B740", "\u2B81F")  # 扩展D区
-    CJK_EXT_E = ("\u2B820", "\u2CEAF")  # 扩展E区
+    CJK = ("\u4E00", "\u9FFF")                                  # 基本区
+    CJK_EXT_A = ("\u3400", "\u4DBF")                            # 扩展A区
+    CJK_EXT_B = ("\u20000", "\u2A6DF")                          # 扩展B区
+    CJK_EXT_C = ("\u2A700", "\u2B73F")                          # 扩展C区
+    CJK_EXT_D = ("\u2B740", "\u2B81F")                          # 扩展D区
+    CJK_EXT_E = ("\u2B820", "\u2CEAF")                          # 扩展E区
 
     # 中日韩通用标点符号
     GENERAL_PUNCTUATION = ("\u2000", "\u206F")
-    CJK_SYMBOLS_AND_PUNCTUATION = ("\u3001", "\u303F") # \u3000 是半角空格
+    CJK_SYMBOLS_AND_PUNCTUATION = ("\u3001", "\u303F")          # \u3000 是半角空格
     HALFWIDTH_AND_FULLWIDTH_FORMS = ("\uFF00", "\uFFEF")
 
     # 拉丁字符
-    LATIN_1 = ("\u0041", "\u005A") # 大写字母 A-Z
-    LATIN_2 = ("\u0061", "\u007A") # 小写字母 a-z
+    LATIN_1 = ("\u0000", "\u00FF")                              # 扩展范围至完整的 Latin-1 区
+    LATIN_2 = ("\u0100", "\u017F")                              # 拉丁扩展-A区（包括带有重音的字母）
     LATIN_EXTENDED_A = ("\u0100", "\u017F")
     LATIN_EXTENDED_B = ("\u0180", "\u024F")
     LATIN_SUPPLEMENTAL = ("\u00A0", "\u00FF")
 
     # 拉丁标点符号
-    LATIN_PUNCTUATION_BASIC_1 = ("\u0021", "\u002F") # \u0020 是半角空格
+    LATIN_PUNCTUATION_BASIC_1 = ("\u0021", "\u002F")            # \u0020 是半角空格
     LATIN_PUNCTUATION_BASIC_2 = ("\u003A", "\u0040")
     LATIN_PUNCTUATION_BASIC_3 = ("\u005B", "\u0060")
     LATIN_PUNCTUATION_BASIC_4 = ("\u007B", "\u007E")
@@ -63,19 +63,19 @@ class TextHelper:
     LATIN_PUNCTUATION_SUPPLEMENTAL = ("\u2E00", "\u2E7F")
 
     # 俄文字符
-    CYRILLIC_BASIC = ("\u0410", "\u044F")               # 基本俄文字母 (大写字母 А-Я, 小写字母 а-я)
-    CYRILLIC_SUPPLEMENT = ("\u0500", "\u052F")          # 俄文字符扩展区（补充字符，包括一些历史字母和其他斯拉夫语言字符）
-    CYRILLIC_EXTENDED_A = ("\u2C00", "\u2C5F")          # 扩展字符 A 区块（历史字母和一些东斯拉夫语言字符）
-    CYRILLIC_EXTENDED_B = ("\u0300", "\u04FF")          # 扩展字符 B 区块（更多历史字母）
-    CYRILLIC_SUPPLEMENTAL = ("\u1C80", "\u1C8F")        # 俄文字符补充字符集，包括一些少见和历史字符
-    CYRILLIC_SUPPLEMENTAL_EXTRA = ("\u2DE0", "\u2DFF")  # 其他扩展字符（例如：斯拉夫语言的一些符号）
-    CYRILLIC_OTHER = ("\u0500", "\u050F")               # 其他字符区块（包括斯拉夫语系其他语言的字符，甚至一些特殊符号）
+    CYRILLIC_BASIC = ("\u0410", "\u044F")                       # 基本俄文字母 (大写字母 А-Я, 小写字母 а-я)
+    CYRILLIC_SUPPLEMENT = ("\u0500", "\u052F")                  # 俄文字符扩展区（补充字符，包括一些历史字母和其他斯拉夫语言字符）
+    CYRILLIC_EXTENDED_A = ("\u2C00", "\u2C5F")                  # 扩展字符 A 区块（历史字母和一些东斯拉夫语言字符）
+    CYRILLIC_EXTENDED_B = ("\uA640", "\uA69F")                  # 扩展字符 B 区块（更多历史字母）
+    CYRILLIC_SUPPLEMENTAL = ("\u1C80", "\u1C8F")                # 俄文字符补充字符集，包括一些少见和历史字符
+    CYRILLIC_SUPPLEMENTAL_EXTRA = ("\u2DE0", "\u2DFF")          # 其他扩展字符（例如：斯拉夫语言的一些符号）
+    CYRILLIC_OTHER = ("\u0500", "\u050F")                       # 其他字符区块（包括斯拉夫语系其他语言的字符，甚至一些特殊符号）
 
     # 不属于标点符号范围但是一般也认为是标点符号
     SPECIAL_PUNCTUATION = (
-        "\u00b7", # \u00b7 = ·
-        "\u30FB", # \u30FB = ・
-        "\u2665", # \u2665 = ♥
+        "\u00b7",                                               # \u00b7 = ·
+        "\u30FB",                                               # \u30FB = ・
+        "\u2665",                                               # \u2665 = ♥
     )
 
     # 判断字符是否为汉字字符
@@ -311,39 +311,22 @@ class TextHelper:
 
     # 按标点符号分割字符串
     def split_by_punctuation(text: str, split_by_space: bool) -> list[str]:
-        if split_by_space == False:
-            return re.split(""
-                + r"["
-                + rf"{TextHelper.GENERAL_PUNCTUATION[0]}-{TextHelper.GENERAL_PUNCTUATION[1]}"
-                + rf"{TextHelper.CJK_SYMBOLS_AND_PUNCTUATION[0]}-{TextHelper.CJK_SYMBOLS_AND_PUNCTUATION[1]}"
-                + rf"{TextHelper.HALFWIDTH_AND_FULLWIDTH_FORMS[0]}-{TextHelper.HALFWIDTH_AND_FULLWIDTH_FORMS[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_1[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_1[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_2[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_2[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_3[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_3[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_4[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_4[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_GENERAL[0]}-{TextHelper.LATIN_PUNCTUATION_GENERAL[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[0]}-{TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[1]}"
-                + rf"{"".join(TextHelper.SPECIAL_PUNCTUATION)}"
-                + r"]+",
-                text,
-            )
-        else:
-            return re.split(""
-                + r"["
-                + rf"{TextHelper.GENERAL_PUNCTUATION[0]}-{TextHelper.GENERAL_PUNCTUATION[1]}"
-                + rf"{TextHelper.CJK_SYMBOLS_AND_PUNCTUATION[0]}-{TextHelper.CJK_SYMBOLS_AND_PUNCTUATION[1]}"
-                + rf"{TextHelper.HALFWIDTH_AND_FULLWIDTH_FORMS[0]}-{TextHelper.HALFWIDTH_AND_FULLWIDTH_FORMS[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_1[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_1[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_2[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_2[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_3[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_3[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_BASIC_4[0]}-{TextHelper.LATIN_PUNCTUATION_BASIC_4[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_GENERAL[0]}-{TextHelper.LATIN_PUNCTUATION_GENERAL[1]}"
-                + rf"{TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[0]}-{TextHelper.LATIN_PUNCTUATION_SUPPLEMENTAL[1]}"
-                + rf"{"".join(TextHelper.SPECIAL_PUNCTUATION)}"
-                + r"\u0020\u3000" # \u0020 = 半角空格 \u3000 = 全角空格
-                + r"]+",
-                text,
-            )
+        result: list[str] = []
+        current_segment: list[str] = []
+
+        for char in text:
+            if TextHelper.is_punctuation(char) or (split_by_space and char in ("\u0020", "\u3000")):
+                if current_segment != []:
+                    result.append("".join(current_segment))
+                    current_segment = []
+            else:
+                current_segment.append(char)
+
+        if current_segment != []:
+            result.append("".join(current_segment))
+
+        # 只返回非空结果
+        return [segment for segment in result if segment]
 
     # 计算字符串的实际显示长度
     def get_display_lenght(text: str) -> int:

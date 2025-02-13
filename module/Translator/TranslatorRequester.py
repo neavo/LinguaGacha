@@ -113,7 +113,7 @@ class TranslatorRequester(Base):
             self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
             return True, None, None, None, None
 
-        # 获取提示词消耗
+        # 获取输入消耗
         try:
             prompt_tokens = int(response.usage.prompt_tokens)
         except Exception:
@@ -169,7 +169,7 @@ class TranslatorRequester(Base):
             self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
             return True, None, None, None, None
 
-        # 获取提示词消耗
+        # 获取输入消耗
         try:
             prompt_tokens = int(response.usage.prompt_tokens)
         except Exception:
@@ -260,7 +260,7 @@ class TranslatorRequester(Base):
             self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
             return True, None, None, None, None
 
-        # 获取提示词消耗
+        # 获取输入消耗
         try:
             prompt_tokens = int(response.usage.input_tokens)
         except Exception:

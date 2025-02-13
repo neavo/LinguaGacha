@@ -91,11 +91,14 @@ class TranslatorTask(Base):
         # 提取回复内容
         response_dict: dict = TextHelper.safe_load_json_dict(response_result)
         if "0" in response_dict:
-            dst_dict = response_dict
-            glossary_auto = None
+            dst_dict: dict = response_dict
+            glossary_auto: dict = None
         elif "translation" in response_dict:
             dst_dict: dict = response_dict.get("translation", {})
             glossary_auto: dict = response_dict.get("names", [])
+        else:
+            dst_dict: dict = {}
+            glossary_auto: dict = []
 
         # 检验一下是否是正确的数据结构
         dst_dict = dst_dict if isinstance(dst_dict, dict) else {}
@@ -386,7 +389,7 @@ class TranslatorTask(Base):
         else:
             rows.append(
                 f"任务耗时 {(time.time() - start):.2f} 秒，"
-                + f"文本行数 {len(srcs)} 行，提示词消耗 {pt} Tokens，文本补全消耗 {ct} Tokens"
+                + f"文本行数 {len(srcs)} 行，输入消耗 {pt} Tokens，输出消耗 {ct} Tokens"
             )
 
         # 添加额外日志
