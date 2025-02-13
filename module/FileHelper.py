@@ -1,6 +1,6 @@
-import copy
 import os
 import re
+import copy
 import random
 import shutil
 import warnings
@@ -290,12 +290,15 @@ class FileHelper(Base):
                 for chunk in chunks:
                     lines = [line.strip() for line in chunk.splitlines()]
 
-                    # 格式校验
+                    # isdecimal
+                    # 字符串中的字符是否全是十进制数字。也就是说，只有那些在数字系统中被认为是“基本”的数字字符（0-9）才会返回 True。
                     # isdigit
-                    # 仅返回 True 如果字符串中的所有字符都是 Unicode 数字字符（例如：0-9），不包括带有上标的数字（如 ²）或带分隔符的数字（如罗马数字）。
+                    # 字符串中的字符是否都是数字字符。它不仅检查十进制数字，还包括其他可以表示数字的字符，如数字上标、罗马数字、圆圈数字等。
                     # isnumeric
-                    # 返回 True 如果字符串中的所有字符都是 Unicode 数值字符，包括 Unicode 数字、带有上标的数字和其他形式的数值字符（如罗马数字）。
-                    if len(lines) < 3 or not lines[0].isdigit():
+                    # 字符串中的字符是否表示任何类型的数字，包括整数、分数、数字字符的变种（比如上标、下标）以及其他可以被认为是数字的字符（如中文数字）。
+
+                    # 格式校验
+                    if len(lines) < 3 or not lines[0].isdecimal():
                         continue
 
                     # 添加数据
@@ -859,7 +862,7 @@ class FileHelper(Base):
                             CacheItem({
                                 "src": v.get("message"),
                                 "dst": v.get("message"),
-                                "extra_field": v.get("name", ""),
+                                "extra_field": v.get("name") if "name" in v else None,
                                 "row": len(items),
                                 "file_type": CacheItem.FileType.MESSAGEJSON,
                                 "file_path": rel_path,
@@ -897,10 +900,15 @@ class FileHelper(Base):
 
             result = []
             for item in items:
-                result.append({
-                    "name": item.get_extra_field(),
-                    "message": item.get_dst(),
-                })
+                if item.get_extra_field() is None:
+                    result.append({
+                        "message": item.get_dst(),
+                    })
+                else:
+                    result.append({
+                        "name": item.get_extra_field(),
+                        "message": item.get_dst(),
+                    })
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
