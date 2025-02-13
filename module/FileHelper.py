@@ -76,28 +76,29 @@ class FileHelper(Base):
     # TXT
     def read_from_path_txt(self, input_path: str, output_path: str) -> list[CacheItem]:
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".txt")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    for line in [line.removesuffix("\n") for line in reader.readlines()]:
-                        items.append(
-                            CacheItem({
-                                "src": line,
-                                "dst": line,
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.TXT,
-                                "file_path": rel_path,
-                            })
-                        )
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                for line in [line.removesuffix("\n") for line in reader.readlines()]:
+                    items.append(
+                        CacheItem({
+                            "src": line,
+                            "dst": line,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.TXT,
+                            "file_path": rel_path,
+                        })
+                    )
 
         return items
 
@@ -153,47 +154,48 @@ class FileHelper(Base):
         # Dialogue: 0,0:00:15.88,0:00:17.30,Default,,0,0,0,,えるとか最高じゃん
 
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".ass")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    lines = [line.strip() for line in reader.readlines()]
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                lines = [line.strip() for line in reader.readlines()]
 
-                    # 格式字段的数量
-                    in_event = False
-                    format_field_num = -1
-                    for line in lines:
-                        # 判断是否进入事件块
-                        if line == "[Events]":
-                            in_event = True
-                        # 在事件块中寻找格式字段
-                        if in_event == True and line.startswith("Format:"):
-                            format_field_num = len(line.split(",")) - 1
-                            break
+                # 格式字段的数量
+                in_event = False
+                format_field_num = -1
+                for line in lines:
+                    # 判断是否进入事件块
+                    if line == "[Events]":
+                        in_event = True
+                    # 在事件块中寻找格式字段
+                    if in_event == True and line.startswith("Format:"):
+                        format_field_num = len(line.split(",")) - 1
+                        break
 
-                    for line in lines:
-                        content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
-                        extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
+                for line in lines:
+                    content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
+                    extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
 
-                        # 添加数据
-                        items.append(
-                            CacheItem({
-                                "src": content.replace("\\N", "\n"),
-                                "dst": content.replace("\\N", "\n"),
-                                "extra_field": extra_field,
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.ASS,
-                                "file_path": rel_path,
-                            })
-                        )
+                    # 添加数据
+                    items.append(
+                        CacheItem({
+                            "src": content.replace("\\N", "\n"),
+                            "dst": content.replace("\\N", "\n"),
+                            "extra_field": extra_field,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.ASS,
+                            "file_path": rel_path,
+                        })
+                    )
 
         return items
 
@@ -271,42 +273,43 @@ class FileHelper(Base):
         # えるとか最高じゃん
 
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".srt")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    chunks = re.split(r"\n{2,}", reader.read().strip())
-                    for chunk in chunks:
-                        lines = chunk.splitlines()
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                chunks = re.split(r"\n{2,}", reader.read().strip())
+                for chunk in chunks:
+                    lines = [line.strip() for line in chunk.splitlines()]
 
-                        # 格式校验
-                        # isdigit
-                        # 仅返回 True 如果字符串中的所有字符都是 Unicode 数字字符（例如：0-9），不包括带有上标的数字（如 ²）或带分隔符的数字（如罗马数字）。
-                        # isnumeric
-                        # 返回 True 如果字符串中的所有字符都是 Unicode 数值字符，包括 Unicode 数字、带有上标的数字和其他形式的数值字符（如罗马数字）。
-                        if len(lines) < 3 or not lines[0].isdigit():
-                            continue
+                    # 格式校验
+                    # isdigit
+                    # 仅返回 True 如果字符串中的所有字符都是 Unicode 数字字符（例如：0-9），不包括带有上标的数字（如 ²）或带分隔符的数字（如罗马数字）。
+                    # isnumeric
+                    # 返回 True 如果字符串中的所有字符都是 Unicode 数值字符，包括 Unicode 数字、带有上标的数字和其他形式的数值字符（如罗马数字）。
+                    if len(lines) < 3 or not lines[0].isdigit():
+                        continue
 
-                        # 添加数据
-                        if lines[-1] != "":
-                            items.append(
-                                CacheItem({
-                                    "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
-                                    "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
-                                    "extra_field": lines[1],
-                                    "row": str(lines[0]),
-                                    "file_type": CacheItem.FileType.SRT,
-                                    "file_path": rel_path,
-                                })
-                            )
+                    # 添加数据
+                    if lines[-1] != "":
+                        items.append(
+                            CacheItem({
+                                "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
+                                "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
+                                "extra_field": lines[1],
+                                "row": str(lines[0]),
+                                "file_type": CacheItem.FileType.SRT,
+                                "file_path": rel_path,
+                            })
+                        )
 
         return items
 
@@ -375,54 +378,55 @@ class FileHelper(Base):
     # XLSX
     def read_from_path_xlsx(self, input_path: str, output_path: str) -> list[CacheItem]:
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".xlsx")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                wb = openpyxl.load_workbook(abs_path)
-                sheet = wb.active
+            # 数据处理
+            wb = openpyxl.load_workbook(abs_path)
+            sheet = wb.active
 
-                # 跳过空表格
-                if sheet.max_column == 0:
+            # 跳过空表格
+            if sheet.max_column == 0:
+                continue
+
+            for row in range(1, sheet.max_row + 1):
+                src = sheet.cell(row = row, column = 1).value
+                dst = sheet.cell(row = row, column = 2).value
+
+                # 跳过读取失败的行
+                if src is None:
                     continue
 
-                for row in range(1, sheet.max_row + 1):
-                    src = sheet.cell(row = row, column = 1).value
-                    dst = sheet.cell(row = row, column = 2).value
-
-                    # 跳过读取失败的行
-                    if src is None:
-                        continue
-
-                    # 根据是否已存在翻译数据来添加
-                    if dst is None:
-                        items.append(
-                            CacheItem({
-                                "src": str(src),
-                                "dst": str(src),
-                                "row": row,
-                                "file_type": CacheItem.FileType.XLSX,
-                                "file_path": rel_path,
-                            })
-                        )
-                    else:
-                        items.append(
-                            CacheItem({
-                                "src": str(src),
-                                "dst": str(dst),
-                                "row": row,
-                                "file_type": CacheItem.FileType.XLSX,
-                                "file_path": rel_path,
-                                "status": Base.TranslationStatus.EXCLUDED,
-                            })
-                        )
+                # 根据是否已存在翻译数据来添加
+                if dst is None:
+                    items.append(
+                        CacheItem({
+                            "src": str(src),
+                            "dst": str(src),
+                            "row": row,
+                            "file_type": CacheItem.FileType.XLSX,
+                            "file_path": rel_path,
+                        })
+                    )
+                else:
+                    items.append(
+                        CacheItem({
+                            "src": str(src),
+                            "dst": str(dst),
+                            "row": row,
+                            "file_type": CacheItem.FileType.XLSX,
+                            "file_path": rel_path,
+                            "status": Base.TranslationStatus.EXCLUDED,
+                        })
+                    )
 
         return items
 
@@ -468,33 +472,34 @@ class FileHelper(Base):
     # EPUB
     def read_from_path_epub(self, input_path: str, output_path: str) -> list[CacheItem]:
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".epub")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 将原始文件复制一份
-                os.makedirs(os.path.dirname(f"{output_path}/cache/temp/{rel_path}"), exist_ok = True)
-                shutil.copy(abs_path, f"{output_path}/cache/temp/{rel_path}")
+            # 将原始文件复制一份
+            os.makedirs(os.path.dirname(f"{output_path}/cache/temp/{rel_path}"), exist_ok = True)
+            shutil.copy(abs_path, f"{output_path}/cache/temp/{rel_path}")
 
-                # 数据处理
-                book = epub.read_epub(abs_path)
-                for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-                    bs = BeautifulSoup(doc.get_content(), "html.parser")
-                    for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
-                        items.append(CacheItem({
-                            "src": line.get_text(),
-                            "dst": line.get_text(),
-                            "tag": doc.get_id(),
-                            "row": len(items),
-                            "file_type": CacheItem.FileType.EPUB,
-                            "file_path": rel_path,
-                        }))
+            # 数据处理
+            book = epub.read_epub(abs_path)
+            for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                bs = BeautifulSoup(doc.get_content(), "html.parser")
+                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                    items.append(CacheItem({
+                        "src": line.get_text(),
+                        "dst": line.get_text(),
+                        "tag": doc.get_id(),
+                        "row": len(items),
+                        "file_type": CacheItem.FileType.EPUB,
+                        "file_path": rel_path,
+                    }))
 
         return items
 
@@ -527,8 +532,6 @@ class FileHelper(Base):
 
                     # 删除所有子节点，然后将新的内容填充进去
                     if item.get_dst() != "":
-                        # for child in line.find_all(True):
-                        #     child.decompose()
                         line.string = item.get_dst()
 
                 # 将修改后的 HTML 内容重新填充回去
@@ -555,8 +558,6 @@ class FileHelper(Base):
 
                     # 删除所有子节点，然后将新的内容填充进去
                     if item.get_dst() != "":
-                        # for child in line.find_all(True):
-                        #     child.decompose()
                         line.string = item.get_dst()
 
                     # 避免重复的行
@@ -625,44 +626,45 @@ class FileHelper(Base):
                 return "", text
 
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".rpy")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    lines = [line.removesuffix("\n") for line in reader.readlines()]
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                lines = [line.removesuffix("\n") for line in reader.readlines()]
 
-                skip_next = False
-                for line in lines:
-                    if skip_next == True:
-                        skip_next = False
-                        continue
-                    elif line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
-                        skip_next = True
-                        content, extra_field = find_content(line)
-                        content = content.replace("\\n", "\n")
-                    else:
-                        content = ""
-                        extra_field = line
+            skip_next = False
+            for line in lines:
+                if skip_next == True:
+                    skip_next = False
+                    continue
+                elif line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
+                    skip_next = True
+                    content, extra_field = find_content(line)
+                    content = content.replace("\\n", "\n")
+                else:
+                    content = ""
+                    extra_field = line
 
-                    # 添加数据
-                    items.append(
-                        CacheItem({
-                            "src": content,
-                            "dst": content,
-                            "extra_field": extra_field,
-                            "row": len(items),
-                            "file_type": CacheItem.FileType.RENPY,
-                            "file_path": rel_path,
-                        })
-                    )
+                # 添加数据
+                items.append(
+                    CacheItem({
+                        "src": content,
+                        "dst": content,
+                        "extra_field": extra_field,
+                        "row": len(items),
+                        "file_type": CacheItem.FileType.RENPY,
+                        "file_path": rel_path,
+                    })
+                )
 
         return items
 
@@ -744,40 +746,41 @@ class FileHelper(Base):
         # }
 
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".json")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    json_data: dict[str, str] = TextHelper.safe_load_json_dict(reader.read().strip())
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                json_data: dict[str, str] = TextHelper.safe_load_json_dict(reader.read().strip())
 
+                # 格式校验
+                if json_data == {}:
+                    continue
+
+                # 读取数据
+                for k, v in json_data.items():
                     # 格式校验
-                    if json_data == {}:
+                    if not isinstance(k, str) or not isinstance(v, str):
                         continue
 
-                    # 读取数据
-                    for k, v in json_data.items():
-                        # 格式校验
-                        if not isinstance(k, str) or not isinstance(v, str):
-                            continue
-
-                        if k != "":
-                            items.append(
-                                CacheItem({
-                                    "src": k,
-                                    "dst": v,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
-                                    "file_path": rel_path,
-                                })
-                            )
+                    if k != "":
+                        items.append(
+                            CacheItem({
+                                "src": k,
+                                "dst": v,
+                                "row": len(items),
+                                "file_type": CacheItem.FileType.KVJSON,
+                                "file_path": rel_path,
+                            })
+                        )
 
         return items
 
@@ -827,40 +830,41 @@ class FileHelper(Base):
         # ]
 
         items = []
+        target = []
         for root, _, files in os.walk(input_path):
-            target = [
+            target.extend([
                 os.path.join(root, file).replace("\\", "/") for file in files
                 if file.lower().endswith(".json")
-            ]
+            ])
 
-            for abs_path in target:
-                # 获取相对路径
-                rel_path = os.path.relpath(abs_path, input_path)
+        for abs_path in set(target):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
 
-                # 数据处理
-                with open(abs_path, "r", encoding = "utf-8") as reader:
-                    json_data: list[dict] = TextHelper.safe_load_json_list(reader.read().strip())
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                json_data: list[dict] = TextHelper.safe_load_json_list(reader.read().strip())
 
+                # 格式校验
+                if json_data == [] or not isinstance(json_data[0], dict):
+                    continue
+
+                for v in json_data:
                     # 格式校验
-                    if json_data == [] or not isinstance(json_data[0], dict):
+                    if "message" not in v:
                         continue
 
-                    for v in json_data:
-                        # 格式校验
-                        if "message" not in v:
-                            continue
-
-                        if v.get("message") != "":
-                            items.append(
-                                CacheItem({
-                                    "src": v.get("message"),
-                                    "dst": v.get("message"),
-                                    "extra_field": v.get("name", ""),
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.MESSAGEJSON,
-                                    "file_path": rel_path,
-                                })
-                            )
+                    if v.get("message") != "":
+                        items.append(
+                            CacheItem({
+                                "src": v.get("message"),
+                                "dst": v.get("message"),
+                                "extra_field": v.get("name", ""),
+                                "row": len(items),
+                                "file_type": CacheItem.FileType.MESSAGEJSON,
+                                "file_path": rel_path,
+                            })
+                        )
 
         return items
 

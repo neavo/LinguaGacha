@@ -82,7 +82,7 @@ class CacheManager(Base):
                 self.debug("从文件读取缓存数据失败 ...", Exception(f"{path} 文件不存在"))
             else:
                 try:
-                    with open(path, "r", encoding = "utf-8") as reader:
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
                         self.items = [CacheItem(item) for item in json.load(reader)]
                 except Exception as e:
                     self.debug("从文件读取缓存数据失败 ...", e)
@@ -93,7 +93,7 @@ class CacheManager(Base):
                 self.debug("从文件读取缓存数据失败 ...", Exception(f"{path} 文件不存在"))
             else:
                 try:
-                    with open(path, "r", encoding = "utf-8") as reader:
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
                         self.project = CacheProject(json.load(reader))
                 except Exception as e:
                     self.debug("从文件读取缓存数据失败 ...", e)

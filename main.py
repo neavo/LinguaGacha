@@ -16,7 +16,7 @@ def load_config() -> dict:
     config = {}
 
     if os.path.exists("resource/config.json"):
-        with open("resource/config.json", "r", encoding = "utf-8") as reader:
+        with open("resource/config.json", "r", encoding = "utf-8-sig") as reader:
             config = json.load(reader)
 
     return config
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     app.setFont(font)
 
     # 创建全局窗口对象
-    with open("version.txt", "r", encoding = "utf-8") as reader:
+    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
         version = reader.read().strip()
     app_fluent_window = AppFluentWindow(f"LinguaGacha {version}")
 

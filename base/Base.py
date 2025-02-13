@@ -171,7 +171,7 @@ class Base():
 
         with Base.CONFIG_FILE_LOCK:
             if os.path.exists(Base.CONFIG_PATH):
-                with open(Base.CONFIG_PATH, "r", encoding = "utf-8") as reader:
+                with open(Base.CONFIG_PATH, "r", encoding = "utf-8-sig") as reader:
                     config = json.load(reader)
             else:
                 self.warning("配置文件不存在 ...")
@@ -185,7 +185,7 @@ class Base():
         # 读取配置文件
         with Base.CONFIG_FILE_LOCK:
             if os.path.exists(Base.CONFIG_PATH):
-                with open(Base.CONFIG_PATH, "r", encoding = "utf-8") as reader:
+                with open(Base.CONFIG_PATH, "r", encoding = "utf-8-sig") as reader:
                     old = json.load(reader)
 
         # 对比新旧数据是否一致，一致则跳过后续步骤

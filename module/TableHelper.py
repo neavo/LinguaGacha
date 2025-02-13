@@ -65,7 +65,7 @@ class TableHelper():
 
             # 读取文件
             inputs = []
-            with open(path, "r", encoding = "utf-8") as reader:
+            with open(path, "r", encoding = "utf-8-sig") as reader:
                 inputs = json.load(reader)
 
             # 标准字典列表

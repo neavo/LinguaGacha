@@ -78,7 +78,7 @@ class PlatformPage(QWidget, Base):
     def load_default_platforms(self) -> list[dict]:
         platforms = []
         for path in [file.path for file in os.scandir("./resource/platforms") if file.is_file() and file.name.endswith(".json")]:
-            with open(path, "r", encoding = "utf-8") as reader:
+            with open(path, "r", encoding = "utf-8-sig") as reader:
                 platforms.append(json.load(reader))
 
         return sorted(platforms, key = lambda x: x.get("id"))

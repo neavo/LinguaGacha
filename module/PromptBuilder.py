@@ -7,28 +7,28 @@ class PromptBuilder(Base):
 
     def get_base() -> str:
         if getattr(PromptBuilder, "base", None) == None:
-            with open("resource/prompt/base.txt", "r", encoding = "utf-8") as reader:
+            with open("resource/prompt/base.txt", "r", encoding = "utf-8-sig") as reader:
                 PromptBuilder.base = reader.read().strip()
 
         return PromptBuilder.base
 
     def get_prefix() -> str:
         if getattr(PromptBuilder, "prefix", None) == None:
-            with open("resource/prompt/prefix.txt", "r", encoding = "utf-8") as reader:
+            with open("resource/prompt/prefix.txt", "r", encoding = "utf-8-sig") as reader:
                 PromptBuilder.prefix = reader.read().strip()
 
         return PromptBuilder.prefix
 
     def get_suffix() -> str:
         if getattr(PromptBuilder, "suffix", None) == None:
-            with open("resource/prompt/suffix.txt", "r", encoding = "utf-8") as reader:
+            with open("resource/prompt/suffix.txt", "r", encoding = "utf-8-sig") as reader:
                 PromptBuilder.suffix = reader.read().strip()
 
         return PromptBuilder.suffix
 
     def get_suffix_auto_glossary() -> str:
         if getattr(PromptBuilder, "suffix_auto_glossary", None) == None:
-            with open("resource/prompt/suffix_auto_glossary.txt", "r", encoding = "utf-8") as reader:
+            with open("resource/prompt/suffix_auto_glossary.txt", "r", encoding = "utf-8-sig") as reader:
                 PromptBuilder.suffix_auto_glossary = reader.read().strip()
 
         return PromptBuilder.suffix_auto_glossary
