@@ -6,6 +6,7 @@ import rapidjson as json
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
+from module.TextHelper import TextHelper
 
 class ResultChecker(Base):
 
@@ -51,7 +52,7 @@ class ResultChecker(Base):
             self.info("已完成代码检查，未发现异常条目 ...")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成代码检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
+            self.info(f"已完成代码检查，发现 {len(result)} 个异常条目，占比为 {(len(result)/len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
@@ -76,21 +77,42 @@ class ResultChecker(Base):
             self.info("已完成术语表检查，未发现异常条目 ...")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成术语表检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
+            self.info(f"已完成术语表检查，发现 {len(result)} 个异常条目，占比为 {(len(result)/len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+    # 计算 Jaccard 相似度
+    def check_similarity_by_Jaccard(self, x: str, y: str) -> float:
+        set_x = set(x.split())
+        set_y = set(y.split())
+
+        # 求并集
+        union = len(set_x | set_y)
+
+        # 求交集
+        intersection = len(set_x & set_y)
+
+        # 计算并返回相似度，完全一致是 1，完全不同是 0
+        return intersection / union if union > 0 else 0.0
 
     # 检查翻译状态
     def check_untranslated(self, path: str) -> None:
         result: dict[str, str] = {}
         for src, dst, rpl in zip(self.srcs, self.dsts, self.rpls):
-            if rpl.strip() == dst.strip():
+            src = src.strip()
+            rpl = rpl.strip()
+            dst = dst.strip()
+
+            # 针对短文本、长文本分别使用不同策略判断是否相同或相似
+            if src == dst and TextHelper.get_display_lenght(src) < 10:
+                result[src] = dst
+            elif self.check_similarity_by_Jaccard(src, dst) > 0.80 and TextHelper.get_display_lenght(src) >= 10:
                 result[src] = dst
 
         if len(result) == 0:
             self.info("已完成翻译检查，未发现异常条目 ...")
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成翻译检查，发现 {len(result)} 个异常条目，占比为 {len(result)/len(self.rpls):.4f} %，结果已写入 {target} ...")
+            self.info(f"已完成翻译检查，发现 {len(result)} 个异常条目，占比为 {(len(result)/len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
