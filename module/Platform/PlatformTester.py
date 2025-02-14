@@ -81,6 +81,7 @@ class PlatformTester(Base):
                 success.append(key)
                 self.info(f"模型返回结果 - {TextHelper.safe_load_json_dict(response_result)}")
             else:
+                success.append(key)
                 self.info(f"模型思考内容 - {response_think}")
                 self.info(f"模型返回结果 - {TextHelper.safe_load_json_dict(response_result)}")
 
