@@ -46,14 +46,21 @@ class FileHelper(Base):
 
         items = []
         try:
-            items.extend(self.read_from_path_txt(self.input_path, self.output_path))
-            items.extend(self.read_from_path_ass(self.input_path, self.output_path))
-            items.extend(self.read_from_path_srt(self.input_path, self.output_path))
-            items.extend(self.read_from_path_xlsx(self.input_path, self.output_path))
-            items.extend(self.read_from_path_epub(self.input_path, self.output_path))
-            items.extend(self.read_from_path_renpy(self.input_path, self.output_path))
-            items.extend(self.read_from_path_kvjson(self.input_path, self.output_path))
-            items.extend(self.read_from_path_messagejson(self.input_path, self.output_path))
+            if os.path.isfile(self.input_path):
+                paths = [self.input_path]
+            elif os.path.isdir(self.input_path):
+                paths = [os.path.join(root, file).replace("\\", "/") for root, _, files in os.walk(self.input_path) for file in files]
+            else:
+                paths = []
+
+            items.extend(self.read_from_path_txt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".txt")]))
+            items.extend(self.read_from_path_ass(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".ass")]))
+            items.extend(self.read_from_path_srt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".srt")]))
+            items.extend(self.read_from_path_xlsx(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".xlsx")]))
+            items.extend(self.read_from_path_epub(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".epub")]))
+            items.extend(self.read_from_path_renpy(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".renpy")]))
+            items.extend(self.read_from_path_kvjson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
+            items.extend(self.read_from_path_messagejson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
         except Exception as e:
             self.error(f"文件读取失败 ... {e}", e if self.is_debug() else None)
 
@@ -74,16 +81,9 @@ class FileHelper(Base):
             self.error(f"文件写入失败 ... {e}", e if self.is_debug() else None)
 
     # TXT
-    def read_from_path_txt(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_txt(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".txt")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -124,10 +124,8 @@ class FileHelper(Base):
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
-            ext = os.path.splitext(rel_path)[-1]
-            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.txt"))
+            abs_path = f"{output_path}/双语对照/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([
                     item.get_src() if item.get_dst() == item.get_src() else f"{item.get_src()}\n{item.get_dst()}"
@@ -135,7 +133,7 @@ class FileHelper(Base):
                 ]))
 
     # ASS
-    def read_from_path_ass(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_ass(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         # [Script Info]
         # ; This is an Advanced Sub Station Alpha v4+ script.
         # Title:
@@ -154,14 +152,7 @@ class FileHelper(Base):
         # Dialogue: 0,0:00:15.88,0:00:17.30,Default,,0,0,0,,えるとか最高じゃん
 
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".ass")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -243,10 +234,6 @@ class FileHelper(Base):
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
-            ext = os.path.splitext(rel_path)[-1]
-            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.ass"))
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-
             result = []
             for item in items:
                 result.append(
@@ -255,11 +242,13 @@ class FileHelper(Base):
                                           .replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
                 )
 
+            abs_path = f"{output_path}/双语对照/{rel_path}"
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
 
     # SRT
-    def read_from_path_srt(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_srt(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         # 1
         # 00:00:08,120 --> 00:00:10,460
         # にゃにゃにゃ
@@ -273,14 +262,7 @@ class FileHelper(Base):
         # えるとか最高じゃん
 
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".srt")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -361,10 +343,6 @@ class FileHelper(Base):
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
-            ext = os.path.splitext(rel_path)[-1]
-            abs_path = os.path.join(output_path, rel_path.replace(ext, "_双语.srt"))
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-
             result = []
             for item in items:
                 result.append([
@@ -373,22 +351,17 @@ class FileHelper(Base):
                     f"{item.get_src()}\n{item.get_dst()}",
                 ])
 
+            abs_path = f"{output_path}/双语对照/{rel_path}"
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 for item in result:
                     writer.write("\n".join(item))
                     writer.write("\n\n")
 
     # XLSX
-    def read_from_path_xlsx(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_xlsx(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".xlsx")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -473,16 +446,9 @@ class FileHelper(Base):
             work_book.save(abs_path)
 
     # EPUB
-    def read_from_path_epub(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_epub(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".epub")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -494,7 +460,7 @@ class FileHelper(Base):
             book = epub.read_epub(abs_path)
             for doc in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
                 bs = BeautifulSoup(doc.get_content(), "html.parser")
-                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                for line in bs.find_all(("p", "h1", "h2", "h3", "h4", "h5", "h6")):
                     items.append(CacheItem({
                         "src": line.get_text(),
                         "dst": line.get_text(),
@@ -530,12 +496,14 @@ class FileHelper(Base):
                 bs = BeautifulSoup(doc.get_content(), "html.parser")
 
                 target = [item for item in items if item.get_tag() == doc.get_id()]
-                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                for dom in bs.find_all(("p", "h1", "h2", "h3", "h4", "h5", "h6")):
                     item = target.pop(0)
 
-                    # 删除所有子节点，然后将新的内容填充进去
-                    if item.get_dst() != "":
-                        line.string = item.get_dst()
+                    # 当译文为空，并且节点原始数据中包含图片或者换行符时，则保持原样
+                    if item.get_dst() == "" and dom.find(("br", "img")) != None:
+                        pass
+                    else:
+                        dom.string = item.get_dst()
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content(str(bs).encode("utf-8"))
@@ -556,31 +524,33 @@ class FileHelper(Base):
                 bs = BeautifulSoup(doc.get_content(), "html.parser")
 
                 target = [item for item in items if item.get_tag() == doc.get_id()]
-                for line in bs.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"]):
+                for dom in bs.find_all(("p", "h1", "h2", "h3", "h4", "h5", "h6")):
                     item = target.pop(0)
 
-                    # 删除所有子节点，然后将新的内容填充进去
-                    if item.get_dst() != "":
-                        line.string = item.get_dst()
+                    # 当译文为空，并且节点原始数据中包含图片或者换行符时，则保持原样
+                    if item.get_dst() == "" and dom.find(("br", "img")) != None:
+                        pass
+                    else:
+                        dom.string = item.get_dst()
 
                     # 避免重复的行
                     if item.get_src() != item.get_dst():
-                        line_src = copy.copy(line)
+                        line_src = copy.copy(dom)
                         line_src.string = item.get_src()
                         line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.4;"
-                        line.insert_before(line_src)
-                        line.insert_before("\n")
+                        dom.insert_before(line_src)
+                        dom.insert_before("\n")
 
                 # 将修改后的 HTML 内容重新填充回去
                 doc.set_content(str(bs).encode("utf-8"))
 
             # 将修改后的数据写入文件
-            abs_path = f"{output_path}/{rel_path}".replace(".epub", "_双语.epub")
+            abs_path = f"{output_path}/双语对照/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             epub.write_epub(abs_path, book, {})
 
     # RENPY
-    def read_from_path_renpy(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_renpy(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         # # game/script8.rpy:16878
         # translate chinese arabialogoff_e5798d9a:
         #
@@ -629,14 +599,7 @@ class FileHelper(Base):
                 return "", text
 
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".rpy")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
@@ -741,7 +704,7 @@ class FileHelper(Base):
                 writer.write("\n".join(result))
 
     # KV JSON
-    def read_from_path_kvjson(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_kvjson(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         # {
         #     "「あ・・」": "「あ・・」",
         #     "「ごめん、ここ使う？」": "「ごめん、ここ使う？」",
@@ -749,32 +712,21 @@ class FileHelper(Base):
         # }
 
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".json")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
             with open(abs_path, "r", encoding = "utf-8-sig") as reader:
-                json_data: dict[str, str] = TextHelper.safe_load_json_dict(reader.read().strip())
+                json_data: dict[str, str] = json.load(reader)
 
                 # 格式校验
-                if json_data == {}:
+                if not isinstance(json_data, dict):
                     continue
 
                 # 读取数据
                 for k, v in json_data.items():
-                    # 格式校验
-                    if not isinstance(k, str) or not isinstance(v, str):
-                        continue
-
-                    if k != "":
+                    if isinstance(k, str) and isinstance(v, str) and k != "":
                         items.append(
                             CacheItem({
                                 "src": k,
@@ -819,9 +771,10 @@ class FileHelper(Base):
                 )
 
     # Message JSON
-    def read_from_path_messagejson(self, input_path: str, output_path: str) -> list[CacheItem]:
+    def read_from_path_messagejson(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         # [
         #     {
+        #         "name", "しますか",
         #         "message": "<fgName:pipo-fog004><fgLoopX:1><fgLoopY:1><fgSx:-2><fgSy:0.5>"
         #     },
         #     {
@@ -833,36 +786,25 @@ class FileHelper(Base):
         # ]
 
         items = []
-        target = []
-        for root, _, files in os.walk(input_path):
-            target.extend([
-                os.path.join(root, file).replace("\\", "/") for file in files
-                if file.lower().endswith(".json")
-            ])
-
-        for abs_path in set(target):
+        for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
             with open(abs_path, "r", encoding = "utf-8-sig") as reader:
-                json_data: list[dict] = TextHelper.safe_load_json_list(reader.read().strip())
+                json_data: list[dict] = json.load(reader)
 
                 # 格式校验
-                if json_data == [] or not isinstance(json_data[0], dict):
+                if not isinstance(json_data, list):
                     continue
 
                 for v in json_data:
-                    # 格式校验
-                    if "message" not in v:
-                        continue
-
-                    if v.get("message") != "":
+                    if isinstance(v, dict) and "message" in v:
                         items.append(
                             CacheItem({
-                                "src": v.get("message"),
-                                "dst": v.get("message"),
-                                "extra_field": v.get("name") if "name" in v else None,
+                                "src": v.get("message", ""),
+                                "dst": v.get("message", ""),
+                                "extra_field": v.get("name", None),
                                 "row": len(items),
                                 "file_type": CacheItem.FileType.MESSAGEJSON,
                                 "file_path": rel_path,
