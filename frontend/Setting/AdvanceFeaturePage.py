@@ -47,11 +47,11 @@ class AdvanceFeaturePage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "自动补全术语表（不支持 SakuraLLM 模型）",
+                "自动补全术语表（实验性功能，不支持 SakuraLLM 模型）",
                 (
                     "启用此功能后，在翻译的同时将对文本进行分析，尝试自动补全术语表中缺失的专有名词条目。"
                     + "\n" + "此功能设计目的仅为查漏补缺，并不能代替手动制作的术语表，只有在 **启用术语表功能** 时才生效。"
-                    + "\n" + "实验性功能，可能导致负面效果，请自行判断是否需要启用，在 DeepSeek V3/R1 等强力模型上理论上会有较好的效果。"
+                    + "\n" + "可能导致 **负面效果** 或 **翻译异常**，理论上只有在 DeepSeek V3/R1 等强力模型上才会有正面效果，请 **自行判断** 是否启用。"
                 ),
                 widget_init,
                 widget_callback,

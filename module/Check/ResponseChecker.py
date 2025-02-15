@@ -7,10 +7,9 @@ class ResponseChecker(Base):
     class Error():
 
         UNKNOWN: str = "未知"
-        NONE: str = "没有有效数据"
-        EMPTY_LINE: str = "译文包含空行"
-        LINE_COUNT: str = "未通过行数检查"
-        UNTRANSLATED: str = "部分条目可能没有翻译"
+        NONE: str = "结果数据结构错误"
+        LINE_COUNT: str = "结果未通过行数检查"
+        UNTRANSLATED: str = "结果中部分条目可能没有翻译"
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -22,13 +21,9 @@ class ResponseChecker(Base):
         self.round_threshold = math.ceil(math.log(config.get("task_token_limit"), 2))
 
     def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], current_round: int) -> str:
-        # 没有有效数据
-        if len(dst_dict) == 0:
+        # 数据解析失败
+        if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return ResponseChecker.Error.NONE, None
-
-        # 译文包含空行
-        # if any(v == "" or v == None for v in dst_dict.values()):
-        #     return ResponseChecker.Error.EMPTY_LINE, None
 
         # 未通过行数检查
         if not (
