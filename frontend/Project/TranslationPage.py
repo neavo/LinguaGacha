@@ -447,7 +447,10 @@ class TranslationPage(QWidget, Base):
     def add_command_bar_action_export(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
             self.emit(Base.Event.TRANSLATION_MANUAL_EXPORT, {})
-            self.success_toast("", "已根据当前的翻译数据在输出文件夹下生成翻译文件 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "已根据当前的翻译数据在输出文件夹下生成翻译文件 ...",
+            })
 
         self.action_export = parent.add_action(
             Action(FluentIcon.SHARE, "导出翻译数据", parent, triggered = triggered),

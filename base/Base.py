@@ -4,9 +4,6 @@ import traceback
 
 import rapidjson as json
 from rich import print
-from PyQt5.QtCore import Qt
-from qfluentwidgets import InfoBar
-from qfluentwidgets import InfoBarPosition
 
 from base.EventManager import EventManager
 
@@ -15,50 +12,59 @@ class Base():
     # 事件
     class Event():
 
-        PLATFORM_TEST_DONE = 100                        # API 测试完成
-        PLATFORM_TEST_START = 101                       # API 测试开始
-        TRANSLATION_START = 210                         # 翻译开始
-        TRANSLATION_UPDATE = 220                        # 翻译状态更新
-        TRANSLATION_STOP = 230                          # 翻译停止
-        TRANSLATION_STOP_DONE = 231                     # 翻译停止完成
-        TRANSLATION_PROJECT_STATUS = 240                # 项目状态检查
-        TRANSLATION_PROJECT_STATUS_CHECK_DONE = 241     # 项目状态检查完成
-        TRANSLATION_MANUAL_EXPORT = 250                 # 翻译结果手动导出
-        CACHE_FILE_AUTO_SAVE = 300                      # 缓存文件自动保存
-        APP_SHUT_DOWN = 1000                            # 应用关闭
+        PLATFORM_TEST_DONE: int = 100                        # API 测试完成
+        PLATFORM_TEST_START: int = 101                       # API 测试开始
+        TRANSLATION_START: int = 210                         # 翻译开始
+        TRANSLATION_UPDATE: int = 220                        # 翻译状态更新
+        TRANSLATION_STOP: int = 230                          # 翻译停止
+        TRANSLATION_STOP_DONE: int = 231                     # 翻译停止完成
+        TRANSLATION_PROJECT_STATUS: int = 240                # 项目状态检查
+        TRANSLATION_PROJECT_STATUS_CHECK_DONE: int = 241     # 项目状态检查完成
+        TRANSLATION_MANUAL_EXPORT: int = 250                 # 翻译结果手动导出
+        CACHE_FILE_AUTO_SAVE: int = 300                      # 缓存文件自动保存
+        TOAST_SHOW: int = 400                                # 显示 Toast
+        APP_SHUT_DOWN: int = 1000                            # 应用关闭
 
     # 任务状态
     class Status():
 
-        IDLE = 100                                     # 无任务
-        API_TEST = 200                                 # 测试中
-        TRANSLATING = 300                              # 翻译中
-        STOPING = 400                                  # 停止中
+        IDLE: int = 100                                     # 无任务
+        API_TEST: int = 200                                 # 测试中
+        TRANSLATING: int = 300                              # 翻译中
+        STOPING: int = 400                                  # 停止中
 
     # 语言
     class Language():
 
-        ZH: int = "ZH"
-        EN: int = "EN"
-        JA: int = "JA"
-        KO: int = "KO"
-        RU: int = "RU"
+        ZH: str = "ZH"
+        EN: str = "EN"
+        JA: str = "JA"
+        KO: str = "KO"
+        RU: str = "RU"
 
-    # 语言
+    # 接口格式
     class APIFormat():
 
-        OPENAI: int = "OpenAI"
-        GOOGLE: int = "Google"
-        ANTHROPIC: int = "Anthropic"
-        SAKURALLM: int = "SakuraLLM"
+        OPENAI: str = "OpenAI"
+        GOOGLE: str = "Google"
+        ANTHROPIC: str = "Anthropic"
+        SAKURALLM: str = "SakuraLLM"
+
+    # 接口格式
+    class ToastType():
+
+        INFO: str = "INFO"
+        ERROR: str = "ERROR"
+        SUCCESS: str = "SUCCESS"
+        WARNING: str = "WARNING"
 
     # 翻译状态
     class TranslationStatus():
 
-        UNTRANSLATED = "UNTRANSLATED"       # 待翻译
-        TRANSLATING = "TRANSLATING"         # 翻译中
-        TRANSLATED = "TRANSLATED"           # 已翻译
-        EXCLUDED = "EXCLUDED"               # 已排除
+        UNTRANSLATED: str = "UNTRANSLATED"       # 待翻译
+        TRANSLATING: str = "TRANSLATING"         # 翻译中
+        TRANSLATED: str = "TRANSLATED"           # 已翻译
+        EXCLUDED: str = "EXCLUDED"               # 已排除
 
     # 配置文件路径
     CONFIG_PATH = "./resource/config.json"
@@ -116,54 +122,6 @@ class Base():
     # WARNING
     def warning(self, msg: str) -> None:
         print(f"[[red]WARNING[/]] {msg}")
-
-    # Toast
-    def info_toast(self, title: str, content: str) -> None:
-        InfoBar.info(
-            title = title,
-            content = content,
-            parent = self,
-            duration = 2500,
-            orient = Qt.Horizontal,
-            position = InfoBarPosition.TOP,
-            isClosable = True,
-        )
-
-    # Toast
-    def error_toast(self, title: str, content: str) -> None:
-        InfoBar.error(
-            title = title,
-            content = content,
-            parent = self,
-            duration = 2500,
-            orient = Qt.Horizontal,
-            position = InfoBarPosition.TOP,
-            isClosable = True,
-        )
-
-    # Toast
-    def success_toast(self, title: str, content: str) -> None:
-        InfoBar.success(
-            title = title,
-            content = content,
-            parent = self,
-            duration = 2500,
-            orient = Qt.Horizontal,
-            position = InfoBarPosition.TOP,
-            isClosable = True,
-        )
-
-    # Toast
-    def warning_toast(self, title: str, content: str) -> None:
-        InfoBar.warning(
-            title = title,
-            content = content,
-            parent = self,
-            duration = 2500,
-            orient = Qt.Horizontal,
-            position = InfoBarPosition.TOP,
-            isClosable = True,
-        )
 
     # 载入配置文件
     def load_config(self) -> dict:

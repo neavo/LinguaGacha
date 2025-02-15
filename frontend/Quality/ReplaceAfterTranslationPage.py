@@ -166,7 +166,10 @@ class ReplaceAfterTranslationPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.success_toast("", "数据已导入 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已导入 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.DOWNLOAD, "导入", parent, triggered = triggered),
@@ -184,7 +187,10 @@ class ReplaceAfterTranslationPage(QWidget, Base):
                 writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
 
             # 弹出提示
-            self.success_toast("", "数据已导出到应用根目录 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已导出到应用根目录 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.SHARE, "导出", parent, triggered = triggered),
@@ -198,7 +204,10 @@ class ReplaceAfterTranslationPage(QWidget, Base):
             self.table.setRowCount(self.table.rowCount() + 1)
 
             # 弹出提示
-            self.success_toast("", "新行已添加 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "新行已添加 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.ADD_TO, "添加", parent, triggered = triggered),
@@ -227,7 +236,10 @@ class ReplaceAfterTranslationPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.success_toast("", "数据已保存 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已保存 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.SAVE, "保存", parent, triggered = triggered),
@@ -260,7 +272,10 @@ class ReplaceAfterTranslationPage(QWidget, Base):
             TableHelper.update_to_table(self.table, config.get("replace_after_translation_data"), ReplaceAfterTranslationPage.KEYS)
 
             # 弹出提示
-            self.success_toast("", "数据已重置 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已重置 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.DELETE, "重置", parent, triggered = triggered),
@@ -272,6 +287,6 @@ class ReplaceAfterTranslationPage(QWidget, Base):
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
 
-        push_button = TransparentPushButton(FluentIcon.SHARE, "功能说明")
+        push_button = TransparentPushButton(FluentIcon.HELP, "功能说明")
         push_button.clicked.connect(connect)
         parent.add_widget(push_button)

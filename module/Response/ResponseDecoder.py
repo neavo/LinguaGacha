@@ -1,9 +1,8 @@
 import re
 import rapidjson as json
 from base.Base import Base
-from rich import print
 
-class TranslatorDecoder(Base):
+class ResponseDecoder(Base):
 
     GLOSSARY_PATTERN = re.compile(r"(\{[^:]+:[^:]+:[^:]+:[^:]+\})\s*[,，\]]", flags = re.DOTALL)
     TRANSLATION_PATTERN = re.compile(r"['\"‘“](\d+)['\"’”]\s*:\s*['\"‘“]([^'\"‘”]+)['\"’”]", flags = re.DOTALL)
@@ -49,7 +48,7 @@ class TranslatorDecoder(Base):
     def decode_glossary(self, response: str) -> list[dict[str, str]]:
         result = []
 
-        for item in TranslatorDecoder.GLOSSARY_PATTERN.findall(response):
+        for item in ResponseDecoder.GLOSSARY_PATTERN.findall(response):
             try:
                 result.append(json.loads(item))
             except:
@@ -59,4 +58,4 @@ class TranslatorDecoder(Base):
 
     # 从响应文本中解析出翻译
     def decode_translation(self, response: str) -> dict[str, str]:
-        return {k: v for k, v in TranslatorDecoder.TRANSLATION_PATTERN.findall(response)}
+        return {k: v for k, v in ResponseDecoder.TRANSLATION_PATTERN.findall(response)}

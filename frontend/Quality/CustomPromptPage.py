@@ -108,7 +108,10 @@ class CustomPromptPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.success_toast("", "数据已保存 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已保存 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.SAVE, "保存", parent, triggered = callback),
@@ -140,7 +143,10 @@ class CustomPromptPage(QWidget, Base):
             self.main_text.setPlainText(config.get("custom_prompt_data"))
 
             # 弹出提示
-            self.success_toast("", "数据已重置 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": "数据已重置 ...",
+            })
 
         parent.add_action(
             Action(FluentIcon.DELETE, "重置", parent, triggered = callback),

@@ -62,7 +62,10 @@ class PlatformPage(QWidget, Base):
                 "id": id,
             })
         else:
-            self.warning_toast("", "接口测试正在执行中，请稍后再试 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.WARNING,
+                "message": "接口测试正在执行中，请稍后再试 ...",
+            })
 
     # 接口测试完成
     def platform_test_done(self, event: int, data: dict) -> None:
@@ -70,9 +73,15 @@ class PlatformPage(QWidget, Base):
         Base.work_status = Base.Status.IDLE
 
         if data.get("failure", []) != []:
-            self.error_toast("", f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.ERROR,
+                "message": f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...",
+            })
         else:
-            self.success_toast("", f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...",
+            })
 
     # 加载默认平台数据
     def load_default_platforms(self) -> list[dict]:

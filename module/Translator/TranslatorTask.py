@@ -10,10 +10,10 @@ from rich.table import Table
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
-from module.Check.ResponseChecker import ResponseChecker
+from module.Response.ResponseChecker import ResponseChecker
+from module.Response.ResponseDecoder import ResponseDecoder
 from module.CodeSaver import CodeSaver
 from module.TextHelper import TextHelper
-from module.Translator.TranslatorDecoder import TranslatorDecoder
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
 from module.NormalizeHelper import NormalizeHelper
@@ -90,7 +90,7 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        dst_dict, glossary_auto = TranslatorDecoder().decode(response_result)
+        dst_dict, glossary_auto = ResponseDecoder().decode(response_result)
 
         # 检验一下是否是正确的数据结构
         dst_dict = dst_dict if isinstance(dst_dict, dict) else {}

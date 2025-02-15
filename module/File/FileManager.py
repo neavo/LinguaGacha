@@ -19,7 +19,7 @@ from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.TextHelper import TextHelper
 
-class FileHelper(Base):
+class FileManager(Base):
 
     # https://github.com/aerkalov/ebooklib/issues/296
     warnings.filterwarnings(

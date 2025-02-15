@@ -10,14 +10,14 @@ import rapidjson as json
 from tqdm import tqdm
 
 from base.Base import Base
+from module.File.FileChecker import FileChecker
+from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
-from module.Check.ResultChecker import ResultChecker
+from module.Filter.RuleFilter import RuleFilter
 from module.CodeSaver import CodeSaver
 from module.Translator.TranslatorTask import TranslatorTask
-from module.FileHelper import FileHelper
 from module.TextHelper import TextHelper
-from module.Filter.RuleFilter import RuleFilter
 from module.PromptBuilder import PromptBuilder
 
 # 翻译器
@@ -125,7 +125,7 @@ class Translator(Base):
                 self.cache_manager.load_from_file(self.config.get("output_folder"))
             else:
                 shutil.rmtree(f"{self.config.get("output_folder")}/cache", ignore_errors = True)
-                file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))
+                file_helper = FileManager(self.config.get("input_folder"), self.config.get("output_folder"))
                 project, items = file_helper.read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
@@ -135,8 +135,10 @@ class Translator(Base):
 
         # 检查数据是否为空
         if self.cache_manager.get_item_count() == 0:
-            self.print("")
-            self.warning("没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.WARNING,
+                "message": "没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ...",
+            })
 
         # 从头翻译时加载默认数据
         if status == Base.TranslationStatus.TRANSLATING:
@@ -263,6 +265,7 @@ class Translator(Base):
             with urllib.request.urlopen(f"{re.sub(r"/v1$", "", self.platform.get("api_url"))}/slots") as response:
                 response_json = json.loads(response.read().decode("utf-8"))
         except Exception:
+            self.print("")
             self.debug("无法获取 [green]llama.cpp[/] 响应数据 ...")
         if isinstance(response_json, list) and len(response_json) > 0:
             self.config["batch_size"] = len(response_json)
@@ -332,13 +335,13 @@ class Translator(Base):
         ]
 
         # 检查结果
-        result_check = ResultChecker(self.config, self.cache_manager.get_items())
+        result_check = FileChecker(self.config, self.cache_manager.get_items())
         result_check.check_code("结果检查_代码异常的条目.json", CodeSaver(self.config))
         result_check.check_untranslated("结果检查_翻译状态异常的条目.json")
         result_check.check_glossary("结果检查_术语表未生效的条目.json")
 
         # 写入文件
-        file_helper = FileHelper(self.config.get("input_folder"), self.config.get("output_folder"))
+        file_helper = FileManager(self.config.get("input_folder"), self.config.get("output_folder"))
         file_helper.write_to_path(self.cache_manager.get_items())
         self.print("")
         self.info(f"翻译结果已保存至 {self.config.get("output_folder")} 目录 ...")

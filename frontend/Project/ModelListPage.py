@@ -107,7 +107,10 @@ class ModelListPage(MessageBoxBase, Base):
                 result = [model.id for model in client.models.list()]
         except Exception as e:
             self.debug("获取模型列表失败 ...", e)
-            self.warning_toast("", "获取模型列表失败，请检查接口配置 ...")
+            self.emit(Base.Event.TOAST_SHOW, {
+                "type": Base.ToastType.WARNING,
+                "message": "获取模型列表失败，请检查接口配置 ...",
+            })
 
         return result
 

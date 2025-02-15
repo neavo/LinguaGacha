@@ -70,7 +70,7 @@ jobs:
     - name: Compress Archive NV
       shell: cmd
       run: |
-        .\resource\7zr.exe a -y -bt -mx3 -mqs -t7z LinguaGacha_${{ steps.check_version.outputs.version }}.7z .\dist\*
+        .\resource\7za.exe a -y -bt -mx5 LinguaGacha_${{ steps.check_version.outputs.version }}.zip .\dist\*
 
     - name: Create Release
       id: create_release
@@ -89,6 +89,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./LinguaGacha_${{ steps.check_version.outputs.version }}.7z
-        asset_name: LinguaGacha_${{ steps.check_version.outputs.version }}.7z
-        asset_content_type: application/x-7z-compressed
+        asset_path: ./LinguaGacha_${{ steps.check_version.outputs.version }}.zip
+        asset_name: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
+        asset_content_type: application/zip

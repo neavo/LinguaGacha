@@ -1,4 +1,5 @@
 from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtCore import QEvent
 from PyQt5.QtWidgets import QApplication
@@ -7,9 +8,11 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import setThemeColor
+from qfluentwidgets import InfoBar
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import MessageBox
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import InfoBarPosition
 from qfluentwidgets import NavigationPushButton
 from qfluentwidgets import NavigationItemPosition
 from qfluentwidgets import NavigationAvatarWidget
@@ -77,6 +80,9 @@ class AppFluentWindow(FluentWindow, Base):
         # 添加页面
         self.add_pages()
 
+        # 注册事件
+        self.subscribe(Base.Event.TOAST_SHOW, self.show_toast)
+
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
         message_box = MessageBox("警告", "确定是否退出程序 ... ？", self)
@@ -89,6 +95,30 @@ class AppFluentWindow(FluentWindow, Base):
             self.emit(Base.Event.APP_SHUT_DOWN, {})
             self.info("主窗口已关闭，稍后应用将自动退出 ...")
             event.accept()
+
+    # 响应显示 Toast 事件
+    def show_toast(self, event: int, data: dict) -> None:
+        toast_type = data.get("type", Base.ToastType.INFO)
+        toast_message = data.get("message", "")
+
+        if toast_type == Base.ToastType.ERROR:
+            toast_func = InfoBar.error
+        elif toast_type == Base.ToastType.WARNING:
+            toast_func = InfoBar.warning
+        elif toast_type == Base.ToastType.SUCCESS:
+            toast_func = InfoBar.success
+        else:
+            toast_func = InfoBar.info
+
+        toast_func(
+            title = "",
+            content = toast_message,
+            parent = self,
+            duration = 2500,
+            orient = Qt.Horizontal,
+            position = InfoBarPosition.TOP,
+            isClosable = True,
+        )
 
     # 切换主题
     def toggle_theme(self) -> None:

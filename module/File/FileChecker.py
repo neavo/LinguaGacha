@@ -1,4 +1,3 @@
-
 import os
 
 import rapidjson as json
@@ -8,7 +7,7 @@ from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
 from module.TextHelper import TextHelper
 
-class ResultChecker(Base):
+class FileChecker(Base):
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
         super().__init__()
