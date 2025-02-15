@@ -31,20 +31,20 @@ class FileManager(Base):
         message = "This search incorrectly ignores the root element, and will be fixed in a future version"
     )
 
-    def __init__(self, input_path: str, output_path: str) -> None:
+    def __init__(self, config: dict) -> None:
         super().__init__()
 
         # 初始化
-        self.input_path = input_path
-        self.output_path = output_path
+        self.input_path = config.get("input_folder")
+        self.output_path = config.get("output_folder")
 
     # 读
     def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
-        project = CacheProject({
+        project: CacheProject = CacheProject({
             "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
         })
 
-        items = []
+        items: list[CacheItem] = []
         try:
             if os.path.isfile(self.input_path):
                 paths = [self.input_path]

@@ -5,6 +5,7 @@ import shutil
 import urllib
 import threading
 import concurrent.futures
+from itertools import zip_longest
 
 import rapidjson as json
 from tqdm import tqdm
@@ -125,8 +126,7 @@ class Translator(Base):
                 self.cache_manager.load_from_file(self.config.get("output_folder"))
             else:
                 shutil.rmtree(f"{self.config.get("output_folder")}/cache", ignore_errors = True)
-                file_helper = FileManager(self.config.get("input_folder"), self.config.get("output_folder"))
-                project, items = file_helper.read_from_path()
+                project, items = FileManager(self.config).read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
         except Exception as e:
@@ -162,6 +162,9 @@ class Translator(Base):
 
         # 语言过滤
         self.language_filter(self.cache_manager.get_items())
+
+        # MTool 优化器预处理
+        self.mtool_optimizer_preprocess(self.cache_manager.get_items())
 
         # 开始循环
         for current_round in range(self.config.get("max_round") + 1):
@@ -234,6 +237,9 @@ class Translator(Base):
                     future = executor.submit(task.start, current_round)
                     future.add_done_callback(self.task_done_callback)
 
+        # MTool 优化器后处理
+        self.mtool_optimizer_postprocess(self.cache_manager.get_items())
+
         # 设置项目状态为已翻译
         self.cache_manager.set_project_status(Base.TranslationStatus.TRANSLATED)
 
@@ -277,25 +283,31 @@ class Translator(Base):
         if len(items) == 0:
             return None
 
-        # 筛选出无效条目并标记为已排除
-        target = []
+        # 统计排除数量
         self.print("")
+        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
+
+        # 筛选出无效条目并标记为已排除
         target = [
-            v for v in tqdm(items)
+            v for v in items
             if RuleFilter.filter(v) == True
         ]
         for item in target:
             item.set_status(Base.TranslationStatus.EXCLUDED)
 
         # 输出结果
+        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
         self.print("")
-        self.info(f"规则过滤已完成，共过滤 {len(target)} 个无需翻译的条目 ...")
-        self.print("")
+        self.info(f"规则过滤已完成，共过滤 {count} 个无需翻译的条目 ...")
 
     # 语言过滤
     def language_filter(self, items: list[CacheItem]) -> None:
         if len(items) == 0:
             return None
+
+        # 统计排除数量
+        self.print("")
+        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
 
         if self.config.get("source_language") == Base.Language.ZH:
             func = TextHelper.has_any_cjk
@@ -311,18 +323,85 @@ class Translator(Base):
         # 筛选出无效条目并标记为已排除
         target = []
         if callable(func) == True:
-            self.print("")
             target = [
-                v for v in tqdm(items)
+                v for v in items
                 if func(v.get_src()) == False
             ]
             for item in target:
                 item.set_status(Base.TranslationStatus.EXCLUDED)
 
         # 输出结果
+        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
         self.print("")
-        self.info(f"语言过滤已完成，共过滤 {len(target)} 个不包含目标语言的条目 ...")
+        self.info(f"语言过滤已完成，共过滤 {count} 个不包含目标语言的条目 ...")
+
+    # MTool 优化器预处理
+    def mtool_optimizer_preprocess(self, items: list[CacheItem]) -> None:
+        if len(items) == 0 or self.config.get("mtool_optimizer_enable") == False:
+            return None
+
+        # 统计排除数量
         self.print("")
+        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
+
+        # 筛选
+        items_kvjson = [item for item in items if item.get_file_type() == CacheItem.FileType.KVJSON]
+
+        # 按文件路径分组
+        group_by_file_path: dict[str, list[CacheItem]] = {}
+        for item in items_kvjson:
+            group_by_file_path.setdefault(item.get_file_path(), []).append(item)
+
+        # 分别处理每个文件的数据
+        for items_by_file_path in group_by_file_path.values():
+            # 找出子句
+            target = set()
+            for item in items_by_file_path:
+                src = item.get_src()
+                if src.count("\n") > 0:
+                    target.update([line.strip() for line in src.splitlines() if line.strip() != ""])
+
+            # 移除子句
+            for item in items_by_file_path:
+                if item.get_src() in target:
+                    item.set_status(Base.TranslationStatus.EXCLUDED)
+
+        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
+        self.print("")
+        self.info(f"MToolOptimizer 预处理已完成，共过滤 {count} 个包含重复子句的条目 ...")
+
+    # MTool 优化器后处理
+    def mtool_optimizer_postprocess(self, items: list[CacheItem]) -> None:
+        if len(items) == 0 or self.config.get("mtool_optimizer_enable") == False:
+            return None
+
+        # 筛选
+        items_kvjson = [item for item in items if item.get_file_type() == CacheItem.FileType.KVJSON]
+
+        # 按文件路径分组
+        group_by_file_path: dict[str, list[CacheItem]] = {}
+        for item in items_kvjson:
+            group_by_file_path.setdefault(item.get_file_path(), []).append(item)
+
+        # 分别处理每个文件的数据
+        for items_by_file_path in group_by_file_path.values():
+            for item in items_by_file_path:
+                src = item.get_src()
+                dst = item.get_dst()
+                if src.count("\n") > 0:
+                    for src_line, dst_line in zip_longest(src.splitlines(), dst.splitlines(), fillvalue = ""):
+                        items.append(
+                            CacheItem({
+                                "src" : src_line.strip(),
+                                "dst" : dst_line.strip(),
+                                "extra_field" : item.get_extra_field(),
+                                "tag" : item.get_tag(),
+                                "row" : len(items_by_file_path),
+                                "file_type" : item.get_file_type(),
+                                "file_path" : item.get_file_path(),
+                                "status" : item.get_status(),
+                            })
+                        )
 
     # 检查结果并写入文件
     def check_and_wirte_result(self) -> None:
@@ -341,8 +420,7 @@ class Translator(Base):
         result_check.check_glossary("结果检查_术语表未生效的条目.json")
 
         # 写入文件
-        file_helper = FileManager(self.config.get("input_folder"), self.config.get("output_folder"))
-        file_helper.write_to_path(self.cache_manager.get_items())
+        FileManager(self.config).write_to_path(self.cache_manager.get_items())
         self.print("")
         self.info(f"翻译结果已保存至 {self.config.get("output_folder")} 目录 ...")
         self.print("")

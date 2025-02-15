@@ -19,6 +19,7 @@ class AdvanceFeaturePage(QWidget, Base):
         # 默认配置
         self.default = {
             "auto_glossary_enable": False,
+            "mtool_optimizer_enable": False,
         }
 
         # 载入并保存默认配置
@@ -30,13 +31,36 @@ class AdvanceFeaturePage(QWidget, Base):
         self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_auto_glossary_enable(self.vbox, config, window)
+        self.add_widget_mtool(self.vbox, config, window)
+        self.add_widget_auto_glossary(self.vbox, config, window)
 
         # 填充
         self.vbox.addStretch(1)
 
+    # MTool 优化器
+    def add_widget_mtool(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+        def widget_init(widget: SwitchButtonCard) -> None:
+            widget.set_checked(config.get("mtool_optimizer_enable"))
+
+        def widget_callback(widget: SwitchButtonCard, checked: bool) -> None:
+            config = self.load_config()
+            config["mtool_optimizer_enable"] = checked
+            self.save_config(config)
+
+        parent.addWidget(
+            SwitchButtonCard(
+                "MTool 优化器",
+                (
+                    "启用此功能后，在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗。"
+                    + "\n" + "可能导致 **原文残留** 或 **语句不连贯** 等问题，请 **自行判断** 是否启用，并且只应在 **翻译 MTool 文本时** 启用。"
+                ),
+                widget_init,
+                widget_callback,
+            )
+        )
+
     # 自动补全术语表
-    def add_widget_auto_glossary_enable(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_auto_glossary(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def widget_init(widget: SwitchButtonCard) -> None:
             widget.set_checked(config.get("auto_glossary_enable"))
 
