@@ -1,5 +1,4 @@
 import re
-import json
 import unicodedata
 
 class TextHelper:
@@ -334,52 +333,3 @@ class TextHelper:
         # NaH 表示窄（Narrow）、中立（Neutral）和半宽（Halfwidth）字符，这些字符通常被认为是半角字符。
         # 其他字符（如全宽字符）的宽度属性为 W 或 F，这些字符被认为是全角字符。
         return sum(1 if unicodedata.east_asian_width(c) in "NaH" else 2 for c in text)
-
-    # 安全加载 JSON 字典
-    def safe_load_json_dict(json_str: str) -> dict:
-        result = {}
-
-        # 移除首尾空白符（含空格、制表符、换行符）
-        json_str = json_str.strip()
-
-        # 移除代码标识
-        json_str = json_str.removeprefix("```json").removeprefix("```").strip()
-
-        # 先尝试使用 json.loads 解析
-        try:
-            result = json.loads(json_str)
-        except Exception:
-            pass
-
-        # 否则使用正则表达式匹配
-        if len(result) == 0 or not isinstance(result, dict):
-            result = {}
-            for item in re.findall(r"['\"].+?['\"]\s*\:\s*['\"].+?['\"]\s*(?=[,}])", json_str, flags = re.IGNORECASE):
-                p = item.split(":")
-                result[p[0].strip().strip("'\"").strip()] = p[1].strip().strip("'\"").strip()
-
-        return result if isinstance(result, dict) else {}
-
-    # 安全加载 JSON 列表
-    def safe_load_json_list(json_str: str) -> list:
-        result = []
-
-        # 移除首尾空白符（含空格、制表符、换行符）
-        json_str = json_str.strip()
-
-        # 移除代码标识
-        json_str = json_str.removeprefix("```json").removeprefix("```").strip()
-
-        # 先尝试使用 json.loads 解析
-        try:
-            result = json.loads(json_str)
-        except Exception:
-            pass
-
-        # 否则使用正则表达式匹配
-        if len(result) == 0 or not isinstance(result, list):
-            result = []
-            for item in re.findall(r"\{.+?\}", json_str, flags = re.IGNORECASE):
-                result.append(TextHelper.safe_load_json_dict(item))
-
-        return result if isinstance(result, list) else {}

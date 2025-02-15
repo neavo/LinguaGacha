@@ -13,6 +13,7 @@ from module.Cache.CacheProject import CacheProject
 from module.Check.ResponseChecker import ResponseChecker
 from module.CodeSaver import CodeSaver
 from module.TextHelper import TextHelper
+from module.Translator.TranslatorDecoder import TranslatorDecoder
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
 from module.NormalizeHelper import NormalizeHelper
@@ -89,16 +90,7 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        response_dict: dict = TextHelper.safe_load_json_dict(response_result)
-        if "0" in response_dict:
-            dst_dict: dict = response_dict
-            glossary_auto: dict = None
-        elif "translation" in response_dict:
-            dst_dict: dict = response_dict.get("translation", {})
-            glossary_auto: dict = response_dict.get("names", [])
-        else:
-            dst_dict: dict = {}
-            glossary_auto: dict = []
+        dst_dict, glossary_auto = TranslatorDecoder().decode(response_result)
 
         # 检验一下是否是正确的数据结构
         dst_dict = dst_dict if isinstance(dst_dict, dict) else {}

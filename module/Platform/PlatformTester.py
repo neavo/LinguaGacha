@@ -2,7 +2,6 @@ import os
 import threading
 
 from base.Base import Base
-from module.TextHelper import TextHelper
 from module.Translator.TranslatorRequester import TranslatorRequester
 
 class PlatformTester(Base):
@@ -74,16 +73,18 @@ class PlatformTester(Base):
             self.info(f"正在测试密钥 - {key}")
             self.info(f"正在发送提示词 - {messages}")
             skip, response_think, response_result, _, _ = requester.request(messages)
+
+            # 提取回复内容
             if skip == True:
                 failure.append(key)
-                self.warning(f"接口测试失败 ... ")
+                self.warning("接口测试失败 ... ")
             elif response_think == "":
                 success.append(key)
-                self.info(f"模型返回结果 - {TextHelper.safe_load_json_dict(response_result)}")
+                self.info(f"模型返回结果 - {response_result}")
             else:
                 success.append(key)
                 self.info(f"模型思考内容 - {response_think}")
-                self.info(f"模型返回结果 - {TextHelper.safe_load_json_dict(response_result)}")
+                self.info(f"模型返回结果 - {response_result}")
 
         # 测试结果
         self.print("")
