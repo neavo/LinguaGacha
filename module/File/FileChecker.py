@@ -80,32 +80,18 @@ class FileChecker(Base):
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
-    # 计算 Jaccard 相似度
-    def check_similarity_by_Jaccard(self, x: str, y: str) -> float:
-        set_x = set(x.split())
-        set_y = set(y.split())
-
-        # 求并集
-        union = len(set_x | set_y)
-
-        # 求交集
-        intersection = len(set_x & set_y)
-
-        # 计算并返回相似度，完全一致是 1，完全不同是 0
-        return intersection / union if union > 0 else 0.0
-
     # 检查翻译状态
     def check_untranslated(self, path: str) -> None:
-        result: dict[str, str] = {}
+        result: dict[str, str] = {
+            "____说明____" : "本文件内列出的是 **可能** 存在漏翻情况的条目，实际是否漏翻请结合上下文语境判断！",
+        }
         for src, dst, rpl in zip(self.srcs, self.dsts, self.rpls):
             src = src.strip()
             rpl = rpl.strip()
             dst = dst.strip()
 
-            # 针对短文本、长文本分别使用不同策略判断是否相同或相似
-            if src == dst and TextHelper.get_display_lenght(src) < 10:
-                result[src] = dst
-            elif self.check_similarity_by_Jaccard(src, dst) > 0.80 and TextHelper.get_display_lenght(src) >= 10:
+            # 判断是否包含或相似
+            if rpl in dst or dst in rpl or TextHelper.check_similarity_by_Jaccard(rpl, dst) > 0.80:
                 result[src] = dst
 
         if len(result) == 0:

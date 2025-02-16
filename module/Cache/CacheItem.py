@@ -33,6 +33,7 @@ class CacheItem(BaseData):
         self.file_type: str = ""                                        # 原始文件的类型
         self.file_path: str = ""                                        # 原始文件的相对路径
         self.status: str = Base.TranslationStatus.UNTRANSLATED          # 翻译状态
+        self.retry_count: int = 0                                       # 重试次数，当前只有单独重试的时候才增加此计数
 
         # 初始化
         for k, v in args.items():
@@ -125,6 +126,16 @@ class CacheItem(BaseData):
     def set_status(self, status: int) -> None:
         with self.lock:
             self.status = status
+
+    # 获取重试次数
+    def get_retry_count(self) -> int:
+        with self.lock:
+            return self.retry_count
+
+    # 设置重试次数
+    def set_retry_count(self, retry_count: int) -> None:
+        with self.lock:
+            self.retry_count = retry_count
 
     # 获取 Token 数量
     def get_token_count(self) -> int:

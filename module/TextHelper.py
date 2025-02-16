@@ -333,3 +333,17 @@ class TextHelper:
         # NaH 表示窄（Narrow）、中立（Neutral）和半宽（Halfwidth）字符，这些字符通常被认为是半角字符。
         # 其他字符（如全宽字符）的宽度属性为 W 或 F，这些字符被认为是全角字符。
         return sum(1 if unicodedata.east_asian_width(c) in "NaH" else 2 for c in text)
+
+    # 计算 Jaccard 相似度
+    def check_similarity_by_Jaccard(x: str, y: str) -> float:
+        set_x = set(x)
+        set_y = set(y)
+
+        # 求并集
+        union = len(set_x | set_y)
+
+        # 求交集
+        intersection = len(set_x & set_y)
+
+        # 计算并返回相似度，完全一致是 1，完全不同是 0
+        return intersection / union if union > 0 else 0.0

@@ -36,7 +36,7 @@ class TranslatorTask(Base):
         self.project = project
         self.platform = platform
         self.code_saver = CodeSaver(self.config)
-        self.response_checker = ResponseChecker(self.config)
+        self.response_checker = ResponseChecker(self.config, items)
 
         # 生成原文文本字典
         self.src_dict = {}
@@ -92,12 +92,8 @@ class TranslatorTask(Base):
         # 提取回复内容
         dst_dict, glossary_auto = ResponseDecoder().decode(response_result)
 
-        # 检验一下是否是正确的数据结构
-        dst_dict = dst_dict if isinstance(dst_dict, dict) else {}
-        glossary_auto = glossary_auto if isinstance(glossary_auto, list) else []
-
         # 检查回复内容
-        check_flag, check_results = self.response_checker.check(src_dict, dst_dict, current_round)
+        check_flag, check_results = self.response_checker.check(src_dict, dst_dict)
 
         # 模型回复日志
         if response_think != "":
@@ -122,6 +118,10 @@ class TranslatorTask(Base):
                     )
                 )
             )
+
+            # 当翻译任务是单条目任务时，更新重试次数
+            if len(self.items) == 1:
+                self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
         else:
             # 标点修复
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
