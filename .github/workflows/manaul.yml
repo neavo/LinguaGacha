@@ -20,6 +20,11 @@ jobs:
       statuses: write
 
     steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.12
+
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -30,40 +35,25 @@ jobs:
         $version = Get-Content -Path version.txt
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Create Env
-      shell: cmd
-      run: |
-        .\resource\aria2c.exe https://www.python.org/ftp/python/3.12.9/python-3.12.9-embed-amd64.zip -o python.zip
-        powershell -Command "Expand-Archive -Path 'python.zip' -DestinationPath 'env'"
-        powershell -Command "Remove-Item -Path 'python.zip' -Recurse -Force -ErrorAction SilentlyContinue"
-
-        .\resource\aria2c.exe https://bootstrap.pypa.io/pip/get-pip.py -o get-pip.py
-        .\env\python.exe get-pip.py
-        powershell -Command "Remove-Item -Path 'get-pip.py' -Recurse -Force -ErrorAction SilentlyContinue"
-        powershell -Command "Copy-Item -Path 'resource\python312._pth' -Destination 'env\python312._pth' -Force"
-
     - name: Install Requirements
       shell: cmd
       run: |
-        .\env\python.exe -m pip install --upgrade pip
-        .\env\python.exe -m pip install --upgrade setuptools
-        .\env\python.exe -m pip install -r requirements.txt
-        .\env\python.exe -m pip cache purge
+        python -m pip install --upgrade pip
+        python -m pip install --upgrade setuptools
+        python -m pip install -r requirements.txt
+        python -m pip install pyinstaller
+        python -m pip cache purge
+
+    - name: Build EXE
+      shell: cmd
+      run: |
+        python .\resource\pyinstaller.py
 
     - name: Copy Files
       shell: cmd
       run: |
-        xcopy "env" ".\dist\LinguaGacha\env" /E /I /Q /H /Y
-        xcopy "base" ".\dist\LinguaGacha\base" /E /I /Q /H /Y
-        xcopy "frontend" ".\dist\LinguaGacha\frontend" /E /I /Q /H /Y
-        xcopy "module" ".\dist\LinguaGacha\module" /E /I /Q /H /Y
         xcopy "resource" ".\dist\LinguaGacha\resource" /E /I /Q /H /Y
-        xcopy "widget" ".\dist\LinguaGacha\widget" /E /I /Q /H /Y
-
-        copy "01_启动应用.bat" ".\dist\LinguaGacha\"
-        copy "main.py" ".\dist\LinguaGacha\"
         copy "version.txt" ".\dist\LinguaGacha\"
-
         mkdir .\dist\LinguaGacha\input
         mkdir .\dist\LinguaGacha\output
 
