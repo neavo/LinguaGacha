@@ -51,14 +51,14 @@ class FileManager(Base):
             elif os.path.isdir(self.input_path):
                 paths = [os.path.join(root, file).replace("\\", "/") for root, _, files in os.walk(self.input_path) for file in files]
             else:
-                paths = []
+                paths: list[str] = []
 
             items.extend(self.read_from_path_txt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".txt")]))
             items.extend(self.read_from_path_ass(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".ass")]))
             items.extend(self.read_from_path_srt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".srt")]))
             items.extend(self.read_from_path_xlsx(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".xlsx")]))
             items.extend(self.read_from_path_epub(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".epub")]))
-            items.extend(self.read_from_path_renpy(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".renpy")]))
+            items.extend(self.read_from_path_renpy(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".rpy")]))
             items.extend(self.read_from_path_kvjson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
             items.extend(self.read_from_path_messagejson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
         except Exception as e:
@@ -726,7 +726,7 @@ class FileManager(Base):
 
                 # 读取数据
                 for k, v in json_data.items():
-                    if isinstance(k, str) and isinstance(v, str) and k != "":
+                    if isinstance(k, str) and isinstance(v, str):
                         items.append(
                             CacheItem({
                                 "src": k,
