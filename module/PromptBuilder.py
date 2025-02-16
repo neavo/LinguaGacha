@@ -1,78 +1,102 @@
+from typing import Literal, LiteralString
 from base.Base import Base
 
 class PromptBuilder(Base):
 
-    def __init__(self) -> None:
+    def __init__(self, config: dict) -> None:
         super().__init__()
 
-    def get_base() -> str:
-        if getattr(PromptBuilder, "base", None) == None:
-            with open("resource/prompt/base.txt", "r", encoding = "utf-8-sig") as reader:
-                PromptBuilder.base = reader.read().strip()
+        # 初始化
+        self.config = config
+        self.target_language = config.get("target_language")
+        self.auto_glossary_enable = config.get("auto_glossary_enable")
+        self.glossary_data = config.get("glossary_data")
 
-        return PromptBuilder.base
+        self.base: str = None
+        self.prefix: str = None
+        self.suffix: str = None
+        self.suffix_glossary: str = None
 
-    def get_prefix() -> str:
-        if getattr(PromptBuilder, "prefix", None) == None:
-            with open("resource/prompt/prefix.txt", "r", encoding = "utf-8-sig") as reader:
-                PromptBuilder.prefix = reader.read().strip()
+    def get_base(self, language: str) -> str:
+        if self.base == None:
+            with open(f"resource/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
+                self.base = reader.read().strip()
 
-        return PromptBuilder.prefix
+        return self.base
 
-    def get_suffix() -> str:
-        if getattr(PromptBuilder, "suffix", None) == None:
-            with open("resource/prompt/suffix.txt", "r", encoding = "utf-8-sig") as reader:
-                PromptBuilder.suffix = reader.read().strip()
+    def get_prefix(self, language: str) -> str:
+        if self.prefix == None:
+            with open(f"resource/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
+                self.prefix = reader.read().strip()
 
-        return PromptBuilder.suffix
+        return self.prefix
 
-    def get_suffix_auto_glossary() -> str:
-        if getattr(PromptBuilder, "suffix_auto_glossary", None) == None:
-            with open("resource/prompt/suffix_auto_glossary.txt", "r", encoding = "utf-8-sig") as reader:
-                PromptBuilder.suffix_auto_glossary = reader.read().strip()
+    def get_suffix(self, language: str) -> str:
+        if self.suffix == None:
+            with open(f"resource/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
+                self.suffix = reader.read().strip()
 
-        return PromptBuilder.suffix_auto_glossary
+        return self.suffix
 
-    # 获取系统提示词
-    def build_base(config: dict, custom_prompt: bool, auto_glossary: bool) -> str:
-        PromptBuilder.get_base()
-        PromptBuilder.get_prefix()
-        PromptBuilder.get_suffix()
-        PromptBuilder.get_suffix_auto_glossary()
+    def get_suffix_glossary(self, language: str) -> str:
+        if self.suffix_glossary == None:
+            with open(f"resource/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
+                self.suffix_glossary = reader.read().strip()
 
-        if config.get("target_language") == Base.Language.ZH:
+        return self.suffix_glossary
+
+    # 获取主提示词
+    def build_main(self) -> str:
+        if self.target_language == Base.Language.ZH:
             target_language = "中文"
-        elif config.get("target_language") == Base.Language.EN:
-            target_language = "英文"
-        elif config.get("target_language") == Base.Language.JA:
-            target_language = "日文"
-        elif config.get("target_language") == Base.Language.KO:
-            target_language = "韩文"
-        elif config.get("target_language") == Base.Language.RU:
-            target_language = "俄文"
+            prompt_language = Base.Language.ZH
+        elif self.target_language == Base.Language.EN:
+            target_language = "English"
+            prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.JA:
+            target_language = "Japanese"
+            prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.KO:
+            target_language = "Korean"
+            prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.RU:
+            target_language = "Russian"
+            prompt_language = Base.Language.EN
+
+        if prompt_language == Base.Language.ZH:
+            custom_prompt_enable = self.config.get("custom_prompt_zh_enable")
+            custom_prompt_data = self.config.get("custom_prompt_zh_data")
+        else:
+            custom_prompt_enable = self.config.get("custom_prompt_en_enable")
+            custom_prompt_data = self.config.get("custom_prompt_en_data")
+
+        self.get_base(prompt_language)
+        self.get_prefix(prompt_language)
+        self.get_suffix(prompt_language)
+        self.get_suffix_glossary(prompt_language)
 
         # 判断是否启用自定义提示词
-        if custom_prompt == False:
-            base = PromptBuilder.base
+        if custom_prompt_enable == False:
+            base = self.base
         else:
-            base = config.get("custom_prompt_data")
+            base = custom_prompt_data
 
         # 判断是否启用自动术语表
-        if auto_glossary == False:
-            suffix = PromptBuilder.suffix
+        if self.auto_glossary_enable == False:
+            suffix = self.suffix
         else:
-            suffix = PromptBuilder.suffix_auto_glossary
+            suffix = self.suffix_glossary
 
-        return (PromptBuilder.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", target_language)
+        return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", target_language)
 
     # 构造术语表
-    def build_glossary(config: dict, input_dict: dict) -> tuple[str, str]:
+    def build_glossary(self, input_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
         lines = set(line for line in input_dict.values())
 
         # 筛选在输入词典中出现过的条目
         result = [
-            v for v in config.get("glossary_data")
+            v for v in self.glossary_data
             if any(v.get("src") in lines for lines in lines)
         ]
 
@@ -98,13 +122,13 @@ class PromptBuilder(Base):
             )
 
     # 构造术语表
-    def build_glossary_sakura(config: dict, input_dict: dict) -> tuple[str, str]:
+    def build_glossary_sakura(self, input_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
         lines = set(line for line in input_dict.values())
 
         # 筛选在输入词典中出现过的条目
         result = [
-            v for v in config.get("glossary_data")
+            v for v in self.glossary_data
             if any(v.get("src") in lines for lines in lines)
         ]
 

@@ -1,0 +1,2 @@
+Return translation results and character names not found in the original glossary in the following JSON format:
+{"translation":{"<ID>":"<Translated Text>"},"name":[{"src":"<Original Text>","dst":"<Translated Text>","info":"<Male/Female/Unknown>"}]}

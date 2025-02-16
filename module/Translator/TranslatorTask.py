@@ -27,7 +27,7 @@ class TranslatorTask(Base):
     # 类线程锁
     LOCK = threading.Lock()
 
-    def __init__(self, config: dict, platform: dict, project: CacheProject, items: list[CacheItem]) -> None:
+    def __init__(self, config: dict, platform: dict, project: CacheProject, items: list[CacheItem], prompt_builder: PromptBuilder) -> None:
         super().__init__()
 
         # 初始化
@@ -36,6 +36,7 @@ class TranslatorTask(Base):
         self.project = project
         self.platform = platform
         self.code_saver = CodeSaver(self.config)
+        self.prompt_builder = prompt_builder
         self.response_checker = ResponseChecker(self.config, items)
 
         # 生成原文文本字典
@@ -304,24 +305,20 @@ class TranslatorTask(Base):
         extra_log = []
 
         # 基础提示词
-        base = PromptBuilder.build_base(
-            self.config,
-            custom_prompt = self.config.get("custom_prompt_enable"),
-            auto_glossary = self.config.get("auto_glossary_enable"),
-        )
+        main = self.prompt_builder.build_main()
 
         # 术语表
         if self.config.get("glossary_enable") == True:
-            result = PromptBuilder.build_glossary(self.config, src_dict)
+            result = self.prompt_builder.build_glossary(src_dict)
             if result != "":
-                base = base + "\n" + result
+                main = main + "\n" + result
                 extra_log.append(result)
 
         # 构建提示词列表
         messages.append({
             "role": "user",
             "content": (
-                f"{base}"
+                f"{main}"
                 + "\n" + "原文文本："
                 + "\n" + json.dumps(src_dict, indent = None, ensure_ascii = False)
             ),
@@ -354,7 +351,7 @@ class TranslatorTask(Base):
         # 术语表
         base = ""
         if self.config.get("glossary_enable") == True:
-            result = PromptBuilder.build_glossary_sakura(self.config, src_dict)
+            result = self.prompt_builder.build_glossary_sakura(src_dict)
             if result == "":
                 base = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
             else:

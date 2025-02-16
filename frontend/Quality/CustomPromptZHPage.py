@@ -16,7 +16,7 @@ from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class CustomPromptPage(QWidget, Base):
+class CustomPromptZHPage(QWidget, Base):
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -24,8 +24,7 @@ class CustomPromptPage(QWidget, Base):
 
         # 默认配置
         self.default = {
-            "custom_prompt_enable": False,
-            "custom_prompt_data": PromptBuilder.get_base(),
+            "custom_prompt_zh_enable": False,
         }
 
         # 载入并保存默认配置
@@ -33,6 +32,11 @@ class CustomPromptPage(QWidget, Base):
 
         # 载入配置文件
         config = self.load_config()
+
+        # 设置默认数据
+        if config.get("custom_prompt_zh_data") == None:
+            config["custom_prompt_zh_data"] = PromptBuilder(config).get_base(Base.Language.ZH)
+            self.save_config(config)
 
         # 设置主容器
         self.container = QVBoxLayout(self)
@@ -52,17 +56,20 @@ class CustomPromptPage(QWidget, Base):
     # 头部
     def add_widget_header(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def widget_init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("custom_prompt_enable"))
+            widget.set_checked(config.get("custom_prompt_zh_enable"))
 
         def widget_callback(widget, checked: bool) -> None:
             config = self.load_config()
-            config["custom_prompt_enable"] = checked
+            config["custom_prompt_zh_enable"] = checked
             self.save_config(config)
 
         parent.addWidget(
             SwitchButtonCard(
-                "自定义提示词（不支持 SakuraLLM 模型）",
-                "通过自定义提示词追加故事设定、行文风格等额外翻译要求，注意，前缀、后缀部分固定不可修改",
+                "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）",
+                (
+                    "通过自定义提示词追加故事设定、行文风格等额外翻译要求。"
+                    + "\n" + "注意：前缀、后缀部分固定不可修改，只有 **译文语言设置为中文时** 才会使用本页中的自定义提示词。"
+                ),
                 widget_init,
                 widget_callback,
             )
@@ -72,9 +79,9 @@ class CustomPromptPage(QWidget, Base):
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def update_widget(widget: PlainTextEdit) -> None:
             config = self.load_config()
-            self.main_text.setPlainText(config.get("custom_prompt_data"))
+            self.main_text.setPlainText(config.get("custom_prompt_zh_data"))
 
-        self.prefix_body = EmptyCard("", PromptBuilder.get_prefix())
+        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(Base.Language.ZH))
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
@@ -82,7 +89,7 @@ class CustomPromptPage(QWidget, Base):
         self.show_event_body = lambda _, event: update_widget(self.main_text)
         parent.addWidget(self.main_text)
 
-        self.suffix_body = EmptyCard("", PromptBuilder.get_suffix())
+        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(Base.Language.ZH).replace("\n", ""))
         self.suffix_body.remove_title()
         parent.addWidget(self.suffix_body)
 
@@ -102,7 +109,7 @@ class CustomPromptPage(QWidget, Base):
             config = self.load_config()
 
             # 从表格更新数据
-            config["custom_prompt_data"] = self.main_text.toPlainText().strip()
+            config["custom_prompt_zh_data"] = self.main_text.toPlainText().strip()
 
             # 保存配置文件
             config = self.save_config(config)
@@ -134,13 +141,13 @@ class CustomPromptPage(QWidget, Base):
             config = self.load_config()
 
             # 加载默认设置
-            config["custom_prompt_data"] = self.default.get("custom_prompt_data")
+            config["custom_prompt_zh_data"] = PromptBuilder(config).get_base(Base.Language.ZH)
 
             # 保存配置文件
             config = self.save_config(config)
 
             # 向控件更新数据
-            self.main_text.setPlainText(config.get("custom_prompt_data"))
+            self.main_text.setPlainText(config.get("custom_prompt_zh_data"))
 
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {

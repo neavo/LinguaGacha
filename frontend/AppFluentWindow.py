@@ -19,13 +19,15 @@ from qfluentwidgets import NavigationAvatarWidget
 
 from base.Base import Base
 from frontend.AppSettingsPage import AppSettingsPage
+from frontend.BaseNavigationItem import BaseNavigationItem
 from frontend.Project.ProjectPage import ProjectPage
 from frontend.Project.PlatformPage import PlatformPage
 from frontend.Project.TranslationPage import TranslationPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.AdvanceFeaturePage import AdvanceFeaturePage
 from frontend.Quality.GlossaryPage import GlossaryPage
-from frontend.Quality.CustomPromptPage import CustomPromptPage
+from frontend.Quality.CustomPromptZHPage import CustomPromptZHPage
+from frontend.Quality.CustomPromptENPage import CustomPromptENPage
 from frontend.Quality.ReplaceAfterTranslationPage import ReplaceAfterTranslationPage
 from frontend.Quality.ReplaceBeforeTranslationPage import ReplaceBeforeTranslationPage
 
@@ -201,5 +203,9 @@ class AppFluentWindow(FluentWindow, Base):
         self.addSubInterface(self.replcae_before_translation_page, FluentIcon.SEARCH, "译前替换", NavigationItemPosition.SCROLL)
         self.replcae_after_translation_page = ReplaceAfterTranslationPage("replcae_after_translation_page", self)
         self.addSubInterface(self.replcae_after_translation_page, FluentIcon.SEARCH_MIRROR, "译后替换", NavigationItemPosition.SCROLL)
-        self.custom_prompt_page = CustomPromptPage("custom_prompt_page", self)
-        self.addSubInterface(self.custom_prompt_page, FluentIcon.LABEL, "自定义提示词", NavigationItemPosition.SCROLL)
+        self.custom_prompt_navigation_item = BaseNavigationItem("custom_prompt_navigation_item", self)
+        self.addSubInterface(self.custom_prompt_navigation_item, FluentIcon.LABEL, "自定义提示词", NavigationItemPosition.SCROLL)
+        self.custom_prompt_zh_page = CustomPromptZHPage("custom_prompt_zh_page", self)
+        self.addSubInterface(self.custom_prompt_zh_page, FluentIcon.LANGUAGE, "中文版本", parent = self.custom_prompt_navigation_item)
+        self.custom_prompt_en_page = CustomPromptENPage("custom_prompt_en_page", self)
+        self.addSubInterface(self.custom_prompt_en_page, FluentIcon.LANGUAGE, "英文版本", parent = self.custom_prompt_navigation_item)
