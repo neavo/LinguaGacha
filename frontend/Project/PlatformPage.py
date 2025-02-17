@@ -158,7 +158,7 @@ class PlatformPage(QWidget, Base):
             drop_down_push_button.setContentsMargins(4, 0, 4, 0) # 左、上、右、下
             widget.add_widget(drop_down_push_button)
 
-            menu = RoundMenu(drop_down_push_button)
+            menu = RoundMenu("", drop_down_push_button)
             menu.addAction(Action(FluentIcon.EDIT, "激活接口", triggered = partial(self.activate_platform, item.get("id", 0), widget, window)))
             menu.addSeparator()
             menu.addAction(Action(FluentIcon.EDIT, "编辑接口", triggered = partial(self.show_api_edit_page, item.get("id", 0), widget, window)))
@@ -179,7 +179,7 @@ class PlatformPage(QWidget, Base):
             add_button.setContentsMargins(4, 0, 4, 0)
             widget.add_widget_to_head(add_button)
 
-            menu = RoundMenu(add_button)
+            menu = RoundMenu("", add_button)
             platforms = self.load_default_platforms()
             for i, item in enumerate(platforms):
                 menu.addAction(Action(item.get("name"), triggered = partial(self.add_platform, item, widget, window)))

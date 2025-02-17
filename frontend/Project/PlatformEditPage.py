@@ -222,7 +222,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         drop_down_push_button.setContentsMargins(4, 0, 4, 0) # 左、上、右、下
         empty_card.add_widget(drop_down_push_button)
 
-        menu = RoundMenu(drop_down_push_button)
+        menu = RoundMenu("", drop_down_push_button)
         menu.addAction(
             Action(
                 FluentIcon.EDIT,
