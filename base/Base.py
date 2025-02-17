@@ -132,7 +132,7 @@ class Base():
                 with open(Base.CONFIG_PATH, "r", encoding = "utf-8-sig") as reader:
                     config = json.load(reader)
             else:
-                self.warning("配置文件不存在 ...")
+                pass
 
         return config
 

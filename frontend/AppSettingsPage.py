@@ -16,6 +16,7 @@ from qfluentwidgets import SwitchButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.EmptyCard import EmptyCard
 from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
@@ -78,11 +79,11 @@ class AppSettingsPage(QWidget, Base):
         def init(widget) -> None:
             widget.set_text(config.get("proxy_url"))
             widget.set_fixed_width(256)
-            widget.set_placeholder_text("请输入网络代理地址 ...")
+            widget.set_placeholder_text(Localizer.get().app_settings_page_proxy_url)
 
             swicth_button = SwitchButton()
-            swicth_button.setOnText("启用")
-            swicth_button.setOffText("禁用")
+            swicth_button.setOnText(Localizer.get().enable)
+            swicth_button.setOffText(Localizer.get().disable)
             swicth_button.setChecked(config.get("proxy_enable", False))
             swicth_button.checkedChanged.connect(lambda checked: checked_changed(swicth_button, checked))
             widget.add_spacing(8)
@@ -95,8 +96,8 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             LineEditCard(
-                "网络代理地址",
-                "启用该功能后，将使用设置的代理地址向接口发送请求，例如 http://127.0.0.1:7890",
+                Localizer.get().app_settings_page_proxy_url_title,
+                Localizer.get().app_settings_page_proxy_url_content,
                 init = init,
                 text_changed = text_changed,
             )
@@ -114,8 +115,8 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "应用字体优化",
-                "启用此功能后，字体的边缘渲染将更加圆润（将在应用重启后生效）",
+                Localizer.get().app_settings_page_font_hinting_title,
+                Localizer.get().app_settings_page_font_hinting_content,
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -137,8 +138,8 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "调试模式",
-                "启用此功能后，应用将显示额外的调试信息",
+                Localizer.get().app_settings_page_debug_title,
+                Localizer.get().app_settings_page_debug_content,
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -146,20 +147,20 @@ class AppSettingsPage(QWidget, Base):
 
     # 全局缩放比例
     def add_widget_scale_factor(self, parent, config) -> None:
-        def init(widget) -> None:
+        def init(widget: ComboBoxCard) -> None:
             widget.set_current_index(max(0, widget.find_text(config.get("scale_factor"))))
 
-        def current_text_changed(widget, text: str) -> None:
+        def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-            config["scale_factor"] = text
+            config["scale_factor"] = widget.get_current_text()
             self.save_config(config)
 
         parent.addWidget(
             ComboBoxCard(
-                "全局缩放比例",
-                "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）",
+                Localizer.get().app_settings_page_scale_factor_title,
+                Localizer.get().app_settings_page_scale_factor_content,
                 ["自动", "50%", "75%", "150%", "200%"],
                 init = init,
-                current_text_changed = current_text_changed,
+                current_changed = current_changed,
             )
         )

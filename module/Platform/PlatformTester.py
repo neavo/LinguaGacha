@@ -2,6 +2,7 @@ import os
 import threading
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 
 class PlatformTester(Base):
@@ -77,7 +78,7 @@ class PlatformTester(Base):
             # 提取回复内容
             if skip == True:
                 failure.append(key)
-                self.warning("接口测试失败 ... ")
+                self.warning(Localizer.get().log_api_test_failure)
             elif response_think == "":
                 success.append(key)
                 self.info(f"模型返回结果 - {response_result}")

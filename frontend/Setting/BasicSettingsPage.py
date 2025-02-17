@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QVBoxLayout
 from qfluentwidgets import FluentWindow
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.SpinCard import SpinCard
 
 class BasicSettingsPage(QWidget, Base):
@@ -50,8 +51,8 @@ class BasicSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SpinCard(
-                "并发任务数",
-                "同时执行的翻译任务的最大数量，合理设置可以极大的增加翻译速度，请参考接口平台的限制进行设置，本地接口无需设置",
+                Localizer.get().basic_settings_page_batch_size_title,
+                Localizer.get().basic_settings_page_batch_size_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -70,8 +71,8 @@ class BasicSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SpinCard(
-                "翻译任务长度阈值",
-                "每个翻译任务一次性向模型发送的文本长度的最大值，单位为 Token",
+                Localizer.get().basic_settings_page_task_token_limit_title,
+                Localizer.get().basic_settings_page_task_token_limit_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -90,8 +91,8 @@ class BasicSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SpinCard(
-                "请求超时时间",
-                "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持 Google 系列模型",
+                Localizer.get().basic_settings_page_request_timeout_title,
+                Localizer.get().basic_settings_page_request_timeout_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -110,8 +111,8 @@ class BasicSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SpinCard(
-                "翻译流程最大轮次",
-                "当完成一轮翻译后，如果还有未翻译的条目，将重新开始新的翻译流程，直到翻译完成或者达到最大轮次",
+                Localizer.get().basic_settings_page_max_round_title,
+                Localizer.get().basic_settings_page_max_round_content,
                 init = init,
                 value_changed = value_changed,
             )

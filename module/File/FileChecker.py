@@ -5,6 +5,7 @@ import rapidjson as json
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
+from module.Localizer.Localizer import Localizer
 from module.TextHelper import TextHelper
 
 class FileChecker(Base):
@@ -56,7 +57,7 @@ class FileChecker(Base):
                 result.setdefault(file_path, {})[src] = dst
 
         if count == 0:
-            self.info("已完成代码检查，未发现异常条目 ...")
+            self.info(Localizer.get().file_checker_code)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
             self.info(f"已完成代码检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
@@ -83,7 +84,7 @@ class FileChecker(Base):
                     result.setdefault(f"{glossary_src} -> {glossary_dst}", {})[src] = dst
 
         if count == 0:
-            self.info("已完成术语表检查，未发现异常条目 ...")
+            self.info(Localizer.get().file_checker_glossary)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
             self.info(f"已完成术语表检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
@@ -107,7 +108,7 @@ class FileChecker(Base):
                 result.setdefault(file_path, {})[src] = dst
 
         if count == 0:
-            self.info("已完成翻译检查，未发现异常条目 ...")
+            self.info(Localizer.get().file_checker_translation)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
             self.info(f"已完成翻译检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")

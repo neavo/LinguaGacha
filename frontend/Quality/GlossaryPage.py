@@ -16,6 +16,7 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from module.TableHelper import TableHelper
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
@@ -71,8 +72,8 @@ class GlossaryPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "术语表",
-                "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能",
+                Localizer.get().glossary_page_head_title,
+                Localizer.get().glossary_page_head_content,
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -100,11 +101,11 @@ class GlossaryPage(QWidget, Base):
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.table.setHorizontalHeaderLabels(
-            [
-                "原文",
-                "译文",
-                "描述",
-            ],
+            (
+                Localizer.get().glossary_page_table_row_01,
+                Localizer.get().glossary_page_table_row_02,
+                Localizer.get().glossary_page_table_row_03,
+            ),
         )
 
         # 向表格更新数据
@@ -157,11 +158,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已导入 ...",
+                "message": Localizer.get().glossary_page_import_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DOWNLOAD, "导入", parent, triggered = triggered),
+            Action(FluentIcon.DOWNLOAD, Localizer.get().glossary_page_import, parent, triggered = triggered),
         )
 
     # 导出
@@ -175,17 +176,17 @@ class GlossaryPage(QWidget, Base):
             data = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
 
             # 导出文件
-            with open(f"导出_术语表.json", "w", encoding = "utf-8") as writer:
+            with open(Localizer.get().glossary_page_export_path, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
 
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已导出到应用根目录 ...",
+                "message": Localizer.get().glossary_page_export_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SHARE, "导出", parent, triggered = triggered),
+            Action(FluentIcon.SHARE, Localizer.get().glossary_page_export, parent, triggered = triggered),
         )
 
     # 添加新行
@@ -198,11 +199,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "新行已添加 ...",
+                "message": Localizer.get().glossary_page_add_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.ADD_TO, "添加", parent, triggered = triggered),
+            Action(FluentIcon.ADD_TO, Localizer.get().glossary_page_add, parent, triggered = triggered),
         )
 
     # 保存
@@ -230,20 +231,20 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已保存 ...",
+                "message": Localizer.get().glossary_page_save_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SAVE, "保存", parent, triggered = triggered),
+            Action(FluentIcon.SAVE, Localizer.get().glossary_page_save, parent, triggered = triggered),
         )
 
     # 重置
     def add_command_bar_action_reset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            message_box = MessageBox("警告", "是否确认重置为默认数据 ... ？", window)
-            message_box.yesButton.setText("确认")
-            message_box.cancelButton.setText("取消")
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().glossary_page_reset_alert, window)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
 
             if not message_box.exec():
                 return
@@ -266,11 +267,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已重置 ...",
+                "message": Localizer.get().glossary_page_reset_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DELETE, "重置", parent, triggered = triggered),
+            Action(FluentIcon.DELETE, Localizer.get().glossary_page_reset, parent, triggered = triggered),
         )
 
     # KG
@@ -279,7 +280,7 @@ class GlossaryPage(QWidget, Base):
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
 
-        push_button = TransparentPushButton(FluentIcon.COMPLETED, "一键制作工具")
+        push_button = TransparentPushButton(FluentIcon.COMPLETED, Localizer.get().glossary_page_kg)
         push_button.clicked.connect(connect)
         parent.add_widget(push_button)
 
@@ -289,6 +290,6 @@ class GlossaryPage(QWidget, Base):
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
 
-        push_button = TransparentPushButton(FluentIcon.HELP, "功能说明")
+        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().glossary_page_wiki)
         push_button.clicked.connect(connect)
         parent.add_widget(push_button)

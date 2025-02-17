@@ -17,6 +17,7 @@ from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Filter.RuleFilter import RuleFilter
 from module.CodeSaver import CodeSaver
+from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorTask import TranslatorTask
 from module.TextHelper import TextHelper
 from module.PromptBuilder import PromptBuilder
@@ -54,7 +55,7 @@ class Translator(Base):
                 time.sleep(0.5)
                 if self.translating == False:
                     self.print("")
-                    self.info("翻译任务已停止 ...")
+                    self.info(Localizer.get().translator_stop)
                     self.print("")
                     self.emit(Base.Event.TRANSLATION_STOP_DONE, {})
                     break
@@ -182,16 +183,16 @@ class Translator(Base):
             # 判断是否需要继续翻译
             if item_count_status_untranslated == 0:
                 self.print("")
-                self.info("所有文本均已翻译，翻译任务已结束 ...")
-                self.info("正在写入翻译数据，等稍候 ...")
+                self.info(Localizer.get().translator_done)
+                self.info(Localizer.get().translator_writing)
                 self.print("")
                 break
 
             # 达到最大翻译轮次时
             if item_count_status_untranslated > 0 and current_round == self.config.get("max_round"):
                 self.print("")
-                self.warning("已到最大翻译轮次，仍有部分文本未翻译，请检查翻译结果 ...")
-                self.warning("正在写入翻译数据，等稍候 ...")
+                self.warning(Localizer.get().translator_failure)
+                self.warning(Localizer.get().translator_writing)
                 self.print("")
                 break
 
@@ -209,7 +210,7 @@ class Translator(Base):
             # 生成翻译任务
             tasks: list[TranslatorTask] = []
             self.print("")
-            for chunk in tqdm(chunks, desc = "生成翻译任务", total = len(chunks)):
+            for chunk in tqdm(chunks, desc = Localizer.get().translator_generate_task, total = len(chunks)):
                 tasks.append(
                     TranslatorTask(
                         self.config,
@@ -223,19 +224,19 @@ class Translator(Base):
 
             # 输出开始翻译的日志
             self.print("")
-            self.info(f"当前轮次 - {current_round + 1}")
-            self.info(f"最大轮次 - {self.config.get("max_round")}")
+            self.info(f"{Localizer.get().translator_current_round} - {current_round + 1}")
+            self.info(f"{Localizer.get().translator_max_round} - {self.config.get("max_round")}")
             self.print("")
-            self.info(f"接口名称 - {self.platform.get("name")}")
-            self.info(f"接口地址 - {self.platform.get("api_url")}")
-            self.info(f"模型名称 - {self.platform.get("model")}")
+            self.info(f"{Localizer.get().translator_name} - {self.platform.get("name")}")
+            self.info(f"{Localizer.get().translator_api_url} - {self.platform.get("api_url")}")
+            self.info(f"{Localizer.get().translator_model} - {self.platform.get("model")}")
             if self.config.get("proxy_enable") == True and self.config.get("proxy_url") != "":
                 self.print("")
-                self.info(f"生效中的 网络代理 - {self.config.get("proxy_url")}")
+                self.info(f"{Localizer.get().translator_proxy_url} - {self.config.get("proxy_url")}")
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-                self.info(f"本次任务使用以下提示词：\n{self.prompt_builder.build_main()}\n")
-            self.info(f"即将开始执行翻译任务，预计任务总数为 {len(tasks)}, 并发任务数为 {self.config.get("batch_size")}，请注意保持网络通畅 ...")
+                self.info(Localizer.get().translator_prompt.replace("{PROMPT}", self.prompt_builder.build_main()))
+            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.config.get("batch_size"))))
             self.print("")
 
             # 开始执行翻译任务
@@ -305,7 +306,7 @@ class Translator(Base):
         # 输出结果
         count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
         self.print("")
-        self.info(f"规则过滤已完成，共过滤 {count} 个无需翻译的条目 ...")
+        self.info(Localizer.get().translator_rule_filter.replace("{COUNT}", str(count)))
 
     # 语言过滤
     def language_filter(self, items: list[CacheItem]) -> None:
@@ -340,7 +341,7 @@ class Translator(Base):
         # 输出结果
         count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
         self.print("")
-        self.info(f"语言过滤已完成，共过滤 {count} 个不包含目标语言的条目 ...")
+        self.info(Localizer.get().translator_language_filter.replace("{COUNT}", str(count)))
 
     # MTool 优化器预处理
     def mtool_optimizer_preprocess(self, items: list[CacheItem]) -> None:
@@ -375,7 +376,7 @@ class Translator(Base):
 
         count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
         self.print("")
-        self.info(f"MToolOptimizer 预处理已完成，共过滤 {count} 个包含重复子句的条目 ...")
+        self.info(Localizer.get().translator_mtool_filter.replace("{COUNT}", str(count)))
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[CacheItem]) -> None:

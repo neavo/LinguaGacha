@@ -2,12 +2,9 @@ from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import PillPushButton
 
 from base.Base import Base
-from widget.FlowCard import FlowCard
-from widget.Separator import Separator
-from widget.ComboBoxCard import ComboBoxCard
+from module.Localizer.Localizer import Localizer
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class AdvanceFeaturePage(QWidget, Base):
@@ -49,11 +46,8 @@ class AdvanceFeaturePage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "MTool 优化器",
-                (
-                    "启用此功能后，在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗。"
-                    + "\n" + "可能导致 **原文残留** 或 **语句不连贯** 等问题，请 **自行判断** 是否启用，并且只应在 **翻译 MTool 文本时** 启用。"
-                ),
+                Localizer.get().advance_feature_page_mtool_optimizer_enable_title,
+                Localizer.get().advance_feature_page_mtool_optimizer_enable_content,
                 widget_init,
                 widget_callback,
             )
@@ -71,12 +65,8 @@ class AdvanceFeaturePage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "自动补全术语表（实验性功能，不支持 SakuraLLM 模型）",
-                (
-                    "启用此功能后，在翻译的同时将对文本进行分析，尝试自动补全术语表中缺失的专有名词条目。"
-                    + "\n" + "此功能设计目的仅为查漏补缺，并不能代替手动制作的术语表，只有在 **启用术语表功能** 时才生效。"
-                    + "\n" + "可能导致 **负面效果** 或 **翻译异常**，理论上只有在 DeepSeek V3/R1 等强力模型上才会有正面效果，请 **自行判断** 是否启用。"
-                ),
+                Localizer.get().advance_feature_page_auto_glossary_enable_title,
+                Localizer.get().advance_feature_page_auto_glossary_enable_content,
                 widget_init,
                 widget_callback,
             )

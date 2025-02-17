@@ -12,11 +12,12 @@ from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
+from module.Localizer.Localizer import Localizer
 from module.CodeSaver import CodeSaver
+from module.Normalizer import Normalizer
 from module.TextHelper import TextHelper
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
-from module.NormalizeHelper import NormalizeHelper
 from module.PunctuationHelper import PunctuationHelper
 
 class TranslatorTask(Base):
@@ -112,9 +113,9 @@ class TranslatorTask(Base):
 
         # 模型回复日志
         if response_think != "":
-            self.extra_log.append("模型思考内容：\n" + response_think)
+            self.extra_log.append(Localizer.get().translator_task_response_think + response_think)
         if self.is_debug() and response_result != "":
-            self.extra_log.append("模型回复内容：\n" + response_result)
+            self.extra_log.append(Localizer.get().translator_task_response_result + response_result)
         if self.is_debug() and response_decode_log != "":
             self.extra_log.append(response_decode_log)
 
@@ -125,7 +126,7 @@ class TranslatorTask(Base):
                 self.generate_log_table(
                     *self.generate_log_rows(
                         "red",
-                        f"译文文本未通过检查，将在下一轮次的翻译中自动重试 - {check_flag}",
+                        f"{Localizer.get().translator_task_failure} - {check_flag}",
                         task_start_time,
                         prompt_tokens,
                         completion_tokens,
@@ -183,7 +184,7 @@ class TranslatorTask(Base):
                     self.generate_log_table(
                         *self.generate_log_rows(
                             "yellow",
-                            f"部分译文文本未通过检查，将在下一轮次的翻译中自动重试 - {check_flag}",
+                            f"{Localizer.get().translator_task_failure_few} - {check_flag}",
                             task_start_time,
                             prompt_tokens,
                             completion_tokens,
@@ -213,7 +214,7 @@ class TranslatorTask(Base):
     # 正规化
     def normalize(self, data: dict[str, str]) -> dict:
         for k in data.keys():
-            data[k] = NormalizeHelper.normalize(data.get(k, ""))
+            data[k] = Normalizer.normalize(data.get(k, ""))
 
         return data
 
@@ -401,8 +402,10 @@ class TranslatorTask(Base):
             rows.append(msg)
         else:
             rows.append(
-                f"任务耗时 {(time.time() - start):.2f} 秒，"
-                + f"文本行数 {len(srcs)} 行，输入消耗 {pt} Tokens，输出消耗 {ct} Tokens"
+                Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
+                                                       .replace("{LINES}", f"{len(srcs)}")
+                                                       .replace("{PT}", f"{pt}")
+                                                       .replace("{CT}", f"{ct}")
             )
 
         # 添加额外日志

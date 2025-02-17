@@ -1,6 +1,4 @@
-import copy
 import os
-import random
 from functools import partial
 
 import rapidjson as json
@@ -10,14 +8,13 @@ from PyQt5.QtWidgets import QVBoxLayout
 from qfluentwidgets import Action
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import PushButton
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import PrimaryDropDownPushButton
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
-from widget.LineEditMessageBox import LineEditMessageBox
 from frontend.Project.PlatformEditPage import PlatformEditPage
 from frontend.Project.ArgsEditPage import ArgsEditPage
 
@@ -64,7 +61,7 @@ class PlatformPage(QWidget, Base):
         else:
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
-                "message": "接口测试正在执行中，请稍后再试 ...",
+                "message": Localizer.get().platform_page_api_test_doing,
             })
 
     # 接口测试完成
@@ -75,12 +72,16 @@ class PlatformPage(QWidget, Base):
         if data.get("failure", []) != []:
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.ERROR,
-                "message": f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...",
+                "message": Localizer.get().platform_page_api_test_result
+                                         .replace("{SUCCESS}", str(len(data.get("success", []))))
+                                         .replace("{FAILURE}", str(len(data.get("failure", [])))),
             })
         else:
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": f"接口测试结果：成功 {len(data.get("success", []))} 个，失败 {len(data.get("failure", []))} 个 ...",
+                "message": Localizer.get().platform_page_api_test_result
+                                         .replace("{SUCCESS}", str(len(data.get("success", []))))
+                                         .replace("{FAILURE}", str(len(data.get("failure", [])))),
             })
 
     # 加载默认平台数据
@@ -159,22 +160,52 @@ class PlatformPage(QWidget, Base):
             widget.add_widget(drop_down_push_button)
 
             menu = RoundMenu("", drop_down_push_button)
-            menu.addAction(Action(FluentIcon.EDIT, "激活接口", triggered = partial(self.activate_platform, item.get("id", 0), widget, window)))
+            menu.addAction(
+                Action(
+                    FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                    Localizer.get().platform_page_api_activate,
+                    triggered = partial(self.activate_platform, item.get("id", 0), widget, window),
+                )
+            )
             menu.addSeparator()
-            menu.addAction(Action(FluentIcon.EDIT, "编辑接口", triggered = partial(self.show_api_edit_page, item.get("id", 0), widget, window)))
+            menu.addAction(
+                Action(
+                    FluentIcon.EDIT,
+                    Localizer.get().platform_page_api_edit,
+                    triggered = partial(self.show_api_edit_page, item.get("id", 0), widget, window),
+                )
+            )
             menu.addSeparator()
-            menu.addAction(Action(FluentIcon.DEVELOPER_TOOLS, "编辑参数", triggered = partial(self.show_args_edit_page, item.get("id", 0), widget, window)))
+            menu.addAction(
+                Action(
+                    FluentIcon.DEVELOPER_TOOLS,
+                    Localizer.get().platform_page_api_args,
+                    triggered = partial(self.show_args_edit_page, item.get("id", 0), widget, window),
+                )
+            )
             menu.addSeparator()
-            menu.addAction(Action(FluentIcon.SEND, "测试接口", triggered = partial(self.platform_test_start, item.get("id", 0), widget, window)))
+            menu.addAction(
+                Action(
+                    FluentIcon.SEND,
+                    Localizer.get().platform_page_api_test,
+                    triggered = partial(self.platform_test_start, item.get("id", 0), widget, window),
+                )
+            )
             menu.addSeparator()
-            menu.addAction(Action(FluentIcon.DELETE, "删除接口", triggered = partial(self.delete_platform, item.get("id", 0), widget, window)))
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().platform_page_api_delete,
+                    triggered = partial(self.delete_platform, item.get("id", 0), widget, window),
+                )
+            )
             drop_down_push_button.setMenu(menu)
 
     # 添加控件
     def add_widget(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def init(widget: FlowCard) -> None:
             # 添加新增按钮
-            add_button = DropDownPushButton("新增")
+            add_button = DropDownPushButton(Localizer.get().add)
             add_button.setIcon(FluentIcon.ADD_TO)
             add_button.setContentsMargins(4, 0, 4, 0)
             widget.add_widget_to_head(add_button)
@@ -190,8 +221,8 @@ class PlatformPage(QWidget, Base):
             self.update_custom_platform_widgets(widget, window)
 
         self.flow_card = FlowCard(
-            "接口列表",
-            "在此添加和管理任何兼容 OpenAI、Anthropic 格式的 LLM 模型接口",
+            Localizer.get().platform_page_widget_add_title,
+            Localizer.get().platform_page_widget_add_content,
             init = init,
         )
         parent.addWidget(self.flow_card)

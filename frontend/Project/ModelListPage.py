@@ -14,6 +14,7 @@ from qfluentwidgets import PillPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
 
 class ModelListPage(MessageBoxBase, Base):
@@ -21,16 +22,16 @@ class ModelListPage(MessageBoxBase, Base):
     def __init__(self, id: int, window: FluentWindow) -> None:
         super().__init__(window)
 
-        # 设置框体
-        self.widget.setFixedSize(960, 720)
-        self.yesButton.setText("关闭")
-        self.cancelButton.hide()
-
         # 初始化
         self.id = id
 
         # 载入配置文件
         config = self.load_config()
+
+        # 设置框体
+        self.widget.setFixedSize(960, 720)
+        self.yesButton.setText(Localizer.get().close)
+        self.cancelButton.hide()
 
         # 设置主布局
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
@@ -106,10 +107,10 @@ class ModelListPage(MessageBoxBase, Base):
                 )
                 result = [model.id for model in client.models.list()]
         except Exception as e:
-            self.debug("获取模型列表失败 ...", e)
+            self.debug(Localizer.get().model_list_page_widget_failure, e)
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
-                "message": "获取模型列表失败，请检查接口配置 ...",
+                "message": Localizer.get().model_list_page_widget_failure,
             })
 
         return result
@@ -134,8 +135,8 @@ class ModelListPage(MessageBoxBase, Base):
     # 模型名称
     def add_widget(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         self.flow_card = FlowCard(
-            "可用的模型列表",
-            "点击选择要使用的模型",
+            Localizer.get().model_list_page_widget_title,
+            Localizer.get().model_list_page_widget_content,
             init = lambda widget: self.update_sub_widgets(widget),
         )
         parent.addWidget(self.flow_card)

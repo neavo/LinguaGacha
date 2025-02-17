@@ -1,5 +1,3 @@
-import re
-
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
@@ -14,6 +12,7 @@ from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
 from widget.ComboBoxCard import ComboBoxCard
@@ -26,13 +25,13 @@ class PlatformEditPage(MessageBoxBase, Base):
     def __init__(self, id: int, window: FluentWindow) -> None:
         super().__init__(window)
 
-        # 设置框体
-        self.widget.setFixedSize(960, 720)
-        self.yesButton.setText("关闭")
-        self.cancelButton.hide()
-
         # 载入配置文件
         config = self.load_config()
+
+        # 设置框体
+        self.widget.setFixedSize(960, 720)
+        self.yesButton.setText(Localizer.get().close)
+        self.cancelButton.hide()
 
         # 获取平台配置
         self.get_platform_from_config(id, config)
@@ -80,7 +79,7 @@ class PlatformEditPage(MessageBoxBase, Base):
     def get_platform_from_config(self, id: int, config: dict) -> None:
         for platform in config.get("platforms", []):
             if platform.get("id", 0) == id:
-                self.platform = platform
+                self.platform: dict = platform
                 break
 
     # 更新平台配置
@@ -95,7 +94,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("name"))
             widget.set_fixed_width(256)
-            widget.set_placeholder_text("请输入接口名称 ...")
+            widget.set_placeholder_text(Localizer.get().platform_edit_page_widget_name)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = self.load_config()
@@ -105,8 +104,8 @@ class PlatformEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                "接口名称",
-                "请输入接口名称，仅用于应用内显示，无实际作用",
+                Localizer.get().platform_edit_page_widget_name_title,
+                Localizer.get().platform_edit_page_widget_name_content,
                 init = init,
                 text_changed = text_changed,
             )
@@ -117,7 +116,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("api_url"))
             widget.set_fixed_width(384)
-            widget.set_placeholder_text("请输入接口地址 ...")
+            widget.set_placeholder_text(Localizer.get().platform_edit_page_widget_api_url)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = self.load_config()
@@ -127,8 +126,8 @@ class PlatformEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                "接口地址",
-                "请输入接口地址，请注意辨别结尾是否需要添加 /v1",
+                Localizer.get().platform_edit_page_widget_api_url_title,
+                Localizer.get().platform_edit_page_widget_api_url_content,
                 init = init,
                 text_changed = text_changed,
             )
@@ -150,14 +149,14 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: GroupCard) -> None:
             plain_text_edit = PlainTextEdit(self)
             plain_text_edit.setPlainText("\n".join(self.platform.get("api_key")))
-            plain_text_edit.setPlaceholderText("请输入接口密钥 ...")
+            plain_text_edit.setPlaceholderText(Localizer.get().platform_edit_page_widget_api_key)
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))
             widget.addWidget(plain_text_edit)
 
         parent.addWidget(
             GroupCard(
-                "接口密钥",
-                "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个",
+                Localizer.get().platform_edit_page_widget_api_key_title,
+                Localizer.get().platform_edit_page_widget_api_key_content,
                 init = init,
             )
         )
@@ -167,20 +166,19 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: ComboBoxCard) -> None:
             widget.set_current_index(max(0, widget.find_text(self.platform.get("api_format"))))
 
-        def current_text_changed(widget: ComboBoxCard, text: str) -> None:
+        def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-
-            self.platform["api_format"] = text
+            self.platform["api_format"] = widget.get_current_text()
             self.update_platform_to_config(self.platform, config)
             self.save_config(config)
 
         parent.addWidget(
             ComboBoxCard(
-                "接口格式",
-                "请选择接口格式，大部分平台兼容 OpenAI 格式，部分平台的 Claude 模型则使用 Anthropic 格式",
+                Localizer.get().platform_edit_page_widget_api_format_title,
+                Localizer.get().platform_edit_page_widget_api_format_content,
                 (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC),
                 init = init,
-                current_text_changed = current_text_changed,
+                current_changed = current_changed,
             )
         )
 
@@ -194,12 +192,14 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.platform["model"] = text.strip()
             self.update_platform_to_config(self.platform, config)
             self.save_config(config)
-            empty_card.set_description(f"当前使用的模型为 {self.platform.get("model")}")
+            empty_card.set_description(
+                Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model"))
+            )
 
         def triggered_edit() -> None:
             message_box = LineEditMessageBox(
                 window,
-                "请输入模型名称 ...",
+                Localizer.get().platform_edit_page_widget_model,
                 message_box_close = message_box_close
             )
             message_box.exec()
@@ -211,12 +211,17 @@ class PlatformEditPage(MessageBoxBase, Base):
             # 更新 UI 文本
             config = self.load_config()
             self.get_platform_from_config(self.platform.get("id"), config)
-            empty_card.set_description(f"当前使用的模型为 {self.platform.get("model")}")
+            empty_card.set_description(
+                Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model"))
+            )
 
-        empty_card = EmptyCard("模型名称", f"当前使用的模型为 {self.platform.get("model")}")
+        empty_card = EmptyCard(
+            Localizer.get().platform_edit_page_widget_model_title,
+            Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model")),
+        )
         parent.addWidget(empty_card)
 
-        drop_down_push_button = DropDownPushButton("修改")
+        drop_down_push_button = DropDownPushButton(Localizer.get().edit)
         drop_down_push_button.setIcon(FluentIcon.LABEL)
         drop_down_push_button.setFixedWidth(128)
         drop_down_push_button.setContentsMargins(4, 0, 4, 0) # 左、上、右、下
@@ -226,7 +231,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.EDIT,
-                "手动输入",
+                Localizer.get().platform_edit_page_widget_model_edit,
                 triggered = lambda _: triggered_edit(),
             )
         )
@@ -234,7 +239,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.SYNC,
-                "在线获取",
+                Localizer.get().platform_edit_page_widget_model_sync,
                 triggered = lambda _: triggered_sync(),
             )
         )

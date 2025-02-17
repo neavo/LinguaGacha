@@ -2,12 +2,12 @@ import os
 import sys
 
 import rapidjson as json
-from rich import print
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 
 from module.Platform.PlatformTester import PlatformTester
+from module.Localizer.Localizer import Localizer
 from module.Translator.Translator import Translator
 from frontend.AppFluentWindow import AppFluentWindow
 
@@ -30,10 +30,13 @@ if __name__ == "__main__":
     # 设置工作目录
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     sys.path.append(script_dir)
-    print(f"[[green]INFO[/]] 当前工作目录为 {script_dir}")
+    # print(f"[[green]INFO[/]] 当前工作目录为 {script_dir}")
 
     # 载入配置文件
     config = load_config()
+
+    # 设置应用语言
+    Localizer.set_app_language(config.get("app_language"))
 
     # 设置全局缩放比例
     if config.get("scale_factor", "") == "50%":

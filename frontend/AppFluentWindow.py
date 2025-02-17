@@ -18,6 +18,7 @@ from qfluentwidgets import NavigationItemPosition
 from qfluentwidgets import NavigationAvatarWidget
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.BaseNavigationItem import BaseNavigationItem
 from frontend.Project.ProjectPage import ProjectPage
@@ -33,17 +34,18 @@ from frontend.Quality.ReplaceBeforeTranslationPage import ReplaceBeforeTranslati
 
 class AppFluentWindow(FluentWindow, Base):
 
-    APP_WIDTH = 1280
-    APP_HEIGHT = 800
+    APP_WIDTH: int = 1280
+    APP_HEIGHT: int = 800
 
-    THEME_COLOR = "#BCA483"
+    THEME_COLOR: str = "#BCA483"
 
     def __init__(self, version: str) -> None:
         super().__init__()
 
         # 默认配置
         self.default = {
-            "theme": "dark",
+            "theme": "light",
+            "app_language": Base.Language.ZH,
         }
 
         # 载入并保存默认配置
@@ -52,7 +54,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 打印日志
         if self.is_debug():
             self.print("")
-            self.warning("调试模式已启用 ...")
+            self.warning(Localizer.get().app_fluent_window_debug_msg)
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.THEME_COLOR)
@@ -88,15 +90,15 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
-        message_box = MessageBox("警告", "确定是否退出程序 ... ？", self)
-        message_box.yesButton.setText("确认")
-        message_box.cancelButton.setText("取消")
+        message_box = MessageBox(Localizer.get().warning, Localizer.get().app_fluent_window_close_message_box_content, self)
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
 
         if not message_box.exec():
             event.ignore()
         else:
             self.emit(Base.Event.APP_SHUT_DOWN, {})
-            self.info("主窗口已关闭，稍后应用将自动退出 ...")
+            self.info(Localizer.get().app_fluent_window_close_message_box_msg)
             event.accept()
 
     # 响应显示 Toast 事件
@@ -124,7 +126,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
     # 切换主题
-    def toggle_theme(self) -> None:
+    def switch_theme(self) -> None:
         config = self.load_config()
 
         if not isDarkTheme():
@@ -135,6 +137,30 @@ class AppFluentWindow(FluentWindow, Base):
             config["theme"] = "light"
 
         config = self.save_config(config)
+
+    # 切换语言
+    def swicth_language(self) -> None:
+        message_box = MessageBox(
+            Localizer.get().alert,
+            Localizer.get().app_fluent_window_language_message_box_content,
+            self
+        )
+        message_box.yesButton.setText("中文")
+        message_box.cancelButton.setText("English")
+
+        if message_box.exec():
+            config = self.load_config()
+            config["app_language"] = Base.Language.ZH
+            self.save_config(config)
+        else:
+            config = self.load_config()
+            config["app_language"] = Base.Language.EN
+            self.save_config(config)
+
+        self.emit(Base.Event.TOAST_SHOW, {
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().app_fluent_window_language_message_box_msg,
+        })
 
     # 打开主页
     def open_project_page(self) -> None:
@@ -152,27 +178,39 @@ class AppFluentWindow(FluentWindow, Base):
         # 设置默认页面
         self.switchTo(self.translation_page)
 
-        # 应用设置按钮
-        self.app_settings_page = AppSettingsPage("app_settings_page", self)
-        self.addSubInterface(self.app_settings_page, FluentIcon.SETTING, "应用设置", NavigationItemPosition.BOTTOM)
-
         # 主题切换按钮
         self.navigationInterface.addWidget(
             routeKey = "theme_navigation_button",
             widget = NavigationPushButton(
                 FluentIcon.CONSTRACT,
-                "变换自如",
+                Localizer.get().app_fluent_window_theme_btn,
                 False
             ),
-            onClick = self.toggle_theme,
+            onClick = self.switch_theme,
             position = NavigationItemPosition.BOTTOM
         )
+
+        # 语言切换按钮
+        self.navigationInterface.addWidget(
+            routeKey = "language_navigation_button",
+            widget = NavigationPushButton(
+                FluentIcon.LANGUAGE,
+                Localizer.get().app_fluent_window_language_btn,
+                False
+            ),
+            onClick = self.swicth_language,
+            position = NavigationItemPosition.BOTTOM
+        )
+
+        # 应用设置按钮
+        self.app_settings_page = AppSettingsPage("app_settings_page", self)
+        self.addSubInterface(self.app_settings_page, FluentIcon.SETTING, Localizer.get().app_fluent_window_app_settings_page, NavigationItemPosition.BOTTOM)
 
         # 项目主页按钮
         self.navigationInterface.addWidget(
             routeKey = "avatar_navigation_widget",
             widget = NavigationAvatarWidget(
-                "LinguaGacha",
+                "⭐️ @ Github",
                 "resource/avatar-bg.jpg",
             ),
             onClick = self.open_project_page,
@@ -182,30 +220,30 @@ class AppFluentWindow(FluentWindow, Base):
     # 添加第一节
     def add_project_pages(self) -> None:
         self.platform_page = PlatformPage("platform_page", self)
-        self.addSubInterface(self.platform_page, FluentIcon.IOT, "接口管理", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.platform_page, FluentIcon.IOT, Localizer.get().app_fluent_window_platform_page, NavigationItemPosition.SCROLL)
         self.prject_page = ProjectPage("prject_page", self)
-        self.addSubInterface(self.prject_page, FluentIcon.FOLDER, "项目设置", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.prject_page, FluentIcon.FOLDER, Localizer.get().app_fluent_window_prject_page, NavigationItemPosition.SCROLL)
         self.translation_page = TranslationPage("translation_page", self)
-        self.addSubInterface(self.translation_page, FluentIcon.PLAY, "开始翻译", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.translation_page, FluentIcon.PLAY, Localizer.get().app_fluent_window_translation_page, NavigationItemPosition.SCROLL)
 
     # 添加第二节
     def add_setting_pages(self) -> None:
         self.basic_settings_page = BasicSettingsPage("basic_settings_page", self)
-        self.addSubInterface(self.basic_settings_page, FluentIcon.ZOOM, "基础设置", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.basic_settings_page, FluentIcon.ZOOM, Localizer.get().app_fluent_window_basic_settings_page, NavigationItemPosition.SCROLL)
         self.advance_Feature_page = AdvanceFeaturePage("advance_Feature_page", self)
-        self.addSubInterface(self.advance_Feature_page, FluentIcon.COMMAND_PROMPT, "高级功能", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.advance_Feature_page, FluentIcon.COMMAND_PROMPT, Localizer.get().app_fluent_window_advance_Feature_page, NavigationItemPosition.SCROLL)
 
     # 添加第三节
     def add_quality_pages(self) -> None:
         self.prompt_dictionary_page = GlossaryPage("prompt_dictionary_page", self)
-        self.addSubInterface(self.prompt_dictionary_page, FluentIcon.DICTIONARY, "术语表", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.prompt_dictionary_page, FluentIcon.DICTIONARY, Localizer.get().app_fluent_window_prompt_dictionary_page, NavigationItemPosition.SCROLL)
         self.replcae_before_translation_page = ReplaceBeforeTranslationPage("replcae_before_translation_page", self)
-        self.addSubInterface(self.replcae_before_translation_page, FluentIcon.SEARCH, "译前替换", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.replcae_before_translation_page, FluentIcon.SEARCH, Localizer.get().app_fluent_window_replcae_before_translation_page, NavigationItemPosition.SCROLL)
         self.replcae_after_translation_page = ReplaceAfterTranslationPage("replcae_after_translation_page", self)
-        self.addSubInterface(self.replcae_after_translation_page, FluentIcon.SEARCH_MIRROR, "译后替换", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.replcae_after_translation_page, FluentIcon.SEARCH_MIRROR, Localizer.get().app_fluent_window_replcae_after_translation_page, NavigationItemPosition.SCROLL)
         self.custom_prompt_navigation_item = BaseNavigationItem("custom_prompt_navigation_item", self)
-        self.addSubInterface(self.custom_prompt_navigation_item, FluentIcon.LABEL, "自定义提示词", NavigationItemPosition.SCROLL)
+        self.addSubInterface(self.custom_prompt_navigation_item, FluentIcon.LABEL, Localizer.get().app_fluent_window_custom_prompt_navigation_item, NavigationItemPosition.SCROLL)
         self.custom_prompt_zh_page = CustomPromptZHPage("custom_prompt_zh_page", self)
-        self.addSubInterface(self.custom_prompt_zh_page, FluentIcon.LANGUAGE, "中文版本", parent = self.custom_prompt_navigation_item)
+        self.addSubInterface(self.custom_prompt_zh_page, FluentIcon.HIGHTLIGHT, Localizer.get().app_fluent_window_custom_prompt_zh_page, parent = self.custom_prompt_navigation_item)
         self.custom_prompt_en_page = CustomPromptENPage("custom_prompt_en_page", self)
-        self.addSubInterface(self.custom_prompt_en_page, FluentIcon.LANGUAGE, "英文版本", parent = self.custom_prompt_navigation_item)
+        self.addSubInterface(self.custom_prompt_en_page, FluentIcon.ERASE_TOOL, Localizer.get().app_fluent_window_custom_prompt_en_page, parent = self.custom_prompt_navigation_item)

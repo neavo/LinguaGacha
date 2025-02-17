@@ -11,6 +11,7 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
@@ -65,11 +66,8 @@ class CustomPromptENPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                "译文语言设置为非中文时使用的自定义提示词（不支持 SakuraLLM 模型）",
-                (
-                    "通过自定义提示词追加故事设定、行文风格等额外翻译要求。"
-                    + "\n" + "注意：前缀、后缀部分固定不可修改，只有 **译文语言设置为非中文时** 才会使用本页中的自定义提示词。"
-                ),
+                Localizer.get().custom_prompt_en_page_head_title,
+                Localizer.get().custom_prompt_en_page_head_content,
                 widget_init,
                 widget_callback,
             )
@@ -103,8 +101,8 @@ class CustomPromptENPage(QWidget, Base):
         self.add_command_bar_action_02(self.command_bar_card, config, window)
 
     # 保存
-    def add_command_bar_action_01(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def callback() -> None:
+    def add_command_bar_action_01(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+        def triggered() -> None:
             # 读取配置文件
             config = self.load_config()
 
@@ -117,16 +115,16 @@ class CustomPromptENPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已保存 ...",
+                "message": Localizer.get().custom_prompt_en_page_save_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SAVE, "保存", parent, triggered = callback),
+            Action(FluentIcon.SAVE, Localizer.get().custom_prompt_en_page_save, parent, triggered = triggered),
         )
 
     # 重置
-    def add_command_bar_action_02(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def callback() -> None:
+    def add_command_bar_action_02(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+        def triggered() -> None:
             message_box = MessageBox("警告", "是否确认重置为默认数据 ... ？", window)
             message_box.yesButton.setText("确认")
             message_box.cancelButton.setText("取消")
@@ -152,9 +150,9 @@ class CustomPromptENPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": "数据已重置 ...",
+                "message": Localizer.get().custom_prompt_en_page_reset_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DELETE, "重置", parent, triggered = callback),
+            Action(FluentIcon.DELETE, Localizer.get().custom_prompt_en_page_reset, parent, triggered = triggered),
         )

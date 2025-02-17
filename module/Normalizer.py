@@ -1,7 +1,7 @@
 import itertools
 import unicodedata
 
-class NormalizeHelper():
+class Normalizer():
 
     # 自定义规则
     CUSTOM_RULE = {}
@@ -84,7 +84,7 @@ class NormalizeHelper():
         text = unicodedata.normalize("NFC", text)
 
         # 应用自定义的规则
-        text = "".join([NormalizeHelper.CUSTOM_RULE.get(char, char) for char in text])
+        text = "".join([Normalizer.CUSTOM_RULE.get(char, char) for char in text])
 
         # 返回结果
         return text

@@ -10,6 +10,7 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 from widget.SliderCard import SliderCard
 
 class ArgsEditPage(MessageBoxBase, Base):
@@ -17,13 +18,13 @@ class ArgsEditPage(MessageBoxBase, Base):
     def __init__(self, id: int, window: FluentWindow) -> None:
         super().__init__(window)
 
-        # 设置框体
-        self.widget.setFixedSize(960, 720)
-        self.yesButton.setText("关闭")
-        self.cancelButton.hide()
-
         # 载入配置文件
         config = self.load_config()
+
+        # 设置框体
+        self.widget.setFixedSize(960, 720)
+        self.yesButton.setText(Localizer.get().close)
+        self.cancelButton.hide()
 
         # 获取平台配置
         self.get_platform_from_config(id, config)
@@ -85,8 +86,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                "top_p",
-                f"请谨慎设置，错误的值可能导致结果异常或者请求报错",
+                Localizer.get().args_edit_page_widget_top_p_title,
+                Localizer.get().args_edit_page_widget_top_p_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -109,8 +110,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                "temperature",
-                f"请谨慎设置，错误的值可能导致结果异常或者请求报错",
+                Localizer.get().args_edit_page_widget_temperature_title,
+                Localizer.get().args_edit_page_widget_temperature_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -133,8 +134,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                "presence_penalty",
-                f"请谨慎设置，错误的值可能导致结果异常或者请求报错",
+                Localizer.get().args_edit_page_widget_presence_penalty_title,
+                Localizer.get().args_edit_page_widget_presence_penalty_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -157,8 +158,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                "frequency_penalty",
-                f"请谨慎设置，错误的值可能导致结果异常或者请求报错",
+                Localizer.get().args_edit_page_widget_frequency_penalty_title,
+                Localizer.get().args_edit_page_widget_frequency_penalty_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -175,7 +176,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
 
-        hyper_link_label = HyperlinkLabel(QUrl(url), "点击查看文档")
+        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().args_edit_page_document_link)
         hyper_link_label.setUnderlineVisible(True)
 
         parent.addSpacing(16)

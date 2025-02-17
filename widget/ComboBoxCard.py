@@ -9,7 +9,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class ComboBoxCard(CardWidget):
 
-    def __init__(self, title: str, description: str, items: list, init = None, current_text_changed = None) -> None:
+    def __init__(self, title: str, description: str, items: list, init = None, current_changed = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -36,11 +36,11 @@ class ComboBoxCard(CardWidget):
         self.combo_box.addItems(items)
         self.hbox.addWidget(self.combo_box)
 
-        if init is not None:
+        if callable(init):
             init(self)
 
-        if current_text_changed is not None:
-            self.combo_box.currentTextChanged.connect(lambda text: current_text_changed(self, text))
+        if callable(current_changed):
+            self.combo_box.currentIndexChanged.connect(lambda _: current_changed(self))
 
     def set_items(self, items: list, values: list) -> None:
         self.combo_box.clear()
