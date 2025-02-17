@@ -2,7 +2,7 @@ import os
 import PyInstaller.__main__
 
 cmd = [
-    "./main.py",
+    "./app.py",
     "--clean", # Clean PyInstaller cache and remove temporary files before building
     # "--onedir", # Create a one-folder bundle containing an executable (default)
     "--onefile", # Create a one-file bundled executable

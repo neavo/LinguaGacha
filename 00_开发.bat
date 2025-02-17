@@ -8,4 +8,4 @@ cd /d %~dp0
 @REM set PATH=%~dp0\resource;%PATH%
 
 @REM 启动应用
-call python.exe main.py
+call python.exe app.py

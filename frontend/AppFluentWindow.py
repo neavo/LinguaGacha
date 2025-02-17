@@ -53,7 +53,6 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 打印日志
         if self.is_debug():
-            self.print("")
             self.warning(Localizer.get().app_fluent_window_debug_msg)
 
         # 设置主题颜色

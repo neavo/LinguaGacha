@@ -30,7 +30,6 @@ if __name__ == "__main__":
     # 设置工作目录
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     sys.path.append(script_dir)
-    # print(f"[[green]INFO[/]] 当前工作目录为 {script_dir}")
 
     # 载入配置文件
     config = load_config()
