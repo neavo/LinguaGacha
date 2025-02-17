@@ -118,6 +118,17 @@ class PlatformPage(QWidget, Base):
             if platform.get("id") == id:
                 del config["platforms"][i]
 
+                # 修正激活接口的ID
+                if config.get("activate_platform", 0) == i:
+                    config["activate_platform"] = 0
+                elif config["activate_platform"] > i:
+                    config["activate_platform"] = config["activate_platform"] - 1
+                break
+
+        # 修正条目id
+        for i, platform in enumerate(sorted(config.get("platforms", []), key = lambda x: x.get("id"))):
+            config["platforms"][i]["id"] = i
+
         # 保存配置文件
         self.save_config(config)
 
