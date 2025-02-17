@@ -91,7 +91,17 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        dst_dict, glossary_auto = ResponseDecoder().decode(response_result)
+        if self.config.get("auto_glossary_enable") == False:
+            dst_dict, response_decode_log = ResponseDecoder().decode_translation(response_result)
+            glossary_auto = {}
+        else:
+            dst_dict, glossary_auto, response_decode_log = ResponseDecoder().decode_mix(response_result)
+
+        # 有效性验证
+        if not (isinstance(dst_dict, dict) and isinstance(dst_dict.get("0"), str)):
+            dst_dict = {}
+        if not (isinstance(glossary_auto, list) and glossary_auto != [] and isinstance(glossary_auto[0], dict)):
+            glossary_auto = []
 
         # 检查回复内容
         check_flag, check_result = self.response_checker.check(src_dict, dst_dict)
@@ -103,8 +113,10 @@ class TranslatorTask(Base):
         # 模型回复日志
         if response_think != "":
             self.extra_log.append("模型思考内容：\n" + response_think)
-        if self.is_debug():
+        if self.is_debug() and response_result != "":
             self.extra_log.append("模型回复内容：\n" + response_result)
+        if self.is_debug() and response_decode_log != "":
+            self.extra_log.append(response_decode_log)
 
         # 检查译文
         if check_flag != None and check_flag not in (ResponseChecker.Error.UNTRANSLATED,):
@@ -221,18 +233,19 @@ class TranslatorTask(Base):
             info = item.get("info", "").strip()
 
             # 有效性校验
-            if src == dst:
-                continue
-            if src == "" or dst == "" or info == "":
-                continue
-            if all(x not in info for x in ("男", "女")):
+            if not any(x in info.lower() for x in ("男", "女", "male", "female")):
                 continue
 
             # 将原文和译文都按标点切分
             srcs = TextHelper.split_by_punctuation(src, split_by_space = False)
             dsts = TextHelper.split_by_punctuation(dst, split_by_space = False)
             if len(srcs) != len(dsts):
+                if src == dst:
+                    continue
+                if src == "" or dst == "":
+                    continue
                 if not any(key in src or src in key for key in keys):
+                    keys.add(src)
                     data.append({
                         "src": src,
                         "dst": dst,
@@ -244,9 +257,10 @@ class TranslatorTask(Base):
                     dst = dst.strip()
                     if src == dst:
                         continue
-                    if src == "" or dst == "" or info == "":
+                    if src == "" or dst == "":
                         continue
                     if not any(key in src or src in key for key in keys):
+                        keys.add(src)
                         data.append({
                             "src": src,
                             "dst": dst,

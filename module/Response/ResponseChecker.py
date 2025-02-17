@@ -8,9 +8,9 @@ class ResponseChecker(Base):
     class Error():
 
         UNKNOWN: str = "未知"
-        FAILED: str = "结果数据结构错误"
-        LINE_COUNT: str = "结果未通过行数检查"
-        UNTRANSLATED: str = "结果中存在没有翻译的条目"
+        FAILED: str = "返回结果错误（数据结构）"
+        LINE_COUNT: str = "返回结果错误（数据行数）"
+        UNTRANSLATED: str = "返回结果中存在没有翻译的内容"
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
         super().__init__()
