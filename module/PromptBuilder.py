@@ -149,3 +149,10 @@ class PromptBuilder(Base):
             return ""
         else:
             return "\n".join(dict_lines)
+
+    # 构造伪回复
+    def build_fake_reply(self) -> str:
+        if self.target_language == Base.Language.ZH:
+            return "我完全理解了翻译任务的要求，我将遵循您的指示进行翻译，以下是对原文的翻译："
+        else:
+            return "I fully understand the requirements of the translation task, and I will follow your instructions to translate. Here is the translation of the original text:"

@@ -338,6 +338,16 @@ class TranslatorTask(Base):
             ),
         })
 
+        # 伪造预回复，DeepSeek R1 不兼容此方法
+        model = self.platform.get("model")
+        if "deepseek" in model.lower() and ("r1" in model.lower() or "reasoner" in model.lower()):
+            pass
+        else:
+            messages.append({
+                "role": "assistant",
+                "content": self.prompt_builder.build_fake_reply(),
+            })
+
         # 当目标为 google 系列接口时，转换 messages 的格式
         if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
             new = []
