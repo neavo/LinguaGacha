@@ -34,7 +34,7 @@ class PlatformTester(Base):
         else:
             os.environ["http_proxy"] = config.get("proxy_url")
             os.environ["https_proxy"] = config.get("proxy_url")
-            self.info(f"网络代理已启动，代理地址：{config.get("proxy_url")}")
+            self.info(f"{Localizer.get().platofrm_tester_proxy}{config.get("proxy_url")}")
 
         # 测试结果
         failure = []
@@ -71,28 +71,33 @@ class PlatformTester(Base):
         requester = TranslatorRequester(config, platform, 0)
         for key in platform.get("api_key"):
             self.print("")
-            self.info(f"正在测试密钥 - {key}")
-            self.info(f"正在发送提示词 - {messages}")
+            self.info(f"{Localizer.get().platofrm_tester_key} - {key}")
+            self.info(f"{Localizer.get().platofrm_tester_messages} - {messages}")
             skip, response_think, response_result, _, _ = requester.request(messages)
 
             # 提取回复内容
             if skip == True:
                 failure.append(key)
-                self.warning(Localizer.get().log_api_test_failure)
+                self.warning(Localizer.get().log_api_test_fail)
             elif response_think == "":
                 success.append(key)
-                self.info(f"模型返回结果 - {response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_result} - {response_result}")
             else:
                 success.append(key)
-                self.info(f"模型思考内容 - {response_think}")
-                self.info(f"模型返回结果 - {response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_think} - {response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_result} - {response_result}")
 
         # 测试结果
+        result_msg = (
+            Localizer.get().platofrm_tester_result.replace("{COUNT}", f"{len(platform.get("api_key"))}")
+                                                  .replace("{SUCCESS}", f"{len(success)}")
+                                                  .replace("{FAILURE}", f"{len(failure)}")
+        )
         self.print("")
-        self.info(f"共测试 {len(platform.get("api_key"))} 个接口，成功 {len(success)} 个，失败 {len(failure)} 个 ...")
+        self.info(result_msg)
 
         # 发送完成事件
         self.emit(Base.Event.PLATFORM_TEST_DONE, {
-            "success": success,
-            "failure": failure,
+            "result": len(failure) == 0,
+            "result_msg": result_msg,
         })

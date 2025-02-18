@@ -94,7 +94,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("name"))
             widget.set_fixed_width(256)
-            widget.set_placeholder_text(Localizer.get().platform_edit_page_widget_name)
+            widget.set_placeholder_text(Localizer.get().platform_edit_page_name)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = self.load_config()
@@ -104,8 +104,8 @@ class PlatformEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().platform_edit_page_widget_name_title,
-                Localizer.get().platform_edit_page_widget_name_content,
+                Localizer.get().platform_edit_page_name_title,
+                Localizer.get().platform_edit_page_name_content,
                 init = init,
                 text_changed = text_changed,
             )
@@ -116,7 +116,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("api_url"))
             widget.set_fixed_width(384)
-            widget.set_placeholder_text(Localizer.get().platform_edit_page_widget_api_url)
+            widget.set_placeholder_text(Localizer.get().platform_edit_page_api_url)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = self.load_config()
@@ -126,8 +126,8 @@ class PlatformEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().platform_edit_page_widget_api_url_title,
-                Localizer.get().platform_edit_page_widget_api_url_content,
+                Localizer.get().platform_edit_page_api_url_title,
+                Localizer.get().platform_edit_page_api_url_content,
                 init = init,
                 text_changed = text_changed,
             )
@@ -149,14 +149,14 @@ class PlatformEditPage(MessageBoxBase, Base):
         def init(widget: GroupCard) -> None:
             plain_text_edit = PlainTextEdit(self)
             plain_text_edit.setPlainText("\n".join(self.platform.get("api_key")))
-            plain_text_edit.setPlaceholderText(Localizer.get().platform_edit_page_widget_api_key)
+            plain_text_edit.setPlaceholderText(Localizer.get().platform_edit_page_api_key)
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))
             widget.addWidget(plain_text_edit)
 
         parent.addWidget(
             GroupCard(
-                Localizer.get().platform_edit_page_widget_api_key_title,
-                Localizer.get().platform_edit_page_widget_api_key_content,
+                Localizer.get().platform_edit_page_api_key_title,
+                Localizer.get().platform_edit_page_api_key_content,
                 init = init,
             )
         )
@@ -174,8 +174,8 @@ class PlatformEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             ComboBoxCard(
-                Localizer.get().platform_edit_page_widget_api_format_title,
-                Localizer.get().platform_edit_page_widget_api_format_content,
+                Localizer.get().platform_edit_page_api_format_title,
+                Localizer.get().platform_edit_page_api_format_content,
                 (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC),
                 init = init,
                 current_changed = current_changed,
@@ -193,13 +193,13 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.update_platform_to_config(self.platform, config)
             self.save_config(config)
             empty_card.set_description(
-                Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model"))
+                Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
 
         def triggered_edit() -> None:
             message_box = LineEditMessageBox(
                 window,
-                Localizer.get().platform_edit_page_widget_model,
+                Localizer.get().platform_edit_page_model,
                 message_box_close = message_box_close
             )
             message_box.exec()
@@ -212,12 +212,12 @@ class PlatformEditPage(MessageBoxBase, Base):
             config = self.load_config()
             self.get_platform_from_config(self.platform.get("id"), config)
             empty_card.set_description(
-                Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model"))
+                Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
 
         empty_card = EmptyCard(
-            Localizer.get().platform_edit_page_widget_model_title,
-            Localizer.get().platform_edit_page_widget_model_content.replace("{MODEL}", self.platform.get("model")),
+            Localizer.get().platform_edit_page_model_title,
+            Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model")),
         )
         parent.addWidget(empty_card)
 
@@ -231,7 +231,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.EDIT,
-                Localizer.get().platform_edit_page_widget_model_edit,
+                Localizer.get().platform_edit_page_model_edit,
                 triggered = lambda _: triggered_edit(),
             )
         )
@@ -239,7 +239,7 @@ class PlatformEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.SYNC,
-                Localizer.get().platform_edit_page_widget_model_sync,
+                Localizer.get().platform_edit_page_model_sync,
                 triggered = lambda _: triggered_sync(),
             )
         )

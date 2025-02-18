@@ -86,8 +86,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                Localizer.get().args_edit_page_widget_top_p_title,
-                Localizer.get().args_edit_page_widget_top_p_content,
+                Localizer.get().args_edit_page_top_p_title,
+                Localizer.get().args_edit_page_top_p_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -110,8 +110,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                Localizer.get().args_edit_page_widget_temperature_title,
-                Localizer.get().args_edit_page_widget_temperature_content,
+                Localizer.get().args_edit_page_temperature_title,
+                Localizer.get().args_edit_page_temperature_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -134,8 +134,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                Localizer.get().args_edit_page_widget_presence_penalty_title,
-                Localizer.get().args_edit_page_widget_presence_penalty_content,
+                Localizer.get().args_edit_page_presence_penalty_title,
+                Localizer.get().args_edit_page_presence_penalty_content,
                 init = init,
                 value_changed = value_changed,
             )
@@ -158,8 +158,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                Localizer.get().args_edit_page_widget_frequency_penalty_title,
-                Localizer.get().args_edit_page_widget_frequency_penalty_content,
+                Localizer.get().args_edit_page_frequency_penalty_title,
+                Localizer.get().args_edit_page_frequency_penalty_content,
                 init = init,
                 value_changed = value_changed,
             )

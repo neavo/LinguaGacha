@@ -43,12 +43,12 @@ class Translator(Base):
 
     # 应用关闭事件
     def app_shut_down(self, event: int, data: dict) -> None:
-        Base.work_status = Base.Status.STOPING
+        Base.WORK_STATUS = Base.Status.STOPING
 
     # 翻译停止事件
     def translation_stop(self, event: int, data: dict) -> None:
         # 设置运行状态为停止中
-        Base.work_status = Base.Status.STOPING
+        Base.WORK_STATUS = Base.Status.STOPING
 
         def target() -> None:
             while True:
@@ -72,7 +72,7 @@ class Translator(Base):
     # 翻译结果手动导出事件
     def translation_manual_export(self, event: int, data: dict) -> None:
         # 确保当前状态为 翻译中
-        if Base.work_status != Base.Status.TRANSLATING:
+        if Base.WORK_STATUS != Base.Status.TRANSLATING:
             return None
 
         # 检查结果并写入文件
@@ -93,7 +93,7 @@ class Translator(Base):
         status = Base.TranslationStatus.UNTRANSLATED
 
         # 只有翻译状态为 无任务 时才执行检查逻辑，其他情况直接返回默认值
-        if Base.work_status == Base.Status.IDLE:
+        if Base.WORK_STATUS == Base.Status.IDLE:
             config = self.load_config()
             self.cache_manager.load_from_file(config.get("output_folder"))
             status = self.cache_manager.get_project_status()
@@ -108,7 +108,7 @@ class Translator(Base):
         self.translating = True
 
         # 设置翻译状态为正在翻译状态
-        Base.work_status = Base.Status.TRANSLATING
+        Base.WORK_STATUS = Base.Status.TRANSLATING
 
         # 初始化
         self.config = self.load_config()
@@ -132,7 +132,7 @@ class Translator(Base):
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
         except Exception as e:
-            self.error("翻译项目数据载入失败 ... ", e)
+            self.error(f"{Localizer.get().log_read_file_fail}", e)
             return None
 
         # 检查数据是否为空
@@ -171,7 +171,7 @@ class Translator(Base):
         # 开始循环
         for current_round in range(self.config.get("max_round") + 1):
             # 检测是否需要停止任务
-            if Base.work_status == Base.Status.STOPING:
+            if Base.WORK_STATUS == Base.Status.STOPING:
                 # 循环次数比实际最大轮次要多一轮，当触发停止翻译的事件时，最后都会从这里退出任务
                 # 执行到这里说明停止翻译的任务已经执行完毕，可以重置内部状态了
                 self.translating = False
@@ -191,7 +191,7 @@ class Translator(Base):
             # 达到最大翻译轮次时
             if item_count_status_untranslated > 0 and current_round == self.config.get("max_round"):
                 self.print("")
-                self.warning(Localizer.get().translator_failure)
+                self.warning(Localizer.get().translator_fail)
                 self.warning(Localizer.get().translator_writing)
                 self.print("")
                 break
@@ -278,9 +278,9 @@ class Translator(Base):
             response_json = None
             with urllib.request.urlopen(f"{re.sub(r"/v1$", "", self.platform.get("api_url"))}/slots") as response:
                 response_json = json.loads(response.read().decode("utf-8"))
-        except Exception:
+        except Exception as e:
             self.print("")
-            self.debug("无法获取 [green]llama.cpp[/] 响应数据 ...")
+            self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
         if isinstance(response_json, list) and len(response_json) > 0:
             self.config["batch_size"] = len(response_json)
         elif self.config.get("batch_size") == 0:
@@ -418,19 +418,19 @@ class Translator(Base):
         [
             os.remove(entry.path)
             for entry in os.scandir(self.config.get("output_folder"))
-            if entry.is_file() and entry.name.startswith("结果检查_")
+            if entry.is_file() and entry.name.startswith(("结果检查_", "result_check_"))
         ]
 
         # 检查结果
         result_check = FileChecker(self.config, self.cache_manager.get_items())
-        result_check.check_code("结果检查_代码异常的条目.json", CodeSaver(self.config))
-        result_check.check_untranslated("结果检查_翻译状态异常的条目.json")
-        result_check.check_glossary("结果检查_术语表未生效的条目.json")
+        result_check.check_code(Localizer.get().path_result_check_code, CodeSaver(self.config))
+        result_check.check_glossary(Localizer.get().path_result_check_glossary)
+        result_check.check_untranslated(Localizer.get().path_result_check_untranslated)
 
         # 写入文件
         FileManager(self.config).write_to_path(self.cache_manager.get_items())
         self.print("")
-        self.info(f"翻译结果已保存至 {self.config.get("output_folder")} 目录 ...")
+        self.info(Localizer.get().translator_write.replace("{PATH}", self.config.get("output_folder")))
         self.print("")
 
     # 翻译任务完成时
@@ -478,4 +478,4 @@ class Translator(Base):
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
         except Exception as e:
-            self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_task_fail}", e)

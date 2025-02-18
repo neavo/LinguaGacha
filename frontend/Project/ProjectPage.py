@@ -66,9 +66,9 @@ class ProjectPage(QWidget, Base):
 
         parent.addWidget(
             ComboBoxCard(
-                Localizer.get().project_page_widget_source_language_title,
-                Localizer.get().project_page_widget_source_language_content,
-                Localizer.get().project_page_widget_source_language_items.split(","),
+                Localizer.get().project_page_source_language_title,
+                Localizer.get().project_page_source_language_content,
+                Localizer.get().project_page_source_language_items.split(","),
                 init = init,
                 current_changed = current_changed,
             )
@@ -89,9 +89,9 @@ class ProjectPage(QWidget, Base):
 
         parent.addWidget(
             ComboBoxCard(
-                Localizer.get().project_page_widget_target_language_title,
-                Localizer.get().project_page_widget_target_language_content,
-                Localizer.get().project_page_widget_target_language_items.split(","),
+                Localizer.get().project_page_target_language_title,
+                Localizer.get().project_page_target_language_content,
+                Localizer.get().project_page_target_language_items.split(","),
                 init = init,
                 current_changed = current_changed,
             )
@@ -100,18 +100,18 @@ class ProjectPage(QWidget, Base):
     # 输入文件夹
     def add_widget_input_folder(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
         def widget_init(widget: PushButtonCard) -> None:
-            widget.set_description(f"{Localizer.get().project_page_widget_input_folder_content} {config.get("input_folder")}")
-            widget.set_text(Localizer.get().project_page_widget_input_folder_btn)
+            widget.set_description(f"{Localizer.get().project_page_input_folder_content} {config.get("input_folder")}")
+            widget.set_text(Localizer.get().project_page_input_folder_btn)
             widget.set_icon(FluentIcon.FOLDER_ADD)
 
         def widget_callback(widget: PushButtonCard) -> None:
             # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_widget_input_folder_btn, "")
+            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_input_folder_btn, "")
             if path == None or path == "":
                 return
 
             # 更新UI
-            widget.set_description(f"{Localizer.get().project_page_widget_input_folder_content} {path.strip()}")
+            widget.set_description(f"{Localizer.get().project_page_input_folder_content} {path.strip()}")
 
             # 更新并保存配置
             config = self.load_config()
@@ -120,7 +120,7 @@ class ProjectPage(QWidget, Base):
 
         parent.addWidget(
             PushButtonCard(
-                Localizer.get().project_page_widget_input_folder_title,
+                Localizer.get().project_page_input_folder_title,
                 "",
                 widget_init,
                 widget_callback,
@@ -130,18 +130,18 @@ class ProjectPage(QWidget, Base):
     # 输出文件夹
     def add_widget_output_folder(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
         def widget_init(widget: PushButtonCard) -> None:
-            widget.set_description(f"{Localizer.get().project_page_widget_output_folder_content} {config.get("output_folder")}")
-            widget.set_text(Localizer.get().project_page_widget_output_folder_btn)
+            widget.set_description(f"{Localizer.get().project_page_output_folder_content} {config.get("output_folder")}")
+            widget.set_text(Localizer.get().project_page_output_folder_btn)
             widget.set_icon(FluentIcon.FOLDER_ADD)
 
         def widget_callback(widget: PushButtonCard) -> None:
             # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_widget_output_folder_btn, "")
+            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_output_folder_btn, "")
             if path == None or path == "":
                 return
 
             # 更新UI
-            widget.set_description(f"{Localizer.get().project_page_widget_output_folder_content} {path.strip()}")
+            widget.set_description(f"{Localizer.get().project_page_output_folder_content} {path.strip()}")
 
             # 更新并保存配置
             config = self.load_config()
@@ -150,7 +150,7 @@ class ProjectPage(QWidget, Base):
 
         parent.addWidget(
             PushButtonCard(
-                Localizer.get().project_page_widget_output_folder_title,
+                Localizer.get().project_page_output_folder_title,
                 "",
                 widget_init,
                 widget_callback,
@@ -170,8 +170,8 @@ class ProjectPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().project_page_widget_traditional_chinese_title,
-                Localizer.get().project_page_widget_traditional_chinese_content,
+                Localizer.get().project_page_traditional_chinese_title,
+                Localizer.get().project_page_traditional_chinese_content,
                 init = init,
                 checked_changed = checked_changed,
             )

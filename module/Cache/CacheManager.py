@@ -7,6 +7,7 @@ import rapidjson as json
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
+from module.Localizer.Localizer import Localizer
 
 class CacheManager(Base):
 
@@ -78,25 +79,19 @@ class CacheManager(Base):
     def load_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/items.json"
         with self.file_lock:
-            if not os.path.isfile(path):
-                self.debug("从文件读取缓存数据失败 ...", Exception(f"{path} 文件不存在"))
-            else:
-                try:
-                    with open(path, "r", encoding = "utf-8-sig") as reader:
-                        self.items = [CacheItem(item) for item in json.load(reader)]
-                except Exception as e:
-                    self.debug("从文件读取缓存数据失败 ...", e)
+            try:
+                with open(path, "r", encoding = "utf-8-sig") as reader:
+                    self.items = [CacheItem(item) for item in json.load(reader)]
+            except Exception as e:
+                self.debug(Localizer.get().log_load_cache_file_fail, e)
 
         path = f"{output_path}/cache/project.json"
         with self.file_lock:
-            if not os.path.isfile(path):
-                self.debug("从文件读取缓存数据失败 ...", Exception(f"{path} 文件不存在"))
-            else:
-                try:
-                    with open(path, "r", encoding = "utf-8-sig") as reader:
-                        self.project = CacheProject(json.load(reader))
-                except Exception as e:
-                    self.debug("从文件读取缓存数据失败 ...", e)
+            try:
+                with open(path, "r", encoding = "utf-8-sig") as reader:
+                    self.project = CacheProject(json.load(reader))
+            except Exception as e:
+                self.debug(Localizer.get().log_load_cache_file_fail, e)
 
     # 设置缓存数据
     def set_items(self, items: list[CacheItem]) -> None:

@@ -17,6 +17,7 @@ from openpyxl.utils import escape
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
+from module.Localizer.Localizer import Localizer
 from module.TextHelper import TextHelper
 
 class FileManager(Base):
@@ -62,7 +63,7 @@ class FileManager(Base):
             items.extend(self.read_from_path_kvjson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
             items.extend(self.read_from_path_messagejson(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".json")]))
         except Exception as e:
-            self.error(f"文件读取失败 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_read_file_fail}", e)
 
         return project, items
 
@@ -78,7 +79,7 @@ class FileManager(Base):
             self.write_to_path_kvjson(self.input_path, self.output_path, items)
             self.write_to_path_messagejson(self.input_path, self.output_path, items)
         except Exception as e:
-            self.error(f"文件写入失败 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_write_file_fail}", e)
 
     # TXT
     def read_from_path_txt(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
@@ -124,7 +125,7 @@ class FileManager(Base):
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
-            abs_path = f"{output_path}/双语对照/{rel_path}"
+            abs_path = f"{output_path}/{Localizer.get().path_bilingual}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([

@@ -89,7 +89,7 @@ class TranslationPage(QWidget, Base):
 
     # 翻译更新事件
     def translation_update(self, event: int, data: dict) -> None:
-        if Base.work_status in (Base.Status.STOPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS in (Base.Status.STOPING, Base.Status.TRANSLATING):
             self.update_time(event, data)
             self.update_line(event, data)
             self.update_token(event, data)
@@ -105,7 +105,7 @@ class TranslationPage(QWidget, Base):
         self.action_export.setEnabled(False)
 
         # 设置翻译状态为无任务
-        Base.work_status = Base.Status.IDLE
+        Base.WORK_STATUS = Base.Status.IDLE
 
         # 更新继续翻译按钮状态
         self.emit(Base.Event.TRANSLATION_PROJECT_STATUS, {})
@@ -213,11 +213,11 @@ class TranslationPage(QWidget, Base):
 
     # 更新进度环
     def update_status(self, event: int, data: dict) -> None:
-        if Base.work_status == Base.Status.STOPING:
+        if Base.WORK_STATUS == Base.Status.STOPING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
             self.ring.setFormat(f"{Localizer.get().translation_page_status_stoping}\n{percent * 100:.2f}%")
-        elif Base.work_status == Base.Status.TRANSLATING:
+        elif Base.WORK_STATUS == Base.Status.TRANSLATING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
             self.ring.setFormat(f"{Localizer.get().translation_page_status_translating}\n{percent * 100:.2f}%")

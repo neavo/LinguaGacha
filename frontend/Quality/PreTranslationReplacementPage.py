@@ -21,7 +21,7 @@ from module.TableHelper import TableHelper
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class ReplaceBeforeTranslationPage(QWidget, Base):
+class PreTranslationReplacementPage(QWidget, Base):
 
     # 表格每列对应的数据字段
     KEYS = (
@@ -35,8 +35,8 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
 
         # 默认配置
         self.default = {
-            "replace_before_translation_enable": True,
-            "replace_before_translation_data": [
+            "pre_translation_replacement_enable": True,
+            "pre_translation_replacement_data": [
                 {
                     "src": "\\n[1]",
                     "dst": "示例姓名"
@@ -65,17 +65,17 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("replace_before_translation_enable"))
+            widget.set_checked(config.get("pre_translation_replacement_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
-            config["replace_before_translation_enable"] = checked
+            config["pre_translation_replacement_enable"] = checked
             self.save_config(config)
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().replace_before_translation_page_head_title,
-                Localizer.get().replace_before_translation_page_head_content,
+                Localizer.get().pre_translation_replacement_page_head_title,
+                Localizer.get().pre_translation_replacement_page_head_content,
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -94,7 +94,7 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
         self.table.setBorderRadius(4)
         self.table.setBorderVisible(True)
         self.table.setWordWrap(False)
-        self.table.setColumnCount(len(ReplaceBeforeTranslationPage.KEYS))
+        self.table.setColumnCount(len(PreTranslationReplacementPage.KEYS))
         self.table.resizeRowsToContents() # 设置行高度自适应内容
         self.table.resizeColumnsToContents() # 设置列宽度自适应内容
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) # 撑满宽度
@@ -104,13 +104,13 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
-                Localizer.get().replace_before_translation_page_table_row_01,
-                Localizer.get().replace_before_translation_page_table_row_02,
+                Localizer.get().pre_translation_replacement_page_table_row_01,
+                Localizer.get().pre_translation_replacement_page_table_row_02,
             )
         )
 
         # 向表格更新数据
-        TableHelper.update_to_table(self.table, config.get("replace_before_translation_data"), ReplaceBeforeTranslationPage.KEYS)
+        TableHelper.update_to_table(self.table, config.get("pre_translation_replacement_data"), PreTranslationReplacementPage.KEYS)
 
     # 底部
     def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
@@ -134,22 +134,22 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
 
         def triggered() -> None:
             # 选择文件
-            path, _ = QFileDialog.getOpenFileName(None, "选择文件", "", "json 文件 (*.json);;xlsx 文件 (*.xlsx)")
+            path, _ = QFileDialog.getOpenFileName(None, Localizer.get().select_file, "", Localizer.get().select_file_type)
             if not isinstance(path, str) or path == "":
                 return
 
             # 从文件加载数据
-            data = TableHelper.load_from_file(path, ReplaceBeforeTranslationPage.KEYS)
+            data = TableHelper.load_from_file(path, PreTranslationReplacementPage.KEYS)
 
             # 读取配置文件
             config = self.load_config()
-            config["replace_before_translation_data"].extend(data)
+            config["pre_translation_replacement_data"].extend(data)
 
             # 向表格更新数据
-            TableHelper.update_to_table(self.table, config["replace_before_translation_data"], ReplaceBeforeTranslationPage.KEYS)
+            TableHelper.update_to_table(self.table, config["pre_translation_replacement_data"], PreTranslationReplacementPage.KEYS)
 
             # 从表格加载数据（去重后）
-            config["replace_before_translation_data"] = TableHelper.load_from_table(self.table, ReplaceBeforeTranslationPage.KEYS)
+            config["pre_translation_replacement_data"] = TableHelper.load_from_table(self.table, PreTranslationReplacementPage.KEYS)
 
             # 保存配置文件
             config = self.save_config(config)
@@ -157,11 +157,11 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().replace_before_translation_page_import_toast,
+                "message": Localizer.get().pre_translation_replacement_page_import_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DOWNLOAD, Localizer.get().replace_before_translation_page_import, parent, triggered = triggered),
+            Action(FluentIcon.DOWNLOAD, Localizer.get().pre_translation_replacement_page_import, parent, triggered = triggered),
         )
 
     # 导出
@@ -169,20 +169,20 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
 
         def triggered() -> None:
             # 从表格加载数据
-            data = TableHelper.load_from_table(self.table, ReplaceBeforeTranslationPage.KEYS)
+            data = TableHelper.load_from_table(self.table, PreTranslationReplacementPage.KEYS)
 
             # 导出文件
-            with open(Localizer.get().replace_before_translation_page_export_path, "w", encoding = "utf-8") as writer:
+            with open(Localizer.get().path_pre_translation_replacement_export, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
 
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().replace_before_translation_page_export_toast,
+                "message": Localizer.get().pre_translation_replacement_page_export_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().replace_before_translation_page_export, parent, triggered = triggered),
+            Action(FluentIcon.SHARE, Localizer.get().pre_translation_replacement_page_export, parent, triggered = triggered),
         )
 
     # 添加新行
@@ -195,11 +195,11 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().replace_before_translation_page_add_toast,
+                "message": Localizer.get().pre_translation_replacement_page_add_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.ADD_TO, Localizer.get().replace_before_translation_page_add, parent, triggered = triggered),
+            Action(FluentIcon.ADD_TO, Localizer.get().pre_translation_replacement_page_add, parent, triggered = triggered),
         )
 
     # 保存
@@ -210,16 +210,16 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             config = self.load_config()
 
             # 从表格加载数据
-            config["replace_before_translation_data"] = TableHelper.load_from_table(self.table, ReplaceBeforeTranslationPage.KEYS)
+            config["pre_translation_replacement_data"] = TableHelper.load_from_table(self.table, PreTranslationReplacementPage.KEYS)
 
             # 清空表格
             self.table.clearContents()
 
             # 向表格更新数据
-            TableHelper.update_to_table(self.table, config["replace_before_translation_data"], ReplaceBeforeTranslationPage.KEYS)
+            TableHelper.update_to_table(self.table, config["pre_translation_replacement_data"], PreTranslationReplacementPage.KEYS)
 
             # 从表格加载数据（去重后）
-            config["replace_before_translation_data"] = TableHelper.load_from_table(self.table, ReplaceBeforeTranslationPage.KEYS)
+            config["pre_translation_replacement_data"] = TableHelper.load_from_table(self.table, PreTranslationReplacementPage.KEYS)
 
             # 保存配置文件
             config = self.save_config(config)
@@ -227,18 +227,18 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().replace_before_translation_page_save_toast,
+                "message": Localizer.get().pre_translation_replacement_page_save_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().replace_before_translation_page_save, parent, triggered = triggered),
+            Action(FluentIcon.SAVE, Localizer.get().pre_translation_replacement_page_save, parent, triggered = triggered),
         )
 
     # 重置
     def add_command_bar_action_reset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().replace_before_translation_page_reset_alert, window)
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().pre_translation_replacement_page_reset_alert, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -252,22 +252,22 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
             config = self.load_config()
 
             # 加载默认设置
-            config["replace_before_translation_data"] = self.default.get("replace_before_translation_data")
+            config["pre_translation_replacement_data"] = self.default.get("pre_translation_replacement_data")
 
             # 保存配置文件
             config = self.save_config(config)
 
             # 向表格更新数据
-            TableHelper.update_to_table(self.table, config.get("replace_before_translation_data"), ReplaceBeforeTranslationPage.KEYS)
+            TableHelper.update_to_table(self.table, config.get("pre_translation_replacement_data"), PreTranslationReplacementPage.KEYS)
 
             # 弹出提示
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().replace_before_translation_page_reset_toast,
+                "message": Localizer.get().pre_translation_replacement_page_reset_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DELETE, Localizer.get().replace_before_translation_page_reset, parent, triggered = triggered),
+            Action(FluentIcon.DELETE, Localizer.get().pre_translation_replacement_page_reset, parent, triggered = triggered),
         )
 
     # WiKi
@@ -276,6 +276,6 @@ class ReplaceBeforeTranslationPage(QWidget, Base):
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
 
-        push_button = TransparentPushButton(FluentIcon.COMPLETED, Localizer.get().replace_before_translation_page_wiki)
+        push_button = TransparentPushButton(FluentIcon.COMPLETED, Localizer.get().pre_translation_replacement_page_wiki)
         push_button.clicked.connect(connect)
         parent.add_widget(push_button)

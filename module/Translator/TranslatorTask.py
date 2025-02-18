@@ -6,6 +6,7 @@ import opencc
 import rapidjson as json
 from rich import box
 from rich.table import Table
+from rich.console import Console
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
@@ -24,6 +25,7 @@ class TranslatorTask(Base):
 
     # 类变量
     OPENCC = opencc.OpenCC("s2t")
+    CONSOLE = Console(highlight = True, tab_size = 4)
 
     # 类线程锁
     LOCK = threading.Lock()
@@ -62,21 +64,21 @@ class TranslatorTask(Base):
     # 请求
     def request(self, src_dict: dict[str, str], current_round: int) -> dict:
         # 任务开始的时间
-        task_start_time = time.time()
+        start_time = time.time()
 
         # 检测是否需要停止任务
-        if Base.work_status == Base.Status.STOPING:
+        if Base.WORK_STATUS == Base.Status.STOPING:
             return {}
 
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
-        if time.time() - task_start_time >= self.config.get("request_timeout"):
+        if time.time() - start_time >= self.config.get("request_timeout"):
             return {}
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, self.extra_log = self.generate_prompt(self.src_dict)
+            self.messages, extra_console_log = self.generate_prompt(self.src_dict)
         else:
-            self.messages, self.extra_log = self.generate_prompt_sakura(self.src_dict)
+            self.messages, extra_console_log = self.generate_prompt_sakura(self.src_dict)
 
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
@@ -112,31 +114,20 @@ class TranslatorTask(Base):
             self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         # 模型回复日志
+        # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
+        extra_file_log = extra_console_log.copy()
         if response_think != "":
-            self.extra_log.append(Localizer.get().translator_task_response_think + response_think)
-        if self.is_debug() and response_result != "":
-            self.extra_log.append(Localizer.get().translator_task_response_result + response_result)
-        if self.is_debug() and response_decode_log != "":
-            self.extra_log.append(response_decode_log)
+            extra_file_log.append(Localizer.get().translator_task_response_think + response_think)
+            extra_console_log.append(Localizer.get().translator_task_response_think + response_think)
+        if response_result != "":
+            extra_file_log.append(Localizer.get().translator_task_response_result + response_result)
+            extra_console_log.append(Localizer.get().translator_task_response_result + response_result) if self.is_debug() else None
+        if response_decode_log != "":
+            extra_file_log.append(response_decode_log)
+            extra_console_log.append(response_decode_log) if self.is_debug() else None
 
         # 检查译文
-        if check_flag != None and check_flag not in (ResponseChecker.Error.UNTRANSLATED,):
-            # 打印任务结果
-            self.print(
-                self.generate_log_table(
-                    *self.generate_log_rows(
-                        "red",
-                        f"{Localizer.get().translator_task_failure} - {check_flag}",
-                        task_start_time,
-                        prompt_tokens,
-                        completion_tokens,
-                        [line.strip() for line in src_dict.values()],
-                        [line.strip() for line in dst_dict.values()],
-                        self.extra_log,
-                    )
-                )
-            )
-        else:
+        if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:
             # 标点修复
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
 
@@ -163,52 +154,32 @@ class TranslatorTask(Base):
                     item.set_dst(dst)
                     item.set_status(Base.TranslationStatus.TRANSLATED)
 
-            # 打印任务结果
-            if updated_count == len(self.items):
-                self.print(
-                    self.generate_log_table(
-                        *self.generate_log_rows(
-                            "green",
-                            "",
-                            task_start_time,
-                            prompt_tokens,
-                            completion_tokens,
-                            [line.strip() for line in src_dict.values()],
-                            [line.strip() for line in dst_dict.values()],
-                            self.extra_log,
-                        )
-                    )
-                )
-            else:
-                self.print(
-                    self.generate_log_table(
-                        *self.generate_log_rows(
-                            "yellow",
-                            f"{Localizer.get().translator_task_failure_few} - {check_flag}",
-                            task_start_time,
-                            prompt_tokens,
-                            completion_tokens,
-                            [line.strip() for line in src_dict.values()],
-                            [line.strip() for line in dst_dict.values()],
-                            self.extra_log,
-                        )
-                    )
-                )
+        # 打印任务结果
+        self.print_log_table(
+            check_flag,
+            start_time,
+            prompt_tokens,
+            completion_tokens,
+            [line.strip() for line in src_dict.values()],
+            [line.strip() for line in dst_dict.values()],
+            extra_file_log,
+            extra_console_log
+        )
 
         # 返回任务结果
-        if check_flag != None and check_flag not in (ResponseChecker.Error.UNTRANSLATED,):
-            return {
-                "check_flag": check_flag,
-                "row_count": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-            }
-        else:
+        if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:
             return {
                 "check_flag": None,
                 "row_count": updated_count,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
+            }
+        else:
+            return {
+                "check_flag": check_flag,
+                "row_count": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
             }
 
     # 正规化
@@ -272,10 +243,10 @@ class TranslatorTask(Base):
 
     # 译前替换
     def replace_before_translation(self, data: dict[str, str]) -> dict:
-        if self.config.get("replace_before_translation_enable") == False:
+        if self.config.get("pre_translation_replacement_enable") == False:
             return data
 
-        replace_dict: list[dict] = self.config.get("replace_before_translation_data")
+        replace_dict: list[dict] = self.config.get("pre_translation_replacement_data")
         for k in data:
             for v in replace_dict:
                 if v.get("src", "") in data[k]:
@@ -285,10 +256,10 @@ class TranslatorTask(Base):
 
     # 译后替换
     def replace_after_translation(self, data: dict[str, str]) -> dict:
-        if self.config.get("replace_after_translation_enable") == False:
+        if self.config.get("post_translation_replacement_enable") == False:
             return data
 
-        replace_dict: list[dict] = self.config.get("replace_after_translation_data")
+        replace_dict: list[dict] = self.config.get("post_translation_replacement_data")
         for k in data:
             for v in replace_dict:
                 if v.get("src", "") in data[k]:
@@ -394,19 +365,48 @@ class TranslatorTask(Base):
 
         return messages, extra_log
 
-    # 生成日志行
-    def generate_log_rows(self, style: str, msg: str, start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], extra: list[str]) -> tuple[list[str], str]:
-        rows = []
-
-        if msg != "":
-            rows.append(msg)
+    # 打印日志表格
+    def print_log_table(self, flag: str, start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], extra_file: list[str], extra_console: list[str]) -> None:
+        if flag == ResponseChecker.Error.UNKNOWN:
+            style = "red"
+            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_unknown}"
+            log_func = self.error
+        elif flag == ResponseChecker.Error.FAIL_DATA:
+            style = "red"
+            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_fail_data}"
+            log_func = self.warning
+        elif flag == ResponseChecker.Error.FAIL_LINE:
+            style = "red"
+            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_fail_line}"
+            log_func = self.warning
+        elif flag == ResponseChecker.Error.UNTRANSLATED:
+            style = "yellow"
+            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_untranslated}"
+            log_func = self.warning
         else:
-            rows.append(
+            style = "green"
+            message = (
                 Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
                                                        .replace("{LINES}", f"{len(srcs)}")
                                                        .replace("{PT}", f"{pt}")
                                                        .replace("{CT}", f"{ct}")
             )
+            log_func = self.info
+
+        # 生成行数据
+        file_rows = self.generate_log_rows(message, srcs, dsts, extra_file, highlight = False)
+        console_rows = self.generate_log_rows(message, srcs, dsts, extra_console, highlight = True)
+
+        # 打印
+        log_func("\n" + "\n\n".join(file_rows) + "\n", console = False)
+        TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
+
+    # 生成日志行
+    def generate_log_rows(self, message: str, srcs: list[str], dsts: list[str], extra: list[str], highlight: bool) -> tuple[list[str], str]:
+        rows = []
+
+        if message != "":
+            rows.append(message)
 
         # 添加额外日志
         for v in extra:
@@ -415,10 +415,13 @@ class TranslatorTask(Base):
         # 原文译文对比
         pair = ""
         for src, dst in itertools.zip_longest(srcs, dsts, fillvalue = ""):
-            pair = pair + "\n" + f"{src} [bright_blue]-->[/] {dst}"
+            if highlight == False:
+                pair = pair + "\n" + f"{src} --> {dst}"
+            else:
+                pair = pair + "\n" + f"{src} [bright_blue]-->[/] {dst}"
         rows.append(pair.strip())
 
-        return rows, style
+        return rows
 
     # 生成日志表格
     def generate_log_table(self, rows: list, style: str) -> Table:

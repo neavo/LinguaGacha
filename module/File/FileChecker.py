@@ -36,13 +36,13 @@ class FileChecker(Base):
 
         # 获取译前替换后的原文
         self.rpls: list[str] = []
-        replace_before_translation_data: list[dict] = self.config.get("replace_before_translation_data")
-        replace_before_translation_enable: bool = self.config.get("replace_before_translation_enable")
-        if replace_before_translation_enable == False or len(replace_before_translation_data) == 0:
+        pre_translation_replacement_data: list[dict] = self.config.get("pre_translation_replacement_data")
+        pre_translation_replacement_enable: bool = self.config.get("pre_translation_replacement_enable")
+        if pre_translation_replacement_enable == False or len(pre_translation_replacement_data) == 0:
             self.rpls = self.srcs
         else:
             for src in self.srcs:
-                for v in replace_before_translation_data:
+                for v in pre_translation_replacement_data:
                     if v.get("src") in src:
                         src = src.replace(v.get("src"), v.get("dst"))
                 self.rpls.append(src)
@@ -60,7 +60,11 @@ class FileChecker(Base):
             self.info(Localizer.get().file_checker_code)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成代码检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
+            self.info(
+                Localizer.get().file_checker_code_full.replace("{COUNT}", f"{count}")
+                                                      .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
+                                                      .replace("{TARGET}", f"{target}")
+            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
@@ -87,7 +91,11 @@ class FileChecker(Base):
             self.info(Localizer.get().file_checker_glossary)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成术语表检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
+            self.info(
+                Localizer.get().file_checker_glossary_full.replace("{COUNT}", f"{count}")
+                                                          .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
+                                                          .replace("{TARGET}", f"{target}")
+            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
@@ -95,7 +103,7 @@ class FileChecker(Base):
     def check_untranslated(self, path: str) -> None:
         count = 0
         result: dict[str, str] = {
-            "____说明____" : "本文件内列出的是 **可能** 存在漏翻情况的条目，实际是否漏翻请结合上下文语境判断！",
+            Localizer.get().file_checker_translation_alert_key: Localizer.get().file_checker_translation_alert_value,
         }
         for src, dst, rpl, file_path in zip(self.srcs, self.dsts, self.rpls, self.file_paths):
             src = src.strip()
@@ -111,6 +119,10 @@ class FileChecker(Base):
             self.info(Localizer.get().file_checker_translation)
         else:
             target = os.path.join(self.config.get("output_folder"), path).replace("\\", "/")
-            self.info(f"已完成翻译检查，发现 {count} 个异常条目，占比为 {(count / len(self.rpls) * 100):.2f} %，结果已写入 {target} ...")
+            self.info(
+                Localizer.get().file_checker_translation_full.replace("{COUNT}", f"{count}")
+                                                             .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
+                                                             .replace("{TARGET}", f"{target}")
+            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))

@@ -114,9 +114,14 @@ class PromptBuilder(Base):
         # 返回结果
         if dict_lines == []:
             return ""
-        else:
+        elif self.target_language == Base.Language.ZH:
             return (
                 "术语表："
+                + "\n" + "\n".join(dict_lines)
+            )
+        else:
+            return (
+                "Glossary:"
                 + "\n" + "\n".join(dict_lines)
             )
 

@@ -50,9 +50,9 @@ class PlatformPage(QWidget, Base):
     # 执行接口测试
     def platform_test_start(self, id: int, widget: FlowCard, window: FluentWindow) -> None:
         # 载入配置文件
-        if Base.work_status == Base.Status.IDLE:
+        if Base.WORK_STATUS == Base.Status.IDLE:
             # 更新运行状态
-            Base.work_status = Base.Status.API_TEST
+            Base.WORK_STATUS = Base.Status.API_TEST
 
             # 触发事件
             self.emit(Base.Event.PLATFORM_TEST_START, {
@@ -67,22 +67,12 @@ class PlatformPage(QWidget, Base):
     # 接口测试完成
     def platform_test_done(self, event: int, data: dict) -> None:
         # 更新运行状态
-        Base.work_status = Base.Status.IDLE
+        Base.WORK_STATUS = Base.Status.IDLE
 
-        if data.get("failure", []) != []:
-            self.emit(Base.Event.TOAST_SHOW, {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().platform_page_api_test_result
-                                         .replace("{SUCCESS}", str(len(data.get("success", []))))
-                                         .replace("{FAILURE}", str(len(data.get("failure", [])))),
-            })
-        else:
-            self.emit(Base.Event.TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().platform_page_api_test_result
-                                         .replace("{SUCCESS}", str(len(data.get("success", []))))
-                                         .replace("{FAILURE}", str(len(data.get("failure", [])))),
-            })
+        self.emit(Base.Event.TOAST_SHOW, {
+            "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
+            "message": data.get("result_msg", "")
+        })
 
     # 加载默认平台数据
     def load_default_platforms(self) -> list[dict]:
@@ -94,7 +84,7 @@ class PlatformPage(QWidget, Base):
         return sorted(platforms, key = lambda x: x.get("id"))
 
     # 添加接口
-    def add_platform(self, item: dict, widget: FlowCard, window: FluentWindow):
+    def add_platform(self, item: dict, widget: FlowCard, window: FluentWindow) -> None:
         # 载入配置文件
         config = self.load_config()
 

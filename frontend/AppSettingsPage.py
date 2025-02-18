@@ -1,23 +1,14 @@
 import os
-import sys
-import json
-import subprocess
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QFileDialog
 
-from qfluentwidgets import PushButton
-from qfluentwidgets import FluentIcon
-from qfluentwidgets import MessageBox
 from qfluentwidgets import SwitchButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
-from widget.EmptyCard import EmptyCard
 from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
@@ -33,7 +24,7 @@ class AppSettingsPage(QWidget, Base):
             "proxy_url": "",
             "proxy_enable": False,
             "font_hinting": True,
-            "scale_factor": "自动",
+            "scale_factor": Localizer.get().auto,
         }
 
         # 载入并保存默认配置
@@ -133,8 +124,9 @@ class AppSettingsPage(QWidget, Base):
             else:
                 os.remove("./debug.txt") if os.path.isfile("./debug.txt") else None
 
-            # 重置调试模式检查状态
+            # 重置调试模式状态
             self.reset_debug()
+            self.is_debug()
 
         parent.addWidget(
             SwitchButtonCard(
@@ -159,7 +151,7 @@ class AppSettingsPage(QWidget, Base):
             ComboBoxCard(
                 Localizer.get().app_settings_page_scale_factor_title,
                 Localizer.get().app_settings_page_scale_factor_content,
-                ["自动", "50%", "75%", "150%", "200%"],
+                (Localizer.get().auto, "50%", "75%", "150%", "200%"),
                 init = init,
                 current_changed = current_changed,
             )

@@ -1,16 +1,16 @@
-import math
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
+from module.Localizer.Localizer import Localizer
 from module.TextHelper import TextHelper
 
 class ResponseChecker(Base):
 
     class Error():
 
-        UNKNOWN: str = "未知"
-        FAILED: str = "返回结果错误（数据结构）"
-        LINE_COUNT: str = "返回结果错误（数据行数）"
-        UNTRANSLATED: str = "返回结果中存在没有翻译的内容"
+        UNKNOWN: int = 100
+        FAIL_DATA: int = 200
+        FAIL_LINE: int = 300
+        UNTRANSLATED: int = 400
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
         super().__init__()
@@ -23,7 +23,7 @@ class ResponseChecker(Base):
     def check(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> str:
         # 数据解析失败
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
-            return ResponseChecker.Error.FAILED, None
+            return ResponseChecker.Error.FAIL_DATA, None
 
         # 当翻译任务为多条目任务，或者翻译任务为单条目任务，且此条目的重试次数小于等于 3 次时，才进行以下判断
         if len(self.items) > 1 or (len(self.items) == 1 and self.items[0].get_retry_count() <= 3):
@@ -32,7 +32,7 @@ class ResponseChecker(Base):
                 len(src_dict) == len(dst_dict) # 原文与译文行数一致
                 and all(str(key) in dst_dict for key in range(len(dst_dict))) # 译文的 Key 的值为从 0 开始的连续数值字符
             ):
-                return ResponseChecker.Error.LINE_COUNT, None
+                return ResponseChecker.Error.FAIL_LINE, None
 
             # 漏翻检查
             error, data = self.chech_untranslated(src_dict, dst_dict)

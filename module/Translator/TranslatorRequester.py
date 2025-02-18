@@ -6,6 +6,7 @@ import google.generativeai as genai
 from openai import OpenAI
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 
 # 接口请求器
 class TranslatorRequester(Base):
@@ -110,7 +111,7 @@ class TranslatorRequester(Base):
             # 提取回复的文本内容
             response_result = response.choices[0].message.content
         except Exception as e:
-            self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
         # 获取输入消耗
@@ -166,7 +167,7 @@ class TranslatorRequester(Base):
                 response_think = ""
                 response_result = message.content.strip()
         except Exception as e:
-            self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
         # 获取输入消耗
@@ -220,7 +221,7 @@ class TranslatorRequester(Base):
             )
             response_result = response.text
         except Exception as e:
-            self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
         # 获取指令消耗
@@ -257,7 +258,7 @@ class TranslatorRequester(Base):
             # 提取回复的文本内容
             response_result = response.content[0].text
         except Exception as e:
-            self.error(f"翻译任务错误 ... {e}", e if self.is_debug() else None)
+            self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
         # 获取输入消耗

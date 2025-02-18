@@ -125,9 +125,9 @@ class CustomPromptENPage(QWidget, Base):
     # 重置
     def add_command_bar_action_02(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
-            message_box = MessageBox("警告", "是否确认重置为默认数据 ... ？", window)
-            message_box.yesButton.setText("确认")
-            message_box.cancelButton.setText("取消")
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().custom_prompt_en_page_reset_alert, window)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
 
             if not message_box.exec():
                 return

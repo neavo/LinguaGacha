@@ -107,10 +107,10 @@ class ModelListPage(MessageBoxBase, Base):
                 )
                 result = [model.id for model in client.models.list()]
         except Exception as e:
-            self.debug(Localizer.get().model_list_page_widget_failure, e)
+            self.debug(Localizer.get().model_list_page_fail, e)
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
-                "message": Localizer.get().model_list_page_widget_failure,
+                "message": Localizer.get().model_list_page_fail,
             })
 
         return result
@@ -135,8 +135,8 @@ class ModelListPage(MessageBoxBase, Base):
     # 模型名称
     def add_widget(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         self.flow_card = FlowCard(
-            Localizer.get().model_list_page_widget_title,
-            Localizer.get().model_list_page_widget_content,
+            Localizer.get().model_list_page_title,
+            Localizer.get().model_list_page_content,
             init = lambda widget: self.update_sub_widgets(widget),
         )
         parent.addWidget(self.flow_card)

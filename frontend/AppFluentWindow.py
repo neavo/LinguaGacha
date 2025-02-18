@@ -29,8 +29,9 @@ from frontend.Setting.AdvanceFeaturePage import AdvanceFeaturePage
 from frontend.Quality.GlossaryPage import GlossaryPage
 from frontend.Quality.CustomPromptZHPage import CustomPromptZHPage
 from frontend.Quality.CustomPromptENPage import CustomPromptENPage
-from frontend.Quality.ReplaceAfterTranslationPage import ReplaceAfterTranslationPage
-from frontend.Quality.ReplaceBeforeTranslationPage import ReplaceBeforeTranslationPage
+from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplacementPage
+from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
+
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -52,8 +53,7 @@ class AppFluentWindow(FluentWindow, Base):
         config = self.save_config(self.load_config_from_default())
 
         # 打印日志
-        if self.is_debug():
-            self.warning(Localizer.get().app_fluent_window_debug_msg)
+        self.debug(Localizer.get().log_debug_mode) if self.is_debug() else None
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.THEME_COLOR)
@@ -89,7 +89,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
-        message_box = MessageBox(Localizer.get().warning, Localizer.get().app_fluent_window_close_message_box_content, self)
+        message_box = MessageBox(Localizer.get().warning, Localizer.get().app_close_message_box, self)
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -97,7 +97,7 @@ class AppFluentWindow(FluentWindow, Base):
             event.ignore()
         else:
             self.emit(Base.Event.APP_SHUT_DOWN, {})
-            self.info(Localizer.get().app_fluent_window_close_message_box_msg)
+            self.info(Localizer.get().app_close_message_box_msg)
             event.accept()
 
     # 响应显示 Toast 事件
@@ -141,7 +141,7 @@ class AppFluentWindow(FluentWindow, Base):
     def swicth_language(self) -> None:
         message_box = MessageBox(
             Localizer.get().alert,
-            Localizer.get().app_fluent_window_language_message_box_content,
+            Localizer.get().switch_language,
             self
         )
         message_box.yesButton.setText("中文")
@@ -158,13 +158,12 @@ class AppFluentWindow(FluentWindow, Base):
 
         self.emit(Base.Event.TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().app_fluent_window_language_message_box_msg,
+            "message": Localizer.get().switch_language_toast,
         })
 
     # 打开主页
     def open_project_page(self) -> None:
-        url = QUrl("https://github.com/neavo/LinguaGacha")
-        QDesktopServices.openUrl(url)
+        QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 开始添加页面
     def add_pages(self) -> None:
@@ -182,7 +181,7 @@ class AppFluentWindow(FluentWindow, Base):
             routeKey = "theme_navigation_button",
             widget = NavigationPushButton(
                 FluentIcon.CONSTRACT,
-                Localizer.get().app_fluent_window_theme_btn,
+                Localizer.get().app_theme_btn,
                 False
             ),
             onClick = self.switch_theme,
@@ -194,7 +193,7 @@ class AppFluentWindow(FluentWindow, Base):
             routeKey = "language_navigation_button",
             widget = NavigationPushButton(
                 FluentIcon.LANGUAGE,
-                Localizer.get().app_fluent_window_language_btn,
+                Localizer.get().app_language_btn,
                 False
             ),
             onClick = self.swicth_language,
@@ -202,8 +201,12 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 应用设置按钮
-        self.app_settings_page = AppSettingsPage("app_settings_page", self)
-        self.addSubInterface(self.app_settings_page, FluentIcon.SETTING, Localizer.get().app_fluent_window_app_settings_page, NavigationItemPosition.BOTTOM)
+        self.addSubInterface(
+            AppSettingsPage("app_settings_page", self),
+            FluentIcon.SETTING,
+            Localizer.get().app_settings_page,
+            NavigationItemPosition.BOTTOM,
+        )
 
         # 项目主页按钮
         self.navigationInterface.addWidget(
@@ -218,31 +221,92 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加第一节
     def add_project_pages(self) -> None:
-        self.platform_page = PlatformPage("platform_page", self)
-        self.addSubInterface(self.platform_page, FluentIcon.IOT, Localizer.get().app_fluent_window_platform_page, NavigationItemPosition.SCROLL)
-        self.prject_page = ProjectPage("prject_page", self)
-        self.addSubInterface(self.prject_page, FluentIcon.FOLDER, Localizer.get().app_fluent_window_prject_page, NavigationItemPosition.SCROLL)
+        # 接口管理
+        self.addSubInterface(
+            PlatformPage("platform_page", self),
+            FluentIcon.IOT,
+            Localizer.get().app_platform_page,
+            NavigationItemPosition.SCROLL
+        )
+
+        # 项目设置
+        self.addSubInterface(
+            ProjectPage("project_page", self),
+            FluentIcon.FOLDER,
+            Localizer.get().app_project_page,
+            NavigationItemPosition.SCROLL
+        )
+
+        # 开始翻译
         self.translation_page = TranslationPage("translation_page", self)
-        self.addSubInterface(self.translation_page, FluentIcon.PLAY, Localizer.get().app_fluent_window_translation_page, NavigationItemPosition.SCROLL)
+        self.addSubInterface(
+            self.translation_page,
+            FluentIcon.PLAY,
+            Localizer.get().app_translation_page,
+            NavigationItemPosition.SCROLL
+        )
 
     # 添加第二节
     def add_setting_pages(self) -> None:
-        self.basic_settings_page = BasicSettingsPage("basic_settings_page", self)
-        self.addSubInterface(self.basic_settings_page, FluentIcon.ZOOM, Localizer.get().app_fluent_window_basic_settings_page, NavigationItemPosition.SCROLL)
-        self.advance_Feature_page = AdvanceFeaturePage("advance_Feature_page", self)
-        self.addSubInterface(self.advance_Feature_page, FluentIcon.COMMAND_PROMPT, Localizer.get().app_fluent_window_advance_Feature_page, NavigationItemPosition.SCROLL)
+        # 基础设置
+        self.addSubInterface(
+            BasicSettingsPage("basic_settings_page", self),
+            FluentIcon.ZOOM,
+            Localizer.get().app_basic_settings_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 高级功能
+        self.addSubInterface(
+            AdvanceFeaturePage("advance_Feature_page", self),
+            FluentIcon.COMMAND_PROMPT,
+            Localizer.get().app_advance_Feature_page,
+            NavigationItemPosition.SCROLL
+        )
 
     # 添加第三节
     def add_quality_pages(self) -> None:
-        self.prompt_dictionary_page = GlossaryPage("prompt_dictionary_page", self)
-        self.addSubInterface(self.prompt_dictionary_page, FluentIcon.DICTIONARY, Localizer.get().app_fluent_window_prompt_dictionary_page, NavigationItemPosition.SCROLL)
-        self.replcae_before_translation_page = ReplaceBeforeTranslationPage("replcae_before_translation_page", self)
-        self.addSubInterface(self.replcae_before_translation_page, FluentIcon.SEARCH, Localizer.get().app_fluent_window_replcae_before_translation_page, NavigationItemPosition.SCROLL)
-        self.replcae_after_translation_page = ReplaceAfterTranslationPage("replcae_after_translation_page", self)
-        self.addSubInterface(self.replcae_after_translation_page, FluentIcon.SEARCH_MIRROR, Localizer.get().app_fluent_window_replcae_after_translation_page, NavigationItemPosition.SCROLL)
+        # 术语表
+        self.addSubInterface(
+            GlossaryPage("glossary_page", self),
+            FluentIcon.DICTIONARY,
+            Localizer.get().app_glossary_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 译前替换
+        self.addSubInterface(
+            PreTranslationReplacementPage("pre_translation_replacement_page", self),
+            FluentIcon.SEARCH,
+            Localizer.get().app_pre_translation_replacement_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 译后替换
+        self.addSubInterface(
+            PostTranslationReplacementPage("post_translation_replacement_page", self),
+            FluentIcon.SEARCH_MIRROR,
+            Localizer.get().app_post_translation_replacement_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 自定义提示词
         self.custom_prompt_navigation_item = BaseNavigationItem("custom_prompt_navigation_item", self)
-        self.addSubInterface(self.custom_prompt_navigation_item, FluentIcon.LABEL, Localizer.get().app_fluent_window_custom_prompt_navigation_item, NavigationItemPosition.SCROLL)
-        self.custom_prompt_zh_page = CustomPromptZHPage("custom_prompt_zh_page", self)
-        self.addSubInterface(self.custom_prompt_zh_page, FluentIcon.HIGHTLIGHT, Localizer.get().app_fluent_window_custom_prompt_zh_page, parent = self.custom_prompt_navigation_item)
-        self.custom_prompt_en_page = CustomPromptENPage("custom_prompt_en_page", self)
-        self.addSubInterface(self.custom_prompt_en_page, FluentIcon.ERASE_TOOL, Localizer.get().app_fluent_window_custom_prompt_en_page, parent = self.custom_prompt_navigation_item)
+        self.addSubInterface(
+            self.custom_prompt_navigation_item,
+            FluentIcon.LABEL,
+            Localizer.get().app_custom_prompt_navigation_item,
+            NavigationItemPosition.SCROLL,
+        )
+        self.addSubInterface(
+            CustomPromptZHPage("custom_prompt_zh_page", self),
+            FluentIcon.PENCIL_INK,
+            Localizer.get().app_custom_prompt_zh_page,
+            parent = self.custom_prompt_navigation_item,
+        )
+        self.addSubInterface(
+            CustomPromptENPage("custom_prompt_en_page", self),
+            FluentIcon.PENCIL_INK,
+            Localizer.get().app_custom_prompt_en_page,
+            parent = self.custom_prompt_navigation_item,
+        )

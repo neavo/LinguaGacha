@@ -135,7 +135,7 @@ class GlossaryPage(QWidget, Base):
 
         def triggered() -> None:
             # 选择文件
-            path, _ = QFileDialog.getOpenFileName(None, "选择文件", "", "json 文件 (*.json);;xlsx 文件 (*.xlsx)")
+            path, _ = QFileDialog.getOpenFileName(None, Localizer.get().select_file, "", Localizer.get().select_file_type)
             if not isinstance(path, str) or path == "":
                 return
 
@@ -176,7 +176,7 @@ class GlossaryPage(QWidget, Base):
             data = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
 
             # 导出文件
-            with open(Localizer.get().glossary_page_export_path, "w", encoding = "utf-8") as writer:
+            with open(Localizer.get().path_glossary_export, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
 
             # 弹出提示

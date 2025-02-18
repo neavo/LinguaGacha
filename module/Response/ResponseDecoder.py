@@ -1,6 +1,7 @@
 import re
 import rapidjson as json
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 
 class ResponseDecoder(Base):
 
@@ -100,12 +101,12 @@ class ResponseDecoder(Base):
         # 尝试直接反序列化
         json_data = self.decode_translation_by_json(response)
         if isinstance(json_data, dict) and isinstance(json_data.get("0"), str):
-            return json_data, f"翻译数据 [bright_blue]->[/] 反序列化，共 {len(json_data)} 条"
+            return json_data, Localizer.get().response_decoder_translation_by_json.replace("{COUNT}", f"{len(json_data)}")
 
         # 尝试通过规则解析
         json_data = self.decode_translation_by_rule(response)
         if isinstance(json_data, dict) and isinstance(json_data.get("0"), str):
-            return json_data, f"翻译数据 [bright_blue]->[/] 规则解析，共 {len(json_data)} 条"
+            return json_data, Localizer.get().response_decoder_translation_by_rule.replace("{COUNT}", f"{len(json_data)}")
 
         return {}, ""
 
@@ -138,12 +139,12 @@ class ResponseDecoder(Base):
         # 尝试直接反序列化
         json_data = self.decode_glossary_by_json(response)
         if isinstance(json_data, list) and json_data != [] and isinstance(json_data[0], dict):
-            return json_data, f"术语数据 [bright_blue]->[/] 反序列化，共 {len(json_data)} 条"
+            return json_data, Localizer.get().response_decoder_glossary_by_json.replace("{COUNT}", f"{len(json_data)}")
 
         # 尝试通过规则解析
         json_data = self.decode_glossary_by_rule(response)
         if isinstance(json_data, list) and json_data != [] and isinstance(json_data[0], dict):
-            return json_data, f"术语数据 [bright_blue]->[/] 规则解析，共 {len(json_data)} 条"
+            return json_data, Localizer.get().response_decoder_glossary_by_rule.replace("{COUNT}", f"{len(json_data)}")
 
         return [], ""
 
