@@ -7,7 +7,7 @@
 
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](/README_EN.md) ]
+- [ [中文](./README.md) ] | [ [English](/README_EN.md) ] | [ [日本語](/README_JP.md) ]
 
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，简称 `LG`，使用 AI 技术次世代文本翻译器
