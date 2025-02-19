@@ -2,10 +2,12 @@
 <div align=center><img src="https://img.shields.io/github/v/release/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/license/neavo/LinguaGacha"/>   <img src="https://img.shields.io/github/stars/neavo/LinguaGacha"/></div>
 <p align='center'>使用 AI 能力一键翻译 小说、游戏、字幕 等文本内容的次世代文本翻译器</p>
 
-
 &ensp;
 &ensp;
 
+
+## README 🌍
+- [ [中文](./README.md) ] | [ [English](/README_EN.md) ]
 
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，简称 `LG`，使用 AI 技术次世代文本翻译器
@@ -13,9 +15,9 @@
 - 支持 `小说`、`字幕`、`游戏文本` 等多种文本类型与文本格式
 - 支持 `Claude`、`ChatGPT`、`DeepSeek`、`SakuraLLM` 等各种本地或在线接口
 
-> ![01](https://github.com/user-attachments/assets/859a7e32-bf35-4572-8460-4ecb11a8d20c)
-> ![01](https://github.com/user-attachments/assets/c0d7e898-f6fa-432f-a3cd-e231b657c4b5)
+> <img src="https://github.com/user-attachments/assets/859a7e32-bf35-4572-8460-4ecb11a8d20c" style="width: 80%;">
 
+> <img src="https://github.com/user-attachments/assets/c0d7e898-f6fa-432f-a3cd-e231b657c4b5" style="width: 80%;">
 
 ## 特别说明 ⚠️
 - 如您在翻译过程中使用了 [LinguaGacha](https://github.com/neavo/LinguaGacha) ，请在作品信息或发布页面的显要位置进行说明！
