@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.console import Console
 
 from base.Base import Base
+from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Response.ResponseChecker import ResponseChecker
@@ -16,7 +17,6 @@ from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
 from module.CodeSaver import CodeSaver
 from module.Normalizer import Normalizer
-from module.TextHelper import TextHelper
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
 from module.PunctuationHelper import PunctuationHelper

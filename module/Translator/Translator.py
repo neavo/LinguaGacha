@@ -13,13 +13,13 @@ from tqdm import tqdm
 from base.Base import Base
 from module.File.FileChecker import FileChecker
 from module.File.FileManager import FileManager
+from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Filter.RuleFilter import RuleFilter
 from module.CodeSaver import CodeSaver
 from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorTask import TranslatorTask
-from module.TextHelper import TextHelper
 from module.PromptBuilder import PromptBuilder
 
 # 翻译器
@@ -318,15 +318,15 @@ class Translator(Base):
         count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
 
         if self.config.get("source_language") == Base.Language.ZH:
-            func = TextHelper.has_any_cjk
+            func = TextHelper.CJK.any
         elif self.config.get("source_language") == Base.Language.EN:
-            func = TextHelper.has_any_latin
+            func = TextHelper.Latin.any
         elif self.config.get("source_language") == Base.Language.JA:
-            func = TextHelper.has_any_japanese
+            func = TextHelper.JA.any
         elif self.config.get("source_language") == Base.Language.KO:
-            func = TextHelper.has_any_korean
+            func = TextHelper.KO.any
         elif self.config.get("source_language") == Base.Language.RU:
-            func = TextHelper.has_any_russian
+            func = TextHelper.RU.any
 
         # 筛选出无效条目并标记为已排除
         target = []

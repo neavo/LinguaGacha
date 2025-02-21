@@ -1,7 +1,7 @@
 from base.Base import Base
+from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
-from module.TextHelper import TextHelper
 
 class ResponseChecker(Base):
 
@@ -60,13 +60,13 @@ class ResponseChecker(Base):
             else:
                 # 原文是日文时，只有译文至少包含一个平假名或片假名字符，才判断为漏翻
                 if self.source_language == Base.Language.JA:
-                    if TextHelper.has_any_hiragana(dst) or TextHelper.has_any_katakanae(dst):
+                    if TextHelper.JA.hiragana(dst) or TextHelper.JA.katakana(dst):
                         data.append(1)
                     else:
                         data.append(0)
                 # 原文是韩文时，只有译文至少包含一个谚文字符，才判断为漏翻
                 elif self.source_language == Base.Language.KO:
-                    if TextHelper.has_any_hangeul(dst):
+                    if TextHelper.KO.hangeul(dst):
                         data.append(1)
                     else:
                         data.append(0)

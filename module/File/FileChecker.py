@@ -3,10 +3,10 @@ import os
 import rapidjson as json
 
 from base.Base import Base
+from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
 from module.Localizer.Localizer import Localizer
-from module.TextHelper import TextHelper
 
 class FileChecker(Base):
 
