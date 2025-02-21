@@ -587,6 +587,12 @@ class FileManager(Base):
         #     # game/script8.rpy:2173
         #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
         #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
+        # # game/routes/endings/laura/normal/Harry/l_normal_11_h.rpy:3
+        # translate schinese l_normal_11_h_f9190bc9:
+        #
+        #     # nvl clear
+        #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
+        #     n "经过了一个美妙的夜晚，第二天，令我们不快的是，我们不得不面对我前一天早上意外引发的骚乱的延续。"
 
         # 查找文本中最后一对双引号包裹的文本
         def find_content(text: str) -> str:
@@ -616,15 +622,12 @@ class FileManager(Base):
             with open(abs_path, "r", encoding = "utf-8-sig") as reader:
                 lines = [line.removesuffix("\n") for line in reader.readlines()]
 
-            skip_next = False
             for line in lines:
-                if skip_next == True:
-                    skip_next = False
-                    continue
-                elif line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
-                    skip_next = True
+                if line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
                     content, extra_field = find_content(line)
                     content = content.replace("\\n", "\n")
+                elif line.count("\"") >= 2:
+                    continue
                 else:
                     content = ""
                     extra_field = line
@@ -672,6 +675,13 @@ class FileManager(Base):
         #     # game/script8.rpy:2173
         #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
         #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
+        #
+        # # game/routes/endings/laura/normal/Harry/l_normal_11_h.rpy:3
+        # translate schinese l_normal_11_h_f9190bc9:
+        #
+        #     # nvl clear
+        #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
+        #     n "经过了一个美妙的夜晚，第二天，令我们不快的是，我们不得不面对我前一天早上意外引发的骚乱的延续。"
 
         # 筛选
         target = [

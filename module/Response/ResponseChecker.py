@@ -1,6 +1,6 @@
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
-from module.Localizer.Localizer import Localizer
+from module.CodeSaver import CodeSaver
 from module.TextHelper import TextHelper
 
 class ResponseChecker(Base):
@@ -50,7 +50,7 @@ class ResponseChecker(Base):
 
             # 判断是否包含或相似
             is_similar = False
-            if "[占位符]" in src:
+            if CodeSaver.PLACEHOLDER in src:
                 pass
             elif src in dst or dst in src or TextHelper.check_similarity_by_Jaccard(src, dst) > 0.80:
                 is_similar = True
