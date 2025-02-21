@@ -327,6 +327,12 @@ class Translator(Base):
             func = TextHelper.KO.any
         elif self.config.get("source_language") == Base.Language.RU:
             func = TextHelper.RU.any
+        elif self.config.get("source_language") == Base.Language.DE:
+            func = TextHelper.DE.any
+        elif self.config.get("source_language") == Base.Language.ID:
+            func = TextHelper.ID.any
+        elif self.config.get("source_language") == Base.Language.VI:
+            func = TextHelper.VI.any
 
         # 筛选出无效条目并标记为已排除
         target = []

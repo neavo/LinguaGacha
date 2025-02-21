@@ -61,6 +61,15 @@ class PromptBuilder(Base):
         elif self.target_language == Base.Language.RU:
             target_language = "Russian"
             prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.DE:
+            target_language = "German"
+            prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.ID:
+            target_language = "Indonesian"
+            prompt_language = Base.Language.EN
+        elif self.target_language == Base.Language.VI:
+            target_language = "Vietnamese"
+            prompt_language = Base.Language.EN
 
         if prompt_language == Base.Language.ZH:
             custom_prompt_enable = self.config.get("custom_prompt_zh_enable")

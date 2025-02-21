@@ -19,6 +19,9 @@ class ProjectPage(QWidget, Base):
         Base.Language.JA,
         Base.Language.KO,
         Base.Language.RU,
+        Base.Language.DE,
+        Base.Language.ID,
+        Base.Language.VI,
     )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
