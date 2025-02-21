@@ -66,7 +66,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: MANAUL_BUILD_${{ steps.check_version.outputs.version }}
+        tag_name: MANUAL_BUILD_${{ steps.check_version.outputs.version }}
         release_name: LinguaGacha_${{ steps.check_version.outputs.version }}
         draft: true
         prerelease: false

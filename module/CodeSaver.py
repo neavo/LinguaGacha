@@ -4,24 +4,22 @@ from base.Base import Base
 
 class CodeSaver(Base):
 
+    # 用于非英文的代码段规则
+    CODE_PATTERN = (
+        r"if\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # if(!s[982]) if(v[982] >= 1) if(v[982] >= 1)
+        r"en\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # en(!s[982]) en(v[982] >= 1)
+        r"[/\\][a-z]{1,5}<[a-z\d]{0,10}>",                  # /C<y> /C<1> \FS<xy> \FS<12>
+        r"[/\\][a-z]{1,5}\[[a-z\d]{0,10}\]",                # /C[x] /C[1] \FS[xy] \FS[12]
+        r"[/\\][a-z]{1,5}(?=<.{0,10}>|\[.{0,10}\])",        # /C<> \FS<> /C[] \FS[] 中 <> [] 前的部分
+    )
+
     # 用于英文的代码段规则
     CODE_PATTERN_EN = (
         r"if\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # if(!s[982]) if(s[1623]) if(v[982] >= 1)
         r"en\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # en(!s[982]) en(v[982] >= 1)
         r"[/\\][a-z]{1,5}<[\d]{0,10}>",                     # /C<1> \FS<12>
         r"[/\\][a-z]{1,5}\[[\d]{0,10}\]",                   # /C[1] \FS[12]
-        r"[/\\][a-z]{1,5}(?=<[^\d]{0,10}>)",                # /C<非数字> \FS<非数字> 中的前半部分
-        r"[/\\][a-z]{1,5}(?=\[[^\d]{0,10}\])",              # /C[非数字] \FS[非数字] 中的前半部分
-    )
-
-    # 用于非英文的代码段规则
-    CODE_PATTERN_NON_EN = (
-        r"if\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # if(!s[982]) if(v[982] >= 1) if(v[982] >= 1)
-        r"en\(.{0,5}[vs]\[\d+\].{0,10}\)",                  # en(!s[982]) en(v[982] >= 1)
-        r"[/\\][a-z]{1,5}<[a-z\d]{0,10}>",                  # /C<y> /C<1> \FS<xy> \FS<12>
-        r"[/\\][a-z]{1,5}\[[a-z\d]{0,10}\]",                # /C[x] /C[1] \FS[xy] \FS[12]
-        r"[/\\][a-z]{1,5}(?=<[^a-z\d]{0,10}>)",             # /C<非数字非字母> \FS<非数字非字母> 中的前半部分
-        r"[/\\][a-z]{1,5}(?=\[[^a-z\d]{0,10}\])",           # /C[非数字非字母] \FS[非数字非字母] 中的前半部分
+        r"[/\\][a-z]{1,5}(?=<.{0,10}>|\[.{0,10}\])",        # /C<> \FS<> /C[] \FS[] 中 <> [] 前的部分
     )
 
     # 同时作用于英文于非英文的代码段规则
@@ -53,6 +51,17 @@ class CodeSaver(Base):
         r"\t",                                              # 制表符
     )
 
+    # 占位符文本
+    PLACEHOLDER = "{PLACEHOLDER}"
+
+    # 正则表达式
+    RE_CHECK = re.compile(rf"(?:{"|".join(CODE_PATTERN + CODE_PATTERN_COMMON)})+", re.IGNORECASE)
+    RE_PREFIX = re.compile(rf"^(?:{"|".join(CODE_PATTERN + CODE_PATTERN_COMMON + CODE_PATTERN_SPACE)})+", re.IGNORECASE)
+    RE_SUFFIX = re.compile(rf"(?:{"|".join(CODE_PATTERN + CODE_PATTERN_COMMON + CODE_PATTERN_SPACE)})+$", re.IGNORECASE)
+    RE_CHECK_EN = re.compile(rf"(?:{"|".join(CODE_PATTERN_EN + CODE_PATTERN_COMMON)})+", re.IGNORECASE)
+    RE_PREFIX_EN = re.compile(rf"^(?:{"|".join(CODE_PATTERN_EN + CODE_PATTERN_COMMON + CODE_PATTERN_SPACE)})+", re.IGNORECASE)
+    RE_SUFFIX_EN = re.compile(rf"(?:{"|".join(CODE_PATTERN_EN + CODE_PATTERN_COMMON + CODE_PATTERN_SPACE)})+$", re.IGNORECASE)
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -61,33 +70,32 @@ class CodeSaver(Base):
         self.placeholders = set()
         self.prefix_codes = {}
         self.suffix_codes = {}
+        self.source_language = config.get("source_language")
 
-        # 根据原文语言生成正则表达式
-        if config.get("source_language") not in (Base.Language.ZH, Base.Language.JA, Base.Language.KO):
-            base_pattern = CodeSaver.CODE_PATTERN_EN + CodeSaver.CODE_PATTERN_COMMON + CodeSaver.CODE_PATTERN_SPACE
-            check_pattern = CodeSaver.CODE_PATTERN_EN + CodeSaver.CODE_PATTERN_COMMON
+        # 根据原文语言选择规则
+        if self.source_language not in (Base.Language.ZH, Base.Language.JA, Base.Language.KO):
+            self.re_check = CodeSaver.RE_CHECK
+            self.re_prefix = CodeSaver.RE_PREFIX
+            self.re_suffix = CodeSaver.RE_SUFFIX
         else:
-            base_pattern = CodeSaver.CODE_PATTERN_NON_EN + CodeSaver.CODE_PATTERN_COMMON + CodeSaver.CODE_PATTERN_SPACE
-            check_pattern = CodeSaver.CODE_PATTERN_NON_EN + CodeSaver.CODE_PATTERN_COMMON
-        self.base_pattern = re.compile(rf"(?:{"|".join(base_pattern)})+", re.IGNORECASE)
-        self.check_pattern = re.compile(rf"(?:{"|".join(check_pattern)})+", re.IGNORECASE)
-        self.prefix_pattern = re.compile(rf"^(?:{"|".join(base_pattern)})+", re.IGNORECASE)
-        self.suffix_pattern = re.compile(rf"(?:{"|".join(base_pattern)})+$", re.IGNORECASE)
+            self.re_check = CodeSaver.RE_CHECK_EN
+            self.re_prefix = CodeSaver.RE_PREFIX_EN
+            self.re_suffix = CodeSaver.RE_SUFFIX_EN
 
     # 预处理
     def preprocess(self, data: dict[str, str]) -> dict[str, str]:
         for k in data.keys():
             # 查找与替换前缀代码段
-            self.prefix_codes[k] = self.prefix_pattern.findall(data.get(k))
-            data[k] = self.prefix_pattern.sub("", data.get(k))
+            self.prefix_codes[k] = self.re_prefix.findall(data.get(k))
+            data[k] = self.re_prefix.sub("", data.get(k))
 
             # 查找与替换后缀代码段
-            self.suffix_codes[k] = self.suffix_pattern.findall(data.get(k))
-            data[k] = self.suffix_pattern.sub("", data.get(k))
+            self.suffix_codes[k] = self.re_suffix.findall(data.get(k))
+            data[k] = self.re_suffix.sub("", data.get(k))
 
             # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
             if data[k] == "":
-                data[k] = "[占位符]"
+                data[k] = CodeSaver.PLACEHOLDER
                 self.placeholders.add(k)
 
         return data
@@ -112,4 +120,4 @@ class CodeSaver(Base):
 
     # 检查代码段
     def check(self, src: str, dst: str) -> None:
-        return len(self.check_pattern.findall(src)) == len(self.check_pattern.findall(dst))
+        return len(self.re_check.findall(src)) == len(self.re_check.findall(dst))
