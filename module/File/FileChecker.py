@@ -63,7 +63,7 @@ class FileChecker(Base):
             self.info(
                 Localizer.get().file_checker_code_full.replace("{COUNT}", f"{count}")
                                                       .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                      .replace("{TARGET}", f"{target}")
+                                                      .replace("{TARGET}", f"{path}")
             )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
@@ -94,7 +94,7 @@ class FileChecker(Base):
             self.info(
                 Localizer.get().file_checker_glossary_full.replace("{COUNT}", f"{count}")
                                                           .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                          .replace("{TARGET}", f"{target}")
+                                                          .replace("{TARGET}", f"{path}")
             )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
@@ -122,7 +122,7 @@ class FileChecker(Base):
             self.info(
                 Localizer.get().file_checker_translation_full.replace("{COUNT}", f"{count}")
                                                              .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                             .replace("{TARGET}", f"{target}")
+                                                             .replace("{TARGET}", f"{path}")
             )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))

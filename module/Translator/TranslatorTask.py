@@ -389,13 +389,21 @@ class TranslatorTask(Base):
             )
             log_func = self.info
 
-        # 生成行数据
+        # 写入日志到文件
         file_rows = self.generate_log_rows(message, srcs, dsts, extra_file, highlight = False)
-        console_rows = self.generate_log_rows(message, srcs, dsts, extra_console, highlight = True)
+        log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
 
-        # 打印
-        log_func("\n" + "\n\n".join(file_rows) + "\n", console = False)
-        TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
+        # 根据线程数判断是否需要打印表格
+        task_num = sum(1 for t in threading.enumerate() if "translator" in t.name)
+        if task_num > 32:
+            log_func(
+                Localizer.get().translator_too_many_task + "\n" + message + "\n",
+                file = False,
+                console = True,
+            )
+        else:
+            console_rows = self.generate_log_rows(message, srcs, dsts, extra_console, highlight = True)
+            TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
 
     # 生成日志行
     def generate_log_rows(self, message: str, srcs: list[str], dsts: list[str], extra: list[str], highlight: bool) -> tuple[list[str], str]:

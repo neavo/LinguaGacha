@@ -77,6 +77,10 @@ class TextHelper:
     def is_special_punctuation(char: str) -> bool:
         return char in TextHelper.SPECIAL_PUNCTUATION_SET
 
+    # 判断输入的字符串是否包含至少一个标点符号
+    def any_punctuation(text: str) -> bool:
+        return any(TextHelper.is_punctuation(char) for char in text)
+
     # 判断输入的字符串是否全部为标点符号
     def all_punctuation(text: str) -> bool:
         return all(TextHelper.is_punctuation(char) for char in text)
@@ -91,11 +95,17 @@ class TextHelper:
         text_list = list(text)
         start, end = 0, len(text_list) - 1
 
-        while start <= end and not TextHelper.is_punctuation(text_list[start]):
+        # 移除开头的标点符号
+        while start <= end and TextHelper.is_punctuation(text_list[start]):
             start += 1
 
-        while end >= start and not TextHelper.is_punctuation(text_list[end]):
+        # 移除结尾的标点符号
+        while end >= start and TextHelper.is_punctuation(text_list[end]):
             end -= 1
+
+        # 越界检测
+        if start > end:
+            return ""
 
         return "".join(text_list[start : end + 1])
 

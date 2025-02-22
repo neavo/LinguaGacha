@@ -108,7 +108,7 @@ class TextBase:
         return all(self.char(c) for c in text)
 
     # 移除字符串两边非目标范围的字符
-    def strip(self, text: str) -> str:
+    def strip_non_target(self, text: str) -> str:
         text = text.strip()
 
         if not text:
@@ -122,6 +122,10 @@ class TextBase:
 
         while end >= start and not self.char(text_list[end]):
             end -= 1
+
+        # 越界检测
+        if start > end:
+            return ""
 
         return "".join(text_list[start : end + 1])
 
