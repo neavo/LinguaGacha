@@ -96,7 +96,7 @@ class Translator(Base):
         if Base.WORK_STATUS == Base.Status.IDLE:
             config = self.load_config()
             self.cache_manager.load_from_file(config.get("output_folder"))
-            status = self.cache_manager.get_project_status()
+            status = self.cache_manager.get_project().get_status()
 
         self.emit(Base.Event.TRANSLATION_PROJECT_STATUS_CHECK_DONE, {
             "status" : status,
@@ -139,12 +139,12 @@ class Translator(Base):
         if self.cache_manager.get_item_count() == 0:
             self.emit(Base.Event.TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
-                "message": "没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ...",
+                "message": Localizer.get().translator_no_items,
             })
 
         # 从头翻译时加载默认数据
         if status == Base.TranslationStatus.TRANSLATING:
-            self.extras = self.cache_manager.get_project_extras()
+            self.extras = self.cache_manager.get_project().get_extras()
             self.extras["start_time"] = time.time() - self.extras.get("time", 0)
         else:
             self.extras = {
@@ -249,7 +249,7 @@ class Translator(Base):
         self.mtool_optimizer_postprocess(self.cache_manager.get_items())
 
         # 设置项目状态为已翻译
-        self.cache_manager.set_project_status(Base.TranslationStatus.TRANSLATED)
+        self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATED)
 
         # 等待可能存在的缓存文件写入请求处理完毕
         time.sleep(CacheManager.SAVE_INTERVAL)
@@ -467,10 +467,10 @@ class Translator(Base):
                     self.extras = new
 
             # 更新翻译进度
-            self.cache_manager.set_project_extras(self.extras)
+            self.cache_manager.get_project().set_extras(self.extras)
 
             # 更新翻译状态
-            self.cache_manager.set_project_status(Base.TranslationStatus.TRANSLATING)
+            self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATING)
 
             # 请求保存缓存文件
             self.cache_manager.require_save_to_file(self.config.get("output_folder"))

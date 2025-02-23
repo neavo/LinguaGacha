@@ -32,7 +32,6 @@ from frontend.Quality.CustomPromptENPage import CustomPromptENPage
 from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplacementPage
 from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
 
-
 class AppFluentWindow(FluentWindow, Base):
 
     APP_WIDTH: int = 1280
@@ -51,9 +50,6 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())
-
-        # 打印日志
-        self.debug(Localizer.get().log_debug_mode) if self.is_debug() else None
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.THEME_COLOR)

@@ -2,6 +2,7 @@ from base.Base import Base
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
+from module.PromptBuilder import PromptBuilder
 
 class ResponseChecker(Base):
 
@@ -34,43 +35,44 @@ class ResponseChecker(Base):
             ):
                 return ResponseChecker.Error.FAIL_LINE, None
 
-            # 漏翻检查
-            error, data = self.chech_untranslated(src_dict, dst_dict)
+            # 翻译错误检查
+            error, data = self.check_translation_error(src_dict, dst_dict)
             if error != None:
                 return error, data
 
         return None, None
 
-    # 漏翻检查
-    def chech_untranslated(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> tuple[str | None, list]:
+    # 翻译错误检查
+    def check_translation_error(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> tuple[str | None, list]:
         data = []
         for src, dst in zip(src_dict.values(), dst_dict.values()):
             src = src.strip()
             dst = dst.strip()
 
-            # 判断是否包含或相似
-            is_similar = False
+            # 回复内容是代码救星的占位符时，判断为正确翻译
             if CodeSaver.PLACEHOLDER in src:
-                pass
-            elif src in dst or dst in src or TextHelper.check_similarity_by_Jaccard(src, dst) > 0.80:
-                is_similar = True
+                data.append(0)
+                continue
 
-            if is_similar == False:
+            # 模型生成的伪回复原文返回时，判断为错误翻译
+            if PromptBuilder.FAKE_REPLY_ZH in dst or PromptBuilder.FAKE_REPLY_EN in dst:
+                data.append(1)
+                continue
+
+            # 判断是否包含或相似
+            is_similar = src in dst or dst in src or TextHelper.check_similarity_by_Jaccard(src, dst) > 0.80
+
+            # 不包含或相似时，判断为正确翻译
+            if not is_similar:
                 data.append(0)
             else:
-                # 原文是日文时，只有译文至少包含一个平假名或片假名字符，才判断为漏翻
+                # 原文是日文时，只有译文至少包含一个平假名或片假名字符时，判断为错误翻译（漏翻）
                 if self.source_language == Base.Language.JA:
-                    if TextHelper.JA.hiragana(dst) or TextHelper.JA.katakana(dst):
-                        data.append(1)
-                    else:
-                        data.append(0)
-                # 原文是韩文时，只有译文至少包含一个谚文字符，才判断为漏翻
+                    data.append(1 if (TextHelper.JA.hiragana(dst) or TextHelper.JA.katakana(dst)) else 0)
+                # 原文是日文时，只有译文至少包含一个谚文字符时，判断为错误翻译（漏翻）
                 elif self.source_language == Base.Language.KO:
-                    if TextHelper.KO.hangeul(dst):
-                        data.append(1)
-                    else:
-                        data.append(0)
-                # 其他语言时，只要原文译文相同或相似就可以判断为漏翻
+                    data.append(1 if TextHelper.KO.hangeul(dst) else 0)
+                # 其他语言时，只要原文译文相同或相似就可以判断为错误翻译（漏翻）
                 else:
                     data.append(1)
 

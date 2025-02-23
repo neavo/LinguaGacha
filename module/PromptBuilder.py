@@ -2,6 +2,9 @@ from base.Base import Base
 
 class PromptBuilder(Base):
 
+    FAKE_REPLY_ZH = "我完全理解了翻译任务的要求，我将遵循您的指示进行翻译，以下是对原文的翻译："
+    FAKE_REPLY_EN = "I fully understand the requirements of the translation task, and I will follow your instructions to translate. Here is the translation of the original text:"
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -157,6 +160,6 @@ class PromptBuilder(Base):
     # 构造伪回复
     def build_fake_reply(self) -> str:
         if self.target_language == Base.Language.ZH:
-            return "我完全理解了翻译任务的要求，我将遵循您的指示进行翻译，以下是对原文的翻译："
+            return PromptBuilder.FAKE_REPLY_ZH
         else:
-            return "I fully understand the requirements of the translation task, and I will follow your instructions to translate. Here is the translation of the original text:"
+            return PromptBuilder.FAKE_REPLY_EN

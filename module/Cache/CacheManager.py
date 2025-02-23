@@ -12,7 +12,7 @@ from module.Localizer.Localizer import Localizer
 class CacheManager(Base):
 
     # 缓存文件保存周期（秒）
-    SAVE_INTERVAL = 12
+    SAVE_INTERVAL = 15
 
     def __init__(self) -> None:
         super().__init__()
@@ -32,19 +32,25 @@ class CacheManager(Base):
 
     # 应用关闭事件
     def app_shut_down(self, event: int, data: dict) -> None:
-        self.save_to_file_stop_flag = True
+        self.app_shut_down = True
 
     # 保存缓存到文件
     def save_to_file(self) -> None:
         path = f"{self.save_to_file_require_path}/cache/items.json"
         with self.file_lock:
-            with open(path, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps([item.get_vars() for item in self.items], indent = None, ensure_ascii = False))
+            try:
+                with open(path, "w", encoding = "utf-8") as writer:
+                    writer.write(json.dumps([item.get_vars() for item in self.items], indent = None, ensure_ascii = False))
+            except Exception as e:
+                self.debug(Localizer.get().log_write_cache_file_fail, e)
 
         path = f"{self.save_to_file_require_path}/cache/project.json"
         with self.file_lock:
-            with open(path, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(self.project.get_vars(), indent = None, ensure_ascii = False))
+            try:
+                with open(path, "w", encoding = "utf-8") as writer:
+                    writer.write(json.dumps(self.project.get_vars(), indent = None, ensure_ascii = False))
+            except Exception as e:
+                self.debug(Localizer.get().log_write_cache_file_fail, e)
 
     # 保存缓存到文件的定时任务
     def save_to_file_tick(self) -> None:
@@ -52,7 +58,7 @@ class CacheManager(Base):
             time.sleep(self.SAVE_INTERVAL)
 
             # 接收到退出信号则停止
-            if getattr(self, "save_to_file_stop_flag", False)  == True:
+            if getattr(self, "app_shut_down", False)  == True:
                 break
 
             # 接收到保存信号则保存
@@ -83,7 +89,7 @@ class CacheManager(Base):
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     self.items = [CacheItem(item) for item in json.load(reader)]
             except Exception as e:
-                self.debug(Localizer.get().log_load_cache_file_fail, e)
+                self.debug(Localizer.get().log_read_cache_file_fail, e)
 
         path = f"{output_path}/cache/project.json"
         with self.file_lock:
@@ -91,7 +97,7 @@ class CacheManager(Base):
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     self.project = CacheProject(json.load(reader))
             except Exception as e:
-                self.debug(Localizer.get().log_load_cache_file_fail, e)
+                self.debug(Localizer.get().log_read_cache_file_fail, e)
 
     # 设置缓存数据
     def set_items(self, items: list[CacheItem]) -> None:
@@ -108,22 +114,6 @@ class CacheManager(Base):
     # 获取项目数据
     def get_project(self) -> CacheProject:
         return self.project
-
-    # 获取项目状态
-    def get_project_status(self) -> int:
-        return self.project.status
-
-    # 设置项目状态
-    def set_project_status(self, status: int) -> None:
-        self.project.status = status
-
-    # 获取缓存数据
-    def get_project_extras(self) -> dict:
-        return self.project.get_extras()
-
-    # 设置缓存数据
-    def set_project_extras(self, data: dict) -> None:
-        self.project.set_extras(data)
 
     # 获取缓存数据数量
     def get_item_count(self) -> int:

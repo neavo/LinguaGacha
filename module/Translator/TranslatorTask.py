@@ -15,6 +15,7 @@ from module.Cache.CacheProject import CacheProject
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
+from module.LogHelper import LogHelper
 from module.CodeSaver import CodeSaver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
@@ -117,10 +118,10 @@ class TranslatorTask(Base):
             extra_console_log.append(Localizer.get().translator_task_response_think + response_think)
         if response_result != "":
             extra_file_log.append(Localizer.get().translator_task_response_result + response_result)
-            extra_console_log.append(Localizer.get().translator_task_response_result + response_result) if self.is_debug() else None
+            extra_console_log.append(Localizer.get().translator_task_response_result + response_result) if LogHelper.is_debug() else None
         if response_decode_log != "":
             extra_file_log.append(response_decode_log)
-            extra_console_log.append(response_decode_log) if self.is_debug() else None
+            extra_console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
         # 检查译文
         if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:

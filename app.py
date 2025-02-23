@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 
 import rapidjson as json
 from PyQt5.QtGui import QFont
@@ -8,8 +9,19 @@ from PyQt5.QtWidgets import QApplication
 
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
+from module.LogHelper import LogHelper
 from module.Translator.Translator import Translator
 from frontend.AppFluentWindow import AppFluentWindow
+
+# 捕获全局异常
+def excepthook(exc_type, exc_value, exc_traceback) -> None:
+    if issubclass(exc_type, KeyboardInterrupt):
+        # 用户中断，不记录日志
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    # 使用LogHelper记录异常信息
+    LogHelper.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
 
 # 载入配置文件
 def load_config() -> dict:
@@ -22,6 +34,9 @@ def load_config() -> dict:
     return config
 
 if __name__ == "__main__":
+    # 捕获全局异常
+    sys.excepthook = excepthook
+
     # 创建文件夹
     os.makedirs("./input", exist_ok = True)
     os.makedirs("./output", exist_ok = True)
@@ -40,6 +55,9 @@ if __name__ == "__main__":
 
     # 设置应用语言
     Localizer.set_app_language(config.get("app_language"))
+
+    # 打印日志
+    LogHelper.debug(Localizer.get().log_debug_mode) if LogHelper.is_debug() else None
 
     # 设置全局缩放比例
     if config.get("scale_factor", "") == "50%":
