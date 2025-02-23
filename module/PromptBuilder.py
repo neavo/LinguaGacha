@@ -2,8 +2,21 @@ from base.Base import Base
 
 class PromptBuilder(Base):
 
+    # 伪回复文本
     FAKE_REPLY_ZH = "我完全理解了翻译任务的要求，我将遵循您的指示进行翻译，以下是对原文的翻译："
     FAKE_REPLY_EN = "I fully understand the requirements of the translation task, and I will follow your instructions to translate. Here is the translation of the original text:"
+
+	# 目标语言映射
+    TARGET_LANGUAGE_MAPPING = {
+        Base.Language.ZH : "中文",
+        Base.Language.EN : "English",
+        Base.Language.JA : "Japanese",
+        Base.Language.KO : "Korean",
+        Base.Language.RU : "Russian",
+        Base.Language.DE : "German",
+        Base.Language.ID : "Indonesian",
+        Base.Language.VI : "Vietnamese",
+    }
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -50,19 +63,8 @@ class PromptBuilder(Base):
     # 获取主提示词
     def build_main(self) -> str:
         if self.target_language == Base.Language.ZH:
-            target_language = "中文"
             prompt_language = Base.Language.ZH
-        elif self.target_language == Base.Language.EN:
-            target_language = "English"
-            prompt_language = Base.Language.EN
-        elif self.target_language == Base.Language.JA:
-            target_language = "Japanese"
-            prompt_language = Base.Language.EN
-        elif self.target_language == Base.Language.KO:
-            target_language = "Korean"
-            prompt_language = Base.Language.EN
-        elif self.target_language == Base.Language.RU:
-            target_language = "Russian"
+        else:
             prompt_language = Base.Language.EN
 
         if prompt_language == Base.Language.ZH:
@@ -89,7 +91,7 @@ class PromptBuilder(Base):
         else:
             suffix = self.suffix_glossary
 
-        return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", target_language)
+        return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", PromptBuilder.TARGET_LANGUAGE_MAPPING.get(self.target_language))
 
     # 构造术语表
     def build_glossary(self, input_dict: dict) -> str:

@@ -46,6 +46,9 @@ class Base():
         JA: str = "JA"
         KO: str = "KO"
         RU: str = "RU"
+        DE: str = "DE"
+        ID: str = "ID"
+        VI: str = "VI"
 
     # 接口格式
     class APIFormat():

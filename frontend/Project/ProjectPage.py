@@ -13,12 +13,15 @@ from widget.SwitchButtonCard import SwitchButtonCard
 
 class ProjectPage(QWidget, Base):
 
-    LANGUAGE_MAP = (
+    LANGUAGES = (
         Base.Language.ZH,
         Base.Language.EN,
         Base.Language.JA,
         Base.Language.KO,
         Base.Language.RU,
+        Base.Language.DE,
+        Base.Language.ID,
+        Base.Language.VI,
     )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -56,12 +59,12 @@ class ProjectPage(QWidget, Base):
     def add_widget_source_language(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
         def init(widget: ComboBoxCard) -> None:
             source_language = config.get("source_language")
-            if source_language in ProjectPage.LANGUAGE_MAP:
-                widget.set_current_index(ProjectPage.LANGUAGE_MAP.index(source_language))
+            if source_language in ProjectPage.LANGUAGES:
+                widget.set_current_index(ProjectPage.LANGUAGES.index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-            config["source_language"] = ProjectPage.LANGUAGE_MAP[widget.get_current_index()]
+            config["source_language"] = ProjectPage.LANGUAGES[widget.get_current_index()]
             self.save_config(config)
 
         parent.addWidget(
@@ -79,12 +82,12 @@ class ProjectPage(QWidget, Base):
 
         def init(widget: ComboBoxCard) -> None:
             source_language = config.get("target_language")
-            if source_language in ProjectPage.LANGUAGE_MAP:
-                widget.set_current_index(ProjectPage.LANGUAGE_MAP.index(source_language))
+            if source_language in ProjectPage.LANGUAGES:
+                widget.set_current_index(ProjectPage.LANGUAGES.index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-            config["target_language"] = ProjectPage.LANGUAGE_MAP[widget.get_current_index()]
+            config["target_language"] = ProjectPage.LANGUAGES[widget.get_current_index()]
             self.save_config(config)
 
         parent.addWidget(
