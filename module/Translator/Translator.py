@@ -75,6 +75,9 @@ class Translator(Base):
         if Base.WORK_STATUS != Base.Status.TRANSLATING:
             return None
 
+        # MTool 优化器后处理
+        self.mtool_optimizer_postprocess(self.cache_manager.get_items())
+
         # 检查结果并写入文件
         self.check_and_wirte_result()
 
