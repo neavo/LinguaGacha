@@ -55,7 +55,7 @@ class LogHelper():
             LogHelper.LOGGER_FILE.info(f"{msg}") if file == True else None
             print(f"{msg}") if console == True else None
         elif LogHelper.is_debug() == False:
-            LogHelper.LOGGER_FILE.info(f"{msg} {e}") if file == True else None
+            LogHelper.LOGGER_FILE.info(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
             print(f"{msg} {e}") if console == True else None
         else:
             LogHelper.LOGGER_FILE.info(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
@@ -67,7 +67,7 @@ class LogHelper():
             LogHelper.LOGGER_FILE.debug(f"{msg}") if file == True else None
             LogHelper.LOGGER_CONSOLE.debug(f"{msg}") if console == True else None
         elif LogHelper.is_debug() == False:
-            LogHelper.LOGGER_FILE.debug(f"{msg} {e}") if file == True else None
+            LogHelper.LOGGER_FILE.debug(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
             LogHelper.LOGGER_CONSOLE.debug(f"{msg} {e}") if console == True else None
         else:
             LogHelper.LOGGER_FILE.debug(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
@@ -79,7 +79,7 @@ class LogHelper():
             LogHelper.LOGGER_FILE.info(f"{msg}") if file == True else None
             LogHelper.LOGGER_CONSOLE.info(f"{msg}") if console == True else None
         elif LogHelper.is_debug() == False:
-            LogHelper.LOGGER_FILE.info(f"{msg} {e}") if file == True else None
+            LogHelper.LOGGER_FILE.info(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
             LogHelper.LOGGER_CONSOLE.info(f"{msg} {e}") if console == True else None
         else:
             LogHelper.LOGGER_FILE.info(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
@@ -91,7 +91,7 @@ class LogHelper():
             LogHelper.LOGGER_FILE.error(f"{msg}") if file == True else None
             LogHelper.LOGGER_CONSOLE.error(f"{msg}") if console == True else None
         elif LogHelper.is_debug() == False:
-            LogHelper.LOGGER_FILE.error(f"{msg} {e}") if file == True else None
+            LogHelper.LOGGER_FILE.error(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
             LogHelper.LOGGER_CONSOLE.error(f"{msg} {e}") if console == True else None
         else:
             LogHelper.LOGGER_FILE.error(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
@@ -103,7 +103,7 @@ class LogHelper():
             LogHelper.LOGGER_FILE.warning(f"{msg}") if file == True else None
             LogHelper.LOGGER_CONSOLE.warning(f"{msg}") if console == True else None
         elif LogHelper.is_debug() == False:
-            LogHelper.LOGGER_FILE.warning(f"{msg} {e}") if file == True else None
+            LogHelper.LOGGER_FILE.warning(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None
             LogHelper.LOGGER_CONSOLE.warning(f"{msg} {e}") if console == True else None
         else:
             LogHelper.LOGGER_FILE.warning(f"{msg}\n{LogHelper.get_trackback(e)}\n") if file == True else None

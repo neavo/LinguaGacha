@@ -126,6 +126,20 @@ class CacheManager(Base):
     def get_item_count(self) -> int:
         return len(self.items)
 
+    # 复制缓存数据
+    def copy_items(self) -> list[CacheItem]:
+        return [CacheItem({
+            "src": item.get_src(),
+            "dst": item.get_dst(),
+            "extra_field": item.get_extra_field(),
+            "tag": item.get_tag(),
+            "row": item.get_row(),
+            "file_type": item.get_file_type(),
+            "file_path": item.get_file_path(),
+            "status": item.get_status(),
+            "retry_count": item.get_retry_count(),
+        }) for item in self.items]
+
     # 判断是否包含任何 RPGMaker 数据
     def any_rpgmaker(self) -> bool:
         if getattr(self, "_any_rpgmaker", None) is None:

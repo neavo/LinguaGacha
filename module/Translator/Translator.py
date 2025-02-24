@@ -75,11 +75,14 @@ class Translator(Base):
         if Base.WORK_STATUS != Base.Status.TRANSLATING:
             return None
 
+        # 复制一份以避免影响原始数据
+        items = self.cache_manager.copy_items()
+
         # MTool 优化器后处理
-        self.mtool_optimizer_postprocess(self.cache_manager.get_items())
+        self.mtool_optimizer_postprocess(items)
 
         # 检查结果并写入文件
-        self.check_and_wirte_result()
+        self.check_and_wirte_result(items)
 
     # 翻译状态检查事件
     def translation_project_status_check(self, event: int, data: dict) -> None:
@@ -263,7 +266,7 @@ class Translator(Base):
         time.sleep(CacheManager.SAVE_INTERVAL)
 
         # 检查结果并写入文件
-        self.check_and_wirte_result()
+        self.check_and_wirte_result(self.cache_manager.get_items())
 
         # 重置内部状态（正常完成翻译）
         self.translating = False
@@ -426,7 +429,7 @@ class Translator(Base):
                         )
 
     # 检查结果并写入文件
-    def check_and_wirte_result(self) -> None:
+    def check_and_wirte_result(self, items: list[CacheItem]) -> None:
         # 清理一下
         os.makedirs(self.config.get("output_folder"), exist_ok = True)
         [
@@ -436,13 +439,13 @@ class Translator(Base):
         ]
 
         # 检查结果
-        result_check = FileChecker(self.config, self.cache_manager.get_items())
+        result_check = FileChecker(self.config, items)
         result_check.check_code(Localizer.get().path_result_check_code, CodeSaver())
         result_check.check_glossary(Localizer.get().path_result_check_glossary)
         result_check.check_untranslated(Localizer.get().path_result_check_untranslated)
 
         # 写入文件
-        FileManager(self.config).write_to_path(self.cache_manager.get_items())
+        FileManager(self.config).write_to_path(items)
         self.print("")
         self.info(Localizer.get().translator_write.replace("{PATH}", self.config.get("output_folder")))
         self.print("")
