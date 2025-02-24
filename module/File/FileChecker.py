@@ -28,12 +28,6 @@ class FileChecker(Base):
             if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
         ]
 
-        # 获取文件路径
-        self.file_paths: list[str] = [
-            item.get_file_path() for item in items
-            if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
-        ]
-
         # 获取译前替换后的原文
         self.rpls: list[str] = []
         pre_translation_replacement_data: list[dict] = self.config.get("pre_translation_replacement_data")
@@ -47,12 +41,26 @@ class FileChecker(Base):
                         src = src.replace(v.get("src"), v.get("dst"))
                 self.rpls.append(src)
 
+        # 获取文件路径
+        self.file_paths: list[str] = [
+            item.get_file_path() for item in items
+            if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
+        ]
+
+        # 获取文件类型
+        self.file_types: list[str] = [
+            item.get_file_type() for item in items
+            if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
+        ]
+
     # 检查代码段
     def check_code(self, path: str, code_saver: CodeSaver) -> None:
         count = 0
-        result: dict[str, str] = {}
-        for src, dst, rpl, file_path in zip(self.srcs, self.dsts, self.rpls, self.file_paths):
-            if not code_saver.check(rpl, dst):
+        result: dict[str, str] = {
+            Localizer.get().file_checker_code_alert_key: Localizer.get().file_checker_code_alert_value,
+        }
+        for src, dst, rpl, file_path, file_type in zip(self.srcs, self.dsts, self.rpls, self.file_paths, self.file_types):
+            if not code_saver.check(rpl, dst, file_type):
                 count = count + 1
                 result.setdefault(file_path, {})[src] = dst
 

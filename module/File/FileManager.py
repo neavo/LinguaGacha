@@ -626,7 +626,7 @@ class FileManager(Base):
             for line in lines:
                 if line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
                     content, extra_field = find_content(line)
-                    content = content.replace("\\n", "\n")
+                    content = content.replace("\\n", "\n").replace("\\\"", "\"")
                 elif line.count("\"") >= 2:
                     continue
                 else:
@@ -684,6 +684,9 @@ class FileManager(Base):
         #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
         #     n "经过了一个美妙的夜晚，第二天，令我们不快的是，我们不得不面对我前一天早上意外引发的骚乱的延续。"
 
+        def process(text: str) -> str:
+            return text.replace("\n", "\\n").replace("\\\"", "\"").replace("\"", "\\\"")
+
         # 筛选
         target = [
             item for item in items
@@ -704,19 +707,11 @@ class FileManager(Base):
             for item in items:
                 extra_field = item.get_extra_field()
                 if "{{CONTENT}}" in extra_field and extra_field.startswith("    # "):
-                    result.append(
-                        extra_field.replace("{{CONTENT}}", item.get_src()).replace("\n", "\\n")
-                    )
-                    result.append(
-                        ("    " + extra_field.removeprefix("    # ")).replace("{{CONTENT}}", item.get_dst()).replace("\n", "\\n")
-                    )
+                    result.append(extra_field.replace("{{CONTENT}}", process(item.get_src())))
+                    result.append(("    " + extra_field.removeprefix("    # ")).replace("{{CONTENT}}", process(item.get_dst())))
                 elif "{{CONTENT}}" in extra_field and extra_field.startswith("    old "):
-                    result.append(
-                        extra_field.replace("{{CONTENT}}", item.get_src()).replace("\n", "\\n")
-                    )
-                    result.append(
-                        ("    new " + extra_field.removeprefix("    old ")).replace("{{CONTENT}}", item.get_dst()).replace("\n", "\\n")
-                    )
+                    result.append(extra_field.replace("{{CONTENT}}", process(item.get_src())))
+                    result.append(("    new " + extra_field.removeprefix("    old ")).replace("{{CONTENT}}", process(item.get_dst())))
                 else:
                     result.append(extra_field)
 

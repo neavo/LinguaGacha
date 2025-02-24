@@ -27,41 +27,43 @@ class PromptBuilder(Base):
         self.auto_glossary_enable = config.get("auto_glossary_enable")
         self.glossary_data = config.get("glossary_data")
 
-        self.base: str = None
-        self.prefix: str = None
-        self.suffix: str = None
-        self.suffix_glossary: str = None
-
     def get_base(self, language: str) -> str:
-        if self.base == None:
+        if getattr(self, "base", None) is None:
             with open(f"resource/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
                 self.base = reader.read().strip()
 
         return self.base
 
+    def get_base_renpy(self, language: str) -> str:
+        if getattr(self, "base_renpy", None) is None:
+            with open(f"resource/prompt/{language.lower()}/base_renpy.txt", "r", encoding = "utf-8-sig") as reader:
+                self.base_renpy = reader.read().strip()
+
+        return self.base_renpy
+
     def get_prefix(self, language: str) -> str:
-        if self.prefix == None:
+        if getattr(self, "prefix", None) is None:
             with open(f"resource/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
                 self.prefix = reader.read().strip()
 
         return self.prefix
 
     def get_suffix(self, language: str) -> str:
-        if self.suffix == None:
+        if getattr(self, "suffix", None) is None:
             with open(f"resource/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
                 self.suffix = reader.read().strip()
 
         return self.suffix
 
     def get_suffix_glossary(self, language: str) -> str:
-        if self.suffix_glossary == None:
+        if getattr(self, "suffix_glossary", None) is None:
             with open(f"resource/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
                 self.suffix_glossary = reader.read().strip()
 
         return self.suffix_glossary
 
     # 获取主提示词
-    def build_main(self) -> str:
+    def build_main(self, renpy: bool) -> str:
         if self.target_language == Base.Language.ZH:
             prompt_language = Base.Language.ZH
         else:
@@ -75,15 +77,18 @@ class PromptBuilder(Base):
             custom_prompt_data = self.config.get("custom_prompt_en_data")
 
         self.get_base(prompt_language)
+        self.get_base_renpy(prompt_language)
         self.get_prefix(prompt_language)
         self.get_suffix(prompt_language)
         self.get_suffix_glossary(prompt_language)
 
-        # 判断是否启用自定义提示词
-        if custom_prompt_enable == False:
-            base = self.base
-        else:
+        # 判断使用哪个版本的提示词
+        if custom_prompt_enable == True:
             base = custom_prompt_data
+        elif renpy == True:
+            base = self.base_renpy
+        else:
+            base = self.base
 
         # 判断是否启用自动术语表
         if self.auto_glossary_enable == False:

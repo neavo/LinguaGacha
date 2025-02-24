@@ -83,6 +83,8 @@ class LocalizerEN(LocalizerBase):
     translator_no_items: str = "No translatable data was found. Please check that the input file and project settings are correct ..."
     file_checker_code: str = "Code check completed, no abnormal entries found ..."
     file_checker_code_full: str = "Code check completed, {COUNT} abnormal entries found, accounting for {PERCENT} %, results written to [green]{TARGET}[/] ..."
+    file_checker_code_alert_key: str = "____Note____"
+    file_checker_code_alert_value: str = "This file lists entries that **may** have code error. Please judge the actual code error based on the context!"
     file_checker_glossary: str = "Glossary check completed, no abnormal entries found ..."
     file_checker_glossary_full: str = "Glossary check completed, {COUNT} abnormal entries found, accounting for {PERCENT} %, results written to [green]{TARGET}[/] ..."
     file_checker_translation: str = "Translation status check completed, no abnormal entries found ..."

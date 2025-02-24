@@ -218,9 +218,9 @@ class Translator(Base):
                     TranslatorTask(
                         self.config,
                         self.platform,
-                        self.cache_manager.get_project(),
                         chunk,
-                        self.prompt_builder
+                        self.cache_manager,
+                        self.prompt_builder,
                     )
                 )
             self.print("")
@@ -238,7 +238,12 @@ class Translator(Base):
                 self.info(f"{Localizer.get().translator_proxy_url} - {self.config.get("proxy_url")}")
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-                self.info(Localizer.get().translator_prompt.replace("{PROMPT}", self.prompt_builder.build_main()))
+                self.info(
+                    Localizer.get().translator_prompt.replace(
+                        "{PROMPT}",
+                        self.prompt_builder.build_main(renpy = not self.cache_manager.any_rpgmaker())
+                    )
+                )
             self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.config.get("batch_size"))))
             self.print("")
 
@@ -432,7 +437,7 @@ class Translator(Base):
 
         # 检查结果
         result_check = FileChecker(self.config, self.cache_manager.get_items())
-        result_check.check_code(Localizer.get().path_result_check_code, CodeSaver(self.config))
+        result_check.check_code(Localizer.get().path_result_check_code, CodeSaver())
         result_check.check_glossary(Localizer.get().path_result_check_glossary)
         result_check.check_untranslated(Localizer.get().path_result_check_untranslated)
 

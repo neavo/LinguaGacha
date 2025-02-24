@@ -85,6 +85,8 @@ class LocalizerBase():
     translator_no_items: str = "没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ..."
     file_checker_code: str = "已完成代码检查，未发现异常条目 ..."
     file_checker_code_full: str = "已完成代码检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] ..."
+    file_checker_code_alert_key: str = "____说明____"
+    file_checker_code_alert_value: str = "本文件内列出的是 **可能** 存在代码错误的条目，实际是否错误请结合上下文语境判断！"
     file_checker_glossary: str = "已完成术语表检查，未发现异常条目 ..."
     file_checker_glossary_full: str = "已完成术语表检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] ..."
     file_checker_translation: str = "已完成翻译状态检查，未发现异常条目 ..."

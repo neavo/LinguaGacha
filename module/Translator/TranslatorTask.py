@@ -11,7 +11,7 @@ from rich.console import Console
 from base.Base import Base
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheProject import CacheProject
+from module.Cache.CacheManager import CacheManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
@@ -31,23 +31,25 @@ class TranslatorTask(Base):
     # 类线程锁
     LOCK = threading.Lock()
 
-    def __init__(self, config: dict, platform: dict, project: CacheProject, items: list[CacheItem], prompt_builder: PromptBuilder) -> None:
+    def __init__(self, config: dict, platform: dict, items: list[CacheItem], cache_manager: CacheManager, prompt_builder: PromptBuilder) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
         self.config = config
-        self.project = project
         self.platform = platform
-        self.code_saver = CodeSaver(self.config)
+        self.code_saver = CodeSaver()
+        self.cache_manager = cache_manager
         self.prompt_builder = prompt_builder
         self.response_checker = ResponseChecker(self.config, items)
 
         # 生成原文文本字典
         self.src_dict = {}
+        self.type_dict = {}
         for item in items:
             for sub_line in item.split_sub_lines():
                 self.src_dict[str(len(self.src_dict))] = sub_line
+                self.type_dict[str(len(self.src_dict))] = item.get_file_type()
 
         # 正规化
         self.src_dict = self.normalize(self.src_dict)
@@ -56,14 +58,14 @@ class TranslatorTask(Base):
         self.src_dict = self.replace_before_translation(self.src_dict)
 
         # 代码救星预处理
-        self.src_dict = self.code_saver.preprocess(self.src_dict)
+        self.src_dict = self.code_saver.pre_process(self.src_dict, self.type_dict)
 
     # 启动任务
     def start(self, current_round: int) -> dict:
-        return self.request(self.src_dict, current_round)
+        return self.request(self.src_dict, self.type_dict, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], type_dict: dict[str, str], current_round: int) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -129,7 +131,7 @@ class TranslatorTask(Base):
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
 
             # 代码救星后处理
-            dst_dict = self.code_saver.postprocess(dst_dict)
+            dst_dict = self.code_saver.post_process(dst_dict, type_dict)
 
             # 译后替换
             dst_dict = self.replace_after_translation(dst_dict)
@@ -277,7 +279,8 @@ class TranslatorTask(Base):
     # 标点修复
     def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
         for k in dst_dict:
-            dst_dict[k] = PunctuationHelper.check_and_replace(src_dict[k], dst_dict[k])
+            if k in src_dict:
+                dst_dict[k] = PunctuationHelper.check_and_replace(src_dict[k], dst_dict[k])
 
         return dst_dict
 
@@ -288,7 +291,7 @@ class TranslatorTask(Base):
         extra_log = []
 
         # 基础提示词
-        main = self.prompt_builder.build_main()
+        main = self.prompt_builder.build_main(renpy = not self.cache_manager.any_rpgmaker())
 
         # 术语表
         if self.config.get("glossary_enable") == True:
