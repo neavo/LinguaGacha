@@ -1,5 +1,6 @@
 import os
 
+import opencc
 import rapidjson as json
 
 from base.Base import Base
@@ -9,6 +10,9 @@ from module.CodeSaver import CodeSaver
 from module.Localizer.Localizer import Localizer
 
 class FileChecker(Base):
+
+    # 类变量
+    OPENCC = opencc.OpenCC("s2t")
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
         super().__init__()
@@ -78,12 +82,23 @@ class FileChecker(Base):
 
     # 检查术语表
     def check_glossary(self, path: str) -> None:
-        glossary_enable: list[dict] = self.config.get("glossary_enable")
-        glossary_data: bool = self.config.get("glossary_data")
+        glossary_enable: bool = self.config.get("glossary_enable")
+        glossary_data: list[dict] = self.config.get("glossary_data")
+        traditional_chinese_enable: bool = self.config.get("traditional_chinese_enable")
 
         # 有效性检查
         if glossary_enable == False or len(glossary_data) == 0:
             return
+
+        # 如果启用了繁体输出，则先将数据转换为繁体
+        if traditional_chinese_enable == True:
+            glossary_data = [
+                {
+                    "src": v.get("src"),
+                    "dst": FileChecker.OPENCC.convert(v.get("dst")),
+                }
+                for v in glossary_data
+            ]
 
         count = 0
         result: dict[str, dict] = {}
