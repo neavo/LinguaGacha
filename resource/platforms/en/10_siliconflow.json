@@ -1,12 +1,13 @@
 {
-    "id": 12,
-    "name": "自定义接口 Custom API",
-    "api_url": "http://127.0.0.1:8080",
+    "id": 10,
+    "name": "SiliconFlow",
+    "api_url": "https://api.siliconflow.cn/v1",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "no_model_required",
+    "model": "deepseek-ai/DeepSeek-V3",
+    "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

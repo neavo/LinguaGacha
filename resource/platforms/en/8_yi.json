@@ -1,12 +1,13 @@
 {
-    "id": 2,
-    "name": "OpenAI",
-    "api_url": "https://api.openai.com/v1",
+    "id": 8,
+    "name": "Yi",
+    "api_url": "https://api.lingyiwanwu.com/v1",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "gpt-4o-mini",
+    "model": "yi-lightning",
+    "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

@@ -7,6 +7,7 @@
     ],
     "api_format": "OpenAI",
     "model": "qwen-turbo",
+    "think": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

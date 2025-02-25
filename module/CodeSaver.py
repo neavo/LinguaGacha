@@ -128,7 +128,7 @@ class CodeSaver(Base):
         return data
 
     # 检查代码段
-    def check(self, src: str, dst: str, file_type: str) -> None:
+    def check(self, src: str, dst: str, file_type: str) -> bool:
         if file_type == CacheItem.FileType.RENPY:
             x = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RENPY.findall(src)]
             y = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RENPY.findall(dst)]

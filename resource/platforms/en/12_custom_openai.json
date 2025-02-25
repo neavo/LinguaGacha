@@ -1,12 +1,13 @@
 {
-    "id": 10,
-    "name": "硅基流动",
-    "api_url": "https://api.siliconflow.cn/v1",
+    "id": 12,
+    "name": "Custom - OpenAI",
+    "api_url": "http://127.0.0.1:8080",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "deepseek-ai/DeepSeek-V3",
+    "model": "no_model_required",
+    "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

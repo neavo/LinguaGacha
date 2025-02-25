@@ -1,12 +1,13 @@
 {
-    "id": 5,
-    "name": "Anthropic",
+    "id": 13,
+    "name": "Custom - Anthropic",
     "api_url": "https://api.anthropic.com",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "Anthropic",
-    "model": "claude-3-5-haiku",
+    "model": "no_model_required",
+    "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

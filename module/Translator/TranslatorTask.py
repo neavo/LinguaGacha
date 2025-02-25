@@ -310,9 +310,14 @@ class TranslatorTask(Base):
             ),
         })
 
-        # 伪造预回复，DeepSeek R1 不兼容此方法
-        model = self.platform.get("model")
-        if "deepseek" in model.lower() and ("r1" in model.lower() or "reasoner" in model.lower()):
+        # 伪造预回复，可以更好的回避模型的安全限制
+        # DeepSeek R1、 Claude 思考模式 不兼容此方法
+        model: str = self.platform.get("model").lower()
+        thinking: str = self.platform.get("thinking")
+        api_format: str = self.platform.get("api_format")
+        if "deepseek" in model and ("r1" in model or "reasoner" in model):
+            pass
+        elif api_format == "Anthropic" and thinking == True:
             pass
         else:
             messages.append({

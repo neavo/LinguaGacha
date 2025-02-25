@@ -1,0 +1,15 @@
+{
+    "id": 13,
+    "name": "自定义 Anthropic 接口",
+    "api_url": "https://api.anthropic.com",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "Anthropic",
+    "model": "no_model_required",
+    "thinking": false,
+    "top_p": 0.95,
+    "temperature": 0.75,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}

@@ -77,7 +77,8 @@ class PlatformPage(QWidget, Base):
     # 加载默认平台数据
     def load_default_platforms(self) -> list[dict]:
         platforms = []
-        for path in [file.path for file in os.scandir("./resource/platforms") if file.is_file() and file.name.endswith(".json")]:
+        platforms_path = f"./resource/platforms/{Localizer.get_app_language().lower()}/"
+        for path in [file.path for file in os.scandir(platforms_path) if file.is_file() and file.name.endswith(".json")]:
             with open(path, "r", encoding = "utf-8-sig") as reader:
                 platforms.append(json.load(reader))
 

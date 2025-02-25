@@ -17,6 +17,7 @@ from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
 from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
+from widget.SwitchButtonCard import SwitchButtonCard
 from widget.LineEditMessageBox import LineEditMessageBox
 from frontend.Project.ModelListPage import ModelListPage
 
@@ -64,9 +65,9 @@ class PlatformEditPage(MessageBoxBase, Base):
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
             self.add_widget_api_key(self.vbox, config, window)
 
-        # 接口格式
-        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC):
-            self.add_widget_format(self.vbox, config, window)
+        # 思考模式
+        if self.platform.get("api_format") in (Base.APIFormat.ANTHROPIC,):
+            self.add_widget_thinking(self.vbox, config, window)
 
         # 模型名称
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
@@ -162,23 +163,22 @@ class PlatformEditPage(MessageBoxBase, Base):
         )
 
     # 接口格式
-    def add_widget_format(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            widget.set_current_index(max(0, widget.find_text(self.platform.get("api_format"))))
+    def add_widget_thinking(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+        def init(widget: SwitchButtonCard) -> None:
+            widget.set_checked(self.platform.get("thinking", False))
 
-        def current_changed(widget: ComboBoxCard) -> None:
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
-            self.platform["api_format"] = widget.get_current_text()
+            self.platform["thinking"] = checked
             self.update_platform_to_config(self.platform, config)
             self.save_config(config)
 
         parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().platform_edit_page_api_format_title,
-                Localizer.get().platform_edit_page_api_format_content,
-                (Base.APIFormat.OPENAI, Base.APIFormat.ANTHROPIC),
+            SwitchButtonCard(
+                Localizer.get().platform_edit_page_thinking_title,
+                Localizer.get().platform_edit_page_thinking_content,
                 init = init,
-                current_changed = current_changed,
+                checked_changed = checked_changed,
             )
         )
 

@@ -7,6 +7,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 
+from base.Base import Base
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.LogHelper import LogHelper
@@ -37,10 +38,6 @@ if __name__ == "__main__":
     # 捕获全局异常
     sys.excepthook = excepthook
 
-    # 创建文件夹
-    os.makedirs("./input", exist_ok = True)
-    os.makedirs("./output", exist_ok = True)
-
     # 启用了高 DPI 缩放
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
@@ -50,11 +47,15 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     sys.path.append(script_dir)
 
+    # 创建文件夹
+    os.makedirs("./input", exist_ok = True)
+    os.makedirs("./output", exist_ok = True)
+
     # 载入配置文件
     config = load_config()
 
     # 设置应用语言
-    Localizer.set_app_language(config.get("app_language"))
+    Localizer.set_app_language(config.get("app_language", Base.Language.ZH))
 
     # 打印日志
     LogHelper.debug(Localizer.get().log_debug_mode) if LogHelper.is_debug() else None

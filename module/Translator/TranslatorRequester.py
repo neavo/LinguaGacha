@@ -24,6 +24,7 @@ class TranslatorRequester(Base):
 
     # 发起请求
     def request(self, messages: list[dict]) -> tuple[bool, str, int, int]:
+        thinking = self.platform.get("thinking")
         temperature = self.platform.get("temperature")
         top_p = self.platform.get("top_p")
         presence_penalty = self.platform.get("presence_penalty")
@@ -33,6 +34,7 @@ class TranslatorRequester(Base):
         if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_sakura(
                 messages,
+                thinking,
                 temperature,
                 top_p,
                 presence_penalty,
@@ -41,6 +43,7 @@ class TranslatorRequester(Base):
         elif self.platform.get("api_format") == Base.APIFormat.GOOGLE:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_google(
                 messages,
+                thinking,
                 temperature,
                 top_p,
                 presence_penalty,
@@ -49,6 +52,7 @@ class TranslatorRequester(Base):
         elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_anthropic(
                 messages,
+                thinking,
                 temperature,
                 top_p,
                 presence_penalty,
@@ -57,6 +61,7 @@ class TranslatorRequester(Base):
         else:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_openai(
                 messages,
+                thinking,
                 temperature,
                 top_p,
                 presence_penalty,
@@ -85,7 +90,7 @@ class TranslatorRequester(Base):
                 return api_key[TranslatorRequester.api_key_index]
 
     # 发起请求
-    def request_sakura(self, messages: list[dict], temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
+    def request_sakura(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client = OpenAI(
                 base_url = self.platform.get("api_url"),
@@ -136,7 +141,7 @@ class TranslatorRequester(Base):
         return False, "", response_result, prompt_tokens, completion_tokens
 
     # 发起请求
-    def request_openai(self, messages: list[dict], temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
+    def request_openai(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client = OpenAI(
                 base_url = self.platform.get("api_url"),
@@ -185,7 +190,7 @@ class TranslatorRequester(Base):
         return False, response_think, response_result, prompt_tokens, completion_tokens
 
     # 发起请求
-    def request_google(self, messages: list[dict], temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
+    def request_google(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
         try:
             # Gemini SDK 文档 - https://ai.google.dev/api?hl=zh-cn&lang=python
             genai.configure(
@@ -239,24 +244,48 @@ class TranslatorRequester(Base):
         return False, "", response_result, prompt_tokens, completion_tokens
 
     # 发起请求
-    def request_anthropic(self, messages: list[dict], temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
+    def request_anthropic(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client = anthropic.Anthropic(
                 base_url = self.platform.get("api_url"),
                 api_key = self.get_apikey(),
             )
 
-            response = client.messages.create(
-                model = self.platform.get("model"),
-                messages = messages,
-                temperature = temperature,
-                top_p = top_p,
-                timeout = self.config.get("request_timeout"),
-                max_tokens = 4096,
-            )
+            # 根据是否为思考模式，选择不同的请求方式
+            if thinking == True:
+                response = client.messages.create(
+                    model = self.platform.get("model"),
+                    messages = messages,
+                    thinking = {
+                        "type": "enabled",
+                        "budget_tokens": 1024
+                    },
+                    timeout = self.config.get("request_timeout"),
+                    max_tokens = 4096,
+                )
+            else:
+                response = client.messages.create(
+                    model = self.platform.get("model"),
+                    messages = messages,
+                    temperature = temperature,
+                    top_p = top_p,
+                    timeout = self.config.get("request_timeout"),
+                    max_tokens = 4096,
+                )
 
-            # 提取回复的文本内容
-            response_result = response.content[0].text
+            # 提取回复内容
+            text_messages = [msg for msg in response.content if hasattr(msg, "text") and isinstance(msg.text, str)]
+            think_messages = [msg for msg in response.content if hasattr(msg, "thinking") and isinstance(msg.thinking, str)]
+
+            if text_messages != []:
+                response_result = text_messages[-1].text.strip()
+            else:
+                response_result = ""
+
+            if think_messages != []:
+                response_think = think_messages[-1].thinking.replace("\n\n", "\n").strip()
+            else:
+                response_think = ""
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
@@ -273,4 +302,4 @@ class TranslatorRequester(Base):
         except Exception:
             completion_tokens = 0
 
-        return False, "", response_result, prompt_tokens, completion_tokens
+        return False, response_think, response_result, prompt_tokens, completion_tokens

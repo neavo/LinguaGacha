@@ -9,13 +9,13 @@ from qfluentwidgets import StrongBodyLabel
 
 class SwitchButtonCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, checked_changed = None):
+    def __init__(self, title: str, description: str, init = None, checked_changed = None) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
-        self.container = QHBoxLayout(self)
-        self.container.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.hbox = QHBoxLayout(self)
+        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()
@@ -26,23 +26,23 @@ class SwitchButtonCard(CardWidget):
 
         self.vbox.addWidget(self.title_label)
         self.vbox.addWidget(self.description_label)
-        self.container.addLayout(self.vbox)
+        self.hbox.addLayout(self.vbox)
 
         # 填充
-        self.container.addStretch(1)
+        self.hbox.addStretch(1)
 
         # 添加控件
         self.switch_button = SwitchButton()
         self.switch_button.setOnText("")
         self.switch_button.setOffText("")
-        self.container.addWidget(self.switch_button)
+        self.hbox.addWidget(self.switch_button)
 
-        if init:
+        if callable(init):
             init(self)
 
-        if checked_changed:
+        if callable(checked_changed):
             self.switch_button.checkedChanged.connect(lambda checked: checked_changed(self, checked))
 
     # 设置选中状态
-    def set_checked(self, checked: bool):
+    def set_checked(self, checked: bool) -> None:
         self.switch_button.setChecked(checked)
