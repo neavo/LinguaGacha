@@ -7,6 +7,7 @@ google-generativeai
 tiktoken
 opencc
 openpyxl
+lxml
 beautifulsoup4
 
 # Tools
