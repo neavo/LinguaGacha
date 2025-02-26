@@ -47,6 +47,7 @@ class Base():
         KO: str = "KO"
         RU: str = "RU"
         DE: str = "DE"
+        TH: str = "TH"
         ID: str = "ID"
         VI: str = "VI"
 

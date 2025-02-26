@@ -327,30 +327,24 @@ class Translator(Base):
         # 统计排除数量
         self.print("")
         count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
-
-        if self.config.get("source_language") == Base.Language.ZH:
-            func = TextHelper.CJK.any
-        elif self.config.get("source_language") == Base.Language.EN:
-            func = TextHelper.Latin.any
-        elif self.config.get("source_language") == Base.Language.JA:
-            func = TextHelper.JA.any
-        elif self.config.get("source_language") == Base.Language.KO:
-            func = TextHelper.KO.any
-        elif self.config.get("source_language") == Base.Language.RU:
-            func = TextHelper.RU.any
-        elif self.config.get("source_language") == Base.Language.DE:
-            func = TextHelper.DE.any
-        elif self.config.get("source_language") == Base.Language.ID:
-            func = TextHelper.ID.any
-        elif self.config.get("source_language") == Base.Language.VI:
-            func = TextHelper.VI.any
+        functions = {
+            Base.Language.ZH: TextHelper.CJK.any,
+            Base.Language.EN: TextHelper.Latin.any,
+            Base.Language.JA: TextHelper.JA.any,
+            Base.Language.KO: TextHelper.KO.any,
+            Base.Language.RU: TextHelper.RU.any,
+            Base.Language.DE: TextHelper.DE.any,
+            Base.Language.TH: TextHelper.TH.any,
+            Base.Language.ID: TextHelper.ID.any,
+            Base.Language.VI: TextHelper.VI.any,
+        }
 
         # 筛选出无效条目并标记为已排除
         target = []
-        if callable(func) == True:
+        if callable(functions[self.config.get("source_language")]) == True:
             target = [
                 v for v in items
-                if func(v.get_src()) == False
+                if functions[self.config.get("source_language")](v.get_src()) == False
             ]
             for item in target:
                 item.set_status(Base.TranslationStatus.EXCLUDED)

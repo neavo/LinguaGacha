@@ -55,6 +55,9 @@ class TextHelper:
     # 德文
     DE = TextBase.DE()
 
+    # 泰文
+    TH = TextBase.TH()
+
     # 印尼文
     ID = TextBase.ID()
 

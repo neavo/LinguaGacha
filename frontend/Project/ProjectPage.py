@@ -20,6 +20,7 @@ class ProjectPage(QWidget, Base):
         Base.Language.KO,
         Base.Language.RU,
         Base.Language.DE,
+        Base.Language.TH,
         Base.Language.ID,
         Base.Language.VI,
     )

@@ -95,6 +95,16 @@ class TextBase:
         for char in range(start, end + 1)
     }
 
+    # 泰文字符
+    TH_SET = {
+        chr(char)
+        for start, end in (
+            (0x0E00, 0x0E7F),                           # 泰文字符
+            (0x0E50, 0x0E59),                           # 泰文数字
+        )
+        for char in range(start, end + 1)
+    }
+
     # 判断字符是否属于目标范围
     def char(self, char: str) -> bool:
         pass
@@ -172,6 +182,10 @@ class DE(TextBase):
     def char(self, char: str) -> bool:
         return char in TextBase.DE_SET
 
+# 泰文
+class TH(TextBase):
+    def char(self, char: str) -> bool:
+        return char in TextBase.TH_SET
 
 # 印尼文
 class ID(TextBase):

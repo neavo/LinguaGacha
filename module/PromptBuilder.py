@@ -14,6 +14,7 @@ class PromptBuilder(Base):
         Base.Language.KO : "Korean",
         Base.Language.RU : "Russian",
         Base.Language.DE : "German",
+        Base.Language.TH : "Thai",
         Base.Language.ID : "Indonesian",
         Base.Language.VI : "Vietnamese",
     }
