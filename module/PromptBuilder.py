@@ -1,3 +1,4 @@
+import re
 from base.Base import Base
 
 class PromptBuilder(Base):
@@ -19,6 +20,19 @@ class PromptBuilder(Base):
         Base.Language.VI : "Vietnamese",
     }
 
+    # RENPY - {w=2.3} [renpy.version_only]
+    RE_CODE_RENPY = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]", flags = re.IGNORECASE)
+
+    # RPGMaker - /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
+    RE_CODE_RPGMAKER = re.compile(r"[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
+
+    # RPGMaker - if(!s[982]) if(v[982] >= 1)  en(!s[982]) en(v[982] >= 1)
+    RE_CODE_RPGMAKER_IF = re.compile(r"(en|if)\(.{0,5}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
+
+    # 代码示例文本
+    CODE_SAMPLE_ZH = "，特别是 {code_sample} 形式的代码段"
+    CODE_SAMPLE_EN = ", especially code segments in the format of {code_sample} "
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -34,13 +48,6 @@ class PromptBuilder(Base):
                 self.base = reader.read().strip()
 
         return self.base
-
-    def get_base_renpy(self, language: str) -> str:
-        if getattr(self, "base_renpy", None) is None:
-            with open(f"resource/prompt/{language.lower()}/base_renpy.txt", "r", encoding = "utf-8-sig") as reader:
-                self.base_renpy = reader.read().strip()
-
-        return self.base_renpy
 
     def get_prefix(self, language: str) -> str:
         if getattr(self, "prefix", None) is None:
@@ -64,7 +71,7 @@ class PromptBuilder(Base):
         return self.suffix_glossary
 
     # 获取主提示词
-    def build_main(self, renpy: bool) -> str:
+    def build_main(self, samples: list[str]) -> str:
         if self.target_language == Base.Language.ZH:
             prompt_language = Base.Language.ZH
         else:
@@ -78,7 +85,6 @@ class PromptBuilder(Base):
             custom_prompt_data = self.config.get("custom_prompt_en_data")
 
         self.get_base(prompt_language)
-        self.get_base_renpy(prompt_language)
         self.get_prefix(prompt_language)
         self.get_suffix(prompt_language)
         self.get_suffix_glossary(prompt_language)
@@ -86,10 +92,26 @@ class PromptBuilder(Base):
         # 判断使用哪个版本的提示词
         if custom_prompt_enable == True:
             base = custom_prompt_data
-        elif renpy == True:
-            base = self.base_renpy
         else:
             base = self.base
+
+        # 添加或移除代码示例文本
+        if samples != []:
+            if prompt_language == Base.Language.ZH:
+                base = base.replace(
+                    "无需翻译。",
+                    f"无需翻译，特别是 {"、".join(samples)} 形式的代码段。",
+                )
+            elif len(samples) == 1:
+                base = base.replace(
+                    "Do not translate these elements.",
+                    f"Do not translate these elements, especially code segments in the format of {samples[0]} .",
+                )
+            elif len(samples) >= 2:
+                base = base.replace(
+                    "Do not translate these elements.",
+                    f"Do not translate these elements, especially code segments in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"} .",
+                )
 
         # 判断是否启用自动术语表
         if self.auto_glossary_enable == False:
@@ -100,9 +122,9 @@ class PromptBuilder(Base):
         return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", PromptBuilder.TARGET_LANGUAGE_MAPPING.get(self.target_language))
 
     # 构造术语表
-    def build_glossary(self, input_dict: dict) -> str:
+    def build_glossary(self, src_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
-        lines = set(line for line in input_dict.values())
+        lines = set(line for line in src_dict.values())
 
         # 筛选在输入词典中出现过的条目
         result = [
@@ -137,9 +159,9 @@ class PromptBuilder(Base):
             )
 
     # 构造术语表
-    def build_glossary_sakura(self, input_dict: dict) -> str:
+    def build_glossary_sakura(self, src_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
-        lines = set(line for line in input_dict.values())
+        lines = set(line for line in src_dict.values())
 
         # 筛选在输入词典中出现过的条目
         result = [

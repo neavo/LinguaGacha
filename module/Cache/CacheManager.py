@@ -15,11 +15,6 @@ class CacheManager(Base):
     # 缓存文件保存周期（秒）
     SAVE_INTERVAL = 15
 
-    # 用于判断是否包含 RPGMaker 数据条目
-    # if(!s[982]) en(v[982] >= 1) if(v[982] >= 1)
-    # /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
-    RE_RM = re.compile(r"(en|if)\(.{0,5}[vs]\[\d+\].{0,16}\)|[<【]{0,1}[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]][>】]{0,1}", flags = re.IGNORECASE)
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -108,7 +103,6 @@ class CacheManager(Base):
     # 设置缓存数据
     def set_items(self, items: list[CacheItem]) -> None:
         self.items = items
-        self._any_rpgmaker = None
 
     # 获取缓存数据
     def get_items(self) -> list[CacheItem]:
@@ -139,13 +133,6 @@ class CacheManager(Base):
             "status": item.get_status(),
             "retry_count": item.get_retry_count(),
         }) for item in self.items]
-
-    # 判断是否包含任何 RPGMaker 数据
-    def any_rpgmaker(self) -> bool:
-        if getattr(self, "_any_rpgmaker", None) is None:
-            self._any_rpgmaker = any(CacheManager.RE_RM.findall(item.get_src()) != [] for item in self.items)
-
-        return self._any_rpgmaker
 
     # 获取缓存数据数量（根据翻译状态）
     def get_item_count_by_status(self, status: int) -> int:

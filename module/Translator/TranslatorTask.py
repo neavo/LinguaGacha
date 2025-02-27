@@ -45,11 +45,9 @@ class TranslatorTask(Base):
 
         # 生成原文文本字典
         self.src_dict = {}
-        self.type_dict = {}
         for item in items:
             for sub_line in item.split_sub_lines():
                 self.src_dict[str(len(self.src_dict))] = sub_line
-                self.type_dict[str(len(self.src_dict))] = item.get_file_type()
 
         # 正规化
         self.src_dict = self.normalize(self.src_dict)
@@ -58,14 +56,14 @@ class TranslatorTask(Base):
         self.src_dict = self.replace_before_translation(self.src_dict)
 
         # 代码救星预处理
-        self.src_dict = self.code_saver.pre_process(self.src_dict, self.type_dict)
+        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict)
 
     # 启动任务
     def start(self, current_round: int) -> dict:
-        return self.request(self.src_dict, self.type_dict, current_round)
+        return self.request(self.src_dict, self.samples, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], type_dict: dict[str, str], current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], samples: list[str], current_round: int) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -79,9 +77,9 @@ class TranslatorTask(Base):
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, extra_console_log = self.generate_prompt(self.src_dict)
+            self.messages, extra_console_log = self.generate_prompt(src_dict, samples)
         else:
-            self.messages, extra_console_log = self.generate_prompt_sakura(self.src_dict)
+            self.messages, extra_console_log = self.generate_prompt_sakura(src_dict)
 
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
@@ -131,7 +129,7 @@ class TranslatorTask(Base):
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
 
             # 代码救星后处理
-            dst_dict = self.code_saver.post_process(dst_dict, type_dict)
+            dst_dict = self.code_saver.post_process(src_dict, dst_dict)
 
             # 译后替换
             dst_dict = self.replace_after_translation(dst_dict)
@@ -285,13 +283,13 @@ class TranslatorTask(Base):
         return dst_dict
 
     # 生成提示词
-    def generate_prompt(self, src_dict: dict) -> tuple[list[dict], list[str]]:
+    def generate_prompt(self, src_dict: dict, samples: list[str]) -> tuple[list[dict], list[str]]:
         # 初始化
         messages = []
         extra_log = []
 
         # 基础提示词
-        main = self.prompt_builder.build_main(renpy = not self.cache_manager.any_rpgmaker())
+        main = self.prompt_builder.build_main(samples)
 
         # 术语表
         if self.config.get("glossary_enable") == True:

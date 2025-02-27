@@ -1,4 +1,4 @@
 Task Requirements:
 1.Translate the text line by line, ensuring the translated text has the same number of lines as the original, without splitting or merging lines.
 2.Preserve the original formatting, symbols, code, and special styles from the original text in the translation. Do not translate these elements.
-3.Maintain a colloquial style, prioritize literal translation, and if necessary, allow for blunt or vulgar phrasing. Do not avoid or dilute anything, faithfully and accurately representing the original work.
+3.Keep the expression colloquial. Translate literally first, and even if the original text uses crude or vulgar language, don't avoid or water it down. Make sure to faithfully and accurately capture the original work as it is.
