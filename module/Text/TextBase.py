@@ -2,7 +2,7 @@ class TextBase:
 
     # 汉字字符
     CJK_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x4E00, 0x9FFF),                           # 基本区
             (0x3400, 0x4DBF),                           # 扩展A区
@@ -11,23 +11,23 @@ class TextBase:
             (0x2B740, 0x2B81F),                         # 扩展D区
             (0x2B820, 0x2CEAF),                         # 扩展E区
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 拉丁字符
     LATIN_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x0020, 0x00FF),                           # 从 \u0020 开始，排除控制字符
             (0x0100, 0x017F),                           # 拉丁扩展-A 区（包括带有重音的字母）
             (0x0180, 0x024F),                           # 拉丁扩展-B 区（更多带有重音和其他变体的字母）
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 谚文字符
     HANGUL_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x1100, 0x11FF),                           # 韩文字母 (Hangul Jamo)
             (0xA960, 0xA97F),                           # 韩文字母扩展-A (Hangul Jamo Extended-A)
@@ -35,27 +35,27 @@ class TextBase:
             (0xAC00, 0xD7AF),                           # 韩文音节块 (Hangul Syllables)
             (0x3130, 0x318F),                           # 韩文兼容字母 (Hangul Compatibility Jamo)
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 平假名
     HIRAGANA_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x3040, 0x309F),                           # 平假名
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 片假名
     KATAKANA_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x30A0, 0x30FF),                          # 片假名
             (0xFF65, 0xFF9F),                          # 半角片假名（包括半角浊音、半角拗音等）
             (0x31F0, 0x31FF),                          # 片假名语音扩展
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 濁音和半浊音符号
@@ -66,7 +66,7 @@ class TextBase:
 
     # 俄文字符
     RU_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x0410, 0x044F),                           # 基本俄文字母 (大写字母 А-Я, 小写字母 а-я)
             (0x0500, 0x052F),                           # 俄文字符扩展区（补充字符，包括一些历史字母和其他斯拉夫语言字符）
@@ -75,7 +75,7 @@ class TextBase:
             (0x1C80, 0x1C8F),                           # 俄文字符补充字符集，包括一些少见和历史字符
             (0x2DE0, 0x2DFF),                           # 其他扩展字符（例如：斯拉夫语言的一些符号）
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 德文字符 (Latin 扩展 + 特殊字符)
@@ -88,25 +88,25 @@ class TextBase:
 
     # 越南文字符 (Latin 扩展 + 很多变音符号)
     VI_SET = LATIN_SET | {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x1EA0, 0x1EF9),                           # 越南语扩展字符
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 泰文字符
     TH_SET = {
-        chr(char)
+        chr(c)
         for start, end in (
             (0x0E00, 0x0E7F),                           # 泰文字符
             (0x0E50, 0x0E59),                           # 泰文数字
         )
-        for char in range(start, end + 1)
+        for c in range(start, end + 1)
     }
 
     # 判断字符是否属于目标范围
-    def char(self, char: str) -> bool:
+    def char(self, c: str) -> bool:
         pass
 
     # 判断字符串中是否包含至少一个目标范围的字符
@@ -141,26 +141,38 @@ class TextBase:
 
 # 汉字
 class CJK(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.CJK_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.CJK_SET
 
 # 拉丁文
 class Latin(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.LATIN_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.LATIN_SET
 
 # 日文
 class JA(TextBase):
     CJK = CJK()
 
-    def hiragana(self, char: str) -> bool:
-        return char in TextBase.HIRAGANA_SET
+    def hiragana(self, c: str) -> bool:
+        return c in TextBase.HIRAGANA_SET
 
-    def katakana(self, char: str) -> bool:
-        return char in TextBase.KATAKANA_SET
+    def any_hiragana(self, text: str) -> bool:
+        return any(self.hiragana(c) for c in text)
 
-    def char(self, char: str) -> bool:
-        return self.CJK.char(char) or self.hiragana(char) or self.katakana(char) or char in TextBase.JA_VOICED_SOUND_MARKS_SET
+    def all_hiragana(self, text: str) -> bool:
+        return all(self.hiragana(c) for c in text)
+
+    def katakana(self, c: str) -> bool:
+        return c in TextBase.KATAKANA_SET
+
+    def any_katakana(self, text: str) -> bool:
+        return any(self.katakana(c) for c in text)
+
+    def all_katakana(self, text: str) -> bool:
+        return all(self.katakana(c) for c in text)
+
+    def char(self, c: str) -> bool:
+        return self.CJK.char(c) or self.hiragana(c) or self.katakana(c) or c in TextBase.JA_VOICED_SOUND_MARKS_SET
 
 # 韩文
 class KO(TextBase):
@@ -169,31 +181,37 @@ class KO(TextBase):
     def hangeul(self, char: str) -> bool:
         return char in TextBase.HANGUL_SET
 
-    def char(self, char: str) -> bool:
-        return self.CJK.char(char) or self.hangeul(char)
+    def any_hangeul(self, text: str) -> bool:
+        return any(self.hangeul(c) for c in text)
+
+    def all_hangeul(self, text: str) -> bool:
+        return all(self.hangeul(c) for c in text)
+
+    def char(self, c: str) -> bool:
+        return self.CJK.char(c) or self.hangeul(c)
 
 # 俄文
 class RU(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.RU_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.RU_SET
 
 # 德文
 class DE(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.DE_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.DE_SET
 
 # 泰文
 class TH(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.TH_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.TH_SET
 
 # 印尼文
 class ID(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.ID_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.ID_SET
 
 
 # 越南文
 class VI(TextBase):
-    def char(self, char: str) -> bool:
-        return char in TextBase.VI_SET
+    def char(self, c: str) -> bool:
+        return c in TextBase.VI_SET
