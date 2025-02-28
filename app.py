@@ -4,6 +4,7 @@ import traceback
 
 import rapidjson as json
 from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 
@@ -72,6 +73,9 @@ if __name__ == "__main__":
 
     # 创建全局应用对象
     app = QApplication(sys.argv)
+
+    # 设置应用图标
+    app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont("Consolas")

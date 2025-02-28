@@ -209,7 +209,7 @@ class AppFluentWindow(FluentWindow, Base):
             routeKey = "avatar_navigation_widget",
             widget = NavigationAvatarWidget(
                 "⭐️ @ Github",
-                "resource/avatar-bg.jpg",
+                "resource/icon_full.png",
             ),
             onClick = self.open_project_page,
             position = NavigationItemPosition.BOTTOM
