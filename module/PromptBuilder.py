@@ -24,15 +24,6 @@ class PromptBuilder(Base):
         Base.Language.VI : "Vietnamese",
     }
 
-    # RENPY - {w=2.3} [renpy.version_only]
-    RE_CODE_RENPY = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]", flags = re.IGNORECASE)
-
-    # RPGMaker - /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
-    RE_CODE_RPGMAKER = re.compile(r"[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
-
-    # RPGMaker - if(!s[982]) if(v[982] >= 1)  en(!s[982]) en(v[982] >= 1)
-    RE_CODE_RPGMAKER_IF = re.compile(r"(en|if)\(.{0,5}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
-
     # 代码示例文本
     CODE_SAMPLE_ZH = "，特别是 {code_sample} 形式的代码段"
     CODE_SAMPLE_EN = ", especially code segments in the format of {code_sample} "

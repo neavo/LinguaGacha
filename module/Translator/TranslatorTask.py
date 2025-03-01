@@ -43,11 +43,13 @@ class TranslatorTask(Base):
         self.prompt_builder = prompt_builder
         self.response_checker = ResponseChecker(self.config, items)
 
-        # 生成原文文本字典
-        self.src_dict = {}
+        # 生成原文文本字典与文本类型字典
+        self.src_dict: dict[str, str] = {}
+        self.text_type_dict: dict[str, str] = {}
         for item in items:
             for sub_line in item.split_sub_lines():
                 self.src_dict[str(len(self.src_dict))] = sub_line
+                self.text_type_dict[str(len(self.text_type_dict))] = item.get_text_type()
 
         # 正规化
         self.src_dict = self.normalize(self.src_dict)
@@ -56,7 +58,7 @@ class TranslatorTask(Base):
         self.src_dict = self.replace_before_translation(self.src_dict)
 
         # 代码救星预处理
-        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict)
+        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.text_type_dict)
 
     # 启动任务
     def start(self, current_round: int) -> dict:

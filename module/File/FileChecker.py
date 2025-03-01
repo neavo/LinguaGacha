@@ -51,14 +51,20 @@ class FileChecker(Base):
             if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
         ]
 
+        # 获取文类型
+        self.text_types: list[str] = [
+            item.get_text_type() for item in items
+            if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
+        ]
+
     # 检查代码段
     def check_code(self, path: str, code_saver: CodeSaver) -> None:
         count = 0
         result: dict[str, str] = {
             Localizer.get().file_checker_code_alert_key: Localizer.get().file_checker_code_alert_value,
         }
-        for src, dst, rpl, file_path in zip(self.srcs, self.dsts, self.rpls, self.file_paths):
-            if not code_saver.check(rpl, dst):
+        for src, dst, rpl, file_path, text_type in zip(self.srcs, self.dsts, self.rpls, self.file_paths, self.text_types):
+            if not code_saver.check(rpl, dst, text_type):
                 count = count + 1
                 result.setdefault(file_path, {})[src] = dst
 

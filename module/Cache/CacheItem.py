@@ -1,3 +1,4 @@
+import re
 import threading
 
 import tiktoken
@@ -24,8 +25,23 @@ class CacheItem(BaseData):
         KVJSON: str = "KVJSON"                          # .json MTool
         MESSAGEJSON: str = "MESSAGEJSON"                # .json SExtractor
 
+    class TextType():
+
+        NONE: str = "NONE"                              # 无类型，即纯文本
+        RENPY: str = "RENPY"                            # RENPY 游戏文本
+        RPGMAKER: str = "RPGMAKER"                      # RPGMAKER 游戏文本
+
     # 缓存 Token 数量
     TOKEN_COUNT_CACHE: dict[str, int] = {}
+
+    # RENPY - {w=2.3} [renpy.version_only]
+    RE_RENPY = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]", flags = re.IGNORECASE)
+
+    # RPGMaker - /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】 \nbx[6]
+    RE_RPGMAKER = re.compile(r"[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
+
+    # RPGMaker - if(!s[982]) if(v[982] >= 1)  en(!s[982]) en(v[982] >= 1)
+    RE_RPGMAKER_IF = re.compile(r"en\(.{0,5}[vs]\[\d+\].{0,16}\)|if\(.{0,5}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
 
     def __init__(self, args: dict) -> None:
         super().__init__()
@@ -38,6 +54,7 @@ class CacheItem(BaseData):
         self.row: int = 0                                               # 在原始文件中的行号
         self.file_type: str = ""                                        # 原始文件的类型
         self.file_path: str = ""                                        # 原始文件的相对路径
+        self.text_type: str = CacheItem.TextType.NONE                   # 文本的实际类型
         self.status: str = Base.TranslationStatus.UNTRANSLATED          # 翻译状态
         self.retry_count: int = 0                                       # 重试次数，当前只有单独重试的时候才增加此计数
 
@@ -47,6 +64,13 @@ class CacheItem(BaseData):
 
         # 线程锁
         self.lock = threading.Lock()
+
+        # 如果文件类型是 XLSX、RENPY、KVJSON、MESSAGEJSON，则判断实际的文本类型
+        if self.get_file_type() in (CacheItem.FileType.XLSX, CacheItem.FileType.RENPY, CacheItem.FileType.KVJSON, CacheItem.FileType.MESSAGEJSON):
+            if CacheItem.RE_RPGMAKER.findall(self.get_src()) or CacheItem.RE_RPGMAKER_IF.findall(self.get_src()):
+                self.text_type = CacheItem.TextType.RPGMAKER
+            elif CacheItem.RE_RENPY.findall(self.get_src()):
+                self.text_type = CacheItem.TextType.RENPY
 
     # 获取原文
     def get_src(self) -> str:
@@ -122,6 +146,16 @@ class CacheItem(BaseData):
     def set_file_path(self, path: str) -> None:
         with self.lock:
             self.file_path = path
+
+    # 获取文本类型
+    def get_text_type(self) -> str:
+        with self.lock:
+            return self.text_type
+
+    # 设置文本类型
+    def set_text_type(self, type: str) -> None:
+        with self.lock:
+            self.text_type = type
 
     # 获取翻译状态
     def get_status(self) -> int:

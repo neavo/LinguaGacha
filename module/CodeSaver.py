@@ -42,7 +42,7 @@ class CodeSaver(Base):
     )
 
     # 通用规则
-    RE_CODE_COMMON = (
+    RE_CODE_NONE = (
         r"\\n",                                                                     # 换行符 \\n
         r"\\\\<br>",                                                                # 换行符 \\<br>
         r"<br>",                                                                    # 换行符 <br>
@@ -57,12 +57,18 @@ class CodeSaver(Base):
     PLACEHOLDER = "{PLACEHOLDER}"
 
     # 正则表达式
+    RE_BLANK = re.compile(r"[\u0020\u3000]*", re.IGNORECASE)
+
+    RE_PREFIX_NONE = re.compile(rf"^(?:{"|".join(RE_CODE_NONE)})+", re.IGNORECASE)
+    RE_SUFFIX_NONE = re.compile(rf"(?:{"|".join(RE_CODE_NONE)})+$", re.IGNORECASE)
+
     RE_CHECK_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY)})+", re.IGNORECASE)
-    RE_PREFIX_RENPY = re.compile(rf"^(?:{"|".join(RE_CODE_RENPY + RE_CODE_COMMON)})+", re.IGNORECASE)
-    RE_SUFFIX_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY + RE_CODE_COMMON)})+$", re.IGNORECASE)
+    RE_PREFIX_RENPY = re.compile(rf"^(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+", re.IGNORECASE)
+    RE_SUFFIX_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+$", re.IGNORECASE)
+
     RE_CHECK_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_RPGMAKER)})+", re.IGNORECASE)
-    RE_PREFIX_RPGMAKER = re.compile(rf"^(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_COMMON)})+", re.IGNORECASE)
-    RE_SUFFIX_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_COMMON)})+$", re.IGNORECASE)
+    RE_PREFIX_RPGMAKER = re.compile(rf"^(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_NONE)})+", re.IGNORECASE)
+    RE_SUFFIX_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_NONE)})+$", re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()
@@ -72,54 +78,35 @@ class CodeSaver(Base):
         self.prefix_codes = {}
         self.suffix_codes = {}
 
-    # 生成示例
-    def generate_samples(self, full_text: str) -> tuple[list[str], bool]:
-        renpy: bool = False
-        samples: list[str] = []
-
-        # RPGMaker 第一类代码
-        if CodeSaver.RE_RPGMAKER.findall(full_text) != []:
-            samples.append("\\abc[…]")
-            samples.append("/xyz<…>")
-
-        # RPGMaker 第二类代码
-        if CodeSaver.RE_RPGMAKER_IF.findall(full_text) != []:
-            samples.append("if(…)")
-            samples.append("en(…)")
-
-        # RenPy 代码
-        # 注意 RenPy 的示例可能会对 RPGMaker 游戏起反作用，所以只有不包含 RPGMaker 数据的才判断是否为 RenPy
-        if samples == [] and CodeSaver.RE_RENPY.findall(full_text) != []:
-            renpy = True
-            samples.append("[…]")
-            samples.append("{…}")
-
-        return samples, renpy
-
     # 预处理
-    def pre_process(self, src_dict: dict[str, str]) -> tuple[dict[str, str], list[str]]:
-        # 生成示例
-        samples, renpy = self.generate_samples("\n".join([v.strip() for v in src_dict.values()]))
-
-        # 分别处理
-        if renpy == True:
-            for k in src_dict.keys():
+    def pre_process(self, src_dict: dict[str, str], text_type_dict: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+        # 通过字典保证去重且有序
+        samples: dict[str, str] = {}
+        for k in src_dict.keys():
+            if text_type_dict.get(k) == CacheItem.TextType.RENPY:
+                samples["[…]"] = ""
+                samples["{…}"] = ""
                 self.pre_process_renpy(k, src_dict)
-        else:
-            for k in src_dict.keys():
+            elif text_type_dict.get(k) == CacheItem.TextType.RPGMAKER:
+                samples["if(…)"] = ""
+                samples["en(…)"] = ""
+                samples["\\abc[…]"] = ""
+                samples["/xyz<…>"] = ""
                 self.pre_process_rpgmaker(k, src_dict)
+            else:
+                self.pre_process_none(k, src_dict)
 
-        return src_dict, samples
+        return src_dict, samples.keys()
 
-    # 预处理 - RPGMaker
-    def pre_process_rpgmaker(self, k: str, src_dict: dict[str, str]) -> None:
+    # 预处理 - None
+    def pre_process_none(self, k: str, src_dict: dict[str, str]) -> None:
         # 查找与替换前缀代码段
-        self.prefix_codes[k] = CodeSaver.RE_PREFIX_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_PREFIX_RPGMAKER.sub("", src_dict.get(k))
+        self.prefix_codes[k] = CodeSaver.RE_PREFIX_NONE.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_PREFIX_NONE.sub("", src_dict.get(k))
 
         # 查找与替换后缀代码段
-        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_SUFFIX_RPGMAKER.sub("", src_dict.get(k))
+        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_NONE.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_SUFFIX_NONE.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
@@ -138,6 +125,21 @@ class CodeSaver(Base):
         # 查找与替换后缀代码段
         self.suffix_codes[k] = CodeSaver.RE_SUFFIX_RENPY.findall(src_dict.get(k))
         src_dict[k] = CodeSaver.RE_SUFFIX_RENPY.sub("", src_dict.get(k))
+
+        # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
+        if src_dict[k] == "":
+            src_dict[k] = CodeSaver.PLACEHOLDER
+            self.placeholders.add(k)
+
+    # 预处理 - RPGMaker
+    def pre_process_rpgmaker(self, k: str, src_dict: dict[str, str]) -> None:
+        # 查找与替换前缀代码段
+        self.prefix_codes[k] = CodeSaver.RE_PREFIX_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_PREFIX_RPGMAKER.sub("", src_dict.get(k))
+
+        # 查找与替换后缀代码段
+        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_SUFFIX_RPGMAKER.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
@@ -170,16 +172,15 @@ class CodeSaver(Base):
         return dst_dict
 
     # 检查代码段
-    def check(self, src: str, dst: str) -> bool:
-        # 生成示例
-        _, renpy = self.generate_samples(src)
-
-        # 分别处理
-        if renpy == True:
-            x = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RENPY.findall(src)]
-            y = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RENPY.findall(dst)]
+    def check(self, src: str, dst: str, text_type: str) -> bool:
+        if text_type == CacheItem.TextType.RENPY:
+            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(src)]
+            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(dst)]
+        elif text_type == CacheItem.TextType.RPGMAKER:
+            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RPGMAKER.findall(src)]
+            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RPGMAKER.findall(dst)]
         else:
-            x = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RPGMAKER.findall(src)]
-            y = [v.replace(" ", "").replace("　", "") for v in CodeSaver.RE_CHECK_RPGMAKER.findall(dst)]
+            x = []
+            y = []
 
         return x == y
