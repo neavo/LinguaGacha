@@ -58,10 +58,13 @@ class TextBase:
         for c in range(start, end + 1)
     }
 
-    # 濁音和半浊音符号
+    # 濁音和半浊音符号 (Japanese Voiced Sound Marks)
     JA_VOICED_SOUND_MARKS_SET = {
-        chr(0x309B),
-        chr(0x309C),
+        chr(0x309B),                                    # 濁点
+        chr(0x309C),                                    # 半濁点
+        chr(0x3005),                                    # 日文迭代标记 (々) - 汉字迭代 (虽然不完全是假名，但在日语文本处理中常见)
+        chr(0x30FD),                                    # 平假名迭代标记 (ゝ)
+        chr(0x30FE),                                    # 平假名浊音迭代标记 (ゞ)
     }
 
     # 俄文字符
@@ -81,6 +84,26 @@ class TextBase:
     # 德文字符 (Latin 扩展 + 特殊字符)
     DE_SET = LATIN_SET | {
         "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"
+    }
+
+    # 法文字符
+    FR_SET = LATIN_SET | {
+        "à", "á", "â", "ä", "ç", "é", "è", "ê", "ë", "î", "ï", "ô", "ö", "ù", "û", "ü", "ÿ", "œ", "Œ" # 添加 œ 和 Œ
+    }
+
+    # 西班牙文字符
+    ES_SET = LATIN_SET | {
+        "ñ", "á", "é", "í", "ó", "ú", "ü"
+    }
+
+    # 意大利文字符
+    IT_SET = LATIN_SET | {
+        "à", "è", "é", "ì", "ò", "ù"
+    }
+
+    # 葡萄牙文字符
+    PT_SET = LATIN_SET | {
+        "á", "é", "í", "ó", "ú", "ã", "õ", "à", "â", "ê", "ô", "ç"
     }
 
     # 印尼文字符 (基本上使用拉丁字母)
@@ -200,6 +223,26 @@ class DE(TextBase):
     def char(self, c: str) -> bool:
         return c in TextBase.DE_SET
 
+# 法文
+class FR(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.FR_SET
+
+# 西班牙文
+class ES(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.ES_SET
+
+# 意大利文
+class IT(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.IT_SET
+
+# 葡萄牙文
+class PT(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.PT_SET
+
 # 泰文
 class TH(TextBase):
     def char(self, c: str) -> bool:
@@ -209,7 +252,6 @@ class TH(TextBase):
 class ID(TextBase):
     def char(self, c: str) -> bool:
         return c in TextBase.ID_SET
-
 
 # 越南文
 class VI(TextBase):

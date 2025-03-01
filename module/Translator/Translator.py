@@ -322,24 +322,21 @@ class Translator(Base):
         # 统计排除数量
         self.print("")
         count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
-        functions = {
-            Base.Language.ZH: TextHelper.CJK.any,
-            Base.Language.EN: TextHelper.Latin.any,
-            Base.Language.JA: TextHelper.JA.any,
-            Base.Language.KO: TextHelper.KO.any,
-            Base.Language.RU: TextHelper.RU.any,
-            Base.Language.DE: TextHelper.DE.any,
-            Base.Language.TH: TextHelper.TH.any,
-            Base.Language.ID: TextHelper.ID.any,
-            Base.Language.VI: TextHelper.VI.any,
-        }
+
+        # 获取语言判断函数
+        if self.config.get("source_language") == Base.Language.ZH:
+            func = TextHelper.CJK.any
+        elif self.config.get("source_language") == Base.Language.EN:
+            func = TextHelper.Latin.any
+        else:
+            func = getattr(TextHelper, self.config.get("source_language")).any
 
         # 筛选出无效条目并标记为已排除
         target = []
-        if callable(functions[self.config.get("source_language")]) == True:
+        if callable(func) == True:
             target = [
                 v for v in items
-                if functions[self.config.get("source_language")](v.get_src()) == False
+                if func(v.get_src()) == False
             ]
             for item in target:
                 item.set_status(Base.TranslationStatus.EXCLUDED)

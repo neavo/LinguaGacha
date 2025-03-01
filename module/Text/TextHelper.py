@@ -55,6 +55,18 @@ class TextHelper:
     # 德文
     DE = TextBase.DE()
 
+    # 法文
+    FR = TextBase.FR()
+
+    # 西班牙文
+    ES = TextBase.ES()
+
+    # 意大利文
+    IT = TextBase.IT()
+
+    # 葡萄牙文
+    PT = TextBase.PT()
+
     # 泰文
     TH = TextBase.TH()
 
