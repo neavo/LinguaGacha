@@ -452,7 +452,7 @@ class FileManager(Base):
             with zipfile.ZipFile(abs_path, "r") as zip_reader:
                 for path in zip_reader.namelist():
                     if path.lower().endswith((".html", ".xhtml")):
-                        tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div")
+                        tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li")
                         with zip_reader.open(path) as reader:
                             bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
                             for dom in bs.find_all(tags):
@@ -530,6 +530,9 @@ class FileManager(Base):
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
 
+                # 判断是否是导航页
+                is_nav_page = bs.find("nav", attrs = {"epub:type": "toc"}) != None
+
                 # 移除竖排样式
                 for dom in bs.find_all():
                     class_content: str = re.sub(r"[hv]rtl|[hv]ltr", "", " ".join(dom.get("class", "")))
@@ -537,14 +540,13 @@ class FileManager(Base):
                         dom.attrs.pop("class", None)
                     else:
                         dom["class"] = class_content.split(" ")
-
                     style_content: str = re.sub(r"[^;\s]*writing-mode\s*:\s*vertical-rl;*", "", dom.get("style", ""))
                     if style_content == "":
                         dom.attrs.pop("style", None)
                     else:
                         dom["style"] = style_content
 
-                tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div")
+                tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li")
                 for dom in bs.find_all(tags):
                     # 跳过空标签或嵌套标签
                     if dom.get_text().strip() == "" or dom.find(tags) != None:
@@ -560,7 +562,13 @@ class FileManager(Base):
                         dom.insert_before(line_src)
                         dom.insert_before("\n")
 
-                    dom.string = item.get_dst()
+                    # 根据不同类型的页面处理不同情况
+                    if is_nav_page == False:
+                        dom.string = item.get_dst()
+                    elif item.get_src() in dom.get_text():
+                        dom.replace_with(BeautifulSoup(str(dom).replace(item.get_src(), item.get_dst()), "html.parser"))
+                    else:
+                        pass
 
                 # 将修改后的内容写回去
                 zip_writer.writestr(path, str(bs))
