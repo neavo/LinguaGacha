@@ -40,9 +40,18 @@ class RuleFilter():
     RE_ALL = (
         r"^EV\d+$",
         r"^<.+:.+>$",
+        r"^\{#file_time\}",                     # RenPy 存档时间
+        r"^DejaVu Sans$",                       # RenPy 默认字体名称
+        r"^Opendyslexic$",                      # RenPy 默认字体名称
     )
 
-    def filter(item: CacheItem) -> bool:
+    def filter(item: str | CacheItem) -> bool:
+        # 格式为字符串时，自动创建 CacheItem 对象
+        if isinstance(item, str):
+            item = CacheItem({
+                "src": item,
+            })
+
         flags = []
         for line in item.get_src().splitlines():
             line = line.strip().lower()

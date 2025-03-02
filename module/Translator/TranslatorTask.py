@@ -106,7 +106,7 @@ class TranslatorTask(Base):
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
 
         # 检查回复内容
-        check_flag, check_result = self.response_checker.check(src_dict, dst_dict)
+        check_flag, check_result = self.response_checker.check(src_dict, dst_dict, self.config.get("source_language"))
 
         # 当任务失败且是单条目任务时，更新重试次数
         if check_flag != None and len(self.items) == 1:

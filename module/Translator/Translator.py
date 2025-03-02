@@ -13,6 +13,7 @@ from tqdm import tqdm
 from base.Base import Base
 from module.File.FileChecker import FileChecker
 from module.File.FileManager import FileManager
+from module.Filter.LanguageFilter import LanguageFilter
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
@@ -323,23 +324,14 @@ class Translator(Base):
         self.print("")
         count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
 
-        # 获取语言判断函数
-        if self.config.get("source_language") == Base.Language.ZH:
-            func = TextHelper.CJK.any
-        elif self.config.get("source_language") == Base.Language.EN:
-            func = TextHelper.Latin.any
-        else:
-            func = getattr(TextHelper, self.config.get("source_language")).any
-
         # 筛选出无效条目并标记为已排除
-        target = []
-        if callable(func) == True:
-            target = [
-                v for v in items
-                if func(v.get_src()) == False
-            ]
-            for item in target:
-                item.set_status(Base.TranslationStatus.EXCLUDED)
+        source_language = self.config.get("source_language")
+        target = [
+            v for v in items
+            if LanguageFilter.filter(v, source_language) == False
+        ]
+        for item in target:
+            item.set_status(Base.TranslationStatus.EXCLUDED)
 
         # 输出结果
         count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded

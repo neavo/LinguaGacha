@@ -252,10 +252,7 @@ class LocalizerEN(LocalizerBase):
 
     # 译前替换
     pre_translation_replacement_page_head_title = "Pre-translation Replacement"
-    pre_translation_replacement_page_head_content = (
-        "Before translation starts, replace the matched parts in the original text with the specified text, the execution order is from top to bottom.\n"
-        + "When translating RPGMaker MV/MZ games, importing Actors.json files from the data or www\\data folder can significantly improve translation quality"
-    )
+    pre_translation_replacement_page_head_content = "Before translation starts, replace the matched parts in the original text with the specified text, the execution order is from top to bottom."
     pre_translation_replacement_page_table_row_01 = "Original Text"
     pre_translation_replacement_page_table_row_02 = "Replacement"
     pre_translation_replacement_page_import = "Import"

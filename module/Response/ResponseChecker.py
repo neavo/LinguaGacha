@@ -1,6 +1,8 @@
 from base.Base import Base
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Filter.RuleFilter import RuleFilter
+from module.Filter.LanguageFilter import LanguageFilter
 from module.CodeSaver import CodeSaver
 from module.PromptBuilder import PromptBuilder
 
@@ -22,13 +24,13 @@ class ResponseChecker(Base):
         self.source_language = self.config.get("source_language")
         self.target_language = self.config.get("target_language")
 
-    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> str:
+    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], source_language: str) -> str:
         # 数据解析失败
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return ResponseChecker.Error.FAIL_DATA, None
 
-        # 当翻译任务为单条目任务，且此条目的重试次数大于 2 次时，直接返回 None（即没有错误），不进行后续判断
-        if len(self.items) == 1 and self.items[0].get_retry_count() > 2:
+        # 当翻译任务为单条目任务，且此条目已单独重试过，直接返回 None（即没有错误），不进行后续判断
+        if len(self.items) == 1 and self.items[0].get_retry_count() > 0:
             return None, None
 
         # 行数检查
@@ -39,14 +41,14 @@ class ResponseChecker(Base):
             return ResponseChecker.Error.FAIL_LINE, None
 
         # 翻译错误检查
-        error, data = self.check_translation_error(src_dict, dst_dict)
+        error, data = self.check_translation_error(src_dict, dst_dict, source_language)
         if error != None:
             return error, data
 
         return None, None
 
     # 翻译错误检查
-    def check_translation_error(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> tuple[str | None, list]:
+    def check_translation_error(self, src_dict: dict[str, str], dst_dict: dict[str, str], source_language: str) -> tuple[str | None, list]:
         data = []
         for src, dst in zip(src_dict.values(), dst_dict.values()):
             src = src.strip()
@@ -54,6 +56,16 @@ class ResponseChecker(Base):
 
             # 原文内容包含代码救星占位符时，判断为正确翻译
             if CodeSaver.PLACEHOLDER in src:
+                data.append(0)
+                continue
+
+            # 原文内容符合规则过滤条件时，判断为正确翻译
+            if RuleFilter.filter(src) == True:
+                data.append(0)
+                continue
+
+            # 原文内容符合语言过滤条件时，判断为正确翻译
+            if LanguageFilter.filter(src, source_language) == False:
                 data.append(0)
                 continue
 

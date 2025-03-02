@@ -1,2 +1,2 @@
-Return results in the following JSON format:
+Return results in the following JSON format, no other explanations or instructions needed:
 {"<ID>":"<Translated Text>"}

@@ -105,7 +105,7 @@ class TableHelper():
                         continue
 
                     # 添加数据
-                    if data.get("name").strip() != "":
+                    if data.get("name", "").strip() != "":
                         result.append({
                             "src": f"\\n[{data.get("id")}]",
                             "dst": data.get("name"),
@@ -114,7 +114,7 @@ class TableHelper():
                             "src": f"\\N[{data.get("id")}]",
                             "dst": data.get("name"),
                         })
-                    if data.get("nickname").strip() != "":
+                    if data.get("nickname", "").strip() != "":
                         result.append({
                             "src": f"\\nn[{data.get("id")}]",
                             "dst": data.get("nickname"),

@@ -245,10 +245,7 @@ class LocalizerBase():
 
     # 译前替换
     pre_translation_replacement_page_head_title = "译前替换"
-    pre_translation_replacement_page_head_content = (
-        "在翻译开始前，将原文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
-        + "\n" + "翻译 RPGMaker MV/MZ 游戏时，导入 data 或 www\\data 文件夹内的 Actors.json 文件可以显著提升翻译质量"
-    )
+    pre_translation_replacement_page_head_content = "在翻译开始前，将原文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     pre_translation_replacement_page_table_row_01 = "原文"
     pre_translation_replacement_page_table_row_02 = "替换"
     pre_translation_replacement_page_import = "导入"
