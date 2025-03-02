@@ -27,8 +27,8 @@ class ResponseChecker(Base):
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return ResponseChecker.Error.FAIL_DATA, None
 
-        # 当翻译任务为单条目任务，且此条目的重试次数大于 3 次时，直接返回 None（即没有错误），不进行后续判断
-        if len(self.items) == 1 and self.items[0].get_retry_count() > 3:
+        # 当翻译任务为单条目任务，且此条目的重试次数大于 2 次时，直接返回 None（即没有错误），不进行后续判断
+        if len(self.items) == 1 and self.items[0].get_retry_count() > 2:
             return None, None
 
         # 行数检查
