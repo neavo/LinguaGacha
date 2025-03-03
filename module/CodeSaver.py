@@ -96,7 +96,7 @@ class CodeSaver(Base):
             else:
                 self.pre_process_none(k, src_dict)
 
-        return src_dict, samples.keys()
+        return src_dict, list(samples.keys())
 
     # 预处理 - None
     def pre_process_none(self, k: str, src_dict: dict[str, str]) -> None:
