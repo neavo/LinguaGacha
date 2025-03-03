@@ -23,6 +23,9 @@ class FileManager(Base):
     # 显式引用以避免打包问题
     etree
 
+    # EPUB 文件中读取的标签范围
+    EPUB_TAGES = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -453,12 +456,11 @@ class FileManager(Base):
             with zipfile.ZipFile(abs_path, "r") as zip_reader:
                 for path in zip_reader.namelist():
                     if path.lower().endswith((".html", ".xhtml")):
-                        tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li")
                         with zip_reader.open(path) as reader:
                             bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
-                            for dom in bs.find_all(tags):
+                            for dom in bs.find_all(FileManager.EPUB_TAGES):
                                 # 跳过空标签或嵌套标签
-                                if dom.get_text().strip() == "" or dom.find(tags) != None:
+                                if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGES) != None:
                                     continue
 
                                 # 添加数据
@@ -547,10 +549,9 @@ class FileManager(Base):
                     else:
                         dom["style"] = style_content
 
-                tags = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li")
-                for dom in bs.find_all(tags):
+                for dom in bs.find_all(FileManager.EPUB_TAGES):
                     # 跳过空标签或嵌套标签
-                    if dom.get_text().strip() == "" or dom.find(tags) != None:
+                    if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGES) != None:
                         continue
 
                     # 取数据
@@ -564,10 +565,10 @@ class FileManager(Base):
                         dom.insert_before("\n")
 
                     # 根据不同类型的页面处理不同情况
-                    if is_nav_page == False:
-                        dom.string = item.get_dst()
-                    elif item.get_src() in dom.get_text():
+                    if item.get_src() in str(dom):
                         dom.replace_with(BeautifulSoup(str(dom).replace(item.get_src(), item.get_dst()), "html.parser"))
+                    elif is_nav_page == False:
+                        dom.string = item.get_dst()
                     else:
                         pass
 
