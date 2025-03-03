@@ -65,12 +65,13 @@ class CacheItem(BaseData):
         # 线程锁
         self.lock = threading.Lock()
 
-        # 如果文件类型是 XLSX、RENPY、KVJSON、MESSAGEJSON，则判断实际的文本类型
+        # 如果文件类型是 XLSX、RENPY、KVJSON、MESSAGEJSON，且没有文本类型，则判断实际的文本类型
         if self.get_file_type() in (CacheItem.FileType.XLSX, CacheItem.FileType.RENPY, CacheItem.FileType.KVJSON, CacheItem.FileType.MESSAGEJSON):
-            if CacheItem.RE_RPGMAKER.findall(self.get_src()) or CacheItem.RE_RPGMAKER_IF.findall(self.get_src()):
-                self.text_type = CacheItem.TextType.RPGMAKER
-            elif CacheItem.RE_RENPY.findall(self.get_src()):
-                self.text_type = CacheItem.TextType.RENPY
+            if self.get_text_type() == CacheItem.TextType.NONE:
+                if CacheItem.RE_RPGMAKER.findall(self.get_src()) != [] or CacheItem.RE_RPGMAKER_IF.findall(self.get_src()) != []:
+                    self.text_type = CacheItem.TextType.RPGMAKER
+                elif CacheItem.RE_RENPY.findall(self.get_src()) != []:
+                    self.text_type = CacheItem.TextType.RENPY
 
     # 获取原文
     def get_src(self) -> str:

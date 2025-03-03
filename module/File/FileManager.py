@@ -382,6 +382,7 @@ class FileManager(Base):
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
+                            "status": Base.TranslationStatus.UNTRANSLATED,
                         })
                     )
                 else:
@@ -712,6 +713,7 @@ class FileManager(Base):
                         "row": len(items),
                         "file_type": CacheItem.FileType.RENPY,
                         "file_path": rel_path,
+                        "text_type": CacheItem.TextType.RENPY,
                     })
                 )
 
@@ -812,15 +814,29 @@ class FileManager(Base):
                 # 读取数据
                 for k, v in json_data.items():
                     if isinstance(k, str) and isinstance(v, str):
-                        items.append(
-                            CacheItem({
-                                "src": k,
-                                "dst": v,
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.KVJSON,
-                                "file_path": rel_path,
-                            })
-                        )
+                        # 根据是否已存在翻译数据来添加
+                        if k.strip() != v.strip() or v.strip() == "":
+                            items.append(
+                                CacheItem({
+                                    "src": k,
+                                    "dst": v,
+                                    "row": len(items),
+                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_path": rel_path,
+                                    "status": Base.TranslationStatus.EXCLUDED,
+                                })
+                            )
+                        else:
+                            items.append(
+                                CacheItem({
+                                    "src": k,
+                                    "dst": v,
+                                    "row": len(items),
+                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_path": rel_path,
+                                    "status": Base.TranslationStatus.UNTRANSLATED,
+                                })
+                            )
 
         return items
 
