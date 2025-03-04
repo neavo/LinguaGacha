@@ -20,7 +20,7 @@ from module.CodeSaver import CodeSaver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
-from module.PunctuationHelper import PunctuationHelper
+from module.PunctuationFixer import PunctuationFixer
 
 class TranslatorTask(Base):
 
@@ -42,6 +42,7 @@ class TranslatorTask(Base):
         self.cache_manager = cache_manager
         self.prompt_builder = prompt_builder
         self.response_checker = ResponseChecker(self.config, items)
+        self.punctuation_fixer = PunctuationFixer(self.config)
 
         # 生成原文文本字典与文本类型字典
         self.src_dict: dict[str, str] = {}
@@ -280,7 +281,7 @@ class TranslatorTask(Base):
     def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
         for k in dst_dict:
             if k in src_dict:
-                dst_dict[k] = PunctuationHelper.check_and_replace(src_dict[k], dst_dict[k])
+                dst_dict[k] = self.punctuation_fixer.fix(src_dict[k], dst_dict[k])
 
         return dst_dict
 

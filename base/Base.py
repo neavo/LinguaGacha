@@ -55,6 +55,12 @@ class Base():
         ID: str = "ID"
         VI: str = "VI"
 
+        CJK: tuple[str] = (
+            ZH,
+            JA,
+            KO,
+        )
+
     # 接口格式
     class APIFormat():
 
