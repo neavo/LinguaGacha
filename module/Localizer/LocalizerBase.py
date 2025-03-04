@@ -206,7 +206,7 @@ class LocalizerBase():
     basic_settings_page_task_token_limit_title = "翻译任务长度阈值"
     basic_settings_page_task_token_limit_content = "每个翻译任务一次性向模型发送的文本长度的最大值，单位为 Token"
     basic_settings_page_request_timeout_title = "请求超时时间"
-    basic_settings_page_request_timeout_content = "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持"
+    basic_settings_page_request_timeout_content = "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持 Google 系列模型"
     basic_settings_page_max_round_title = "翻译流程最大轮次"
     basic_settings_page_max_round_content = "当完成一轮翻译后，如果还有未翻译的条目，将重新开始新的翻译流程，直到翻译完成或者达到最大轮次"
 
