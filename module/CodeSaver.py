@@ -43,6 +43,8 @@ class CodeSaver(Base):
 
     # 通用规则
     RE_CODE_NONE = (
+        r"「",                                                                      # 日文引号
+        r"」",                                                                      # 日文引号
         r"\\n",                                                                     # 换行符 \\n
         r"\\\\<br>",                                                                # 换行符 \\<br>
         r"<br>",                                                                    # 换行符 <br>
