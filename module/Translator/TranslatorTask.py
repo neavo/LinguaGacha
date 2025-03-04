@@ -25,7 +25,8 @@ from module.PunctuationFixer import PunctuationFixer
 class TranslatorTask(Base):
 
     # 类变量
-    OPENCC = opencc.OpenCC("s2t")
+    OPENCCS2T = opencc.OpenCC("s2t")
+    OPENCCT2S = opencc.OpenCC("t2s")
     CONSOLE = Console(highlight = True, tab_size = 4)
 
     # 类线程锁
@@ -138,7 +139,7 @@ class TranslatorTask(Base):
             dst_dict = self.replace_after_translation(dst_dict)
 
             # 繁体输出
-            dst_dict = self.convert_to_traditional_chinese(dst_dict)
+            dst_dict = self.convert_chinese_character_form(dst_dict)
 
             # 更新术语表
             with TranslatorTask.LOCK:
@@ -268,14 +269,11 @@ class TranslatorTask(Base):
         return data
 
     # 繁体输出
-    def convert_to_traditional_chinese(self, data: dict[str, str]) -> dict:
-        if self.config.get("traditional_chinese_enable") == False:
-            return data
-
-        for k in data:
-            data[k] = TranslatorTask.OPENCC.convert(data.get(k))
-
-        return data
+    def convert_chinese_character_form(self, data: dict[str, str]) -> dict:
+        if self.config.get("traditional_chinese_enable") == True:
+            return {k: TranslatorTask.OPENCCS2T.convert(v) for k, v in data.items()}
+        else:
+            return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
 
     # 标点修复
     def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
