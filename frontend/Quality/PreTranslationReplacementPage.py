@@ -33,20 +33,27 @@ class PreTranslationReplacementPage(QWidget, Base):
         super().__init__(parent = window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "pre_translation_replacement_enable": True,
-            "pre_translation_replacement_data": [
-                {
-                    "src": "\\n[1]",
-                    "dst": "示例姓名"
-                },
-                {
-                    "src": "\\nn[1]",
-                    "dst": "示例昵称"
-                }
-            ],
-        }
+        # 根据应用语言加载默认设置
+        if Localizer.get_app_language() == Base.Language.ZH:
+            self.default = {
+                "pre_translation_replacement_enable": True,
+                "pre_translation_replacement_data": [
+                    {
+                        "src": "\\n[1]",
+                        "dst": "张三"
+                    },
+                ],
+            }
+        else:
+            self.default = {
+                "pre_translation_replacement_enable": True,
+                "pre_translation_replacement_data": [
+                    {
+                        "src": "\\n[1]",
+                        "dst": "Jack"
+                    },
+                ],
+            }
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())

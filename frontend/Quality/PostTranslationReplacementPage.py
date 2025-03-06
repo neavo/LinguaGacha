@@ -33,32 +33,43 @@ class PostTranslationReplacementPage(QWidget, Base):
         super().__init__(parent = window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "post_translation_replacement_enable": True,
-            "post_translation_replacement_data" : [
-                {
-                    "src": "…。",
-                    "dst": "…"
-                },
-                {
-                    "src": "学长",
-                    "dst": "前辈"
-                },
-                {
-                    "src": "学姐",
-                    "dst": "前辈"
-                },
-                {
-                    "src": "学弟",
-                    "dst": "后辈"
-                },
-                {
-                    "src": "学妹",
-                    "dst": "后辈"
-                }
-            ],
-        }
+        # 根据应用语言加载默认设置
+        if Localizer.get_app_language() == Base.Language.ZH:
+            self.default = {
+                "post_translation_replacement_enable": True,
+                "post_translation_replacement_data" : [
+                    {
+                        "src": "…。",
+                        "dst": "…"
+                    },
+                    {
+                        "src": "学长",
+                        "dst": "前辈"
+                    },
+                    {
+                        "src": "学姐",
+                        "dst": "前辈"
+                    },
+                    {
+                        "src": "学弟",
+                        "dst": "后辈"
+                    },
+                    {
+                        "src": "学妹",
+                        "dst": "后辈"
+                    }
+                ],
+            }
+        else:
+            self.default = {
+                "post_translation_replacement_enable": True,
+                "post_translation_replacement_data" : [
+                    {
+                        "src": "…。",
+                        "dst": "…"
+                    },
+                ],
+            }
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())

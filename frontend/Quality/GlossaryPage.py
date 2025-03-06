@@ -34,17 +34,29 @@ class GlossaryPage(QWidget, Base):
         super().__init__(parent = window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "glossary_enable": True,
-            "glossary_data": [
-                {
-                    "src": "ダリヤ",
-                    "dst": "达莉雅",
-                    "info": "女性名字",
-                }
-            ],
-        }
+        # 根据应用语言加载默认设置
+        if Localizer.get_app_language() == Base.Language.ZH:
+            self.default = {
+                "glossary_enable": True,
+                "glossary_data": [
+                    {
+                        "src": "ダリヤ",
+                        "dst": "达莉雅",
+                        "info": "女性名字",
+                    },
+                ],
+            }
+        else:
+            self.default = {
+                "glossary_enable": True,
+                "glossary_data": [
+                    {
+                        "src": "ダリヤ",
+                        "dst": "Daria",
+                        "info": "female name",
+                    }
+                ],
+            }
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())
