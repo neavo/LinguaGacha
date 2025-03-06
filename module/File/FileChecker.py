@@ -12,7 +12,8 @@ from module.Localizer.Localizer import Localizer
 class FileChecker(Base):
 
     # 类变量
-    OPENCC = opencc.OpenCC("s2t")
+    OPENCCS2T = opencc.OpenCC("s2t")
+    OPENCCT2S = opencc.OpenCC("t2s")
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
         super().__init__()
@@ -95,7 +96,15 @@ class FileChecker(Base):
             glossary_data = [
                 {
                     "src": v.get("src"),
-                    "dst": FileChecker.OPENCC.convert(v.get("dst")),
+                    "dst": FileChecker.OPENCCS2T.convert(v.get("dst")),
+                }
+                for v in glossary_data
+            ]
+        else:
+            glossary_data = [
+                {
+                    "src": v.get("src"),
+                    "dst": FileChecker.OPENCCT2S.convert(v.get("dst")),
                 }
                 for v in glossary_data
             ]
