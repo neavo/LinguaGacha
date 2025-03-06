@@ -24,7 +24,7 @@ class FileManager(Base):
     etree
 
     # EPUB 文件中读取的标签范围
-    EPUB_TAGES = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
+    EPUB_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
 
     # 匹配 RenPy 文本的规则
     RE_RENPY = re.compile(r"\"(.*?)(?<!\\)\"(?!\")", flags = re.IGNORECASE)
@@ -51,6 +51,7 @@ class FileManager(Base):
             else:
                 paths: list[str] = []
 
+            items.extend(self.read_from_path_md(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".md")]))
             items.extend(self.read_from_path_txt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".txt")]))
             items.extend(self.read_from_path_ass(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".ass")]))
             items.extend(self.read_from_path_srt(self.input_path, self.output_path, [path for path in paths if path.lower().endswith(".srt")]))
@@ -67,6 +68,7 @@ class FileManager(Base):
     # 写
     def write_to_path(self, items: list[CacheItem]) -> None:
         try:
+            self.write_to_path_md(self.input_path, self.output_path, items)
             self.write_to_path_txt(self.input_path, self.output_path, items)
             self.write_to_path_ass(self.input_path, self.output_path, items)
             self.write_to_path_srt(self.input_path, self.output_path, items)
@@ -77,6 +79,49 @@ class FileManager(Base):
             self.write_to_path_messagejson(self.input_path, self.output_path, items)
         except Exception as e:
             self.error(f"{Localizer.get().log_write_file_fail}", e)
+
+    # MD
+    def read_from_path_md(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
+        items = []
+        for abs_path in set(abs_paths):
+            # 获取相对路径
+            rel_path = os.path.relpath(abs_path, input_path)
+
+            # 数据处理
+            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+                for line in [line.removesuffix("\n") for line in reader.readlines()]:
+                    items.append(
+                        CacheItem({
+                            "src": line,
+                            "dst": line,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.MD,
+                            "file_path": rel_path,
+                            "text_type": CacheItem.TextType.MD,
+                        })
+                    )
+
+        return items
+
+    # MD
+    def write_to_path_md(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
+        # 筛选
+        target = [
+            item for item in items
+            if item.get_file_type() == CacheItem.FileType.MD
+        ]
+
+        # 按文件路径分组
+        data: dict[str, list[str]] = {}
+        for item in target:
+            data.setdefault(item.get_file_path(), []).append(item)
+
+        # 分别处理每个文件
+        for rel_path, items in data.items():
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+            with open(abs_path, "w", encoding = "utf-8") as writer:
+                writer.write("\n".join([item.get_dst() for item in items]))
 
     # TXT
     def read_from_path_txt(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
@@ -461,9 +506,9 @@ class FileManager(Base):
                     if path.lower().endswith((".html", ".xhtml")):
                         with zip_reader.open(path) as reader:
                             bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
-                            for dom in bs.find_all(FileManager.EPUB_TAGES):
+                            for dom in bs.find_all(FileManager.EPUB_TAGS):
                                 # 跳过空标签或嵌套标签
-                                if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGES) != None:
+                                if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGS) != None:
                                     continue
 
                                 # 添加数据
@@ -552,9 +597,9 @@ class FileManager(Base):
                     else:
                         dom["style"] = style_content
 
-                for dom in bs.find_all(FileManager.EPUB_TAGES):
+                for dom in bs.find_all(FileManager.EPUB_TAGS):
                     # 跳过空标签或嵌套标签
-                    if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGES) != None:
+                    if dom.get_text().strip() == "" or dom.find(FileManager.EPUB_TAGS) != None:
                         continue
 
                     # 取数据

@@ -16,6 +16,7 @@ class CacheItem(BaseData):
 
     class FileType():
 
+        MD: str = "MD"                                  # .md Markdown
         TXT: str = "TXT"                                # .txt 文本文件
         SRT: str = "SRT"                                # .srt 字幕文件
         ASS: str = "ASS"                                # .ass 字幕文件
@@ -27,6 +28,7 @@ class CacheItem(BaseData):
 
     class TextType():
 
+        MD: str = "MD"                                  # Markdown
         NONE: str = "NONE"                              # 无类型，即纯文本
         RENPY: str = "RENPY"                            # RENPY 游戏文本
         RPGMAKER: str = "RPGMAKER"                      # RPGMAKER 游戏文本

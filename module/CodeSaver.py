@@ -83,7 +83,10 @@ class CodeSaver(Base):
         # 通过字典保证去重且有序
         samples: dict[str, str] = {}
         for k in src_dict.keys():
-            if text_type_dict.get(k) == CacheItem.TextType.RENPY:
+            if text_type_dict.get(k) == CacheItem.TextType.MD:
+                samples["markdown"] = ""
+                self.pre_process_none(k, src_dict)
+            elif text_type_dict.get(k) == CacheItem.TextType.RENPY:
                 samples["[…]"] = ""
                 samples["{…}"] = ""
                 self.pre_process_renpy(k, src_dict)
