@@ -26,6 +26,9 @@ class FileManager(Base):
     # EPUB 文件中读取的标签范围
     EPUB_TAGES = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
 
+    # 匹配 RenPy 文本的规则
+    RE_RENPY = re.compile(r"\"(.*?)(?<!\\)\"(?!\")", flags = re.IGNORECASE)
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -630,62 +633,43 @@ class FileManager(Base):
                         else:
                             zip_writer.writestr(path, zip_reader.read(path))
 
+    # # game/script8.rpy:16878
+    # translate chinese arabialogoff_e5798d9a:
+    #
+    #     # "lo" "And you...?{w=2.3}{nw}" with dissolve
+    #     # "lo" "" with dissolve
+    #
+    # # game/script/1-home/1-Perso_Home/elice.rpy:281
+    # translate schinese elice_ask_home_f01e3240_5:
+    #
+    #     # e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
+    #     e ""
+    #
+    # # game/script8.rpy:33
+    # translate chinese update08_a626b58f:
+    #
+    #     # "*Snorts* Fucking hell, I hate with this dumpster of a place." with dis06
+    #     "" with dis06
+    #
+    # translate chinese strings:
+    #
+    #     # game/script8.rpy:307
+    #     old "Accompany her to the inn"
+    #     new ""
+    #
+    #     # game/script8.rpy:2173
+    #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
+    #     new ""
+    #
+    # # game/routes/endings/laura/normal/Harry/l_normal_11_h.rpy:3
+    # translate schinese l_normal_11_h_f9190bc9:
+    #
+    #     # nvl clear
+    #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
+    #     n ""
+
     # RENPY
     def read_from_path_renpy(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
-        # # game/script8.rpy:16878
-        # translate chinese arabialogoff_e5798d9a:
-        #
-        #     # lo "And you...?{w=2.3}{nw}" with dissolve
-        #     lo "And you...?{w=2.3}{nw}" with dissolve
-        #
-        # # game/script/1-home/1-Perso_Home/elice.rpy:281
-        # translate schinese elice_ask_home_f01e3240_5:
-        #
-        #     # e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
-        #     e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
-        #
-        # # game/script8.rpy:33
-        # translate chinese update08_a626b58f:
-        #
-        #     # "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
-        #     "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
-        #
-        # translate chinese strings:
-        #
-        #     # game/script8.rpy:307
-        #     old "Accompany her to the inn"
-        #     new "Accompany her to the inn"
-        #
-        #     # game/script8.rpy:2173
-        #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
-        #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
-        #
-        # # game/routes/endings/laura/normal/Harry/l_normal_11_h.rpy:3
-        # translate schinese l_normal_11_h_f9190bc9:
-        #
-        #     # nvl clear
-        #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
-        #     n "经过了一个美妙的夜晚，第二天，令我们不快的是，我们不得不面对我前一天早上意外引发的骚乱的延续。"
-
-        # 查找文本中最后一对双引号包裹的文本
-        def find_content(text: str) -> str:
-            matches = re.findall(r"\"(.*?)(?<!\\)\"(?!\")", text)
-
-            if matches:
-                # 获取最后一对引号中的子串
-                last_match = matches[-1]
-
-                # 找到最后一个目标子串的位置，包括引号
-                start_index = text.rfind('"' + last_match + '"')
-                end_index = start_index + len('"' + last_match + '"')
-
-                # 将剩余的字符串中目标子串的内容（不包括引号）替换为 {{CONTENT}}
-                modified_str = text[: start_index + 1] + "{{CONTENT}}" + text[end_index - 1 :]
-
-                return last_match, modified_str
-            else:
-                return "", text
-
         items = []
         for abs_path in set(abs_paths):
             # 获取相对路径
@@ -696,21 +680,26 @@ class FileManager(Base):
                 lines = [line.removesuffix("\n") for line in reader.readlines()]
 
             for line in lines:
-                if line.count("\"") >= 2 and (line.startswith("    # ") or line.startswith("    old ")):
-                    content, extra_field = find_content(line)
-                    content = content.replace("\\n", "\n").replace("\\\"", "\"")
-                elif line.count("\"") >= 2:
+                results: list[str] = FileManager.RE_RENPY.findall(line)
+                is_content_line = line.startswith("    # ") or line.startswith("    old ")
+                self.debug(f"{results}")
+
+                # 不是内容行但找到匹配项目时，则直接跳过这一行
+                if is_content_line == False and len(results) > 0:
                     continue
+                elif is_content_line == True and len(results) == 1:
+                    content = results[0].replace("\\n", "\n").replace("\\\"", "\"")
+                elif is_content_line == True and len(results) >= 2:
+                    content = results[1].replace("\\n", "\n").replace("\\\"", "\"")
                 else:
                     content = ""
-                    extra_field = line
 
                 # 添加数据
                 items.append(
                     CacheItem({
                         "src": content,
                         "dst": content,
-                        "extra_field": extra_field,
+                        "extra_field": line,
                         "row": len(items),
                         "file_type": CacheItem.FileType.RENPY,
                         "file_path": rel_path,
@@ -722,40 +711,14 @@ class FileManager(Base):
 
     # RENPY
     def write_to_path_renpy(self, input_path: str, output_path: str, items: list[CacheItem]) -> None:
-        # # game/script8.rpy:16878
-        # translate chinese arabialogoff_e5798d9a:
-        #
-        #     # lo "And you...?{w=2.3}{nw}" with dissolve
-        #     lo "And you...?{w=2.3}{nw}" with dissolve
-        #
-        # # game/script/1-home/1-Perso_Home/elice.rpy:281
-        # translate schinese elice_ask_home_f01e3240_5:
-        #
-        #     # e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
-        #     e ".{w=0.5}.{w=0.5}.{w=0.5}{nw}"
-        #
-        # # game/script8.rpy:33
-        # translate chinese update08_a626b58f:
-        #
-        #     # "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
-        #     "*Snorts* Fucking hell, I hate this dumpster of a place." with dis06
-        #
-        # translate chinese strings:
-        #
-        #     # game/script8.rpy:307
-        #     old "Accompany her to the inn"
-        #     new "Accompany her to the inn"
-        #
-        #     # game/script8.rpy:2173
-        #     old "{sc=3}{size=44}Jump off the ship.{/sc}"
-        #     new "{sc=3}{size=44}Jump off the ship.{/sc}"
-        #
-        # # game/routes/endings/laura/normal/Harry/l_normal_11_h.rpy:3
-        # translate schinese l_normal_11_h_f9190bc9:
-        #
-        #     # nvl clear
-        #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
-        #     n "经过了一个美妙的夜晚，第二天，令我们不快的是，我们不得不面对我前一天早上意外引发的骚乱的延续。"
+
+        def repl(m: re.Match, i: list[int], t: int, dst: str) -> str:
+            if i[0] == t:
+                i[0] = i[0] + 1
+                return f"\"{dst}\""
+            else:
+                i[0] = i[0] + 1
+                return m.group(0)
 
         def process(text: str) -> str:
             return text.replace("\n", "\\n").replace("\\\"", "\"").replace("\"", "\\\"")
@@ -778,15 +741,28 @@ class FileManager(Base):
 
             result = []
             for item in items:
-                extra_field = item.get_extra_field()
-                if "{{CONTENT}}" in extra_field and extra_field.startswith("    # "):
-                    result.append(extra_field.replace("{{CONTENT}}", process(item.get_src())))
-                    result.append(("    " + extra_field.removeprefix("    # ")).replace("{{CONTENT}}", process(item.get_dst())))
-                elif "{{CONTENT}}" in extra_field and extra_field.startswith("    old "):
-                    result.append(extra_field.replace("{{CONTENT}}", process(item.get_src())))
-                    result.append(("    new " + extra_field.removeprefix("    old ")).replace("{{CONTENT}}", process(item.get_dst())))
+                line = item.get_extra_field()
+                results: list[str] = FileManager.RE_RENPY.findall(line)
+
+                i = [0]
+                if line.startswith("    # "):
+                    result.append(line)
+                    if len(results) == 1:
+                        line = FileManager.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
+                        result.append(f"    {line.removeprefix("    # ")}")
+                    elif len(results) >= 2:
+                        line = FileManager.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
+                        result.append(f"    {line.removeprefix("    # ")}")
+                elif line.startswith("    old "):
+                    result.append(line)
+                    if len(results) == 1:
+                        line = FileManager.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
+                        result.append(f"    new {line.removeprefix("    old ")}")
+                    elif len(results) >= 2:
+                        line = FileManager.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
+                        result.append(f"    new {line.removeprefix("    old ")}")
                 else:
-                    result.append(extra_field)
+                    result.append(line)
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
