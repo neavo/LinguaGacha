@@ -22,6 +22,8 @@ class LocalizerEN(LocalizerBase):
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application...?"
     app_close_message_box_msg: str = "The main window is closed, the application will automatically exit later..."
+    app_new_version: str = "Download New Version!"
+    app_new_version_toast: str = "New version found, version number is {VERSION}, tap the button at the lower left to download..."
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
     app_settings_page: str = "App Settings"
@@ -108,10 +110,10 @@ class LocalizerEN(LocalizerBase):
 
     # 应用设置
     app_settings_page_proxy_url = "Please enter network proxy address ..."
-    app_settings_page_proxy_url_title = "Network Proxy Address"
+    app_settings_page_proxy_url_title = "Network Proxy"
     app_settings_page_proxy_url_content = "When enabled, requests will be sent to the API using the set proxy address, e.g., http://127.0.0.1:7890"
-    app_settings_page_font_hinting_title = "App Font Optimization"
-    app_settings_page_font_hinting_content = "When enabled, font edge rendering will be smoother (will take effect after app restart)"
+    app_settings_page_font_hinting_title = "Font Optimization"
+    app_settings_page_font_hinting_content = "When enabled, app ui font edge rendering will be smoother (will take effect after app restart)"
     app_settings_page_debug_title = "Debug Mode"
     app_settings_page_debug_content = "When enabled, the app will display additional debug information"
     app_settings_page_scale_factor_title = "Global Scale Factor"

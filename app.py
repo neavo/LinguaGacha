@@ -7,11 +7,14 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
+from qfluentwidgets import Theme
+from qfluentwidgets import setTheme
 
 from base.Base import Base
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.LogHelper import LogHelper
+from module.AppUpdater import AppUpdater
 from module.Translator.Translator import Translator
 from frontend.AppFluentWindow import AppFluentWindow
 
@@ -55,10 +58,18 @@ if __name__ == "__main__":
     # 载入配置文件
     config = load_config()
 
+    # 加载版本号
+    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
+        version = reader.read().strip()
+
+    # 设置主题
+    setTheme(Theme.DARK if config.get("theme", "light") == "dark" else Theme.LIGHT)
+
     # 设置应用语言
     Localizer.set_app_language(config.get("app_language", Base.Language.ZH))
 
     # 打印日志
+    LogHelper.info(f"LinguaGacha {version}")
     LogHelper.debug(Localizer.get().log_debug_mode) if LogHelper.is_debug() else None
 
     # 设置全局缩放比例
@@ -86,12 +97,13 @@ if __name__ == "__main__":
     app.setFont(font)
 
     # 创建全局窗口对象
-    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
-        version = reader.read().strip()
-    app_fluent_window = AppFluentWindow(f"LinguaGacha {version}")
+    app_fluent_window = AppFluentWindow(version)
 
     # 创建翻译器
     translator = Translator()
+
+    # 创建应用更新其
+    app_updater = AppUpdater()
 
     # 创建接口测试器
     platform_test = PlatformTester()

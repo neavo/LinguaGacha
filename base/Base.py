@@ -1,13 +1,8 @@
 import os
-import logging
 import threading
-import traceback
 from typing import Callable
-from logging.handlers import TimedRotatingFileHandler
 
 import rapidjson as json
-from rich import print
-from rich.logging import RichHandler
 
 from base.EventManager import EventManager
 from module.LogHelper import LogHelper
@@ -17,26 +12,28 @@ class Base():
     # 事件
     class Event():
 
-        PLATFORM_TEST_DONE: int = 100                        # API 测试完成
-        PLATFORM_TEST_START: int = 101                       # API 测试开始
-        TRANSLATION_START: int = 210                         # 翻译开始
-        TRANSLATION_UPDATE: int = 220                        # 翻译状态更新
-        TRANSLATION_STOP: int = 230                          # 翻译停止
-        TRANSLATION_STOP_DONE: int = 231                     # 翻译停止完成
-        TRANSLATION_PROJECT_STATUS: int = 240                # 项目状态检查
-        TRANSLATION_PROJECT_STATUS_CHECK_DONE: int = 241     # 项目状态检查完成
-        TRANSLATION_MANUAL_EXPORT: int = 250                 # 翻译结果手动导出
-        CACHE_FILE_AUTO_SAVE: int = 300                      # 缓存文件自动保存
-        TOAST_SHOW: int = 400                                # 显示 Toast
-        APP_SHUT_DOWN: int = 1000                            # 应用关闭
+        PLATFORM_TEST_DONE: int = 100                           # API 测试完成
+        PLATFORM_TEST_START: int = 101                          # API 测试开始
+        TRANSLATION_START: int = 210                            # 翻译开始
+        TRANSLATION_UPDATE: int = 220                           # 翻译状态更新
+        TRANSLATION_STOP: int = 230                             # 翻译停止
+        TRANSLATION_STOP_DONE: int = 231                        # 翻译停止完成
+        TRANSLATION_PROJECT_STATUS: int = 240                   # 项目状态检查
+        TRANSLATION_PROJECT_STATUS_CHECK_DONE: int = 241        # 项目状态检查完成
+        TRANSLATION_MANUAL_EXPORT: int = 250                    # 翻译结果手动导出
+        CACHE_FILE_AUTO_SAVE: int = 300                         # 缓存文件自动保存
+        APP_UPDATER_CHECK: int = 400                            # 检查更新
+        APP_UPDATER_CHECK_DONE: int = 401                       # 检查更新完成
+        TOAST_SHOW: int = 900                                   # 显示 Toast
+        APP_SHUT_DOWN: int = 1000                               # 应用关闭
 
     # 任务状态
     class Status():
 
-        IDLE: int = 100                                     # 无任务
-        API_TEST: int = 200                                 # 测试中
-        TRANSLATING: int = 300                              # 翻译中
-        STOPING: int = 400                                  # 停止中
+        IDLE: int = 100                                         # 无任务
+        API_TEST: int = 200                                     # 测试中
+        TRANSLATING: int = 300                                  # 翻译中
+        STOPING: int = 400                                      # 停止中
 
     # 语言
     class Language():
@@ -80,10 +77,10 @@ class Base():
     # 翻译状态
     class TranslationStatus():
 
-        UNTRANSLATED: str = "UNTRANSLATED"       # 待翻译
-        TRANSLATING: str = "TRANSLATING"         # 翻译中
-        TRANSLATED: str = "TRANSLATED"           # 已翻译
-        EXCLUDED: str = "EXCLUDED"               # 已排除
+        UNTRANSLATED: str = "UNTRANSLATED"                      # 待翻译
+        TRANSLATING: str = "TRANSLATING"                        # 翻译中
+        TRANSLATED: str = "TRANSLATED"                          # 已翻译
+        EXCLUDED: str = "EXCLUDED"                              # 已排除
 
     # 配置文件路径
     CONFIG_PATH = "./resource/config.json"

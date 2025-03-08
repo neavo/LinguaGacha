@@ -13,5 +13,6 @@ beautifulsoup4
 # Tools
 rich
 tqdm
+httpx
 json-repair
 python-rapidjson

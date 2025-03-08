@@ -24,6 +24,8 @@ class LocalizerBase():
     # 主页面
     app_close_message_box: str = "确定是否退出程序 ... ？"
     app_close_message_box_msg: str = "主窗口已关闭，稍后应用将自动退出 ..."
+    app_new_version: str = "点击下载更新版本！"
+    app_new_version_toast: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮前往下载 ..."
     app_theme_btn: str = "变换自如"
     app_language_btn: str = "字字珠玑"
     app_settings_page: str = "应用设置"
@@ -110,10 +112,10 @@ class LocalizerBase():
 
     # 应用设置
     app_settings_page_proxy_url = "请输入网络代理地址 ..."
-    app_settings_page_proxy_url_title = "网络代理地址"
+    app_settings_page_proxy_url_title = "网络代理"
     app_settings_page_proxy_url_content = "启用该功能后，将使用设置的代理地址向接口发送请求，例如 http://127.0.0.1:7890"
-    app_settings_page_font_hinting_title = "应用字体优化"
-    app_settings_page_font_hinting_content = "启用此功能后，字体的边缘渲染将更加圆润（将在应用重启后生效）"
+    app_settings_page_font_hinting_title = "字体优化"
+    app_settings_page_font_hinting_content = "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
     app_settings_page_debug_title = "调试模式"
     app_settings_page_debug_content = "启用此功能后，应用将显示额外的调试信息"
     app_settings_page_scale_factor_title = "全局缩放比例"

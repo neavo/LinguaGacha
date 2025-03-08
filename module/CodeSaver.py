@@ -5,15 +5,6 @@ from module.Cache.CacheItem import CacheItem
 
 class CodeSaver(Base):
 
-    # RENPY - {w=2.3} [renpy.version_only]
-    RE_RENPY = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]", flags = re.IGNORECASE)
-
-    # RPGMaker - /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】 \nbx[6]
-    RE_RPGMAKER = re.compile(r"[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
-
-    # RPGMaker - if(!s[982]) if(v[982] >= 1)  en(!s[982]) en(v[982] >= 1)
-    RE_RPGMAKER_IF = re.compile(r"en\(.{0,5}[vs]\[\d+\].{0,16}\)|if\(.{0,5}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
-
     # 用于 RPGMaker 的规则
     RE_CODE_RPGMAKER = (
         r"en\(.{0,5}[vs]\[\d+\].{0,16}\)",                                          # en(!s[982]) en(v[982] >= 1)

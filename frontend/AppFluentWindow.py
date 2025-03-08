@@ -1,9 +1,10 @@
+import re
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtCore import QEvent
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication
-
 from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from qfluentwidgets import isDarkTheme
@@ -42,6 +43,10 @@ class AppFluentWindow(FluentWindow, Base):
     def __init__(self, version: str) -> None:
         super().__init__()
 
+        # 初始化
+        self.version = version
+        self.home_page_url = "https://github.com/neavo/LinguaGacha"
+
         # 默认配置
         self.default = {
             "theme": "light",
@@ -49,18 +54,15 @@ class AppFluentWindow(FluentWindow, Base):
         }
 
         # 载入并保存默认配置
-        config = self.save_config(self.load_config_from_default())
+        self.save_config(self.load_config_from_default())
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.THEME_COLOR)
 
-        # 设置主题
-        setTheme(Theme.DARK if config.get("theme") == "dark" else Theme.LIGHT)
-
         # 设置窗口属性
         self.resize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
         self.setMinimumSize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
-        self.setWindowTitle(version)
+        self.setWindowTitle(f"LinguaGacha {version}")
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
@@ -82,6 +84,10 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 注册事件
         self.subscribe(Base.Event.TOAST_SHOW, self.show_toast)
+        self.subscribe(Base.Event.APP_UPDATER_CHECK_DONE, self.app_updater_check_done)
+
+        # 检查更新
+        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATER_CHECK, {}))
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
@@ -100,6 +106,7 @@ class AppFluentWindow(FluentWindow, Base):
     def show_toast(self, event: int, data: dict) -> None:
         toast_type = data.get("type", Base.ToastType.INFO)
         toast_message = data.get("message", "")
+        toast_duration = data.get("duration", 2500)
 
         if toast_type == Base.ToastType.ERROR:
             toast_func = InfoBar.error
@@ -114,7 +121,7 @@ class AppFluentWindow(FluentWindow, Base):
             title = "",
             content = toast_message,
             parent = self,
-            duration = 2500,
+            duration = toast_duration,
             orient = Qt.Horizontal,
             position = InfoBarPosition.TOP,
             isClosable = True,
@@ -159,7 +166,30 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 打开主页
     def open_project_page(self) -> None:
-        QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
+        QDesktopServices.openUrl(QUrl(self.home_page_url))
+
+    # 检查应用更新完成事件
+    def app_updater_check_done(self, event: int, data: dict) -> None:
+        result: dict = data.get("result", {})
+
+        try:
+            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", self.version)[-1]
+            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
+
+            if (
+                int(a) < int(x)
+                or (int(a) == int(x) and int(b) < int(y))
+                or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
+            ):
+                self.emit(Base.Event.TOAST_SHOW, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
+                    "duration": 60 * 1000,
+                })
+                self.home_page_url = result.get("html_url", self.home_page_url)
+                self.home_page_widget.setName(Localizer.get().app_new_version)
+        except Exception as e:
+            self.debug("app_updater_check_done", e)
 
     # 开始添加页面
     def add_pages(self) -> None:
@@ -205,12 +235,13 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 项目主页按钮
+        self.home_page_widget = NavigationAvatarWidget(
+            "⭐️ @ Github",
+            "resource/icon_full.png",
+        )
         self.navigationInterface.addWidget(
             routeKey = "avatar_navigation_widget",
-            widget = NavigationAvatarWidget(
-                "⭐️ @ Github",
-                "resource/icon_full.png",
-            ),
+            widget = self.home_page_widget,
             onClick = self.open_project_page,
             position = NavigationItemPosition.BOTTOM
         )
