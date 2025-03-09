@@ -33,8 +33,10 @@ class FileManager(Base):
         super().__init__()
 
         # 初始化
-        self.input_path = config.get("input_folder")
-        self.output_path = config.get("output_folder")
+        self.input_path: str = config.get("input_folder")
+        self.output_path: str = config.get("output_folder")
+        self.source_language: str = config.get("source_language")
+        self.target_language: str = config.get("target_language")
 
     # 读
     def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
@@ -80,6 +82,16 @@ class FileManager(Base):
         except Exception as e:
             self.error(f"{Localizer.get().log_write_file_fail}", e)
 
+    # 在扩展名前插入文本
+    def insert_target(self, path: str) -> str:
+        root, ext = os.path.splitext(path)
+        return f"{root}.{self.target_language.lower()}{ext}"
+
+    # 在扩展名前插入文本
+    def insert_source_target(self, path: str) -> str:
+        root, ext = os.path.splitext(path)
+        return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+
     # MD
     def read_from_path_md(self, input_path: str, output_path: str, abs_paths: list[str]) -> list[CacheItem]:
         items = []
@@ -120,7 +132,7 @@ class FileManager(Base):
         for rel_path, items in data.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([item.get_dst() for item in items]))
 
     # TXT
@@ -162,14 +174,14 @@ class FileManager(Base):
         for rel_path, items in data.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([item.get_dst() for item in items]))
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
             abs_path = f"{output_path}/{Localizer.get().path_bilingual}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
                 writer.write("\n".join([
                     item.get_src() if item.get_dst() == item.get_src() else f"{item.get_src()}\n{item.get_dst()}"
                     for item in items
@@ -272,7 +284,7 @@ class FileManager(Base):
             for item in items:
                 result.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N")))
 
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
 
         # 分别处理每个文件（双语）
@@ -287,7 +299,7 @@ class FileManager(Base):
 
             abs_path = f"{output_path}/双语对照/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
 
     # SRT
@@ -379,7 +391,7 @@ class FileManager(Base):
                     item.get_dst(),
                 ])
 
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
                 for item in result:
                     writer.write("\n".join(item))
                     writer.write("\n\n")
@@ -396,7 +408,7 @@ class FileManager(Base):
 
             abs_path = f"{output_path}/双语对照/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+            with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
                 for item in result:
                     writer.write("\n".join(item))
                     writer.write("\n\n")
@@ -642,7 +654,7 @@ class FileManager(Base):
             # 数据处理
             abs_path = f"{output_path}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with zipfile.ZipFile(abs_path, "w") as zip_writer:
+            with zipfile.ZipFile(self.insert_target(abs_path), "w") as zip_writer:
                 with zipfile.ZipFile(f"{output_path}/cache/temp/{rel_path}", "r") as zip_reader:
                     for path in zip_reader.namelist():
                         if path.lower().endswith(".css"):
@@ -664,7 +676,7 @@ class FileManager(Base):
             # 数据处理
             abs_path = f"{output_path}/双语对照/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with zipfile.ZipFile(abs_path, "w") as zip_writer:
+            with zipfile.ZipFile(self.insert_source_target(abs_path), "w") as zip_writer:
                 with zipfile.ZipFile(f"{output_path}/cache/temp/{rel_path}", "r") as zip_reader:
                     for path in zip_reader.namelist():
                         if path.lower().endswith(".css"):
@@ -727,7 +739,6 @@ class FileManager(Base):
             for line in lines:
                 results: list[str] = FileManager.RE_RENPY.findall(line)
                 is_content_line = line.startswith("    # ") or line.startswith("    old ")
-                self.debug(f"{results}")
 
                 # 不是内容行但找到匹配项目时，则直接跳过这一行
                 if is_content_line == False and len(results) > 0:
