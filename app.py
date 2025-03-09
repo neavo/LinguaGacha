@@ -96,19 +96,17 @@ if __name__ == "__main__":
         font.setHintingPreference(QFont.PreferNoHinting)
     app.setFont(font)
 
-    # 创建全局窗口对象
-    app_fluent_window = AppFluentWindow()
-
     # 创建翻译器
     translator = Translator()
-
-    # 创建应用更新其
-    version_manager = VersionManager(version)
 
     # 创建接口测试器
     platform_test = PlatformTester()
 
-    # 显示全局窗口
+    # 创建应用更新其
+    version_manager = VersionManager(version)
+
+    # 创建全局窗口对象
+    app_fluent_window = AppFluentWindow()
     app_fluent_window.show()
 
     # 进入事件循环，等待用户操作
