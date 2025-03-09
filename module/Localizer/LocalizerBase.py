@@ -19,7 +19,7 @@ class LocalizerBase():
     disable: str = "禁用"
     auto: str = "自动"
     select_file: str = "选择文件"
-    select_file_type: str = "json 文件 (*.json);;xlsx 文件 (*.xlsx)"
+    select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     table_delete_row: str = "删除行"
     table_insert_row: str = "插入行"
 
@@ -45,9 +45,9 @@ class LocalizerBase():
 
     # 路径
     path_bilingual: str = "双语对照"
-    path_glossary_export = "导出_术语表.json"
-    path_pre_translation_replacement_export = "导出_译前替换.json"
-    path_post_translation_replacement_export = "导出_译后替换.json"
+    path_glossary_export = "导出_术语表"
+    path_pre_translation_replacement_export = "导出_译前替换"
+    path_post_translation_replacement_export = "导出_译后替换"
     path_result_check_code = "结果检查_代码异常的条目.json"
     path_result_check_glossary = "结果检查_术语表未生效的条目.json"
     path_result_check_untranslated = "结果检查_翻译状态异常的条目.json"

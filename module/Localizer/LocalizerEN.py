@@ -17,7 +17,7 @@ class LocalizerEN(LocalizerBase):
     disable: str = "Disable"
     auto: str = "Auto"
     select_file: str = "Select File"
-    select_file_type: str = "JSON files (*.json);;XLSX files (*.xlsx)"
+    select_file_type: str = "Support Format (*.json *.xlsx)"
     table_delete_row: str = "Delete Row"
     table_insert_row: str = "Insert Row"
 
@@ -43,9 +43,9 @@ class LocalizerEN(LocalizerBase):
 
     # 路径
     path_bilingual: str = "bilingual"
-    path_glossary_export = "export_glossary.json"
-    path_pre_translation_replacement_export = "export_pre_translation_replacement.json"
-    path_post_translation_replacement_export = "export_post_translation_replacement.json"
+    path_glossary_export = "export_glossary"
+    path_pre_translation_replacement_export = "export_pre_translation_replacement"
+    path_post_translation_replacement_export = "export_post_translation_replacement"
     path_result_check_code = "result_check_code_anomaly_entries.json"
     path_result_check_glossary = "result_check_glossary_issue_entries.json"
     path_result_check_untranslated = "result_check_translation_status_anomaly_entries.json"
