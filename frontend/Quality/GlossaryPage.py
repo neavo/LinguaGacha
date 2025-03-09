@@ -2,13 +2,15 @@ import rapidjson as json
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
+from PyQt5.QtCore import QPoint
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import MessageBox
 from qfluentwidgets import TableWidget
@@ -97,6 +99,46 @@ class GlossaryPage(QWidget, Base):
         def item_changed(item: QTableWidgetItem) -> None:
             item.setTextAlignment(Qt.AlignCenter)
 
+        def insert_row(table: TableWidget) -> None:
+            selected_index = self.table.selectedIndexes()
+
+            # 有效性检验
+            if selected_index == None or len(selected_index) == 0:
+                return
+
+            # 插入空行
+            table.insertRow(selected_index[0].row())
+
+        def delete_row(table: TableWidget) -> None:
+            selected_index = self.table.selectedIndexes()
+
+            # 有效性检验
+            if selected_index == None or len(selected_index) == 0:
+                return
+
+            # 逆序删除并去重以避免索引错误
+            for row in sorted({item.row() for item in selected_index}, reverse = True):
+                table.removeRow(row)
+
+        def custom_context_menu_requested(position: QPoint) -> None:
+            menu = RoundMenu("", self.table)
+            menu.addAction(
+                Action(
+                    FluentIcon.SYNC,
+                    Localizer.get().table_insert_row,
+                    triggered = lambda _: insert_row(self.table),
+                )
+            )
+            menu.addSeparator()
+            menu.addAction(
+                Action(
+                    FluentIcon.EDIT,
+                    Localizer.get().table_delete_row,
+                    triggered = lambda _: delete_row(self.table),
+                )
+            )
+            menu.exec(self.table.viewport().mapToGlobal(position))
+
         self.table = TableWidget(self)
         parent.addWidget(self.table)
 
@@ -108,7 +150,12 @@ class GlossaryPage(QWidget, Base):
         self.table.resizeRowsToContents() # 设置行高度自适应内容
         self.table.resizeColumnsToContents() # 设置列宽度自适应内容
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) # 撑满宽度
+        self.table.setSelectRightClickedRow(True) # 右键选中行
+
+        # 注册事件
         self.table.itemChanged.connect(item_changed)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(custom_context_menu_requested)
 
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignCenter)

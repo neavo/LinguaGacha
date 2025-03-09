@@ -20,6 +20,8 @@ class LocalizerBase():
     auto: str = "自动"
     select_file: str = "选择文件"
     select_file_type: str = "json 文件 (*.json);;xlsx 文件 (*.xlsx)"
+    table_delete_row: str = "删除行"
+    table_insert_row: str = "插入行"
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 ... ？"

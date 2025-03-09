@@ -18,6 +18,8 @@ class LocalizerEN(LocalizerBase):
     auto: str = "Auto"
     select_file: str = "Select File"
     select_file_type: str = "JSON files (*.json);;XLSX files (*.xlsx)"
+    table_delete_row: str = "Delete Row"
+    table_insert_row: str = "Insert Row"
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application...?"
