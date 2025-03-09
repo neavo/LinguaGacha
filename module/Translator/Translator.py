@@ -279,12 +279,14 @@ class Translator(Base):
     # 初始化 batch_size
     def initialize_batch_size(self) -> None:
         try:
+            response_json = None
             response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
             response.raise_for_status()
             response_json = response.json()
         except Exception as e:
             self.print("")
             self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
+
         if isinstance(response_json, list) and len(response_json) > 0:
             self.config["batch_size"] = len(response_json)
         elif self.config.get("batch_size") == 0:
