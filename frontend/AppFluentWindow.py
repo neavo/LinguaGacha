@@ -20,6 +20,7 @@ from qfluentwidgets import NavigationAvatarWidget
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
+from module.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.BaseNavigationItem import BaseNavigationItem
 from frontend.Project.ProjectPage import ProjectPage
@@ -40,11 +41,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     THEME_COLOR: str = "#BCA483"
 
-    def __init__(self, version: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
         # 初始化
-        self.version = version
         self.home_page_url = "https://github.com/neavo/LinguaGacha"
 
         # 默认配置
@@ -62,7 +62,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 设置窗口属性
         self.resize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
         self.setMinimumSize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
-        self.setWindowTitle(f"LinguaGacha {version}")
+        self.setWindowTitle(f"LinguaGacha {VersionManager.VERSION}")
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
@@ -84,10 +84,10 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 注册事件
         self.subscribe(Base.Event.TOAST_SHOW, self.show_toast)
-        self.subscribe(Base.Event.APP_UPDATER_CHECK_DONE, self.app_updater_check_done)
+        self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_updater_check_done)
 
         # 检查更新
-        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATER_CHECK, {}))
+        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK, {}))
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
@@ -173,7 +173,7 @@ class AppFluentWindow(FluentWindow, Base):
         result: dict = data.get("result", {})
 
         try:
-            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", self.version)[-1]
+            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.VERSION)[-1]
             x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
 
             if (

@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
+from module.VersionManager import VersionManager
 
 # 接口请求器
 class TranslatorRequester(Base):
@@ -111,6 +112,9 @@ class TranslatorRequester(Base):
                     "num_beams": 1,
                     "repetition_penalty": 1.0
                 },
+                extra_headers = {
+                    "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                },
             )
 
             # 提取回复的文本内容
@@ -157,6 +161,9 @@ class TranslatorRequester(Base):
                 frequency_penalty = fp,
                 timeout = self.config.get("request_timeout"),
                 max_tokens = 4096,
+                extra_headers = {
+                    "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                },
             )
 
             # 提取回复内容
@@ -199,12 +206,6 @@ class TranslatorRequester(Base):
             )
             model = genai.GenerativeModel(
                 model_name = self.platform.get("model"),
-                # safety_settings = [
-                #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                # ],
             )
 
             # 提取回复的文本内容
@@ -262,6 +263,9 @@ class TranslatorRequester(Base):
                     },
                     timeout = self.config.get("request_timeout"),
                     max_tokens = 4096,
+                    extra_headers = {
+                        "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                    },
                 )
             else:
                 response = client.messages.create(
@@ -271,6 +275,9 @@ class TranslatorRequester(Base):
                     top_p = top_p,
                     timeout = self.config.get("request_timeout"),
                     max_tokens = 4096,
+                    extra_headers = {
+                        "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                    },
                 )
 
             # 提取回复内容

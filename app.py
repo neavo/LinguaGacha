@@ -14,8 +14,8 @@ from base.Base import Base
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.LogHelper import LogHelper
-from module.AppUpdater import AppUpdater
 from module.Translator.Translator import Translator
+from module.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 
 # 捕获全局异常
@@ -97,13 +97,13 @@ if __name__ == "__main__":
     app.setFont(font)
 
     # 创建全局窗口对象
-    app_fluent_window = AppFluentWindow(version)
+    app_fluent_window = AppFluentWindow()
 
     # 创建翻译器
     translator = Translator()
 
     # 创建应用更新其
-    app_updater = AppUpdater()
+    version_manager = VersionManager(version)
 
     # 创建接口测试器
     platform_test = PlatformTester()

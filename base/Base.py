@@ -22,8 +22,8 @@ class Base():
         TRANSLATION_PROJECT_STATUS_CHECK_DONE: int = 241        # 项目状态检查完成
         TRANSLATION_MANUAL_EXPORT: int = 250                    # 翻译结果手动导出
         CACHE_FILE_AUTO_SAVE: int = 300                         # 缓存文件自动保存
-        APP_UPDATER_CHECK: int = 400                            # 检查更新
-        APP_UPDATER_CHECK_DONE: int = 401                       # 检查更新完成
+        APP_UPDATE_CHECK: int = 400                             # 检查更新
+        APP_UPDATE_CHECK_DONE: int = 401                        # 检查更新完成
         TOAST_SHOW: int = 900                                   # 显示 Toast
         APP_SHUT_DOWN: int = 1000                               # 应用关闭
 
