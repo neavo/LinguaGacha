@@ -2,19 +2,17 @@ import os
 import re
 import time
 import shutil
-import urllib
 import threading
 import concurrent.futures
 from itertools import zip_longest
 
-import rapidjson as json
+import httpx
 from tqdm import tqdm
 
 from base.Base import Base
 from module.File.FileChecker import FileChecker
 from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
-from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Filter.RuleFilter import RuleFilter
@@ -101,9 +99,9 @@ class Translator(Base):
 
         # 只有翻译状态为 无任务 时才执行检查逻辑，其他情况直接返回默认值
         if Base.WORK_STATUS == Base.Status.IDLE:
-            config = self.load_config()
-            self.cache_manager.load_from_file(config.get("output_folder"))
-            status = self.cache_manager.get_project().get_status()
+            cache_manager = CacheManager()
+            cache_manager.load_project_from_file(self.load_config().get("output_folder"))
+            status = cache_manager.get_project().get_status()
 
         self.emit(Base.Event.TRANSLATION_PROJECT_STATUS_CHECK_DONE, {
             "status" : status,
@@ -124,7 +122,6 @@ class Translator(Base):
             if platform.get("id") == self.config.get("activate_platform"):
                 self.platform = platform
                 break
-        self.prompt_builder = PromptBuilder(self.config)
         self.initialize_proxy()
         self.initialize_batch_size()
 
@@ -212,19 +209,19 @@ class Translator(Base):
                 self.config["task_token_limit"] = max(1, int(self.config.get("task_token_limit") / 2))
 
             # 生成缓存数据条目片段
-            chunks = self.cache_manager.generate_item_chunks(self.config.get("task_token_limit"))
+            chunks, preceding_chunks = self.cache_manager.generate_item_chunks(self.config.get("task_token_limit"))
 
             # 生成翻译任务
             tasks: list[TranslatorTask] = []
             self.print("")
-            for chunk in tqdm(chunks, desc = Localizer.get().translator_generate_task, total = len(chunks)):
+            for items, preceding_items in tqdm(zip(chunks, preceding_chunks), desc = Localizer.get().translator_generate_task, total = len(chunks)):
                 tasks.append(
                     TranslatorTask(
                         self.config,
                         self.platform,
-                        chunk,
+                        items,
+                        preceding_items,
                         self.cache_manager,
-                        self.prompt_builder,
                     )
                 )
             self.print("")
@@ -242,7 +239,7 @@ class Translator(Base):
                 self.info(f"{Localizer.get().translator_proxy_url} - {self.config.get("proxy_url")}")
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-                self.info(Localizer.get().translator_prompt.replace("{PROMPT}", self.prompt_builder.build_main([])))
+                self.info(Localizer.get().translator_prompt.replace("{PROMPT}", PromptBuilder(self.config).build_main([])))
             self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.config.get("batch_size"))))
             self.print("")
 
@@ -282,9 +279,9 @@ class Translator(Base):
     # 初始化 batch_size
     def initialize_batch_size(self) -> None:
         try:
-            response_json = None
-            with urllib.request.urlopen(f"{re.sub(r"/v1$", "", self.platform.get("api_url"))}/slots") as response:
-                response_json = json.loads(response.read().decode("utf-8"))
+            response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
+            response.raise_for_status()
+            response_json = response.json()
         except Exception as e:
             self.print("")
             self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)

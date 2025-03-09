@@ -32,16 +32,17 @@ class TranslatorTask(Base):
     # 类线程锁
     LOCK = threading.Lock()
 
-    def __init__(self, config: dict, platform: dict, items: list[CacheItem], cache_manager: CacheManager, prompt_builder: PromptBuilder) -> None:
+    def __init__(self, config: dict, platform: dict, items: list[CacheItem], preceding_items: list[CacheItem], cache_manager: CacheManager) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
+        self.preceding_items = preceding_items
         self.config = config
         self.platform = platform
         self.code_saver = CodeSaver()
         self.cache_manager = cache_manager
-        self.prompt_builder = prompt_builder
+        self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
         self.punctuation_fixer = PunctuationFixer(self.config)
 
@@ -64,10 +65,10 @@ class TranslatorTask(Base):
 
     # 启动任务
     def start(self, current_round: int) -> dict:
-        return self.request(self.src_dict, self.samples, current_round)
+        return self.request(self.src_dict, self.preceding_items, self.samples, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], samples: list[str], current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], preceding_items: list[CacheItem], samples: list[str], current_round: int) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -81,7 +82,7 @@ class TranslatorTask(Base):
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, extra_console_log = self.generate_prompt(src_dict, samples)
+            self.messages, extra_console_log = self.generate_prompt(src_dict, preceding_items, samples)
         else:
             self.messages, extra_console_log = self.generate_prompt_sakura(src_dict)
 
@@ -287,13 +288,20 @@ class TranslatorTask(Base):
         return dst_dict
 
     # 生成提示词
-    def generate_prompt(self, src_dict: dict, samples: list[str]) -> tuple[list[dict], list[str]]:
+    def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
         # 初始化
         messages = []
         extra_log = []
 
         # 基础提示词
         main = self.prompt_builder.build_main(samples)
+
+        # 参考上文
+        if len(preceding_items) > 0:
+            result = self.prompt_builder.build_preceding(preceding_items)
+            if result != "":
+                main = main + "\n" + result
+                extra_log.append(result)
 
         # 术语表
         if self.config.get("glossary_enable") == True:

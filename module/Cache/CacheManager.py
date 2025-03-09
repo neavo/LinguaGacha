@@ -15,6 +15,18 @@ class CacheManager(Base):
     # 缓存文件保存周期（秒）
     SAVE_INTERVAL = 15
 
+    # 结尾标点符号
+    END_LINE_PUNCTUATION = (
+        ".",
+        "。",
+        "?",
+        "？",
+        "!",
+        "…",
+        "\"",
+        "」",
+    )
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -82,7 +94,7 @@ class CacheManager(Base):
         self.save_to_file_require_flag = True
         self.save_to_file_require_path = output_path
 
-    # 从文件读取缓存数据
+    # 从文件读取数据
     def load_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/items.json"
         with self.file_lock:
@@ -92,6 +104,16 @@ class CacheManager(Base):
             except Exception as e:
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
+        path = f"{output_path}/cache/project.json"
+        with self.file_lock:
+            try:
+                with open(path, "r", encoding = "utf-8-sig") as reader:
+                    self.project = CacheProject(json.load(reader))
+            except Exception as e:
+                self.debug(Localizer.get().log_read_cache_file_fail, e)
+
+    # 从文件读取项目数据
+    def load_project_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/project.json"
         with self.file_lock:
             try:
@@ -145,6 +167,7 @@ class CacheManager(Base):
 
         chunk: list[CacheItem] = []
         chunks: list[list[CacheItem]] = []
+        preceding_chunks: list[list[CacheItem]] = []
         chunk_length: int = 0
         for item in [v for v in self.items if v.get_status() == Base.TranslationStatus.UNTRANSLATED]:
             current_length = item.get_token_count()
@@ -155,6 +178,10 @@ class CacheManager(Base):
             # 如果 Token/行数 超限 或 数据来源跨文件，则结束此片段
             elif chunk_length + current_length > limit or len(chunk) >= line_limit or item.get_file_path() != chunk[-1].get_file_path():
                 chunks.append(chunk)
+                if len(chunks) <= 1:
+                    preceding_chunks.append([])
+                else:
+                    preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks[-2]))
 
                 chunk = []
                 chunk_length = 0
@@ -165,5 +192,33 @@ class CacheManager(Base):
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:
             chunks.append(chunk)
+            if len(chunks) <= 1:
+                preceding_chunks.append([])
+            else:
+                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks[-2]))
 
-        return chunks
+        return chunks, preceding_chunks
+
+    # 生成参考上文数据条目片段
+    def generate_preceding_chunks(self, end: CacheItem, chunk: list[CacheItem]) -> list[list[CacheItem]]:
+        result: list[CacheItem] = []
+
+        # 没有候选数据时返回空值
+        if len(chunk) == 0:
+            return []
+
+        # 候选数据与当前任务不在同一个文件中时，返回空值
+        if end.get_file_path() != chunk[-1].get_file_path():
+            return []
+
+        # 逆序
+        for item in sorted(chunk, key = lambda x: x.get_row(), reverse = True):
+            src = item.get_src().strip()
+
+            if src.endswith(CacheManager.END_LINE_PUNCTUATION):
+                result.append(item)
+
+            if len(result) >= 3:
+                break
+
+        return sorted(result, key = lambda x: x.get_row(), reverse = False)

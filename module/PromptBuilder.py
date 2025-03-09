@@ -1,5 +1,5 @@
-import re
 from base.Base import Base
+from module.Cache.CacheItem import CacheItem
 
 class PromptBuilder(Base):
 
@@ -116,6 +116,20 @@ class PromptBuilder(Base):
 
         return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", PromptBuilder.TARGET_LANGUAGE_MAPPING.get(self.target_language))
 
+    # 构造参考上文
+    def build_preceding(self, preceding_items: list[CacheItem]) -> str:
+        if preceding_items == []:
+            return ""
+        elif self.target_language == Base.Language.ZH:
+            return (
+                "参考上文（仅用于参考，无需翻译）："
+                + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
+            )
+        else:
+            return (
+                "Preceding Text (for reference only, no translation needed):"
+                + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
+            )
     # 构造术语表
     def build_glossary(self, src_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
