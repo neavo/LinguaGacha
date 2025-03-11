@@ -5,12 +5,31 @@ from module.Cache.CacheItem import CacheItem
 
 class CodeSaver(Base):
 
+    # 通用规则
+    RE_CODE_NONE = (
+        r"\\n",                                                                     # 换行符 \\n
+        r"\\\\<br>",                                                                # 换行符 \\<br>
+        r"<br>",                                                                    # 换行符 <br>
+        r"\u3000",                                                                  # 全角空格
+        r"\u0020",                                                                  # 半角空格
+        r"\r",                                                                      # 换行符
+        r"\n",                                                                      # 换行符
+        r"\t",                                                                      # 制表符
+    )
+
+    # 用于 RenPy 的规则
+    RE_CODE_RENPY = (
+        r"\{[^{}]*\}",                                                              # {w=2.3}
+        r"\[[^\[\]]*\]",                                                            # [renpy.version_only]
+    )
+
     # 用于 RPGMaker 的规则
-    RE_CODE_RPGMAKER = (
-        r"en\(.{0,5}[vs]\[\d+\].{0,16}\)",                                          # en(!s[982]) en(v[982] >= 1)
-        r"if\(.{0,5}[vs]\[\d+\].{0,16}\)",                                          # if(!s[982]) if(v[982] >= 1)
-        r"[<【]{0,1}[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]][>】]{0,1}",              # /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
-        r"[/\\][a-z]{1,5}(?=<.{0,16}>|\[.{0,16}\])",                                # /C<> \FS<> /C[] \FS[] 中 <> [] 前的部分
+    RE_CODE_WOLF_RPGMAKER = (
+        r"en\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # en(!s[982]) en(v[982] >= 1)
+        r"if\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # if(!s[982]) if(v[982] >= 1)
+        r"[<【]{0,1}[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]][>】]{0,1}",              # /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
+        r"[/\\][a-z]{1,8}(?=<.{0,16}>|\[.{0,16}\])",                                # /C<> \FS<> /C[] \FS[] 中 <> [] 前的部分
+        r"@\d+",                                                                    # @
         r"\\fr",                                                                    # 重置文本的改变
         r"\\fb",                                                                    # 加粗
         r"\\fi",                                                                    # 倾斜
@@ -26,24 +45,6 @@ class CodeSaver(Base):
         r"\\\^",                                                                    # 显示文本后不需要等待 \^
     )
 
-    # 用于 RenPy 的规则
-    RE_CODE_RENPY = (
-        r"\{[^{}]*\}",                                                              # {w=2.3}
-        r"\[[^\[\]]*\]",                                                            # [renpy.version_only]
-    )
-
-    # 通用规则
-    RE_CODE_NONE = (
-        r"\\n",                                                                     # 换行符 \\n
-        r"\\\\<br>",                                                                # 换行符 \\<br>
-        r"<br>",                                                                    # 换行符 <br>
-        r"\u3000",                                                                  # 全角空格
-        r"\u0020",                                                                  # 半角空格
-        r"\r",                                                                      # 换行符
-        r"\n",                                                                      # 换行符
-        r"\t",                                                                      # 制表符
-    )
-
     # 占位符文本
     PLACEHOLDER = "{PLACEHOLDER}"
 
@@ -57,9 +58,9 @@ class CodeSaver(Base):
     RE_PREFIX_RENPY = re.compile(rf"^(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+", re.IGNORECASE)
     RE_SUFFIX_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+$", re.IGNORECASE)
 
-    RE_CHECK_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_RPGMAKER)})+", re.IGNORECASE)
-    RE_PREFIX_RPGMAKER = re.compile(rf"^(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_NONE)})+", re.IGNORECASE)
-    RE_SUFFIX_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_RPGMAKER + RE_CODE_NONE)})+$", re.IGNORECASE)
+    RE_CHECK_WOLF_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_WOLF_RPGMAKER)})+", re.IGNORECASE)
+    RE_PREFIX_WOLF_RPGMAKER = re.compile(rf"^(?:{"|".join(RE_CODE_WOLF_RPGMAKER + RE_CODE_NONE)})+", re.IGNORECASE)
+    RE_SUFFIX_WOLF_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_WOLF_RPGMAKER + RE_CODE_NONE)})+$", re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()
@@ -81,12 +82,12 @@ class CodeSaver(Base):
                 samples["[…]"] = ""
                 samples["{…}"] = ""
                 self.pre_process_renpy(k, src_dict)
-            elif text_type_dict.get(k) == CacheItem.TextType.RPGMAKER:
+            elif text_type_dict.get(k) in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
                 samples["if(…)"] = ""
                 samples["en(…)"] = ""
                 samples["\\abc[…]"] = ""
                 samples["/xyz<…>"] = ""
-                self.pre_process_rpgmaker(k, src_dict)
+                self.pre_process_wolf_rpgmaker(k, src_dict)
             else:
                 self.pre_process_none(k, src_dict)
 
@@ -126,14 +127,14 @@ class CodeSaver(Base):
             self.placeholders.add(k)
 
     # 预处理 - RPGMaker
-    def pre_process_rpgmaker(self, k: str, src_dict: dict[str, str]) -> None:
+    def pre_process_wolf_rpgmaker(self, k: str, src_dict: dict[str, str]) -> None:
         # 查找与替换前缀代码段
-        self.prefix_codes[k] = CodeSaver.RE_PREFIX_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_PREFIX_RPGMAKER.sub("", src_dict.get(k))
+        self.prefix_codes[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
 
         # 查找与替换后缀代码段
-        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_SUFFIX_RPGMAKER.sub("", src_dict.get(k))
+        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.RE_SUFFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
@@ -170,9 +171,9 @@ class CodeSaver(Base):
         if text_type == CacheItem.TextType.RENPY:
             x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(src)]
             y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(dst)]
-        elif text_type == CacheItem.TextType.RPGMAKER:
-            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RPGMAKER.findall(src)]
-            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RPGMAKER.findall(dst)]
+        elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
+            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src)]
+            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(dst)]
         else:
             x = []
             y = []

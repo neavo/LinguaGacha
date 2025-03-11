@@ -294,7 +294,9 @@ class TranslatorTask(Base):
         extra_log = []
 
         # 基础提示词
-        main = self.prompt_builder.build_main(samples)
+        main, log = self.prompt_builder.build_main(samples)
+        if log != "":
+            extra_log.append(log)
 
         # 参考上文
         if len(preceding_items) > 0:

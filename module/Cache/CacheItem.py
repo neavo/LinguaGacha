@@ -31,6 +31,7 @@ class CacheItem(BaseData):
 
         MD: str = "MD"                                  # Markdown
         NONE: str = "NONE"                              # 无类型，即纯文本
+        WOLF: str = "WOLF"                              # WOLF 游戏文本
         RENPY: str = "RENPY"                            # RENPY 游戏文本
         RPGMAKER: str = "RPGMAKER"                      # RPGMAKER 游戏文本
 
@@ -40,11 +41,14 @@ class CacheItem(BaseData):
     # RENPY - {w=2.3} [renpy.version_only]
     RE_RENPY = re.compile(r"\{[^{}]*\}|\[[^\[\]]*\]", flags = re.IGNORECASE)
 
+    # Wolf - @123
+    RE_WOLF = re.compile(r"@\d+", flags = re.IGNORECASE)
+
     # RPGMaker - /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】 \nbx[6]
-    RE_RPGMAKER = re.compile(r"[/\\][a-z]{1,5}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
+    RE_RPGMAKER = re.compile(r"[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE)
 
     # RPGMaker - if(!s[982]) if(v[982] >= 1)  en(!s[982]) en(v[982] >= 1)
-    RE_RPGMAKER_IF = re.compile(r"en\(.{0,5}[vs]\[\d+\].{0,16}\)|if\(.{0,5}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
+    RE_RPGMAKER_IF = re.compile(r"en\(.{0,8}[vs]\[\d+\].{0,16}\)|if\(.{0,8}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE)
 
     def __init__(self, args: dict) -> None:
         super().__init__()
@@ -70,12 +74,13 @@ class CacheItem(BaseData):
 
         # 如果文件类型是 XLSX、TRANS、KVJSON、MESSAGEJSON，且没有文本类型，则判断实际的文本类型
         types = (CacheItem.FileType.XLSX, CacheItem.FileType.TRANS, CacheItem.FileType.KVJSON, CacheItem.FileType.MESSAGEJSON)
-        if self.get_file_type() in types:
-            if self.get_text_type() == CacheItem.TextType.NONE:
-                if CacheItem.RE_RPGMAKER.findall(self.get_src()) != [] or CacheItem.RE_RPGMAKER_IF.findall(self.get_src()) != []:
-                    self.text_type = CacheItem.TextType.RPGMAKER
-                elif CacheItem.RE_RENPY.findall(self.get_src()) != []:
-                    self.text_type = CacheItem.TextType.RENPY
+        if self.get_file_type() in types and self.get_text_type() == CacheItem.TextType.NONE:
+            if len(CacheItem.RE_WOLF.findall(self.get_src())) > 0:
+                self.text_type = CacheItem.TextType.WOLF
+            elif len(CacheItem.RE_RPGMAKER.findall(self.get_src())) > 0 or len(CacheItem.RE_RPGMAKER_IF.findall(self.get_src())) > 0:
+                self.text_type = CacheItem.TextType.RPGMAKER
+            elif len(CacheItem.RE_RENPY.findall(self.get_src())) > 0:
+                self.text_type = CacheItem.TextType.RENPY
 
     # 获取原文
     def get_src(self) -> str:

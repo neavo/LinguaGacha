@@ -66,47 +66,50 @@ class PromptBuilder(Base):
         return self.suffix_glossary
 
     # 获取主提示词
-    def build_main(self, samples: list[str]) -> str:
+    def build_main(self, samples: list[str]) -> tuple[str, str]:
+        # 判断提示词语言
         if self.target_language == Base.Language.ZH:
             prompt_language = Base.Language.ZH
         else:
             prompt_language = Base.Language.EN
-
-        if prompt_language == Base.Language.ZH:
-            custom_prompt_enable = self.config.get("custom_prompt_zh_enable")
-            custom_prompt_data = self.config.get("custom_prompt_zh_data")
-        else:
-            custom_prompt_enable = self.config.get("custom_prompt_en_enable")
-            custom_prompt_data = self.config.get("custom_prompt_en_data")
 
         self.get_base(prompt_language)
         self.get_prefix(prompt_language)
         self.get_suffix(prompt_language)
         self.get_suffix_glossary(prompt_language)
 
-        # 判断使用哪个版本的提示词
-        if custom_prompt_enable == True:
-            base = custom_prompt_data
+        # 判断是否是否自定义提示词
+        if prompt_language == Base.Language.ZH and self.config.get("custom_prompt_zh_enable") == True:
+            base = self.config.get("custom_prompt_zh_data")
+        elif prompt_language == Base.Language.EN and self.config.get("custom_prompt_en_enable") == True:
+            base = self.config.get("custom_prompt_en_data")
         else:
             base = self.base
 
         # 添加或移除代码示例文本
+        extra_log = ""
         if len(samples) > 0:
             if prompt_language == Base.Language.ZH:
                 base = base.replace(
-                    "无需翻译。",
-                    f"无需翻译，特别是 {"、".join(samples)} 形式的代码段。",
+                    "但其中的非英文文本词语需要翻译。",
+                    f"特别是 {"、".join(samples)} 形式的代码段，"
+                    f"但其中的非英文文本词语需要翻译。",
                 )
+                extra_log = f"已添加代码示例：\n{"、".join(samples)}"
             elif len(samples) == 1:
                 base = base.replace(
-                    "Do not translate these elements.",
-                    f"Do not translate these elements, especially code segments in the format of {samples[0]} .",
+                    "However, translate any non-English words that appear within these elements.",
+                    f"especially code segments in the format of {samples[0]}. "
+                    f"However, translate any non-English words that appear within these elements.",
                 )
+                extra_log = f"Code samples added:\n{samples[0]}"
             elif len(samples) >= 2:
                 base = base.replace(
-                    "Do not translate these elements.",
-                    f"Do not translate these elements, especially code segments in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"} .",
+                    "However, translate any non-English words that appear within these elements.",
+                    f"especially code segments in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"}. "
+                    f"However, translate any non-English words that appear within these elements.",
                 )
+                extra_log = f"Code samples added:\n{f"{", ".join(samples[:-1])} and {samples[-1]}"}"
 
         # 判断是否启用自动术语表
         if self.auto_glossary_enable == False:
@@ -114,7 +117,10 @@ class PromptBuilder(Base):
         else:
             suffix = self.suffix_glossary
 
-        return (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", PromptBuilder.TARGET_LANGUAGE_MAPPING.get(self.target_language))
+        return (
+            (self.prefix + "\n" + base + "\n" + suffix).replace("{target_language}", PromptBuilder.TARGET_LANGUAGE_MAPPING.get(self.target_language)),
+            extra_log,
+        )
 
     # 构造参考上文
     def build_preceding(self, preceding_items: list[CacheItem]) -> str:
