@@ -19,6 +19,7 @@ class TRANS(Base):
         re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
         re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
         re.compile(r"Animations/\d+/name", flags = re.IGNORECASE),
+        re.compile(r"CommonEvents/\d+/name", flags = re.IGNORECASE),
         re.compile(r"Map\d+/events/\d+/name", flags = re.IGNORECASE),
     )
 
@@ -38,6 +39,10 @@ class TRANS(Base):
 
     # 过滤 - Wolf
     def filter_wolf(self, path: str, context: list[str]) -> bool:
+        return context, []
+
+    # 过滤 - RenPy
+    def filter_renpy(self, path: str, context: list[str]) -> bool:
         return context, []
 
     # 过滤 - RPGMaker
@@ -61,6 +66,10 @@ class TRANS(Base):
 
     # 生成参数 - Wolf
     def generate_parameter_wolf(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
+        return parameter
+
+    # 生成参数 - Renpy
+    def generate_parameter_renpy(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
         return parameter
 
     # 生成参数 - RPGMaker
@@ -112,9 +121,12 @@ class TRANS(Base):
                 engine: str = project.get("gameEngine", "")
 
                 # 设置排除规则
-                if engine in ("wolf", ""):
+                if engine == "wolf":
                     filter_func = self.filter_wolf
                     text_type = CacheItem.TextType.WOLF
+                elif engine == "renpy":
+                    filter_func = self.filter_renpy
+                    text_type = CacheItem.TextType.RENPY
                 elif engine in ("2k", "RMJDB", "rmvx", "rmvxace", "rmmv", "rmmz"):
                     filter_func = self.filter_rpgmaker
                     text_type = CacheItem.TextType.RPGMAKER
@@ -135,7 +147,30 @@ class TRANS(Base):
                         if not isinstance(data, list) or len(data) == 0 or not isinstance(data[0], str):
                             continue
 
-                        if len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
+                        # 处理可能为 None 的情况
+                        tag = tag if tag is not None else []
+
+                        # 如果包含 水蓝色 标签，则强制重新翻译
+                        if any(v == "aqua" for v in tag):
+                            items.append(
+                                CacheItem({
+                                    "src": data[0],
+                                    "dst": data[0],
+                                    "extra_field": {
+                                        "tag": tag,
+                                        "context": context,
+                                        "parameter": parameter,
+                                    },
+                                    "tag": path,
+                                    "row": len(items),
+                                    "file_type": CacheItem.FileType.TRANS,
+                                    "file_path": rel_path,
+                                    "text_type": text_type,
+                                    "status": Base.TranslationStatus.UNTRANSLATED,
+                                })
+                            )
+                        # 如果 第一列、第二列 都有文本，则跳过
+                        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
                             items.append(
                                 CacheItem({
                                     "src": data[0],
@@ -153,7 +188,8 @@ class TRANS(Base):
                                     "status": Base.TranslationStatus.EXCLUDED,
                                 })
                             )
-                        elif any(v in ("red", "blue") for v in tag or []):
+                        # 如果包含 红色、蓝色 标签，则跳过
+                        elif any(v in ("red", "blue") for v in tag):
                             items.append(
                                 CacheItem({
                                     "src": data[0],
@@ -171,9 +207,9 @@ class TRANS(Base):
                                     "status": Base.TranslationStatus.EXCLUDED,
                                 })
                             )
+                        # 如果没有允许翻译的上下文地址，则跳过，否则正常翻译
                         else:
                             allow, block = filter_func(path, context)
-                            tag = tag if tag is not None else []
                             tag = tag if len(block) == 0 else list(set(tag + ["gold"]))
                             status = Base.TranslationStatus.EXCLUDED if len(allow) == 0 else Base.TranslationStatus.UNTRANSLATED
                             items.append(
@@ -231,8 +267,10 @@ class TRANS(Base):
                     engine: str = project.get("gameEngine", "")
 
                     # 设置排除规则
-                    if engine in ("wolf", ""):
+                    if engine == "wolf":
                         generate_func = self.generate_parameter_wolf
+                    elif engine == "renpy":
+                        generate_func = self.generate_parameter_renpy
                     elif engine in ("2k", "RMJDB", "rmvx", "rmvxace", "rmmv", "rmmz"):
                         generate_func = self.generate_parameter_rpgmaker
                     else:
