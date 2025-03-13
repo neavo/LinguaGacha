@@ -49,7 +49,8 @@
   - [RenPy 引擎游戏 AI 汉化视频教程（中文）](https://space.bilibili.com/631729629/lists/4832968)
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
 - 进阶教程
-  - [ [术语表](https://github.com/neavo/LinguaGacha/wiki/%E6%9C%AF%E8%AF%AD%E8%A1%A8) ] | [ [译前替换与译后替换](https://github.com/neavo/LinguaGacha/wiki/%E8%AF%91%E5%89%8D%E6%9B%BF%E6%8D%A2%E4%B8%8E%E8%AF%91%E5%90%8E%E6%9B%BF%E6%8D%A2) ] | [ [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer) ]
+  - [术语表](https://github.com/neavo/LinguaGacha/wiki/%E6%9C%AF%E8%AF%AD%E8%A1%A8)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/%E6%96%87%E6%9C%AC%E6%9B%BF%E6%8D%A2)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
+  - [高质量翻译 RPGMaker 系列游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
