@@ -37,14 +37,21 @@
 ## Alur Kerja Dasar 🛸
 - Unduh aplikasi dari [halaman Rilis](https://github.com/neavo/LinguaGacha/releases).
 - Dapatkan API Ai pilihan anda (pilih salah satu):
-  - [API Lokal - Tutorial](https://github.com/neavo/OneClickLLAMA) (Gratis, membutuhkan GPU ≥8GB VRAM, Nvidia direkomendasikan).
-  - [DeepSeek - Tutorial](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) (Berbayar, hemat biaya, cepat, berkualitas tinggi, tidak memerlukan GPU) `👈👈 Direkomendasikan`.
-- Siapkan teks sumber:
+
+| API Provider      | Harga                | Kelebihan |
+|------------------|---------------------|-----------|
+| [**API Lokal**](https://github.com/neavo/OneClickLLAMA) | Gratis | Membutuhkan GPU ≥8GB VRAM (Nvidia direkomendasikan) |
+| [**DeepSeek AI**](https://platform.deepseek.com/sign_in) | Berbayar (murah) | Cepat, berkualitas tinggi, tidak memerlukan GPU |
+| [**Groq AI**](https://console.groq.com/login) | Freemium | Tidak ada sensor, banyak model rate limit |
+| [**Celebres AI**](http://cloud.cerebras.ai/) | Freemium | Tidak ada sensor, 2 model gratis (Llama 70B & 8B) rate limit |
+| [**Google Gemini AI Studio**](https://cloud.google.com/generative-ai-studio?hl=en) | Free trial 90 hari ($300 kredit), hanya bayar jika ingin upgrade | Butuh kartu kredit & Region limit |
+
+- Siapkan bahan terjemahan:
   - `Subtitle`/`E-book` biasanya tidak memerlukan prapemrosesan.
   - `Teks game` perlu diekstrak menggunakan alat yang sesuai untuk mesin game tertentu.
 - Jalankan aplikasi melalui `app.exe`:
-  - Konfigurasikan pengaturan penting (bahasa sumber/target) di `Pengaturan Proyek`.
-  - Salin file ke folder input (default: `input`), mulai terjemahan di `Mulai Terjemahan`.
+  - Konfigurasikan pengaturan penting (bahasa sumber/target) di `Project Setting`.
+  - Salin file ke folder input (default: `input`), mulai terjemahan dengan menklik `Start Translation`.
 
 ## Panduan Pengguna 📝
 - Tutorial
@@ -74,7 +81,7 @@
 
 ## FAQ 📥
 - Hubungan antara [LinguaGacha](https://github.com/neavo/LinguaGacha) dan [AiNiee](https://github.com/NEKOparapa/AiNiee)
-  - `LinguaGacha` adalah penulisan ulang total yang mengadopsi pelajaran dari `AiNiee`.
+  - `LinguaGacha` adalah penulisan ulang total yang mengadopsi  `AiNiee`.
   - Pengembang `LinguaGacha` adalah kontributor utama untuk `AiNiee v5`.
 
 ## Dukungan 😥
