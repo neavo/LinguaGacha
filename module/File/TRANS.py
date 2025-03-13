@@ -46,19 +46,18 @@ class TRANS(Base):
         return context, []
 
     # 过滤 - RPGMaker
-    def filter_rpgmaker(self, path: str, context: list[str]) -> tuple[list[str], list[str]]:
+    def filter_rpgmaker(self, path: str, context: list[str]) -> list[bool]:
         if any(len(v.findall(path)) > 0 for v in TRANS.RPGMAKER_EXCLUDED_PATH):
             return [], context
 
-        allow: list[str] = []
-        block: list[str] = []
+        block: list[bool] = []
         for address in context:
-            if any(rule.search(address) for rule in TRANS.RPGMAKER_EXCLUDED_ADDRESS):
-                block.append(address)  # 命中规则，加入 block 列表
+            if any(len(rule.findall(address)) > 0 for rule in TRANS.RPGMAKER_EXCLUDED_ADDRESS):
+                block.append(True)
             else:
-                allow.append(address)  # 未命中规则，加入 allow 列表
+                block.append(False)
 
-        return allow, block
+        return block
 
     # 生成参数
     def generate_parameter_none(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -74,26 +73,20 @@ class TRANS(Base):
 
     # 生成参数 - RPGMaker
     def generate_parameter_rpgmaker(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
-        if parameter is None:
-            parameter = []
+        # 查找需要排除的地址
+        block = self.filter_rpgmaker("", context)
 
-        for i, address in enumerate(context):
-            # 补足数量
-            if i >= len(parameter):
-                parameter.append({})
-
-            # 分情况判断，排除需要排除的地址
-            if any(rule.search(address) for rule in TRANS.RPGMAKER_EXCLUDED_ADDRESS):
-                parameter[-1]["contextStr"] = address
-                parameter[-1]["translation"] = src
-            else:
-                parameter[-1]["contextStr"] = address
-                parameter[-1]["translation"] = ""
-
-        # 如果所有条目都需要排除，则不需要启用分区翻译功能
-        if all(v.get("translation") == src for v in parameter):
-            for v in parameter:
-                v["translation"] = ""
+        # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
+        if all(v is True for v in block) or all(v is False for v in block):
+            pass
+        else:
+            if parameter is None:
+                parameter = []
+            for i, v in enumerate(block):
+                if i >= len(parameter):
+                    parameter.append({})
+                parameter[i]["contextStr"] = context[i]
+                parameter[i]["translation"] = src if v == True else ""
 
         return parameter
 
@@ -209,9 +202,9 @@ class TRANS(Base):
                             )
                         # 如果没有允许翻译的上下文地址，则跳过，否则正常翻译
                         else:
-                            allow, block = filter_func(path, context)
-                            tag = tag if len(block) == 0 else list(set(tag + ["gold"]))
-                            status = Base.TranslationStatus.EXCLUDED if len(allow) == 0 else Base.TranslationStatus.UNTRANSLATED
+                            block = filter_func(path, context)
+                            tag =  list(set(tag + ["gold"])) if any(v == True for v in block) else tag
+                            status = Base.TranslationStatus.UNTRANSLATED if any(v == False for v in block) else Base.TranslationStatus.EXCLUDED
                             items.append(
                                 CacheItem({
                                     "src": data[0],
@@ -278,9 +271,9 @@ class TRANS(Base):
 
                     # 处理数据
                     for path in files.keys():
-                        tags: list[str] = []
-                        data: list[str] = []
-                        context: list[str] = []
+                        tags: list[list[str]] = []
+                        data: list[list[str]]  = []
+                        context: list[list[str]]  = []
                         parameters: list[dict[str, str]] = []
                         for item in [item for item in items if item.get_tag() == path]:
                             data.append((item.get_src(), item.get_dst()))
@@ -288,17 +281,31 @@ class TRANS(Base):
                             extra_field: dict[str, list[str]] = item.get_extra_field()
                             tags.append(extra_field.get("tag", []))
                             context.append(extra_field.get("context", []))
-                            parameters.append(
-                                generate_func(
-                                    item.get_src(),
-                                    extra_field.get("context", []),
-                                    extra_field.get("parameter", []),
+
+                            # 当翻译状态为排除时，直接使用原始参数
+                            if item.get_status() == Base.TranslationStatus.EXCLUDED:
+                                parameters.append(extra_field.get("parameter", []))
+                            # 否则，判断与计算分区翻译功能参数
+                            else:
+                                parameters.append(
+                                    generate_func(
+                                        item.get_src(),
+                                        extra_field.get("context", []),
+                                        extra_field.get("parameter", []),
+                                    )
                                 )
-                            )
+
+                        # 清理
+                        if all(v == None or len(v) == 0 for v in tags):
+                            tags = []
+                        if all(v == None or len(v) == 0 for v in parameters):
+                            parameters = []
+
+                        # 赋值
                         json_data["project"]["files"][path]["tags"] = tags
                         json_data["project"]["files"][path]["data"] = data
                         json_data["project"]["files"][path]["context"] = context
                         json_data["project"]["files"][path]["parameters"] = parameters
 
                 # 写入文件
-                json.dump(json_data, writer, indent = 4, ensure_ascii = False)
+                json.dump(json_data, writer, indent = None, ensure_ascii = False)
