@@ -2,6 +2,18 @@ from module.Localizer.LocalizerBase import LocalizerBase
 
 class LocalizerEN(LocalizerBase):
 
+    # 保留
+    switch_language: str = (
+        "请选择应用语言，新的语言设置将在下次启动时生效！"
+        "\n"
+        "Select application language, changes will take effect on restart!"
+    )
+    switch_language_toast: str = (
+        "应用语言切换成功，请重启应用生效 ..."
+        "\n"
+        "Language switched successfully, please restart the application for changes to take effect..."
+    )
+
     # 通用
     add: str = "Add"
     edit: str = "Edit"
@@ -22,10 +34,10 @@ class LocalizerEN(LocalizerBase):
     table_insert_row: str = "Insert Row"
 
     # 主页面
-    app_close_message_box: str = "Are you sure you want to exit the application...?"
-    app_close_message_box_msg: str = "The main window is closed, the application will automatically exit later..."
+    app_close_message_box: str = "Are you sure you want to exit the application ...?"
+    app_close_message_box_msg: str = "The main window is closed, the application will automatically exit later ..."
     app_new_version: str = "Download New Version!"
-    app_new_version_toast: str = "New version found, version number is {VERSION}, tap the button at the lower left to download..."
+    app_new_version_toast: str = "New version found, version number is {VERSION}, tap the button at the lower left to download ..."
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
     app_settings_page: str = "App Settings"
@@ -40,6 +52,7 @@ class LocalizerEN(LocalizerBase):
     app_custom_prompt_navigation_item: str = "Custom Prompts"
     app_custom_prompt_zh_page: str = "Chinese Prompts"
     app_custom_prompt_en_page: str = "English Prompts"
+    app_tool_box_page: str = "Tool Box"
 
     # 路径
     path_bilingual: str = "bilingual"
@@ -83,8 +96,9 @@ class LocalizerEN(LocalizerBase):
     translator_response_check_fail: str = "Translated text failed check, will automatically retry in the next round of translation"
     translator_response_check_fail_part: str = "Partial translated text failed check, will automatically retry in the next round of translation"
     translator_task_success: str = "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}"
-    translator_too_many_task: str = "Too many real-time tasks. Details hidden for performance. ..."
+    translator_too_many_task: str = "Too many real-time tasks. Details hidden for performance ...."
     translator_no_items: str = "No translatable data was found. Please check that the input file and project settings are correct ..."
+    translator_running: str = "Task is running, please try again later ..."
     file_checker_code: str = "Code check completed, no abnormal entries found ..."
     file_checker_code_full: str = "Code check completed, {COUNT} abnormal entries found, accounting for {PERCENT} %, results written to [green]{TARGET}[/] ..."
     file_checker_code_alert_key: str = "____Note____"
@@ -101,6 +115,7 @@ class LocalizerEN(LocalizerBase):
     platofrm_tester_response_think: str = "Model thinking"
     platofrm_tester_response_result: str = "Model response"
     platofrm_tester_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed ..."
+    platofrm_tester_running: str = "Task is running, please try again later..."
     response_checker_unknown: str = "Unknown"
     response_checker_fail_data: str = "Response error (data structure)"
     response_checker_fail_line: str = "Response error (number of data lines)"
@@ -122,7 +137,6 @@ class LocalizerEN(LocalizerBase):
     app_settings_page_scale_factor_content = "When enabled, the app interface will be scaled according to the selected ratio (will take effect after app restart)"
 
     # 接口管理
-    platform_page_api_test_doing: str = "API test is in progress, please try again later ..."
     platform_page_api_test_result: str = "API test result: {SUCCESS} successful, {FAILURE} failed ..."
     platform_page_api_activate: str = "Activate API"
     platform_page_api_edit: str = "Edit API"
@@ -184,9 +198,9 @@ class LocalizerEN(LocalizerBase):
 
     # 开始翻译
     translation_page_status_idle = "Idle"
-    translation_page_status_api_testing = "Testing"
+    translation_page_status_testing = "Testing"
     translation_page_status_translating = "Translating"
-    translation_page_status_stoping = "Stopping"
+    translation_page_status_stopping = "Stopping"
     translation_page_indeterminate_saving = "Saving cache file ..."
     translation_page_indeterminate_stoping = "Stopping translation task ..."
     translation_page_card_time = "Elapsed Time"
@@ -206,32 +220,38 @@ class LocalizerEN(LocalizerBase):
     basic_settings_page_batch_size_title = "Concurrent Tasks"
     basic_settings_page_batch_size_content = (
         "Maximum number of translation tasks executed simultaneously."
-        + "\n" + "Setting appropriately can greatly increase translation speed. Please refer to the API platform's limits for settings."
+        "\n"
+        "Setting appropriately can greatly increase translation speed. Please refer to the API platform's limits for settings."
     )
-
     basic_settings_page_task_token_limit_title = "Task Length Threshold"
     basic_settings_page_task_token_limit_content = "Maximum text length sent to the model at once for each translation task, unit is Token."
     basic_settings_page_request_timeout_title = "Request Timeout"
     basic_settings_page_request_timeout_content = (
         "Timeout duration for a model's response to a translation request."
-        + "\n" + "If the model doesn't respond in time, the translation task will fail, unit is Seconds. Not applicable to Google models."
+        "\n"
+        "If the model doesn't respond in time, the translation task will fail, unit is Seconds. Not applicable to Google models."
     )
     basic_settings_page_max_round_title = "Maximum Translation Rounds"
     basic_settings_page_max_round_content = "After one translation round, if entries are still untranslated, restart translation until finished or the round limit is reached."
 
     # 高级功能
-    advance_feature_page_auto_glossary_enable_title = "Auto Complete Glossary (Experimental feature, SakuraLLM model not supported)"
-    advance_feature_page_auto_glossary_enable_content = (
-        "When enabled, text will be analyzed during translation to attempt to automatically complete missing proper noun entries in the glossary."
-        + "\n" + "This feature is designed only for gap-filling and cannot replace manually created glossaries. It is only effective when **Glossary feature is enabled**."
-        + "\n" + "May cause **negative effects** or **translation anomalies**. and it may have positive effects only on powerful models such as DeepSeek V3/R1."
-        + "\n" + "Please **judge for yourself** whether to enable it."
+    advance_feature_page_auto_glossary_enable = "Auto Complete Glossary (Experimental feature, SakuraLLM model not supported)"
+    advance_feature_page_auto_glossary_enable_desc = (
+        "When enabled, this feature analyzes text during translation to automatically fill in missing proper noun entries in the glossary."
+        "<br>"
+        "This feature is designed to only identify and fill in gaps, and cannot replace manually glossaries. It only works when <font color='darkgoldenrod'><b>Glossary</b></font> is enabled."
+        "<br>"
+        "May cause <font color='darkgoldenrod'><b>negative effects</b></font> or <font color='darkgoldenrod'><b>translation anomalies</b></font>. Theoretically, it only has positive effects on powerful models at the DeepSeek R1 level."
+        "<br>"
+        "Please <font color='darkgoldenrod'><b>judge for yourself</b></font> whether to enable it."
     )
-    advance_feature_page_mtool_optimizer_enable_title = "MTool Optimizer"
-    advance_feature_page_mtool_optimizer_enable_content = (
-        "When enabled, when translating MTool text, it can reduce translation time and token consumption by up to 40%."
-        + "\n" + "May cause issues such as **original text residue** or **incoherent sentences**, and it should only be enabled when **translating MTool text**."
-        + "\n" + "Please **judge for yourself** whether to enable it"
+    advance_feature_page_mtool_optimizer_enable = "MTool Optimizer"
+    advance_feature_page_mtool_optimizer_enable_desc = (
+        "When enabled, this feature can reduce translation time and token consumption by up to 40% when translating MTool text."
+        "<br>"
+        "May cause issues such as <font color='darkgoldenrod'><b>residual original text</b></font> or <font color='darkgoldenrod'><b>incoherent sentences</b></font>."
+        "<br>"
+        "Please <font color='darkgoldenrod'><b>judge for yourself</b></font> whether to enable it, and it should only be enabled when <font color='darkgoldenrod'><b>translating MTool text</b></font>."
     )
 
     # 术语表
@@ -291,10 +311,13 @@ class LocalizerEN(LocalizerBase):
     post_translation_replacement_page_wiki = "Wiki"
 
     # 自定义提示词 - 中文
-    custom_prompt_zh_page_head_title = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"
-    custom_prompt_zh_page_head_content = (
-        "Add extra translation requirements such as story settings and writing style through custom prompts."
-        + "Note: Prefix and suffix parts are fixed and unmodifiable. Custom prompts in this page will only be used when **target language is set to Chinese**."
+    custom_prompt_zh_page_head = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"
+    custom_prompt_zh_page_head_desc = (
+        "Add extra translation requirements such as story settings and writing styles via custom prompts."
+        "<br>"
+        "Note: The prefix and suffix are fixed and cannot be modified."
+        "<br>"
+        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to Chinese</b></font>."
     )
     custom_prompt_zh_page_save = "Save"
     custom_prompt_zh_page_save_toast = "Data saved ..."
@@ -303,13 +326,45 @@ class LocalizerEN(LocalizerBase):
     custom_prompt_zh_page_reset_alert = "Confirm reset to default data ...?"
 
     # 自定义提示词 - 英文
-    custom_prompt_en_page_head_title = "Custom prompt used when target language is set to non-Chinese languages (SakuraLLM model not supported)"
-    custom_prompt_en_page_head_content = (
-        "Add extra translation requirements such as story settings and writing style through custom prompts.\n"
-        + "Note: Prefix and suffix parts are fixed and unmodifiable. Custom prompts in this page will only be used when **target language is set to non-Chinese languages**."
+    custom_prompt_en_page_head = "Custom prompt used when target language is set to non-Chinese languages (SakuraLLM model not supported)"
+    custom_prompt_en_page_head_desc = (
+        "Add extra translation requirements such as story settings and writing styles via custom prompts."
+        "<br>"
+        "Note: The prefix and suffix are fixed and cannot be modified."
+        "<br>"
+        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>."
     )
     custom_prompt_en_page_save = "Save"
     custom_prompt_en_page_save_toast = "Data saved ..."
     custom_prompt_en_page_reset = "Reset"
     custom_prompt_en_page_reset_toast = "Data reset ..."
     custom_prompt_en_page_reset_alert = "Confirm reset to default data ...?"
+
+    # 百宝箱
+    tool_box_page_re_translation = "Partial Re-Translation"
+    tool_box_page_re_translation_desc = "Retranslate parts of the completed translation based on the set filter conditions. Primarily used for content updates or error corrections in subtitles, ebooks, etc."
+
+    # 百宝箱 - 部分重翻
+    re_translation_page = "Partial Re-Translation"
+    re_translation_page_desc = (
+        "Will filter the text in the <font color='darkgoldenrod'><b>Input Folder</b></font> based on the set filter conditions, and then retranslate the text that meets the conditions."
+        "<br>"
+        "Supported formats: .md .txt .srt .ass .epub"
+        "<br>"
+        "Workflow:"
+        "<br>"
+        "• Load the original and translated texts from the <font color='darkgoldenrod'><b>src</b></font> and <font color='darkgoldenrod'><b>dst</b></font> subdirectories of the <font color='darkgoldenrod'><b>Input Folder</b></font>."
+        "<br>"
+        "• The filenames and file contents of the original and translated files must correspond strictly one-to-one."
+        "<br>"
+        "• Filter out the text that needs to be retranslated according to the settings on this page, translate it according to the normal process."
+    )
+    re_translation_page_white_list = "Keywords - Whitelist"
+    re_translation_page_white_list_desc = (
+        "Text containing these keywords will be retranslated. You can enter multiple keywords, one per line."
+        "\n"
+        "Hitting one of them is enough to determine that the text needs to be retranslated."
+    )
+    re_translation_page_white_list_placeholder = "Please enter keywords ..."
+    re_translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ...?"
+    re_translation_page_alert_not_equal = "The number of lines in the original and translated texts does not match ..."

@@ -27,41 +27,45 @@ class CacheManager(Base):
         "」",
     )
 
-    def __init__(self) -> None:
+    # 类线程锁
+    FILE_LOCK = threading.Lock()
+
+    def __init__(self, tick: bool) -> None:
         super().__init__()
 
         # 默认值
         self.project: CacheProject = CacheProject({})
         self.items: list[CacheItem] = []
 
-        # 线程锁
-        self.file_lock = threading.Lock()
-
-        # 注册事件
-        self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
-
-        # 定时器
-        threading.Thread(target = self.save_to_file_tick).start()
+        # 启动定时任务
+        if tick == True:
+            self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
+            threading.Thread(target = self.save_to_file_tick).start()
 
     # 应用关闭事件
     def app_shut_down(self, event: int, data: dict) -> None:
         self.app_shut_down = True
 
     # 保存缓存到文件
-    def save_to_file(self) -> None:
-        path = f"{self.save_to_file_require_path}/cache/items.json"
-        with self.file_lock:
+    def save_to_file(self, project: CacheProject = None, items: list[CacheItem] = None, output_folder: str = None) -> None:
+        # 创建上级文件夹
+        os.makedirs(f"{output_folder}/cache", exist_ok = True)
+
+        # 保存缓存到文件
+        path = f"{output_folder}/cache/items.json"
+        with CacheManager.FILE_LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps([item.get_vars() for item in self.items], indent = None, ensure_ascii = False))
+                    writer.write(json.dumps([item.get_vars() for item in items], indent = None, ensure_ascii = False))
             except Exception as e:
                 self.debug(Localizer.get().log_write_cache_file_fail, e)
 
-        path = f"{self.save_to_file_require_path}/cache/project.json"
-        with self.file_lock:
+        # 保存项目数据到文件
+        path = f"{output_folder}/cache/project.json"
+        with CacheManager.FILE_LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps(self.project.get_vars(), indent = None, ensure_ascii = False))
+                    writer.write(json.dumps(project.get_vars(), indent = None, ensure_ascii = False))
             except Exception as e:
                 self.debug(Localizer.get().log_write_cache_file_fail, e)
 
@@ -81,7 +85,11 @@ class CacheManager(Base):
                 os.makedirs(folder_path, exist_ok = True)
 
                 # 保存缓存到文件
-                self.save_to_file()
+                self.save_to_file(
+                    project = self.project,
+                    items = self.items,
+                    output_folder = self.save_to_file_require_path,
+                )
 
                 # 触发事件
                 self.emit(Base.Event.CACHE_FILE_AUTO_SAVE, {})
@@ -97,7 +105,7 @@ class CacheManager(Base):
     # 从文件读取数据
     def load_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/items.json"
-        with self.file_lock:
+        with CacheManager.FILE_LOCK:
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     self.items = [CacheItem(item) for item in json.load(reader)]
@@ -105,7 +113,7 @@ class CacheManager(Base):
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
         path = f"{output_path}/cache/project.json"
-        with self.file_lock:
+        with CacheManager.FILE_LOCK:
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     self.project = CacheProject(json.load(reader))
@@ -115,7 +123,7 @@ class CacheManager(Base):
     # 从文件读取项目数据
     def load_project_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/project.json"
-        with self.file_lock:
+        with CacheManager.FILE_LOCK:
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     self.project = CacheProject(json.load(reader))

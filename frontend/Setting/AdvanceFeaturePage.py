@@ -36,38 +36,40 @@ class AdvanceFeaturePage(QWidget, Base):
 
     # MTool 优化器
     def add_widget_mtool(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def widget_init(widget: SwitchButtonCard) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
             widget.set_checked(config.get("mtool_optimizer_enable"))
 
-        def widget_callback(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
             config["mtool_optimizer_enable"] = checked
             self.save_config(config)
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().advance_feature_page_mtool_optimizer_enable_title,
-                Localizer.get().advance_feature_page_mtool_optimizer_enable_content,
-                widget_init,
-                widget_callback,
+                title = Localizer.get().advance_feature_page_mtool_optimizer_enable,
+                description = Localizer.get().advance_feature_page_mtool_optimizer_enable_desc,
+                init = init,
+                checked_changed = checked_changed,
             )
         )
 
     # 自动补全术语表
     def add_widget_auto_glossary(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def widget_init(widget: SwitchButtonCard) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
             widget.set_checked(config.get("auto_glossary_enable"))
 
-        def widget_callback(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
             config["auto_glossary_enable"] = checked
             self.save_config(config)
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().advance_feature_page_auto_glossary_enable_title,
-                Localizer.get().advance_feature_page_auto_glossary_enable_content,
-                widget_init,
-                widget_callback,
+                title = Localizer.get().advance_feature_page_auto_glossary_enable,
+                description = Localizer.get().advance_feature_page_auto_glossary_enable_desc,
+                init = init,
+                checked_changed = checked_changed,
             )
         )

@@ -49,27 +49,13 @@ class PlatformPage(QWidget, Base):
 
     # 执行接口测试
     def platform_test_start(self, id: int, widget: FlowCard, window: FluentWindow) -> None:
-        # 载入配置文件
-        if Base.WORK_STATUS == Base.Status.IDLE:
-            # 更新运行状态
-            Base.WORK_STATUS = Base.Status.API_TEST
-
-            # 触发事件
-            self.emit(Base.Event.PLATFORM_TEST_START, {
-                "id": id,
-            })
-        else:
-            self.emit(Base.Event.TOAST_SHOW, {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().platform_page_api_test_doing,
-            })
+        self.emit(Base.Event.PLATFORM_TEST_START, {
+            "id": id,
+        })
 
     # 接口测试完成
     def platform_test_done(self, event: int, data: dict) -> None:
-        # 更新运行状态
-        Base.WORK_STATUS = Base.Status.IDLE
-
-        self.emit(Base.Event.TOAST_SHOW, {
+        self.emit(Base.Event.APP_TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
             "message": data.get("result_msg", "")
         })

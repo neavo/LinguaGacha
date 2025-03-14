@@ -1,6 +1,6 @@
 import re
-from openpyxl import Workbook
 import rapidjson as json
+from openpyxl import Workbook
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
@@ -35,7 +35,7 @@ class GlossaryPage(QWidget, Base):
     )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
-        super().__init__(parent = window)
+        super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
         # 根据应用语言加载默认设置
@@ -126,7 +126,7 @@ class GlossaryPage(QWidget, Base):
             menu = RoundMenu("", self.table)
             menu.addAction(
                 Action(
-                    FluentIcon.SYNC,
+                    FluentIcon.ADD,
                     Localizer.get().table_insert_row,
                     triggered = lambda _: insert_row(self.table),
                 )
@@ -134,7 +134,7 @@ class GlossaryPage(QWidget, Base):
             menu.addSeparator()
             menu.addAction(
                 Action(
-                    FluentIcon.EDIT,
+                    FluentIcon.DELETE,
                     Localizer.get().table_delete_row,
                     triggered = lambda _: delete_row(self.table),
                 )
@@ -217,7 +217,7 @@ class GlossaryPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().glossary_page_import_toast,
             })
@@ -272,7 +272,7 @@ class GlossaryPage(QWidget, Base):
                 writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().glossary_page_export_toast,
             })
@@ -289,7 +289,7 @@ class GlossaryPage(QWidget, Base):
             self.table.setRowCount(self.table.rowCount() + 1)
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().glossary_page_add_toast,
             })
@@ -321,7 +321,7 @@ class GlossaryPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().glossary_page_save_toast,
             })
@@ -357,7 +357,7 @@ class GlossaryPage(QWidget, Base):
             TableHelper.update_to_table(self.table, config.get("glossary_data"), GlossaryPage.KEYS)
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().glossary_page_reset_toast,
             })

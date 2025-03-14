@@ -66,8 +66,8 @@ class CustomPromptENPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().custom_prompt_en_page_head_title,
-                Localizer.get().custom_prompt_en_page_head_content,
+                Localizer.get().custom_prompt_en_page_head,
+                Localizer.get().custom_prompt_en_page_head_desc,
                 widget_init,
                 widget_callback,
             )
@@ -113,7 +113,7 @@ class CustomPromptENPage(QWidget, Base):
             config = self.save_config(config)
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().custom_prompt_en_page_save_toast,
             })
@@ -148,7 +148,7 @@ class CustomPromptENPage(QWidget, Base):
             self.main_text.setPlainText(config.get("custom_prompt_en_data"))
 
             # 弹出提示
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().custom_prompt_en_page_reset_toast,
             })

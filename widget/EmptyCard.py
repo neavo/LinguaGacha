@@ -3,19 +3,18 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 
 from qfluentwidgets import CardWidget
-from qfluentwidgets import PushButton
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
 class EmptyCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, clicked = None) -> None:
+    def __init__(self, title: str, description: str, init = None) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
-        self.hbox = QHBoxLayout(self)
-        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root = QHBoxLayout(self)
+        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()
@@ -26,10 +25,10 @@ class EmptyCard(CardWidget):
 
         self.vbox.addWidget(self.title_label)
         self.vbox.addWidget(self.description_label)
-        self.hbox.addLayout(self.vbox)
+        self.root.addLayout(self.vbox)
 
         # 填充
-        self.hbox.addStretch(1)
+        self.root.addStretch(1)
 
         if callable(init):
             init(self)
@@ -41,10 +40,10 @@ class EmptyCard(CardWidget):
         self.description_label.setText(description)
 
     def add_widget(self, widget) -> None:
-        self.hbox.addWidget(widget)
+        self.root.addWidget(widget)
 
     def add_spacing(self, space: int) -> None:
-        self.hbox.addSpacing(space)
+        self.root.addSpacing(space)
 
     def remove_title(self) -> None:
         self.vbox.removeWidget(self.title_label)

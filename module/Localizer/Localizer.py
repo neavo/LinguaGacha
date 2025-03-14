@@ -8,7 +8,7 @@ class Localizer():
     APP_LANGUAGE = Base.Language.ZH
 
     @classmethod
-    def get(cls) -> LocalizerBase:
+    def get(cls) -> LocalizerEN | LocalizerZH | LocalizerBase:
         if cls.APP_LANGUAGE == Base.Language.EN:
             return LocalizerEN
         else:

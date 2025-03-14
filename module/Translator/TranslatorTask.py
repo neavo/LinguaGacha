@@ -73,7 +73,7 @@ class TranslatorTask(Base):
         start_time = time.time()
 
         # 检测是否需要停止任务
-        if Base.WORK_STATUS == Base.Status.STOPING:
+        if Base.WORK_STATUS == Base.Status.STOPPING:
             return {}
 
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
@@ -82,9 +82,9 @@ class TranslatorTask(Base):
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, extra_console_log = self.generate_prompt(src_dict, preceding_items, samples)
+            self.messages, console_log = self.generate_prompt(src_dict, preceding_items, samples)
         else:
-            self.messages, extra_console_log = self.generate_prompt_sakura(src_dict)
+            self.messages, console_log = self.generate_prompt_sakura(src_dict)
 
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
@@ -117,16 +117,16 @@ class TranslatorTask(Base):
 
         # 模型回复日志
         # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
-        extra_file_log = extra_console_log.copy()
+        file_log = console_log.copy()
         if response_think != "":
-            extra_file_log.append(Localizer.get().translator_task_response_think + response_think)
-            extra_console_log.append(Localizer.get().translator_task_response_think + response_think)
+            file_log.append(Localizer.get().translator_task_response_think + response_think)
+            console_log.append(Localizer.get().translator_task_response_think + response_think)
         if response_result != "":
-            extra_file_log.append(Localizer.get().translator_task_response_result + response_result)
-            extra_console_log.append(Localizer.get().translator_task_response_result + response_result) if LogHelper.is_debug() else None
+            file_log.append(Localizer.get().translator_task_response_result + response_result)
+            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogHelper.is_debug() else None
         if response_decode_log != "":
-            extra_file_log.append(response_decode_log)
-            extra_console_log.append(response_decode_log) if LogHelper.is_debug() else None
+            file_log.append(response_decode_log)
+            console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
         # 检查译文
         if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:
@@ -164,8 +164,8 @@ class TranslatorTask(Base):
             completion_tokens,
             [line.strip() for line in src_dict.values()],
             [line.strip() for line in dst_dict.values()],
-            extra_file_log,
-            extra_console_log
+            file_log,
+            console_log
         )
 
         # 返回任务结果
@@ -381,7 +381,7 @@ class TranslatorTask(Base):
         return messages, extra_log
 
     # 打印日志表格
-    def print_log_table(self, flag: str, start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], extra_file: list[str], extra_console: list[str]) -> None:
+    def print_log_table(self, flag: str, start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
         if flag == ResponseChecker.Error.UNKNOWN:
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_unknown}"
@@ -408,8 +408,12 @@ class TranslatorTask(Base):
             )
             log_func = self.info
 
+        # 添加日志
+        file_log.insert(0, message)
+        console_log.insert(0, message)
+
         # 写入日志到文件
-        file_rows = self.generate_log_rows(message, srcs, dsts, extra_file, highlight = False)
+        file_rows = self.generate_log_rows(srcs, dsts, file_log, highlight = False)
         log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
 
         # 根据线程数判断是否需要打印表格
@@ -421,15 +425,12 @@ class TranslatorTask(Base):
                 console = True,
             )
         else:
-            console_rows = self.generate_log_rows(message, srcs, dsts, extra_console, highlight = True)
+            console_rows = self.generate_log_rows(srcs, dsts, console_log, highlight = True)
             TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
 
     # 生成日志行
-    def generate_log_rows(self, message: str, srcs: list[str], dsts: list[str], extra: list[str], highlight: bool) -> tuple[list[str], str]:
+    def generate_log_rows(self, srcs: list[str], dsts: list[str], extra: list[str], highlight: bool) -> tuple[list[str], str]:
         rows = []
-
-        if message != "":
-            rows.append(message)
 
         # 添加额外日志
         for v in extra:

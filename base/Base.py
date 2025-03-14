@@ -14,43 +14,43 @@ class Base():
 
         PLATFORM_TEST_DONE: int = 100                           # API 测试完成
         PLATFORM_TEST_START: int = 101                          # API 测试开始
-        TRANSLATION_START: int = 210                            # 翻译开始
-        TRANSLATION_UPDATE: int = 220                           # 翻译状态更新
-        TRANSLATION_STOP: int = 230                             # 翻译停止
-        TRANSLATION_STOP_DONE: int = 231                        # 翻译停止完成
-        TRANSLATION_PROJECT_STATUS: int = 240                   # 项目状态检查
-        TRANSLATION_PROJECT_STATUS_CHECK_DONE: int = 241        # 项目状态检查完成
-        TRANSLATION_MANUAL_EXPORT: int = 250                    # 翻译结果手动导出
+        TRANSLATION_START: int = 200                            # 翻译开始
+        TRANSLATION_STOP: int = 210                             # 翻译停止
+        TRANSLATION_STOP_DONE: int = 220                        # 翻译停止完成
+        TRANSLATION_UPDATE: int = 230                           # 翻译状态更新
+        TRANSLATION_MANUAL_EXPORT: int = 240                    # 翻译结果手动导出
         CACHE_FILE_AUTO_SAVE: int = 300                         # 缓存文件自动保存
-        APP_UPDATE_CHECK: int = 400                             # 检查更新
-        APP_UPDATE_CHECK_DONE: int = 401                        # 检查更新完成
-        TOAST_SHOW: int = 900                                   # 显示 Toast
+        PROJECT_STATUS: int = 400                               # 项目状态检查
+        PROJECT_STATUS_CHECK_DONE: int = 410                    # 项目状态检查完成
+        APP_UPDATE_CHECK: int = 500                             # 检查更新
+        APP_UPDATE_CHECK_DONE: int = 510                        # 检查更新完成
+        APP_TOAST_SHOW: int = 600                               # 显示 Toast
         APP_SHUT_DOWN: int = 1000                               # 应用关闭
 
     # 任务状态
     class Status():
 
         IDLE: int = 100                                         # 无任务
-        API_TEST: int = 200                                     # 测试中
-        TRANSLATING: int = 300                                  # 翻译中
-        STOPING: int = 400                                      # 停止中
+        TESTING: int = 200                                      # 运行中
+        TRANSLATING: int = 300                                  # 运行中
+        STOPPING: int = 400                                     # 停止中
 
     # 语言
     class Language():
 
-        ZH: str = "ZH"
-        EN: str = "EN"
-        JA: str = "JA"
-        KO: str = "KO"
-        RU: str = "RU"
-        DE: str = "DE"
-        FR: str = "FR"
-        ES: str = "ES"
-        IT: str = "IT"
-        PT: str = "PT"
-        TH: str = "TH"
-        ID: str = "ID"
-        VI: str = "VI"
+        ZH: str = "ZH"                                          # 中文 (Chinese)
+        EN: str = "EN"                                          # 英语 (English)
+        JA: str = "JA"                                          # 日语 (Japanese)
+        KO: str = "KO"                                          # 韩语 (Korean)
+        RU: str = "RU"                                          # 俄语 (Russian)
+        DE: str = "DE"                                          # 德语 (German)
+        FR: str = "FR"                                          # 法语 (French)
+        ES: str = "ES"                                          # 西班牙语 (Spanish)
+        IT: str = "IT"                                          # 意大利语 (Italian)
+        PT: str = "PT"                                          # 葡萄牙语 (Portuguese)
+        TH: str = "TH"                                          # 泰语 (Thai)
+        ID: str = "ID"                                          # 印尼语 (Indonesian)
+        VI: str = "VI"                                          # 越南语 (Vietnamese)
 
         CJK: tuple[str] = (
             ZH,

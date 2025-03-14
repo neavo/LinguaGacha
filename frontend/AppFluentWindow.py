@@ -33,6 +33,8 @@ from frontend.Quality.CustomPromptZHPage import CustomPromptZHPage
 from frontend.Quality.CustomPromptENPage import CustomPromptENPage
 from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplacementPage
 from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
+from frontend.ToolBox.ToolBoxPage import ToolBoxPage
+from frontend.ToolBox.ReTranslationPage import ReTranslationPage
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -83,7 +85,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_pages()
 
         # 注册事件
-        self.subscribe(Base.Event.TOAST_SHOW, self.show_toast)
+        self.subscribe(Base.Event.APP_TOAST_SHOW, self.show_toast)
         self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_updater_check_done)
 
         # 检查更新
@@ -159,7 +161,7 @@ class AppFluentWindow(FluentWindow, Base):
             config["app_language"] = Base.Language.EN
             self.save_config(config)
 
-        self.emit(Base.Event.TOAST_SHOW, {
+        self.emit(Base.Event.APP_TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().switch_language_toast,
         })
@@ -181,7 +183,7 @@ class AppFluentWindow(FluentWindow, Base):
                 or (int(a) == int(x) and int(b) < int(y))
                 or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
             ):
-                self.emit(Base.Event.TOAST_SHOW, {
+                self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.SUCCESS,
                     "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
                     "duration": 60 * 1000,
@@ -198,6 +200,8 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_setting_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_quality_pages()
+        self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
+        self.add_tool_box_pages()
 
         # 设置默认页面
         self.switchTo(self.translation_page)
@@ -325,15 +329,43 @@ class AppFluentWindow(FluentWindow, Base):
             Localizer.get().app_custom_prompt_navigation_item,
             NavigationItemPosition.SCROLL,
         )
+        if Localizer.get_app_language() == Base.Language.EN:
+            self.addSubInterface(
+                CustomPromptENPage("custom_prompt_en_page", self),
+                FluentIcon.PENCIL_INK,
+                Localizer.get().app_custom_prompt_en_page,
+                parent = self.custom_prompt_navigation_item,
+            )
+            self.addSubInterface(
+                CustomPromptZHPage("custom_prompt_zh_page", self),
+                FluentIcon.PENCIL_INK,
+                Localizer.get().app_custom_prompt_zh_page,
+                parent = self.custom_prompt_navigation_item,
+            )
+        else:
+            self.addSubInterface(
+                CustomPromptZHPage("custom_prompt_zh_page", self),
+                FluentIcon.PENCIL_INK,
+                Localizer.get().app_custom_prompt_zh_page,
+                parent = self.custom_prompt_navigation_item,
+            )
+            self.addSubInterface(
+                CustomPromptENPage("custom_prompt_en_page", self),
+                FluentIcon.PENCIL_INK,
+                Localizer.get().app_custom_prompt_en_page,
+                parent = self.custom_prompt_navigation_item,
+            )
+
+    # 添加第四节
+    def add_tool_box_pages(self) -> None:
+        # 百宝箱
         self.addSubInterface(
-            CustomPromptZHPage("custom_prompt_zh_page", self),
-            FluentIcon.PENCIL_INK,
-            Localizer.get().app_custom_prompt_zh_page,
-            parent = self.custom_prompt_navigation_item,
+            interface = ToolBoxPage("tool_box_page", self),
+            icon = FluentIcon.TILES,
+            text = Localizer.get().app_tool_box_page,
+            position = NavigationItemPosition.SCROLL,
         )
-        self.addSubInterface(
-            CustomPromptENPage("custom_prompt_en_page", self),
-            FluentIcon.PENCIL_INK,
-            Localizer.get().app_custom_prompt_en_page,
-            parent = self.custom_prompt_navigation_item,
-        )
+
+        # 部分重翻
+        self.re_translation_page = ReTranslationPage("re_translation_page", self)
+        self.stackedWidget.addWidget(self.re_translation_page)

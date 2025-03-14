@@ -1,8 +1,18 @@
+
+
 class LocalizerBase():
 
     # 保留
-    switch_language: str = "请选择应用语言，新的语言设置将在下次启动时生效！\nSelect application language, changes will take effect on restart!"
-    switch_language_toast: str = "应用语言切换成功，请重启应用生效 ...\nLanguage switched successfully, please restart the application for changes to take effect..."
+    switch_language: str = (
+        "请选择应用语言，新的语言设置将在下次启动时生效！"
+        "\n"
+        "Select application language, changes will take effect on restart!"
+    )
+    switch_language_toast: str = (
+        "应用语言切换成功，请重启应用生效 ..."
+        "\n"
+        "Language switched successfully, please restart the application for changes to take effect..."
+    )
 
     # 通用
     add: str = "新增"
@@ -42,6 +52,7 @@ class LocalizerBase():
     app_custom_prompt_navigation_item: str = "自定义提示词"
     app_custom_prompt_zh_page: str = "中文提示词"
     app_custom_prompt_en_page: str = "英文提示词"
+    app_tool_box_page: str = "百宝箱"
 
     # 路径
     path_bilingual: str = "双语对照"
@@ -87,6 +98,7 @@ class LocalizerBase():
     translator_task_success: str = "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens"
     translator_too_many_task: str = "实时任务数较多，暂时停止显示详细结果以提升性能 ..."
     translator_no_items: str = "没有找到需要翻译的数据，请确认输入文件与项目设置是否正确 ..."
+    translator_running: str = "任务正在执行中，请稍后再试 ..."
     file_checker_code: str = "已完成代码检查，未发现异常条目 ..."
     file_checker_code_full: str = "已完成代码检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] ..."
     file_checker_code_alert_key: str = "____说明____"
@@ -103,6 +115,7 @@ class LocalizerBase():
     platofrm_tester_response_think: str = "模型思考内容"
     platofrm_tester_response_result: str = "模型返回结果"
     platofrm_tester_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 ..."
+    platofrm_tester_running: str = "任务正在执行中，请稍后再试 ..."
     response_checker_unknown: str = "未知"
     response_checker_fail_data: str = "返回结果错误（数据结构）"
     response_checker_fail_line: str = "返回结果错误（数据行数）"
@@ -124,7 +137,6 @@ class LocalizerBase():
     app_settings_page_scale_factor_content = "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
 
     # 接口管理
-    platform_page_api_test_doing: str = "接口测试正在执行中，请稍后再试 ..."
     platform_page_api_test_result: str = "接口测试结果：成功 {SUCCESS} 个，失败 {FAILURE} 个 ..."
     platform_page_api_activate: str = "激活接口"
     platform_page_api_edit: str = "编辑接口"
@@ -186,9 +198,9 @@ class LocalizerBase():
 
     # 开始翻译
     translation_page_status_idle = "无任务"
-    translation_page_status_api_testing = "测试中"
+    translation_page_status_testing = "测试中"
     translation_page_status_translating = "翻译中"
-    translation_page_status_stoping = "停止中"
+    translation_page_status_stopping = "停止中"
     translation_page_indeterminate_saving = "缓存文件保存中 ..."
     translation_page_indeterminate_stoping = "正在停止翻译任务 ..."
     translation_page_card_time = "累计时间"
@@ -206,25 +218,40 @@ class LocalizerBase():
 
     # 基础设置
     basic_settings_page_batch_size_title = "并发任务数"
-    basic_settings_page_batch_size_content = "同时执行的翻译任务的最大数量，合理设置可以极大的增加翻译速度，请参考接口平台的限制进行设置，本地接口无需设置"
+    basic_settings_page_batch_size_content = (
+        "同时执行的翻译任务的最大数量，合理设置可以极大的增加翻译速度，请参考接口平台的限制进行设置，本地接口无需设置"
+        ""
+        ""
+    )
     basic_settings_page_task_token_limit_title = "翻译任务长度阈值"
     basic_settings_page_task_token_limit_content = "每个翻译任务一次性向模型发送的文本长度的最大值，单位为 Token"
     basic_settings_page_request_timeout_title = "请求超时时间"
-    basic_settings_page_request_timeout_content = "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持 Google 系列模型"
+    basic_settings_page_request_timeout_content = (
+        "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持 Google 系列模型"
+        ""
+        ""
+    )
     basic_settings_page_max_round_title = "翻译流程最大轮次"
     basic_settings_page_max_round_content = "当完成一轮翻译后，如果还有未翻译的条目，将重新开始新的翻译流程，直到翻译完成或者达到最大轮次"
 
     # 高级功能
-    advance_feature_page_auto_glossary_enable_title = "自动补全术语表（实验性功能，不支持 SakuraLLM 模型）"
-    advance_feature_page_auto_glossary_enable_content = (
+    advance_feature_page_auto_glossary_enable = "自动补全术语表（实验性功能，不支持 SakuraLLM 模型）"
+    advance_feature_page_auto_glossary_enable_desc = (
         "启用此功能后，在翻译的同时将对文本进行分析，尝试自动补全术语表中缺失的专有名词条目。"
-        + "\n" + "此功能设计目的仅为查漏补缺，并不能代替手动制作的术语表，只有在 **启用术语表功能** 时才生效。"
-        + "\n" + "可能导致 **负面效果** 或 **翻译异常**，理论上只有在 DeepSeek V3/R1 等强力模型上才会有正面效果，请 **自行判断** 是否启用。"
+        "<br>"
+        "此功能设计目的仅为查漏补缺，并不能代替手动制作的术语表，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效。"
+        "<br>"
+        "可能导致 <font color='darkgoldenrod'><b>负面效果</b></font> 或 <font color='darkgoldenrod'><b>翻译异常</b></font>，理论上只有在 DeepSeek R1 级别的强力模型上才会有正面效果，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用。"
+        ""
+        ""
     )
-    advance_feature_page_mtool_optimizer_enable_title = "MTool 优化器"
-    advance_feature_page_mtool_optimizer_enable_content = (
+    advance_feature_page_mtool_optimizer_enable = "MTool 优化器"
+    advance_feature_page_mtool_optimizer_enable_desc = (
         "启用此功能后，在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗。"
-        + "\n" + "可能导致 **原文残留** 或 **语句不连贯** 等问题，请 **自行判断** 是否启用，并且只应在 **翻译 MTool 文本时** 启用。"
+        "<br>"
+        "可能导致 <font color='darkgoldenrod'><b>原文残留</b></font> 或 <font color='darkgoldenrod'><b>语句不连贯</b></font> 等问题，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，并且只应在 <font color='darkgoldenrod'><b>翻译 MTool 文本时</b></font> 启用。"
+        ""
+        ""
     )
 
     # 术语表
@@ -284,10 +311,13 @@ class LocalizerBase():
     post_translation_replacement_page_wiki = "功能说明"
 
     # 自定义提示词 - 中文
-    custom_prompt_zh_page_head_title = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_zh_page_head_content = (
+    custom_prompt_zh_page_head = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
+    custom_prompt_zh_page_head_desc = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求。"
-        + "\n" + "注意：前缀、后缀部分固定不可修改，只有 **译文语言设置为中文时** 才会使用本页中的自定义提示词。"
+        "<br>"
+        "注意：前缀、后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为中文时</b></font> 才会使用本页中的自定义提示词。"
+        ""
+        ""
     )
     custom_prompt_zh_page_save = "保存"
     custom_prompt_zh_page_save_toast = "数据已保存 ..."
@@ -296,13 +326,45 @@ class LocalizerBase():
     custom_prompt_zh_page_reset_alert = "是否确认重置为默认数据 ... ？"
 
     # 自定义提示词 - 英文
-    custom_prompt_en_page_head_title = "译文语言设置为非中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_en_page_head_content = (
+    custom_prompt_en_page_head = "译文语言设置为非中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
+    custom_prompt_en_page_head_desc = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求。"
-        + "\n" + "注意：前缀、后缀部分固定不可修改，只有 **译文语言设置为非中文时** 才会使用本页中的自定义提示词。"
+        "<br>"
+        "注意：前缀、后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词。"
+        ""
+        ""
     )
     custom_prompt_en_page_save = "保存"
     custom_prompt_en_page_save_toast = "数据已保存 ..."
     custom_prompt_en_page_reset = "重置"
     custom_prompt_en_page_reset_toast = "数据已重置 ..."
     custom_prompt_en_page_reset_alert = "是否确认重置为默认数据 ... ？"
+
+    # 百宝箱
+    tool_box_page_re_translation = "部分重翻"
+    tool_box_page_re_translation_desc = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译。主要用于 字幕、电子书 等的内容更新或错误修正。"
+
+    # 百宝箱 - 部分重翻
+    re_translation_page = "部分重翻"
+    re_translation_page_desc = (
+        "将根据设置的筛选条件对 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的文本进行筛选，然后对符合条件的文本进行重翻。"
+        "<br>"
+        "支持格式：.md .txt .srt .ass .epub"
+        "<br>"
+        "工作流程："
+        "<br>"
+        "• 分别从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 的 <font color='darkgoldenrod'><b>src</b></font> 与 <font color='darkgoldenrod'><b>dst</b></font> 子目录中读取原文与译文"
+        "<br>"
+        "• 原文文件和译文文件的文件名和文件内容必须严格一一对应"
+        "<br>"
+        "• 根据本页中的设置筛选出需要重翻的文本，按正常流程进行翻译，翻译完成后输出更新后的译文文件"
+    )
+    re_translation_page_white_list = "关键字 - 白名单"
+    re_translation_page_white_list_desc = (
+        "包含这些关键字的文本将被重新翻译，可以填入多个关键字，每行一个，只需要命中其中之一即判断为需要重翻的文本"
+        ""
+        ""
+    )
+    re_translation_page_white_list_placeholder = "请输入关键字 ..."
+    re_translation_page_alert_start = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
+    re_translation_page_alert_not_equal = "原文与译文的行数不匹配 ..."

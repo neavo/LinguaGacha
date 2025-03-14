@@ -38,12 +38,13 @@ class FileManager(Base):
 
         items: list[CacheItem] = []
         try:
-            if os.path.isfile(self.input_path):
-                paths = [self.input_path]
-            elif os.path.isdir(self.input_path):
-                paths = [os.path.join(root, file).replace("\\", "/") for root, _, files in os.walk(self.input_path) for file in files]
-            else:
-                paths: list[str] = []
+            paths: list[str] = []
+            input_folder: str = self.config.get("input_folder")
+            if os.path.isfile(input_folder):
+                paths = [input_folder]
+            elif os.path.isdir(input_folder):
+                for root, _, files in os.walk(input_folder):
+                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
 
             items.extend(MD(self.config).read_from_path([path for path in paths if path.lower().endswith(".md")]))
             items.extend(TXT(self.config).read_from_path([path for path in paths if path.lower().endswith(".txt")]))

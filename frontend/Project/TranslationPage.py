@@ -33,9 +33,9 @@ class TranslationPage(QWidget, Base):
         self.data = {}
         self.status_text = {
             Base.Status.IDLE: Localizer.get().translation_page_status_idle,
-            Base.Status.API_TEST: Localizer.get().translation_page_status_api_testing,
+            Base.Status.TESTING: Localizer.get().translation_page_status_testing,
             Base.Status.TRANSLATING: Localizer.get().translation_page_status_translating,
-            Base.Status.STOPING: Localizer.get().translation_page_status_stoping,
+            Base.Status.STOPPING: Localizer.get().translation_page_status_stopping,
         }
 
         # 载入配置文件
@@ -52,10 +52,14 @@ class TranslationPage(QWidget, Base):
         self.add_widget_foot(self.container, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
+        self.subscribe(Base.Event.PLATFORM_TEST_DONE, lambda event, data: self.update_button_status(event, data))
+        self.subscribe(Base.Event.PLATFORM_TEST_START, lambda event, data: self.update_button_status(event, data))
+        self.subscribe(Base.Event.TRANSLATION_START, lambda event, data: self.update_button_status(event, data))
+        self.subscribe(Base.Event.TRANSLATION_STOP, lambda event, data: self.update_button_status(event, data))
         self.subscribe(Base.Event.TRANSLATION_STOP_DONE, self.translation_stop_done)
-        self.subscribe(Base.Event.TRANSLATION_PROJECT_STATUS_CHECK_DONE, self.translation_project_status_check_done)
+        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.CACHE_FILE_AUTO_SAVE, self.cache_file_auto_save)
+        self.subscribe(Base.Event.PROJECT_STATUS_CHECK_DONE, lambda event, data: self.update_button_status(event, data))
         self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
 
         # 定时器
@@ -71,7 +75,7 @@ class TranslationPage(QWidget, Base):
         self.action_continue.setEnabled(False)
 
         # 触发事件
-        self.emit(Base.Event.TRANSLATION_PROJECT_STATUS, {})
+        self.emit(Base.Event.PROJECT_STATUS, {})
 
     # 应用关闭事件
     def app_shut_down(self, event: int, data: dict) -> None:
@@ -89,32 +93,46 @@ class TranslationPage(QWidget, Base):
         if getattr(self, "app_shut_down_flag", False) == True:
             self.ui_update_timer.stop()
 
+    # 更新按钮状态事件
+    def update_button_status(self, event: int, data: dict) -> None:
+        if Base.WORK_STATUS == Base.Status.IDLE:
+            self.indeterminate_hide()
+            self.action_play.setEnabled(True)
+            self.action_stop.setEnabled(False)
+            self.action_export.setEnabled(False)
+        elif Base.WORK_STATUS == Base.Status.TESTING:
+            self.action_play.setEnabled(False)
+            self.action_stop.setEnabled(False)
+            self.action_export.setEnabled(False)
+        elif Base.WORK_STATUS == Base.Status.TRANSLATING:
+            self.action_play.setEnabled(False)
+            self.action_stop.setEnabled(True)
+            self.action_export.setEnabled(True)
+        elif Base.WORK_STATUS == Base.Status.STOPPING:
+            self.action_play.setEnabled(False)
+            self.action_stop.setEnabled(False)
+            self.action_export.setEnabled(False)
+
+        if Base.WORK_STATUS == Base.Status.IDLE and data.get("status") == Base.TranslationStatus.TRANSLATING:
+            self.action_continue.setEnabled(True)
+        else:
+            self.action_continue.setEnabled(False)
+
     # 翻译更新事件
     def translation_update(self, event: int, data: dict) -> None:
         self.data = data
 
     # 翻译停止完成事件
     def translation_stop_done(self, event: int, data: dict) -> None:
-        self.indeterminate_hide()
-        self.action_play.setEnabled(True)
-        self.action_stop.setEnabled(False)
-        self.action_export.setEnabled(False)
-
-        # 设置翻译状态为无任务
-        Base.WORK_STATUS = Base.Status.IDLE
+        # 更新按钮状态
+        self.update_button_status(event, data)
 
         # 更新继续翻译按钮状态
-        self.emit(Base.Event.TRANSLATION_PROJECT_STATUS, {})
-
-    # 翻译状态检查完成事件
-    def translation_project_status_check_done(self, event: int, data: dict) -> None:
-        self.action_continue.setEnabled(
-            data.get("status") == Base.TranslationStatus.TRANSLATING and self.action_play.isEnabled()
-        )
+        self.emit(Base.Event.PROJECT_STATUS, {})
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPING, Base.Status.TRANSLATING):
+        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         if self.data.get("start_time", 0) == 0:
@@ -145,7 +163,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPING, Base.Status.TRANSLATING):
+        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         line = self.data.get("line", 0)
@@ -182,7 +200,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPING, Base.Status.TRANSLATING):
+        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         token = self.data.get("token", 0)
@@ -207,10 +225,10 @@ class TranslationPage(QWidget, Base):
 
     # 更新进度环
     def update_status(self, data: dict) -> None:
-        if Base.WORK_STATUS == Base.Status.STOPING:
+        if Base.WORK_STATUS == Base.Status.STOPPING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
-            self.ring.setFormat(f"{Localizer.get().translation_page_status_stoping}\n{percent * 100:.2f}%")
+            self.ring.setFormat(f"{Localizer.get().translation_page_status_stopping}\n{percent * 100:.2f}%")
         elif Base.WORK_STATUS == Base.Status.TRANSLATING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
@@ -390,10 +408,6 @@ class TranslationPage(QWidget, Base):
                 if not message_box.exec():
                     return
 
-            self.action_play.setEnabled(False)
-            self.action_stop.setEnabled(True)
-            self.action_export.setEnabled(True)
-            self.action_continue.setEnabled(False)
             self.emit(Base.Event.TRANSLATION_START, {
                 "status": Base.TranslationStatus.UNTRANSLATED,
             })
@@ -412,9 +426,6 @@ class TranslationPage(QWidget, Base):
             # 确认则触发停止翻译事件
             if message_box.exec():
                 self.indeterminate_show(Localizer.get().translation_page_indeterminate_stoping)
-
-                self.action_stop.setEnabled(False)
-                self.action_export.setEnabled(False)
                 self.emit(Base.Event.TRANSLATION_STOP, {})
 
         self.action_stop = parent.add_action(
@@ -424,11 +435,8 @@ class TranslationPage(QWidget, Base):
 
     # 继续翻译
     def add_command_bar_action_continue(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
         def triggered() -> None:
-            self.action_play.setEnabled(False)
-            self.action_stop.setEnabled(True)
-            self.action_export.setEnabled(True)
-            self.action_continue.setEnabled(False)
             self.emit(Base.Event.TRANSLATION_START, {
                 "status": Base.TranslationStatus.TRANSLATING,
             })
@@ -436,12 +444,13 @@ class TranslationPage(QWidget, Base):
         self.action_continue = parent.add_action(
             Action(FluentIcon.ROTATE, Localizer.get().translation_page_continue, parent, triggered = triggered),
         )
+        self.action_continue.setEnabled(False)
 
     # 导出已完成的内容
     def add_command_bar_action_export(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
             self.emit(Base.Event.TRANSLATION_MANUAL_EXPORT, {})
-            self.emit(Base.Event.TOAST_SHOW, {
+            self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().translation_page_export_toast,
             })

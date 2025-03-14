@@ -15,11 +15,22 @@ class PlatformTester(Base):
 
     # 接口测试开始事件
     def platform_test_start(self, event: int, data: dict) -> None:
-        thread = threading.Thread(target = self.platform_test_start_target, args = (event, data))
-        thread.start()
+        if Base.WORK_STATUS != Base.Status.IDLE:
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().platofrm_tester_running,
+            })
+        else:
+            threading.Thread(
+                target = self.platform_test_start_target,
+                args = (event, data),
+            ).start()
 
     # 接口测试开始
     def platform_test_start_target(self, event: int, data: dict) -> None:
+        # 更新运行状态
+        Base.WORK_STATUS = Base.Status.TESTING
+
         platform = {}
         config = self.load_config()
         for item in config.get("platforms"):
@@ -95,6 +106,9 @@ class PlatformTester(Base):
         )
         self.print("")
         self.info(result_msg)
+
+        # 更新运行状态
+        Base.WORK_STATUS = Base.Status.IDLE
 
         # 发送完成事件
         self.emit(Base.Event.PLATFORM_TEST_DONE, {
