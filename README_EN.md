@@ -53,11 +53,14 @@
 
 | API Provider                                      | Price                                      | Note                                               |
 |--------------------------------------------------|--------------------------------------------|---------------------------------------------------------|
-| [**Local AI**](https://github.com/neavo/OneClickLLAMA) | Free                                       | Supports any endpoint with OpenAI format (e.g., llama.cpp, Ollama). Requires at least 8GB VRAM (Nvidia recommended). |
+| [**OpenAI**](https://platform.openai.com/docs/overview) | Paid (expensive)                          | High-quality results, but requires a high initial investment. Some censorship; needs applied custom prompt tuning. |
+| [**Claude (Anthropic)**](https://www.anthropic.com/) | Paid (expensive)                          | Excellent translation quality, some censorship, requires prompt modifications. |
+| [**Local AI**](https://github.com/neavo/OneClickLLAMA) | Free                                       | Supports OpenAI API format, requires at least 8GB VRAM (Nvidia recommended). Can run models like Llama locally. |
 | [**DeepSeek AI**](https://platform.deepseek.com/sign_in) | Paid (cheap)                               | Fast, high quality, no censorship, no need GPU         |
 | [**Groq AI**](https://console.groq.com/login)    | Freemium (Pay-as-you-go upon upgrade)      | No censorship, multi-model support, but rate limited. If upgraded, previous token usage may be billed. |
-| [**Celebres AI**](http://cloud.cerebras.ai/)     | Freemium  beta test                                 | No censorship, free 2 models (Llama 70B & 8B), rate limited |
+| [**Celebres AI**](http://cloud.cerebras.ai/)     | Freemium (beta)                                   | No censorship, free 2 models (Llama 70B & 8B), rate limited |
 | [**Google Gemini AI Studio**](https://cloud.google.com/generative-ai-studio?hl=en) | Affordable, free trial 90 days ($300 credit), only paid if upgraded | Needs credit card and only available in certain regions |
+
 
 3. **Prepare the source text:**
    - `Subtitles`/`E-books` require no preprocessing.

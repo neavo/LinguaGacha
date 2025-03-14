@@ -38,13 +38,16 @@
 - Unduh aplikasi dari [halaman Rilis](https://github.com/neavo/LinguaGacha/releases).
 - Dapatkan API Ai pilihan anda (pilih salah satu):
 
-| API Provider      | Harga                | Kelebihan |
-|------------------|---------------------|-----------|
-| [**API Lokal**](https://github.com/neavo/OneClickLLAMA) | Gratis | Membutuhkan GPU ≥8GB VRAM (Nvidia direkomendasikan) |
-| [**DeepSeek AI**](https://platform.deepseek.com/sign_in) | Berbayar (murah) | Cepat, berkualitas tinggi, tidak memerlukan GPU |
-| [**Groq AI**](https://console.groq.com/login) | Freemium | Tidak ada sensor, banyak model rate limit |
-| [**Celebres AI**](http://cloud.cerebras.ai/) | Freemium | Tidak ada sensor, 2 model gratis (Llama 70B & 8B) rate limit |
-| [**Google Gemini AI Studio**](https://cloud.google.com/generative-ai-studio?hl=en) | Free trial 90 hari ($300 kredit), hanya bayar jika ingin upgrade | Butuh kartu kredit & Region limit |
+| Penyedia API                                      | Harga                                      | Catatan                                               |
+|--------------------------------------------------|--------------------------------------------|---------------------------------------------------------|
+| [**OpenAI**](https://platform.openai.com/docs/overview) | Berbayar (mahal)                          | Hasil berkualitas tinggi, tetapi membutuhkan investasi awal yang besar. Ada sensor; perlu penyesuaian prompt khusus. |
+| [**Claude (Anthropic)**](https://www.anthropic.com/) | Berbayar (mahal)                          | Kualitas terjemahan sangat baik, ada sensor, dan memerlukan modifikasi prompt. |
+| [**Local AI**](https://github.com/neavo/OneClickLLAMA) | Gratis                                    | Mendukung format OpenAI API, memerlukan minimal 8GB VRAM (disarankan Nvidia). Dapat menjalankan model seperti Llama secara lokal. |
+| [**DeepSeek AI**](https://platform.deepseek.com/sign_in) | Berbayar (murah)                           | Cepat, berkualitas tinggi, tanpa sensor, tidak memerlukan GPU. |
+| [**Groq AI**](https://console.groq.com/login)    | Freemium (dapat ditingkatkan ke versi berbayar) | Tanpa sensor, mendukung banyak model, tetapi memiliki batasan kecepatan. Jika di-upgrade, penggunaan token sebelumnya mungkin ditagih. |
+| [**Celebres AI**](http://cloud.cerebras.ai/)     | Freemium  (beta)                                 | Tanpa sensor, tersedia gratis 2 model (Llama 70B & 8B), tetapi ada batasan penggunaan. |
+| [**Google Gemini AI Studio**](https://cloud.google.com/generative-ai-studio?hl=id) | Terjangkau, uji coba gratis 90 hari (kredit $300), hanya berbayar jika di-upgrade | Memerlukan kartu kredit dan hanya tersedia di wilayah tertentu. |
+
 
 - Siapkan bahan terjemahan:
   - `Subtitle`/`E-book` biasanya tidak memerlukan prapemrosesan.
