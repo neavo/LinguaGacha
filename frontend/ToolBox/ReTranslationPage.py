@@ -109,17 +109,17 @@ class ReTranslationPage(QWidget, Base):
             if not message_box.exec():
                 return None
 
-            # 加载原文
-            config = self.load_config()
-            config["input_folder"] = f"{config.get("input_folder")}/src"
-            project, items_src = self.read_from_path(config)
-            items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
-
             # 加载译文
             config = self.load_config()
             config["input_folder"] = f"{config.get("input_folder")}/dst"
             project, items_dst = self.read_from_path(config)
             items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
+
+            # 加载原文
+            config = self.load_config()
+            config["input_folder"] = f"{config.get("input_folder")}/src"
+            project, items_src = self.read_from_path(config)
+            items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
             # 有效性检查
             if len(items_src) != len(items_dst):
@@ -139,11 +139,10 @@ class ReTranslationPage(QWidget, Base):
             # 生成翻译数据
             for item_src, item_dst in zip(items_src, items_dst):
                 if item_src.get_status() == Base.TranslationStatus.UNTRANSLATED and any(keyword in item_src.get_src() for keyword in keywords):
-                    item_dst.set_src(item_src.get_src())
-                    item_dst.set_dst(item_src.get_dst())
-                    item_dst.set_status(Base.TranslationStatus.UNTRANSLATED)
+                    item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
                 else:
-                    item_dst.set_status(Base.TranslationStatus.EXCLUDED)
+                    item_src.set_dst(item_dst.get_dst())
+                    item_src.set_status(Base.TranslationStatus.EXCLUDED)
 
             # 设置项目数据
             project.set_status(Base.TranslationStatus.TRANSLATING)
@@ -159,7 +158,7 @@ class ReTranslationPage(QWidget, Base):
             # 写入缓存文件
             CacheManager(tick = False).save_to_file(
                 project = project,
-                items = items_dst,
+                items = items_src,
                 output_folder = config.get("output_folder"),
             )
 
