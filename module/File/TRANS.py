@@ -35,20 +35,20 @@ class TRANS(Base):
 
     # 过滤
     def filter_none(self, path: str, context: list[str]) -> bool:
-        return context, []
+        return [False] * len(context)
 
     # 过滤 - Wolf
     def filter_wolf(self, path: str, context: list[str]) -> bool:
-        return context, []
+        return [False] * len(context)
 
     # 过滤 - RenPy
     def filter_renpy(self, path: str, context: list[str]) -> bool:
-        return context, []
+        return [False] * len(context)
 
     # 过滤 - RPGMaker
     def filter_rpgmaker(self, path: str, context: list[str]) -> list[bool]:
         if any(len(v.findall(path)) > 0 for v in TRANS.RPGMAKER_EXCLUDED_PATH):
-            return [], context
+            return [True] * len(context)
 
         block: list[bool] = []
         for address in context:
@@ -114,13 +114,13 @@ class TRANS(Base):
                 engine: str = project.get("gameEngine", "")
 
                 # 设置排除规则
-                if engine == "wolf":
+                if engine.lower() == "wolf":
                     filter_func = self.filter_wolf
                     text_type = CacheItem.TextType.WOLF
-                elif engine == "renpy":
+                elif engine.lower() == "renpy":
                     filter_func = self.filter_renpy
                     text_type = CacheItem.TextType.RENPY
-                elif engine in ("2k", "RMJDB", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
                     filter_func = self.filter_rpgmaker
                     text_type = CacheItem.TextType.RPGMAKER
                 else:
@@ -260,11 +260,11 @@ class TRANS(Base):
                     engine: str = project.get("gameEngine", "")
 
                     # 设置排除规则
-                    if engine == "wolf":
+                    if engine.lower() == "wolf":
                         generate_func = self.generate_parameter_wolf
-                    elif engine == "renpy":
+                    elif engine.lower() == "renpy":
                         generate_func = self.generate_parameter_renpy
-                    elif engine in ("2k", "RMJDB", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                    elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
                         generate_func = self.generate_parameter_rpgmaker
                     else:
                         generate_func = self.generate_parameter_none
