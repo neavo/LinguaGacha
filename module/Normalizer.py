@@ -1,3 +1,4 @@
+import re
 import itertools
 import unicodedata
 
@@ -75,8 +76,25 @@ class Normalizer():
         "ﾟ": "゜",  # 半浊音符号
     })
 
+    # 常见注音代码
+    # [ruby text="かんじ"]
+    # <ruby = かんじ>漢字</ruby>
+    # <ruby><rb>漢字</rb><rtc><rt>かんじ</rt></rtc><rtc><rt>Chinese character</rt></rtc></ruby>
+    RE_RUBY_01 = re.compile(r'\[ruby text\s*=\s*".*?"\]', flags = re.IGNORECASE)
+    RE_RUBY_02 = re.compile(r'<ruby\s*=\s*.*?>(.*?)</ruby>', flags = re.IGNORECASE)
+    RE_RUBY_03 = re.compile(r'<ruby>.*?<rb>(.*?)</rb>.*?</ruby>', flags = re.IGNORECASE)
+
+    # 清理注音代码
+    @classmethod
+    def clean_ruby(CLS, text: str) -> str:
+        text = CLS.RE_RUBY_01.sub("", text)
+        text = CLS.RE_RUBY_02.sub(r"\1", text)
+        text = CLS.RE_RUBY_03.sub(r"\1", text)
+        return text
+
     # 规范化
-    def normalize(text: str) -> str:
+    @classmethod
+    def normalize(CLS, text: str) -> str:
         # NFC（Normalization Form C）：将字符分解后再合并成最小数量的单一字符（合成字符）。
         # NFD（Normalization Form D）：将字符分解成组合字符（即一个字母和附加的重音符号等）。
         # NFKC（Normalization Form KC）：除了合成与分解外，还会进行兼容性转换，例如将全角字符转换为半角字符。
@@ -84,7 +102,10 @@ class Normalizer():
         text = unicodedata.normalize("NFC", text)
 
         # 应用自定义的规则
-        text = "".join([Normalizer.CUSTOM_RULE.get(char, char) for char in text])
+        text = "".join([CLS.CUSTOM_RULE.get(char, char) for char in text])
+
+        # 清理注音代码
+        text = CLS.clean_ruby(text)
 
         # 返回结果
         return text
