@@ -80,17 +80,32 @@ class RENPY(Base):
                     content = ""
 
                 # 添加数据
-                items.append(
-                    CacheItem({
-                        "src": content,
-                        "dst": content,
-                        "extra_field": line,
-                        "row": len(items),
-                        "file_type": CacheItem.FileType.RENPY,
-                        "file_path": rel_path,
-                        "text_type": CacheItem.TextType.RENPY,
-                    })
-                )
+                if content == "":
+                    items.append(
+                        CacheItem({
+                            "src": content,
+                            "dst": content,
+                            "extra_field": line,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.RENPY,
+                            "file_path": rel_path,
+                            "text_type": CacheItem.TextType.RENPY,
+                            "status": Base.TranslationStatus.EXCLUDED,
+                        })
+                    )
+                else:
+                    items.append(
+                        CacheItem({
+                            "src": content,
+                            "dst": content,
+                            "extra_field": line,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.RENPY,
+                            "file_path": rel_path,
+                            "text_type": CacheItem.TextType.RENPY,
+                            "text_type": Base.TranslationStatus.UNTRANSLATED,
+                        })
+                    )
 
         return items
 

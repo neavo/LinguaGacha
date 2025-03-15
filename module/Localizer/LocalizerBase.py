@@ -342,14 +342,14 @@ class LocalizerBase():
 
     # 百宝箱
     tool_box_page_re_translation = "部分重翻"
-    tool_box_page_re_translation_desc = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译。主要用于 字幕、电子书 等的内容更新或错误修正。"
+    tool_box_page_re_translation_desc = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正。"
 
     # 百宝箱 - 部分重翻
     re_translation_page = "部分重翻"
     re_translation_page_desc = (
         "将根据设置的筛选条件对 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的文本进行筛选，然后对符合条件的文本进行重翻。"
         "<br>"
-        "支持格式：.md .txt .srt .ass .epub"
+        "支持格式：.md .txt .srt .ass .rpy .epub"
         "<br>"
         "工作流程："
         "<br>"
@@ -367,4 +367,5 @@ class LocalizerBase():
     )
     re_translation_page_white_list_placeholder = "请输入关键字 ..."
     re_translation_page_alert_start = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
+    re_translation_page_alert_not_data = "没有需要重翻的数据 ..."
     re_translation_page_alert_not_equal = "原文与译文的行数不匹配 ..."

@@ -24,6 +24,7 @@ from module.File.SRT import SRT
 from module.File.TXT import TXT
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
+from module.File.RENPY import RENPY
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Cache.CacheProject import CacheProject
@@ -122,7 +123,9 @@ class ReTranslationPage(QWidget, Base):
             items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
             # 有效性检查
-            if len(items_src) != len(items_dst):
+            items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+            items_dst_length = len([v for v in items_dst if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+            if items_src_length != items_dst_length:
                 self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().re_translation_page_alert_not_equal,
@@ -144,11 +147,20 @@ class ReTranslationPage(QWidget, Base):
                     item_src.set_dst(item_dst.get_dst())
                     item_src.set_status(Base.TranslationStatus.EXCLUDED)
 
+            # 有效性检查
+            items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+            if items_src_length == 0:
+                self.emit(Base.Event.APP_TOAST_SHOW, {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().re_translation_page_alert_not_data,
+                })
+                return None
+
             # 设置项目数据
             project.set_status(Base.TranslationStatus.TRANSLATING)
             project.set_extras({
                 "start_time": time.time(),
-                "total_line": len([item for item in items_dst if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
+                "total_line": len([item for item in items_src if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
                 "line": 0,
                 "token": 0,
                 "total_completion_tokens": 0,
@@ -203,6 +215,7 @@ class ReTranslationPage(QWidget, Base):
             items.extend(ASS(config).read_from_path([path for path in paths if path.lower().endswith(".ass")]))
             items.extend(SRT(config).read_from_path([path for path in paths if path.lower().endswith(".srt")]))
             items.extend(EPUB(config).read_from_path([path for path in paths if path.lower().endswith(".epub")]))
+            items.extend(RENPY(config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
         except Exception as e:
             self.error(f"{Localizer.get().log_read_file_fail}", e)
 

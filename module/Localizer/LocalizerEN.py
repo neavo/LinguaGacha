@@ -34,7 +34,7 @@ class LocalizerEN(LocalizerBase):
     table_insert_row: str = "Insert Row"
 
     # 主页面
-    app_close_message_box: str = "Are you sure you want to exit the application ...?"
+    app_close_message_box: str = "Are you sure you want to exit the application ... ?"
     app_close_message_box_msg: str = "The main window is closed, the application will automatically exit later ..."
     app_new_version: str = "Download New Version!"
     app_new_version_toast: str = "New version found, version number is {VERSION}, tap the button at the lower left to download ..."
@@ -210,8 +210,8 @@ class LocalizerEN(LocalizerBase):
     translation_page_card_speed = "Average Speed"
     translation_page_card_token = "Total Tokens"
     translation_page_card_task = "Real Time Tasks"
-    translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ...?"
-    translation_page_alert_pause = "Stopped translation tasks can be resumed at any time. Confirm to stop the task ...?"
+    translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ... ?"
+    translation_page_alert_pause = "Stopped translation tasks can be resumed at any time. Confirm to stop the task ... ?"
     translation_page_continue = "Continue Translation"
     translation_page_export = "Export Translation Data"
     translation_page_export_toast = "Translation files have been generated in the output folder based on the current translation data ..."
@@ -270,7 +270,7 @@ class LocalizerEN(LocalizerBase):
     glossary_page_save_toast = "Data saved ..."
     glossary_page_reset = "Reset"
     glossary_page_reset_toast = "Data reset ..."
-    glossary_page_reset_alert = "Confirm reset to default data ...?"
+    glossary_page_reset_alert = "Confirm reset to default data ... ?"
     glossary_page_kg = "One-Click Tools"
     glossary_page_wiki = "Wiki"
 
@@ -289,7 +289,7 @@ class LocalizerEN(LocalizerBase):
     pre_translation_replacement_page_save_toast = "Data saved ..."
     pre_translation_replacement_page_reset = "Reset"
     pre_translation_replacement_page_reset_toast = "Data reset ..."
-    pre_translation_replacement_page_reset_alert = "Confirm reset to default data ...?"
+    pre_translation_replacement_page_reset_alert = "Confirm reset to default data ... ?"
     pre_translation_replacement_page_wiki = "Wiki"
 
     # 译后替换
@@ -307,7 +307,7 @@ class LocalizerEN(LocalizerBase):
     post_translation_replacement_page_save_toast = "Data saved ..."
     post_translation_replacement_page_reset = "Reset"
     post_translation_replacement_page_reset_toast = "Data reset ..."
-    post_translation_replacement_page_reset_alert = "Confirm reset to default data ...?"
+    post_translation_replacement_page_reset_alert = "Confirm reset to default data ... ?"
     post_translation_replacement_page_wiki = "Wiki"
 
     # 自定义提示词 - 中文
@@ -323,7 +323,7 @@ class LocalizerEN(LocalizerBase):
     custom_prompt_zh_page_save_toast = "Data saved ..."
     custom_prompt_zh_page_reset = "Reset"
     custom_prompt_zh_page_reset_toast = "Data reset ..."
-    custom_prompt_zh_page_reset_alert = "Confirm reset to default data ...?"
+    custom_prompt_zh_page_reset_alert = "Confirm reset to default data ... ?"
 
     # 自定义提示词 - 英文
     custom_prompt_en_page_head = "Custom prompt used when target language is set to non-Chinese languages (SakuraLLM model not supported)"
@@ -338,18 +338,18 @@ class LocalizerEN(LocalizerBase):
     custom_prompt_en_page_save_toast = "Data saved ..."
     custom_prompt_en_page_reset = "Reset"
     custom_prompt_en_page_reset_toast = "Data reset ..."
-    custom_prompt_en_page_reset_alert = "Confirm reset to default data ...?"
+    custom_prompt_en_page_reset_alert = "Confirm reset to default data ... ?"
 
     # 百宝箱
     tool_box_page_re_translation = "Partial Re-Translation"
-    tool_box_page_re_translation_desc = "Retranslate parts of the completed translation based on the set filter conditions. Primarily used for content updates or error corrections in subtitles, ebooks, etc."
+    tool_box_page_re_translation_desc = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction."
 
     # 百宝箱 - 部分重翻
     re_translation_page = "Partial Re-Translation"
     re_translation_page_desc = (
         "Will filter the text in the <font color='darkgoldenrod'><b>Input Folder</b></font> based on the set filter conditions, and then retranslate the text that meets the conditions."
         "<br>"
-        "Supported formats: .md .txt .srt .ass .epub"
+        "Supported formats: .md .txt .srt .ass .rpy .epub"
         "<br>"
         "Workflow:"
         "<br>"
@@ -366,5 +366,6 @@ class LocalizerEN(LocalizerBase):
         "Hitting one of them is enough to determine that the text needs to be retranslated."
     )
     re_translation_page_white_list_placeholder = "Please enter keywords ..."
-    re_translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ...?"
+    re_translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ... ?"
+    re_translation_page_alert_not_data = "No data need to re-translate ..."
     re_translation_page_alert_not_equal = "The number of lines in the original and translated texts does not match ..."
