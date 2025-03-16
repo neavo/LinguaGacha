@@ -355,8 +355,6 @@ class LocalizerBase():
     re_translation_page_desc = (
         "将根据设置的筛选条件对 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的文本进行筛选，然后对符合条件的文本进行重翻。"
         "<br>"
-        "支持格式：.md .txt .srt .ass .rpy .epub"
-        "<br>"
         "工作流程："
         "<br>"
         "• 分别从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 的 <font color='darkgoldenrod'><b>src</b></font> 与 <font color='darkgoldenrod'><b>dst</b></font> 子目录中读取原文与译文"

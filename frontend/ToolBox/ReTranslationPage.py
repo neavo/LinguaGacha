@@ -24,7 +24,11 @@ from module.File.SRT import SRT
 from module.File.TXT import TXT
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
+from module.File.XLSX import XLSX
+from module.File.TRANS import TRANS
 from module.File.RENPY import RENPY
+from module.File.KVJSON import KVJSON
+from module.File.MESSAGEJSON import MESSAGEJSON
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Cache.CacheProject import CacheProject
@@ -110,46 +114,28 @@ class ReTranslationPage(QWidget, Base):
             if not message_box.exec():
                 return None
 
-            # 加载译文
-            config = self.load_config()
-            config["input_folder"] = f"{config.get("input_folder")}/dst"
-            project, items_dst = self.read_from_path(config)
-            items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
-
-            # 加载原文
-            config = self.load_config()
-            config["input_folder"] = f"{config.get("input_folder")}/src"
-            project, items_src = self.read_from_path(config)
-            items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
-
-            # 有效性检查
-            items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
-            items_dst_length = len([v for v in items_dst if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
-            if items_src_length != items_dst_length:
+            # 生成翻译数据
+            project, items_single, error_message = self.process_single()
+            if error_message != "":
                 self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().re_translation_page_alert_not_equal,
+                    "message": error_message,
+                })
+                return None
+            project, items_double, error_message = self.process_double()
+            if error_message != "":
+                self.emit(Base.Event.APP_TOAST_SHOW, {
+                    "type": Base.ToastType.ERROR,
+                    "message": error_message,
                 })
                 return None
 
-            # 加载关键词
-            keywords = [
-                v.strip()
-                for v in self.keyword_text_edit.toPlainText().splitlines()
-                if v.strip() != ""
-            ]
-
-            # 生成翻译数据
-            for item_src, item_dst in zip(items_src, items_dst):
-                if item_src.get_status() == Base.TranslationStatus.UNTRANSLATED and any(keyword in item_src.get_src() for keyword in keywords):
-                    item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
-                else:
-                    item_src.set_dst(item_dst.get_dst())
-                    item_src.set_status(Base.TranslationStatus.EXCLUDED)
+            # 合并翻译数据
+            items = items_single + items_double
 
             # 有效性检查
-            items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
-            if items_src_length == 0:
+            items_lenght = len([v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+            if items_lenght == 0:
                 self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().re_translation_page_alert_not_data,
@@ -160,7 +146,7 @@ class ReTranslationPage(QWidget, Base):
             project.set_status(Base.TranslationStatus.TRANSLATING)
             project.set_extras({
                 "start_time": time.time(),
-                "total_line": len([item for item in items_src if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
+                "total_line": len([item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
                 "line": 0,
                 "token": 0,
                 "total_completion_tokens": 0,
@@ -170,7 +156,7 @@ class ReTranslationPage(QWidget, Base):
             # 写入缓存文件
             CacheManager(tick = False).save_to_file(
                 project = project,
-                items = items_src,
+                items = items,
                 output_folder = config.get("output_folder"),
             )
 
@@ -194,8 +180,94 @@ class ReTranslationPage(QWidget, Base):
         push_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki")))
         parent.add_widget(push_button)
 
+    # 处理单文件部分
+    def process_single(self) -> tuple[CacheProject, list[CacheItem], str]:
+        # 加载译文
+        config = self.load_config()
+        config["input_folder"] = f"{config.get("input_folder")}/dst"
+        project, items_dst = self.read_from_path_single(config)
+        items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
+
+        # 加载关键词
+        keywords = [
+            v.strip()
+            for v in self.keyword_text_edit.toPlainText().splitlines()
+            if v.strip() != ""
+        ]
+
+        # 生成翻译数据
+        for item_dst in items_dst:
+            if any(keyword in item_dst.get_src() for keyword in keywords):
+                item_dst.set_status(Base.TranslationStatus.UNTRANSLATED)
+            else:
+                item_dst.set_status(Base.TranslationStatus.EXCLUDED)
+
+        return project, items_dst, ""
+
+    # 处理双文件部分
+    def process_double(self) -> tuple[CacheProject, list[CacheItem], str]:
+        # 加载译文
+        config = self.load_config()
+        config["input_folder"] = f"{config.get("input_folder")}/dst"
+        project, items_dst = self.read_from_path_double(config)
+        items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
+
+        # 加载原文
+        config = self.load_config()
+        config["input_folder"] = f"{config.get("input_folder")}/src"
+        project, items_src = self.read_from_path_double(config)
+        items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
+
+        # 有效性检查
+        items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+        items_dst_length = len([v for v in items_dst if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+        if items_src_length != items_dst_length:
+            return None, None, Localizer.get().re_translation_page_alert_not_equal
+
+        # 加载关键词
+        keywords = [
+            v.strip()
+            for v in self.keyword_text_edit.toPlainText().splitlines()
+            if v.strip() != ""
+        ]
+
+        # 生成翻译数据
+        for item_src, item_dst in zip(items_src, items_dst):
+            if item_src.get_status() == Base.TranslationStatus.UNTRANSLATED and any(keyword in item_src.get_src() for keyword in keywords):
+                item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
+            else:
+                item_src.set_dst(item_dst.get_dst())
+                item_src.set_status(Base.TranslationStatus.EXCLUDED)
+
+        return project, items_src, ""
+
     # 读
-    def read_from_path(self, config: dict) -> tuple[CacheProject, list[CacheItem]]:
+    def read_from_path_single(self, config: dict) -> tuple[CacheProject, list[CacheItem]]:
+        project: CacheProject = CacheProject({
+            "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
+        })
+
+        items: list[CacheItem] = []
+        try:
+            paths: list[str] = []
+            input_folder: str = config.get("input_folder")
+            if os.path.isfile(input_folder):
+                paths = [input_folder]
+            elif os.path.isdir(input_folder):
+                for root, _, files in os.walk(input_folder):
+                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
+
+            items.extend(XLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
+            items.extend(RENPY(config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
+            items.extend(TRANS(config).read_from_path([path for path in paths if path.lower().endswith(".trans")]))
+            items.extend(KVJSON(config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
+        except Exception as e:
+            self.error(f"{Localizer.get().log_read_file_fail}", e)
+
+        return project, items
+
+    # 读
+    def read_from_path_double(self, config: dict) -> tuple[CacheProject, list[CacheItem]]:
         project: CacheProject = CacheProject({
             "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
         })
@@ -215,7 +287,7 @@ class ReTranslationPage(QWidget, Base):
             items.extend(ASS(config).read_from_path([path for path in paths if path.lower().endswith(".ass")]))
             items.extend(SRT(config).read_from_path([path for path in paths if path.lower().endswith(".srt")]))
             items.extend(EPUB(config).read_from_path([path for path in paths if path.lower().endswith(".epub")]))
-            items.extend(RENPY(config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
+            items.extend(MESSAGEJSON(config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
         except Exception as e:
             self.error(f"{Localizer.get().log_read_file_fail}", e)
 

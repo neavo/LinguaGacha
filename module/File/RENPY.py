@@ -114,6 +114,19 @@ class RENPY(Base):
                             "status": Base.TranslationStatus.EXCLUDED,
                         })
                     )
+                elif dst != "" and src != dst:
+                    items.append(
+                        CacheItem({
+                            "src": src,
+                            "dst": dst,
+                            "extra_field": line,
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.RENPY,
+                            "file_path": rel_path,
+                            "text_type": CacheItem.TextType.RENPY,
+                            "status": Base.TranslationStatus.EXCLUDED,
+                        })
+                    )
                 else:
                     items.append(
                         CacheItem({

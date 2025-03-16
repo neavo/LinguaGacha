@@ -41,12 +41,24 @@ class KVJSON(Base):
                 # 读取数据
                 for k, v in json_data.items():
                     if isinstance(k, str) and isinstance(v, str):
-                        # 根据是否已存在翻译数据来添加
-                        if k.strip() != v.strip() or v.strip() == "":
+                        src = k
+                        dst = v
+                        if src == "":
                             items.append(
                                 CacheItem({
-                                    "src": k,
-                                    "dst": v,
+                                    "src": src,
+                                    "dst": dst,
+                                    "row": len(items),
+                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_path": rel_path,
+                                    "status": Base.TranslationStatus.EXCLUDED,
+                                })
+                            )
+                        elif dst != "" and src != dst:
+                            items.append(
+                                CacheItem({
+                                    "src": src,
+                                    "dst": dst,
                                     "row": len(items),
                                     "file_type": CacheItem.FileType.KVJSON,
                                     "file_path": rel_path,
@@ -56,12 +68,12 @@ class KVJSON(Base):
                         else:
                             items.append(
                                 CacheItem({
-                                    "src": k,
-                                    "dst": v,
+                                    "src": src,
+                                    "dst": dst,
                                     "row": len(items),
                                     "file_type": CacheItem.FileType.KVJSON,
                                     "file_path": rel_path,
-                                    "status": Base.TranslationStatus.UNTRANSLATED,
+                                    "text_type": Base.TranslationStatus.UNTRANSLATED,
                                 })
                             )
 

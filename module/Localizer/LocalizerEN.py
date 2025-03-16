@@ -355,8 +355,6 @@ class LocalizerEN(LocalizerBase):
     re_translation_page_desc = (
         "Will filter the text in the <font color='darkgoldenrod'><b>Input Folder</b></font> based on the set filter conditions, and then retranslate the text that meets the conditions."
         "<br>"
-        "Supported formats: .md .txt .srt .ass .rpy .epub"
-        "<br>"
         "Workflow:"
         "<br>"
         "• Load the original and translated texts from the <font color='darkgoldenrod'><b>src</b></font> and <font color='darkgoldenrod'><b>dst</b></font> subdirectories of the <font color='darkgoldenrod'><b>Input Folder</b></font>."

@@ -30,7 +30,7 @@ class XLSX(Base):
             sheet = wb.active
 
             # 跳过空表格
-            if sheet.max_column == 0:
+            if sheet.max_row == 0 or sheet.max_column == 0:
                 continue
 
             for row in range(1, sheet.max_row + 1):
@@ -38,30 +38,43 @@ class XLSX(Base):
                 dst = sheet.cell(row = row, column = 2).value
 
                 # 跳过读取失败的行
+                # 数据不存在时为 None，存在时可能是 str int float 等多种类型
                 if src is None:
                     continue
 
-                # 根据是否已存在翻译数据来添加
-                if dst is None:
+                src = str(src)
+                dst = str(dst) if dst is not None else ""
+                if src == "":
                     items.append(
                         CacheItem({
-                            "src": str(src),
-                            "dst": str(src),
+                            "src": src,
+                            "dst": dst,
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.TranslationStatus.UNTRANSLATED,
+                            "status": Base.TranslationStatus.EXCLUDED,
+                        })
+                    )
+                elif dst != "" and src != dst:
+                    items.append(
+                        CacheItem({
+                            "src": src,
+                            "dst": dst,
+                            "row": row,
+                            "file_type": CacheItem.FileType.XLSX,
+                            "file_path": rel_path,
+                            "status": Base.TranslationStatus.EXCLUDED,
                         })
                     )
                 else:
                     items.append(
                         CacheItem({
-                            "src": str(src),
-                            "dst": str(dst),
+                            "src": src,
+                            "dst": dst,
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.TranslationStatus.EXCLUDED,
+                            "text_type": Base.TranslationStatus.UNTRANSLATED,
                         })
                     )
 
