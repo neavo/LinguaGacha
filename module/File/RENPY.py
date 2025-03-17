@@ -56,25 +56,12 @@ class RENPY(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
+        return self.read_name_and_items_from_path(abs_paths)[1]
 
-        def get_dst(start: int, lines: list[str]) -> str:
-            # 越界检查
-            if start >= len(lines):
-                return ""
-
-            # 遍历剩余行寻找目标数据
-            for line in lines[start:]:
-                results: list[str] = RENPY.RE_RENPY.findall(line)
-                is_content_line = line.startswith("    # ") or line.startswith("    old ")
-
-                if is_content_line == False and len(results) == 1:
-                    return results[0]
-                elif is_content_line == False and len(results) >= 2:
-                    return results[1]
-
-            return ""
-
-        items = []
+    # 读取名称和数据
+    def read_name_and_items_from_path(self, abs_paths: list[str]) -> tuple[list[str], list[CacheItem]]:
+        names: list[str] = []
+        items: list[CacheItem] = []
         for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -92,16 +79,20 @@ class RENPY(Base):
                     continue
                 elif is_content_line == True and len(results) == 1:
                     src = results[0].replace("\\n", "\n").replace("\\\"", "\"")
-                    dst = get_dst(i + 1, lines)
+                    dst = self.find_dst(i + 1, lines)
+                    name = ""
                 elif is_content_line == True and len(results) >= 2:
                     src = results[1].replace("\\n", "\n").replace("\\\"", "\"")
-                    dst = get_dst(i + 1, lines)
+                    dst = self.find_dst(i + 1, lines)
+                    name = results[0]
                 else:
                     src = ""
                     dst = ""
+                    name = ""
 
                 # 添加数据
                 if src == "":
+                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
@@ -115,6 +106,7 @@ class RENPY(Base):
                         })
                     )
                 elif dst != "" and src != dst:
+                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
@@ -128,6 +120,7 @@ class RENPY(Base):
                         })
                     )
                 else:
+                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
@@ -141,10 +134,14 @@ class RENPY(Base):
                         })
                     )
 
-        return items
+        return names, items
 
     # 写入
     def write_to_path(self, items: list[CacheItem]) -> None:
+        self.write_name_and_items_to_path({}, items)
+
+    # 写入名称和数据
+    def write_name_and_items_to_path(self, names: dict[str, str], items: list[CacheItem]) -> None:
 
         def repl(m: re.Match, i: list[int], t: int, dst: str) -> str:
             if i[0] == t:
@@ -170,6 +167,10 @@ class RENPY(Base):
 
         # 分别处理每个文件
         for rel_path, items in data.items():
+            # 按行号排序
+            items = sorted(items, key = lambda x: x.get_row())
+
+            # 数据处理
             abs_path = os.path.join(self.output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
 
@@ -185,6 +186,8 @@ class RENPY(Base):
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
                         result.append(f"    {line.removeprefix("    # ")}")
                     elif len(results) >= 2:
+                        if results[0].strip() in names:
+                            line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, names.get(results[0].strip())), line)
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
                         result.append(f"    {line.removeprefix("    # ")}")
                 elif line.startswith("    old "):
@@ -193,6 +196,8 @@ class RENPY(Base):
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
                         result.append(f"    new {line.removeprefix("    old ")}")
                     elif len(results) >= 2:
+                        if results[0].strip() in names:
+                            line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, names.get(results[0].strip())), line)
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
                         result.append(f"    new {line.removeprefix("    old ")}")
                 else:
@@ -200,3 +205,21 @@ class RENPY(Base):
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
+
+    # 获取译文
+    def find_dst(self, start: int, lines: list[str]) -> str:
+        # 越界检查
+        if start >= len(lines):
+            return ""
+
+        # 遍历剩余行寻找目标数据
+        for line in lines[start:]:
+            results: list[str] = RENPY.RE_RENPY.findall(line)
+            is_content_line = line.startswith("    # ") or line.startswith("    old ")
+
+            if is_content_line == False and len(results) == 1:
+                return results[0]
+            elif is_content_line == False and len(results) >= 2:
+                return results[1]
+
+        return ""

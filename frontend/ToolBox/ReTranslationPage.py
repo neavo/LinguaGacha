@@ -106,7 +106,7 @@ class ReTranslationPage(QWidget, Base):
     def add_command_bar_action_start(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().re_translation_page_alert_start, window)
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().alert_reset_translation, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -138,7 +138,7 @@ class ReTranslationPage(QWidget, Base):
             if items_lenght == 0:
                 self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().re_translation_page_alert_not_data,
+                    "message": Localizer.get().alert_no_data,
                 })
                 return None
 
@@ -176,7 +176,7 @@ class ReTranslationPage(QWidget, Base):
 
     # WiKi
     def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
-        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().pre_translation_replacement_page_wiki)
+        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
         push_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki")))
         parent.add_widget(push_button)
 

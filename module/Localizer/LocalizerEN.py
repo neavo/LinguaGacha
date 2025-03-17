@@ -28,6 +28,10 @@ class LocalizerEN(LocalizerBase):
     enable: str = "Enable"
     disable: str = "Disable"
     auto: str = "Auto"
+    wiki: str = "Wiki"
+    inject: str = "Inject"
+    alert_no_data: str = "No valid data"
+    alert_reset_translation: str = "Reset unfinished translations and start new task?"
     select_file: str = "Select File"
     select_file_type: str = "Support Format (*.json *.xlsx)"
     table_delete_row: str = "Delete Row"
@@ -64,6 +68,8 @@ class LocalizerEN(LocalizerBase):
     path_result_check_code = "result_check_incorrect_code.json"
     path_result_check_similarity = "result_check_high_similarity.json"
     path_result_check_glossary = "result_check_incorrect_glossary.json"
+    path_result_name_injection_file = "result.xlsx"
+    path_result_name_injection_folder = "name_injection"
 
     # 日志
     log_debug_mode: str = "Debug mode enabled ..."
@@ -216,7 +222,6 @@ class LocalizerEN(LocalizerBase):
     translation_page_card_speed = "Average Speed"
     translation_page_card_token = "Total Tokens"
     translation_page_card_task = "Real Time Tasks"
-    translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ... ?"
     translation_page_alert_pause = "Stopped translation tasks can be resumed at any time. Confirm to stop the task ... ?"
     translation_page_continue = "Continue Translation"
     translation_page_export = "Export Translation Data"
@@ -278,7 +283,6 @@ class LocalizerEN(LocalizerBase):
     glossary_page_reset_toast = "Data reset ..."
     glossary_page_reset_alert = "Confirm reset to default data ... ?"
     glossary_page_kg = "One-Click Tools"
-    glossary_page_wiki = "Wiki"
 
     # 译前替换
     pre_translation_replacement_page_head_title = "Pre-translation Replacement"
@@ -296,7 +300,6 @@ class LocalizerEN(LocalizerBase):
     pre_translation_replacement_page_reset = "Reset"
     pre_translation_replacement_page_reset_toast = "Data reset ..."
     pre_translation_replacement_page_reset_alert = "Confirm reset to default data ... ?"
-    pre_translation_replacement_page_wiki = "Wiki"
 
     # 译后替换
     post_translation_replacement_page_head_title = "Post-translation Replacement"
@@ -314,7 +317,6 @@ class LocalizerEN(LocalizerBase):
     post_translation_replacement_page_reset = "Reset"
     post_translation_replacement_page_reset_toast = "Data reset ..."
     post_translation_replacement_page_reset_alert = "Confirm reset to default data ... ?"
-    post_translation_replacement_page_wiki = "Wiki"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"
@@ -349,6 +351,8 @@ class LocalizerEN(LocalizerBase):
     # 百宝箱
     tool_box_page_re_translation = "Partial Re-Translation"
     tool_box_page_re_translation_desc = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction."
+    tool_box_page_name_injection = "Name Injection"
+    tool_box_page_name_injection_desc = "Extract, deduplicate, translate, and inject name fields from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game texts for consistent naming."
 
     # 百宝箱 - 部分重翻
     re_translation_page = "Partial Re-Translation"
@@ -370,6 +374,29 @@ class LocalizerEN(LocalizerBase):
         "Hitting one of them is enough to determine that the text needs to be retranslated."
     )
     re_translation_page_white_list_placeholder = "Please enter keywords ..."
-    re_translation_page_alert_start = "Unfinished translation tasks will be reset. Confirm to start a new translation task ... ?"
-    re_translation_page_alert_not_data = "No data need to re-translate ..."
     re_translation_page_alert_not_equal = "The number of lines in the original and translated texts does not match ..."
+
+    # 百宝箱 - 角色姓名注入
+    name_injection_page = "Name Injection"
+    name_injection_page_desc = (
+        "Extract, translate, and inject name fields from eligible files in the <font color='darkgoldenrod'><b>Input Folder</b></font>."
+        "<br>"
+        "Supported formats: RenPy export game text (.rpy), VNTextPatch or SExtractor export game text with name field (.json)"
+    )
+    name_injection_page_step_01 = "Step 1 - Extract & Translate"
+    name_injection_page_step_01_desc = (
+        "Extract name fields and related context, then translate."
+        "<br>"
+        "The translated data will be in <font color='darkgoldenrod'><b>Output Folder/name_injection/result.xlsx</b></font>."
+    )
+    name_injection_page_step_02 = "Step 2 - Organize & Inject"
+    name_injection_page_step_02_desc = (
+        "Check and correct the translated name data in the result file, <font color='darkgoldenrod'><b>close</b></font> it, and start injection."
+        "<br>"
+        "Note:"
+        "<br>"
+        "• Only text <font color='darkgoldenrod'><b>wrapped in 【】 will be injected</b></font>."
+        "<br>"
+        "• Game text for injection is read from <font color='darkgoldenrod'><b>Input Folder</b></font>, and the injected text is saved in <font color='darkgoldenrod'><b>Output Folder</b></font>."
+    )
+    name_injection_page_success = "Name data injected successfully ..."

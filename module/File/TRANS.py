@@ -243,9 +243,10 @@ class TRANS(Base):
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
-            # 处理文件
+            # 数据处理
             abs_path = f"{self.output_path}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 with open(f"{self.output_path}/cache/temp/{rel_path}", "r", encoding = "utf-8-sig") as reader:
                     json_data = json.load(reader)

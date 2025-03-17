@@ -400,7 +400,7 @@ class TranslationPage(QWidget, Base):
     def add_command_bar_action_play(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
             if self.action_continue.isEnabled():
-                message_box = MessageBox(Localizer.get().alert, Localizer.get().translation_page_alert_start, window)
+                message_box = MessageBox(Localizer.get().alert, Localizer.get().alert_reset_translation, window)
                 message_box.yesButton.setText(Localizer.get().confirm)
                 message_box.cancelButton.setText(Localizer.get().cancel)
 

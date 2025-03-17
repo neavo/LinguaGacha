@@ -28,6 +28,10 @@ class LocalizerBase():
     enable: str = "启用"
     disable: str = "禁用"
     auto: str = "自动"
+    wiki: str = "功能说明"
+    inject: str = "注入"
+    alert_no_data: str = "没有有效数据"
+    alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
     select_file: str = "选择文件"
     select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     table_delete_row: str = "删除行"
@@ -64,6 +68,8 @@ class LocalizerBase():
     path_result_check_code = "结果检查_代码错误.json"
     path_result_check_similarity = "结果检查_相似度较高.json"
     path_result_check_glossary = "结果检查_术语表未生效.json"
+    path_result_name_injection_file = "结果.xlsx"
+    path_result_name_injection_folder = "角色姓名注入"
 
     # 日志
     log_debug_mode: str = "调试模式已启用 ..."
@@ -216,7 +222,6 @@ class LocalizerBase():
     translation_page_card_speed = "平均速度"
     translation_page_card_token = "累计消耗"
     translation_page_card_task = "实时任务数"
-    translation_page_alert_start = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
     translation_page_alert_pause = "停止的翻译任务可以随时继续翻译，是否确定停止任务 ... ？"
     translation_page_continue = "继续翻译"
     translation_page_export = "导出翻译数据"
@@ -278,7 +283,6 @@ class LocalizerBase():
     glossary_page_reset_toast = "数据已重置 ..."
     glossary_page_reset_alert = "是否确认重置为默认数据 ... ？"
     glossary_page_kg = "一键制作工具"
-    glossary_page_wiki = "功能说明"
 
     # 译前替换
     pre_translation_replacement_page_head_title = "译前替换"
@@ -296,7 +300,6 @@ class LocalizerBase():
     pre_translation_replacement_page_reset = "重置"
     pre_translation_replacement_page_reset_toast = "数据已重置 ..."
     pre_translation_replacement_page_reset_alert = "是否确认重置为默认数据 ... ？"
-    pre_translation_replacement_page_wiki = "功能说明"
 
     # 译后替换
     post_translation_replacement_page_head_title = "译后替换"
@@ -314,7 +317,6 @@ class LocalizerBase():
     post_translation_replacement_page_reset = "重置"
     post_translation_replacement_page_reset_toast = "数据已重置 ..."
     post_translation_replacement_page_reset_alert = "是否确认重置为默认数据 ... ？"
-    post_translation_replacement_page_wiki = "功能说明"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
@@ -349,6 +351,8 @@ class LocalizerBase():
     # 百宝箱
     tool_box_page_re_translation = "部分重翻"
     tool_box_page_re_translation_desc = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正。"
+    tool_box_page_name_injection = "角色姓名注入"
+    tool_box_page_name_injection_desc = "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段，去重后翻译和注入，以实现角色姓名字段的译名统一。"
 
     # 百宝箱 - 部分重翻
     re_translation_page = "部分重翻"
@@ -370,6 +374,29 @@ class LocalizerBase():
         ""
     )
     re_translation_page_white_list_placeholder = "请输入关键字 ..."
-    re_translation_page_alert_start = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
-    re_translation_page_alert_not_data = "没有需要重翻的数据 ..."
     re_translation_page_alert_not_equal = "原文与译文的行数不匹配 ..."
+
+    # 百宝箱 - 角色姓名注入
+    name_injection_page = "角色姓名注入"
+    name_injection_page_desc = (
+        "将从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中所有符合条件的文件中提取姓名字段进行翻译和注入"
+        "<br>"
+        "支持格式： RenPy 导出游戏文本（.rpy）、VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
+    )
+    name_injection_page_step_01 = "第一步 - 提取与翻译"
+    name_injection_page_step_01_desc = (
+        "提取姓名字段及与其相关的上下文，发送至翻译器进行翻译。"
+        "<br>"
+        "翻译完成后，将在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成 <font color='darkgoldenrod'><b>角色姓名注入/结果.xlsx</b></font> 文件。"
+    )
+    name_injection_page_step_02 = "第二步 - 整理与注入"
+    name_injection_page_step_02_desc = (
+        "请对结果文件中角色姓名的翻译数据进行检查和修正，确认无误后 <font color='darkgoldenrod'><b>关闭</b></font> 文件，开始注入。"
+        "<br>"
+        "注意："
+        "<br>"
+        "• 实际会被注入的数据 <font color='darkgoldenrod'><b>仅为【】包裹的文本</b></font>，其他文本为无作用。"
+        "<br>"
+        "• 注入使用的游戏文本从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 读取，注入后的游戏文本保存在 <font color='darkgoldenrod'><b>输出文件夹</b></font>。"
+    )
+    name_injection_page_success = "角色姓名数据注入成功 ..."
