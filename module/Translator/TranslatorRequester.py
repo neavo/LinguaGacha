@@ -1,4 +1,5 @@
 import threading
+import time
 
 import httpx
 import rapidjson as json
@@ -31,14 +32,16 @@ class TranslatorRequester(Base):
         self.current_round = current_round
 
     # 发起请求
-    def request(self, messages: list[dict]) -> tuple[bool, str, int, int]:
+    def request(self, messages: list[dict]) -> tuple[bool, str, str, int, int]:
         thinking = self.platform.get("thinking")
         temperature = self.platform.get("temperature")
         top_p = self.platform.get("top_p")
         presence_penalty = self.platform.get("presence_penalty")
-        frequency_penalty = self.platform.get("frequency_penalty") if self.current_round == 0 else max(0.20, self.platform.get("frequency_penalty"))
+        frequency_penalty = (self.platform.get("frequency_penalty") 
+                             if self.current_round == 0 
+                             else max(0.20, self.platform.get("frequency_penalty")))
 
-        # 发起请求
+        # 发起请求，根据不同平台选择对应的请求方法
         if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
             skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_sakura(
                 messages,
@@ -75,6 +78,13 @@ class TranslatorRequester(Base):
                 presence_penalty,
                 frequency_penalty
             )
+
+        # 检查token消耗，如果达到或超过设置的阈值则暂停
+        token_limit = self.config.get("task_token_limit", 384)
+        pause_time = self.config.get("token_pause_time", 10)
+        if prompt_tokens is not None and prompt_tokens >= token_limit:
+            self.info(f"Prompt tokens ({prompt_tokens}) reached the limit ({token_limit}). Pausing for {pause_time} sec...")
+            time.sleep(pause_time)
 
         return skip, response_think, response_result, prompt_tokens, completion_tokens
 
@@ -142,7 +152,7 @@ class TranslatorRequester(Base):
                     )
                 return TranslatorRequester.OPENAI_CLIENTS.get(api_key)
 
-    # 发起请求
+    # 发起请求：Sakura 接口
     def request_sakura(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client: openai.OpenAI = self.get_client(
@@ -194,7 +204,7 @@ class TranslatorRequester(Base):
 
         return False, "", response_result, prompt_tokens, completion_tokens
 
-    # 发起请求
+    # 发起请求：OpenAI 接口
     def request_openai(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client: openai.OpenAI = self.get_client(
@@ -244,7 +254,7 @@ class TranslatorRequester(Base):
 
         return False, response_think, response_result, prompt_tokens, completion_tokens
 
-    # 发起请求
+    # 发起请求：Google 接口
     def request_google(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
         try:
             client: genai.GenerativeModel = self.get_client(
@@ -282,7 +292,7 @@ class TranslatorRequester(Base):
 
         return False, "", response_result, prompt_tokens, completion_tokens
 
-    # 发起请求
+    # 发起请求：Anthropic 接口
     def request_anthropic(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
             client: anthropic.Anthropic = self.get_client(
@@ -290,7 +300,7 @@ class TranslatorRequester(Base):
                 self.config.get("request_timeout"),
             )
             # 根据是否为思考模式，选择不同的请求方式
-            if thinking == True:
+            if thinking:
                 response = client.messages.create(
                     model = self.platform.get("model"),
                     messages = messages,
@@ -319,12 +329,12 @@ class TranslatorRequester(Base):
             text_messages = [msg for msg in response.content if hasattr(msg, "text") and isinstance(msg.text, str)]
             think_messages = [msg for msg in response.content if hasattr(msg, "thinking") and isinstance(msg.thinking, str)]
 
-            if text_messages != []:
+            if text_messages:
                 response_result = text_messages[-1].text.strip()
             else:
                 response_result = ""
 
-            if think_messages != []:
+            if think_messages:
                 response_think = think_messages[-1].thinking.replace("\n\n", "\n").strip()
             else:
                 response_think = ""
