@@ -198,12 +198,18 @@ class NameInjectionPage(QWidget, Base):
                 if line.startswith("【") and line.endswith("】"):
                     src = line.removeprefix("【").removesuffix("】")
                     break
+                if line.startswith("[") and line.endswith("]"):
+                    src = line.removeprefix("[").removesuffix("]")
+                    break
 
             dst = ""
             for line in item.get_dst().splitlines():
                 line = line.strip()
                 if line.startswith("【") and line.endswith("】"):
                     dst = line.removeprefix("【").removesuffix("】")
+                    break
+                if line.startswith("[") and line.endswith("]"):
+                    dst = line.removeprefix("[").removesuffix("]")
                     break
 
             if src != "" and dst != "" and src != dst:
