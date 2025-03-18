@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import threading
 
@@ -107,16 +106,18 @@ class CacheManager(Base):
         path = f"{output_path}/cache/items.json"
         with CacheManager.FILE_LOCK:
             try:
-                with open(path, "r", encoding = "utf-8-sig") as reader:
-                    self.items = [CacheItem(item) for item in json.load(reader)]
+                if os.path.isfile(path):
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
+                        self.items = [CacheItem(item) for item in json.load(reader)]
             except Exception as e:
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
         path = f"{output_path}/cache/project.json"
         with CacheManager.FILE_LOCK:
             try:
-                with open(path, "r", encoding = "utf-8-sig") as reader:
-                    self.project = CacheProject(json.load(reader))
+                if os.path.isfile(path):
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
+                        self.project = CacheProject(json.load(reader))
             except Exception as e:
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
@@ -125,8 +126,9 @@ class CacheManager(Base):
         path = f"{output_path}/cache/project.json"
         with CacheManager.FILE_LOCK:
             try:
-                with open(path, "r", encoding = "utf-8-sig") as reader:
-                    self.project = CacheProject(json.load(reader))
+                if os.path.isfile(path):
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
+                        self.project = CacheProject(json.load(reader))
             except Exception as e:
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
