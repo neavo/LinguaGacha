@@ -129,7 +129,7 @@ class TranslatorTask(Base):
             console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
         # 检查译文
-        if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:
+        if check_flag in (None, ResponseChecker.Error.DEGRADATION, ResponseChecker.Error.SIMILARITY):
             # 标点修复
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
 
@@ -169,7 +169,7 @@ class TranslatorTask(Base):
         )
 
         # 返回任务结果
-        if check_flag == None or check_flag == ResponseChecker.Error.UNTRANSLATED:
+        if check_flag in (None, ResponseChecker.Error.DEGRADATION, ResponseChecker.Error.SIMILARITY):
             return {
                 "check_flag": None,
                 "row_count": updated_count,
@@ -394,9 +394,13 @@ class TranslatorTask(Base):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_fail_line}"
             log_func = self.warning
-        elif flag == ResponseChecker.Error.UNTRANSLATED:
+        elif flag == ResponseChecker.Error.SIMILARITY:
             style = "yellow"
-            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_untranslated}"
+            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_similarity}"
+            log_func = self.warning
+        elif flag == ResponseChecker.Error.DEGRADATION:
+            style = "yellow"
+            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_degradation}"
             log_func = self.warning
         else:
             style = "green"
