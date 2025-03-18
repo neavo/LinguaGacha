@@ -20,6 +20,7 @@ class LocalizerBase():
     none: str = "无"
     stop: str = "停止"
     start: str = "开始"
+    timer: str = "定时器"
     close: str = "关闭"
     alert: str = "提醒"
     warning: str = "警告"
@@ -31,6 +32,7 @@ class LocalizerBase():
     wiki: str = "功能说明"
     inject: str = "注入"
     alert_no_data: str = "没有有效数据"
+    alert_reset_timer: str = "将重置定时器，是否确认 ... ？"
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 ... ？"
     select_file: str = "选择文件"
     select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
@@ -227,6 +229,7 @@ class LocalizerBase():
     translation_page_continue = "继续翻译"
     translation_page_export = "导出翻译数据"
     translation_page_export_toast = "已根据当前的翻译数据在输出文件夹下生成翻译文件 ..."
+    translation_page_timer = "请设置延迟启动前要等待的时间"
 
     # 基础设置
     basic_settings_page_batch_size_title = "并发任务数"

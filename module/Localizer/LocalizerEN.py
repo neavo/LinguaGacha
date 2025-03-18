@@ -20,6 +20,7 @@ class LocalizerEN(LocalizerBase):
     none: str = "None"
     stop: str = "Stop"
     start: str = "Start"
+    timer: str = "Timer"
     close: str = "Close"
     alert: str = "Alert"
     warning: str = "Warning"
@@ -31,7 +32,8 @@ class LocalizerEN(LocalizerBase):
     wiki: str = "Wiki"
     inject: str = "Inject"
     alert_no_data: str = "No valid data"
-    alert_reset_translation: str = "Reset unfinished translations and start new task?"
+    alert_reset_timer: str = "Confirm to reset timer?"
+    alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
     select_file: str = "Select File"
     select_file_type: str = "Support Format (*.json *.xlsx)"
     table_delete_row: str = "Delete Row"
@@ -56,7 +58,7 @@ class LocalizerEN(LocalizerBase):
     app_custom_prompt_navigation_item: str = "Custom Prompts"
     app_custom_prompt_zh_page: str = "Chinese Prompts"
     app_custom_prompt_en_page: str = "English Prompts"
-    app_tool_box_page: str = "Tool Box"
+    app_tool_box_page: str = "Treasure Chest"
 
     # 路径
     path_bilingual: str = "bilingual"
@@ -227,6 +229,7 @@ class LocalizerEN(LocalizerBase):
     translation_page_continue = "Continue Translation"
     translation_page_export = "Export Translation Data"
     translation_page_export_toast = "Translation files have been generated in the output folder based on the current translation data ..."
+    translation_page_timer = "Waiting time before delayed startup"
 
     # 基础设置
     basic_settings_page_batch_size_title = "Concurrent Tasks"

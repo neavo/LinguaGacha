@@ -1,7 +1,9 @@
 import time
 import threading
+from typing import Callable
 
 from PyQt5.QtGui import QColor
+from PyQt5.QtCore import QTime
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
@@ -9,12 +11,15 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 
 from qfluentwidgets import Action
+from qfluentwidgets import TimeEdit
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import MessageBox
+from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import ProgressRing
 from qfluentwidgets import CaptionLabel
+from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import IndeterminateProgressRing
 
 from base.Base import Base
@@ -22,6 +27,40 @@ from module.Localizer.Localizer import Localizer
 from widget.DashboardCard import DashboardCard
 from widget.WaveformWidget import WaveformWidget
 from widget.CommandBarCard import CommandBarCard
+
+class TimerMessageBox(MessageBoxBase):
+
+    def __init__(self, parent, title: str, message_box_close: Callable = None) -> None:
+        super().__init__(parent = parent)
+
+        # 初始化
+        self.delay = 0
+        self.message_box_close = message_box_close
+
+        # 设置框体
+        self.yesButton.setText(Localizer.get().confirm)
+        self.cancelButton.setText(Localizer.get().cancel)
+
+        # 设置主布局
+        self.viewLayout.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+
+        # 标题
+        self.title_label = StrongBodyLabel(title, self)
+        self.viewLayout.addWidget(self.title_label)
+
+        # 输入框
+        self.time_edit = TimeEdit(self)
+        self.time_edit.setMinimumWidth(256)
+        self.time_edit.setTimeRange(QTime(0, 0), QTime(23, 59))
+        self.time_edit.setTime(QTime(2, 0))
+        self.viewLayout.addWidget(self.time_edit)
+
+    # 重写验证方法
+    def validate(self) -> bool:
+        if callable(self.message_box_close):
+            self.message_box_close(self, self.time_edit.time())
+
+        return True
 
 class TranslationPage(QWidget, Base):
 
@@ -97,19 +136,19 @@ class TranslationPage(QWidget, Base):
     def update_button_status(self, event: int, data: dict) -> None:
         if Base.WORK_STATUS == Base.Status.IDLE:
             self.indeterminate_hide()
-            self.action_play.setEnabled(True)
+            self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
         elif Base.WORK_STATUS == Base.Status.TESTING:
-            self.action_play.setEnabled(False)
+            self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
         elif Base.WORK_STATUS == Base.Status.TRANSLATING:
-            self.action_play.setEnabled(False)
+            self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_export.setEnabled(True)
         elif Base.WORK_STATUS == Base.Status.STOPPING:
-            self.action_play.setEnabled(False)
+            self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
 
@@ -132,7 +171,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         if self.data.get("start_time", 0) == 0:
@@ -163,7 +202,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         line = self.data.get("line", 0)
@@ -200,7 +239,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        if not Base.WORK_STATUS in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
         token = self.data.get("token", 0)
@@ -304,13 +343,15 @@ class TranslationPage(QWidget, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
-        self.command_bar_card.set_minimum_width(512)
-        self.add_command_bar_action_play(self.command_bar_card, config, window)
+        self.command_bar_card.set_minimum_width(640)
+        self.add_command_bar_action_start(self.command_bar_card, config, window)
         self.add_command_bar_action_stop(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_continue(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_timer(self.command_bar_card, config, window)
 
         # 添加信息条
         self.indeterminate = IndeterminateProgressRing()
@@ -397,7 +438,7 @@ class TranslationPage(QWidget, Base):
         parent.addWidget(self.task)
 
     # 开始
-    def add_command_bar_action_play(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_start(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
             if self.action_continue.isEnabled():
                 message_box = MessageBox(Localizer.get().alert, Localizer.get().alert_reset_translation, window)
@@ -412,7 +453,7 @@ class TranslationPage(QWidget, Base):
                 "status": Base.TranslationStatus.UNTRANSLATED,
             })
 
-        self.action_play = parent.add_action(
+        self.action_start = parent.add_action(
             Action(FluentIcon.PLAY, Localizer.get().start, parent, triggered = triggered)
         )
 
@@ -459,6 +500,73 @@ class TranslationPage(QWidget, Base):
             Action(FluentIcon.SHARE, Localizer.get().translation_page_export, parent, triggered = triggered),
         )
         self.action_export.setEnabled(False)
+
+    # 定时器
+    def add_command_bar_action_timer(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
+        interval = 1
+        delay_time = None
+
+        def format_time(full: int) -> str:
+            hours = int(full / 3600)
+            minutes = int((full - hours * 3600) / 60)
+            seconds = full - hours * 3600 - minutes * 60
+
+            return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+        def timer_interval() -> None:
+            nonlocal interval
+            nonlocal delay_time
+
+            if not isinstance(delay_time, int):
+                return None
+
+            if delay_time > 0:
+                delay_time = delay_time - interval
+                self.action_timer.setText(format_time(delay_time))
+            else:
+                self.emit(Base.Event.TRANSLATION_START, {
+                    "status": Base.TranslationStatus.UNTRANSLATED,
+                })
+
+                delay_time = None
+                self.action_timer.setText(Localizer.get().timer)
+
+        def message_box_close(widget: TimerMessageBox, input_time: QTime) -> None:
+            nonlocal delay_time
+
+            delay_time = input_time.hour() * 3600 + input_time.minute() * 60 + input_time.second()
+
+        def triggered() -> None:
+            nonlocal delay_time
+
+            if not isinstance(delay_time, int):
+                TimerMessageBox(
+                    parent = window,
+                    title = Localizer.get().translation_page_timer,
+                    message_box_close = message_box_close,
+                ).exec()
+            else:
+                message_box = MessageBox(Localizer.get().alert, Localizer.get().alert_reset_timer, window)
+                message_box.yesButton.setText(Localizer.get().confirm)
+                message_box.cancelButton.setText(Localizer.get().cancel)
+
+                # 点击取消，则不触发开始翻译事件
+                if not message_box.exec():
+                    return
+
+                delay_time = None
+                self.action_timer.setText(Localizer.get().timer)
+
+        self.action_timer = parent.add_action(
+            Action(FluentIcon.HISTORY, Localizer.get().timer, parent, triggered = triggered)
+        )
+
+        # 定时检查
+        timer = QTimer(self)
+        timer.setInterval(interval * 1000)
+        timer.timeout.connect(timer_interval)
+        timer.start()
 
     # 显示信息条
     def indeterminate_show(self, msg: str) -> None:
