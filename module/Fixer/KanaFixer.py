@@ -38,8 +38,6 @@ class KanaFixer(Base):
                 # 如果前后字符中有假名，则保留当前字符
                 if is_prev_kana == True or is_next_kana == True :
                     result.append(char)
-                else:
-                    self.debug(f"{char} - {dst}")
             else:
                 # 非拟声词字符直接保留
                 result.append(char)

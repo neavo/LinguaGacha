@@ -63,7 +63,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.TranslationStatus.EXCLUDED,
+                            "status": Base.TranslationStatus.TRANSLATED,
                         })
                     )
                 else:

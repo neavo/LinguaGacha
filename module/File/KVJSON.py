@@ -62,7 +62,7 @@ class KVJSON(Base):
                                     "row": len(items),
                                     "file_type": CacheItem.FileType.KVJSON,
                                     "file_path": rel_path,
-                                    "status": Base.TranslationStatus.EXCLUDED,
+                                    "status": Base.TranslationStatus.TRANSLATED,
                                 })
                             )
                         else:

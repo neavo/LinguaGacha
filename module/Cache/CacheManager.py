@@ -170,19 +170,19 @@ class CacheManager(Base):
         chunks: list[list[CacheItem]] = []
         preceding_chunks: list[list[CacheItem]] = []
         chunk_length: int = 0
-        for item in [v for v in self.items if v.get_status() == Base.TranslationStatus.UNTRANSLATED]:
-            current_length = item.get_token_count()
+        for i, item in enumerate(self.items):
+            # 跳过 已排除、已翻译 的数据
+            if item.get_status() in (Base.TranslationStatus.EXCLUDED, Base.TranslationStatus.TRANSLATED):
+                continue
 
             # 每个片段的第一条不判断是否超限，以避免特别长的文本导致死循环
+            current_length = item.get_token_count()
             if len(chunk) == 0:
                 pass
             # 如果 Token/行数 超限 或 数据来源跨文件，则结束此片段
             elif chunk_length + current_length > limit or len(chunk) >= line_limit or item.get_file_path() != chunk[-1].get_file_path():
                 chunks.append(chunk)
-                if len(chunks) <= 1:
-                    preceding_chunks.append([])
-                else:
-                    preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks))
+                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], i))
 
                 chunk = []
                 chunk_length = 0
@@ -193,43 +193,38 @@ class CacheManager(Base):
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:
             chunks.append(chunk)
-            if len(chunks) <= 1:
-                preceding_chunks.append([])
-            else:
-                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks))
+            preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], i))
 
         return chunks, preceding_chunks
 
     # 生成参考上文数据条目片段
-    def generate_preceding_chunks(self, end: CacheItem, chunks: list[list[CacheItem]]) -> list[list[CacheItem]]:
+    def generate_preceding_chunks(self, start_item: CacheItem, start_index: int) -> list[list[CacheItem]]:
         result: list[CacheItem] = []
 
-        # 开始逆序搜索参考上文
-        break_flag = False
-        for i in range(len(chunks) - 2, -1, -1):
+        for i in range(start_index - 1, -1, -1):
+            item = self.items[i]
+
+            # 跳过 已排除 的数据
+            if item.get_status() in (Base.TranslationStatus.EXCLUDED):
+                continue
+
+            # 跳过空数据
+            src = item.get_src().strip()
+            if src == "":
+                continue
+
             # 候选数据超过阈值时，结束搜索
-            if break_flag == True:
+            if len(result) >= ExpertConfig.get().preceding_lines_threshold:
                 break
 
-            chunk = chunks[i]
-            for item in sorted(chunk, key = lambda x: x.get_row(), reverse = True):
-                src = item.get_src().strip()
+            # 候选数据与当前任务不在同一个文件时，结束搜索
+            if item.get_file_path() != start_item.get_file_path():
+                break
 
-                # 候选数据超过阈值时，结束搜索
-                if len(result) >= ExpertConfig.get().preceding_lines_threshold:
-                    break_flag = True
-                    break
-
-                # 候选数据与当前任务不在同一个文件时，结束搜索
-                if item.get_file_path() != end.get_file_path():
-                    break_flag = True
-                    break
-
-                # 候选数据以指定标点结尾时，添加到结果中
-                if src.endswith(CacheManager.END_LINE_PUNCTUATION):
-                    result.append(item)
-                else:
-                    break_flag = True
-                    break
+            # 候选数据以指定标点结尾时，添加到结果中
+            if src.endswith(CacheManager.END_LINE_PUNCTUATION):
+                result.append(item)
+            else:
+                break
 
         return sorted(result, key = lambda x: x.get_row(), reverse = False)

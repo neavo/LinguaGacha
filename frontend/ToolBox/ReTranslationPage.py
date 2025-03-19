@@ -197,8 +197,10 @@ class ReTranslationPage(QWidget, Base):
 
         # 生成翻译数据
         for item_dst in items_dst:
-            if any(keyword in item_dst.get_src() for keyword in keywords):
+            if item_dst.get_status() != Base.TranslationStatus.EXCLUDED and any(keyword in item_dst.get_src() for keyword in keywords):
                 item_dst.set_status(Base.TranslationStatus.UNTRANSLATED)
+            elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
+                item_dst.set_status(Base.TranslationStatus.TRANSLATED)
             else:
                 item_dst.set_status(Base.TranslationStatus.EXCLUDED)
 
@@ -233,8 +235,11 @@ class ReTranslationPage(QWidget, Base):
 
         # 生成翻译数据
         for item_src, item_dst in zip(items_src, items_dst):
-            if item_src.get_status() == Base.TranslationStatus.UNTRANSLATED and any(keyword in item_src.get_src() for keyword in keywords):
+            if item_src.get_status() != Base.TranslationStatus.EXCLUDED and any(keyword in item_src.get_src() for keyword in keywords):
                 item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
+            elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
+                item_src.set_dst(item_dst.get_dst())
+                item_src.set_status(Base.TranslationStatus.TRANSLATED)
             else:
                 item_src.set_dst(item_dst.get_dst())
                 item_src.set_status(Base.TranslationStatus.EXCLUDED)
