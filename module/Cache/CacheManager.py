@@ -8,6 +8,7 @@ from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Localizer.Localizer import Localizer
+from module.ExpertConfig import ExpertConfig
 
 class CacheManager(Base):
 
@@ -181,7 +182,7 @@ class CacheManager(Base):
                 if len(chunks) <= 1:
                     preceding_chunks.append([])
                 else:
-                    preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks[-2]))
+                    preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks))
 
                 chunk = []
                 chunk_length = 0
@@ -195,30 +196,40 @@ class CacheManager(Base):
             if len(chunks) <= 1:
                 preceding_chunks.append([])
             else:
-                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks[-2]))
+                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], chunks))
 
         return chunks, preceding_chunks
 
     # 生成参考上文数据条目片段
-    def generate_preceding_chunks(self, end: CacheItem, chunk: list[CacheItem]) -> list[list[CacheItem]]:
+    def generate_preceding_chunks(self, end: CacheItem, chunks: list[list[CacheItem]]) -> list[list[CacheItem]]:
         result: list[CacheItem] = []
 
-        # 没有候选数据时返回空值
-        if len(chunk) == 0:
-            return []
-
-        # 候选数据与当前任务不在同一个文件中时，返回空值
-        if end.get_file_path() != chunk[-1].get_file_path():
-            return []
-
-        # 逆序
-        for item in sorted(chunk, key = lambda x: x.get_row(), reverse = True):
-            src = item.get_src().strip()
-
-            if src.endswith(CacheManager.END_LINE_PUNCTUATION):
-                result.append(item)
-
-            if len(result) >= 3:
+        # 开始逆序搜索参考上文
+        break_flag = False
+        for i in range(len(chunks) - 2, -1, -1):
+            # 候选数据超过阈值时，结束搜索
+            if break_flag == True:
                 break
+
+            chunk = chunks[i]
+            for item in sorted(chunk, key = lambda x: x.get_row(), reverse = True):
+                src = item.get_src().strip()
+
+                # 候选数据超过阈值时，结束搜索
+                if len(result) >= ExpertConfig.get().preceding_lines_threshold:
+                    break_flag = True
+                    break
+
+                # 候选数据与当前任务不在同一个文件时，结束搜索
+                if item.get_file_path() != end.get_file_path():
+                    break_flag = True
+                    break
+
+                # 候选数据以指定标点结尾时，添加到结果中
+                if src.endswith(CacheManager.END_LINE_PUNCTUATION):
+                    result.append(item)
+                else:
+                    break_flag = True
+                    break
 
         return sorted(result, key = lambda x: x.get_row(), reverse = False)
