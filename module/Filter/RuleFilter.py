@@ -91,6 +91,7 @@ class RuleFilter():
             # 都不匹配
             flags.append(False)
 
+        # 返回值 True 表示需要过滤（即需要排除）
         if flags == []:
             return False
         else:

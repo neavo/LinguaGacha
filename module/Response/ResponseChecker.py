@@ -75,7 +75,7 @@ class ResponseChecker(Base):
                 continue
 
             # 原文内容符合语言过滤条件时，判断为正确翻译
-            if LanguageFilter.filter(src, source_language) == False:
+            if LanguageFilter.filter(src, source_language) == True:
                 data.append(0)
                 continue
 

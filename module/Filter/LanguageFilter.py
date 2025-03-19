@@ -19,7 +19,8 @@ class LanguageFilter():
         else:
             func = getattr(TextHelper, source_language).any
 
+        # 返回值 True 表示需要过滤（即需要排除）
         if callable(func) != True:
             return False
         else:
-            return func(item.get_src())
+            return not func(item.get_src())
