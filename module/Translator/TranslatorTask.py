@@ -12,6 +12,8 @@ from base.Base import Base
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
+from module.Fixer.KanaFixer import KanaFixer
+from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
@@ -20,7 +22,6 @@ from module.CodeSaver import CodeSaver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
-from module.PunctuationFixer import PunctuationFixer
 
 class TranslatorTask(Base):
 
@@ -44,6 +45,7 @@ class TranslatorTask(Base):
         self.cache_manager = cache_manager
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
+        self.kana_fixer = KanaFixer()
         self.punctuation_fixer = PunctuationFixer(self.config)
 
         # 生成原文文本字典与文本类型字典
@@ -130,6 +132,9 @@ class TranslatorTask(Base):
 
         # 检查译文
         if check_flag in (None, ResponseChecker.Error.DEGRADATION, ResponseChecker.Error.SIMILARITY):
+            # 假名修复
+            dst_dict: dict[str, str] = self.kana_fix(src_dict, dst_dict)
+
             # 标点修复
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
 
@@ -278,6 +283,17 @@ class TranslatorTask(Base):
             return {k: TranslatorTask.OPENCCS2T.convert(v) for k, v in data.items()}
         else:
             return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
+
+    # 假名修复
+    def kana_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
+        if self.config.get("source_language") != Base.Language.JA:
+            return dst_dict
+
+        for k in dst_dict:
+            if k in src_dict:
+                dst_dict[k] = self.kana_fixer.fix(dst_dict[k])
+
+        return dst_dict
 
     # 标点修复
     def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
