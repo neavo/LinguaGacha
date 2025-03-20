@@ -72,6 +72,9 @@ class TextHelper:
     # 葡萄牙文
     PT = TextBase.PT()
 
+    # 匈牙利文
+    HU = TextBase.HU()
+
     # 泰文
     TH = TextBase.TH()
 

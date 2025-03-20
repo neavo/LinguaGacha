@@ -14,19 +14,20 @@ from widget.SwitchButtonCard import SwitchButtonCard
 class ProjectPage(QWidget, Base):
 
     LANGUAGES = (
-        Base.Language.ZH,
-        Base.Language.EN,
-        Base.Language.JA,
-        Base.Language.KO,
-        Base.Language.RU,
-        Base.Language.DE,
-        Base.Language.FR,
-        Base.Language.ES,
-        Base.Language.IT,
-        Base.Language.PT,
-        Base.Language.TH,
-        Base.Language.ID,
-        Base.Language.VI,
+        Base.Language.ZH,                                          # 中文 (Chinese)
+        Base.Language.EN,                                          # 英语 (English)
+        Base.Language.JA,                                          # 日语 (Japanese)
+        Base.Language.KO,                                          # 韩语 (Korean)
+        Base.Language.RU,                                          # 俄语 (Russian)
+        Base.Language.DE,                                          # 德语 (German)
+        Base.Language.FR,                                          # 法语 (French)
+        Base.Language.ES,                                          # 西班牙语 (Spanish)
+        Base.Language.IT,                                          # 意大利语 (Italian)
+        Base.Language.PT,                                          # 葡萄牙语 (Portuguese)
+        Base.Language.HU,                                          # 匈牙利语 (Hungrarian)
+        Base.Language.TH,                                          # 泰语 (Thai)
+        Base.Language.ID,                                          # 印尼语 (Indonesian)
+        Base.Language.VI,                                          # 越南语 (Vietnamese)
     )
 
     def __init__(self, text: str, window: FluentWindow) -> None:

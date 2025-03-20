@@ -114,6 +114,11 @@ class TextBase:
         "á", "é", "í", "ó", "ú", "ã", "õ", "à", "â", "ê", "ô", "ç"
     }
 
+    # 匈牙利文字符
+    HU_SET = LATIN_SET | {
+        "á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű"
+    }
+
     # 印尼文字符 (基本上使用拉丁字母)
     ID_SET = LATIN_SET
 
@@ -250,6 +255,11 @@ class IT(TextBase):
 class PT(TextBase):
     def char(self, c: str) -> bool:
         return c in TextBase.PT_SET
+
+# 匈牙利文
+class HU(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.HU_SET
 
 # 泰文
 class TH(TextBase):

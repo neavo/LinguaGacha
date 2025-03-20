@@ -48,6 +48,7 @@ class Base():
         ES: str = "ES"                                          # 西班牙语 (Spanish)
         IT: str = "IT"                                          # 意大利语 (Italian)
         PT: str = "PT"                                          # 葡萄牙语 (Portuguese)
+        HU: str = "HU"                                          # 匈牙利语 (Hungrarian)
         TH: str = "TH"                                          # 泰语 (Thai)
         ID: str = "ID"                                          # 印尼语 (Indonesian)
         VI: str = "VI"                                          # 越南语 (Vietnamese)
