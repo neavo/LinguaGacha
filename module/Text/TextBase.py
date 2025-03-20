@@ -68,7 +68,10 @@ class TextBase:
         if not (
             0xFF01 <= c <= 0xFF60                       # 排除全角标点符号
             or 0x3000 <= c <= 0x303F                    # 排除全角标点符号
-            or c == 0x30FB                              # 排除中点 ・
+            or c in (
+                0x30FB,                                 # 排除中点 ・
+                0x30FC,                                 # 排除長音符 ー
+            )
         )
     }
 
