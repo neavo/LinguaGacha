@@ -435,7 +435,7 @@ class Translator(Base):
 
             # 记录数据
             with self.data_lock:
-                if result.get("check_flag") != None:
+                if result.get("check_result") is not None:
                     # 任务成功
                     new = {}
                     new["start_time"] = self.extras.get("start_time", 0)

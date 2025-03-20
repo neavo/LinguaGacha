@@ -74,7 +74,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
-                            "text_type": Base.TranslationStatus.UNTRANSLATED,
+                            "status": Base.TranslationStatus.UNTRANSLATED,
                         })
                     )
 

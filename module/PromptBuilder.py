@@ -107,22 +107,22 @@ class PromptBuilder(Base):
         if len(samples) > 0:
             if prompt_language == Base.Language.ZH:
                 base = base.replace(
-                    "在译文中应原样保留。",
-                    f"在译文中应原样保留，特别是 {"、".join(samples)} 形式的代码段。",
+                    "必须在译文中完整保留。",
+                    f"必须在译文中完整保留，特别是 {"、".join(samples)} 形式的代码。",
                 )
                 extra_log = f"已添加代码示例：\n{"、".join(samples)}"
             elif len(samples) == 1:
                 base = base.replace(
-                    "should be preserved in the translation as-is.",
-                    f"should be preserved in the translation as-is, "
-                    f"especially code segments in the format of {samples[0]}.",
+                    "must be completely preserved in the translation.",
+                    f"must be completely preserved in the translation, "
+                    f"especially code in the format of {samples[0]}.",
                 )
                 extra_log = f"Code samples added:\n{samples[0]}"
             elif len(samples) >= 2:
                 base = base.replace(
-                    "should be preserved in the translation as-is.",
-                    f"should be preserved in the translation as-is, "
-                    f"especially code segments in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"}.",
+                    "must be completely preserved in the translation.",
+                    f"must be completely preserved in the translation, "
+                    f"especially code in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"}.",
                 )
                 extra_log = f"Code samples added:\n{f"{", ".join(samples[:-1])} and {samples[-1]}"}"
 

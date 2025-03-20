@@ -130,7 +130,7 @@ class RENPY(Base):
                             "file_type": CacheItem.FileType.RENPY,
                             "file_path": rel_path,
                             "text_type": CacheItem.TextType.RENPY,
-                            "text_type": Base.TranslationStatus.UNTRANSLATED,
+                            "status": Base.TranslationStatus.UNTRANSLATED,
                         })
                     )
 

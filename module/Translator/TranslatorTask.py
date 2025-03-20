@@ -13,6 +13,7 @@ from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Fixer.KanaFixer import KanaFixer
+from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
@@ -46,6 +47,7 @@ class TranslatorTask(Base):
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
         self.kana_fixer = KanaFixer()
+        self.hangeul_fixer = HangeulFixer()
         self.punctuation_fixer = PunctuationFixer(self.config)
 
         # 生成原文文本字典与文本类型字典
@@ -64,6 +66,19 @@ class TranslatorTask(Base):
 
         # 代码救星预处理
         self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.text_type_dict)
+
+        # 初始化错误文本
+        if not hasattr(TranslatorTask, "ERROR_TEXT_DICT"):
+            TranslatorTask.ERROR_TEXT_DICT = {
+                ResponseChecker.Error.UNKNOWN: Localizer.get().response_checker_unknown,
+                ResponseChecker.Error.FAIL_DATA: Localizer.get().response_checker_fail_data,
+                ResponseChecker.Error.FAIL_LINE_COUNT: Localizer.get().response_checker_fail_line_count,
+                ResponseChecker.Error.LINE_ERROR_KANA: Localizer.get().response_checker_line_error_kana,
+                ResponseChecker.Error.LINE_ERROR_HANGEUL: Localizer.get().response_checker_line_error_hangeul,
+                ResponseChecker.Error.LINE_ERROR_FAKE_REPLY: Localizer.get().response_checker_line_error_fake_reply,
+                ResponseChecker.Error.LINE_ERROR_SIMILARITY: Localizer.get().response_checker_line_error_similarity,
+                ResponseChecker.Error.LINE_ERROR_DEGRADATION: Localizer.get().response_checker_line_error_degradation,
+            }
 
     # 启动任务
     def start(self, current_round: int) -> dict:
@@ -95,7 +110,7 @@ class TranslatorTask(Base):
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip == True:
             return {
-                "check_flag": ResponseChecker.Error.UNKNOWN,
+                "check_result": [ResponseChecker.Error.UNKNOWN],
                 "row_count": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -111,10 +126,10 @@ class TranslatorTask(Base):
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
 
         # 检查回复内容
-        check_flag, check_result = self.response_checker.check(src_dict, dst_dict, self.config.get("source_language"))
+        check_result = self.response_checker.check(src_dict, dst_dict, self.config.get("source_language"))
 
         # 当任务失败且是单条目任务时，更新重试次数
-        if check_flag != None and len(self.items) == 1:
+        if any(v != ResponseChecker.Error.NONE for v in check_result) != None and len(self.items) == 1:
             self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         # 模型回复日志
@@ -130,10 +145,13 @@ class TranslatorTask(Base):
             file_log.append(response_decode_log)
             console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
-        # 检查译文
-        if check_flag in (None, ResponseChecker.Error.DEGRADATION, ResponseChecker.Error.SIMILARITY):
+        # 如果有任何正确的条目，则处理结果
+        if any(v == ResponseChecker.Error.NONE for v in check_result):
             # 假名修复
             dst_dict: dict[str, str] = self.kana_fix(src_dict, dst_dict)
+
+            # 谚文修复
+            dst_dict: dict[str, str] = self.hangeul_fix(src_dict, dst_dict)
 
             # 标点修复
             dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
@@ -154,8 +172,9 @@ class TranslatorTask(Base):
             # 更新缓存数据
             updated_count = 0
             dst_sub_lines = list(dst_dict.values())
+            check_result_lines = check_result.copy()
             for item in self.items:
-                dst, dst_sub_lines, check_result = item.merge_sub_lines(dst_sub_lines, check_result)
+                dst, dst_sub_lines, check_result_lines = item.merge_sub_lines(dst_sub_lines, check_result_lines)
                 if dst != None:
                     updated_count = updated_count + 1
                     item.set_dst(dst)
@@ -163,7 +182,7 @@ class TranslatorTask(Base):
 
         # 打印任务结果
         self.print_log_table(
-            check_flag,
+            check_result,
             start_time,
             prompt_tokens,
             completion_tokens,
@@ -174,16 +193,16 @@ class TranslatorTask(Base):
         )
 
         # 返回任务结果
-        if check_flag in (None, ResponseChecker.Error.DEGRADATION, ResponseChecker.Error.SIMILARITY):
+        if any(v == ResponseChecker.Error.NONE for v in check_result):
             return {
-                "check_flag": None,
+                "check_result": None,
                 "row_count": updated_count,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
             }
         else:
             return {
-                "check_flag": check_flag,
+                "check_result": check_result,
                 "row_count": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -295,6 +314,17 @@ class TranslatorTask(Base):
 
         return dst_dict
 
+    # 假名修复
+    def hangeul_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
+        if self.config.get("source_language") != Base.Language.KO:
+            return dst_dict
+
+        for k in dst_dict:
+            if k in src_dict:
+                dst_dict[k] = self.hangeul_fixer.fix(dst_dict[k])
+
+        return dst_dict
+
     # 标点修复
     def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
         for k in dst_dict:
@@ -397,35 +427,43 @@ class TranslatorTask(Base):
         return messages, extra_log
 
     # 打印日志表格
-    def print_log_table(self, flag: str, start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
-        if flag == ResponseChecker.Error.UNKNOWN:
+    def print_log_table(self, result: list[str], start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
+        # 拼接错误原因文本
+        reason: str = ""
+        if any(v != ResponseChecker.Error.NONE for v in result):
+            reason = f"（{"、".join(
+                {
+                    TranslatorTask.ERROR_TEXT_DICT.get(v, "") for v in result
+                    if v != ResponseChecker.Error.NONE
+                }
+            )}）"
+
+        if all(v == ResponseChecker.Error.UNKNOWN for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_unknown}"
+            message = f"{Localizer.get().translator_response_check_fail} {reason}"
             log_func = self.error
-        elif flag == ResponseChecker.Error.FAIL_DATA:
+        elif all(v == ResponseChecker.Error.FAIL_DATA for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_fail_data}"
-            log_func = self.warning
-        elif flag == ResponseChecker.Error.FAIL_LINE:
+            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            log_func = self.error
+        elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} - {Localizer.get().response_checker_fail_line}"
-            log_func = self.warning
-        elif flag == ResponseChecker.Error.SIMILARITY:
+            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            log_func = self.error
+        elif all(v in ResponseChecker.Error.LINE_ERROR for v in result):
+            style = "red"
+            message = f"{Localizer.get().translator_response_check_fail_all} {reason}"
+            log_func = self.error
+        elif any(v in ResponseChecker.Error.LINE_ERROR for v in result):
             style = "yellow"
-            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_similarity}"
-            log_func = self.warning
-        elif flag == ResponseChecker.Error.DEGRADATION:
-            style = "yellow"
-            message = f"{Localizer.get().translator_response_check_fail_part} - {Localizer.get().response_checker_degradation}"
+            message = f"{Localizer.get().translator_response_check_fail_part} {reason}"
             log_func = self.warning
         else:
             style = "green"
-            message = (
-                Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
-                                                       .replace("{LINES}", f"{len(srcs)}")
-                                                       .replace("{PT}", f"{pt}")
-                                                       .replace("{CT}", f"{ct}")
-            )
+            message = Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
+            message = message.replace("{LINES}", f"{len(srcs)}")
+            message = message.replace("{PT}", f"{pt}")
+            message = message.replace("{CT}", f"{ct}")
             log_func = self.info
 
         # 添加日志
