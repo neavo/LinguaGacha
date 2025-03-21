@@ -1,4 +1,8 @@
+import os
 import re
+import signal
+import subprocess
+
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
@@ -48,7 +52,7 @@ class AppFluentWindow(FluentWindow, Base):
         super().__init__()
 
         # 初始化
-        self.home_page_url = "https://github.com/neavo/LinguaGacha"
+        self.new_version = False
 
         # 默认配置
         self.default = {
@@ -87,7 +91,8 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 注册事件
         self.subscribe(Base.Event.APP_TOAST_SHOW, self.show_toast)
-        self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_updater_check_done)
+        self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_update_check_done)
+        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update)
 
         # 检查更新
         QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK, {}))
@@ -169,10 +174,36 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 打开主页
     def open_project_page(self) -> None:
-        QDesktopServices.openUrl(QUrl(self.home_page_url))
+        if VersionManager.STATUS == VersionManager.Status.NEW_VERSION:
+            # 更新状态
+            VersionManager.STATUS = VersionManager.Status.UPDATING
+
+            # 更新 UI
+            self.home_page_widget.setName(
+                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
+            )
+
+            # 触发下载事件
+            self.emit(Base.Event.APP_UPDATE_DOWNLOAD, {})
+        elif VersionManager.STATUS == VersionManager.Status.UPDATING:
+            pass
+        elif VersionManager.STATUS == VersionManager.Status.DOWNLOADED:
+            try:
+                # 打开更新日志
+                QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/releases/latest"))
+
+                # 运行命令
+                subprocess.Popen(["updater.exe", VersionManager.UPDATE_TEMP_PATH, "./"], shell = True)
+
+                # 关闭应用
+                os.kill(os.getpid(), signal.SIGTERM)
+            except Exception as e:
+                self.error("open_project_page", e)
+        else:
+            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 检查应用更新完成事件
-    def app_updater_check_done(self, event: int, data: dict) -> None:
+    def app_update_check_done(self, event: int, data: dict) -> None:
         result: dict = data.get("result", {})
 
         try:
@@ -184,15 +215,60 @@ class AppFluentWindow(FluentWindow, Base):
                 or (int(a) == int(x) and int(b) < int(y))
                 or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
             ):
+                # 更新状态
+                VersionManager.STATUS = VersionManager.Status.NEW_VERSION
+
+                # 更新 UI
+                self.home_page_widget.setName(Localizer.get().app_new_version)
+
+                # 显示提示
                 self.emit(Base.Event.APP_TOAST_SHOW, {
                     "type": Base.ToastType.SUCCESS,
                     "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
                     "duration": 60 * 1000,
                 })
-                self.home_page_url = result.get("html_url", self.home_page_url)
-                self.home_page_widget.setName(Localizer.get().app_new_version)
         except Exception as e:
             self.debug("app_updater_check_done", e)
+
+    # 下载应用更新事件
+    def app_update_download_update(self, event: int, data: dict) -> None:
+        error: Exception = data.get("error")
+        total_size: int = data.get("total_size", 0)
+        downloaded_size: int = data.get("downloaded_size", 0)
+
+        if error is None:
+            # 更新进度
+            self.home_page_widget.setName(
+                Localizer.get().app_new_version_update.replace("{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%")
+            )
+
+            # 下载完成
+            if total_size == downloaded_size:
+                # 更新状态
+                VersionManager.STATUS = VersionManager.Status.DOWNLOADED
+
+                # 更新 UI
+                self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
+
+                # 显示提示
+                self.emit(Base.Event.APP_TOAST_SHOW, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().app_new_version_success,
+                    "duration": 60 * 1000,
+                })
+        else:
+            # 更新状态
+            VersionManager.STATUS = VersionManager.Status.NONE
+
+            # 更新 UI
+            self.home_page_widget.setName("⭐️ @ Github")
+
+            # 显示提示
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.ERROR,
+                "message": Localizer.get().app_new_version_failure + str(error),
+                "duration": 60 * 1000,
+            })
 
     # 开始添加页面
     def add_pages(self) -> None:
