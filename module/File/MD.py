@@ -6,6 +6,9 @@ from module.Cache.CacheItem import CacheItem
 
 class MD(Base):
 
+    # 添加图片匹配的正则表达式
+    IMAGE_PATTERN = re.compile(r'!\[.*?\]\(.*?\)')
+    
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -29,8 +32,6 @@ class MD(Base):
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
         items = []
-        # 添加图片匹配的正则表达式
-        image_pattern = re.compile(r'!\[.*?\]\(.*?\)')
         
         for abs_path in set(abs_paths):
             # 获取相对路径
@@ -47,8 +48,7 @@ class MD(Base):
                         in_code_block = not in_code_block
                     
                     # 如果是图片行或在代码块内，设置状态为 EXCLUDED
-                    if (image_pattern.search(line) or 
-                        in_code_block):
+                    if (MD.IMAGE_PATTERN.search(line) or in_code_block):
                         items.append(
                             CacheItem({
                                 "src": line,
