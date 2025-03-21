@@ -27,28 +27,21 @@ class ResultChecker(Base):
         self.traditional_chinese_enable: bool = config.get("traditional_chinese_enable")
 
         # 筛选数据
-        self.items = [
-            item for item in items
-            if item.get_status() in (Base.TranslationStatus.UNTRANSLATED, Base.TranslationStatus.TRANSLATED)
-        ]
+        self.items_translated = [item for item in items if item.get_status() == Base.TranslationStatus.TRANSLATED]
+        self.items_untranslated = [item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]
 
         # 获取译前替换后的原文
-        self.rpls: list[str] = []
+        self.rpls_translated: list[str] = []
         pre_translation_replacement_data: list[dict] = config.get("pre_translation_replacement_data")
         pre_translation_replacement_enable: bool = config.get("pre_translation_replacement_enable")
-        for item in self.items:
+        for item in self.items_translated:
             src = item.get_src()
 
-            # 只对已翻译的条目执行替换，以避免手动导出时检查结果异常
-            if (
-                item.get_status() == Base.TranslationStatus.TRANSLATED
-                and pre_translation_replacement_enable == True
-                and len(pre_translation_replacement_data) > 0
-            ):
+            if pre_translation_replacement_enable == True and len(pre_translation_replacement_data) > 0:
                 for v in pre_translation_replacement_data:
                     src = src.replace(v.get("src"), v.get("dst"))
 
-            self.rpls.append(src)
+            self.rpls_translated.append(src)
 
     # 检查
     def check(self) -> None:
@@ -64,6 +57,7 @@ class ResultChecker(Base):
         self.check_code()
         self.check_similarity()
         self.check_glossary()
+        self.check_untranslated()
 
     # 假名残留检查
     def check_kana(self) -> None:
@@ -73,7 +67,7 @@ class ResultChecker(Base):
         count = 0
         result: dict[str, str] = {}
 
-        for item in self.items:
+        for item in self.items_translated:
             if TextHelper.JA.any_hiragana(item.get_dst()) or TextHelper.JA.any_katakana(item.get_dst()):
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
@@ -82,13 +76,14 @@ class ResultChecker(Base):
             self.info(Localizer.get().file_checker_kana)
         else:
             target = f"{self.output_folder}/{Localizer.get().path_result_check_kana}".replace("\\", "/")
-            self.info(
-                Localizer.get().file_checker_kana_full.replace("{COUNT}", f"{count}")
-                                                         .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                         .replace("{TARGET}", f"{Localizer.get().path_result_check_kana}")
-            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+            # 打印日志
+            message = Localizer.get().file_checker_kana_full.replace("{COUNT}", f"{count}")
+            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
+            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_kana}")
+            self.info(message)
 
     # 谚文残留检查
     def check_hangeul(self) -> None:
@@ -98,7 +93,7 @@ class ResultChecker(Base):
         count = 0
         result: dict[str, str] = {}
 
-        for item in self.items:
+        for item in self.items_translated:
             if TextHelper.KO.any_hangeul(item.get_dst()):
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
@@ -109,7 +104,7 @@ class ResultChecker(Base):
             target = f"{self.output_folder}/{Localizer.get().path_result_check_hangeul}".replace("\\", "/")
             self.info(
                 Localizer.get().file_checker_hangeul_full.replace("{COUNT}", f"{count}")
-                                                         .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
+                                                         .replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
                                                          .replace("{TARGET}", f"{Localizer.get().path_result_check_hangeul}")
             )
             with open(target, "w", encoding = "utf-8") as writer:
@@ -122,7 +117,7 @@ class ResultChecker(Base):
             Localizer.get().file_checker_code_alert_key: Localizer.get().file_checker_code_alert_value,
         }
 
-        for item, rpl in zip(self.items, self.rpls):
+        for item, rpl in zip(self.items_translated, self.rpls_translated):
             if ResultChecker.CODESAVER.check(rpl, item.get_dst(), item.get_text_type()) == False:
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
@@ -131,13 +126,14 @@ class ResultChecker(Base):
             self.info(Localizer.get().file_checker_code)
         else:
             target = f"{self.output_folder}/{Localizer.get().path_result_check_code}".replace("\\", "/")
-            self.info(
-                Localizer.get().file_checker_code_full.replace("{COUNT}", f"{count}")
-                                                      .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                      .replace("{TARGET}", f"{Localizer.get().path_result_check_code}")
-            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+            # 打印日志
+            message = Localizer.get().file_checker_code_full.replace("{COUNT}", f"{count}")
+            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
+            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_code}")
+            self.info(message)
 
     # 相似度较高检查
     def check_similarity(self) -> None:
@@ -146,7 +142,7 @@ class ResultChecker(Base):
             Localizer.get().file_checker_similarity_alert_key: Localizer.get().file_checker_similarity_alert_value,
         }
 
-        for item, rpl in zip(self.items, self.rpls):
+        for item, rpl in zip(self.items_translated, self.rpls_translated):
             rpl = rpl.strip()
             src = item.get_src().strip()
             dst = item.get_dst().strip()
@@ -160,13 +156,14 @@ class ResultChecker(Base):
             self.info(Localizer.get().file_checker_similarity)
         else:
             target = f"{self.output_folder}/{Localizer.get().path_result_check_similarity}".replace("\\", "/")
-            self.info(
-                Localizer.get().file_checker_similarity_full.replace("{COUNT}", f"{count}")
-                                                             .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                             .replace("{TARGET}", f"{Localizer.get().path_result_check_similarity}")
-            )
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+            # 打印日志
+            message = Localizer.get().file_checker_similarity_full.replace("{COUNT}", f"{count}")
+            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
+            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_similarity}")
+            self.info(message)
 
     # 术语表未生效检查
     def check_glossary(self) -> None:
@@ -194,7 +191,7 @@ class ResultChecker(Base):
 
         count = 0
         result: dict[str, dict] = {}
-        for item, rpl in zip(self.items, self.rpls):
+        for item, rpl in zip(self.items_translated, self.rpls_translated):
             for v in self.glossary_data:
                 glossary_src = v.get("src", "")
                 glossary_dst = v.get("dst", "")
@@ -206,10 +203,27 @@ class ResultChecker(Base):
             self.info(Localizer.get().file_checker_glossary)
         else:
             target = f"{self.output_folder}/{Localizer.get().path_result_check_glossary}".replace("\\", "/")
-            self.info(
-                Localizer.get().file_checker_glossary_full.replace("{COUNT}", f"{count}")
-                                                          .replace("{PERCENT}", f"{(count / len(self.rpls) * 100):.2f}")
-                                                          .replace("{TARGET}", f"{Localizer.get().path_result_check_glossary}")
-            )
+            with open(target, "w", encoding = "utf-8") as writer:
+                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+            # 打印日志
+            message = Localizer.get().file_checker_glossary_full.replace("{COUNT}", f"{count}")
+            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
+            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_glossary}")
+            self.info(message)
+
+    # 未翻译检查
+    def check_untranslated(self) -> None:
+        count = 0
+        result: dict[str, str] = {}
+
+        for item in self.items_untranslated:
+            count = count + 1
+            result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
+
+        if count == 0:
+            pass
+        else:
+            target = f"{self.output_folder}/{Localizer.get().path_result_check_untranslated}".replace("\\", "/")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))

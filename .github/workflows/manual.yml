@@ -35,16 +35,26 @@ jobs:
         $version = Get-Content -Path version.txt
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Install Requirements
+    - name: Install Requirements - Updater
       shell: cmd
       run: |
         python -m pip install --upgrade pip
         python -m pip install --upgrade setuptools
-        python -m pip install -r requirements.txt
         python -m pip install pyinstaller
         python -m pip cache purge
 
     - name: Build EXE
+      shell: cmd
+      run: |
+        pyinstaller updater.py --clean --onefile
+
+    - name: Install Requirements - App
+      shell: cmd
+      run: |
+        python -m pip install -U -r requirements.txt
+        python -m pip cache purge
+
+    - name: Build EXE - App
       shell: cmd
       run: |
         python .\resource\pyinstaller.py
@@ -52,8 +62,13 @@ jobs:
     - name: Copy Files
       shell: cmd
       run: |
-        xcopy "resource" ".\dist\LinguaGacha\resource" /E /I /Q /H /Y
-        copy "version.txt" ".\dist\LinguaGacha\"
+        xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
+        xcopy ".\dist\updater.exe" ".\dist\LinguaGacha\" /Q /Y
+        xcopy ".\resource\prompt\" ".\dist\LinguaGacha\resource\prompt\" /E /I /Q /H /Y
+        xcopy ".\resource\platforms\" ".\dist\LinguaGacha\resource\platforms\" /E /I /Q /H /Y
+        xcopy ".\resource\icon.ico" ".\dist\LinguaGacha\resource\" /Q /Y
+        xcopy ".\resource\icon_full.png" ".\dist\LinguaGacha\resource\" /Q /Y
+        xcopy ".\resource\icon_no_bg.png" ".\dist\LinguaGacha\resource\" /Q /Y
 
     - name: Compress Archive
       shell: cmd

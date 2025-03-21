@@ -24,6 +24,8 @@ class Base():
         PROJECT_STATUS_CHECK_DONE: int = 410                    # 项目状态检查完成
         APP_UPDATE_CHECK: int = 500                             # 检查更新
         APP_UPDATE_CHECK_DONE: int = 510                        # 检查更新完成
+        APP_UPDATE_DOWNLOAD: int = 520                          # 下载应用
+        APP_UPDATE_DOWNLOAD_UPDATE: int = 530                   # 下载应用更新
         APP_TOAST_SHOW: int = 600                               # 显示 Toast
         APP_SHUT_DOWN: int = 1000                               # 应用关闭
 
