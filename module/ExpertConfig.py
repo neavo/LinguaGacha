@@ -21,6 +21,9 @@ class ExpertConfig(Base, BaseData):
         # 双语输出文件中重复行去重
         self.deduplication_in_bilingual: bool = True
 
+        # 结果检查 - 重试次数达到阈值
+        self.result_checker_retry_count_threshold: bool = False
+
         # 初始化
         del self.default
         if not os.path.isfile(ExpertConfig.EXPERT_CONFIG_PATH):

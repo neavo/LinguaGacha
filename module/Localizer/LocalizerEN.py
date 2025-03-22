@@ -76,6 +76,7 @@ class LocalizerEN(LocalizerBase):
     path_result_check_similarity: str = "result_check_high_similarity.json"
     path_result_check_glossary: str = "result_check_incorrect_glossary.json"
     path_result_check_untranslated: str = "result_check_untranslated_entries.json"
+    path_result_check_retry_count_threshold: str = "result_check_retry_count_reach_threshold.json"
     path_result_name_injection_file: str= "result.xlsx"
     path_result_name_injection_folder: str = "name_injection"
 

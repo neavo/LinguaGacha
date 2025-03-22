@@ -76,6 +76,7 @@ class LocalizerBase():
     path_result_check_similarity: str = "结果检查_相似度较高.json"
     path_result_check_glossary: str = "结果检查_术语表未生效.json"
     path_result_check_untranslated: str = "结果检查_未翻译的条目.json"
+    path_result_check_retry_count_threshold: str = "结果检查_重试次数达到阈值.json"
     path_result_name_injection_file: str = "结果.xlsx"
     path_result_name_injection_folder: str = "角色姓名注入"
 

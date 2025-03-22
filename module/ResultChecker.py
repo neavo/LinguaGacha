@@ -6,8 +6,10 @@ import rapidjson as json
 from base.Base import Base
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
-from module.CodeSaver import CodeSaver
+from module.Response.ResponseChecker import ResponseChecker
 from module.Localizer.Localizer import Localizer
+from module.CodeSaver import CodeSaver
+from module.ExpertConfig import ExpertConfig
 
 class ResultChecker(Base):
 
@@ -58,6 +60,7 @@ class ResultChecker(Base):
         self.check_similarity()
         self.check_glossary()
         self.check_untranslated()
+        self.check_retry_count_threshold()
 
     # 假名残留检查
     def check_kana(self) -> None:
@@ -225,5 +228,24 @@ class ResultChecker(Base):
             pass
         else:
             target = f"{self.output_folder}/{Localizer.get().path_result_check_untranslated}".replace("\\", "/")
+            with open(target, "w", encoding = "utf-8") as writer:
+                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+    # 重试次数达到阈值检查
+    def check_retry_count_threshold(self) -> None:
+        if ExpertConfig.get().result_checker_retry_count_threshold != True:
+            return None
+
+        count = 0
+        result: dict[str, str] = {}
+
+        for item in [v for v in self.items_translated if v.get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD]:
+            count = count + 1
+            result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
+
+        if count == 0:
+            pass
+        else:
+            target = f"{self.output_folder}/{Localizer.get().path_result_check_retry_count_threshold}".replace("\\", "/")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))

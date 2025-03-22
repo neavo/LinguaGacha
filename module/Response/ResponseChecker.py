@@ -30,6 +30,10 @@ class ResponseChecker(Base):
             LINE_ERROR_DEGRADATION,
         )
 
+    # 重试次数阈值
+    RETRY_COUNT_THRESHOLD: int = 2
+
+    # 退化检测规则
     RE_DEGRADATION = re.compile(r"(.{1,2})\1{16,}", flags = re.IGNORECASE)
 
     def __init__(self, config: dict, items: list[CacheItem]) -> None:
@@ -47,8 +51,8 @@ class ResponseChecker(Base):
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return [ResponseChecker.Error.FAIL_DATA]
 
-        # 当翻译任务为单条目任务，且此条目已单独重试过至少一次，直接返回，不进行后续判断
-        if len(self.items) == 1 and self.items[0].get_retry_count() > 1:
+        # 当翻译任务为单条目任务，且此条目已经是第二次单独重试时，直接返回，不进行后续判断
+        if len(self.items) == 1 and self.items[0].get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD:
             return [ResponseChecker.Error.NONE]
 
         # 行数检查
