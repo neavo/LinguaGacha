@@ -35,26 +35,16 @@ jobs:
         $version = Get-Content -Path version.txt
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Install Requirements - Updater
+    - name: Install Requirements
       shell: cmd
       run: |
         python -m pip install --upgrade pip
         python -m pip install --upgrade setuptools
         python -m pip install pyinstaller
-        python -m pip cache purge
-
-    - name: Build EXE
-      shell: cmd
-      run: |
-        pyinstaller updater.py --clean --onefile
-
-    - name: Install Requirements - App
-      shell: cmd
-      run: |
         python -m pip install -U -r requirements.txt
         python -m pip cache purge
 
-    - name: Build EXE - App
+    - name: Build EXE
       shell: cmd
       run: |
         python .\resource\pyinstaller.py
@@ -68,8 +58,6 @@ jobs:
         xcopy ".\resource\icon.ico" ".\dist\LinguaGacha\resource\" /Q /Y
         xcopy ".\resource\icon_full.png" ".\dist\LinguaGacha\resource\" /Q /Y
         xcopy ".\resource\icon_no_bg.png" ".\dist\LinguaGacha\resource\" /Q /Y
-
-        move ".\dist\updater.exe" ".\dist\LinguaGacha\"
 
     - name: Compress Archive
       shell: cmd

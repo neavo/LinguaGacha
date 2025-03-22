@@ -1,7 +1,4 @@
-import os
 import re
-import signal
-import subprocess
 
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
@@ -188,50 +185,33 @@ class AppFluentWindow(FluentWindow, Base):
         elif VersionManager.STATUS == VersionManager.Status.UPDATING:
             pass
         elif VersionManager.STATUS == VersionManager.Status.DOWNLOADED:
-            try:
-                # 打开更新日志
-                QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/releases/latest"))
-
-                # 运行命令
-                if os.path.isfile("updater.exe"):
-                    subprocess.Popen(["updater.exe", VersionManager.UPDATE_TEMP_PATH, "./"], shell = True)
-                else:
-                    subprocess.Popen(["python", "updater.py", VersionManager.UPDATE_TEMP_PATH, "./"], shell = True)
-
-                # 关闭应用
-                os.kill(os.getpid(), signal.SIGTERM)
-            except Exception as e:
-                self.error("open_project_page", e)
+            self.emit(Base.Event.APP_UPDATE_EXTRACT, {})
         else:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 检查应用更新完成事件
     def app_update_check_done(self, event: int, data: dict) -> None:
         result: dict = data.get("result", {})
+        a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.VERSION)[-1]
+        x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
 
-        try:
-            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.VERSION)[-1]
-            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
+        if (
+            int(a) < int(x)
+            or (int(a) == int(x) and int(b) < int(y))
+            or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
+        ):
+            # 更新状态
+            VersionManager.STATUS = VersionManager.Status.NEW_VERSION
 
-            if (
-                int(a) < int(x)
-                or (int(a) == int(x) and int(b) < int(y))
-                or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
-            ):
-                # 更新状态
-                VersionManager.STATUS = VersionManager.Status.NEW_VERSION
+            # 更新 UI
+            self.home_page_widget.setName(Localizer.get().app_new_version)
 
-                # 更新 UI
-                self.home_page_widget.setName(Localizer.get().app_new_version)
-
-                # 显示提示
-                self.emit(Base.Event.APP_TOAST_SHOW, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
-                    "duration": 60 * 1000,
-                })
-        except Exception as e:
-            self.debug("app_updater_check_done", e)
+            # 显示提示
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
+                "duration": 60 * 1000,
+            })
 
     # 下载应用更新事件
     def app_update_download_update(self, event: int, data: dict) -> None:

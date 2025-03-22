@@ -1,9 +1,16 @@
 import os
+import time
+import signal
+import shutil
+import zipfile
 import threading
 
 import httpx
+from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtCore import QUrl
 
 from base.Base import Base
+from module.Localizer.Localizer import Localizer
 
 class VersionManager(Base):
 
@@ -21,47 +28,63 @@ class VersionManager(Base):
     STATUS: str = Status.NONE
 
     # 更新时的临时文件
-    UPDATE_TEMP_PATH: str = "./resource/update.temp"
+    TEMP_FILE_PATH: str = "./resource/update.temp"
+
+    # URL 地址
+    API_URL: str = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest"
+    RELEASE_URL: str = "https://github.com/neavo/LinguaGacha/releases/latest"
 
     def __init__(self, version: str) -> None:
         super().__init__()
 
         # 注册事件
         self.subscribe(Base.Event.APP_UPDATE_CHECK, self.app_update_check)
+        self.subscribe(Base.Event.APP_UPDATE_EXTRACT, self.app_update_extract)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD, self.app_update_download)
 
         # 初始化
         VersionManager.VERSION = version
 
-    # 检查更新事件
+    # 检查更新
     def app_update_check(self, event: int, data: dict) -> None:
-        thread = threading.Thread(target = self.app_update_check_task, args = (event, data))
-        thread.start()
+        threading.Thread(
+            target = self.app_update_check_task,
+            args = (event, data),
+        ).start()
 
-    # 下载更新事件
+    # 检查更新 - 下载
     def app_update_download(self, event: int, data: dict) -> None:
-        thread = threading.Thread(target = self.app_update_download_task, args = (event, data))
-        thread.start()
+        threading.Thread(
+            target = self.app_update_download_task,
+            args = (event, data),
+        ).start()
 
-    # 检查更新开始
+    # 检查更新 - 解压
+    def app_update_extract(self, event: int, data: dict) -> None:
+        threading.Thread(
+            target = self.app_update_extract_task,
+            args = (event, data),
+        ).start()
+
+    # 检查更新
     def app_update_check_task(self, event: int, data: dict) -> None:
         try:
             # 获取更新信息
-            response = httpx.get("https://api.github.com/repos/neavo/LinguaGacha/releases/latest", timeout = 60)
+            response = httpx.get(VersionManager.API_URL, timeout = 60)
             response.raise_for_status()
 
             # 发送完成事件
             self.emit(Base.Event.APP_UPDATE_CHECK_DONE, {
                 "result": response.json()
             })
-        except Exception as e:
+        except Exception:
             pass
 
-    # 检查更新开始
+    # 检查更新 - 下载
     def app_update_download_task(self, event: int, data: dict) -> None:
         try:
             # 获取更新信息
-            response = httpx.get("https://api.github.com/repos/neavo/LinguaGacha/releases/latest", timeout = 60)
+            response = httpx.get(VersionManager.API_URL, timeout = 60)
             response.raise_for_status()
 
             # 开始下载
@@ -78,9 +101,9 @@ class VersionManager(Base):
                     raise Exception("Content-Length is 0 ...")
 
                 # 写入文件并更新进度
-                os.remove(VersionManager.UPDATE_TEMP_PATH) if os.path.isfile(VersionManager.UPDATE_TEMP_PATH) else None
-                os.makedirs(os.path.dirname(VersionManager.UPDATE_TEMP_PATH), exist_ok = True)
-                with open(VersionManager.UPDATE_TEMP_PATH, "wb") as writer:
+                os.remove(VersionManager.TEMP_FILE_PATH) if os.path.isfile(VersionManager.TEMP_FILE_PATH) else None
+                os.makedirs(os.path.dirname(VersionManager.TEMP_FILE_PATH), exist_ok = True)
+                with open(VersionManager.TEMP_FILE_PATH, "wb") as writer:
                     for chunk in response.iter_bytes(chunk_size = 1024 * 1024):
                         if chunk is not None:
                             writer.write(chunk)
@@ -97,3 +120,55 @@ class VersionManager(Base):
                 "total_size": 0,
                 "downloaded_size": 0,
             })
+
+    # 检查更新 - 解压
+    def app_update_extract_task(self, event: int, data: dict) -> None:
+        # 备份文件
+        try:
+            os.rename("./app.exe", "./app.exe.bak")
+        except Exception:
+            pass
+
+        # 开始更新
+        error = None
+        try:
+            with zipfile.ZipFile(VersionManager.TEMP_FILE_PATH) as zip_file:
+                zip_file.extractall("./")
+
+            # 先复制再删除的方式实现覆盖同名文件
+            shutil.copytree("./LinguaGacha/", "./", dirs_exist_ok = True)
+            shutil.rmtree("./LinguaGacha/", ignore_errors = True)
+        except Exception as e:
+            error = e
+            self.error("", e)
+
+        # 更新失败则还原备份文件
+        try:
+            if error is not None:
+                os.rename("./app.exe.bak", "./app.exe")
+        except Exception:
+            pass
+
+        # 删除临时文件
+        try:
+            os.remove("./app.exe.bak")
+        except Exception:
+            pass
+
+        # 删除临时文件
+        try:
+            os.remove(VersionManager.TEMP_FILE_PATH)
+        except Exception:
+            pass
+
+        # 显示提示
+        self.emit(Base.Event.APP_TOAST_SHOW,{
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().app_new_version_waiting_restart,
+            "duration": 60 * 1000,
+        })
+
+        # 延迟3秒后关闭应用并打开更新日志
+        time.sleep(3)
+        QDesktopServices.openUrl(QUrl(VersionManager.RELEASE_URL))
+        os.kill(os.getpid(), signal.SIGTERM)
