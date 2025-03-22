@@ -83,6 +83,7 @@ class Base():
         UNTRANSLATED: str = "UNTRANSLATED"                      # 待翻译
         TRANSLATING: str = "TRANSLATING"                        # 翻译中
         TRANSLATED: str = "TRANSLATED"                          # 已翻译
+        TRANSLATED_IN_PAST: str = "TRANSLATED_IN_PAST"          # 过去已翻译
         EXCLUDED: str = "EXCLUDED"                              # 已排除
 
     # 配置文件路径

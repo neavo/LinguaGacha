@@ -200,7 +200,7 @@ class ReTranslationPage(QWidget, Base):
             if item_dst.get_status() != Base.TranslationStatus.EXCLUDED and any(keyword in item_dst.get_src() for keyword in keywords):
                 item_dst.set_status(Base.TranslationStatus.UNTRANSLATED)
             elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
-                item_dst.set_status(Base.TranslationStatus.TRANSLATED)
+                item_dst.set_status(Base.TranslationStatus.TRANSLATED_IN_PAST)
             else:
                 item_dst.set_status(Base.TranslationStatus.EXCLUDED)
 
@@ -239,7 +239,7 @@ class ReTranslationPage(QWidget, Base):
                 item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
             elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
                 item_src.set_dst(item_dst.get_dst())
-                item_src.set_status(Base.TranslationStatus.TRANSLATED)
+                item_src.set_status(Base.TranslationStatus.TRANSLATED_IN_PAST)
             else:
                 item_src.set_dst(item_dst.get_dst())
                 item_src.set_status(Base.TranslationStatus.EXCLUDED)

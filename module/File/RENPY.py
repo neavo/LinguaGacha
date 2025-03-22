@@ -116,7 +116,7 @@ class RENPY(Base):
                             "file_type": CacheItem.FileType.RENPY,
                             "file_path": rel_path,
                             "text_type": CacheItem.TextType.RENPY,
-                            "status": Base.TranslationStatus.TRANSLATED,
+                            "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
                         })
                     )
                 else:

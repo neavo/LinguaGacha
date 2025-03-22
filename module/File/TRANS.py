@@ -258,7 +258,7 @@ class TRANS(Base):
                                     "file_type": CacheItem.FileType.TRANS,
                                     "file_path": rel_path,
                                     "text_type": text_type,
-                                    "status": Base.TranslationStatus.TRANSLATED,
+                                    "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
                                 })
                             )
                         # 如果包含 红色、蓝色 标签，则跳过
