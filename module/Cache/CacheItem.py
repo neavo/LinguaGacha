@@ -221,8 +221,8 @@ class CacheItem(BaseData):
             # 冗余步骤
             # 当跳过行数检查步骤时，原文行数可能大于译文行数，此时需要填充多出来的行数
             else:
-                check.append(0)
-                dst = dst + str("") + "\n"
+                check.append(ResponseChecker.Error.NONE)
+                dst = dst + "" + "\n"
 
         # 如果当前片段中有没通过检查的子句，则将返回结果置空，以示当前片段需要重新翻译
         if any(v != ResponseChecker.Error.NONE for v in check):
