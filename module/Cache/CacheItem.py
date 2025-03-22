@@ -64,7 +64,6 @@ class CacheItem(BaseData):
         self.text_type: str = CacheItem.TextType.NONE                   # 文本的实际类型
         self.status: str = Base.TranslationStatus.UNTRANSLATED          # 翻译状态
         self.retry_count: int = 0                                       # 重试次数，当前只有单独重试的时候才增加此计数
-        self.force_translation: bool = False                            # 强制翻译，此属性为 True 时，将跳过内部过滤机制，强制进行翻译
 
         # 初始化
         for k, v in args.items():
@@ -187,16 +186,6 @@ class CacheItem(BaseData):
     def set_retry_count(self, retry_count: int) -> None:
         with self.lock:
             self.retry_count = retry_count
-
-    # 获取强制翻译
-    def get_force_translation(self) -> bool:
-        with self.lock:
-            return self.force_translation
-
-    # 设置强制翻译
-    def set_force_translation(self, force_translation: bool) -> None:
-        with self.lock:
-            self.force_translation = force_translation
 
     # 获取 Token 数量
     def get_token_count(self) -> int:

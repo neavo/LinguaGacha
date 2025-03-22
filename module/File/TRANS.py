@@ -274,7 +274,6 @@ class TRANS(Base):
                                     "file_path": rel_path,
                                     "text_type": text_type,
                                     "status": Base.TranslationStatus.UNTRANSLATED,
-                                    "force_translation": True
                                 })
                             )
                         # 如果 第一列、第二列 都有文本，则跳过
