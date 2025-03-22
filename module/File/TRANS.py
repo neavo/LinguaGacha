@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import itertools
+from typing import Callable
 
 import rapidjson as json
 
@@ -37,7 +38,7 @@ class TRANS(Base):
     WOLF_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"^Game.dat", flags = re.IGNORECASE),
         re.compile(r"DataBase[\\/]", flags = re.IGNORECASE),
-        re.compile(r"optionArgs[\\/]", flags = re.IGNORECASE),
+        # re.compile(r"optionArgs[\\/]", flags = re.IGNORECASE),
     )
 
     RPGMAKER_BLACKLIST_PATH: tuple[re.Pattern] = (
@@ -45,6 +46,7 @@ class TRANS(Base):
     )
 
     RPGMAKER_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
+        re.compile(r"plugin", flags = re.IGNORECASE),
         re.compile(r"filename", flags = re.IGNORECASE),
         re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
         re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
@@ -148,9 +150,38 @@ class TRANS(Base):
 
         return parameter
 
+    # 获取屏蔽文本结合 - Wolf
+    def generate_block_text_set_wolf(self, project: dict) -> set[str]:
+        result: set[str] = set()
+
+        # 处理数据
+        path: str = ""
+        entry: dict = {}
+        files: dict = project.get("files", {})
+        for path, entry in files.items():
+            for data, context in itertools.zip_longest(
+                entry.get("data", []),
+                entry.get("context", []),
+                fillvalue = None
+            ):
+                # 处理可能为 None 的情况
+                data: list[str] = data if data is not None else []
+                context: list[str] = context if context is not None else []
+
+                # 如果数据为空，则跳过
+                if len(data) == 0 or not isinstance(data[0], str):
+                    continue
+
+                # 判断是否需要屏蔽
+                if any(v == True for v in self.filter_wolf(data[0], path, context)):
+                    result.add(data[0])
+
+        return result
+
+
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items = []
+        items: list[CacheItem] = []
         for abs_path in set(abs_paths):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -171,19 +202,23 @@ class TRANS(Base):
                 project: dict = json_data.get("project", {})
                 engine: str = project.get("gameEngine", "")
 
-                # 设置排除规则
+                # 获取各种规则
                 if engine.lower() == "wolf":
-                    filter_func = self.filter_wolf
-                    text_type = CacheItem.TextType.WOLF
+                    filter_func: Callable = self.filter_wolf
+                    text_type: str = CacheItem.TextType.WOLF
+                    block_text_set: set[str] = self.generate_block_text_set_wolf(project)
                 elif engine.lower() == "renpy":
-                    filter_func = self.filter_renpy
-                    text_type = CacheItem.TextType.RENPY
+                    filter_func: Callable = self.filter_renpy
+                    text_type: str = CacheItem.TextType.RENPY
+                    block_text_set: set[str] = set()
                 elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                    filter_func = self.filter_rpgmaker
-                    text_type = CacheItem.TextType.RPGMAKER
+                    filter_func: Callable = self.filter_rpgmaker
+                    text_type: str = CacheItem.TextType.RPGMAKER
+                    block_text_set: set[str] = set()
                 else:
-                    filter_func = self.filter_none
-                    text_type = CacheItem.TextType.NONE
+                    filter_func: Callable = self.filter_none
+                    text_type: str = CacheItem.TextType.NONE
+                    block_text_set: set[str] = set()
 
                 # 处理数据
                 path: str = ""
@@ -207,8 +242,8 @@ class TRANS(Base):
                         if len(data) == 0 or not isinstance(data[0], str):
                             items.append(
                                 CacheItem({
-                                    "src": data[0] if isinstance(data[0], str) else "",
-                                    "dst": data[0] if isinstance(data[0], str) else "",
+                                    "src": "",
+                                    "dst": "",
                                     "extra_field": {
                                         "tag": tag,
                                         "context": context,
@@ -282,9 +317,15 @@ class TRANS(Base):
                             )
                         # 如果没有允许翻译的上下文地址，则跳过，否则正常翻译
                         else:
-                            block = filter_func(data[0], path, context)
-                            tag =  list(set(tag + ["gold"])) if any(v == True for v in block) else tag
-                            status = Base.TranslationStatus.UNTRANSLATED if any(v == False for v in block) else Base.TranslationStatus.EXCLUDED
+                            # 根据文本是否在屏蔽文本集合分别处理
+                            if data[0] in block_text_set:
+                                tag = list(set(tag + ["gold"]))
+                                status = Base.TranslationStatus.EXCLUDED
+                            else:
+                                block = filter_func(data[0], path, context)
+                                tag =  list(set(tag + ["gold"])) if any(v == True for v in block) else tag
+                                status = Base.TranslationStatus.UNTRANSLATED if any(v == False for v in block) else Base.TranslationStatus.EXCLUDED
+
                             items.append(
                                 CacheItem({
                                     "src": data[0],
