@@ -3,6 +3,7 @@ import os
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Localizer.Localizer import Localizer
+from module.ExpertConfig import ExpertConfig
 
 class TXT(Base):
 
@@ -73,7 +74,10 @@ class TXT(Base):
             abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
-                writer.write("\n".join([
-                    item.get_src() if item.get_dst() == item.get_src() else f"{item.get_src()}\n{item.get_dst()}"
-                    for item in items
-                ]))
+                result: list[str] = []
+                for item in items:
+                    if ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() == item.get_dst():
+                        result.append(item.get_dst())
+                    else:
+                        result.append(f"{item.get_src()}\n{item.get_dst()}")
+                writer.write("\n".join(result))

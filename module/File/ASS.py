@@ -3,6 +3,7 @@ import os
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Localizer.Localizer import Localizer
+from module.ExpertConfig import ExpertConfig
 
 class ASS(Base):
 
@@ -102,7 +103,7 @@ class ASS(Base):
             abs_path = os.path.join(self.output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
 
-            result = []
+            result: list[str] = []
             for item in items:
                 result.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N")))
 
@@ -111,13 +112,17 @@ class ASS(Base):
 
         # 分别处理每个文件（双语）
         for rel_path, items in data.items():
-            result = []
+            result: list[str] = []
             for item in items:
-                result.append(
-                    item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
-                                          .replace("{{CONTENT}}", item.get_src().replace("\n", "\\N"), 1)
-                                          .replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
-                )
+                if ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() == item.get_dst():
+                    line = item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
+                    line = line.replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
+                    result.append(line)
+                else:
+                    line = item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
+                    line = line.replace("{{CONTENT}}", item.get_src().replace("\n", "\\N"), 1)
+                    line = line.replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
+                    result.append(line)
 
             abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)

@@ -18,6 +18,9 @@ class ExpertConfig(Base, BaseData):
         # 参考上文行数阈值
         self.preceding_lines_threshold: int = 3
 
+        # 双语输出文件中重复行去重
+        self.deduplication_in_bilingual: bool = True
+
         # 初始化
         del self.default
         if not os.path.isfile(ExpertConfig.EXPERT_CONFIG_PATH):
@@ -27,9 +30,13 @@ class ExpertConfig(Base, BaseData):
         else:
             try:
                 with open(ExpertConfig.EXPERT_CONFIG_PATH, "r", encoding = "utf-8-sig") as reader:
-                    json_data: dict[str, str | int | float] = json.load(reader)
+                    json_data: dict[str, str | int | float | bool] = json.load(reader)
                     for k, v in json_data.items():
-                        setattr(self, k, v)
+                        if hasattr(self, k):
+                            setattr(self, k, v)
+
+                with open(ExpertConfig.EXPERT_CONFIG_PATH, "w", encoding = "utf-8") as writer:
+                    json.dump(self.get_vars(), writer, indent = 4, ensure_ascii = False)
             except Exception as e:
                 self.error(f"{Localizer.get().log_read_file_fail}", e)
 

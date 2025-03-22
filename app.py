@@ -17,6 +17,7 @@ from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.LogHelper import LogHelper
 from module.Translator.Translator import Translator
+from module.ExpertConfig import ExpertConfig
 from module.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 
@@ -113,6 +114,9 @@ if __name__ == "__main__":
     else:
         font.setHintingPreference(QFont.PreferNoHinting)
     app.setFont(font)
+
+    # 初始化实例
+    ExpertConfig.get()
 
     # 创建翻译器
     translator = Translator()

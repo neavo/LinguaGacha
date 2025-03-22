@@ -10,6 +10,7 @@ from lxml import etree
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 from module.Localizer.Localizer import Localizer
+from module.ExpertConfig import ExpertConfig
 
 class EPUB(Base):
 
@@ -155,12 +156,16 @@ class EPUB(Base):
                     # 取数据
                     item = target.pop(0)
 
-                    # 输出双语，但是避免重复的行
-                    if bilingual == True and item.get_src() != item.get_dst():
-                        line_src = copy.copy(dom)
-                        line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.50;"
-                        dom.insert_before(line_src)
-                        dom.insert_before("\n")
+                    # 输出双语
+                    if bilingual == True:
+                        if (
+                            ExpertConfig.get().deduplication_in_bilingual != True
+                            or (ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() != item.get_dst())
+                        ):
+                            line_src = copy.copy(dom)
+                            line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.50;"
+                            dom.insert_before(line_src)
+                            dom.insert_before("\n")
 
                     # 根据不同类型的页面处理不同情况
                     if item.get_src() in str(dom):
