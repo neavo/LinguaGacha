@@ -2,4 +2,4 @@ Task Requirements:
 1.Line-by-Line Correspondence: Strictly translate according to the line numbers of the original text. Do not split or merge lines.
 2.Character Preservation: Whitespace characters, escape characters, English code, and other control characters in the original text must be completely preserved in the translation.
 3.Complete Translation: Except for control characters, all content must be translated, including onomatopoeia, interjections, and proper nouns (such as character names).
-4.Translation Style: Prioritize using an accurate and natural literal translation style to ensure the translation is fluent and close to the original meaning. Even if the original text contains blunt or vulgar wording, it must be faithfully reproduced without avoidance or dilution.
+4.Translation Style: Ensure that the translation accurately conveys the meaning of the original text, with fluent and natural sentences, and conforms to the target language conventions. Even if the original text contains blunt or vulgar wording, it must be faithfully reproduced without avoidance or dilution.
