@@ -11,6 +11,7 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from widget.CommandBarCard import CommandBarCard
@@ -36,7 +37,7 @@ class CustomPromptENPage(QWidget, Base):
 
         # 设置默认数据
         if config.get("custom_prompt_en_data") == None:
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(Base.Language.EN)
+            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.EN)
             self.save_config(config)
 
         # 设置主容器
@@ -79,7 +80,7 @@ class CustomPromptENPage(QWidget, Base):
             config = self.load_config()
             self.main_text.setPlainText(config.get("custom_prompt_en_data"))
 
-        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(Base.Language.EN))
+        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(BaseLanguage.EN))
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
@@ -87,7 +88,7 @@ class CustomPromptENPage(QWidget, Base):
         self.show_event_body = lambda _, event: update_widget(self.main_text)
         parent.addWidget(self.main_text)
 
-        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(Base.Language.EN).replace("\n", " "))
+        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(BaseLanguage.EN).replace("\n", " "))
         self.suffix_body.remove_title()
         parent.addWidget(self.suffix_body)
 
@@ -139,7 +140,7 @@ class CustomPromptENPage(QWidget, Base):
             config = self.load_config()
 
             # 加载默认设置
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(Base.Language.EN)
+            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.EN)
 
             # 保存配置文件
             config = self.save_config(config)

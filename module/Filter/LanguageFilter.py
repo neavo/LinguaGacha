@@ -1,4 +1,5 @@
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 
@@ -12,9 +13,9 @@ class LanguageFilter():
             })
 
         # 获取语言判断函数
-        if source_language == Base.Language.ZH:
+        if source_language == BaseLanguage.ZH:
             func = TextHelper.CJK.any
-        elif source_language == Base.Language.EN:
+        elif source_language == BaseLanguage.EN:
             func = TextHelper.Latin.any
         else:
             func = getattr(TextHelper, source_language).any

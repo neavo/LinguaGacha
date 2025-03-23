@@ -1,6 +1,7 @@
 import re
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 
 class PunctuationFixer():
 
@@ -69,18 +70,18 @@ class PunctuationFixer():
         # CJK To 非CJK = B
         # 非CJK To CJK = A
         # 非CJK To 非CJK = B
-        if self.source_language in Base.Language.CJK and self.target_language in Base.Language.CJK:
+        if BaseLanguage.is_cjk(self.source_language) and BaseLanguage.is_cjk(self.target_language):
             self.apply_fix_rules(src, dst, PunctuationFixer.RULE_A)
             self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
-        elif self.source_language in Base.Language.CJK and self.target_language not in Base.Language.CJK:
+        elif BaseLanguage.is_cjk(self.source_language) and not BaseLanguage.is_cjk(self.target_language):
             self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
-        elif self.source_language not in Base.Language.CJK and self.target_language in Base.Language.CJK:
+        elif not BaseLanguage.is_cjk(self.source_language) and BaseLanguage.is_cjk(self.target_language):
             self.apply_fix_rules(src, dst, PunctuationFixer.RULE_A)
         else:
             self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
 
         # 译文语言为 CJK 语言时，执行 替换区 规则
-        if self.target_language in Base.Language.CJK:
+        if BaseLanguage.is_cjk(self.target_language):
             for key, value in PunctuationFixer.RULE_REPLACE.items():
                 dst = self.apply_replace_rules(dst, key, value)
 

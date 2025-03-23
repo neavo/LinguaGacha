@@ -1,14 +1,15 @@
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Localizer.LocalizerEN import LocalizerEN
 from module.Localizer.LocalizerBase import LocalizerBase
 
 class Localizer():
 
-    APP_LANGUAGE = Base.Language.ZH
+    APP_LANGUAGE = BaseLanguage.ZH
 
     @classmethod
     def get(cls) -> LocalizerBase | LocalizerEN:
-        if cls.APP_LANGUAGE == Base.Language.EN:
+        if cls.APP_LANGUAGE == BaseLanguage.EN:
             return LocalizerEN
         else:
             return LocalizerBase

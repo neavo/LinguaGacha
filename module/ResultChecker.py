@@ -4,6 +4,7 @@ import opencc
 import rapidjson as json
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Response.ResponseChecker import ResponseChecker
@@ -64,7 +65,7 @@ class ResultChecker(Base):
 
     # 假名残留检查
     def check_kana(self) -> None:
-        if self.source_language != Base.Language.JA:
+        if self.source_language != BaseLanguage.JA:
             return None
 
         count = 0
@@ -90,7 +91,7 @@ class ResultChecker(Base):
 
     # 谚文残留检查
     def check_hangeul(self) -> None:
-        if self.source_language != Base.Language.KO:
+        if self.source_language != BaseLanguage.KO:
             return None
 
         count = 0

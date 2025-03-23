@@ -6,6 +6,7 @@ from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
 from widget.ComboBoxCard import ComboBoxCard
 from widget.PushButtonCard import PushButtonCard
@@ -13,31 +14,14 @@ from widget.SwitchButtonCard import SwitchButtonCard
 
 class ProjectPage(QWidget, Base):
 
-    LANGUAGES = (
-        Base.Language.ZH,                                          # 中文 (Chinese)
-        Base.Language.EN,                                          # 英语 (English)
-        Base.Language.JA,                                          # 日语 (Japanese)
-        Base.Language.KO,                                          # 韩语 (Korean)
-        Base.Language.RU,                                          # 俄语 (Russian)
-        Base.Language.DE,                                          # 德语 (German)
-        Base.Language.FR,                                          # 法语 (French)
-        Base.Language.ES,                                          # 西班牙语 (Spanish)
-        Base.Language.IT,                                          # 意大利语 (Italian)
-        Base.Language.PT,                                          # 葡萄牙语 (Portuguese)
-        Base.Language.HU,                                          # 匈牙利语 (Hungrarian)
-        Base.Language.TH,                                          # 泰语 (Thai)
-        Base.Language.ID,                                          # 印尼语 (Indonesian)
-        Base.Language.VI,                                          # 越南语 (Vietnamese)
-    )
-
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
         # 默认配置
         self.default = {
-            "source_language": Base.Language.JA,
-            "target_language": Base.Language.ZH,
+            "source_language": BaseLanguage.JA,
+            "target_language": BaseLanguage.ZH,
             "input_folder": "./input",
             "output_folder": "./output",
             "traditional_chinese_enable": False,
@@ -45,6 +29,12 @@ class ProjectPage(QWidget, Base):
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())
+
+        # 根据应用语言构建语言列表
+        if Localizer.get_app_language() == BaseLanguage.ZH:
+            self.languages = [BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()]
+        else:
+            self.languages = [BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()]
 
         # 设置主容器
         self.vbox = QVBoxLayout(self)
@@ -65,19 +55,19 @@ class ProjectPage(QWidget, Base):
     def add_widget_source_language(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
         def init(widget: ComboBoxCard) -> None:
             source_language = config.get("source_language")
-            if source_language in ProjectPage.LANGUAGES:
-                widget.set_current_index(ProjectPage.LANGUAGES.index(source_language))
+            if source_language in BaseLanguage.get_languages():
+                widget.set_current_index(BaseLanguage.get_languages().index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-            config["source_language"] = ProjectPage.LANGUAGES[widget.get_current_index()]
+            config["source_language"] = BaseLanguage.get_languages()[widget.get_current_index()]
             self.save_config(config)
 
         parent.addWidget(
             ComboBoxCard(
                 Localizer.get().project_page_source_language_title,
                 Localizer.get().project_page_source_language_content,
-                Localizer.get().project_page_source_language_items.split(","),
+                items = self.languages,
                 init = init,
                 current_changed = current_changed,
             )
@@ -88,19 +78,19 @@ class ProjectPage(QWidget, Base):
 
         def init(widget: ComboBoxCard) -> None:
             source_language = config.get("target_language")
-            if source_language in ProjectPage.LANGUAGES:
-                widget.set_current_index(ProjectPage.LANGUAGES.index(source_language))
+            if source_language in BaseLanguage.get_languages():
+                widget.set_current_index(BaseLanguage.get_languages().index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = self.load_config()
-            config["target_language"] = ProjectPage.LANGUAGES[widget.get_current_index()]
+            config["target_language"] = BaseLanguage.get_languages()[widget.get_current_index()]
             self.save_config(config)
 
         parent.addWidget(
             ComboBoxCard(
                 Localizer.get().project_page_target_language_title,
                 Localizer.get().project_page_target_language_content,
-                Localizer.get().project_page_target_language_items.split(","),
+                items = self.languages,
                 init = init,
                 current_changed = current_changed,
             )

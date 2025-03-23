@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.console import Console
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
@@ -295,7 +296,7 @@ class TranslatorTask(Base):
 
     # 中文字型转换
     def convert_chinese_character_form(self, data: dict[str, str]) -> dict:
-        if self.config.get("target_language") != Base.Language.ZH:
+        if self.config.get("target_language") != BaseLanguage.ZH:
             return data
 
         if self.config.get("traditional_chinese_enable") == True:
@@ -305,7 +306,7 @@ class TranslatorTask(Base):
 
     # 假名修复
     def kana_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
-        if self.config.get("source_language") != Base.Language.JA:
+        if self.config.get("source_language") != BaseLanguage.JA:
             return dst_dict
 
         for k in dst_dict:
@@ -316,7 +317,7 @@ class TranslatorTask(Base):
 
     # 假名修复
     def hangeul_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
-        if self.config.get("source_language") != Base.Language.KO:
+        if self.config.get("source_language") != BaseLanguage.KO:
             return dst_dict
 
         for k in dst_dict:

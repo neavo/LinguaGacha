@@ -1,6 +1,7 @@
 import re
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Filter.RuleFilter import RuleFilter
@@ -103,26 +104,26 @@ class ResponseChecker(Base):
                 continue
 
             # 当原文语言为日语，且译文中包含平假名或片假名字符时，判断为 假名残留
-            if source_language == Base.Language.JA and (TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)):
+            if source_language == BaseLanguage.JA and (TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)):
                 check_result.append(ResponseChecker.Error.LINE_ERROR_KANA)
                 continue
 
             # 当原文语言为韩语，且译文中包含谚文字符时，判断为 谚文残留
-            if source_language == Base.Language.KO and TextHelper.KO.any_hangeul(dst):
+            if source_language == BaseLanguage.KO and TextHelper.KO.any_hangeul(dst):
                 check_result.append(ResponseChecker.Error.LINE_ERROR_HANGEUL)
                 continue
 
             # 判断是否包含或相似
             if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80 == True:
                 # 日翻中时，只有译文至少包含一个平假名或片假名字符时，才判断为 相似
-                if self.source_language == Base.Language.JA and self.target_language == Base.Language.ZH:
+                if self.source_language == BaseLanguage.JA and self.target_language == BaseLanguage.ZH:
                     if TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst):
                         check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
                         continue
                 # 韩翻中时，只有译文至少包含一个谚文字符时，才判断为 相似
                 elif (
-                    self.source_language == Base.Language.KO
-                    and self.target_language == Base.Language.ZH
+                    self.source_language == BaseLanguage.KO
+                    and self.target_language == BaseLanguage.ZH
                     and TextHelper.KO.any_hangeul(dst)
                 ):
                     check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)

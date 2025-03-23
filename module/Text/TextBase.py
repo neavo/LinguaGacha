@@ -99,6 +99,12 @@ class TextBase:
         "à", "á", "â", "ä", "ç", "é", "è", "ê", "ë", "î", "ï", "ô", "ö", "ù", "û", "ü", "ÿ", "œ", "Œ" # 添加 œ 和 Œ
     }
 
+    # 波兰文字符
+    PL_SET = LATIN_SET | {
+        "ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż",
+        "Ą", "Ć", "Ę", "Ł", "Ń", "Ó", "Ś", "Ź", "Ż"
+    }
+
     # 西班牙文字符
     ES_SET = LATIN_SET | {
         "ñ", "á", "é", "í", "ó", "ú", "ü"
@@ -240,6 +246,11 @@ class DE(TextBase):
 class FR(TextBase):
     def char(self, c: str) -> bool:
         return c in TextBase.FR_SET
+
+# 波兰文
+class PL(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.PL_SET
 
 # 西班牙文
 class ES(TextBase):

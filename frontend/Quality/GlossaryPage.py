@@ -20,6 +20,7 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
 from module.TableHelper import TableHelper
 from widget.CommandBarCard import CommandBarCard
@@ -39,7 +40,7 @@ class GlossaryPage(QWidget, Base):
         self.setObjectName(text.replace(" ", "-"))
 
         # 根据应用语言加载默认设置
-        if Localizer.get_app_language() == Base.Language.ZH:
+        if Localizer.get_app_language() == BaseLanguage.ZH:
             self.default = {
                 "glossary_enable": False,
                 "glossary_data": [

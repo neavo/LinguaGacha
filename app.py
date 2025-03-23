@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 
-from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.LogHelper import LogHelper
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     setTheme(Theme.DARK if config.get("theme", "light") == "dark" else Theme.LIGHT)
 
     # 设置应用语言
-    Localizer.set_app_language(config.get("app_language", Base.Language.ZH))
+    Localizer.set_app_language(config.get("app_language", BaseLanguage.ZH))
 
     # 打印日志
     LogHelper.info(f"LinguaGacha {version}")
