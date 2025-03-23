@@ -4,7 +4,7 @@ from module.Cache.CacheItem import CacheItem
 
 class RuleFilter():
 
-    PREFIX = (
+    PREFIX: tuple[str] = (
         "MapData/".lower(),
         "SE/".lower(),
         "BGS".lower(),
@@ -13,36 +13,20 @@ class RuleFilter():
         "FIcon/".lower(),
     )
 
-    SUFFIX = (
-        ".mp3".lower(),
-        ".wav".lower(),
-        ".ogg".lower(),
-        ".png".lower(),
-        ".jpg".lower(),
-        ".gif".lower(),
-        ".psd".lower(),
-        ".webp".lower(),
-        ".heif".lower(),
-        ".heic".lower(),
-        ".avi".lower(),
-        ".mp4".lower(),
-        ".webm".lower(),
-        ".txt".lower(),
-        ".ttf".lower(),
-        ".otf".lower(),
-        ".7z".lower(),
-        ".gz".lower(),
-        ".rar".lower(),
-        ".zip".lower(),
-        ".json".lower(),
+    SUFFIX: tuple[str] = (
+        ".mp3", ".wav", ".ogg", "mid",
+        ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
+        ".avi", ".mp4", ".webm",
+        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps",
     )
 
-    RE_ALL = (
-        r"^EV\d+$",
-        r"^<.+:.+>$",
-        r"^\{#file_time\}",                     # RenPy 存档时间
-        r"^DejaVu Sans$",                       # RenPy 默认字体名称
-        r"^Opendyslexic$",                      # RenPy 默认字体名称
+    RE_ALL: tuple[re.Pattern] = (
+        re.compile(r"^EV\d+$", flags = re.IGNORECASE),
+        re.compile(r"^<.+:.+>$", flags = re.IGNORECASE),
+        re.compile(r"^\{#file_time\}", flags = re.IGNORECASE),                      # RenPy 存档时间
+        re.compile(r"^DejaVu Sans$", flags = re.IGNORECASE),                        # RenPy 默认字体名称
+        re.compile(r"^Opendyslexic$", flags = re.IGNORECASE),                       # RenPy 默认字体名称
     )
 
     def filter(item: str | CacheItem) -> bool:
@@ -84,7 +68,7 @@ class RuleFilter():
                 continue
 
             # 符合目标规则
-            if any(re.findall(v, line, flags = re.IGNORECASE) != [] for v in RuleFilter.RE_ALL):
+            if any(v.search(line) is not None for v in RuleFilter.RE_ALL):
                 flags.append(True)
                 continue
 

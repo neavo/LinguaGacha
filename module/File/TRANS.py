@@ -11,28 +11,12 @@ from module.Cache.CacheItem import CacheItem
 
 class TRANS(Base):
 
-    BLACKLIST_EXT = (
-        ".mp3".lower(),
-        ".wav".lower(),
-        ".ogg".lower(),
-        ".png".lower(),
-        ".jpg".lower(),
-        ".gif".lower(),
-        ".psd".lower(),
-        ".webp".lower(),
-        ".heif".lower(),
-        ".heic".lower(),
-        ".avi".lower(),
-        ".mp4".lower(),
-        ".webm".lower(),
-        ".txt".lower(),
-        ".ttf".lower(),
-        ".otf".lower(),
-        ".7z".lower(),
-        ".gz".lower(),
-        ".rar".lower(),
-        ".zip".lower(),
-        ".json".lower(),
+    BLACKLIST_EXT: tuple[str] = (
+        ".mp3", ".wav", ".ogg", "mid",
+        ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
+        ".avi", ".mp4", ".webm",
+        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps",
     )
 
     WOLF_WHITELIST_ADDRESS: tuple[re.Pattern] = (
@@ -251,8 +235,15 @@ class TRANS(Base):
             if parameter is None:
                 parameter = []
             for i, v in enumerate(block):
+                # 索引检查
                 if i >= len(parameter):
                     parameter.append({})
+
+                # 有效性检查
+                if not isinstance(parameter[i], dict):
+                    parameter[i] = {}
+
+                # 填充数据
                 parameter[i]["contextStr"] = context[i]
                 parameter[i]["translation"] = src if v == True else ""
 
@@ -282,15 +273,15 @@ class TRANS(Base):
                 engine: str = project.get("gameEngine", "")
 
                 # 获取各种规则
-                if engine.lower() == "wolf":
+                if engine == "wolf":
                     check_func: Callable = self.check_wolf
                     text_type: str = CacheItem.TextType.WOLF
                     block_text_set: set[str] = self.generate_block_text_set_wolf(project)
-                elif engine.lower() == "renpy":
+                elif engine == "renpy":
                     check_func: Callable = self.check_renpy
                     text_type: str = CacheItem.TextType.RENPY
                     block_text_set: set[str] = set()
-                elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                elif engine in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
                     check_func: Callable = self.check_rpgmaker
                     text_type: str = CacheItem.TextType.RPGMAKER
                     block_text_set: set[str] = set()
@@ -375,13 +366,13 @@ class TRANS(Base):
                     engine: str = project.get("gameEngine", "")
 
                     # 设置排除规则
-                    if engine.lower() == "wolf":
+                    if engine == "wolf":
                         filter_func: Callable = self.filter_wolf
                         block_text_set: set[str] = self.generate_block_text_set_wolf(project)
-                    elif engine.lower() == "renpy":
+                    elif engine == "renpy":
                         filter_func: Callable = self.filter_renpy
                         block_text_set: set[str] = set()
-                    elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                    elif engine in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
                         filter_func: Callable = self.filter_rpgmaker
                         block_text_set: set[str] = set()
                     else:
