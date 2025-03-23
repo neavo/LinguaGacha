@@ -35,10 +35,15 @@ class TRANS(Base):
         ".json".lower(),
     )
 
+    WOLF_WHITELIST_ADDRESS: tuple[re.Pattern] = (
+        re.compile(r"Database/0$", flags = re.IGNORECASE),
+        re.compile(r"CommonEventByName/\d+/(\d+)((/\d+)?)*", flags = re.IGNORECASE),
+    )
+
     WOLF_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"^Game.dat", flags = re.IGNORECASE),
         re.compile(r"DataBase[\\/]", flags = re.IGNORECASE),
-        # re.compile(r"optionArgs[\\/]", flags = re.IGNORECASE),
+        re.compile(r"DebugMessage[\\/]", flags = re.IGNORECASE),
     )
 
     RPGMAKER_BLACKLIST_PATH: tuple[re.Pattern] = (
@@ -46,7 +51,7 @@ class TRANS(Base):
     )
 
     RPGMAKER_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"plugin", flags = re.IGNORECASE),
+        re.compile(r"^(?=.*MZ Plugin Command)(?!.*text).*", flags = re.IGNORECASE),
         re.compile(r"filename", flags = re.IGNORECASE),
         re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
         re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
@@ -65,53 +70,99 @@ class TRANS(Base):
         self.source_language: str = config.get("source_language")
         self.target_language: str = config.get("target_language")
 
-    # 过滤
-    def filter_none(self, src: str, path: str, context: list[str]) -> bool:
-        return [False] * len(context)
-
-    # 过滤 - Wolf
-    def filter_wolf(self, src: str, path: str, context: list[str]) -> bool:
-        if any(v in src for v in TRANS.BLACKLIST_EXT):
-            return [True] * len(context)
-
-        block: list[bool] = []
-        for address in context:
-            if any(rule.search(address) is not None for rule in TRANS.WOLF_BLACKLIST_ADDRESS):
-                block.append(True)
+    # 检查 - NONE
+    def check_none(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+        # 如果数据为空，则跳过
+        if len(data) == 0 or not isinstance(data[0], str):
+            src: str = ""
+            dst: str = ""
+            status: str = Base.TranslationStatus.EXCLUDED
+        # 如果包含 水蓝色 标签，则翻译
+        elif any(v == "aqua" for v in tag):
+            src: str = data[0]
+            dst: str = data[0]
+            status: str = Base.TranslationStatus.UNTRANSLATED
+        # 如果 第一列、第二列 都有文本，则跳过
+        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
+            src: str = data[0]
+            dst: str = data[1]
+            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
+        else:
+            src: str = data[0]
+            dst: str = data[0]
+            block = self.filter_wolf(src, path, tag, context, block_text_set)
+            if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
+                tag: list[str] = tag + ["gold"]
+            if any(v == False for v in block):
+                status: str = Base.TranslationStatus.UNTRANSLATED
             else:
-                block.append(False)
+                status: str = Base.TranslationStatus.EXCLUDED
 
-        return block
+        return src, dst, tag, status
 
-    # 过滤 - RenPy
-    def filter_renpy(self, src: str, path: str, context: list[str]) -> bool:
-        return [False] * len(context)
-
-    # 过滤 - RPGMaker
-    def filter_rpgmaker(self, src: str, path: str, context: list[str]) -> list[bool]:
-        if any(v in src for v in TRANS.BLACKLIST_EXT):
-            return [True] * len(context)
-
-        if any(v.search(path) is not None for v in TRANS.RPGMAKER_BLACKLIST_PATH):
-            return [True] * len(context)
-
-        block: list[bool] = []
-        for address in context:
-            if any(rule.search(address) is not None for rule in TRANS.RPGMAKER_BLACKLIST_ADDRESS):
-                block.append(True)
-            else:
-                block.append(False)
-
-        return block
-
-    # 生成参数
-    def generate_parameter_none(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
+    # 生成参数 - NONE
+    def generate_parameter_none(self, src: str, tag: list[str], context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
         return parameter
 
-    # 生成参数 - Wolf
-    def generate_parameter_wolf(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
+    # 检查 - WOLF
+    def check_wolf(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+        # 如果数据为空，则跳过
+        if len(data) == 0 or not isinstance(data[0], str):
+            src: str = ""
+            dst: str = ""
+            status: str = Base.TranslationStatus.EXCLUDED
+        # 如果包含 水蓝色 标签，则翻译
+        elif any(v == "aqua" for v in tag):
+            src: str = data[0]
+            dst: str = data[0]
+            status: str = Base.TranslationStatus.UNTRANSLATED
+        # 如果 第一列、第二列 都有文本，则跳过
+        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
+            src: str = data[0]
+            dst: str = data[1]
+            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
+        else:
+            src: str = data[0]
+            dst: str = data[0]
+            block = self.filter_wolf(src, path, tag, context, block_text_set)
+            if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
+                tag: list[str] = tag + ["gold"]
+            if any(v == False for v in block):
+                status: str = Base.TranslationStatus.UNTRANSLATED
+            else:
+                status: str = Base.TranslationStatus.EXCLUDED
+
+        return src, dst, tag, status
+
+    # 过滤 - WOLF
+    def filter_wolf(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
+        if any(v in src for v in TRANS.BLACKLIST_EXT):
+            return [True] * len(context)
+
+        block: list[bool] = []
+        for address in context:
+            # 如果在地址白名单，则无需过滤
+            if any(rule.search(address) is not None for rule in TRANS.WOLF_WHITELIST_ADDRESS):
+                block.append(False)
+            # 如果在标签黑名单，则需要过滤
+            elif any(v in ("red", "blue") for v in tag):
+                block.append(True)
+            # 如果在地址黑名单，则需要过滤
+            elif any(rule.search(address) is not None for rule in TRANS.WOLF_BLACKLIST_ADDRESS):
+                block.append(True)
+            # 如果是指定地址，并且文本在屏蔽文本集合，则需要过滤
+            elif re.search(r"db/\d+?/fldSet/\d+?/idx/\d+?/val", address, flags = re.IGNORECASE) is not None and src in block_text_set:
+                block.append(True)
+            # 默认，无需过滤
+            else:
+                block.append(False)
+
+        return block
+
+    # 生成参数 - WOLF
+    def generate_parameter_wolf(self, src: str, tag: list[str], context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
         # 查找需要排除的地址
-        block = self.filter_wolf(src, "", context)
+        block = self.filter_wolf(src, "", tag, context, [])
 
         # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
         if all(v is True for v in block) or all(v is False for v in block):
@@ -127,30 +178,7 @@ class TRANS(Base):
 
         return parameter
 
-    # 生成参数 - Renpy
-    def generate_parameter_renpy(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
-        return parameter
-
-    # 生成参数 - RPGMaker
-    def generate_parameter_rpgmaker(self, src: str, context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
-        # 查找需要排除的地址
-        block = self.filter_rpgmaker(src, "", context)
-
-        # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
-        if all(v is True for v in block) or all(v is False for v in block):
-            pass
-        else:
-            if parameter is None:
-                parameter = []
-            for i, v in enumerate(block):
-                if i >= len(parameter):
-                    parameter.append({})
-                parameter[i]["contextStr"] = context[i]
-                parameter[i]["translation"] = src if v == True else ""
-
-        return parameter
-
-    # 获取屏蔽文本结合 - Wolf
+    # 获取屏蔽文本结合 - WOLF
     def generate_block_text_set_wolf(self, project: dict) -> set[str]:
         result: set[str] = set()
 
@@ -173,11 +201,90 @@ class TRANS(Base):
                     continue
 
                 # 判断是否需要屏蔽
-                if any(v == True for v in self.filter_wolf(data[0], path, context)):
+                context: str = "\n".join(context)
+                if re.search(r"DataBase[\\/]", context, flags = re.IGNORECASE) is not None:
                     result.add(data[0])
 
         return result
 
+    # 检查 - RENPY
+    def check_renpy(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+        return self.check_none(path, data, tag, context, block_text_set)
+
+    # 生成参数 - RENPY
+    def generate_parameter_renpy(self, src: str, tag: list[str], context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
+        return self.generate_parameter_none(src, tag, context, parameter)
+
+    # 检查 - RPGMaker
+    def check_rpgmaker(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+        # 如果数据为空，则跳过
+        if len(data) == 0 or not isinstance(data[0], str):
+            src: str = ""
+            dst: str = ""
+            status: str = Base.TranslationStatus.EXCLUDED
+        # 如果包含 水蓝色 标签，则翻译
+        elif any(v == "aqua" for v in tag):
+            src: str = data[0]
+            dst: str = data[0]
+            status: str = Base.TranslationStatus.UNTRANSLATED
+        # 如果 第一列、第二列 都有文本，则跳过
+        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
+            src: str = data[0]
+            dst: str = data[1]
+            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
+        else:
+            src: str = data[0]
+            dst: str = data[0]
+            block = self.filter_wolf(src, path, tag, context, block_text_set)
+            if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
+                tag: list[str] = tag + ["gold"]
+            if any(v == False for v in block):
+                status: str = Base.TranslationStatus.UNTRANSLATED
+            else:
+                status: str = Base.TranslationStatus.EXCLUDED
+
+        return src, dst, tag, status
+
+    # 过滤 - RPGMaker
+    def filter_rpgmaker(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
+        if any(v in src for v in TRANS.BLACKLIST_EXT):
+            return [True] * len(context)
+
+        if any(v.search(path) is not None for v in TRANS.RPGMAKER_BLACKLIST_PATH):
+            return [True] * len(context)
+
+        block: list[bool] = []
+        for address in context:
+            # 如果在标签黑名单，则需要过滤
+            if any(v in ("red", "blue") for v in tag):
+                block.append(True)
+            # 如果在地址黑名单，则需要过滤
+            elif any(rule.search(address) is not None for rule in TRANS.RPGMAKER_BLACKLIST_ADDRESS):
+                block.append(True)
+            # 默认，无需过滤
+            else:
+                block.append(False)
+
+        return block
+
+    # 生成参数 - RPGMaker
+    def generate_parameter_rpgmaker(self, src: str, tag: list[str], context: list[str], parameter: list[dict[str, str]]) -> list[dict[str, str]]:
+        # 查找需要排除的地址
+        block = self.filter_rpgmaker(src, "", tag, context, [])
+
+        # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
+        if all(v is True for v in block) or all(v is False for v in block):
+            pass
+        else:
+            if parameter is None:
+                parameter = []
+            for i, v in enumerate(block):
+                if i >= len(parameter):
+                    parameter.append({})
+                parameter[i]["contextStr"] = context[i]
+                parameter[i]["translation"] = src if v == True else ""
+
+        return parameter
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
@@ -204,19 +311,19 @@ class TRANS(Base):
 
                 # 获取各种规则
                 if engine.lower() == "wolf":
-                    filter_func: Callable = self.filter_wolf
+                    check_func: Callable = self.check_wolf
                     text_type: str = CacheItem.TextType.WOLF
                     block_text_set: set[str] = self.generate_block_text_set_wolf(project)
                 elif engine.lower() == "renpy":
-                    filter_func: Callable = self.filter_renpy
+                    check_func: Callable = self.check_renpy
                     text_type: str = CacheItem.TextType.RENPY
                     block_text_set: set[str] = set()
                 elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                    filter_func: Callable = self.filter_rpgmaker
+                    check_func: Callable = self.check_rpgmaker
                     text_type: str = CacheItem.TextType.RPGMAKER
                     block_text_set: set[str] = set()
                 else:
-                    filter_func: Callable = self.filter_none
+                    check_func: Callable = self.check_none
                     text_type: str = CacheItem.TextType.NONE
                     block_text_set: set[str] = set()
 
@@ -225,9 +332,9 @@ class TRANS(Base):
                 entry: dict = {}
                 files: dict = project.get("files", {})
                 for path, entry in files.items():
-                    for data, tag, context, parameter in itertools.zip_longest(
-                        entry.get("data", []),
+                    for tag, data, context, parameter in itertools.zip_longest(
                         entry.get("tags", []),
+                        entry.get("data", []),
                         entry.get("context", []),
                         entry.get("parameters", []),
                         fillvalue = None
@@ -238,110 +345,25 @@ class TRANS(Base):
                         context: list[str] = context if context is not None else []
                         parameter: list[str] = parameter if parameter is not None else []
 
-                        # 如果数据为空，则跳过
-                        if len(data) == 0 or not isinstance(data[0], str):
-                            items.append(
-                                CacheItem({
-                                    "src": "",
-                                    "dst": "",
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": text_type,
-                                    "status": Base.TranslationStatus.EXCLUDED,
-                                })
-                            )
-                        # 如果包含 水蓝色 标签，则强制重新翻译
-                        elif any(v == "aqua" for v in tag):
-                            items.append(
-                                CacheItem({
-                                    "src": data[0],
-                                    "dst": data[0],
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": text_type,
-                                    "status": Base.TranslationStatus.UNTRANSLATED,
-                                })
-                            )
-                        # 如果 第一列、第二列 都有文本，则跳过
-                        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
-                            items.append(
-                                CacheItem({
-                                    "src": data[0],
-                                    "dst": data[1],
-                                    "tag": path,
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": text_type,
-                                    "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
-                                })
-                            )
-                        # 如果包含 红色、蓝色 标签，则跳过
-                        elif any(v in ("red", "blue") for v in tag):
-                            items.append(
-                                CacheItem({
-                                    "src": data[0],
-                                    "dst": data[0],
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": text_type,
-                                    "status": Base.TranslationStatus.EXCLUDED,
-                                })
-                            )
-                        # 如果没有允许翻译的上下文地址，则跳过，否则正常翻译
-                        else:
-                            # 根据文本是否在屏蔽文本集合分别处理
-                            if data[0] in block_text_set:
-                                tag = list(set(tag + ["gold"]))
-                                status = Base.TranslationStatus.EXCLUDED
-                            else:
-                                block = filter_func(data[0], path, context)
-                                tag =  list(set(tag + ["gold"])) if any(v == True for v in block) else tag
-                                status = Base.TranslationStatus.UNTRANSLATED if any(v == False for v in block) else Base.TranslationStatus.EXCLUDED
-
-                            items.append(
-                                CacheItem({
-                                    "src": data[0],
-                                    "dst": data[0],
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": text_type,
-                                    "status": status,
-                                })
-                            )
+                        # 检查并添加数据
+                        src, dst, tag, status = check_func(path, data, tag, context, block_text_set)
+                        items.append(
+                            CacheItem({
+                                "src": src,
+                                "dst": dst,
+                                "extra_field": {
+                                    "tag": tag,
+                                    "context": context,
+                                    "parameter": parameter,
+                                },
+                                "tag": path,
+                                "row": len(items),
+                                "file_type": CacheItem.FileType.TRANS,
+                                "file_path": rel_path,
+                                "text_type": text_type,
+                                "status": status,
+                            })
+                        )
 
         return items
 
@@ -412,6 +434,7 @@ class TRANS(Base):
                                 parameters.append(
                                     generate_func(
                                         item.get_src(),
+                                        extra_field.get("tags", []),
                                         extra_field.get("context", []),
                                         extra_field.get("parameter", []),
                                     )
