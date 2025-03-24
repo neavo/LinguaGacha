@@ -1,7 +1,6 @@
-from base.Base import Base
 from module.Text.TextHelper import TextHelper
 
-class HangeulFixer(Base):
+class HangeulFixer():
 
     # 拟声词
     RULE_ONOMATOPOEIA = (
@@ -17,7 +16,8 @@ class HangeulFixer(Base):
         super().__init__()
 
     # 检查并替换
-    def fix(self, dst: str) -> str:
+    @classmethod
+    def fix(cls, dst: str) -> str:
         # 将字符串转换为列表，方便逐个处理字符
         result = []
         length = len(dst)

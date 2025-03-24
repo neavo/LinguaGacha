@@ -1,6 +1,5 @@
 import re
 
-from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 
 class PunctuationFixer():
@@ -54,41 +53,39 @@ class PunctuationFixer():
     PATTERN_ALL_NUM = re.compile(r"\d+|[①-⑳㉑-㉟㊱-㊿]", re.IGNORECASE)
     PATTERN_CIRCLED_NUM = re.compile(r"[①-⑳㉑-㉟㊱-㊿]", re.IGNORECASE)
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
-        # 初始化
-        self.source_language = config.get("source_language")
-        self.target_language = config.get("target_language")
-
     # 检查并替换
-    def fix(self, src: str, dst: str) -> str:
+    @classmethod
+    def fix(cls, src: str, dst: str, source_language: str, target_language: str) -> str:
         # 修复圆圈数字
-        dst = self.fix_circled_numbers(src, dst)
+        dst = cls.fix_circled_numbers(src, dst)
 
         # CJK To CJK = A + B
         # CJK To 非CJK = B
         # 非CJK To CJK = A
         # 非CJK To 非CJK = B
-        if BaseLanguage.is_cjk(self.source_language) and BaseLanguage.is_cjk(self.target_language):
-            self.apply_fix_rules(src, dst, PunctuationFixer.RULE_A)
-            self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
-        elif BaseLanguage.is_cjk(self.source_language) and not BaseLanguage.is_cjk(self.target_language):
-            self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
-        elif not BaseLanguage.is_cjk(self.source_language) and BaseLanguage.is_cjk(self.target_language):
-            self.apply_fix_rules(src, dst, PunctuationFixer.RULE_A)
+        if BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
+            cls.apply_fix_rules(src, dst, cls.RULE_A)
+            cls.apply_fix_rules(src, dst, cls.RULE_B)
+        elif BaseLanguage.is_cjk(source_language) and not BaseLanguage.is_cjk(target_language):
+            cls.apply_fix_rules(src, dst, cls.RULE_B)
+        elif not BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
+            cls.apply_fix_rules(src, dst, cls.RULE_A)
         else:
-            self.apply_fix_rules(src, dst, PunctuationFixer.RULE_B)
+            cls.apply_fix_rules(src, dst, cls.RULE_B)
 
         # 译文语言为 CJK 语言时，执行 替换区 规则
-        if BaseLanguage.is_cjk(self.target_language):
-            for key, value in PunctuationFixer.RULE_REPLACE.items():
-                dst = self.apply_replace_rules(dst, key, value)
+        if BaseLanguage.is_cjk(target_language):
+            for key, value in cls.RULE_REPLACE.items():
+                dst = cls.apply_replace_rules(dst, key, value)
 
         return dst
 
     # 检查
-    def check(self, src: str, dst: str, key: str, value: tuple) -> tuple[str, bool]:
+    @classmethod
+    def check(cls, src: str, dst: str, key: str, value: tuple) -> tuple[str, bool]:
         num_s_x = src.count(key)
         num_s_y = sum(src.count(t) for t in value)
         num_t_x = dst.count(key)
@@ -101,21 +98,24 @@ class PunctuationFixer():
         return num_s_x > 0 and num_s_x != num_s_y and num_s_x > num_t_x and num_s_x == num_t_x + num_t_y
 
     # 应用修复规则
-    def apply_fix_rules(self, src: str, dst: str, rules: dict) -> str:
+    @classmethod
+    def apply_fix_rules(cls, src: str, dst: str, rules: dict) -> str:
         for key, value in rules.items():
-            if self.check(src, dst, key, value) == True:
-                dst = self.apply_replace_rules(dst, key, value)
+            if cls.check(src, dst, key, value) == True:
+                dst = cls.apply_replace_rules(dst, key, value)
         return dst
 
     # 应用替换规则
-    def apply_replace_rules(self, dst: str, key: str, value: tuple) -> str:
+    @classmethod
+    def apply_replace_rules(cls, dst: str, key: str, value: tuple) -> str:
         for t in value:
             dst = dst.replace(t, key)
 
         return dst
 
     # 安全转换字符串为整数
-    def safe_int(self, s: str) -> int:
+    @classmethod
+    def safe_int(cls, s: str) -> int:
         result = -1
 
         try:
@@ -126,12 +126,13 @@ class PunctuationFixer():
         return result
 
     # 修复圆圈数字
-    def fix_circled_numbers(self, src: str, dst: str) -> str:
+    @classmethod
+    def fix_circled_numbers(cls, src: str, dst: str) -> str:
         # 找出 src 与 dst 中的圆圈数字
-        src_nums = PunctuationFixer.PATTERN_ALL_NUM.findall(src)
-        dst_nums = PunctuationFixer.PATTERN_ALL_NUM.findall(dst)
-        src_circled_nums = PunctuationFixer.PATTERN_CIRCLED_NUM.findall(src)
-        dst_circled_nums = PunctuationFixer.PATTERN_CIRCLED_NUM.findall(dst)
+        src_nums = cls.PATTERN_ALL_NUM.findall(src)
+        dst_nums = cls.PATTERN_ALL_NUM.findall(dst)
+        src_circled_nums = cls.PATTERN_CIRCLED_NUM.findall(src)
+        dst_circled_nums = cls.PATTERN_CIRCLED_NUM.findall(dst)
 
         # 如果原文中没有圆圈数字，则跳过
         if len(src_circled_nums) == 0:
@@ -149,27 +150,28 @@ class PunctuationFixer():
         for i in range(len(src_nums)):
             src_num_srt = src_nums[i]
             dst_num_srt = dst_nums[i]
-            dst_num_int = self.safe_int(dst_num_srt)
+            dst_num_int = cls.safe_int(dst_num_srt)
 
             # 如果原文中该位置不是圆圈数字，则跳过
-            if src_num_srt not in PunctuationFixer.CIRCLED_NUMBERS_ALL:
+            if src_num_srt not in cls.CIRCLED_NUMBERS_ALL:
                 continue
 
             # 如果译文中该位置数值不在有效范围，则跳过
-            if dst_num_int < 0 or dst_num_int >= len(PunctuationFixer.CIRCLED_NUMBERS_ALL):
+            if dst_num_int < 0 or dst_num_int >= len(cls.CIRCLED_NUMBERS_ALL):
                 continue
 
             # 如果原文、译文中该位置的圆圈数字不一致，则跳过
-            if src_num_srt != PunctuationFixer.CIRCLED_NUMBERS_ALL[dst_num_int]:
+            if src_num_srt != cls.CIRCLED_NUMBERS_ALL[dst_num_int]:
                 continue
 
             # 尝试恢复
-            dst = self.fix_circled_numbers_by_index(dst, i, src_num_srt)
+            dst = cls.fix_circled_numbers_by_index(dst, i, src_num_srt)
 
         return dst
 
     # 通过索引修复圆圈数字
-    def fix_circled_numbers_by_index(self, dst: str, target_i: int, target_str: str) -> str:
+    @classmethod
+    def fix_circled_numbers_by_index(cls, dst: str, target_i: int, target_str: str) -> str:
         # 用于标识目标位置
         i = [0]
 
@@ -181,4 +183,4 @@ class PunctuationFixer():
                 i[0] = i[0] + 1
                 return m.group(0)
 
-        return PunctuationFixer.PATTERN_ALL_NUM.sub(repl, dst)
+        return cls.PATTERN_ALL_NUM.sub(repl, dst)

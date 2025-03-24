@@ -14,6 +14,7 @@ from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Fixer.KanaFixer import KanaFixer
+from module.Fixer.EscapeFixer import EscapeFixer
 from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Response.ResponseChecker import ResponseChecker
@@ -47,9 +48,6 @@ class TranslatorTask(Base):
         self.cache_manager = cache_manager
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
-        self.kana_fixer = KanaFixer()
-        self.hangeul_fixer = HangeulFixer()
-        self.punctuation_fixer = PunctuationFixer(self.config)
 
         # 生成原文文本字典与文本类型字典
         self.src_dict: dict[str, str] = {}
@@ -148,14 +146,8 @@ class TranslatorTask(Base):
 
         # 如果有任何正确的条目，则处理结果
         if any(v == ResponseChecker.Error.NONE for v in check_result):
-            # 假名修复
-            dst_dict: dict[str, str] = self.kana_fix(src_dict, dst_dict)
-
-            # 谚文修复
-            dst_dict: dict[str, str] = self.hangeul_fix(src_dict, dst_dict)
-
-            # 标点修复
-            dst_dict: dict[str, str] = self.punctuation_fix(src_dict, dst_dict)
+            # 自动修复
+            dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, self.config)
 
             # 代码救星后处理
             dst_dict = self.code_saver.post_process(src_dict, dst_dict)
@@ -304,33 +296,28 @@ class TranslatorTask(Base):
         else:
             return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
 
-    # 假名修复
-    def kana_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
-        if self.config.get("source_language") != BaseLanguage.JA:
-            return dst_dict
+    # 自动修复
+    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], config: dict) -> dict:
+        source_language = self.config.get("source_language")
+        target_language = self.config.get("target_language")
 
         for k in dst_dict:
-            if k in src_dict:
-                dst_dict[k] = self.kana_fixer.fix(dst_dict[k])
+            # 有效性检查
+            if k not in src_dict:
+                continue
 
-        return dst_dict
+            # 假名修复
+            if source_language == BaseLanguage.JA:
+                dst_dict[k] = KanaFixer.fix(dst_dict[k])
+            # 谚文修复
+            elif source_language == BaseLanguage.KO:
+                dst_dict[k] = HangeulFixer.fix(dst_dict[k])
 
-    # 假名修复
-    def hangeul_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
-        if self.config.get("source_language") != BaseLanguage.KO:
-            return dst_dict
+            # 转义修复
+            dst_dict[k] = EscapeFixer.fix(src_dict[k], dst_dict[k])
 
-        for k in dst_dict:
-            if k in src_dict:
-                dst_dict[k] = self.hangeul_fixer.fix(dst_dict[k])
-
-        return dst_dict
-
-    # 标点修复
-    def punctuation_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
-        for k in dst_dict:
-            if k in src_dict:
-                dst_dict[k] = self.punctuation_fixer.fix(src_dict[k], dst_dict[k])
+            # 标点符号修复
+            dst_dict[k] = PunctuationFixer.fix(src_dict[k], dst_dict[k], source_language, target_language)
 
         return dst_dict
 
