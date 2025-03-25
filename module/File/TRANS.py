@@ -2,14 +2,16 @@ import os
 import re
 import shutil
 import itertools
-from typing import Callable
 
 import rapidjson as json
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 
-class TRANS(Base):
+# NONE
+class NONE():
+
+    TEXT_TYPE: str = CacheItem.TextType.NONE
 
     BLACKLIST_EXT: tuple[str] = (
         ".mp3", ".wav", ".ogg", "mid",
@@ -19,43 +21,22 @@ class TRANS(Base):
         ".sav", ".mps",
     )
 
-    WOLF_WHITELIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"Database/0$", flags = re.IGNORECASE),
-        re.compile(r"CommonEventByName/\d+/(\d+)((/\d+)?)*", flags = re.IGNORECASE),
-    )
-
-    WOLF_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"^Game.dat", flags = re.IGNORECASE),
-        re.compile(r"DataBase[\\/]", flags = re.IGNORECASE),
-        re.compile(r"DebugMessage[\\/]", flags = re.IGNORECASE),
-    )
-
-    RPGMAKER_BLACKLIST_PATH: tuple[re.Pattern] = (
-        re.compile(r"\.js$", flags = re.IGNORECASE),
-    )
-
-    RPGMAKER_BLACKLIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"^(?=.*MZ Plugin Command)(?!.*text).*", flags = re.IGNORECASE),
-        re.compile(r"filename", flags = re.IGNORECASE),
-        re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
-        re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
-        re.compile(r"Animations/\d+/name", flags = re.IGNORECASE),
-        re.compile(r"CommonEvents/\d+/name", flags = re.IGNORECASE),
-        re.compile(r"Map\d+/events/\d+/name", flags = re.IGNORECASE),
-    )
-
-    def __init__(self, config: dict) -> None:
+    def __init__(self, project: dict) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: str = config.get("source_language")
-        self.target_language: str = config.get("target_language")
+        self.project: dict = project
 
-    # 检查 - NONE
-    def check_none(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+    # 预处理
+    def pre_process(self) -> None:
+        pass
+
+    # 后处理
+    def post_process(self, items: list[CacheItem]) -> None:
+        pass
+
+    # 检查
+    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
         # 如果数据为空，则跳过
         if len(data) == 0 or not isinstance(data[0], str):
             src: str = ""
@@ -78,12 +59,70 @@ class TRANS(Base):
 
         return src, dst, tag, status
 
-    # 过滤 - NONE
-    def filter_none(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
+    # 过滤
+    def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
         return [False] * len(context)
 
-    # 检查 - WOLF
-    def check_wolf(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+    # 生成参数
+    def generate_parameter(self, src:str, context: list[str], parameter: list[dict[str, str]], block: list[bool]) -> list[dict[str, str]]:
+        # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
+        if all(v is True for v in block) or all(v is False for v in block):
+            pass
+        else:
+            if parameter is None:
+                parameter = []
+            for i, v in enumerate(block):
+                # 索引检查
+                if i >= len(parameter):
+                    parameter.append({})
+
+                # 有效性检查
+                if not isinstance(parameter[i], dict):
+                    parameter[i] = {}
+
+                # 填充数据
+                parameter[i]["contextStr"] = context[i]
+                parameter[i]["translation"] = src if v == True else ""
+
+        return parameter
+
+# WOLF
+class WOLF(NONE):
+
+    TEXT_TYPE: str = CacheItem.TextType.WOLF
+
+    WHITELIST_ADDRESS: tuple[re.Pattern] = (
+        re.compile(r"Database/0$", flags = re.IGNORECASE),
+        # re.compile(r"Message/0(\d+)*$", flags = re.IGNORECASE),
+        # re.compile(r"Choices/0(\d+)*$", flags = re.IGNORECASE),
+        # re.compile(r"SetString/0(\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"CommonEventByName/\d+/(\d+)((/\d+)?)*$", flags = re.IGNORECASE),
+    )
+
+    BLACKLIST_ADDRESS: tuple[re.Pattern] = (
+        re.compile(r"^Game.dat", flags = re.IGNORECASE),
+        re.compile(r"DataBase[\\/]", flags = re.IGNORECASE),
+        re.compile(r"optionArgs[\\/]", flags = re.IGNORECASE),
+        # re.compile(r"CommonEvent[\\/]", flags = re.IGNORECASE),
+        re.compile(r"DebugMessage[\\/]", flags = re.IGNORECASE),
+        re.compile(r"StringCondition[\\/]", flags = re.IGNORECASE),
+    )
+
+    # 预处理
+    def pre_process(self) -> None:
+        # 生成屏蔽文本集合
+        self.block_text = self.generate_block_text(self.project)
+
+    # 后处理
+    def post_process(self, items: list[CacheItem]) -> None:
+        # 生成屏蔽文本集合
+        self.block_text = self.generate_block_text(self.project)
+
+        # 对 db 数据进行去重
+        self.deduplicate_db_text(items)
+
+    # 检查
+    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
         # 如果数据为空，则跳过
         if len(data) == 0 or not isinstance(data[0], str):
             src: str = ""
@@ -102,7 +141,7 @@ class TRANS(Base):
         else:
             src: str = data[0]
             dst: str = data[0]
-            block = self.filter_wolf(src, path, tag, context, block_text_set)
+            block = self.filter(src, path, tag, context)
             if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
                 tag: list[str] = tag + ["gold"]
             if any(v == False for v in block):
@@ -112,24 +151,24 @@ class TRANS(Base):
 
         return src, dst, tag, status
 
-    # 过滤 - WOLF
-    def filter_wolf(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
-        if any(v in src for v in TRANS.BLACKLIST_EXT):
+    # 过滤
+    def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
+        if any(v in src for v in WOLF.BLACKLIST_EXT):
             return [True] * len(context)
 
         block: list[bool] = []
         for address in context:
             # 如果在地址白名单，则无需过滤
-            if any(rule.search(address) is not None for rule in TRANS.WOLF_WHITELIST_ADDRESS):
+            if any(rule.search(address) is not None for rule in WOLF.WHITELIST_ADDRESS):
                 block.append(False)
             # 如果在标签黑名单，则需要过滤
             elif any(v in ("red", "blue") for v in tag):
                 block.append(True)
             # 如果在地址黑名单，则需要过滤
-            elif any(rule.search(address) is not None for rule in TRANS.WOLF_BLACKLIST_ADDRESS):
+            elif any(rule.search(address) is not None for rule in WOLF.BLACKLIST_ADDRESS):
                 block.append(True)
             # 如果是指定地址，并且文本在屏蔽文本集合，则需要过滤
-            elif re.search(r"db/\d+?/fldSet/\d+?/idx/\d+?/val", address, flags = re.IGNORECASE) is not None and src in block_text_set:
+            elif re.search(r"db/\d+?/fldSet/\d+?/idx/\d+?/val", address, flags = re.IGNORECASE) is not None and src in self.block_text:
                 block.append(True)
             # 默认，无需过滤
             else:
@@ -137,8 +176,8 @@ class TRANS(Base):
 
         return block
 
-    # 获取屏蔽文本结合 - WOLF
-    def generate_block_text_set_wolf(self, project: dict) -> set[str]:
+    # 生成屏蔽文本集合
+    def generate_block_text(self, project: dict) -> set[str]:
         result: set[str] = set()
 
         # 处理数据
@@ -166,16 +205,51 @@ class TRANS(Base):
 
         return result
 
-    # 检查 - RENPY
-    def check_renpy(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
-        return self.check_none(path, data, tag, context, block_text_set)
+    # 对 db 数据进行去重
+    def deduplicate_db_text(self, items: list[CacheItem]) -> list[CacheItem]:
+        cache: dict[str, str] = {}
+        for item in items:
+            # 如果不是 db 数据，则跳过
+            if "db/" not in item.get_tag():
+                continue
 
-    # 过滤 - RENPY
-    def filter_renpy(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
-        return self.filter_none(src, path, tag, context, block_text_set)
+            # 如果不是 已翻译 状态，则跳过
+            if item.get_status() != Base.TranslationStatus.TRANSLATED:
+                continue
 
-    # 检查 - RPGMaker
-    def check_rpgmaker(self, path: str, data: list[str], tag: list[str], context: list[str], block_text_set: set[str]) -> tuple[str, str, list[str], str]:
+            src: str = item.get_src().strip().strip("\u3000")
+            dst: str = item.get_dst().strip().strip("\u3000")
+            if src not in cache:
+                cache[src] = dst
+            else:
+                item.set_dst(cache.get(src))
+
+# RENPY
+class RENPY(NONE):
+
+    TEXT_TYPE: str = CacheItem.TextType.RENPY
+
+# RPGMaker
+class RPGMaker(NONE):
+
+    TEXT_TYPE: str = CacheItem.TextType.RPGMAKER
+
+    BLACKLIST_PATH: tuple[re.Pattern] = (
+        re.compile(r"\.js$", flags = re.IGNORECASE),
+    )
+
+    BLACKLIST_ADDRESS: tuple[re.Pattern] = (
+        re.compile(r"^(?=.*MZ Plugin Command)(?!.*text).*", flags = re.IGNORECASE),
+        re.compile(r"filename", flags = re.IGNORECASE),
+        re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
+        re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
+        re.compile(r"Animations/\d+/name", flags = re.IGNORECASE),
+        re.compile(r"CommonEvents/\d+/name", flags = re.IGNORECASE),
+        re.compile(r"Map\d+/events/\d+/name", flags = re.IGNORECASE),
+    )
+
+    # 检查
+    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
         # 如果数据为空，则跳过
         if len(data) == 0 or not isinstance(data[0], str):
             src: str = ""
@@ -194,7 +268,7 @@ class TRANS(Base):
         else:
             src: str = data[0]
             dst: str = data[0]
-            block = self.filter_rpgmaker(src, path, tag, context, block_text_set)
+            block = self.filter(src, path, tag, context)
             if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
                 tag: list[str] = tag + ["gold"]
             if any(v == False for v in block):
@@ -204,12 +278,12 @@ class TRANS(Base):
 
         return src, dst, tag, status
 
-    # 过滤 - RPGMaker
-    def filter_rpgmaker(self, src: str, path: str, tag: list[str], context: list[str], block_text_set: set[str]) -> bool:
-        if any(v in src for v in TRANS.BLACKLIST_EXT):
+    # 过滤
+    def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
+        if any(v in src for v in RPGMaker.BLACKLIST_EXT):
             return [True] * len(context)
 
-        if any(v.search(path) is not None for v in TRANS.RPGMAKER_BLACKLIST_PATH):
+        if any(v.search(path) is not None for v in RPGMaker.BLACKLIST_PATH):
             return [True] * len(context)
 
         block: list[bool] = []
@@ -218,7 +292,7 @@ class TRANS(Base):
             if any(v in ("red", "blue") for v in tag):
                 block.append(True)
             # 如果在地址黑名单，则需要过滤
-            elif any(rule.search(address) is not None for rule in TRANS.RPGMAKER_BLACKLIST_ADDRESS):
+            elif any(rule.search(address) is not None for rule in RPGMaker.BLACKLIST_ADDRESS):
                 block.append(True)
             # 默认，无需过滤
             else:
@@ -226,28 +300,18 @@ class TRANS(Base):
 
         return block
 
-    # 生成参数 - RPGMaker
-    def generate_parameter(self, src:str, context: list[str], parameter: list[dict[str, str]], block: list[bool]) -> list[dict[str, str]]:
-        # 如果全部需要排除或者全部需要保留，则不需要启用分区翻译功能
-        if all(v is True for v in block) or all(v is False for v in block):
-            pass
-        else:
-            if parameter is None:
-                parameter = []
-            for i, v in enumerate(block):
-                # 索引检查
-                if i >= len(parameter):
-                    parameter.append({})
+# TRANS
+class TRANS(Base):
 
-                # 有效性检查
-                if not isinstance(parameter[i], dict):
-                    parameter[i] = {}
+    def __init__(self, config: dict) -> None:
+        super().__init__()
 
-                # 填充数据
-                parameter[i]["contextStr"] = context[i]
-                parameter[i]["translation"] = src if v == True else ""
-
-        return parameter
+        # 初始化
+        self.config: dict = config
+        self.input_path: str = config.get("input_folder")
+        self.output_path: str = config.get("output_folder")
+        self.source_language: str = config.get("source_language")
+        self.target_language: str = config.get("target_language")
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
@@ -272,23 +336,18 @@ class TRANS(Base):
                 project: dict = json_data.get("project", {})
                 engine: str = project.get("gameEngine", "")
 
-                # 获取各种规则
-                if engine == "wolf":
-                    check_func: Callable = self.check_wolf
-                    text_type: str = CacheItem.TextType.WOLF
-                    block_text_set: set[str] = self.generate_block_text_set_wolf(project)
-                elif engine == "renpy":
-                    check_func: Callable = self.check_renpy
-                    text_type: str = CacheItem.TextType.RENPY
-                    block_text_set: set[str] = set()
-                elif engine in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                    check_func: Callable = self.check_rpgmaker
-                    text_type: str = CacheItem.TextType.RPGMAKER
-                    block_text_set: set[str] = set()
+                # 获取处理实体
+                if engine.lower() == "wolf":
+                    processor: NONE = WOLF(project)
+                elif engine.lower() == "renpy":
+                    processor: NONE = RENPY(project)
+                elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                    processor: NONE = RPGMaker(project)
                 else:
-                    check_func: Callable = self.check_none
-                    text_type: str = CacheItem.TextType.NONE
-                    block_text_set: set[str] = set()
+                    processor: NONE = NONE(project)
+
+                # 执行预处理
+                processor.pre_process()
 
                 # 处理数据
                 path: str = ""
@@ -309,7 +368,7 @@ class TRANS(Base):
                         parameter: list[str] = parameter if parameter is not None else []
 
                         # 检查并添加数据
-                        src, dst, tag, status = check_func(path, data, tag, context, block_text_set)
+                        src, dst, tag, status = processor.check(path, data, tag, context)
                         items.append(
                             CacheItem({
                                 "src": src,
@@ -323,7 +382,7 @@ class TRANS(Base):
                                 "row": len(items),
                                 "file_type": CacheItem.FileType.TRANS,
                                 "file_path": rel_path,
-                                "text_type": text_type,
+                                "text_type": processor.TEXT_TYPE,
                                 "status": status,
                             })
                         )
@@ -365,19 +424,18 @@ class TRANS(Base):
                     files: dict = project.get("files", {})
                     engine: str = project.get("gameEngine", "")
 
-                    # 设置排除规则
-                    if engine == "wolf":
-                        filter_func: Callable = self.filter_wolf
-                        block_text_set: set[str] = self.generate_block_text_set_wolf(project)
-                    elif engine == "renpy":
-                        filter_func: Callable = self.filter_renpy
-                        block_text_set: set[str] = set()
-                    elif engine in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                        filter_func: Callable = self.filter_rpgmaker
-                        block_text_set: set[str] = set()
+                    # 获取处理实体
+                    if engine.lower() == "wolf":
+                        processor: NONE = WOLF(project)
+                    elif engine.lower() == "renpy":
+                        processor: NONE = RENPY(project)
+                    elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+                        processor: NONE = RPGMaker(project)
                     else:
-                        filter_func: Callable = self.filter_none
-                        block_text_set: set[str] = set()
+                        processor: NONE = NONE(project)
+
+                    # 执行预处理
+                    processor.post_process(items)
 
                     # 处理数据
                     path: str = ""
@@ -393,22 +451,21 @@ class TRANS(Base):
                             tags.append(extra_field.get("tag", []))
                             context.append(extra_field.get("context", []))
 
-                            # 当翻译状态为排除时，直接使用原始参数
-                            if item.get_status() == Base.TranslationStatus.EXCLUDED:
+                            # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
+                            if item.get_status() in (Base.TranslationStatus.EXCLUDED, Base.TranslationStatus.TRANSLATED_IN_PAST):
                                 parameters.append(extra_field.get("parameter", []))
                             # 否则，判断与计算分区翻译功能参数
                             else:
                                 parameters.append(
-                                    self.generate_parameter(
+                                    processor.generate_parameter(
                                         src = item.get_src(),
                                         context = extra_field.get("context", []),
                                         parameter = extra_field.get("parameter", []),
-                                        block = filter_func(
+                                        block = processor.filter(
                                             src = item.get_src(),
                                             path = path,
                                             tag = extra_field.get("tags", []),
                                             context = extra_field.get("context", []),
-                                            block_text_set = block_text_set,
                                         ),
                                     )
                                 )

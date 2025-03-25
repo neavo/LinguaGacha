@@ -78,10 +78,14 @@ class Translator(Base):
 
     # 翻译结果手动导出事件
     def translation_manual_export(self, event: int, data: dict) -> None:
-        # 确保当前状态为 翻译中
-        if Base.WORK_STATUS != Base.Status.TRANSLATING:
-            return None
+        if Base.WORK_STATUS == Base.Status.TRANSLATING:
+            threading.Thread(
+                target = self.translation_manual_export_target,
+                args = (event, data),
+            ).start()
 
+    # 翻译结果手动导出事件
+    def translation_manual_export_target(self, event: int, data: dict) -> None:
         # 复制一份以避免影响原始数据
         items = self.cache_manager.copy_items()
 
