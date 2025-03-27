@@ -47,7 +47,7 @@ class ResponseChecker(Base):
         self.target_language = self.config.get("target_language")
 
     # 检查
-    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], source_language: str) -> list[str]:
+    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
         # 数据解析失败
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return [ResponseChecker.Error.FAIL_DATA]
@@ -64,7 +64,7 @@ class ResponseChecker(Base):
             return [ResponseChecker.Error.FAIL_LINE_COUNT]
 
         # 逐行检查
-        error = self.check_lines(src_dict, dst_dict, source_language)
+        error = self.check_lines(src_dict, dst_dict, item_dict, source_language)
         if any(v != ResponseChecker.Error.NONE for v in error):
             return error
 
@@ -72,9 +72,9 @@ class ResponseChecker(Base):
         return [ResponseChecker.Error.NONE]
 
     # 逐行检查错误
-    def check_lines(self, src_dict: dict[str, str], dst_dict: dict[str, str], source_language: str) -> list[str]:
+    def check_lines(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
         check_result: list[int] = []
-        for src, dst in zip(src_dict.values(), dst_dict.values()):
+        for src, dst, item in zip(src_dict.values(), dst_dict.values(), item_dict.values()):
             src = src.strip()
             dst = dst.strip()
 
@@ -84,7 +84,7 @@ class ResponseChecker(Base):
                 continue
 
             # 原文内容符合规则过滤条件时，判断为正确翻译
-            if RuleFilter.filter(src) == True:
+            if RuleFilter.filter(src, item.get_skip_internal_filter()) == True:
                 check_result.append(ResponseChecker.Error.NONE)
                 continue
 

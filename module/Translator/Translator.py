@@ -323,7 +323,7 @@ class Translator(Base):
         # 筛选出无效条目并标记为已排除
         target = [
             v for v in items
-            if RuleFilter.filter(v) == True
+            if RuleFilter.filter(v.get_src(), v.get_skip_internal_filter()) == True
         ]
         for item in target:
             item.set_status(Base.TranslationStatus.EXCLUDED)
@@ -346,7 +346,7 @@ class Translator(Base):
         source_language = self.config.get("source_language")
         target = [
             v for v in items
-            if LanguageFilter.filter(v, source_language) == True
+            if LanguageFilter.filter(v.get_src(), source_language) == True
         ]
         for item in target:
             item.set_status(Base.TranslationStatus.EXCLUDED)

@@ -1,17 +1,10 @@
-from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Text.TextHelper import TextHelper
 
 class LanguageFilter():
 
-    def filter(item: str | CacheItem, source_language: str) -> bool:
-        # 格式为字符串时，自动创建 CacheItem 对象
-        if isinstance(item, str):
-            item = CacheItem({
-                "src": item,
-            })
-
+    def filter(src: str, source_language: str) -> bool:
         # 获取语言判断函数
         if source_language == BaseLanguage.ZH:
             func = TextHelper.CJK.any
@@ -24,4 +17,4 @@ class LanguageFilter():
         if callable(func) != True:
             return False
         else:
-            return not func(item.get_src())
+            return not func(src)

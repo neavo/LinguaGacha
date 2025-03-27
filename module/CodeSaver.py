@@ -71,18 +71,18 @@ class CodeSaver(Base):
         self.suffix_codes = {}
 
     # 预处理
-    def pre_process(self, src_dict: dict[str, str], text_type_dict: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    def pre_process(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> tuple[dict[str, str], list[str]]:
         # 通过字典保证去重且有序
         samples: dict[str, str] = {}
-        for k in src_dict.keys():
-            if text_type_dict.get(k) == CacheItem.TextType.MD:
+        for k, item in zip(src_dict.keys(), item_dict.values()):
+            if item.get_text_type() == CacheItem.TextType.MD:
                 samples["markdown"] = ""
                 self.pre_process_none(k, src_dict)
-            elif text_type_dict.get(k) == CacheItem.TextType.RENPY:
+            elif item.get_text_type() == CacheItem.TextType.RENPY:
                 samples["[…]"] = ""
                 samples["{…}"] = ""
                 self.pre_process_renpy(k, src_dict)
-            elif text_type_dict.get(k) in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
+            elif item.get_text_type() in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
                 samples["if(…)"] = ""
                 samples["en(…)"] = ""
                 samples["\\abc[…]"] = ""

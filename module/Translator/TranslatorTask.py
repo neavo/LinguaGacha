@@ -51,11 +51,11 @@ class TranslatorTask(Base):
 
         # 生成原文文本字典与文本类型字典
         self.src_dict: dict[str, str] = {}
-        self.text_type_dict: dict[str, str] = {}
+        self.item_dict: dict[str, CacheItem] = {}
         for item in items:
             for sub_line in item.split_sub_lines():
                 self.src_dict[str(len(self.src_dict))] = sub_line
-                self.text_type_dict[str(len(self.text_type_dict))] = item.get_text_type()
+                self.item_dict[str(len(self.item_dict))] = item
 
         # 正规化
         self.src_dict = self.normalize(self.src_dict)
@@ -64,7 +64,7 @@ class TranslatorTask(Base):
         self.src_dict = self.replace_before_translation(self.src_dict)
 
         # 代码救星预处理
-        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.text_type_dict)
+        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.item_dict)
 
         # 初始化错误文本
         if not hasattr(TranslatorTask, "ERROR_TEXT_DICT"):
@@ -81,10 +81,10 @@ class TranslatorTask(Base):
 
     # 启动任务
     def start(self, current_round: int) -> dict:
-        return self.request(self.src_dict, self.preceding_items, self.samples, current_round)
+        return self.request(self.src_dict, self.item_dict, self.preceding_items, self.samples, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], preceding_items: list[CacheItem], samples: list[str], current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], current_round: int) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -125,7 +125,7 @@ class TranslatorTask(Base):
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
 
         # 检查回复内容
-        check_result = self.response_checker.check(src_dict, dst_dict, self.config.get("source_language"))
+        check_result = self.response_checker.check(src_dict, dst_dict, item_dict, self.config.get("source_language"))
 
         # 当任务失败且是单条目任务时，更新重试次数
         if any(v != ResponseChecker.Error.NONE for v in check_result) != None and len(self.items) == 1:

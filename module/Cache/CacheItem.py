@@ -64,6 +64,7 @@ class CacheItem(BaseData):
         self.text_type: str = CacheItem.TextType.NONE                   # 文本的实际类型
         self.status: str = Base.TranslationStatus.UNTRANSLATED          # 翻译状态
         self.retry_count: int = 0                                       # 重试次数，当前只有单独重试的时候才增加此计数
+        self.skip_internal_filter: bool = False                         # 跳过内置过滤器
 
         # 初始化
         for k, v in args.items():
@@ -186,6 +187,16 @@ class CacheItem(BaseData):
     def set_retry_count(self, retry_count: int) -> None:
         with self.lock:
             self.retry_count = retry_count
+
+    # 获取跳过内置过滤器
+    def get_skip_internal_filter(self) -> bool:
+        with self.lock:
+            return self.skip_internal_filter
+
+    # 设置跳过内置过滤器
+    def set_skip_internal_filter(self, skip_internal_filter: bool) -> None:
+        with self.lock:
+            self.skip_internal_filter = skip_internal_filter
 
     # 获取 Token 数量
     def get_token_count(self) -> int:

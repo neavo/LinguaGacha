@@ -1,6 +1,6 @@
 import re
-from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Text.TextHelper import TextHelper
 
 class RuleFilter():
 
@@ -29,15 +29,13 @@ class RuleFilter():
         re.compile(r"^Opendyslexic$", flags = re.IGNORECASE),                       # RenPy 默认字体名称
     )
 
-    def filter(item: str | CacheItem) -> bool:
-        # 格式为字符串时，自动创建 CacheItem 对象
-        if isinstance(item, str):
-            item = CacheItem({
-                "src": item,
-            })
+    def filter(src: str, skip_internal_filter: bool) -> bool:
+        # 如果跳过内部过滤为 True，则直接返回 False，即不需要过滤
+        if skip_internal_filter == True:
+            return False
 
         flags = []
-        for line in item.get_src().splitlines():
+        for line in src.splitlines():
             line = line.strip().lower()
 
             # 空字符串

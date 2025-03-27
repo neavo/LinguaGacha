@@ -36,26 +36,30 @@ class NONE():
         pass
 
     # 检查
-    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
+    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str, bool]:
         # 如果数据为空，则跳过
         if len(data) == 0 or not isinstance(data[0], str):
             src: str = ""
             dst: str = ""
             status: str = Base.TranslationStatus.EXCLUDED
+            skip_internal_filter: bool = False
         # 如果包含 水蓝色 标签，则翻译
         elif any(v == "aqua" for v in tag):
             src: str = data[0]
             dst: str = data[0]
             status: str = Base.TranslationStatus.UNTRANSLATED
+            skip_internal_filter: bool = True
         # 如果 第一列、第二列 都有文本，则跳过
         elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
             src: str = data[0]
             dst: str = data[1]
             status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
+            skip_internal_filter: bool = False
         else:
             src: str = data[0]
             dst: str = data[0]
             block = self.filter(src, path, tag, context)
+            skip_internal_filter: bool = False
 
             # 如果全部数据需要不需要过滤，则移除 red blue gold 标签
             if all(v == False for v in block):
@@ -70,7 +74,7 @@ class NONE():
             else:
                 status: str = Base.TranslationStatus.EXCLUDED
 
-        return src, dst, tag, status
+        return src, dst, tag, status, skip_internal_filter
 
     # 过滤
     def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
@@ -338,7 +342,7 @@ class TRANS(Base):
                         parameter: list[str] = parameter if parameter is not None else []
 
                         # 检查并添加数据
-                        src, dst, tag, status = processor.check(path, data, tag, context)
+                        src, dst, tag, status, skip_internal_filter = processor.check(path, data, tag, context)
                         items.append(
                             CacheItem({
                                 "src": src,
@@ -354,6 +358,7 @@ class TRANS(Base):
                                 "file_path": rel_path,
                                 "text_type": processor.TEXT_TYPE,
                                 "status": status,
+                                "skip_internal_filter": skip_internal_filter,
                             })
                         )
 
