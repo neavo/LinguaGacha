@@ -55,13 +55,35 @@ class NONE():
         else:
             src: str = data[0]
             dst: str = data[0]
-            status: str = Base.TranslationStatus.UNTRANSLATED
+            block = self.filter(src, path, tag, context)
+
+            # 如果全部数据需要不需要过滤，则移除 red blue gold 标签
+            if all(v == False for v in block):
+                tag: list[str] = [v for v in tag if v not in ("red", "blue", "gold")]
+            # 如果任意数据需要过滤，且不包含 red blue gold 标签，则添加 gold 标签
+            elif any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
+                tag: list[str] = tag + ["gold"]
+
+            # 如果有需要过滤的数据，则翻译，否则排除
+            if any(v == False for v in block):
+                status: str = Base.TranslationStatus.UNTRANSLATED
+            else:
+                status: str = Base.TranslationStatus.EXCLUDED
 
         return src, dst, tag, status
 
     # 过滤
     def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
-        return [False] * len(context)
+        block: list[bool] = []
+        for address in context:
+            # 如果在标签黑名单，则需要过滤
+            if any(v in ("red", "blue") for v in tag):
+                block.append(True)
+            # 默认，无需过滤
+            else:
+                block.append(False)
+
+        return block
 
     # 生成参数
     def generate_parameter(self, src:str, context: list[str], parameter: list[dict[str, str]], block: list[bool]) -> list[dict[str, str]]:
@@ -93,19 +115,21 @@ class WOLF(NONE):
 
     WHITELIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"Database/0$", flags = re.IGNORECASE),
-        # re.compile(r"Message/0(\d+)*$", flags = re.IGNORECASE),
-        # re.compile(r"Choices/0(\d+)*$", flags = re.IGNORECASE),
-        # re.compile(r"SetString/0(\d+)*$", flags = re.IGNORECASE),
         re.compile(r"CommonEventByName/\d+/(\d+)((/\d+)?)*$", flags = re.IGNORECASE),
+    )
+
+    WHITELIST_ADDRESS_IN_COMMON_EVENT: tuple[re.Pattern] = (
+        re.compile(r"Message/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"Picture/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"Choices/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"SetString/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"StringCondition/0(/\d+)*$", flags = re.IGNORECASE),
     )
 
     BLACKLIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"^Game.dat", flags = re.IGNORECASE),
-        re.compile(r"DataBase[\\/]", flags = re.IGNORECASE),
-        re.compile(r"optionArgs[\\/]", flags = re.IGNORECASE),
-        # re.compile(r"CommonEvent[\\/]", flags = re.IGNORECASE),
-        re.compile(r"DebugMessage[\\/]", flags = re.IGNORECASE),
-        re.compile(r"StringCondition[\\/]", flags = re.IGNORECASE),
+        re.compile(r"DataBase/", flags = re.IGNORECASE),
+        re.compile(r"DebugMessage/", flags = re.IGNORECASE),
     )
 
     # 预处理
@@ -121,36 +145,6 @@ class WOLF(NONE):
         # 对 db 数据进行去重
         self.deduplicate_db_text(items)
 
-    # 检查
-    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
-        # 如果数据为空，则跳过
-        if len(data) == 0 or not isinstance(data[0], str):
-            src: str = ""
-            dst: str = ""
-            status: str = Base.TranslationStatus.EXCLUDED
-        # 如果包含 水蓝色 标签，则翻译
-        elif any(v == "aqua" for v in tag):
-            src: str = data[0]
-            dst: str = data[0]
-            status: str = Base.TranslationStatus.UNTRANSLATED
-        # 如果 第一列、第二列 都有文本，则跳过
-        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
-            src: str = data[0]
-            dst: str = data[1]
-            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
-        else:
-            src: str = data[0]
-            dst: str = data[0]
-            block = self.filter(src, path, tag, context)
-            if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
-                tag: list[str] = tag + ["gold"]
-            if any(v == False for v in block):
-                status: str = Base.TranslationStatus.UNTRANSLATED
-            else:
-                status: str = Base.TranslationStatus.EXCLUDED
-
-        return src, dst, tag, status
-
     # 过滤
     def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
         if any(v in src for v in WOLF.BLACKLIST_EXT):
@@ -161,13 +155,19 @@ class WOLF(NONE):
             # 如果在地址白名单，则无需过滤
             if any(rule.search(address) is not None for rule in WOLF.WHITELIST_ADDRESS):
                 block.append(False)
-            # 如果在标签黑名单，则需要过滤
-            elif any(v in ("red", "blue") for v in tag):
-                block.append(True)
             # 如果在地址黑名单，则需要过滤
             elif any(rule.search(address) is not None for rule in WOLF.BLACKLIST_ADDRESS):
                 block.append(True)
-            # 如果是指定地址，并且文本在屏蔽文本集合，则需要过滤
+            # 如果在标签黑名单，则需要过滤
+            elif any(v in ("red", "blue") for v in tag):
+                block.append(True)
+            # 如果符合指定地址规则，则其中的白名单地址无需过滤，其他需要过滤
+            elif re.search(r"CommonEvent/", address, flags = re.IGNORECASE) is not None:
+                if any(rule.search(address) is not None for rule in WOLF.WHITELIST_ADDRESS_IN_COMMON_EVENT):
+                    block.append(False)
+                else:
+                    block.append(True)
+            # 如果符合指定地址规则，并且文本在屏蔽文本集合，则需要过滤
             elif re.search(r"db/\d+?/fldSet/\d+?/idx/\d+?/val", address, flags = re.IGNORECASE) is not None and src in self.block_text:
                 block.append(True)
             # 默认，无需过滤
@@ -200,7 +200,7 @@ class WOLF(NONE):
 
                 # 判断是否需要屏蔽
                 context: str = "\n".join(context)
-                if re.search(r"DataBase[\\/]", context, flags = re.IGNORECASE) is not None:
+                if re.search(r"DataBase/", context, flags = re.IGNORECASE) is not None:
                     result.add(data[0])
 
         return result
@@ -247,36 +247,6 @@ class RPGMaker(NONE):
         re.compile(r"CommonEvents/\d+/name", flags = re.IGNORECASE),
         re.compile(r"Map\d+/events/\d+/name", flags = re.IGNORECASE),
     )
-
-    # 检查
-    def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str]:
-        # 如果数据为空，则跳过
-        if len(data) == 0 or not isinstance(data[0], str):
-            src: str = ""
-            dst: str = ""
-            status: str = Base.TranslationStatus.EXCLUDED
-        # 如果包含 水蓝色 标签，则翻译
-        elif any(v == "aqua" for v in tag):
-            src: str = data[0]
-            dst: str = data[0]
-            status: str = Base.TranslationStatus.UNTRANSLATED
-        # 如果 第一列、第二列 都有文本，则跳过
-        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
-            src: str = data[0]
-            dst: str = data[1]
-            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
-        else:
-            src: str = data[0]
-            dst: str = data[0]
-            block = self.filter(src, path, tag, context)
-            if any(v == True for v in block) and not any(v in ("red", "blue", "gold") for v in tag):
-                tag: list[str] = tag + ["gold"]
-            if any(v == False for v in block):
-                status: str = Base.TranslationStatus.UNTRANSLATED
-            else:
-                status: str = Base.TranslationStatus.EXCLUDED
-
-        return src, dst, tag, status
 
     # 过滤
     def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
