@@ -269,8 +269,9 @@ class Translator(Base):
         # MTool 优化器后处理
         self.mtool_optimizer_postprocess(self.cache_manager.get_items())
 
-        # 设置项目状态为已翻译
-        self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATED)
+        # 如已完成全部条目的翻译，则设置项目状态为已翻译
+        if self.cache_manager.get_item_count_by_status(Base.TranslationStatus.UNTRANSLATED) == 0:
+            self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATED)
 
         # 等待可能存在的缓存文件写入请求处理完毕
         time.sleep(CacheManager.SAVE_INTERVAL)
