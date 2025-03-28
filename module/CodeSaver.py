@@ -23,13 +23,14 @@ class CodeSaver(Base):
         r"\[[^\[\]]*\]",                                                            # [renpy.version_only]
     )
 
-    # 用于 RPGMaker 的规则
+  # 用于 RPGMaker 的规则
     RE_CODE_WOLF_RPGMAKER = (
         r"en\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # en(!s[982]) en(v[982] >= 1)
         r"if\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # if(!s[982]) if(v[982] >= 1)
         r"[<【]{0,1}[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]][>】]{0,1}",              # /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
         r"[/\\][a-z]{1,8}(?=<.{0,16}>|\[.{0,16}\])",                                # /C<> \FS<> /C[] \FS[] 中 <> [] 前的部分
         r"@\d+",                                                                    # WOLF - 角色 ID
+        r"\\(cdb|udb|sdb)\[.+?:.+?:.+?\]",                                          # WOLF - 数据库变量 \cdb[0:1:2] \sdb[\cself[90]:\cself[10]:17]
         r"\\fr",                                                                    # 重置文本的改变
         r"\\fb",                                                                    # 加粗
         r"\\fi",                                                                    # 倾斜

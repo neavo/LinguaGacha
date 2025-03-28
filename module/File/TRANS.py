@@ -185,10 +185,9 @@ class WOLF(NONE):
         result: set[str] = set()
 
         # 处理数据
-        path: str = ""
         entry: dict = {}
         files: dict = project.get("files", {})
-        for path, entry in files.items():
+        for _, entry in files.items():
             for data, context in itertools.zip_longest(
                 entry.get("data", []),
                 entry.get("context", []),
@@ -203,8 +202,10 @@ class WOLF(NONE):
                     continue
 
                 # 判断是否需要屏蔽
+                # 不需要屏蔽 - CommonEvent.dat/CommonEvent/74/Command/185/Database/0
+                # 需要屏蔽   - CommonEvent.dat/CommonEvent/74/Command/185/Database/0/1
                 context: str = "\n".join(context)
-                if re.search(r"DataBase/", context, flags = re.IGNORECASE) is not None:
+                if re.search(r"^(?=.*Database\/)(?!.*Database\/0$).*", context, flags = re.IGNORECASE) is not None:
                     result.add(data[0])
 
         return result
