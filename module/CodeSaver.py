@@ -52,16 +52,18 @@ class CodeSaver(Base):
     PLACEHOLDER = "{PLACEHOLDER}"
 
     # 正则表达式
-    RE_BLANK = re.compile(r"[\u0020\u3000]*", re.IGNORECASE)
+    RE_BLANK = re.compile(r"\s+", re.IGNORECASE)
 
     RE_PREFIX_NONE = re.compile(rf"^(?:{"|".join(RE_CODE_NONE)})+", re.IGNORECASE)
     RE_SUFFIX_NONE = re.compile(rf"(?:{"|".join(RE_CODE_NONE)})+$", re.IGNORECASE)
 
     RE_CHECK_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY)})+", re.IGNORECASE)
+    RE_BASE_RENPY = re.compile(rf"{"|".join(RE_CODE_RENPY + RE_CODE_NONE)}", re.IGNORECASE)
     RE_PREFIX_RENPY = re.compile(rf"^(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+", re.IGNORECASE)
     RE_SUFFIX_RENPY = re.compile(rf"(?:{"|".join(RE_CODE_RENPY + RE_CODE_NONE)})+$", re.IGNORECASE)
 
     RE_CHECK_WOLF_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_WOLF_RPGMAKER)})+", re.IGNORECASE)
+    RE_BASE_WOLF_RPGMAKER = re.compile(rf"{"|".join(RE_CODE_WOLF_RPGMAKER + RE_CODE_NONE)}", re.IGNORECASE)
     RE_PREFIX_WOLF_RPGMAKER = re.compile(rf"^(?:{"|".join(RE_CODE_WOLF_RPGMAKER + RE_CODE_NONE)})+", re.IGNORECASE)
     RE_SUFFIX_WOLF_RPGMAKER = re.compile(rf"(?:{"|".join(RE_CODE_WOLF_RPGMAKER + RE_CODE_NONE)})+$", re.IGNORECASE)
 
@@ -69,35 +71,33 @@ class CodeSaver(Base):
         super().__init__()
 
         # 初始化
-        self.placeholders = set()
-        self.prefix_codes = {}
-        self.suffix_codes = {}
+        self.placeholders: set[str] = set()
+        self.prefix_codes: dict[str, str] = {}
+        self.suffix_codes: dict[str, str] = {}
 
     # 预处理
     def pre_process(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> tuple[dict[str, str], list[str]]:
         # 通过字典保证去重且有序
-        samples: dict[str, str] = {}
+        samples: list[str] = []
         for k, item in zip(src_dict.keys(), item_dict.values()):
             if item.get_text_type() == CacheItem.TextType.MD:
-                samples["markdown"] = ""
-                self.pre_process_none(k, src_dict)
+                samples_ex: list[str] = self.pre_process_none(k, src_dict)
+                samples.extend(samples_ex)
+                samples.append("markdown")
             elif item.get_text_type() == CacheItem.TextType.RENPY:
-                samples["[…]"] = ""
-                samples["{…}"] = ""
-                self.pre_process_renpy(k, src_dict)
+                samples_ex: list[str] = self.pre_process_renpy(k, src_dict)
+                samples.extend(samples_ex)
             elif item.get_text_type() in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-                samples["if(…)"] = ""
-                samples["en(…)"] = ""
-                samples["\\abc[…]"] = ""
-                samples["/xyz<…>"] = ""
-                self.pre_process_wolf_rpgmaker(k, src_dict)
+                samples_ex: list[str] = self.pre_process_wolf_rpgmaker(k, src_dict)
+                samples.extend(samples_ex)
             else:
-                self.pre_process_none(k, src_dict)
+                samples_ex: list[str] = self.pre_process_none(k, src_dict)
+                samples.extend(samples_ex)
 
-        return src_dict, list(samples.keys())
+        return src_dict, list(set({v.strip() for v in samples if v.strip() != ""}))
 
     # 预处理 - None
-    def pre_process_none(self, k: str, src_dict: dict[str, str]) -> None:
+    def pre_process_none(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 查找与替换前缀代码段
         self.prefix_codes[k] = CodeSaver.RE_PREFIX_NONE.findall(src_dict.get(k))
         src_dict[k] = CodeSaver.RE_PREFIX_NONE.sub("", src_dict.get(k))
@@ -111,8 +111,10 @@ class CodeSaver(Base):
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
 
+        return CodeSaver.RE_CHECK_RENPY.findall(src_dict.get(k))
+
     # 预处理 - RenPy
-    def pre_process_renpy(self, k: str, src_dict: dict[str, str]) -> None:
+    def pre_process_renpy(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 替换转义符号
         src_dict[k] = src_dict[k].replace("{{", "#!#").replace("}}", "#@#").replace("[[", "#$#").replace("]]", "#%#")
 
@@ -129,8 +131,10 @@ class CodeSaver(Base):
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
 
+        return CodeSaver.RE_CHECK_RENPY.findall(src_dict.get(k))
+
     # 预处理 - RPGMaker
-    def pre_process_wolf_rpgmaker(self, k: str, src_dict: dict[str, str]) -> None:
+    def pre_process_wolf_rpgmaker(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 查找与替换前缀代码段
         self.prefix_codes[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
         src_dict[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
@@ -143,6 +147,8 @@ class CodeSaver(Base):
         if src_dict[k] == "":
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
+
+        return CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src_dict.get(k))
 
     # 后处理
     def post_process(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict[str, str]:
@@ -172,13 +178,17 @@ class CodeSaver(Base):
     # 检查代码段
     def check(self, src: str, dst: str, text_type: str) -> bool:
         if text_type == CacheItem.TextType.RENPY:
-            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(src)]
-            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_RENPY.findall(dst)]
+            x = CodeSaver.RE_CHECK_RENPY.findall(src)
+            y = CodeSaver.RE_CHECK_RENPY.findall(dst)
         elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-            x = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src)]
-            y = [CodeSaver.RE_BLANK.sub("", v) for v in CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(dst)]
+            x = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src)
+            y = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(dst)
         else:
             x = []
             y = []
+
+        # 移除空白符和空条目
+        x = [CodeSaver.RE_BLANK.sub("", v) for v in x if CodeSaver.RE_BLANK.sub("", v) != ""]
+        y = [CodeSaver.RE_BLANK.sub("", v) for v in x if CodeSaver.RE_BLANK.sub("", v) != ""]
 
         return x == y
