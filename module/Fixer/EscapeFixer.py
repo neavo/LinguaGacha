@@ -7,6 +7,9 @@ class EscapeFixer():
     # \f[21]\c[4]\E仲良くなるためのヒント
     # \f[21]\c[4]\\E增进亲密度的小提示
 
+    # 「\\n[1]様、おはようございます」
+    # 「\n[1] 殿下，早安」
+
     RE_ESCAPE_PATTERN: re.Pattern = re.compile(r"\\+", flags = re.IGNORECASE)
 
     def __init__(self) -> None:
@@ -15,6 +18,8 @@ class EscapeFixer():
     # 检查并替换
     @classmethod
     def fix(cls, src: str, dst: str) -> str:
+        # 理论上文本中不会包含换行符，如果出现换行符，将其还原为 \\n
+        dst = dst.replace("\n", "\\n")
         src_results: list[str] = cls.RE_ESCAPE_PATTERN.findall(src)
         dst_results: list[str] = cls.RE_ESCAPE_PATTERN.findall(dst)
 
@@ -32,10 +37,6 @@ class EscapeFixer():
             lambda m: cls.repl(m, i, src_results),
             dst,
         )
-
-        LogHelper.debug("EscapeFixer\n")
-        LogHelper.debug(f"{"\t".join(src_results)} -> {"\t".join(dst_results)}\n")
-        LogHelper.debug(f"{src} -> {dst}\n")
 
         return dst
 

@@ -47,7 +47,7 @@ class PromptBuilder(Base):
         return self.suffix_glossary
 
     # 获取主提示词
-    def build_main(self, samples: list[str]) -> tuple[str, str]:
+    def build_main(self) -> str:
         # 判断提示词语言
         if self.target_language == BaseLanguage.ZH:
             prompt_language = BaseLanguage.ZH
@@ -71,30 +71,6 @@ class PromptBuilder(Base):
         else:
             base = self.base
 
-        # 添加代码示例文本
-        extra_log = ""
-        if len(samples) > 0:
-            if prompt_language == BaseLanguage.ZH:
-                base = base.replace(
-                    "必须在译文中完整保留。",
-                    f"必须在译文中完整保留，特别是 {"、".join(samples)} 形式的代码。",
-                )
-                extra_log = f"已添加代码示例：\n{"、".join(samples)}"
-            elif len(samples) == 1:
-                base = base.replace(
-                    "must be completely preserved in the translation.",
-                    f"must be completely preserved in the translation, "
-                    f"especially code in the format of {samples[0]}.",
-                )
-                extra_log = f"Code samples added:\n{samples[0]}"
-            elif len(samples) >= 2:
-                base = base.replace(
-                    "must be completely preserved in the translation.",
-                    f"must be completely preserved in the translation, "
-                    f"especially code in the format of {f"{", ".join(samples[:-1])} and {samples[-1]}"}.",
-                )
-                extra_log = f"Code samples added:\n{f"{", ".join(samples[:-1])} and {samples[-1]}"}"
-
         # 判断是否启用自动术语表
         if self.auto_glossary_enable == False:
             suffix = self.suffix
@@ -106,7 +82,7 @@ class PromptBuilder(Base):
         full_prompt = full_prompt.replace("{source_language}", source_language)
         full_prompt = full_prompt.replace("{target_language}", target_language)
 
-        return full_prompt, extra_log
+        return full_prompt
 
     # 构造参考上文
     def build_preceding(self, preceding_items: list[CacheItem]) -> str:
@@ -122,6 +98,7 @@ class PromptBuilder(Base):
                 "Preceding Text (for reference only, no translation needed):"
                 + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
             )
+
     # 构造术语表
     def build_glossary(self, src_dict: dict) -> str:
         # 将输入字典中的所有值转换为集合
@@ -194,3 +171,16 @@ class PromptBuilder(Base):
             return PromptBuilder.FAKE_REPLY_ZH
         else:
             return PromptBuilder.FAKE_REPLY_EN
+
+    # 构建控制字符示例
+    def build_control_characters_samples(self, samples: list[str]) -> str:
+        if len(samples) == 0:
+            return ""
+
+        # 判断提示词语言
+        if self.target_language == BaseLanguage.ZH:
+            prefix: str = "控制字符示例："
+        else:
+            prefix: str = "Control Characters Samples:"
+
+        return prefix + "\n" + f"{", ".join(samples)}"

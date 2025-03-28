@@ -328,9 +328,7 @@ class TranslatorTask(Base):
         extra_log = []
 
         # 基础提示词
-        main, log = self.prompt_builder.build_main(samples)
-        if log != "":
-            extra_log.append(log)
+        main = self.prompt_builder.build_main()
 
         # 参考上文
         if len(preceding_items) > 0:
@@ -345,6 +343,12 @@ class TranslatorTask(Base):
             if result != "":
                 main = main + "\n" + result
                 extra_log.append(result)
+
+        # 控制字符示例
+        result = self.prompt_builder.build_control_characters_samples(samples)
+        if result != "":
+            main = main + "\n" + result
+            extra_log.append(result)
 
         # 构建提示词列表
         messages.append({
