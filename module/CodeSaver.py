@@ -52,7 +52,7 @@ class CodeSaver(Base):
     PLACEHOLDER = "{PLACEHOLDER}"
 
     # 正则表达式
-    RE_BLANK = re.compile(r"\s+", re.IGNORECASE)
+    RE_BLANK = re.compile(r"[\s\u3000]+", re.IGNORECASE)
 
     RE_PREFIX_NONE = re.compile(rf"^(?:{"|".join(RE_CODE_NONE)})+", re.IGNORECASE)
     RE_SUFFIX_NONE = re.compile(rf"(?:{"|".join(RE_CODE_NONE)})+$", re.IGNORECASE)
@@ -83,7 +83,7 @@ class CodeSaver(Base):
             if item.get_text_type() == CacheItem.TextType.MD:
                 samples_ex: list[str] = self.pre_process_none(k, src_dict)
                 samples.extend(samples_ex)
-                samples.append("markdown")
+                samples.append("Markdown代码")
             elif item.get_text_type() == CacheItem.TextType.RENPY:
                 samples_ex: list[str] = self.pre_process_renpy(k, src_dict)
                 samples.extend(samples_ex)
