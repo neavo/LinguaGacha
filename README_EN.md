@@ -76,6 +76,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250329 v0.19.0
+  - Added - Fully Refactored Control Character Retention Feature
+    - In practice, it can achieve nearly `100%` code retention rate in most `WOLF`, `RenPy`, `RPGMaker` games
+
 - 20250328 v0.18.5
   - OPT - Normalization rule update
     - Can now correctly process phonetic text in `WOLF` Game `\r[漢字,かんじ]`

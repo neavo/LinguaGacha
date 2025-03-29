@@ -73,6 +73,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250329 v0.19.0
+  - 新增 - 完全重构的控制字符保留功能
+    - 实测大部分 `WOLF` `RenPy` `RPGMaker` 游戏中可以实现近似于 `100%` 的代码保留率
+
 - 20250328 v0.18.5
   - 调整 - 规范化规则更新
     - 可以正确处理 `WOLF` 游戏中的注音文本了 `\r[漢字,かんじ]`
