@@ -106,11 +106,6 @@
   - **提醒** - 使用自动更新时，有时会提示 `updater.exe` 被占用
     - 这是已知 BUG，不影响正常更新，无视它即可
 
-- 20250321 v0.17.0
-  - 新增 - 匈牙利语 支持，感谢 @THEYAKUZI
-  - 新增 - 自动更新 功能
-  - 调整 - 结果检查执行逻辑
-
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
   - `LinguaGacha` 的作者是 `AiNiee v5` 的主要开发与维护者之一

@@ -110,11 +110,6 @@
   - **REMINDER** - When using auto-update, a prompt may sometimes appear indicating that `updater.exe` is in use.
     - This is a known BUG and does not affect normal updates. Please ignore it.
 
-- 20250321 v0.17.0
-  - ADD - Hungarian Language Support, Thanks to @THEYAKUZI
-  - ADD - Auto Update Feature
-  - OPT - Result Check Execution Logic
-
 ## FAQ 📥
 - Relationship between [LinguaGacha](https://github.com/neavo/LinguaGacha) and [AiNiee](https://github.com/NEKOparapa/AiNiee)
   - The author of `LinguaGacha` is one of the main developers and maintainers of `AiNiee v5`
