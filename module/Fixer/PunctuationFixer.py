@@ -4,8 +4,8 @@ from base.BaseLanguage import BaseLanguage
 
 class PunctuationFixer():
 
-    # A区：应用到所有语言的规则
-    RULE_A = {
+    # 数量一致才执行的规则 - A区
+    RULE_SAME_COUNT_A = {
         "　": (" ", ),                                      # 全角空格和半角空格之间的转换
         "：": (":", ),
         "・": ("·", ),
@@ -23,8 +23,8 @@ class PunctuationFixer():
         "）": (")", "」", "’", "”"),
     }
 
-    # B区：只应用到部分语言的规则
-    RULE_B = {
+    # 数量一致才执行的规则 - B区
+    RULE_SAME_COUNT_B = {
         " ": ("　", ),                                      # 全角空格和半角空格之间的转换
         ":": ("：", ),
         "·": ("・", ),
@@ -37,21 +37,21 @@ class PunctuationFixer():
         ")": ("）", "」", "’", "”"),
     }
 
-    # 替换区：即不匹配数量，直接强制替换的规则
-    RULE_REPLACE = {
+    # 正则规则
+    RULE_REGEX_CJK = [
+        {
+            "regex_src": re.compile(r"^「.*」$", flags = re.IGNORECASE),
+            "regex_dst": re.compile(r"^\".*\"$", flags = re.IGNORECASE),
+            "regex_repl": re.compile(r"^\"(.*)\"$", flags=re.IGNORECASE),
+            "repl": r"「\1」",
+        },
+    ]
+
+    # 强制规则
+    RULE_FORCE_CJK = {
         "「": ("‘", "“"),
         "」": ("’", "”"),
     }
-
-    # 圆圈数字列表
-    CIRCLED_NUMBERS = tuple(chr(i) for i in range(0x2460, 0x2474))                                      # ①-⑳
-    CIRCLED_NUMBERS_CJK_01 = tuple(chr(i) for i in range(0x3251, 0x3260))                               # ㉑-㉟
-    CIRCLED_NUMBERS_CJK_02 = tuple(chr(i) for i in range(0x32B1, 0x32C0))                               # ㊱-㊿
-    CIRCLED_NUMBERS_ALL = ("",) + CIRCLED_NUMBERS + CIRCLED_NUMBERS_CJK_01 + CIRCLED_NUMBERS_CJK_02     # 开头加个空字符来对齐索引和数值
-
-    # 预设编译正则
-    PATTERN_ALL_NUM = re.compile(r"\d+|[①-⑳㉑-㉟㊱-㊿]", re.IGNORECASE)
-    PATTERN_CIRCLED_NUM = re.compile(r"[①-⑳㉑-㉟㊱-㊿]", re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()
@@ -59,26 +59,35 @@ class PunctuationFixer():
     # 检查并替换
     @classmethod
     def fix(cls, src: str, dst: str, source_language: str, target_language: str) -> str:
-        # 修复圆圈数字
-        dst = cls.fix_circled_numbers(src, dst)
+        # 执行正则区规则
+        for rule in cls.RULE_REGEX_CJK:
+            regex_src: re.Pattern = rule.get("regex_src")
+            regex_dst: re.Pattern = rule.get("regex_dst")
+
+            # 有效性检查
+            if regex_src.search(src) == None or regex_dst.search(dst) == None:
+                continue
+
+            regex_repl: re.Pattern = rule.get("regex_repl")
+            dst = regex_repl.sub(rule.get("repl"), dst)
 
         # CJK To CJK = A + B
         # CJK To 非CJK = B
         # 非CJK To CJK = A
         # 非CJK To 非CJK = B
         if BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
-            cls.apply_fix_rules(src, dst, cls.RULE_A)
-            cls.apply_fix_rules(src, dst, cls.RULE_B)
+            cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
+            cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_B)
         elif BaseLanguage.is_cjk(source_language) and not BaseLanguage.is_cjk(target_language):
-            cls.apply_fix_rules(src, dst, cls.RULE_B)
+            cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_B)
         elif not BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
-            cls.apply_fix_rules(src, dst, cls.RULE_A)
+            cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
         else:
-            cls.apply_fix_rules(src, dst, cls.RULE_B)
+            cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_B)
 
-        # 译文语言为 CJK 语言时，执行 替换区 规则
+        # 译文语言为 CJK 语言时，执行强制规则
         if BaseLanguage.is_cjk(target_language):
-            for key, value in cls.RULE_REPLACE.items():
+            for key, value in cls.RULE_FORCE_CJK.items():
                 dst = cls.apply_replace_rules(dst, key, value)
 
         return dst
@@ -112,75 +121,3 @@ class PunctuationFixer():
             dst = dst.replace(t, key)
 
         return dst
-
-    # 安全转换字符串为整数
-    @classmethod
-    def safe_int(cls, s: str) -> int:
-        result = -1
-
-        try:
-            result = int(s)
-        except Exception:
-            pass
-
-        return result
-
-    # 修复圆圈数字
-    @classmethod
-    def fix_circled_numbers(cls, src: str, dst: str) -> str:
-        # 找出 src 与 dst 中的圆圈数字
-        src_nums = cls.PATTERN_ALL_NUM.findall(src)
-        dst_nums = cls.PATTERN_ALL_NUM.findall(dst)
-        src_circled_nums = cls.PATTERN_CIRCLED_NUM.findall(src)
-        dst_circled_nums = cls.PATTERN_CIRCLED_NUM.findall(dst)
-
-        # 如果原文中没有圆圈数字，则跳过
-        if len(src_circled_nums) == 0:
-            return dst
-
-        # 如果原文和译文中数字（含圆圈数字）的数量不一致，则跳过
-        if len(src_nums) != len(dst_nums):
-            return dst
-
-        # 如果原文中的圆圈数字数量少于译文中的圆圈数字数量，则跳过
-        if len(src_circled_nums) < len(dst_circled_nums):
-            return dst
-
-        # 遍历原文与译文中的数字（含圆圈数字），尝试恢复
-        for i in range(len(src_nums)):
-            src_num_srt = src_nums[i]
-            dst_num_srt = dst_nums[i]
-            dst_num_int = cls.safe_int(dst_num_srt)
-
-            # 如果原文中该位置不是圆圈数字，则跳过
-            if src_num_srt not in cls.CIRCLED_NUMBERS_ALL:
-                continue
-
-            # 如果译文中该位置数值不在有效范围，则跳过
-            if dst_num_int < 0 or dst_num_int >= len(cls.CIRCLED_NUMBERS_ALL):
-                continue
-
-            # 如果原文、译文中该位置的圆圈数字不一致，则跳过
-            if src_num_srt != cls.CIRCLED_NUMBERS_ALL[dst_num_int]:
-                continue
-
-            # 尝试恢复
-            dst = cls.fix_circled_numbers_by_index(dst, i, src_num_srt)
-
-        return dst
-
-    # 通过索引修复圆圈数字
-    @classmethod
-    def fix_circled_numbers_by_index(cls, dst: str, target_i: int, target_str: str) -> str:
-        # 用于标识目标位置
-        i = [0]
-
-        def repl(m: re.Match) -> str:
-            if i[0] == target_i:
-                i[0] = i[0] + 1
-                return target_str
-            else:
-                i[0] = i[0] + 1
-                return m.group(0)
-
-        return cls.PATTERN_ALL_NUM.sub(repl, dst)

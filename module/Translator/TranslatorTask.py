@@ -15,6 +15,7 @@ from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Fixer.KanaFixer import KanaFixer
 from module.Fixer.EscapeFixer import EscapeFixer
+from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Response.ResponseChecker import ResponseChecker
@@ -315,6 +316,9 @@ class TranslatorTask(Base):
 
             # 转义修复
             dst_dict[k] = EscapeFixer.fix(src_dict[k], dst_dict[k])
+
+            # 数字修复
+            dst_dict[k] = NumberFixer.fix(src_dict[k], dst_dict[k])
 
             # 标点符号修复
             dst_dict[k] = PunctuationFixer.fix(src_dict[k], dst_dict[k], source_language, target_language)
