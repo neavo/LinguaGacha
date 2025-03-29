@@ -119,6 +119,9 @@ class WOLF(NONE):
 
     WHITELIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"Database/0$", flags = re.IGNORECASE),
+        re.compile(r"SetString/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"StringCondition/0(/\d+)*$", flags = re.IGNORECASE),
+        re.compile(r"CommonEvent/0(/\d+)*$", flags = re.IGNORECASE),
         re.compile(r"CommonEventByName/\d+/(\d+)((/\d+)?)*$", flags = re.IGNORECASE),
     )
 
@@ -126,8 +129,6 @@ class WOLF(NONE):
         re.compile(r"Message/0(/\d+)*$", flags = re.IGNORECASE),
         re.compile(r"Picture/0(/\d+)*$", flags = re.IGNORECASE),
         re.compile(r"Choices/0(/\d+)*$", flags = re.IGNORECASE),
-        re.compile(r"SetString/0(/\d+)*$", flags = re.IGNORECASE),
-        re.compile(r"StringCondition/0(/\d+)*$", flags = re.IGNORECASE),
     )
 
     BLACKLIST_ADDRESS: tuple[re.Pattern] = (
