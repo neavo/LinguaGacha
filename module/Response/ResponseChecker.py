@@ -121,13 +121,10 @@ class ResponseChecker(Base):
                         check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
                         continue
                 # 韩翻中时，只有译文至少包含一个谚文字符时，才判断为 相似
-                elif (
-                    self.source_language == BaseLanguage.KO
-                    and self.target_language == BaseLanguage.ZH
-                    and TextHelper.KO.any_hangeul(dst)
-                ):
-                    check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
-                    continue
+                elif self.source_language == BaseLanguage.KO and self.target_language == BaseLanguage.ZH:
+                    if TextHelper.KO.any_hangeul(dst):
+                        check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
+                        continue
                 # 其他情况，只要原文译文相同或相似就可以判断为 相似
                 else:
                     check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
