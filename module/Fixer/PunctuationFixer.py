@@ -40,11 +40,37 @@ class PunctuationFixer():
     # 正则规则
     RULE_REGEX_CJK = [
         {
+            "source_language_tuple" : None,
+            "target_language_tuple" : None,
             "regex_src": re.compile(r"^「.*」$", flags = re.IGNORECASE),
-            "regex_dst": re.compile(r"^\".*\"$", flags = re.IGNORECASE),
-            "regex_repl": re.compile(r"^\"(.*)\"$", flags=re.IGNORECASE),
+            "regex_dst": None,
+            "regex_repl": re.compile(r"^\"(.*)\"$", flags = re.IGNORECASE),
             "repl": r"「\1」",
         },
+        {
+            "source_language_tuple" : None,
+            "target_language_tuple" : None,
+            "regex_src": re.compile(r"^『.*』$", flags = re.IGNORECASE),
+            "regex_dst": None,
+            "regex_repl": re.compile(r"^\"(.*)\"$", flags = re.IGNORECASE),
+            "repl": r"『\1』",
+        },
+        {
+            "source_language_tuple" : None,
+            "target_language_tuple" : (BaseLanguage.ZH, BaseLanguage.JA, BaseLanguage.KO),
+            "regex_src": re.compile(r"^“.*”$", flags = re.IGNORECASE),
+            "regex_dst": None,
+            "regex_repl": re.compile(r"^\"(.*)\"$", flags = re.IGNORECASE),
+            "repl": r"“\1”",
+        },
+        {
+            "source_language_tuple" : None,
+            "target_language_tuple" : (BaseLanguage.ZH, BaseLanguage.JA, BaseLanguage.KO),
+            "regex_src": re.compile(r"^‘.*’$", flags = re.IGNORECASE),
+            "regex_dst": None,
+            "regex_repl": re.compile(r"^'(.*)'$", flags = re.IGNORECASE),
+            "repl": r"‘\1’",
+        }
     ]
 
     # 强制规则
@@ -63,13 +89,20 @@ class PunctuationFixer():
         for rule in cls.RULE_REGEX_CJK:
             regex_src: re.Pattern = rule.get("regex_src")
             regex_dst: re.Pattern = rule.get("regex_dst")
+            source_language_tuple: tuple[str] = rule.get("source_language_tuple")
+            target_language_tuple: tuple[str] = rule.get("target_language_tuple")
 
             # 有效性检查
-            if regex_src.search(src) == None or regex_dst.search(dst) == None:
+            if isinstance(regex_src, re.Pattern) and regex_src.search(src) == None:
+                continue
+            if isinstance(regex_dst, re.Pattern) and regex_dst.search(dst) == None:
+                continue
+            if isinstance(source_language_tuple, tuple) and not source_language in source_language_tuple:
+                continue
+            if isinstance(target_language_tuple, tuple) and not target_language in target_language_tuple:
                 continue
 
-            regex_repl: re.Pattern = rule.get("regex_repl")
-            dst = regex_repl.sub(rule.get("repl"), dst)
+            dst = rule.get("regex_repl").sub(rule.get("repl"), dst)
 
         # CJK To CJK = A + B
         # CJK To 非CJK = B
