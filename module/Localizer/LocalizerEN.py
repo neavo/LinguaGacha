@@ -146,10 +146,10 @@ class LocalizerEN(LocalizerBase):
     response_checker_line_error_fake_reply: str = "Fake-Reply Residue"
     response_checker_line_error_similarity: str = "High Similarity"
     response_checker_line_error_degradation: str = "Degradation Occurred"
-    response_decoder_glossary_by_json: str = "Glossary data [bright_blue]->[/] deserialization, total {COUNT} entries"
-    response_decoder_glossary_by_rule: str = "Glossary data [bright_blue]->[/] rule parsing after split, total {COUNT} entries"
-    response_decoder_translation_by_json: str = "Translation data [bright_blue]->[/] deserialization, total {COUNT} entries"
-    response_decoder_translation_by_rule: str = "Translation data [bright_blue]->[/] rule parsing after split, total {COUNT} entries"
+    response_decoder_glossary_by_json: str = "Glossary data -> deserialization, total {COUNT} entries"
+    response_decoder_glossary_by_rule: str = "Glossary data -> rule parsing after split, total {COUNT} entries"
+    response_decoder_translation_by_json: str = "Translation data -> deserialization, total {COUNT} entries"
+    response_decoder_translation_by_rule: str = "Translation data -> rule parsing after split, total {COUNT} entries"
 
     # 应用设置
     app_settings_page_proxy_url = "Please enter network proxy address ..."

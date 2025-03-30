@@ -435,31 +435,19 @@ class Translator(Base):
             result = future.result()
 
             # 结果为空则跳过后续的更新步骤
-            if result == None or len(result) == 0:
+            if not isinstance(result, dict) or len(result) == 0:
                 return
 
             # 记录数据
             with self.data_lock:
-                if result.get("check_result") is not None:
-                    # 任务成功
-                    new = {}
-                    new["start_time"] = self.extras.get("start_time", 0)
-                    new["total_line"] = self.extras.get("total_line", 0)
-                    new["line"] = self.extras.get("line", 0)
-                    new["token"] = self.extras.get("token", 0) + result.get("prompt_tokens", 0) + result.get("completion_tokens", 0)
-                    new["total_completion_tokens"] = self.extras.get("total_completion_tokens", 0)
-                    new["time"] = time.time() - self.extras.get("start_time", 0)
-                    self.extras = new
-                else:
-                    # 任务失败
-                    new = {}
-                    new["start_time"] = self.extras.get("start_time", 0)
-                    new["total_line"] = self.extras.get("total_line", 0)
-                    new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
-                    new["token"] = self.extras.get("token", 0) + result.get("prompt_tokens", 0) + result.get("completion_tokens", 0)
-                    new["total_completion_tokens"] = self.extras.get("total_completion_tokens", 0) + result.get("completion_tokens", 0)
-                    new["time"] = time.time() - self.extras.get("start_time", 0)
-                    self.extras = new
+                new = {}
+                new["start_time"] = self.extras.get("start_time", 0)
+                new["total_line"] = self.extras.get("total_line", 0)
+                new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
+                new["token"] = self.extras.get("token", 0) + result.get("prompt_tokens", 0) + result.get("completion_tokens", 0)
+                new["total_completion_tokens"] = self.extras.get("total_completion_tokens", 0) + result.get("completion_tokens", 0)
+                new["time"] = time.time() - self.extras.get("start_time", 0)
+                self.extras = new
 
             # 更新翻译进度
             self.cache_manager.get_project().set_extras(self.extras)

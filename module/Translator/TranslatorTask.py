@@ -5,6 +5,7 @@ import threading
 import opencc
 import rapidjson as json
 from rich import box
+from rich import markup
 from rich.table import Table
 from rich.console import Console
 
@@ -110,7 +111,6 @@ class TranslatorTask(Base):
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip == True:
             return {
-                "check_result": [ResponseChecker.Error.UNKNOWN],
                 "row_count": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -146,6 +146,7 @@ class TranslatorTask(Base):
             console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
         # 如果有任何正确的条目，则处理结果
+        updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in check_result):
             # 自动修复
             dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, self.config)
@@ -164,7 +165,6 @@ class TranslatorTask(Base):
                 self.merge_glossary(glossary_auto)
 
             # 更新缓存数据
-            updated_count = 0
             dst_sub_lines = list(dst_dict.values())
             check_result_lines = check_result.copy()
             for item in self.items:
@@ -187,16 +187,14 @@ class TranslatorTask(Base):
         )
 
         # 返回任务结果
-        if any(v == ResponseChecker.Error.NONE for v in check_result):
+        if updated_count > 0:
             return {
-                "check_result": None,
                 "row_count": updated_count,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
             }
         else:
             return {
-                "check_result": check_result,
                 "row_count": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -467,7 +465,7 @@ class TranslatorTask(Base):
         console_log.insert(0, message)
 
         # 写入日志到文件
-        file_rows = self.generate_log_rows(srcs, dsts, file_log, highlight = False)
+        file_rows = self.generate_log_rows(srcs, dsts, file_log, console = False)
         log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
 
         # 根据线程数判断是否需要打印表格
@@ -479,11 +477,11 @@ class TranslatorTask(Base):
                 console = True,
             )
         else:
-            console_rows = self.generate_log_rows(srcs, dsts, console_log, highlight = True)
+            console_rows = self.generate_log_rows(srcs, dsts, console_log, console = True)
             TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
 
     # 生成日志行
-    def generate_log_rows(self, srcs: list[str], dsts: list[str], extra: list[str], highlight: bool) -> tuple[list[str], str]:
+    def generate_log_rows(self, srcs: list[str], dsts: list[str], extra: list[str], console: bool) -> tuple[list[str], str]:
         rows = []
 
         # 添加额外日志
@@ -493,10 +491,10 @@ class TranslatorTask(Base):
         # 原文译文对比
         pair = ""
         for src, dst in itertools.zip_longest(srcs, dsts, fillvalue = ""):
-            if highlight == False:
+            if console == False:
                 pair = pair + "\n" + f"{src} --> {dst}"
             else:
-                pair = pair + "\n" + f"{src} [bright_blue]-->[/] {dst}"
+                pair = pair + "\n" + f"{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}"
         rows.append(pair.strip())
 
         return rows
