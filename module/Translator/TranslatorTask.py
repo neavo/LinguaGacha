@@ -14,6 +14,7 @@ from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
+from module.Fixer.CodeFixer import CodeFixer
 from module.Fixer.KanaFixer import KanaFixer
 from module.Fixer.EscapeFixer import EscapeFixer
 from module.Fixer.NumberFixer import NumberFixer
@@ -149,7 +150,7 @@ class TranslatorTask(Base):
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in check_result):
             # 自动修复
-            dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, self.config)
+            dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, item_dict)
 
             # 代码救星后处理
             dst_dict = self.code_saver.post_process(src_dict, dst_dict)
@@ -296,7 +297,7 @@ class TranslatorTask(Base):
             return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
 
     # 自动修复
-    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], config: dict) -> dict:
+    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> dict:
         source_language = self.config.get("source_language")
         target_language = self.config.get("target_language")
 
@@ -311,6 +312,9 @@ class TranslatorTask(Base):
             # 谚文修复
             elif source_language == BaseLanguage.KO:
                 dst_dict[k] = HangeulFixer.fix(dst_dict[k])
+
+            # 代码修复
+            dst_dict[k] = CodeFixer.fix(src_dict[k], dst_dict[k], item_dict.get(k).get_text_type())
 
             # 转义修复
             dst_dict[k] = EscapeFixer.fix(src_dict[k], dst_dict[k])
