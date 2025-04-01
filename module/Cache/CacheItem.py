@@ -22,6 +22,7 @@ class CacheItem(BaseData):
         ASS: str = "ASS"                                # .ass 字幕文件
         EPUB: str = "EPUB"                              # .epub
         XLSX: str = "XLSX"                              # .xlsx Translator++ SExtractor
+        WOLFXLSX: str = "WOLFXLSX"                      # .xlsx WOLF 官方翻译工具导出文件
         RENPY: str = "RENPY"                            # .rpy RenPy
         TRANS: str = "TRANS"                            # .trans Translator++
         KVJSON: str = "KVJSON"                          # .json MTool
