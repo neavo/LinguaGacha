@@ -62,6 +62,7 @@ class Base():
         TRANSLATED: str = "TRANSLATED"                          # 已翻译
         TRANSLATED_IN_PAST: str = "TRANSLATED_IN_PAST"          # 过去已翻译
         EXCLUDED: str = "EXCLUDED"                              # 已排除
+        DUPLICATED: str = "DUPLICATED"                          # 重复条目
 
     # 配置文件路径
     CONFIG_PATH = "./resource/config.json"

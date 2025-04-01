@@ -175,8 +175,8 @@ class CacheManager(Base):
         preceding_chunks: list[list[CacheItem]] = []
         chunk_length: int = 0
         for i, item in enumerate(self.items):
-            # 跳过 已排除、已翻译、过去已翻译 的数据
-            if item.get_status() in (Base.TranslationStatus.EXCLUDED, Base.TranslationStatus.TRANSLATED, Base.TranslationStatus.TRANSLATED_IN_PAST):
+            # 跳过状态不是 未翻译 的数据
+            if item.get_status() != Base.TranslationStatus.UNTRANSLATED:
                 continue
 
             # 每个片段的第一条不判断是否超限，以避免特别长的文本导致死循环

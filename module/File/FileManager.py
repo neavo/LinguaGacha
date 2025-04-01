@@ -9,13 +9,14 @@ from module.File.ASS import ASS
 from module.File.SRT import SRT
 from module.File.TXT import TXT
 from module.File.EPUB import EPUB
+from module.File.XLSX import XLSX
+from module.File.WOLFXLSX import WOLFXLSX
 from module.File.RENPY import RENPY
-from module.File.TRANS import TRANS
+from module.File.TRANS.TRANS import TRANS
 from module.File.KVJSON import KVJSON
 from module.File.MESSAGEJSON import MESSAGEJSON
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
-from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
 
 class FileManager(Base):
@@ -52,6 +53,7 @@ class FileManager(Base):
             items.extend(SRT(self.config).read_from_path([path for path in paths if path.lower().endswith(".srt")]))
             items.extend(EPUB(self.config).read_from_path([path for path in paths if path.lower().endswith(".epub")]))
             items.extend(XLSX(self.config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
+            items.extend(WOLFXLSX(self.config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
             items.extend(RENPY(self.config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
             items.extend(TRANS(self.config).read_from_path([path for path in paths if path.lower().endswith(".trans")]))
             items.extend(KVJSON(self.config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
@@ -70,6 +72,7 @@ class FileManager(Base):
             SRT(self.config).write_to_path(items)
             EPUB(self.config).write_to_path(items)
             XLSX(self.config).write_to_path(items)
+            WOLFXLSX(self.config).write_to_path(items)
             RENPY(self.config).write_to_path(items)
             TRANS(self.config).write_to_path(items)
             KVJSON(self.config).write_to_path(items)

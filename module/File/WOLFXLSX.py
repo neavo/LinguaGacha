@@ -1,14 +1,34 @@
 import os
 import re
+import shutil
 
 import openpyxl
 from openpyxl import Workbook
+from openpyxl.styles import Color
 from openpyxl.worksheet.worksheet import Worksheet
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
 
-class XLSX(Base):
+class WOLFXLSX(Base):
+
+    BLACKLIST_EXT: tuple[str] = (
+        ".mp3", ".wav", ".ogg", "mid",
+        ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
+        ".avi", ".mp4", ".webm",
+        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps",
+    )
+
+    FILL_COLOR_WHITELIST: tuple = (
+        9,                                                              # 白色
+    )
+
+    FILL_COLOR_BLACKLIST: tuple = (
+        44,                                                             # 蓝色
+        47,                                                             # 土黄
+        55,                                                             # 灰色
+    )
 
     def __init__(self, config: dict) -> None:
         super().__init__()
@@ -27,6 +47,10 @@ class XLSX(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
+            # 将原始文件复制一份
+            os.makedirs(os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"), exist_ok = True)
+            shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
+
             # 数据处理
             book: Workbook = openpyxl.load_workbook(abs_path)
             sheet: Worksheet = book.active
@@ -36,28 +60,34 @@ class XLSX(Base):
                 continue
 
             # 判断是否为 WOLF 翻译表格文件
-            if self.is_wold_xlsx(sheet):
+            if not self.is_wold_xlsx(sheet):
                 continue
 
-            for row in range(1, sheet.max_row + 1):
-                src = sheet.cell(row = row, column = 1).value
-                dst = sheet.cell(row = row, column = 2).value
+            for row in range(2, sheet.max_row + 1):
+                src: str = sheet.cell(row = row, column = 6).value
+                dst: str = sheet.cell(row = row, column = 7).value
 
                 # 跳过读取失败的行
                 # 数据不存在时为 None，存在时可能是 str int float 等多种类型
                 if src is None:
                     continue
 
-                src = str(src)
-                dst = str(dst) if dst is not None else ""
-                if src == "":
+                src: str = str(src)
+                dst: str = str(dst) if dst is not None else ""
+
+                if (
+                    src == ""
+                    or self.get_fg_color_index(sheet, row, 6) not in WOLFXLSX.FILL_COLOR_WHITELIST
+                    or not self.should_translate(sheet, row)
+                ):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": dst,
+                            "dst": "",
                             "row": row,
-                            "file_type": CacheItem.FileType.XLSX,
+                            "file_type": CacheItem.FileType.WOLFXLSX,
                             "file_path": rel_path,
+                            "text_type": CacheItem.TextType.WOLF,
                             "status": Base.TranslationStatus.EXCLUDED,
                         })
                     )
@@ -67,8 +97,9 @@ class XLSX(Base):
                             "src": src,
                             "dst": dst,
                             "row": row,
-                            "file_type": CacheItem.FileType.XLSX,
+                            "file_type": CacheItem.FileType.WOLFXLSX,
                             "file_path": rel_path,
+                            "text_type": CacheItem.TextType.WOLF,
                             "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
                         })
                     )
@@ -76,10 +107,11 @@ class XLSX(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": dst,
+                            "dst": "",
                             "row": row,
-                            "file_type": CacheItem.FileType.XLSX,
+                            "file_type": CacheItem.FileType.WOLFXLSX,
                             "file_path": rel_path,
+                            "text_type": CacheItem.TextType.WOLF,
                             "status": Base.TranslationStatus.UNTRANSLATED,
                         })
                     )
@@ -90,9 +122,10 @@ class XLSX(Base):
     def write_to_path(self, items: list[CacheItem]) -> None:
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.XLSX
+            if item.get_file_type() == CacheItem.FileType.WOLFXLSX
         ]
 
+        # 按文件路径分组
         data: dict[str, list[str]] = {}
         for item in target:
             data.setdefault(item.get_file_path(), []).append(item)
@@ -102,9 +135,9 @@ class XLSX(Base):
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
-            # 新建工作表
-            book = openpyxl.Workbook()
-            sheet = book.active
+            # 数据处理
+            book: Workbook = openpyxl.load_workbook(f"{self.output_path}/cache/temp/{rel_path}")
+            sheet: Worksheet = book.active
 
             # 将数据写入工作表
             for item in items:
@@ -116,13 +149,13 @@ class XLSX(Base):
                 # 因为 = 开头会被识别成 Excel 公式导致 T++ 导入时 卡住
                 # 加入空格后，虽然还是不能直接导入 T++ ，但是可以手动复制粘贴
                 try:
-                    sheet.cell(row = row, column = 1).value = src
+                    sheet.cell(row = row, column = 6).value = src
                 except:
-                    sheet.cell(row = row, column = 1).value = re.escape(src)
+                    sheet.cell(row = row, column = 6).value = re.escape(src)
                 try:
-                    sheet.cell(row = row, column = 2).value = dst
+                    sheet.cell(row = row, column = 7).value = dst
                 except:
-                    sheet.cell(row = row, column = 2).value = re.escape(dst)
+                    sheet.cell(row = row, column = 7).value = re.escape(dst)
 
             # 保存工作簿
             abs_path = f"{self.output_path}/{rel_path}"
@@ -146,5 +179,36 @@ class XLSX(Base):
         value: str = sheet.cell(row = 1, column = 4).value
         if not isinstance(value, str) or "info" not in value.lower():
             return False
+
+        return True
+
+    # 获取单元格填充颜色索引
+    def get_fg_color_index(self, sheet: Worksheet, row: int, column: int) -> int:
+        fill = sheet.cell(row = row, column = column).fill
+        if fill.fill_type is not None:
+            fg_color = fill.fgColor
+            if fg_color:
+                if isinstance(fg_color, Color):
+                    if fg_color.type == "indexed":
+                        return fg_color.indexed
+
+        return -1
+
+    # 是否应该翻译
+    def should_translate(self, sheet: Worksheet, row: int) -> bool:
+        code: str = sheet.cell(row = row, column = 1).value
+        info: str = sheet.cell(row = row, column = 4).value
+        src: str = sheet.cell(row = row, column = 6).value
+
+        if isinstance(code, str):
+            if "common" in code.lower() and src.startswith("\\>「X["):
+                return False
+
+        if isinstance(info, str):
+            if "補正" in info.lower():
+                return False
+
+            if any(v in src for v in WOLFXLSX.BLACKLIST_EXT):
+                return False
 
         return True

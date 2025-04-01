@@ -25,7 +25,7 @@ from module.File.TXT import TXT
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
 from module.File.XLSX import XLSX
-from module.File.TRANS import TRANS
+from module.File.TRANS.TRANS import TRANS
 from module.File.RENPY import RENPY
 from module.File.KVJSON import KVJSON
 from module.File.MESSAGEJSON import MESSAGEJSON
