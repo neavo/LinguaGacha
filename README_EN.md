@@ -73,9 +73,15 @@
   - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
   - [Translator++](https://dreamsavior.net/translator-plusplus) project (.trans)
   - [Translator++](https://dreamsavior.net/translator-plusplus) exports (.xlsx)
+  - [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports (.xlsx)
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250401 v0.20.0
+  - OPT - [Translator++](https://dreamsavior.net/translator-plusplus) project file (.trans) rules update
+    - Supports [WOLF Official Translation Tool Exported Text](https://silversecond.booth.pm/items/5151747) (.xlsx)
+    - Refactored support for the `WOLF` engine, expanding the supported engine version scope. See [Wiki](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF-%E2%80%90-EN) for details
+
 - 20250330 v0.19.2
   - Optimizations to some pre-processing and post-processing flows, including:
     - Most of the `‘’` `“”` `「」` at the beginning and end of sentences can be correctly fixed

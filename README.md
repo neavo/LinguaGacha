@@ -70,9 +70,15 @@
   - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) 导出游戏文本（.json）
   - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans）
   - [Translator++](https://dreamsavior.net/translator-plusplus) 导出游戏文本（.xlsx）
+  - [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本（.xlsx）
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250401 v0.20.0
+  - 调整 - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans） 规则更新
+    - 支持 [WOLF 官方翻译工具导出文本](https://silversecond.booth.pm/items/5151747)（.xlsx）
+    - 重构了对 `WOLF` 引擎的支持，扩大了支持的引擎版本范围，详见 [Wiki](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
+
 - 20250330 v0.19.2
   - 一些预处理与后处理流程的优化，包括：
     - 绝大部分句子首尾的 `‘’` `“”` `「」` 可以正确修复了
