@@ -299,7 +299,15 @@ class LocalizerBase():
 
     # 译前替换
     pre_translation_replacement_page_head_title = "译前替换"
-    pre_translation_replacement_page_head_content = "在翻译开始前，将原文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
+    pre_translation_replacement_page_head_content = (
+        "在翻译开始前，将原文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
+        "<br>"
+        "对于 <font color='darkgoldenrod'><b>RPGMaker MV/MZ</b></font> 引擎的游戏："
+        "<br>"
+        "• 导入游戏目录的 <font color='darkgoldenrod'><b>data</b></font> 或者 <font color='darkgoldenrod'><b>www\\data</b></font> 文件夹内的 <font color='darkgoldenrod'><b>actors.json</b></font> 文件可以显著提升翻译质量"
+        "<br>"
+        "• 游戏中包含自定义姓名功能时需要进行特殊处理，请点击右下角按钮跳转并仔细阅读 <font color='darkgoldenrod'><b>Wiki</b></font> 相关页面中的说明"
+    )
     pre_translation_replacement_page_table_row_01 = "原文"
     pre_translation_replacement_page_table_row_02 = "替换"
     pre_translation_replacement_page_import = "导入"

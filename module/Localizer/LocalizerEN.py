@@ -299,7 +299,15 @@ class LocalizerEN(LocalizerBase):
 
     # 译前替换
     pre_translation_replacement_page_head_title = "Pre-translation Replacement"
-    pre_translation_replacement_page_head_content = "Before translation starts, replace the matched parts in the original text with the specified text, the execution order is from top to bottom."
+    pre_translation_replacement_page_head_content = (
+        "Before translation, matched parts of the original text will be replaced by specified text, processed in top-down order."
+        "<br>"
+        "For <font color='darkgoldenrod'><b>RPGMaker MV/MZ</b></font> engine games:"
+        "<br>"
+        "• Importing <font color='darkgoldenrod'><b>actors.json</b></font> from <font color='darkgoldenrod'><b>data</b></font> or <font color='darkgoldenrod'><b>www\\data</b></font> in the game directory can improve translation quality."
+        "<br>"
+        "• Special handling is needed for games with custom names. Click the bottom-right button to see <font color='darkgoldenrod'><b>Wiki</b></font> instructions."
+    )
     pre_translation_replacement_page_table_row_01 = "Original Text"
     pre_translation_replacement_page_table_row_02 = "Replacement"
     pre_translation_replacement_page_import = "Import"
