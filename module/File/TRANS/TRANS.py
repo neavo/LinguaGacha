@@ -44,19 +44,9 @@ class TRANS(Base):
 
                 # 获取项目信息
                 project: dict = json_data.get("project", {})
-                engine: str = project.get("gameEngine", "")
 
                 # 获取处理实体
-                if engine.lower() in ("wolf", "wolfrpg"):
-                    processor: NONE = WOLF(project)
-                elif engine.lower() == "renpy":
-                    processor: NONE = RENPY(project)
-                elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                    processor: NONE = RPGMAKER(project)
-                else:
-                    processor: NONE = NONE(project)
-
-                # 执行预处理
+                processor: NONE = self.get_processor(project)
                 processor.pre_process()
 
                 # 处理数据
@@ -119,12 +109,12 @@ class TRANS(Base):
         ]
 
         # 按文件路径分组
-        data: dict[str, list[str]] = {}
+        group: dict[str, list[str]] = {}
         for item in target:
-            data.setdefault(item.get_file_path(), []).append(item)
+            group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
@@ -143,17 +133,10 @@ class TRANS(Base):
                     # 获取项目信息
                     project: dict = json_data.get("project", {})
                     files: dict = project.get("files", {})
-                    engine: str = project.get("gameEngine", "")
 
                     # 获取处理实体
-                    if engine.lower() in ("wolf", "wolfrpg"):
-                        processor: NONE = WOLF(project)
-                    elif engine.lower() == "renpy":
-                        processor: NONE = RENPY(project)
-                    elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
-                        processor: NONE = RPGMAKER(project)
-                    else:
-                        processor: NONE = NONE(project)
+                    processor: NONE = self.get_processor(project)
+                    processor.post_process()
 
                     # 去重
                     translation: dict[str, str] = {}
@@ -167,9 +150,6 @@ class TRANS(Base):
                         dst = item.get_dst()
                         if src in translation:
                             item.set_dst(translation.get(src))
-
-                    # 执行预处理
-                    processor.post_process()
 
                     # 处理数据
                     path: str = ""
@@ -218,3 +198,18 @@ class TRANS(Base):
 
                 # 写入文件
                 json.dump(json_data, writer, indent = None, ensure_ascii = False)
+
+    # 获取处理实体
+    def get_processor(self, project: dict) -> NONE:
+        engine: str = project.get("gameEngine", "")
+
+        if engine.lower() in ("wolf", "wolfrpg"):
+            processor: NONE = WOLF(project)
+        elif engine.lower() == "renpy":
+            processor: NONE = RENPY(project)
+        elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+            processor: NONE = RPGMAKER(project)
+        else:
+            processor: NONE = NONE(project)
+
+        return processor
