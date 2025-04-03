@@ -46,21 +46,21 @@
   - 将要翻译的文本文件复制到输入文件夹（默认为 `input` 文件夹），在 `开始翻译` 中点击开始翻译
 
 ## 使用教程 📝
-- 图文教程
+- 综合
   - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 手把手教学，有手就行，新手必看`
-- 视频教程
-  - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
-- 进阶教程
-  - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　[增量翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)
-  - [部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig)　　[角色姓名注入](https://github.com/neavo/LinguaGacha/wiki/NameInjection)
-  - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
   - [高质量翻译 WOLF 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [高质量翻译 RPGMaker 系列引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
+- 视频教程
+  - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
+- 功能说明
+  - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　[增量翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)
+  - [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection)　　[部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)
+  - [专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig)　　[角色姓名注入](https://github.com/neavo/LinguaGacha/wiki/NameInjection)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
-- 在任务开始时，`LG` 将读取输入文件夹（及其子目录）内所有支持的文件，包括但是不限于：
+- 在任务开始时，应用将读取输入文件夹（及其子目录）内所有支持的文件，包括但是不限于：
   - 字幕（.srt .ass）
   - 电子书（.txt .epub）
   - Markdown（.md）
@@ -74,6 +74,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250404 v0.21.0
+  - 新增 - [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection) 功能
+    - 一次性对检查报告中的错误进行批量修正
+  - 调整 - 优化标点修复规则
+    - 现在可以更稳定的还原原文中的标点符号了
+
 - 20250401 v0.20.0
   - 调整 - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans） 规则更新
     - 支持 [WOLF 官方翻译工具导出文本](https://silversecond.booth.pm/items/5151747)（.xlsx）
