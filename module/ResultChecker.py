@@ -201,7 +201,7 @@ class ResultChecker(Base):
                 glossary_dst = v.get("dst", "")
                 if glossary_src in rpl and glossary_dst not in item.get_dst():
                     count = count + 1
-                    result.setdefault(f"{glossary_src} -> {glossary_dst}", {})[item.get_src()] = item.get_dst()
+                    result.setdefault(f"{item.get_file_path()} | {glossary_src} -> {glossary_dst}", {})[item.get_src()] = item.get_dst()
 
         if count == 0:
             self.info(Localizer.get().file_checker_glossary)

@@ -392,21 +392,21 @@ class LocalizerEN(LocalizerBase):
         "<br>"
         "• Inject the corrected data into the translated files within the <font color='darkgoldenrod'><b>Input folder</b></font>, and then generate the corrected translated files in the <font color='darkgoldenrod'><b>Output folder</b></font>"
     )
-    batch_correction_page_step_01: str = "Step 1: Generate Correction Data"
+    batch_correction_page_step_01: str = "Step 1 - Generate Correction Data"
     batch_correction_page_step_01_desc: str = (
         "Extracts data that may contain translation errors from the result inspection file"
         "<br>"
         f"Then generates a data file <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font> for editing in the <font color='darkgoldenrod'><b>output folder</b></font>"
     )
-    batch_correction_page_step_02: str = "Step 2: Inject Correction Data"
+    batch_correction_page_step_02: str = "Step 2 - Inject Correction Data"
     batch_correction_page_step_02_desc: str = (
-        "Check the content of the data file, <font color='darkgoldenrod'><b>close</b></font> the file after confirming that it is correct, and start injection"
+        "Check the content in the data file, and after confirming everything is correct, <font color='darkgoldenrod'><b>close</b></font> the file to start injection"
         "<br>"
         "Please note:"
         "<br>"
-        "• Do not modify other data in the data file except for the <font color='darkgoldenrod'><b>Correction</b></font> column"
+        "• Except for the <font color='darkgoldenrod'><b>correction column</b></font>, do not modify other data within the data file"
         "<br>"
-        "• For data entries that do not need to be corrected, simply leave the corresponding <font color='darkgoldenrod'><b>Correction</b></font> column blank"
+        "• Filenames of some formats may contain language suffix like <font color='darkgoldenrod'><b>.zh</b></font>, remove it before injection for correct data matching"
     )
     batch_correction_page_title_01: str = "File Name"
     batch_correction_page_title_02: str = "Error Type"
