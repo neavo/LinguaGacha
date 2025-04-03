@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 
 import openpyxl
 import openpyxl.worksheet.worksheet
@@ -170,7 +171,15 @@ class BatchCorrectionPage(QWidget, Base):
                         if not isinstance(items_by_path, dict):
                             continue
 
-                        group = BatchCorrectionPage.FILE_NAME_WHITELIST.sub(r"\2", entry.name)
+                        # 分别处理两种文本组织形式
+                        chunks: list[str] = file_path.split("|")
+                        if len(chunks) == 1:
+                            group = BatchCorrectionPage.FILE_NAME_WHITELIST.sub(r"\2", entry.name)
+                        else:
+                            group = BatchCorrectionPage.FILE_NAME_WHITELIST.sub(r"\2", entry.name) + " " + chunks[1].strip()
+                            file_path = chunks[0].strip()
+
+                        # 添加数据
                         for src, dst in items_by_path.items():
                             key = (file_path, src)
                             data_dict.setdefault(key, {})["src"] = src
@@ -217,7 +226,7 @@ class BatchCorrectionPage(QWidget, Base):
             XLSXHelper.set_cell_value(sheet, i + 2, 2, "\n".join(item.get("group")))
             XLSXHelper.set_cell_value(sheet, i + 2, 3, item.get("src"))
             XLSXHelper.set_cell_value(sheet, i + 2, 4, item.get("dst"))
-            XLSXHelper.set_cell_value(sheet, i + 2, 5, "")
+            XLSXHelper.set_cell_value(sheet, i + 2, 5, item.get("dst"))
 
         # 保存工作簿
         abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}.xlsx"
@@ -289,26 +298,34 @@ class BatchCorrectionPage(QWidget, Base):
 
         # 修正数据
         for item in items:
-            src = item.get_src()
-            dst = item.get_dst()
+            src = item.get_src().replace("\r", "_x000D_")
+            dst = item.get_dst().replace("\r", "_x000D_")
             file_path = item.get_file_path()
             if file_path in data_dict:
                 if item.get_file_type() in BatchCorrectionPage.SINGLE:
                     for data in data_dict.get(file_path):
-                        if src == data.get("dst").replace("_x000D_", "\r"):
-                            item.set_dst(data.get("fix").replace("_x000D_", "\r"))
+                        if src == data.get("dst"):
+                            item.set_dst(self.auto_convert_line_break(src, data.get("fix")))
                             break
                 elif item.get_file_type() in BatchCorrectionPage.DOUBLE:
                     for data in data_dict.get(file_path):
-                        if src == data.get("src").replace("_x000D_", "\r") and dst == data.get("dst").replace("_x000D_", "\r"):
-                            item.set_dst(data.get("fix").replace("_x000D_", "\r"))
+                        if src == data.get("src") and dst == data.get("dst"):
+                            item.set_dst(self.auto_convert_line_break(src, data.get("fix")))
                             break
 
         # 写入文件
         FileManager(config).write_to_path(items)
+        shutil.rmtree(f"{config.get("output_folder")}/{Localizer.get().path_bilingual}", ignore_errors = True)
 
         # 提示
         self.emit(Base.Event.APP_TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().task_success,
         })
+
+    # 根据原文换行符对修正文本中的换行符进行转换
+    def auto_convert_line_break(self, src: str, fix: str) -> str:
+        if "_x000D_" not in src:
+            return fix
+        else:
+            return fix.replace("\n", "_x000D_\n").replace("_x000D_\n", "\r\n")

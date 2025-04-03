@@ -42,23 +42,13 @@ class PreTranslationReplacementPage(QWidget, Base):
         # 根据应用语言加载默认设置
         if Localizer.get_app_language() == BaseLanguage.ZH:
             self.default = {
-                "pre_translation_replacement_enable": False,
-                "pre_translation_replacement_data": [
-                    {
-                        "src": "\\n[1]",
-                        "dst": "张三"
-                    },
-                ],
+                "pre_translation_replacement_enable": True,
+                "pre_translation_replacement_data": [],
             }
         else:
             self.default = {
-                "pre_translation_replacement_enable": False,
-                "pre_translation_replacement_data": [
-                    {
-                        "src": "\\n[1]",
-                        "dst": "Jack"
-                    },
-                ],
+                "pre_translation_replacement_enable": True,
+                "pre_translation_replacement_data": [],
             }
 
         # 载入并保存默认配置

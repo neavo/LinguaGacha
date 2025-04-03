@@ -406,7 +406,7 @@ class LocalizerBase():
         "<br>"
         "• 除 <font color='darkgoldenrod'><b>修正列</b></font> 以外，不要修改数据文件内的其他数据"
         "<br>"
-        "• 对于不需要修正的数据条目，仅需将对应的 <font color='darkgoldenrod'><b>修正列</b></font> 留空即可"
+        "• 部分格式的译文文件名中会包含类似 <font color='darkgoldenrod'><b>.zh</b></font> 的语言后缀，在注入前请从文件名中移除语言后缀以正确匹配数据"
     )
     batch_correction_page_title_01: str = "文件名"
     batch_correction_page_title_02: str = "错误类型"

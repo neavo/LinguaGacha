@@ -12,5 +12,5 @@ class BaseData():
         return {
             k: v
             for k, v in vars(self).items()
-            if isinstance(v, BaseData._TYPE_FILTER)
+            if v is None or isinstance(v, BaseData._TYPE_FILTER)
         }
