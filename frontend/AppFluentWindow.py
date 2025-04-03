@@ -38,6 +38,7 @@ from frontend.Quality.PostTranslationReplacementPage import PostTranslationRepla
 from frontend.ToolBox.ToolBoxPage import ToolBoxPage
 from frontend.ToolBox.ReTranslationPage import ReTranslationPage
 from frontend.ToolBox.NameInjectionPage import NameInjectionPage
+from frontend.ToolBox.BatchCorrectionPage import BatchCorrectionPage
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -426,6 +427,10 @@ class AppFluentWindow(FluentWindow, Base):
             text = Localizer.get().app_tool_box_page,
             position = NavigationItemPosition.SCROLL,
         )
+
+        # 批量修正
+        self.batch_correction_page = BatchCorrectionPage("batch_correction_page", self)
+        self.stackedWidget.addWidget(self.batch_correction_page)
 
         # 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)

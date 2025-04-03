@@ -1,6 +1,6 @@
-import re
+import openpyxl
+import openpyxl.worksheet.worksheet
 import rapidjson as json
-from openpyxl import Workbook
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
@@ -22,6 +22,7 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
+from module.XLSXHelper import XLSXHelper
 from module.TableHelper import TableHelper
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
@@ -225,37 +226,23 @@ class PreTranslationReplacementPage(QWidget, Base):
     def add_command_bar_action_export(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def export_to_xlsx(data: list[dict[str, str]], path: str) -> None:
-            work_book = Workbook()
-            active_sheet = work_book.active
+            # 新建工作表
+            book: openpyxl.Workbook = openpyxl.Workbook()
+            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
+
+            # 设置表头
+            sheet.column_dimensions["A"].width = 32
+            sheet.column_dimensions["B"].width = 32
+            sheet.column_dimensions["C"].width = 32
 
             # 将数据写入工作表
             for row, item in enumerate(data):
-                # 如果文本是以 = 开始，则加一个空格
-                # 因为 = 开头会被识别成 Excel 公式
-                src: str = re.sub(r"^=", " =", item.get("src", ""))
-                dst: str = re.sub(r"^=", " =", item.get("dst", ""))
-                info: str = re.sub(r"^=", " =", item.get("info", ""))
-
-                if src != "":
-                    try:
-                        active_sheet.cell(row = row + 1, column = 1).value = src
-                    except:
-                        active_sheet.cell(row = row + 1, column = 1).value = re.escape(src)
-
-                if dst != "":
-                    try:
-                        active_sheet.cell(row = row + 1, column = 2).value = dst
-                    except:
-                        active_sheet.cell(row = row + 1, column = 2).value = re.escape(dst)
-
-                if info != "":
-                    try:
-                        active_sheet.cell(row = row + 1, column = 3).value = info
-                    except:
-                        active_sheet.cell(row = row + 1, column = 3).value = re.escape(info)
+                XLSXHelper.set_cell_value(sheet, row + 1, 1, item.get("src", ""), 10)
+                XLSXHelper.set_cell_value(sheet, row + 1, 2, item.get("dst", ""), 10)
+                XLSXHelper.set_cell_value(sheet, row + 1, 3, item.get("info", ""), 10)
 
             # 保存工作簿
-            work_book.save(path)
+            book.save(path)
 
         def triggered() -> None:
             # 从表格加载数据

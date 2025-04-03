@@ -146,7 +146,7 @@ class NameInjectionPage(QWidget, Base):
                 "dst": f"【{name}】\n{src}",
                 "row": len(items) + 1,
                 "file_type": CacheItem.FileType.XLSX,
-                "file_path": f"{Localizer.get().path_result_name_injection_folder}/{Localizer.get().path_result_name_injection_file}",
+                "file_path": Localizer.get().path_result_name_injection,
                 "translation_status": Base.TranslationStatus.UNTRANSLATED,
             }))
 
@@ -186,7 +186,7 @@ class NameInjectionPage(QWidget, Base):
     def step_02_clicked(self, window: FluentWindow) -> None:
         # 读取角色姓名数据
         config = self.load_config()
-        config["input_folder"] = f"{config.get("output_folder")}/{Localizer.get().path_result_name_injection_folder}"
+        config["input_folder"] = config.get("output_folder")
         _, _, items = self.read_from_path_step_02(config)
 
         # 获取角色姓名映射表
@@ -237,7 +237,7 @@ class NameInjectionPage(QWidget, Base):
         # 提示
         self.emit(Base.Event.APP_TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().name_injection_page_success,
+            "message": Localizer.get().task_success,
         })
 
     # 读
@@ -288,5 +288,10 @@ class NameInjectionPage(QWidget, Base):
             items.extend(XLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
         except Exception as e:
             self.error(f"{Localizer.get().log_read_file_fail}", e)
+
+        items = [
+            v for v in items
+            if v.get_file_path() == Localizer.get().path_result_name_injection
+        ]
 
         return project, names, items
