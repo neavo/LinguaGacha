@@ -25,6 +25,7 @@ from module.File.TXT import TXT
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
 from module.File.XLSX import XLSX
+from module.File.WOLFXLSX import WOLFXLSX
 from module.File.TRANS.TRANS import TRANS
 from module.File.RENPY import RENPY
 from module.File.KVJSON import KVJSON
@@ -263,6 +264,7 @@ class ReTranslationPage(QWidget, Base):
                     paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
 
             items.extend(XLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
+            items.extend(WOLFXLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
             items.extend(RENPY(config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
             items.extend(TRANS(config).read_from_path([path for path in paths if path.lower().endswith(".trans")]))
             items.extend(KVJSON(config).read_from_path([path for path in paths if path.lower().endswith(".json")]))

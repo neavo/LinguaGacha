@@ -3,12 +3,12 @@ import re
 import shutil
 
 import openpyxl
-from openpyxl import Workbook
-from openpyxl.styles import Color
-from openpyxl.worksheet.worksheet import Worksheet
+import openpyxl.styles
+import openpyxl.worksheet.worksheet
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
+from module.XLSXHelper import XLSXHelper
 
 class WOLFXLSX(Base):
 
@@ -52,8 +52,8 @@ class WOLFXLSX(Base):
             shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
 
             # 数据处理
-            book: Workbook = openpyxl.load_workbook(abs_path)
-            sheet: Worksheet = book.active
+            book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
+            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
 
             # 跳过空表格
             if sheet.max_row == 0 or sheet.max_column == 0:
@@ -135,27 +135,19 @@ class WOLFXLSX(Base):
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
-            # 数据处理
-            book: Workbook = openpyxl.load_workbook(f"{self.output_path}/cache/temp/{rel_path}")
-            sheet: Worksheet = book.active
+            # 新建工作表
+            book: openpyxl.Workbook = openpyxl.Workbook()
+            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
+
+            # 设置表头
+            sheet.column_dimensions["A"].width = 64
+            sheet.column_dimensions["B"].width = 64
 
             # 将数据写入工作表
             for item in items:
-                src: str = re.sub(r"^=", " =", item.get_src())
-                dst: str = re.sub(r"^=", " =", item.get_dst())
                 row: int = item.get_row()
-
-                # 如果文本是以 = 开始，则加一个空格
-                # 因为 = 开头会被识别成 Excel 公式导致 T++ 导入时 卡住
-                # 加入空格后，虽然还是不能直接导入 T++ ，但是可以手动复制粘贴
-                try:
-                    sheet.cell(row = row, column = 6).value = src
-                except:
-                    sheet.cell(row = row, column = 6).value = re.escape(src)
-                try:
-                    sheet.cell(row = row, column = 7).value = dst
-                except:
-                    sheet.cell(row = row, column = 7).value = re.escape(dst)
+                XLSXHelper.set_cell_value(sheet, row, column = 6, value = item.get_src())
+                XLSXHelper.set_cell_value(sheet, row, column = 7, value = item.get_dst())
 
             # 保存工作簿
             abs_path = f"{self.output_path}/{rel_path}"
@@ -163,7 +155,7 @@ class WOLFXLSX(Base):
             book.save(abs_path)
 
     # 是否为 WOLF 翻译表格文件
-    def is_wold_xlsx(self, sheet: Worksheet) -> bool:
+    def is_wold_xlsx(self, sheet: openpyxl.worksheet.worksheet.Worksheet) -> bool:
         value: str = sheet.cell(row = 1, column = 1).value
         if not isinstance(value, str) or "code" not in value.lower():
             return False
@@ -183,19 +175,19 @@ class WOLFXLSX(Base):
         return True
 
     # 获取单元格填充颜色索引
-    def get_fg_color_index(self, sheet: Worksheet, row: int, column: int) -> int:
+    def get_fg_color_index(self, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int) -> int:
         fill = sheet.cell(row = row, column = column).fill
         if fill.fill_type is not None:
             fg_color = fill.fgColor
             if fg_color:
-                if isinstance(fg_color, Color):
+                if isinstance(fg_color, openpyxl.styles.Color):
                     if fg_color.type == "indexed":
                         return fg_color.indexed
 
         return -1
 
     # 是否应该翻译
-    def should_translate(self, sheet: Worksheet, row: int) -> bool:
+    def should_translate(self, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int) -> bool:
         code: str = sheet.cell(row = row, column = 1).value
         info: str = sheet.cell(row = row, column = 4).value
         src: str = sheet.cell(row = row, column = 6).value

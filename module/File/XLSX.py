@@ -1,12 +1,11 @@
 import os
-import re
 
 import openpyxl
-from openpyxl import Workbook
-from openpyxl.worksheet.worksheet import Worksheet
+import openpyxl.worksheet.worksheet
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
+from module.XLSXHelper import XLSXHelper
 
 class XLSX(Base):
 
@@ -28,8 +27,8 @@ class XLSX(Base):
             rel_path = os.path.relpath(abs_path, self.input_path)
 
             # 数据处理
-            book: Workbook = openpyxl.load_workbook(abs_path)
-            sheet: Worksheet = book.active
+            book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
+            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
 
             # 跳过空表格
             if sheet.max_row == 0 or sheet.max_column == 0:
@@ -103,26 +102,18 @@ class XLSX(Base):
             items = sorted(items, key = lambda x: x.get_row())
 
             # 新建工作表
-            book = openpyxl.Workbook()
-            sheet = book.active
+            book: openpyxl.Workbook = openpyxl.Workbook()
+            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
+
+            # 设置表头
+            sheet.column_dimensions["A"].width = 64
+            sheet.column_dimensions["B"].width = 64
 
             # 将数据写入工作表
             for item in items:
-                src: str = re.sub(r"^=", " =", item.get_src())
-                dst: str = re.sub(r"^=", " =", item.get_dst())
                 row: int = item.get_row()
-
-                # 如果文本是以 = 开始，则加一个空格
-                # 因为 = 开头会被识别成 Excel 公式导致 T++ 导入时 卡住
-                # 加入空格后，虽然还是不能直接导入 T++ ，但是可以手动复制粘贴
-                try:
-                    sheet.cell(row = row, column = 1).value = src
-                except:
-                    sheet.cell(row = row, column = 1).value = re.escape(src)
-                try:
-                    sheet.cell(row = row, column = 2).value = dst
-                except:
-                    sheet.cell(row = row, column = 2).value = re.escape(dst)
+                XLSXHelper.set_cell_value(sheet, row, column = 1, value = item.get_src())
+                XLSXHelper.set_cell_value(sheet, row, column = 2, value = item.get_dst())
 
             # 保存工作簿
             abs_path = f"{self.output_path}/{rel_path}"
@@ -130,7 +121,7 @@ class XLSX(Base):
             book.save(abs_path)
 
     # 是否为 WOLF 翻译表格文件
-    def is_wold_xlsx(self, sheet: Worksheet) -> bool:
+    def is_wold_xlsx(self, sheet: openpyxl.worksheet.worksheet.Worksheet) -> bool:
         value: str = sheet.cell(row = 1, column = 1).value
         if not isinstance(value, str) or "code" not in value.lower():
             return False
