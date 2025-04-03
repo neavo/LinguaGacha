@@ -229,7 +229,7 @@ class BatchCorrectionPage(QWidget, Base):
             XLSXHelper.set_cell_value(sheet, i + 2, 5, item.get("dst"))
 
         # 保存工作簿
-        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}.xlsx"
+        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}"
         os.makedirs(os.path.dirname(abs_path), exist_ok = True)
         book.save(abs_path)
 
@@ -244,7 +244,7 @@ class BatchCorrectionPage(QWidget, Base):
         config: dict[str, str] = self.load_config()
 
         data_dict: dict[str, list[dict[str, str]]] = {}
-        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}.xlsx"
+        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}"
         try:
             # 数据处理
             book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
