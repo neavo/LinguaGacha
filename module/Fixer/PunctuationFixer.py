@@ -1,44 +1,6 @@
-import re
-
 from base.BaseLanguage import BaseLanguage
 
 class PunctuationFixer():
-
-    # 正则规则
-    RULE_REGEX: list[dict] = [
-        {
-            "source_language_tuple" : None,
-            "target_language_tuple" : None,
-            "regex_src": re.compile(r"^「.*」$", flags = re.IGNORECASE),
-            "regex_dst": None,
-            "regex_repl": re.compile(r"^['\"‘“](.*)['\"’”]$", flags = re.IGNORECASE),
-            "repl": r"「\1」",
-        },
-        {
-            "source_language_tuple" : None,
-            "target_language_tuple" : None,
-            "regex_src": re.compile(r"^『.*』$", flags = re.IGNORECASE),
-            "regex_dst": None,
-            "regex_repl": re.compile(r"^['\"‘“](.*)['\"’”]$", flags = re.IGNORECASE),
-            "repl": r"『\1』",
-        },
-        {
-            "source_language_tuple" : None,
-            "target_language_tuple" : (BaseLanguage.ZH, BaseLanguage.JA, BaseLanguage.KO),
-            "regex_src": re.compile(r"^‘.*’$", flags = re.IGNORECASE),
-            "regex_dst": None,
-            "regex_repl": re.compile(r"^['\"‘“](.*)['\"’”]$", flags = re.IGNORECASE),
-            "repl": r"‘\1’",
-        },
-        {
-            "source_language_tuple" : None,
-            "target_language_tuple" : (BaseLanguage.ZH, BaseLanguage.JA, BaseLanguage.KO),
-            "regex_src": re.compile(r"^“.*”$", flags = re.IGNORECASE),
-            "regex_dst": None,
-            "regex_repl": re.compile(r"^['\"‘“](.*)['\"’”]$", flags = re.IGNORECASE),
-            "repl": r"“\1”",
-        },
-    ]
 
     # 数量匹配规则
     RULE_SAME_COUNT_A: dict[str, tuple[str]] = {
@@ -94,24 +56,8 @@ class PunctuationFixer():
     # 检查并替换
     @classmethod
     def fix(cls, src: str, dst: str, source_language: str, target_language: str) -> str:
-        # 执行正则区规则
-        for rule in cls.RULE_REGEX:
-            regex_src: re.Pattern = rule.get("regex_src")
-            regex_dst: re.Pattern = rule.get("regex_dst")
-            source_language_tuple: tuple[str] = rule.get("source_language_tuple")
-            target_language_tuple: tuple[str] = rule.get("target_language_tuple")
-
-            # 有效性检查
-            if isinstance(regex_src, re.Pattern) and regex_src.search(src) == None:
-                continue
-            if isinstance(regex_dst, re.Pattern) and regex_dst.search(dst) == None:
-                continue
-            if isinstance(source_language_tuple, tuple) and source_language not in source_language_tuple:
-                continue
-            if isinstance(target_language_tuple, tuple) and target_language not in target_language_tuple:
-                continue
-
-            dst = rule.get("regex_repl").sub(rule.get("repl"), dst)
+        # 首尾标点修正
+        dst = cls.fix_start_end(src, dst, target_language)
 
         # CJK To CJK = A + B
         # CJK To 非CJK = A + B
@@ -164,5 +110,25 @@ class PunctuationFixer():
     def apply_replace_rules(cls, dst: str, key: str, value: tuple) -> str:
         for t in value:
             dst = dst.replace(t, key)
+
+        return dst
+
+    # 首尾标点修正
+    @classmethod
+    def fix_start_end(self, src: str, dst: str, target_language: str) -> str:
+        if dst.startswith(("'", "\"", "‘", "“", "「", "『")):
+            if src.startswith(("「", "『")):
+                dst = f"{src[0]}{dst[1:]}"
+            elif BaseLanguage.is_cjk(target_language) and src.startswith(("‘", "“")):
+                dst = f"{src[0]}{dst[1:]}"
+            elif not src.startswith(("'", "\"", "‘", "“", "「", "『")):
+                dst = f"{dst[1:]}"
+        if dst.endswith(("'", "\"", "’", "”", "」", "』")):
+            if src.endswith(("」", "』")):
+                dst = f"{dst[:-1]}{src[-1]}"
+            elif BaseLanguage.is_cjk(target_language) and src.endswith(("’", "”")):
+                dst = f"{dst[:-1]}{src[-1]}"
+            elif not src.endswith(("'", "\"", "’","”", "」", "』")):
+                dst = f"{dst[:-1]}"
 
         return dst
