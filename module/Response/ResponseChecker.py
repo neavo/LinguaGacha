@@ -20,6 +20,7 @@ class ResponseChecker(Base):
         LINE_ERROR_KANA: str = "LINE_ERROR_KANA"
         LINE_ERROR_HANGEUL: str = "LINE_ERROR_HANGEUL"
         LINE_ERROR_FAKE_REPLY: str = "LINE_ERROR_FAKE_REPLY"
+        LINE_ERROR_EMPTY_LINE: str = "LINE_ERROR_EMPTY_LINE"
         LINE_ERROR_SIMILARITY: str = "LINE_ERROR_SIMILARITY"
         LINE_ERROR_DEGRADATION: str = "LINE_ERROR_DEGRADATION"
 
@@ -27,6 +28,7 @@ class ResponseChecker(Base):
             LINE_ERROR_KANA,
             LINE_ERROR_HANGEUL,
             LINE_ERROR_FAKE_REPLY,
+            LINE_ERROR_EMPTY_LINE,
             LINE_ERROR_SIMILARITY,
             LINE_ERROR_DEGRADATION,
         )
@@ -77,6 +79,11 @@ class ResponseChecker(Base):
         for src, dst, item in zip(src_dict.values(), dst_dict.values(), item_dict.values()):
             src = src.strip()
             dst = dst.strip()
+
+            # 原文不为空而译文为空时，判断为错误翻译
+            if src != "" and dst == "":
+                check_result.append(ResponseChecker.Error.LINE_ERROR_EMPTY_LINE)
+                continue
 
             # 原文内容包含代码救星占位符时，判断为正确翻译
             if CodeSaver.PLACEHOLDER in src:

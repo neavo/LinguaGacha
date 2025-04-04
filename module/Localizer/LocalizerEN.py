@@ -146,6 +146,7 @@ class LocalizerEN(LocalizerBase):
     response_checker_line_error_kana: str = "Kana Residue"
     response_checker_line_error_hangeul: str = "Hangeul Residue"
     response_checker_line_error_fake_reply: str = "Fake-Reply Residue"
+    response_checker_line_error_empty_line: str = "Empty Line"
     response_checker_line_error_similarity: str = "High Similarity"
     response_checker_line_error_degradation: str = "Degradation Occurred"
     response_decoder_glossary_by_json: str = "Glossary data -> deserialization, total {COUNT} entries"

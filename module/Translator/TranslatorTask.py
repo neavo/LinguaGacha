@@ -78,6 +78,7 @@ class TranslatorTask(Base):
                 ResponseChecker.Error.LINE_ERROR_KANA: Localizer.get().response_checker_line_error_kana,
                 ResponseChecker.Error.LINE_ERROR_HANGEUL: Localizer.get().response_checker_line_error_hangeul,
                 ResponseChecker.Error.LINE_ERROR_FAKE_REPLY: Localizer.get().response_checker_line_error_fake_reply,
+                ResponseChecker.Error.LINE_ERROR_EMPTY_LINE: Localizer.get().response_checker_line_error_empty_line,
                 ResponseChecker.Error.LINE_ERROR_SIMILARITY: Localizer.get().response_checker_line_error_similarity,
                 ResponseChecker.Error.LINE_ERROR_DEGRADATION: Localizer.get().response_checker_line_error_degradation,
             }

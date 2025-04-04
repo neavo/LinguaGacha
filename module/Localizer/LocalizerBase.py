@@ -146,6 +146,7 @@ class LocalizerBase():
     response_checker_line_error_kana: str = "假名残留"
     response_checker_line_error_hangeul: str = "谚文残留"
     response_checker_line_error_fake_reply: str = "伪回复残留"
+    response_checker_line_error_empty_line: str = "存在空行"
     response_checker_line_error_similarity: str = "较高相似度"
     response_checker_line_error_degradation: str = "发生退化现象"
     response_decoder_glossary_by_json: str = "术语数据 -> 反序列化，共 {COUNT} 条"
@@ -392,13 +393,13 @@ class LocalizerBase():
         "<br>"
         "• 将修正后的数据注入 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的译文文件，然后在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 生成修正后的译文文件"
     )
-    batch_correction_page_step_01: str = "第一步 生成修正数据"
+    batch_correction_page_step_01: str = "第一步 - 生成修正数据"
     batch_correction_page_step_01_desc: str = (
         "从结果检查文件中提取可能包含翻译错误的数据"
         "<br>"
         f"然后在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成用于编辑的数据文件 <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font>"
     )
-    batch_correction_page_step_02: str = "第二步 注入修正数据"
+    batch_correction_page_step_02: str = "第二步 - 注入修正数据"
     batch_correction_page_step_02_desc: str = (
         "检查数据文件中的内容，确认无误后 <font color='darkgoldenrod'><b>关闭</b></font> 文件，开始注入"
         "<br>"
