@@ -77,7 +77,7 @@ class Normalizer():
     })
 
     # 常见注音代码
-    # [ruby text="かんじ"]
+    # [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]
     # <ruby = かんじ>漢字</ruby>
     # <ruby><rb>漢字</rb><rtc><rt>かんじ</rt></rtc><rtc><rt>Chinese character</rt></rtc></ruby>
     # WOLF - \r[漢字,かんじ]
