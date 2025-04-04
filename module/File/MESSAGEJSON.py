@@ -9,14 +9,29 @@ class MESSAGEJSON(Base):
 
     # [
     #     {
-    #         "name", "しますか",
-    #         "message": "<fgName:pipo-fog004><fgLoopX:1><fgLoopY:1><fgSx:-2><fgSy:0.5>"
+    #         "name": [
+    #             "x",
+    #             "y"
+    #         ],
+    #         "message": "「同じ人類とは思えん」\r\n「それ」"
     #     },
     #     {
-    #         "message": "エンディングを変更しますか？"
+    #         "names": [
+    #             "虎鉄",
+    #             "銀音"
+    #         ],
+    #         "message": "それだけでは誰のことを言っているのか判然としないのに、\r\n誰のことを指しているのかは、一瞬で理解できてしまう。"
     #     },
     #     {
-    #         "message": "はい"
+    #         "name": "虎鉄",
+    #         "message": "そこで注目を浴びているのは、\r\n星継\r\n銀音\r\n。\r\nこの学校でも随一の有名人で……俺の妹である。"
+    #     },
+    #     {
+    #         "name": "",
+    #         "message": "華麗に踊る銀音。その周囲には、女子が大勢いて、\r\n手拍子をしたり、スマホのカメラを向けている。\r\n当然、その輪の外からも、多くの視線を集めていて――"
+    #     },
+    #     {
+    #         "message": "「顔ちっさ。つか、ダンスうまくね？」\r\n「そりゃそーでしょ。かーっ、存在感やべー」\r\n「まずビジュアルが反則だよな。あの髪も含めて」"
     #     },
     # ]
 
@@ -50,46 +65,38 @@ class MESSAGEJSON(Base):
                 if not isinstance(json_data, list):
                     continue
 
-                for v in json_data:
-                    if not isinstance(v, dict) or "message" not in v:
+                for entry in json_data:
+                    # 有效性校验
+                    entry_message: str = entry.get("message", None)
+                    if not isinstance(entry, dict) or entry_message is None:
                         continue
 
-                    if "name" not in v:
-                        names.append("")
-                        items.append(
-                            CacheItem({
-                                "src": v.get("message", ""),
-                                "dst": v.get("message", ""),
-                                "extra_field": None,
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.MESSAGEJSON,
-                                "file_path": rel_path,
-                            })
-                        )
-                    elif isinstance(v.get("name"), str):
-                        names.append(v.get("name"))
-                        items.append(
-                            CacheItem({
-                                "src": v.get("message", ""),
-                                "dst": v.get("message", ""),
-                                "extra_field": v.get("name"),
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.MESSAGEJSON,
-                                "file_path": rel_path,
-                            })
-                        )
-                    else:
-                        names.append("")
-                        items.append(
-                            CacheItem({
-                                "src": v.get("message", ""),
-                                "dst": v.get("message", ""),
-                                "extra_field": v.get("name"),
-                                "row": len(items),
-                                "file_type": CacheItem.FileType.MESSAGEJSON,
-                                "file_path": rel_path,
-                            })
-                        )
+                    # 添加数据
+                    result_name = self.generate_names(entry.get("name", None), {})
+                    result_names = self.generate_names(entry.get("names", None), {})
+                    if isinstance(result_name, str):
+                        names.append(result_name)
+                    elif isinstance(result_name, list):
+                        names.extend(result_name)
+                    if isinstance(result_names, str):
+                        names.append(result_names)
+                    elif isinstance(result_names, list):
+                        names.extend(result_names)
+
+                    # 添加数据
+                    items.append(
+                        CacheItem({
+                            "src": entry_message,
+                            "dst": entry_message,
+                            "extra_field": {
+                                "name": entry.get("name", None),
+                                "names": entry.get("names", None),
+                            },
+                            "row": len(items),
+                            "file_type": CacheItem.FileType.MESSAGEJSON,
+                            "file_path": rel_path,
+                        })
+                    )
 
         return names, items
 
@@ -104,11 +111,11 @@ class MESSAGEJSON(Base):
             if item.get_file_type() == CacheItem.FileType.MESSAGEJSON
         ]
 
-        data: dict[str, list[str]] = {}
+        group: dict[str, list[str]] = {}
         for item in target:
-            data.setdefault(item.get_file_path(), []).append(item)
+            group.setdefault(item.get_file_path(), []).append(item)
 
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
@@ -118,20 +125,40 @@ class MESSAGEJSON(Base):
 
             result = []
             for item in items:
-                if item.get_extra_field() is None:
+                extra_field: dict = item.get_extra_field()
+                result_name: str | list[str] = self.generate_names(extra_field.get("name", None), names)
+                result_names: str | list[str] = self.generate_names(extra_field.get("names", None), names)
+
+                if isinstance(result_name, str) or isinstance(result_name, list):
                     result.append({
+                        "name": result_name,
                         "message": item.get_dst(),
                     })
-                elif isinstance(item.get_extra_field(), str) and item.get_extra_field() in names:
+                elif isinstance(result_names, str) or isinstance(result_names, list):
                     result.append({
-                        "name": names[item.get_extra_field().strip()],
+                        "names": result_names,
                         "message": item.get_dst(),
                     })
                 else:
                     result.append({
-                        "name": item.get_extra_field(),
                         "message": item.get_dst(),
                     })
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+
+    # 生成名称
+    def generate_names(self, name: str | list[str], translation: dict[str, str]) -> str | list[str]:
+        result: list[str] = []
+
+        if isinstance(name, str):
+            result.append(translation.get(name, name))
+        elif isinstance(name, list):
+            result = [translation.get(v, v) for v in name if isinstance(v, str)]
+
+        if len(result) == 0:
+            return None
+        elif len(result) == 1:
+            return result[0]
+        else:
+            return result
