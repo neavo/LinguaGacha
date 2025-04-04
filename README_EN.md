@@ -77,6 +77,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250404 v0.21.1
+  - Detail adjustments and optimizations, including but not limited to:
+    - Optimization of punctuation repair rules
+    - Supports GalGame text with `names` field
+
 - 20250404 v0.21.0
   - ADD - [Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection-%E2%80%90-EN) Feature
     - Batch correct errors in the inspection report at once

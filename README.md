@@ -74,13 +74,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20250404 v0.21.0
-  - 新增 - [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection) 功能
-    - 一次性对检查报告中的错误进行批量修正
-  - 调整 - 优化标点修复规则
-    - 现在可以更稳定的还原原文中的标点符号了
+- 20250404 v0.21.1
+  - 细节调整与优化，包括但是不限于：
+    - 标点修复规则优化
+    - 支持带 `names` 字段的 GalGame 文本
 
-- 20250401 v0.20.0
+- 20250404 v0.20.0
   - 调整 - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans） 规则更新
     - 支持 [WOLF 官方翻译工具导出文本](https://silversecond.booth.pm/items/5151747)（.xlsx）
     - 重构了对 `WOLF` 引擎的支持，扩大了支持的引擎版本范围，详见 [Wiki](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
