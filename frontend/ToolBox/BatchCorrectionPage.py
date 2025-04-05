@@ -298,20 +298,22 @@ class BatchCorrectionPage(QWidget, Base):
 
         # 修正数据
         for item in items:
-            src = item.get_src().replace("\r", "_x000D_")
-            dst = item.get_dst().replace("\r", "_x000D_")
+            src = item.get_src().replace("\r", "").replace("_x000D_", "")
+            dst = item.get_dst().replace("\r", "").replace("_x000D_", "")
             file_path = item.get_file_path()
             if file_path in data_dict:
-                if item.get_file_type() in BatchCorrectionPage.SINGLE:
-                    for data in data_dict.get(file_path):
-                        if src == data.get("dst"):
-                            item.set_dst(self.auto_convert_line_break(src, data.get("fix")))
-                            break
-                elif item.get_file_type() in BatchCorrectionPage.DOUBLE:
-                    for data in data_dict.get(file_path):
-                        if src == data.get("src") and dst == data.get("dst"):
-                            item.set_dst(self.auto_convert_line_break(src, data.get("fix")))
-                            break
+                for data in data_dict.get(file_path):
+                    flag: bool = False
+                    if item.get_file_type() in BatchCorrectionPage.SINGLE:
+                        flag = dst == data.get("dst").replace("\r", "").replace("_x000D_", "")
+                    elif item.get_file_type() in BatchCorrectionPage.DOUBLE:
+                        flag = (
+                            src == data.get("src").replace("\r", "").replace("_x000D_", "")
+                            and dst == data.get("dst").replace("\r", "").replace("_x000D_", "")
+                        )
+                    if flag == True:
+                        item.set_dst(self.auto_convert_line_break(item.get_src(), data.get("fix")))
+                        break
 
         # 写入文件
         FileManager(config).write_to_path(items)
@@ -325,7 +327,7 @@ class BatchCorrectionPage(QWidget, Base):
 
     # 根据原文换行符对修正文本中的换行符进行转换
     def auto_convert_line_break(self, src: str, fix: str) -> str:
-        if "_x000D_" not in src:
+        if "_x000D_" not in src and "\r" not in src:
             return fix
         else:
             return fix.replace("\n", "_x000D_\n").replace("_x000D_\n", "\r\n")
