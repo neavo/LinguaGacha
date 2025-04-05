@@ -17,8 +17,8 @@ class RuleFilter():
         ".mp3", ".wav", ".ogg", "mid",
         ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
         ".avi", ".mp4", ".webm",
-        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
-        ".sav", ".mps",
+        ".txt", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps", ".ttf", ".otf", ".woff",
     )
 
     RE_ALL: tuple[re.Pattern] = (

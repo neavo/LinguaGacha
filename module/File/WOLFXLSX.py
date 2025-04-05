@@ -16,8 +16,8 @@ class WOLFXLSX(Base):
         ".mp3", ".wav", ".ogg", "mid",
         ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
         ".avi", ".mp4", ".webm",
-        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
-        ".sav", ".mps",
+        ".txt", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps", ".ttf", ".otf", ".woff",
     )
 
     FILL_COLOR_WHITELIST: tuple = (
@@ -78,7 +78,6 @@ class WOLFXLSX(Base):
                 if (
                     src == ""
                     or self.get_fg_color_index(sheet, row, 6) not in WOLFXLSX.FILL_COLOR_WHITELIST
-                    or not self.should_translate(sheet, row)
                 ):
                     items.append(
                         CacheItem({
@@ -185,22 +184,3 @@ class WOLFXLSX(Base):
                         return fg_color.indexed
 
         return -1
-
-    # 是否应该翻译
-    def should_translate(self, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int) -> bool:
-        code: str = sheet.cell(row = row, column = 1).value
-        info: str = sheet.cell(row = row, column = 4).value
-        src: str = sheet.cell(row = row, column = 6).value
-
-        if isinstance(code, str):
-            if "common" in code.lower() and src.startswith("\\>「X["):
-                return False
-
-        if isinstance(info, str):
-            if "補正" in info.lower():
-                return False
-
-            if any(v in src for v in WOLFXLSX.BLACKLIST_EXT):
-                return False
-
-        return True
