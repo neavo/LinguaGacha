@@ -9,8 +9,8 @@ class NONE():
         ".mp3", ".wav", ".ogg", "mid",
         ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
         ".avi", ".mp4", ".webm",
-        ".txt", ".ttf", ".otf", ".7z", ".gz", ".rar", ".zip", ".json",
-        ".sav", ".mps",
+        ".txt", ".7z", ".gz", ".rar", ".zip", ".json",
+        ".sav", ".mps", ".ttf", ".otf", ".woff",
     )
 
     def __init__(self, project: dict) -> None:
