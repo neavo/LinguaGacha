@@ -62,7 +62,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.add_widget_api_url(self.vbox, config, window)
 
         # 接口密钥
-        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_api_key(self.vbox, config, window)
 
         # 思考模式
@@ -70,7 +70,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.add_widget_thinking(self.vbox, config, window)
 
         # 模型名称
-        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_model(self.vbox, config, window)
 
         # 填充
