@@ -491,7 +491,7 @@ class TranslatorTask(Base):
 
         # 添加额外日志
         for v in extra:
-            rows.append(v.strip())
+            rows.append(markup.escape(v.strip()))
 
         # 原文译文对比
         pair = ""
