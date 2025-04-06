@@ -1,7 +1,9 @@
 import re
+
+from rich import print
+
 from module.Cache.CacheItem import CacheItem
 from module.CodeSaver import CodeSaver
-from module.LogHelper import LogHelper
 
 class CodeFixer():
 
@@ -12,13 +14,13 @@ class CodeFixer():
     @classmethod
     def fix(cls, src: str, dst: str, text_type: str) -> str:
         if text_type == CacheItem.TextType.RENPY:
-            rule: re.Pattern = CodeSaver.RE_CHECK_RENPY
-            src_codes = CodeSaver.RE_CHECK_RENPY.findall(src)
-            dst_codes = CodeSaver.RE_CHECK_RENPY.findall(dst)
+            rule: re.Pattern = CodeSaver.RE_BASE_RENPY
+            src_codes = rule.findall(src)
+            dst_codes = rule.findall(dst)
         elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-            rule: re.Pattern = CodeSaver.RE_CHECK_WOLF_RPGMAKER
-            src_codes = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src)
-            dst_codes = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(dst)
+            rule: re.Pattern = CodeSaver.RE_BASE_WOLF_RPGMAKER
+            src_codes = rule.findall(src)
+            dst_codes = rule.findall(dst)
         else:
             rule: re.Pattern = None
             src_codes = []
@@ -80,6 +82,7 @@ class CodeFixer():
 
     @classmethod
     def test(cls) -> None:
-        x = "\\C[8]黒髪のアイゼン\\C[0]"
-        y = "\\C[8]\\C[8]黑发艾森\\C[0]\\C[0]"
-        cls().fix(x, y, CacheItem.TextType.RENPY)
+        x = "合計　\\V[62]！　やったやった♪　私の勝ちね！\n\\c[17]――レナリスの勝ち！　【３０００ G】手に入れた！\\c[0]\n\\$"
+        y = "总计　\\V[62]！　哈哈！　我赢了！\n\\c[17]――雷纳里斯赢了！ 获得了\\c[2]【3000 G】\\c[0]！\\c[0]\n\\$"
+        z = cls().fix(x, y, CacheItem.TextType.RPGMAKER)
+        print(f"{repr(x)}\n{repr(y)}\n{repr(z)}")

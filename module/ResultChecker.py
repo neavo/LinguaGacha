@@ -34,7 +34,7 @@ class ResultChecker(Base):
         self.items_untranslated = [item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]
 
         # 获取译前替换后的原文
-        self.rpls_translated: list[str] = []
+        self.src_repls: list[str] = []
         pre_translation_replacement_data: list[dict] = config.get("pre_translation_replacement_data")
         pre_translation_replacement_enable: bool = config.get("pre_translation_replacement_enable")
         for item in self.items_translated:
@@ -44,7 +44,20 @@ class ResultChecker(Base):
                 for v in pre_translation_replacement_data:
                     src = src.replace(v.get("src"), v.get("dst"))
 
-            self.rpls_translated.append(src)
+            self.src_repls.append(src)
+
+        # 获取译后替换前的译文
+        self.dst_repls: list[str] = []
+        post_translation_replacement_data: list[dict] = config.get("post_translation_replacement_data")
+        post_translation_replacement_enable: bool = config.get("post_translation_replacement_enable")
+        for item in self.items_translated:
+            dst = item.get_dst()
+
+            if post_translation_replacement_enable == True and len(post_translation_replacement_data) > 0:
+                for v in post_translation_replacement_data:
+                    dst = dst.replace(v.get("dst"), v.get("src"))
+
+            self.dst_repls.append(dst)
 
     # 检查
     def check(self) -> None:
@@ -121,8 +134,8 @@ class ResultChecker(Base):
             Localizer.get().file_checker_code_alert_key: Localizer.get().file_checker_code_alert_value,
         }
 
-        for item, rpl in zip(self.items_translated, self.rpls_translated):
-            if ResultChecker.CODESAVER.check(rpl, item.get_dst(), item.get_text_type()) == False:
+        for item in self.items_translated:
+            if ResultChecker.CODESAVER.check(item.get_src(), item.get_dst(), item.get_text_type()) == False:
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
 
@@ -146,15 +159,14 @@ class ResultChecker(Base):
             Localizer.get().file_checker_similarity_alert_key: Localizer.get().file_checker_similarity_alert_value,
         }
 
-        for item, rpl in zip(self.items_translated, self.rpls_translated):
-            rpl = rpl.strip()
-            src = item.get_src().strip()
-            dst = item.get_dst().strip()
+        for item in self.items_translated:
+            src: str = item.get_src().strip()
+            dst: str = item.get_dst().strip()
 
             # 判断是否包含或相似
-            if rpl in dst or dst in rpl or TextHelper.check_similarity_by_jaccard(rpl, dst) > 0.80:
+            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80:
                 count = count + 1
-                result.setdefault(item.get_file_path(), {})[src] = dst
+                result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
 
         if count == 0:
             self.info(Localizer.get().file_checker_similarity)
@@ -195,11 +207,11 @@ class ResultChecker(Base):
 
         count = 0
         result: dict[str, dict] = {}
-        for item, rpl in zip(self.items_translated, self.rpls_translated):
+        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
             for v in self.glossary_data:
                 glossary_src = v.get("src", "")
                 glossary_dst = v.get("dst", "")
-                if glossary_src in rpl and glossary_dst not in item.get_dst():
+                if glossary_src in src_repl and glossary_dst not in dst_repl:
                     count = count + 1
                     result.setdefault(f"{item.get_file_path()} | {glossary_src} -> {glossary_dst}", {})[item.get_src()] = item.get_dst()
 
