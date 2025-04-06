@@ -15,6 +15,7 @@ class BaseLanguage(BaseData):
     IT: str = "IT"                                          # 意大利语 (Italian)
     PT: str = "PT"                                          # 葡萄牙语 (Portuguese)
     HU: str = "HU"                                          # 匈牙利语 (Hungrarian)
+    TR: str = "TR"                                          # 匈牙利语 (Hungrarian)
     TH: str = "TH"                                          # 泰语 (Thai)
     ID: str = "ID"                                          # 印尼语 (Indonesian)
     VI: str = "VI"                                          # 越南语 (Vietnamese)
@@ -32,6 +33,7 @@ class BaseLanguage(BaseData):
         IT: {"zh": "意大利文", "en": "Italian"},
         PT: {"zh": "葡萄牙文", "en": "Portuguese"},
         HU: {"zh": "匈牙利文", "en": "Hungrarian"},
+        # TR: {"zh": "土耳其文", "en": "Turkish"},
         TH: {"zh": "泰文", "en": "Thai"},
         ID: {"zh": "印尼文", "en": "Indonesian"},
         VI: {"zh": "越南文", "en": "Vietnamese"},
