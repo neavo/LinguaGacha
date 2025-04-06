@@ -116,19 +116,26 @@ class PunctuationFixer():
     # 首尾标点修正
     @classmethod
     def fix_start_end(self, src: str, dst: str, target_language: str) -> str:
+        # 纠正首尾错误的引号
         if dst.startswith(("'", "\"", "‘", "“", "「", "『")):
             if src.startswith(("「", "『")):
                 dst = f"{src[0]}{dst[1:]}"
             elif BaseLanguage.is_cjk(target_language) and src.startswith(("‘", "“")):
                 dst = f"{src[0]}{dst[1:]}"
-            elif not src.startswith(("'", "\"", "‘", "“", "「", "『")):
-                dst = f"{dst[1:]}"
         if dst.endswith(("'", "\"", "’", "”", "」", "』")):
             if src.endswith(("」", "』")):
                 dst = f"{dst[:-1]}{src[-1]}"
             elif BaseLanguage.is_cjk(target_language) and src.endswith(("’", "”")):
                 dst = f"{dst[:-1]}{src[-1]}"
-            elif not src.endswith(("'", "\"", "’","”", "」", "』")):
-                dst = f"{dst[:-1]}"
+
+        # 移除首尾多余的引号
+        for v in ("‘", "“", "「", "『"):
+            if dst.startswith(v) and not src.startswith(v) and dst.count(v) > src.count(v):
+                dst = dst[1:]
+                break
+        for v in ("’", "”", "」", "』"):
+            if dst.endswith(v) and not src.endswith(v) and dst.count(v) > src.count(v):
+                dst = dst[:-1]
+                break
 
         return dst
