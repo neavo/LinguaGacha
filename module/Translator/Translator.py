@@ -256,7 +256,8 @@ class Translator(Base):
                 self.info(f"{Localizer.get().translator_proxy_url} - {self.config.get("proxy_url")}")
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-                self.info(Localizer.get().translator_prompt.replace("{PROMPT}", PromptBuilder(self.config).build_main()))
+                self.info(PromptBuilder(self.config).build_main())
+                self.print("")
             self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.config.get("batch_size"))))
             self.print("")
 
