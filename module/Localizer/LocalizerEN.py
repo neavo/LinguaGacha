@@ -99,7 +99,6 @@ class LocalizerEN(LocalizerBase):
     translator_name: str = "API Name"
     translator_model: str = "Model Name"
     translator_proxy_url: str = "Active Network Proxy"
-    translator_prompt: str = "The following prompt will be used for this task:\n{PROMPT}\n"
     translator_begin: str = "Translation task is about to start, estimated total tasks: {TASKS}, concurrent tasks: {BATCH_SIZE}. Please ensure network connection …"
     translator_writing: str = "Writing translation data, please wait …"
     translator_done: str = "All texts are translated, translation task finished …"

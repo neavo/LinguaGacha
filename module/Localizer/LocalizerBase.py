@@ -99,7 +99,6 @@ class LocalizerBase():
     translator_name: str = "接口名称"
     translator_model: str = "模型名称"
     translator_proxy_url: str = "生效中的 网络代理"
-    translator_prompt: str = "本次任务使用以下提示词：\n{PROMPT}\n"
     translator_begin: str = "即将开始执行翻译任务，预计任务总数为 {TASKS}, 并发任务数为 {BATCH_SIZE}，请注意保持网络通畅 …"
     translator_writing: str = "正在写入翻译数据，等稍候 …"
     translator_done: str = "所有文本均已翻译，翻译任务已结束 …"
