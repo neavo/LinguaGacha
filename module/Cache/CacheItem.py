@@ -238,10 +238,6 @@ class CacheItem(BaseData):
     def merge_sub_lines(self, dst_sub_lines: list[str], check_result: list[int]) -> tuple[str, list[str], list[str]]:
         from module.Response.ResponseChecker import ResponseChecker
 
-        # 当检查结果长度不足时，为其补全
-        if len(check_result) < len(dst_sub_lines):
-            check_result = check_result + [ResponseChecker.Error.NONE] * (len(dst_sub_lines) - len(check_result))
-
         dst: list[str] = []
         check: list[str] = []
         for src_sub_line in self.src.split("\n"):
