@@ -79,7 +79,6 @@ class LocalizerBase():
     path_result_check_glossary: str = "结果检查_术语表未生效.json"
     path_result_check_untranslated: str = "结果检查_未翻译的条目.json"
     path_result_check_retry_count_threshold: str = "结果检查_重试次数达到阈值.json"
-    path_result_name_injection: str = "角色姓名注入.xlsx"
     path_result_batch_correction: str = "批量修正.xlsx"
 
     # 日志
@@ -376,8 +375,6 @@ class LocalizerBase():
     tool_box_page_batch_correction_desc: str = "根据翻译完成时生成的结果检查文件中的数据，对可能存在的翻译错误进行批量修正，实现快速修正译文结果的目的"
     tool_box_page_re_translation: str = "部分重翻"
     tool_box_page_re_translation_desc: str = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正"
-    tool_box_page_name_injection: str = "角色姓名注入"
-    tool_box_page_name_injection_desc: str = "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段，去重后翻译和注入，以实现角色姓名字段的译名统一"
 
     # 百宝箱 - 批量修正
     batch_correction_page: str = "批量修正"
@@ -435,31 +432,3 @@ class LocalizerBase():
     )
     re_translation_page_white_list_placeholder: str = "请输入关键字 …"
     re_translation_page_alert_not_equal: str = "原文与译文的行数不匹配 …"
-
-    # 百宝箱 - 角色姓名注入
-    name_injection_page: str = "角色姓名注入"
-    name_injection_page_desc: str = (
-        "将从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中所有符合条件的文件中提取姓名字段进行翻译和注入"
-        "<br>"
-        "支持格式："
-        "<br>"
-        "• RenPy 导出游戏文本（.rpy）"
-        "<br>"
-        "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
-    )
-    name_injection_page_step_01: str = "第一步 - 提取与翻译"
-    name_injection_page_step_01_desc: str = (
-        "提取姓名字段及与其相关的上下文，发送至翻译器进行翻译"
-        "<br>"
-        f"翻译完成后，将在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成 <font color='darkgoldenrod'><b>{path_result_name_injection}</b></font> 文件"
-    )
-    name_injection_page_step_02: str = "第二步 - 整理与注入"
-    name_injection_page_step_02_desc: str = (
-        "请对结果文件中角色姓名的翻译数据进行检查和修正，确认无误后 <font color='darkgoldenrod'><b>关闭</b></font> 文件，开始注入"
-        "<br>"
-        "注意："
-        "<br>"
-        "• 实际会被注入的数据 <font color='darkgoldenrod'><b>仅为【】包裹的文本</b></font>，其他文本为无作用"
-        "<br>"
-        "• 注入使用的游戏文本从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 读取，注入后的游戏文本保存在 <font color='darkgoldenrod'><b>输出文件夹</b></font>。"
-    )
