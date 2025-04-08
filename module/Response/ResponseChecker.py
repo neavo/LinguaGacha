@@ -52,18 +52,18 @@ class ResponseChecker(Base):
     def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
         # 数据解析失败
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
-            return [ResponseChecker.Error.FAIL_DATA]
+            return [ResponseChecker.Error.FAIL_DATA] * len(src_dict)
 
         # 当翻译任务为单条目任务，且此条目已经是第二次单独重试时，直接返回，不进行后续判断
         if len(self.items) == 1 and self.items[0].get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD:
-            return [ResponseChecker.Error.NONE]
+            return [ResponseChecker.Error.NONE] * len(src_dict)
 
         # 行数检查
         if not (
             len(src_dict) == len(dst_dict) # 原文与译文行数一致
             and all(str(key) in dst_dict for key in range(len(dst_dict))) # 译文的 Key 的值为从 0 开始的连续数值字符
         ):
-            return [ResponseChecker.Error.FAIL_LINE_COUNT]
+            return [ResponseChecker.Error.FAIL_LINE_COUNT] * len(src_dict)
 
         # 逐行检查
         error = self.check_lines(src_dict, dst_dict, item_dict, source_language)
@@ -71,7 +71,7 @@ class ResponseChecker(Base):
             return error
 
         # 默认无错误
-        return [ResponseChecker.Error.NONE]
+        return [ResponseChecker.Error.NONE] * len(src_dict)
 
     # 逐行检查错误
     def check_lines(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
