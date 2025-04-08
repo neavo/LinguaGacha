@@ -77,6 +77,15 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250408 v0.22.0
+  - OPT - Optimize punctuation repair logic
+  - OPT - Optimize code preservation, repair, and check logic
+  - OPT - Open SakuraLLM model settings
+  - OPT - Automated character name injection, feature introduction [Name Injection](https://github.com/neavo/LinguaGacha/wiki/NameInjection-%E2%80%90-EN)
+    - Automatically complete the unified translation of character name fields
+    - Use character name fields as translation auxiliary information to improve translation quality
+    - The original manual function has been removed
+
 - 20250405 v0.21.2
   - OPT - Optimized model response stability
   - OPT - Optimized line break compatibility for [Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection-%E2%80%90-EN)

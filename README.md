@@ -74,6 +74,15 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250408 v0.22.0
+  - 调整 - 优化 标点修复逻辑
+  - 调整 - 优化 代码保留、修复与检查逻辑
+  - 调整 - 开放 SakuraLLM 模型设置
+  - 调整 - 角色姓名注入自动化，功能介绍 [角色姓名注入](https://github.com/neavo/LinguaGacha/wiki/NameInjection)
+    - 自动完成角色姓名字段的统一翻译
+    - 使用角色姓名字段作为翻译辅助信息，提升翻译质量
+    - 原有的手动功能已移除
+
 - 20250405 v0.21.2
   - 调整 - 优化模型返回结果稳定性
   - 调整 - 优化 [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection) 换行符兼容性
