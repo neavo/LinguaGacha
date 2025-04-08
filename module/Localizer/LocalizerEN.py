@@ -79,7 +79,6 @@ class LocalizerEN(LocalizerBase):
     path_result_check_glossary: str = "result_check_incorrect_glossary.json"
     path_result_check_untranslated: str = "result_check_untranslated_entries.json"
     path_result_check_retry_count_threshold: str = "result_check_retry_count_reach_threshold.json"
-    path_result_name_injection: str = "name_injection.xlsx"
     path_result_batch_correction: str = "batch_correction.xlsx"
 
     # 日志
@@ -376,8 +375,6 @@ class LocalizerEN(LocalizerBase):
     tool_box_page_batch_correction_desc: str = "Checks the translated file against the generated translation results and performs batch correction on potential errors, enabling quick refinement of translation outputs"
     tool_box_page_re_translation: str = "Partial Re-Translation"
     tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
-    tool_box_page_name_injection: str = "Name Injection"
-    tool_box_page_name_injection_desc: str = "Extract, deduplicate, translate, and inject name fields from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game texts for consistent naming"
 
     # 百宝箱 - 批量修正
     batch_correction_page: str = "Batch Correction"
@@ -435,31 +432,3 @@ class LocalizerEN(LocalizerBase):
     )
     re_translation_page_white_list_placeholder: str = "Please enter keywords …"
     re_translation_page_alert_not_equal: str = "The number of lines in the original and translated texts does not match …"
-
-    # 百宝箱 - 角色姓名注入
-    name_injection_page: str = "Character Name Injection"
-    name_injection_page_desc: str = (
-        "Inject the translated character names extracted from all eligible files in the <font color='darkgoldenrod'><b>Input Folder</b></font>"
-        "<br>"
-        "Supported formats:"
-        "<br>"
-        "• Game text exported by <font color='darkgoldenrod'><b>RenPy (.rpy)</b></font>"
-        "<br>"
-        "• Game text with name field exported by <font color='darkgoldenrod'><b>VNTextPatch or SExtractor (.json)</b></font>"
-    )
-    name_injection_page_step_01: str = "Step 1 - Extraction and Translation"
-    name_injection_page_step_01_desc: str = (
-        "Extract the name field and its related context, and send them to the translator for translation"
-        "<br>"
-        f"After translation, the <font color='darkgoldenrod'><b>{path_result_name_injection}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-    )
-    name_injection_page_step_02: str = "Step 2 - Organization and Injection"
-    name_injection_page_step_02_desc: str = (
-        "Please check and correct the translated character name data in the result file. <font color='darkgoldenrod'><b>Close</b></font> the file after confirming that it is correct to start injection"
-        "<br>"
-        "Note:"
-        "<br>"
-        "• <font color='darkgoldenrod'><b>Only the text enclosed in 【】</b></font> will be injected, and other text is ineffective"
-        "<br>"
-        "• The game text used for injection is read from the <font color='darkgoldenrod'><b>Input Folder</b></font>, and the injected game text is saved in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-    )

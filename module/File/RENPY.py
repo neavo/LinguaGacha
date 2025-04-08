@@ -56,11 +56,6 @@ class RENPY(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        return self.read_name_and_items_from_path(abs_paths)[1]
-
-    # 读取名称和数据
-    def read_name_and_items_from_path(self, abs_paths: list[str]) -> tuple[list[str], list[CacheItem]]:
-        names: list[str] = []
         items: list[CacheItem] = []
         for abs_path in set(abs_paths):
             # 获取相对路径
@@ -80,7 +75,7 @@ class RENPY(Base):
                 elif is_content_line == True and len(results) == 1:
                     src = results[0].replace("\\n", "\n").replace("\\\"", "\"")
                     dst = self.find_dst(i + 1, lines)
-                    name = ""
+                    name = None
                 elif is_content_line == True and len(results) >= 2:
                     src = results[1].replace("\\n", "\n").replace("\\\"", "\"")
                     dst = self.find_dst(i + 1, lines)
@@ -88,15 +83,16 @@ class RENPY(Base):
                 else:
                     src = ""
                     dst = ""
-                    name = ""
+                    name = None
 
                 # 添加数据
                 if src == "":
-                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
                             "dst": dst,
+                            "name_src": name,
+                            "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
                             "file_type": CacheItem.FileType.RENPY,
@@ -106,11 +102,12 @@ class RENPY(Base):
                         })
                     )
                 elif dst != "" and src != dst:
-                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
                             "dst": dst,
+                            "name_src": name,
+                            "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
                             "file_type": CacheItem.FileType.RENPY,
@@ -120,11 +117,12 @@ class RENPY(Base):
                         })
                     )
                 else:
-                    names.append(name)
                     items.append(
                         CacheItem({
                             "src": src,
                             "dst": dst,
+                            "name_src": name,
+                            "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
                             "file_type": CacheItem.FileType.RENPY,
@@ -134,19 +132,15 @@ class RENPY(Base):
                         })
                     )
 
-        return names, items
+        return items
 
-    # 写入
+    # 写入数据
     def write_to_path(self, items: list[CacheItem]) -> None:
-        self.write_name_and_items_to_path({}, items)
 
-    # 写入名称和数据
-    def write_name_and_items_to_path(self, names: dict[str, str], items: list[CacheItem]) -> None:
-
-        def repl(m: re.Match, i: list[int], t: int, dst: str) -> str:
-            if i[0] == t:
+        def repl(m: re.Match, i: list[int], repl: list[str]) -> str:
+            if i[0] < len(repl) and repl[i[0]] is not None:
                 i[0] = i[0] + 1
-                return f"\"{dst}\""
+                return f"\"{repl[i[0] - 1]}\""
             else:
                 i[0] = i[0] + 1
                 return m.group(0)
@@ -159,6 +153,9 @@ class RENPY(Base):
             item for item in items
             if item.get_file_type() == CacheItem.FileType.RENPY
         ]
+
+        # 统一姓名
+        self.uniform_name(target)
 
         # 按文件路径分组
         data: dict[str, list[str]] = {}
@@ -176,32 +173,28 @@ class RENPY(Base):
 
             result = []
             for item in items:
-                line = item.get_extra_field()
+                dst: str = item.get_dst()
+                name_dst: str = item.get_name_dst()
+                line: str = item.get_extra_field()
                 results: list[str] = RENPY.RE_RENPY.findall(line)
 
+                # 添加原文
+                result.append(line)
+
+                # 添加译文
                 i = [0]
+                if len(results) == 1:
+                    dsts: list[str] = [process(dst)]
+                elif len(results) >= 2:
+                    dsts: list[str] = [name_dst, process(dst)]
                 if line.startswith("    # "):
-                    result.append(line)
-                    if len(results) == 1:
-                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
-                        result.append(f"    {line.removeprefix("    # ")}")
-                    elif len(results) >= 2:
-                        if results[0].strip() in names:
-                            line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, names.get(results[0].strip())), line)
-                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
+                    if len(results) > 0:
+                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, dsts), line)
                         result.append(f"    {line.removeprefix("    # ")}")
                 elif line.startswith("    old "):
-                    result.append(line)
-                    if len(results) == 1:
-                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, process(item.get_dst())), line)
+                    if len(results) > 0:
+                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, dsts), line)
                         result.append(f"    new {line.removeprefix("    old ")}")
-                    elif len(results) >= 2:
-                        if results[0].strip() in names:
-                            line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 0, names.get(results[0].strip())), line)
-                        line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, 1, process(item.get_dst())), line)
-                        result.append(f"    new {line.removeprefix("    old ")}")
-                else:
-                    result.append(line)
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))
@@ -223,3 +216,45 @@ class RENPY(Base):
                 return results[1]
 
         return ""
+
+    # 统一姓名
+    def uniform_name(self, items: list[CacheItem]) -> list[CacheItem]:
+        # 统计
+        result: dict[str, dict] = {}
+        for item in items:
+            name_src = item.get_name_src()
+            name_dst = item.get_name_dst()
+
+            # 有效性检查
+            if name_src is None or name_dst is None:
+                continue
+
+            if isinstance(name_src, str):
+                name_src = [name_src]
+            if isinstance(name_dst, str):
+                name_dst = [name_dst]
+            for src, dst in zip(name_src, name_dst):
+                if src not in result:
+                    result[src] = {}
+                if dst not in result.get(src):
+                    result[src][dst] = 1
+                else:
+                    result[src][dst] = result.get(src).get(dst) + 1
+
+        # 获取译文
+        for src, item in result.items():
+            result[src] = max(item, key = item.get)
+
+        # 赋值
+        for item in items:
+            name_src = item.get_name_src()
+            name_dst = item.get_name_dst()
+
+            # 有效性检查
+            if name_src is None or name_dst is None:
+                continue
+
+            if isinstance(name_src, str):
+                item.set_name_dst(result.get(name_src))
+            elif isinstance(name_src, list):
+                item.set_name_dst([result.get(v) for v in name_src])

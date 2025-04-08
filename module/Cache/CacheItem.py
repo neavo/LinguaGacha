@@ -57,9 +57,11 @@ class CacheItem(BaseData):
         # 默认值
         self.src: str = ""                                              # 原文
         self.dst: str = ""                                              # 译文
-        self.extra_field: str = ""                                      # 额外字段原文，在以下类型中使用：ASS、SRT、RENPY、MESSAGEJSON
-        self.tag: str = ""                                              # 标签，在以下类型中使用：EPUB
-        self.row: int = 0                                               # 在原始文件中的行号
+        self.name_src: str | tuple[str] = None                          # 角色姓名原文
+        self.name_dst: str | tuple[str] = None                          # 角色姓名译文
+        self.extra_field: str | dict = ""                               # 额外字段原文
+        self.tag: str = ""                                              # 标签
+        self.row: int = 0                                               # 行号
         self.file_type: str = ""                                        # 原始文件的类型
         self.file_path: str = ""                                        # 原始文件的相对路径
         self.text_type: str = CacheItem.TextType.NONE                   # 文本的实际类型
@@ -109,13 +111,33 @@ class CacheItem(BaseData):
             else:
                 self.dst = str(dst)
 
+    # 获取角色姓名原文
+    def get_name_src(self) -> str | tuple[str]:
+        with self.lock:
+            return self.name_src
+
+    # 设置角色姓名原文
+    def set_name_src(self, name_src: str | tuple[str]) -> None:
+        with self.lock:
+            self.name_src = name_src
+
+    # 获取角色姓名译文
+    def get_name_dst(self) -> str | tuple[str]:
+        with self.lock:
+            return self.name_dst
+
+    # 设置角色姓名译文
+    def set_name_dst(self, name_dst: str | tuple[str]) -> None:
+        with self.lock:
+            self.name_dst = name_dst
+
     # 获取额外字段原文
-    def get_extra_field(self) -> str:
+    def get_extra_field(self) -> str | dict:
         with self.lock:
             return self.extra_field
 
     # 设置额外字段原文
-    def set_extra_field(self, extra_field: str) -> None:
+    def set_extra_field(self, extra_field: str | dict) -> None:
         with self.lock:
             self.extra_field = extra_field
 
@@ -213,31 +235,31 @@ class CacheItem(BaseData):
             return [sub_line for sub_line in self.src.split("\n") if sub_line.strip() != ""]
 
     # 从切片中合并译文
-    def merge_sub_lines(self, dst_sub_lines: list[str], check_result: list[int]) -> tuple[str, list[str], list[int]]:
+    def merge_sub_lines(self, dst_sub_lines: list[str], check_result: list[int]) -> tuple[str, list[str], list[str]]:
         from module.Response.ResponseChecker import ResponseChecker
 
         # 当检查结果长度不足时，为其补全
         if len(check_result) < len(dst_sub_lines):
             check_result = check_result + [ResponseChecker.Error.NONE] * (len(dst_sub_lines) - len(check_result))
 
-        dst = ""
-        check = []
+        dst: list[str] = []
+        check: list[str] = []
         for src_sub_line in self.src.split("\n"):
             if src_sub_line == "":
-                dst = dst + "\n"
+                dst.append("")
             elif src_sub_line.strip() == "":
-                dst = dst + src_sub_line + "\n"
+                dst.append(src_sub_line)
             elif len(dst_sub_lines) > 0:
                 check.append(check_result.pop(0))
-                dst = dst + str(dst_sub_lines.pop(0)) + "\n"
+                dst.append(str(dst_sub_lines.pop(0)))
             # 冗余步骤
             # 当跳过行数检查步骤时，原文行数可能大于译文行数，此时需要填充多出来的行数
             else:
                 check.append(ResponseChecker.Error.NONE)
-                dst = dst + "" + "\n"
+                dst.append("")
 
         # 如果当前片段中有没通过检查的子句，则将返回结果置空，以示当前片段需要重新翻译
         if any(v != ResponseChecker.Error.NONE for v in check):
             return None, dst_sub_lines, check_result
         else:
-            return dst.removesuffix("\n"), dst_sub_lines, check_result
+            return dst, dst_sub_lines, check_result

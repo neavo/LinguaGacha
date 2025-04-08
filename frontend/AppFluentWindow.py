@@ -37,7 +37,6 @@ from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplace
 from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
 from frontend.ToolBox.ToolBoxPage import ToolBoxPage
 from frontend.ToolBox.ReTranslationPage import ReTranslationPage
-from frontend.ToolBox.NameInjectionPage import NameInjectionPage
 from frontend.ToolBox.BatchCorrectionPage import BatchCorrectionPage
 
 class AppFluentWindow(FluentWindow, Base):
@@ -435,7 +434,3 @@ class AppFluentWindow(FluentWindow, Base):
         # 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)
         self.stackedWidget.addWidget(self.re_translation_page)
-
-        # 姓名注入
-        self.name_injection_page = NameInjectionPage("name_injection_page", self)
-        self.stackedWidget.addWidget(self.name_injection_page)

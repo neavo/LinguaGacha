@@ -1,3 +1,4 @@
+import re
 import time
 import itertools
 import threading
@@ -32,9 +33,12 @@ from module.PromptBuilder import PromptBuilder
 class TranslatorTask(Base):
 
     # 类变量
+    CONSOLE = Console(highlight = True, tab_size = 4)
     OPENCCS2T = opencc.OpenCC("s2t")
     OPENCCT2S = opencc.OpenCC("t2s")
-    CONSOLE = Console(highlight = True, tab_size = 4)
+
+    # 正则规则
+    RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
 
     # 类线程锁
     LOCK = threading.Lock()
@@ -55,9 +59,11 @@ class TranslatorTask(Base):
         # 生成原文文本字典与文本类型字典
         self.src_dict: dict[str, str] = {}
         self.item_dict: dict[str, CacheItem] = {}
+        self.start_key_set: set[str] = set()
         for item in items:
-            for sub_line in item.split_sub_lines():
-                self.src_dict[str(len(self.src_dict))] = sub_line
+            self.start_key_set.add(str(len(self.src_dict)))
+            for line in item.split_sub_lines():
+                self.src_dict[str(len(self.src_dict))] = line
                 self.item_dict[str(len(self.item_dict))] = item
 
         # 正规化
@@ -68,6 +74,9 @@ class TranslatorTask(Base):
 
         # 代码救星预处理
         self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.item_dict)
+
+        # 注入姓名
+        self.name_key_set = self.inject_name(self.src_dict, self.item_dict, self.start_key_set)
 
         # 初始化错误文本
         if not hasattr(TranslatorTask, "ERROR_TEXT_DICT"):
@@ -150,6 +159,9 @@ class TranslatorTask(Base):
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in check_result):
+            # 提取姓名
+            name_dsts: list[str] = self.extract_name(src_dict, dst_dict)
+
             # 自动修复
             dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, item_dict)
 
@@ -169,12 +181,19 @@ class TranslatorTask(Base):
             # 更新缓存数据
             dst_sub_lines = list(dst_dict.values())
             check_result_lines = check_result.copy()
-            for item in self.items:
+            for item, name_dst in zip(self.items, name_dsts):
                 dst, dst_sub_lines, check_result_lines = item.merge_sub_lines(dst_sub_lines, check_result_lines)
-                if dst != None:
-                    updated_count = updated_count + 1
-                    item.set_dst(dst)
+                if isinstance(dst, list):
+                    if name_dst is not None:
+                        name_src: str | tuple[str] = item.get_name_src()
+                        if isinstance(name_src, str) and name_src != "":
+                            item.set_name_dst(name_dst)
+                        elif isinstance(name_src, list) and len(name_src) > 0:
+                            item.set_name_dst([name_dst] + name_src[1:])
+
+                    item.set_dst("\n".join(dst))
                     item.set_status(Base.TranslationStatus.TRANSLATED)
+                    updated_count = updated_count + 1
 
         # 打印任务结果
         self.print_log_table(
@@ -327,6 +346,49 @@ class TranslatorTask(Base):
             dst_dict[k] = PunctuationFixer.fix(src_dict[k], dst_dict[k], source_language, target_language)
 
         return dst_dict
+
+    # 注入姓名
+    def inject_name(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], start_key_set: set[str]) -> dict:
+        name_key_set: set[str] = set()
+
+        for k in src_dict:
+            # 有效性检查
+            if k not in start_key_set:
+                continue
+
+            # 注入姓名
+            item = item_dict.get(k)
+            name_src: str | tuple[str] = item.get_name_src()
+            if isinstance(name_src, str) and name_src != "":
+                src_dict[k] = f"【{name_src}】" + src_dict.get(k, "")
+                name_key_set.add(k)
+            elif isinstance(name_src, list) and len(name_src) > 0:
+                src_dict[k] = f"【{name_src[0]}】" + src_dict.get(k, "")
+                name_key_set.add(k)
+
+        return name_key_set
+
+    # 提取姓名
+    def extract_name(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
+        name_dsts: list[str] = []
+
+        for k in dst_dict:
+            if k in self.start_key_set:
+                result: re.Match[str] = __class__.RE_NAME.search(dst_dict.get(k, ""))
+                if result is None:
+                    name_dsts.append(None)
+                elif k not in self.name_key_set:
+                    name_dsts.append(None)
+                elif result.group(1) is not None:
+                    name_dsts.append(result.group(1))
+                    dst_dict[k] = __class__.RE_NAME.sub("", dst_dict.get(k, ""))
+                    src_dict[k] = __class__.RE_NAME.sub("", src_dict.get(k, ""))
+                else:
+                    name_dsts.append(result.group(2))
+                    dst_dict[k] = __class__.RE_NAME.sub("", dst_dict.get(k, ""))
+                    src_dict[k] = __class__.RE_NAME.sub("", src_dict.get(k, ""))
+
+        return name_dsts
 
     # 生成提示词
     def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
