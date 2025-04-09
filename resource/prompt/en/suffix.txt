@@ -1,4 +1,4 @@
-Return results in a code block using the following format, no other explanations or instructions needed:
+Output translation results in code block, following the format below, no extra explanation or description needed:
 ```json
 {"<ID>":"<Translated Text>"}
 ```
