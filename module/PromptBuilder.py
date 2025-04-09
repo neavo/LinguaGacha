@@ -4,10 +4,6 @@ from module.Cache.CacheItem import CacheItem
 
 class PromptBuilder(Base):
 
-    # 伪回复文本
-    FAKE_REPLY_ZH = "我完全理解了翻译任务的要求"
-    FAKE_REPLY_EN = "I fully understand the requirements of the translation task"
-
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -164,13 +160,6 @@ class PromptBuilder(Base):
             return ""
         else:
             return "\n".join(dict_lines)
-
-    # 构造伪回复
-    def build_fake_reply(self) -> str:
-        if self.target_language == BaseLanguage.ZH:
-            return PromptBuilder.FAKE_REPLY_ZH
-        else:
-            return PromptBuilder.FAKE_REPLY_EN
 
     # 构建控制字符示例
     def build_control_characters_samples(self, samples: list[str]) -> str:

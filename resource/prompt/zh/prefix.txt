@@ -1,1 +1,1 @@
-你是一位翻译专家，任务目标是将接收到的{source_language}文本翻译成{target_language}。
+任务目标是将{source_language}翻译成{target_language}。

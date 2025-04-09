@@ -1,1 +1,1 @@
-You are a translation expert, your task is to translate the received {source_language} text into {target_language}.
+Task goal is to translate {source_language} into {target_language}.

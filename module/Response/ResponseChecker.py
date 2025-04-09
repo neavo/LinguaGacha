@@ -100,11 +100,6 @@ class ResponseChecker(Base):
                 check_result.append(ResponseChecker.Error.NONE)
                 continue
 
-            # 译文内容包括伪回复时，判断为错误翻译
-            if PromptBuilder.FAKE_REPLY_ZH in dst or PromptBuilder.FAKE_REPLY_EN in dst:
-                check_result.append(ResponseChecker.Error.LINE_ERROR_FAKE_REPLY)
-                continue
-
             # 当原文中不包含重复文本但是译文中包含重复文本时，判断为 退化
             if ResponseChecker.RE_DEGRADATION.search(src) == None and ResponseChecker.RE_DEGRADATION.search(dst) != None:
                 check_result.append(ResponseChecker.Error.LINE_ERROR_DEGRADATION)
