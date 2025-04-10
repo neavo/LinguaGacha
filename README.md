@@ -8,7 +8,7 @@
 ## 概述 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)，使用 AI 技术次世代文本翻译器
 - 开箱即用，（几乎）无需设置，功能的强大，不需要通过繁琐的设置来体现
-- 支持 `中` `英` `日` `韩` `俄` `德` `法` `意` 等 14 种语言的一键互译
+- 支持 `中` `英` `日` `韩` `俄` `德` `法` `意` 等 16 种语言的一键互译
 - 支持 `字幕`、`电子书`、`游戏文本` 等多种文本类型与文本格式
 - 支持 `Claude`、`ChatGPT`、`DeepSeek`、`SakuraLLM` 等各种本地或在线接口
 
@@ -74,6 +74,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250410 v0.23.0
+  - 新增 - 支持 `波兰语` `土耳其语`
+  - 调整 - 优化翻译流程
+    - 强化了对 `KAG` 文本的支持
+    - 调整默认提示词以节约 Token 消耗
+
 - 20250408 v0.22.0
   - 调整 - 优化 标点修复逻辑
   - 调整 - 优化 代码保留、修复与检查逻辑
@@ -82,35 +88,6 @@
     - 自动完成角色姓名字段的统一翻译
     - 使用角色姓名字段作为翻译辅助信息，提升翻译质量
     - 原有的手动功能已移除
-
-- 20250405 v0.21.2
-  - 调整 - 优化模型返回结果稳定性
-  - 调整 - 优化 [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection) 换行符兼容性
-
-- 20250404 v0.21.1
-  - 细节调整与优化，包括但是不限于：
-    - 标点修复规则优化
-    - 支持带 `names` 字段的 GalGame 文本
-
-- 20250404 v0.21.0
-  - 新增 - [批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection) 功能
-    - 一次性对检查报告中的错误进行批量修正
-  - 调整 - 优化标点修复规则
-    - 现在可以更稳定的还原原文中的标点符号了
-
-- 20250404 v0.20.0
-  - 调整 - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans） 规则更新
-    - 支持 [WOLF 官方翻译工具导出文本](https://silversecond.booth.pm/items/5151747)（.xlsx）
-    - 重构了对 `WOLF` 引擎的支持，扩大了支持的引擎版本范围，详见 [Wiki](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
-
-- 20250330 v0.19.2
-  - 一些预处理与后处理流程的优化，包括：
-    - 绝大部分句子首尾的 `‘’` `“”` `「」` 可以正确修复了
-    - 模型幻觉产生多余代码时可以自动修复了
-
-- 20250329 v0.19.1
-  - 新增 - 完全重构的控制字符保留功能
-    - 实测大部分 `WOLF` `RenPy` `RPGMaker` 游戏中可以实现近似于 `100%` 的代码保留率
 
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
