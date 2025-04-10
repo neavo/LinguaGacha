@@ -75,7 +75,7 @@ class XLSX(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": dst,
+                            "dst": src,
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
