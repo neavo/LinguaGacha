@@ -43,6 +43,7 @@ class PostTranslationReplacementPage(QWidget, Base):
         if Localizer.get_app_language() == BaseLanguage.ZH:
             self.default = {
                 "post_translation_replacement_enable": True,
+                "post_translation_replacement_regex": False,
                 "post_translation_replacement_data" : [
                     {
                         "src": "…。",
@@ -69,6 +70,7 @@ class PostTranslationReplacementPage(QWidget, Base):
         else:
             self.default = {
                 "post_translation_replacement_enable": True,
+                "post_translation_replacement_regex": False,
                 "post_translation_replacement_data" : [
                     {
                         "src": "…。",
@@ -81,14 +83,14 @@ class PostTranslationReplacementPage(QWidget, Base):
         config = self.save_config(self.load_config_from_default())
 
         # 设置主容器
-        self.container = QVBoxLayout(self)
-        self.container.setSpacing(8)
-        self.container.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_head(self.container, config, window)
-        self.add_widget_body(self.container, config, window)
-        self.add_widget_foot(self.container, config, window)
+        self.add_widget_head(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
+        self.add_widget_foot(self.root, config, window)
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
@@ -192,7 +194,7 @@ class PostTranslationReplacementPage(QWidget, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
-        self.command_bar_card.set_minimum_width(512)
+        self.command_bar_card.set_minimum_width(640)
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
@@ -200,6 +202,8 @@ class PostTranslationReplacementPage(QWidget, Base):
         self.add_command_bar_action_save(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_reset(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_regex(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
@@ -231,11 +235,11 @@ class PostTranslationReplacementPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().post_translation_replacement_page_import_toast,
+                "message": Localizer.get().quality_import_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DOWNLOAD, Localizer.get().post_translation_replacement_page_import, parent, triggered = triggered),
+            Action(FluentIcon.DOWNLOAD, Localizer.get().quality_import, parent, triggered = triggered),
         )
 
     # 导出
@@ -272,11 +276,11 @@ class PostTranslationReplacementPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().post_translation_replacement_page_export_toast,
+                "message": Localizer.get().quality_export_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().post_translation_replacement_page_export, parent, triggered = triggered),
+            Action(FluentIcon.SHARE, Localizer.get().quality_export, parent, triggered = triggered),
         )
 
     # 添加新行
@@ -289,11 +293,11 @@ class PostTranslationReplacementPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().post_translation_replacement_page_add_toast,
+                "message": Localizer.get().quality_add_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.ADD_TO, Localizer.get().post_translation_replacement_page_add, parent, triggered = triggered),
+            Action(FluentIcon.ADD_TO, Localizer.get().quality_add, parent, triggered = triggered),
         )
 
     # 保存
@@ -321,18 +325,18 @@ class PostTranslationReplacementPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().post_translation_replacement_page_save_toast,
+                "message": Localizer.get().quality_save_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().post_translation_replacement_page_save, parent, triggered = triggered),
+            Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
         )
 
     # 重置
     def add_command_bar_action_reset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().post_translation_replacement_page_reset_alert, window)
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -357,12 +361,33 @@ class PostTranslationReplacementPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().post_translation_replacement_page_reset_toast,
+                "message": Localizer.get().quality_reset_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DELETE, Localizer.get().post_translation_replacement_page_reset, parent, triggered = triggered),
+            Action(FluentIcon.DELETE, Localizer.get().quality_reset, parent, triggered = triggered),
         )
+
+    # 正则模式
+    def add_command_bar_action_regex(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
+        action_regex: Action = None
+
+        def update_ui(config: dict) -> None:
+            if config.get("post_translation_replacement_regex") == True:
+                action_regex.setText(Localizer.get().quality_regex_on)
+            else:
+                action_regex.setText(Localizer.get().quality_regex_off)
+
+        def triggered() -> None:
+            config = self.load_config()
+            config["post_translation_replacement_regex"] = config.get("post_translation_replacement_regex") == False
+            config = self.save_config(config)
+            update_ui(config)
+
+        action_regex = Action(FluentIcon.TILES, Localizer.get().quality_regex_off, parent, triggered = triggered)
+        parent.add_action(action_regex)
+        update_ui(config)
 
     # WiKi
     def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:

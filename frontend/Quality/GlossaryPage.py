@@ -221,11 +221,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().glossary_page_import_toast,
+                "message": Localizer.get().quality_import_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DOWNLOAD, Localizer.get().glossary_page_import, parent, triggered = triggered),
+            Action(FluentIcon.DOWNLOAD, Localizer.get().quality_import, parent, triggered = triggered),
         )
 
     # 导出
@@ -262,11 +262,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().glossary_page_export_toast,
+                "message": Localizer.get().quality_export_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().glossary_page_export, parent, triggered = triggered),
+            Action(FluentIcon.SHARE, Localizer.get().quality_export, parent, triggered = triggered),
         )
 
     # 添加新行
@@ -279,11 +279,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().glossary_page_add_toast,
+                "message": Localizer.get().quality_add_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.ADD_TO, Localizer.get().glossary_page_add, parent, triggered = triggered),
+            Action(FluentIcon.ADD_TO, Localizer.get().quality_add, parent, triggered = triggered),
         )
 
     # 保存
@@ -311,18 +311,18 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().glossary_page_save_toast,
+                "message": Localizer.get().quality_save_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().glossary_page_save, parent, triggered = triggered),
+            Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
         )
 
     # 重置
     def add_command_bar_action_reset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().glossary_page_reset_alert, window)
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -347,11 +347,11 @@ class GlossaryPage(QWidget, Base):
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().glossary_page_reset_toast,
+                "message": Localizer.get().quality_reset_toast,
             })
 
         parent.add_action(
-            Action(FluentIcon.DELETE, Localizer.get().glossary_page_reset, parent, triggered = triggered),
+            Action(FluentIcon.DELETE, Localizer.get().quality_reset, parent, triggered = triggered),
         )
 
     # KG
