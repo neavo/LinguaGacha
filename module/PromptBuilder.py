@@ -1,3 +1,5 @@
+import rapidjson as json
+
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
@@ -8,11 +10,12 @@ class PromptBuilder(Base):
         super().__init__()
 
         # 初始化
-        self.config = config
-        self.source_language = config.get("source_language")
-        self.target_language = config.get("target_language")
-        self.auto_glossary_enable = config.get("auto_glossary_enable")
-        self.glossary_data = config.get("glossary_data")
+        self.config: dict = config
+        self.source_language: str = config.get("source_language")
+        self.target_language: str = config.get("target_language")
+        self.glossary_data: list[dict] = config.get("glossary_data")
+        self.glossary_enable: bool = config.get("glossary_enable")
+        self.auto_glossary_enable: bool = config.get("auto_glossary_enable")
 
     def get_base(self, language: str) -> str:
         if getattr(self, "base", None) is None:
@@ -162,8 +165,14 @@ class PromptBuilder(Base):
             return "\n".join(dict_lines)
 
     # 构建控制字符示例
-    def build_control_characters_samples(self, samples: list[str]) -> str:
+    def build_control_characters_samples(self, main: str, samples: list[str]) -> str:
         if len(samples) == 0:
+            return ""
+
+        if (
+            "控制字符必须在译文中原样保留" not in main
+            and "code must be preserved in the translation as they are" not in main
+        ):
             return ""
 
         # 判断提示词语言
@@ -173,3 +182,75 @@ class PromptBuilder(Base):
             prefix: str = "Control Characters Samples:"
 
         return prefix + "\n" + f"{", ".join(samples)}"
+
+    # 生成提示词
+    def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
+        # 初始化
+        messages: list[dict[str, str]] = []
+        extra_log: list[str] = []
+
+        # 基础提示词
+        main = self.build_main()
+
+        # 参考上文
+        if len(preceding_items) > 0:
+            result = self.build_preceding(preceding_items)
+            if result != "":
+                main = main + "\n" + result
+                extra_log.append(result)
+
+        # 术语表
+        if self.glossary_enable == True:
+            result = self.build_glossary(src_dict)
+            if result != "":
+                main = main + "\n" + result
+                extra_log.append(result)
+
+        # 控制字符示例
+        result = self.build_control_characters_samples(main, samples)
+        if result != "":
+            main = main + "\n" + result
+            extra_log.append(result)
+
+        # 构建提示词列表
+        messages.append({
+            "role": "user",
+            "content": (
+                main
+                + "\n" + "原文文本："
+                + "\n" + json.dumps(src_dict, indent = None, ensure_ascii = False)
+            ),
+        })
+
+        return messages, extra_log
+
+    # 生成提示词 - Sakura
+    def generate_prompt_sakura(self, src_dict: dict) -> tuple[list[dict], list[str]]:
+        # 初始化
+        messages: list[dict[str, str]] = []
+        extra_log: list[str] = []
+
+        # 构建系统提示词
+        messages.append({
+            "role": "system",
+            "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。"
+        })
+
+        # 术语表
+        main = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
+        if self.glossary_enable == True:
+            result = self.build_glossary_sakura(src_dict)
+            if result != "":
+                main = (
+                    "根据以下术语表（可以为空）：\n" + result
+                    + "\n" + "将下面的日文文本根据对应关系和备注翻译成中文：\n" + "\n".join(src_dict.values())
+                )
+                extra_log.append(result)
+
+        # 构建提示词列表
+        messages.append({
+            "role": "user",
+            "content": main,
+        })
+
+        return messages, extra_log
