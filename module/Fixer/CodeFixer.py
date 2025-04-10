@@ -14,11 +14,11 @@ class CodeFixer():
     @classmethod
     def fix(cls, src: str, dst: str, text_type: str) -> str:
         if text_type == CacheItem.TextType.RENPY:
-            rule: re.Pattern = CodeSaver.RE_BASE_RENPY
+            rule: re.Pattern = CodeSaver.REGEX_BASE_KAG_RENPY
             src_codes = rule.findall(src)
             dst_codes = rule.findall(dst)
         elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-            rule: re.Pattern = CodeSaver.RE_BASE_WOLF_RPGMAKER
+            rule: re.Pattern = CodeSaver.REGEX_BASE_WOLF_RPGMAKER
             src_codes = rule.findall(src)
             dst_codes = rule.findall(dst)
         else:

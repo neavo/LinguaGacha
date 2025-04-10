@@ -82,6 +82,7 @@ class MESSAGEJSON(Base):
                             "row": len(items),
                             "file_type": CacheItem.FileType.MESSAGEJSON,
                             "file_path": rel_path,
+                            "text_type": CacheItem.TextType.KAG,
                         })
                     )
 
