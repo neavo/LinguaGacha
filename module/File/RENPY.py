@@ -74,11 +74,11 @@ class RENPY(Base):
                     continue
                 elif is_content_line == True and len(results) == 1:
                     src = results[0].replace("\\n", "\n").replace("\\\"", "\"")
-                    dst = self.find_dst(i + 1, lines)
+                    dst = self.find_dst(i + 1, line, lines)
                     name = None
                 elif is_content_line == True and len(results) >= 2:
                     src = results[1].replace("\\n", "\n").replace("\\\"", "\"")
-                    dst = self.find_dst(i + 1, lines)
+                    dst = self.find_dst(i + 1, line, lines)
                     name = results[0]
                 else:
                     src = ""
@@ -120,7 +120,7 @@ class RENPY(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": dst,
+                            "dst": src,
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,
@@ -200,20 +200,21 @@ class RENPY(Base):
                 writer.write("\n".join(result))
 
     # 获取译文
-    def find_dst(self, start: int, lines: list[str]) -> str:
+    def find_dst(self, start: int, line: str, lines: list[str]) -> str:
         # 越界检查
         if start >= len(lines):
             return ""
 
         # 遍历剩余行寻找目标数据
-        for line in lines[start:]:
-            results: list[str] = RENPY.RE_RENPY.findall(line)
-            is_content_line = line.startswith("    # ") or line.startswith("    old ")
-
-            if is_content_line == False and len(results) == 1:
-                return results[0]
-            elif is_content_line == False and len(results) >= 2:
-                return results[1]
+        line = line.removeprefix("    # ").removeprefix("    old ")
+        for line_ex in lines[start:]:
+            line_ex = line_ex.removeprefix("    ").removeprefix("    new ")
+            results: list[str] = RENPY.RE_RENPY.findall(line_ex)
+            if RENPY.RE_RENPY.sub("", line) == RENPY.RE_RENPY.sub("", line_ex):
+                if len(results) == 1:
+                    return results[0]
+                elif len(results) >= 2:
+                    return results[1]
 
         return ""
 
