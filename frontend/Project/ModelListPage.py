@@ -5,9 +5,9 @@ from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 
+import openai
 import anthropic
-import google.generativeai as genai
-from openai import OpenAI
+from google import genai
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
@@ -89,11 +89,8 @@ class ModelListPage(MessageBoxBase, Base):
 
         try:
             if api_format == Base.APIFormat.GOOGLE:
-                genai.configure(
-                    api_key = api_key,
-                    transport = "rest"
-                )
-                return [model.name for model in genai.list_models()]
+                client = genai.Client(api_key = api_key)
+                return [model.name for model in client.models.list()]
             elif api_format == Base.APIFormat.ANTHROPIC:
                 client = anthropic.Anthropic(
                     api_key = api_key,
@@ -101,7 +98,7 @@ class ModelListPage(MessageBoxBase, Base):
                 )
                 return [model.id for model in client.models.list()]
             else:
-                client = OpenAI(
+                client = openai.OpenAI(
                     base_url = api_url,
                     api_key = api_key,
                 )

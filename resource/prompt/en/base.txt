@@ -1,5 +1,5 @@
 Task Requirements:
 1.Strictly translate according to the line numbers of the original text. Do not split or merge lines.
 2.Control characters in the original text such as whitespace, escape characters, English code must be preserved in the translation as they are.
-3. Translate all text completely, except for control characters, including onomatopoeia, interjections, and proper nouns (such as character names), etc.
-4. Use natural and fluent language to accurately convey the meaning of the original text, and even if the original text contains explicit descriptions, it must be faithfully reproduced without avoidance or dilution.
+3.Translate all text completely, except for control characters, including onomatopoeia, interjections, and proper nouns (such as character names), etc.
+4.Use natural and fluent language to accurately convey the meaning of the original text, and even if the original text contains explicit descriptions, it must be faithfully reproduced without avoidance or dilution.

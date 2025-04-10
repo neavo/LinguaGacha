@@ -257,10 +257,10 @@ class TranslatorRequester(Base):
                     presence_penalty = pp,
                     frequency_penalty = fp,
                     max_output_tokens = 4096,
-                    thinking_config = types.ThinkingConfig(
-                        thinking_budget = 1024,
-                        include_thoughts = True,
-                    ),
+                    # thinking_config = types.ThinkingConfig(
+                    #     thinking_budget = 1024,
+                    #     include_thoughts = True,
+                    # ),
                     safety_settings = [
                         types.SafetySetting(
                             category = "HARM_CATEGORY_HARASSMENT",
