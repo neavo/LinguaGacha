@@ -4,7 +4,8 @@ import httpx
 import rapidjson as json
 import openai
 import anthropic
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
@@ -17,9 +18,9 @@ class TranslatorRequester(Base):
     API_KEY_LOCK = threading.Lock()
 
     # 客户端
+    GOOGLE_CLIENTS: dict[str, genai.Client] = {}
     SAKURA_CLIENTS: dict[str, openai.OpenAI] = {}
     OPENAI_CLIENTS: dict[str, openai.OpenAI] = {}
-    GOOGLE_CLIENTS: dict[str, genai.GenerativeModel] = {}
     ANTHROPIC_CLIENTS: dict[str, anthropic.Anthropic] = {}
 
     def __init__(self, config: dict, platform: dict, current_round: int) -> None:
@@ -29,6 +30,14 @@ class TranslatorRequester(Base):
         self.config = config
         self.platform = platform
         self.current_round = current_round
+
+    # 重置
+    @classmethod
+    def reset(cls) -> None:
+        cls.GOOGLE_CLIENTS: dict[str, genai.Client] = {}
+        cls.SAKURA_CLIENTS: dict[str, openai.OpenAI] = {}
+        cls.OPENAI_CLIENTS: dict[str, openai.OpenAI] = {}
+        cls.ANTHROPIC_CLIENTS: dict[str, anthropic.Anthropic] = {}
 
     # 发起请求
     def request(self, messages: list[dict]) -> tuple[bool, str, int, int]:
@@ -79,7 +88,7 @@ class TranslatorRequester(Base):
         return skip, response_think, response_result, prompt_tokens, completion_tokens
 
     # 获取客户端
-    def get_client(self, platform: dict, timeout: int) -> openai.OpenAI | genai.GenerativeModel | anthropic.Anthropic:
+    def get_client(self, platform: dict, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
         with TranslatorRequester.API_KEY_LOCK:
             # 初始化索引
             if getattr(TranslatorRequester, "_api_key_index", None) is None:
@@ -107,21 +116,9 @@ class TranslatorRequester(Base):
                     )
                 return TranslatorRequester.SAKURA_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.GOOGLE:
-                # Gemini SDK 文档 - https://ai.google.dev/api?hl=zh-cn&lang=python
+                # Gemini SDK 文档 - https://ai.google.dev/gemini-api/docs/libraries
                 if api_key not in TranslatorRequester.GOOGLE_CLIENTS:
-                    genai.configure(
-                        api_key = api_key,
-                        transport = "rest",
-                    )
-                    TranslatorRequester.GOOGLE_CLIENTS[api_key] = genai.GenerativeModel(
-                        model_name = platform.get("model"),
-                        safety_settings = [
-                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                        ],
-                    )
+                    TranslatorRequester.GOOGLE_CLIENTS[api_key] = genai.Client(api_key = api_key)
                 return TranslatorRequester.GOOGLE_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.ANTHROPIC:
                 if api_key not in TranslatorRequester.ANTHROPIC_CLIENTS:
@@ -247,22 +244,46 @@ class TranslatorRequester(Base):
     # 发起请求
     def request_google(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
         try:
-            client: genai.GenerativeModel = self.get_client(
+            client: genai.Client = self.get_client(
                 self.platform,
                 self.config.get("request_timeout"),
             )
-            response = client.generate_content(
-                messages,
-                generation_config = genai.types.GenerationConfig(
+            response = client.models.generate_content(
+                model = self.platform.get("model"),
+                contents = [v.get("content") for v in messages if v.get("role") == "user"],
+                config = types.GenerateContentConfig(
                     temperature = temperature,
                     top_p = top_p,
                     presence_penalty = pp,
                     frequency_penalty = fp,
                     max_output_tokens = 4096,
+                    thinking_config = types.ThinkingConfig(
+                        thinking_budget = 1024,
+                        include_thoughts = True,
+                    ),
+                    safety_settings = [
+                        types.SafetySetting(
+                            category = "HARM_CATEGORY_HARASSMENT",
+                            threshold = "BLOCK_NONE",
+                        ),
+                        types.SafetySetting(
+                            category = "HARM_CATEGORY_HATE_SPEECH",
+                            threshold = "BLOCK_NONE",
+                        ),
+                        types.SafetySetting(
+                            category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                            threshold = "BLOCK_NONE",
+                        ),
+                        types.SafetySetting(
+                            category = "HARM_CATEGORY_DANGEROUS_CONTENT",
+                            threshold = "BLOCK_NONE",
+                        ),
+                    ]
                 ),
             )
 
             # 提取回复内容
+            # self.debug(response.to_json_dict())
             response_result = response.text
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)

@@ -17,6 +17,7 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorTask import TranslatorTask
+from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
 from module.ResultChecker import ResultChecker
 
@@ -136,6 +137,9 @@ class Translator(Base):
                 break
         self.initialize_proxy()
         self.initialize_batch_size()
+
+        # 重置请求器
+        TranslatorRequester.reset()
 
         # 生成缓存列表
         try:

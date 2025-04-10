@@ -63,20 +63,16 @@ class PlatformTester(Base):
                     "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
                 },
             ]
-        elif platform.get("api_format") == Base.APIFormat.GOOGLE:
-            messages = [
-                {
-                    "role": "user",
-                    "parts": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない\n遵循以下JSON格式返回结果：\n{\"<ID>\":\"<译文文本>\"}",
-                },
-            ]
         else:
             messages = [
                 {
                     "role": "user",
-                    "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない\n遵循以下JSON格式返回结果：\n{\"<ID>\":\"<译文文本>\"}",
+                    "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
                 },
             ]
+
+        # 重置请求器
+        TranslatorRequester.reset()
 
         # 开始测试
         requester = TranslatorRequester(config, platform, 0)
