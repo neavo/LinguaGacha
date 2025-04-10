@@ -4,7 +4,6 @@ import itertools
 import threading
 
 import opencc
-import rapidjson as json
 from rich import box
 from rich import markup
 from rich.table import Table
@@ -111,9 +110,9 @@ class TranslatorTask(Base):
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, console_log = self.generate_prompt(src_dict, preceding_items, samples)
+            self.messages, console_log = self.prompt_builder.generate_prompt(src_dict, preceding_items, samples)
         else:
-            self.messages, console_log = self.generate_prompt_sakura(src_dict)
+            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(src_dict)
 
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
@@ -229,7 +228,7 @@ class TranslatorTask(Base):
         return data
 
     # 合并术语表
-    def merge_glossary(self, glossary_auto: list[dict]) -> list[dict]:
+    def merge_glossary(self, glossary_auto: list[dict[str, str]]) -> list[dict]:
         data: list[dict] = self.config.get("glossary_data")
         if self.config.get("glossary_enable") == False or self.config.get("auto_glossary_enable") == False:
             return data
@@ -248,8 +247,8 @@ class TranslatorTask(Base):
                 continue
 
             # 将原文和译文都按标点切分
-            srcs = TextHelper.split_by_punctuation(src, split_by_space = False)
-            dsts = TextHelper.split_by_punctuation(dst, split_by_space = False)
+            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space = False)
+            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space = False)
             if len(srcs) != len(dsts):
                 if src == dst:
                     continue
@@ -389,78 +388,6 @@ class TranslatorTask(Base):
                     src_dict[k] = __class__.RE_NAME.sub("", src_dict.get(k, ""))
 
         return name_dsts
-
-    # 生成提示词
-    def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
-        # 初始化
-        messages: list[dict[str, str]] = []
-        extra_log: list[str] = []
-
-        # 基础提示词
-        main = self.prompt_builder.build_main()
-
-        # 参考上文
-        if len(preceding_items) > 0:
-            result = self.prompt_builder.build_preceding(preceding_items)
-            if result != "":
-                main = main + "\n" + result
-                extra_log.append(result)
-
-        # 术语表
-        if self.config.get("glossary_enable") == True:
-            result = self.prompt_builder.build_glossary(src_dict)
-            if result != "":
-                main = main + "\n" + result
-                extra_log.append(result)
-
-        # 控制字符示例
-        result = self.prompt_builder.build_control_characters_samples(samples)
-        if result != "":
-            main = main + "\n" + result
-            extra_log.append(result)
-
-        # 构建提示词列表
-        messages.append({
-            "role": "user",
-            "content": (
-                f"{main}"
-                + "\n" + "原文文本："
-                + "\n" + json.dumps(src_dict, indent = None, ensure_ascii = False)
-            ),
-        })
-
-        return messages, extra_log
-
-    # 生成提示词 - Sakura
-    def generate_prompt_sakura(self, src_dict: dict) -> tuple[list[dict], list[str]]:
-        # 初始化
-        messages: list[dict[str, str]] = []
-        extra_log: list[str] = []
-
-        # 构建系统提示词
-        messages.append({
-            "role": "system",
-            "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。"
-        })
-
-        # 术语表
-        main = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
-        if self.config.get("glossary_enable") == True:
-            result = self.prompt_builder.build_glossary_sakura(src_dict)
-            if result != "":
-                main = (
-                    "根据以下术语表（可以为空）：\n" + result
-                    + "\n" + "将下面的日文文本根据对应关系和备注翻译成中文：\n" + "\n".join(src_dict.values())
-                )
-                extra_log.append(result)
-
-        # 构建提示词列表
-        messages.append({
-            "role": "user",
-            "content": main,
-        })
-
-        return messages, extra_log
 
     # 打印日志表格
     def print_log_table(self, result: list[str], start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
