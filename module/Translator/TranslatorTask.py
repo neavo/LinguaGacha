@@ -393,8 +393,8 @@ class TranslatorTask(Base):
     # 生成提示词
     def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
         # 初始化
-        messages = []
-        extra_log = []
+        messages: list[dict[str, str]] = []
+        extra_log: list[str] = []
 
         # 基础提示词
         main = self.prompt_builder.build_main()
@@ -429,23 +429,13 @@ class TranslatorTask(Base):
             ),
         })
 
-        # 当目标为 google 系列接口时，转换 messages 的格式
-        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
-            new = []
-            for m in messages:
-                new.append({
-                    "role": "model" if m.get("role") == "assistant" else m.get("role"),
-                    "parts": m.get("content", ""),
-                })
-            messages = new
-
         return messages, extra_log
 
     # 生成提示词 - Sakura
     def generate_prompt_sakura(self, src_dict: dict) -> tuple[list[dict], list[str]]:
         # 初始化
-        messages = []
-        extra_log = []
+        messages: list[dict[str, str]] = []
+        extra_log: list[str] = []
 
         # 构建系统提示词
         messages.append({
