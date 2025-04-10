@@ -6,6 +6,7 @@ import rapidjson as json
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
+from module.File.TRANS.KAG import KAG
 from module.File.TRANS.NONE import NONE
 from module.File.TRANS.WOLF import WOLF
 from module.File.TRANS.RENPY import RENPY
@@ -203,9 +204,11 @@ class TRANS(Base):
     def get_processor(self, project: dict) -> NONE:
         engine: str = project.get("gameEngine", "")
 
-        if engine.lower() in ("wolf", "wolfrpg"):
+        if engine.lower() in ("kag", "vntrans"):
+            processor: NONE = KAG(project)
+        elif engine.lower() in ("wolf", "wolfrpg"):
             processor: NONE = WOLF(project)
-        elif engine.lower() == "renpy":
+        elif engine.lower() in ("renpy", ):
             processor: NONE = RENPY(project)
         elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
             processor: NONE = RPGMAKER(project)

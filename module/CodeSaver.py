@@ -1,26 +1,28 @@
 import re
 
 from base.Base import Base
+from module.Text.TextBase import TextBase
 from module.Cache.CacheItem import CacheItem
 
 class CodeSaver(Base):
 
     # 通用规则
-    RE_NONE: tuple[str] = (
+    REGEX_NONE: tuple[str] = (
         r"\s",                                                                      # 空白字符
         r"\u3000",                                                                  # 全角空格
-        # r"\\n",                                                                   # 换行符 \n
+        r"\\n",                                                                     # 换行符 \n
         r"<br>",                                                                    # 换行符 <br>
     )
 
     # 用于 RenPy 的规则
-    RE_RENPY: tuple[str] = (
-        r"\{[^{}]*\}",                                                              # {w=2.3}
-        r"\[[^\[\]]*\]",                                                            # [renpy.version_only]
+    CJK_RANGE: str = rf"{TextBase.CJK_RANGE}{TextBase.HANGUL_RANGE}{TextBase.HIRAGANA_RANGE}{TextBase.KATAKANA_RANGE}"
+    REGEX_KAG_RENPY: tuple[str] = (
+        r"\{[^\{" + CJK_RANGE + r"]*?\}",                                           # {w=2.3}
+        r"\[[^\[" + CJK_RANGE + r"]*?\]",                                           # [renpy.version_only]
     )
 
     # 用于 WOLF 和 RPGMaker 的规则
-    RE_WOLF_RPGMAKER: tuple[str] = (
+    REGEX_WOLF_RPGMAKER: tuple[str] = (
         r"en\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # en(!s[982]) en(v[982] >= 1)
         r"if\(.{0,8}[vs]\[\d+\].{0,16}\)",                                          # if(!s[982]) if(v[982] >= 1)
         r"[<【]{0,1}[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]][>】]{0,1}",              # /c[xy12] \bc[xy12] <\bc[xy12]>【/c[xy12]】
@@ -32,7 +34,7 @@ class CodeSaver(Base):
         r"\\fi",                                                                    # 倾斜
         r"\\\{",                                                                    # 放大字体 \{
         r"\\\}",                                                                    # 缩小字体 \}
-        # r"\\g",                                                                   # 显示货币 \G
+        r"\\g",                                                                     # 显示货币 \G
         r"\\\$",                                                                    # 打开金币框 \$
         r"\\\.",                                                                    # 等待0.25秒 \.
         r"\\\|",                                                                    # 等待1秒 \|
@@ -48,20 +50,20 @@ class CodeSaver(Base):
     PLACEHOLDER: re.Pattern = "{PLACEHOLDER}"
 
     # 正则表达式
-    RE_BLANK: re.Pattern = re.compile(r"[\s\u3000]+", re.IGNORECASE)
+    REGEX_BLANK: re.Pattern = re.compile(r"[\s\u3000]+", re.IGNORECASE)
 
-    RE_PREFIX_NONE: re.Pattern = re.compile(rf"^(?:{"|".join(RE_NONE)})+", re.IGNORECASE)
-    RE_SUFFIX_NONE: re.Pattern = re.compile(rf"(?:{"|".join(RE_NONE)})+$", re.IGNORECASE)
+    REGEX_PREFIX_NONE: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE)})+", re.IGNORECASE)
+    REGEX_SUFFIX_NONE: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE)})+$", re.IGNORECASE)
 
-    RE_BASE_RENPY: re.Pattern = re.compile(rf"{"|".join(RE_RENPY)}", re.IGNORECASE)
-    RE_CHECK_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(RE_NONE + RE_RENPY)})+", re.IGNORECASE)
-    RE_PREFIX_RENPY: re.Pattern = re.compile(rf"^(?:{"|".join(RE_NONE + RE_RENPY)})+", re.IGNORECASE)
-    RE_SUFFIX_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(RE_NONE + RE_RENPY)})+$", re.IGNORECASE)
+    REGEX_BASE_KAG_RENPY: re.Pattern = re.compile(rf"{"|".join(REGEX_KAG_RENPY)}", re.IGNORECASE)
+    REGEX_CHECK_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+", re.IGNORECASE)
+    REGEX_PREFIX_KAG_RENPY: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+", re.IGNORECASE)
+    REGEX_SUFFIX_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+$", re.IGNORECASE)
 
-    RE_BASE_WOLF_RPGMAKER: re.Pattern = re.compile(rf"{"|".join(RE_WOLF_RPGMAKER)}", re.IGNORECASE)
-    RE_CHECK_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(RE_NONE + RE_WOLF_RPGMAKER)})+", re.IGNORECASE)
-    RE_PREFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"^(?:{"|".join(RE_NONE + RE_WOLF_RPGMAKER)})+", re.IGNORECASE)
-    RE_SUFFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(RE_NONE + RE_WOLF_RPGMAKER)})+$", re.IGNORECASE)
+    REGEX_BASE_WOLF_RPGMAKER: re.Pattern = re.compile(rf"{"|".join(REGEX_WOLF_RPGMAKER)}", re.IGNORECASE)
+    REGEX_CHECK_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+", re.IGNORECASE)
+    REGEX_PREFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+", re.IGNORECASE)
+    REGEX_SUFFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+$", re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()
@@ -80,8 +82,8 @@ class CodeSaver(Base):
                 samples_ex: list[str] = self.pre_process_none(k, src_dict)
                 samples.extend(samples_ex)
                 samples.append("Markdown代码")
-            elif item.get_text_type() == CacheItem.TextType.RENPY:
-                samples_ex: list[str] = self.pre_process_renpy(k, src_dict)
+            elif item.get_text_type() in (CacheItem.TextType.KAG, CacheItem.TextType.RENPY):
+                samples_ex: list[str] = self.pre_process_kag_renpy(k, src_dict)
                 samples.extend(samples_ex)
             elif item.get_text_type() in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
                 samples_ex: list[str] = self.pre_process_wolf_rpgmaker(k, src_dict)
@@ -95,53 +97,53 @@ class CodeSaver(Base):
     # 预处理 - None
     def pre_process_none(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 查找与替换前缀代码段
-        self.prefix_codes[k] = CodeSaver.RE_PREFIX_NONE.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_PREFIX_NONE.sub("", src_dict.get(k))
+        self.prefix_codes[k] = CodeSaver.REGEX_PREFIX_NONE.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_PREFIX_NONE.sub("", src_dict.get(k))
 
         # 查找与替换后缀代码段
-        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_NONE.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_SUFFIX_NONE.sub("", src_dict.get(k))
+        self.suffix_codes[k] = CodeSaver.REGEX_SUFFIX_NONE.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_SUFFIX_NONE.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
 
-        return CodeSaver.RE_PREFIX_NONE.findall(src_dict.get(k))
+        return CodeSaver.REGEX_PREFIX_NONE.findall(src_dict.get(k))
 
-    # 预处理 - RenPy
-    def pre_process_renpy(self, k: str, src_dict: dict[str, str]) -> list[str]:
+    # 预处理 - KAG RenPy
+    def pre_process_kag_renpy(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 查找与替换前缀代码段
-        self.prefix_codes[k] = CodeSaver.RE_PREFIX_RENPY.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_PREFIX_RENPY.sub("", src_dict.get(k))
+        self.prefix_codes[k] = CodeSaver.REGEX_PREFIX_KAG_RENPY.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_PREFIX_KAG_RENPY.sub("", src_dict.get(k))
 
         # 查找与替换后缀代码段
-        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_RENPY.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_SUFFIX_RENPY.sub("", src_dict.get(k))
+        self.suffix_codes[k] = CodeSaver.REGEX_SUFFIX_KAG_RENPY.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_SUFFIX_KAG_RENPY.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
 
-        return CodeSaver.RE_BASE_RENPY.findall(src_dict.get(k))
+        return CodeSaver.REGEX_BASE_KAG_RENPY.findall(src_dict.get(k))
 
-    # 预处理 - RPGMaker
+    # 预处理 - WOLF RPGMaker
     def pre_process_wolf_rpgmaker(self, k: str, src_dict: dict[str, str]) -> list[str]:
         # 查找与替换前缀代码段
-        self.prefix_codes[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_PREFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
+        self.prefix_codes[k] = CodeSaver.REGEX_PREFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_PREFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
 
         # 查找与替换后缀代码段
-        self.suffix_codes[k] = CodeSaver.RE_SUFFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
-        src_dict[k] = CodeSaver.RE_SUFFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
+        self.suffix_codes[k] = CodeSaver.REGEX_SUFFIX_WOLF_RPGMAKER.findall(src_dict.get(k))
+        src_dict[k] = CodeSaver.REGEX_SUFFIX_WOLF_RPGMAKER.sub("", src_dict.get(k))
 
         # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
         if src_dict[k] == "":
             src_dict[k] = CodeSaver.PLACEHOLDER
             self.placeholders.add(k)
 
-        return CodeSaver.RE_BASE_WOLF_RPGMAKER.findall(src_dict.get(k))
+        return CodeSaver.REGEX_BASE_WOLF_RPGMAKER.findall(src_dict.get(k))
 
     # 后处理
     def post_process(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict[str, str]:
@@ -167,17 +169,17 @@ class CodeSaver(Base):
 
     # 检查代码段
     def check(self, src: str, dst: str, text_type: str) -> bool:
-        if text_type == CacheItem.TextType.RENPY:
-            x: list[str] = CodeSaver.RE_CHECK_RENPY.findall(src)
-            y: list[str] = CodeSaver.RE_CHECK_RENPY.findall(dst)
+        if text_type in (CacheItem.TextType.KAG, CacheItem.TextType.RPGMAKER):
+            x: list[str] = CodeSaver.REGEX_CHECK_KAG_RENPY.findall(src)
+            y: list[str] = CodeSaver.REGEX_CHECK_KAG_RENPY.findall(dst)
         elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-            x: list[str] = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(src)
-            y: list[str] = CodeSaver.RE_CHECK_WOLF_RPGMAKER.findall(dst)
+            x: list[str] = CodeSaver.REGEX_CHECK_WOLF_RPGMAKER.findall(src)
+            y: list[str] = CodeSaver.REGEX_CHECK_WOLF_RPGMAKER.findall(dst)
         else:
             x: list[str] = []
             y: list[str] = []
 
-        x = [CodeSaver.RE_BLANK.sub("", v) for v in x if CodeSaver.RE_BLANK.sub("", v) != ""]
-        y = [CodeSaver.RE_BLANK.sub("", v) for v in y if CodeSaver.RE_BLANK.sub("", v) != ""]
+        x = [CodeSaver.REGEX_BLANK.sub("", v) for v in x if CodeSaver.REGEX_BLANK.sub("", v) != ""]
+        y = [CodeSaver.REGEX_BLANK.sub("", v) for v in y if CodeSaver.REGEX_BLANK.sub("", v) != ""]
 
         return x == y

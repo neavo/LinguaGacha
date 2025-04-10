@@ -1,7 +1,7 @@
 class TextBase:
 
     # 汉字字符（剔除全角标点符号）
-    CJK_SET = {
+    CJK_SET: set[str] = {
         chr(c)
         for start, end in (
             (0x4E00, 0x9FFF),                           # 基本区
@@ -14,9 +14,10 @@ class TextBase:
         for c in range(start, end + 1)
         if not (0xFF01 <= c <= 0xFF60 or 0x3000 <= c <= 0x303F)  # 排除全角标点符号
     }
+    CJK_RANGE: str = r"\u4E00-\u9FFF\u3400-\u4DBF\U00020000-\U0002A6DF\U0002A700-\U0002B73F\U0002B740-\U0002B81F\U0002B820-\U0002CEAF"
 
     # 拉丁字符（剔除半角标点符号）
-    LATIN_SET = {
+    LATIN_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x0041, 0x005A),                           # 大写字母 A-Z
@@ -29,7 +30,7 @@ class TextBase:
     }
 
     # 谚文字符（剔除全角标点符号）
-    HANGUL_SET = {
+    HANGUL_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x1100, 0x11FF),                           # 韩文字母 (Hangul Jamo)
@@ -41,9 +42,10 @@ class TextBase:
         for c in range(start, end + 1)
         if not (0xFF01 <= c <= 0xFF60 or 0x3000 <= c <= 0x303F)  # 排除全角标点符号
     }
+    HANGUL_RANGE: str = r"\u1100-\u11FF\uA960-\uA97F\uD7B0-\uD7FF\uAC00-\uD7AF\u3130-\u318F"
 
     # 平假名（剔除全角标点符号）
-    HIRAGANA_SET = {
+    HIRAGANA_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x3040, 0x309F),                           # 平假名
@@ -55,9 +57,10 @@ class TextBase:
             or c in (0x309B, 0x309C)                    # 排除 0x309B 濁点 ゛ 0x309C 半濁点 ゜
         )
     }
+    HIRAGANA_RANGE: str = r"\u3040-\u309F"
 
     # 片假名（剔除全角标点符号）
-    KATAKANA_SET = {
+    KATAKANA_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x30A0, 0x30FF),                          # 片假名
@@ -74,9 +77,10 @@ class TextBase:
             )
         )
     }
+    KATAKANA_RANGE: str = r"\u30A0-\u30FF\uFF65-\uFF9F\u31F0-\u31FF"
 
     # 俄文字符
-    RU_SET = {
+    RU_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x0410, 0x044F),                           # 基本俄文字母 (大写字母 А-Я, 小写字母 а-я)
@@ -90,51 +94,51 @@ class TextBase:
     }
 
     # 德文字符 (Latin 扩展 + 特殊字符)
-    DE_SET = LATIN_SET | {
+    DE_SET: set[str]  = LATIN_SET | {
         "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"
     }
 
     # 法文字符
-    FR_SET = LATIN_SET | {
+    FR_SET: set[str]  = LATIN_SET | {
         "à", "á", "â", "ä", "ç", "é", "è", "ê", "ë", "î", "ï", "ô", "ö", "ù", "û", "ü", "ÿ", "œ", "Œ" # 添加 œ 和 Œ
     }
 
     # 波兰文字符
-    PL_SET = LATIN_SET | {
+    PL_SET: set[str]  = LATIN_SET | {
         "ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż",
         "Ą", "Ć", "Ę", "Ł", "Ń", "Ó", "Ś", "Ź", "Ż"
     }
 
     # 西班牙文字符
-    ES_SET = LATIN_SET | {
+    ES_SET: set[str]  = LATIN_SET | {
         "ñ", "á", "é", "í", "ó", "ú", "ü"
     }
 
     # 意大利文字符
-    IT_SET = LATIN_SET | {
+    IT_SET: set[str]  = LATIN_SET | {
         "à", "è", "é", "ì", "ò", "ù"
     }
 
     # 葡萄牙文字符
-    PT_SET = LATIN_SET | {
+    PT_SET: set[str]  = LATIN_SET | {
         "á", "é", "í", "ó", "ú", "ã", "õ", "à", "â", "ê", "ô", "ç"
     }
 
     # 匈牙利文字符
-    HU_SET = LATIN_SET | {
+    HU_SET: set[str]  = LATIN_SET | {
         "á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű"
     }
 
     # 土耳其文字符
-    TR_SET = LATIN_SET | {
+    TR_SET: set[str]  = LATIN_SET | {
         'Ç', 'ç', 'Ğ', 'ğ', 'İ', 'ı', 'Ö', 'ö', 'Ş', 'ş', 'Ü', 'ü'
     }
 
     # 印尼文字符 (基本上使用拉丁字母)
-    ID_SET = LATIN_SET
+    ID_SET: set[str]  = LATIN_SET
 
     # 越南文字符 (Latin 扩展 + 很多变音符号)
-    VI_SET = LATIN_SET | {
+    VI_SET: set[str]  = LATIN_SET | {
         chr(c)
         for start, end in (
             (0x1EA0, 0x1EF9),                           # 越南语扩展字符
@@ -143,7 +147,7 @@ class TextBase:
     }
 
     # 泰文字符
-    TH_SET = {
+    TH_SET: set[str]  = {
         chr(c)
         for start, end in (
             (0x0E00, 0x0E7F),                           # 泰文字符
