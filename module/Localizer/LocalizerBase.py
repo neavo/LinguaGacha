@@ -279,23 +279,27 @@ class LocalizerBase():
         ""
     )
 
+    # 质量类通用
+    quality_import: str = "导入"
+    quality_import_toast: str = "数据已导入 …"
+    quality_export: str = "导出"
+    quality_export_toast: str = "数据已导出到应用根目录 …"
+    quality_add: str = "添加"
+    quality_add_toast: str = "新行已添加 …"
+    quality_save: str = "保存"
+    quality_save_toast: str = "数据已保存 …"
+    quality_reset: str = "重置"
+    quality_reset_toast: str = "数据已重置 …"
+    quality_reset_alert: str = "是否确认重置为默认数据 … ？"
+    quality_regex_on: str = "正则模式已启用"
+    quality_regex_off: str = "正则模式已关闭"
+
     # 术语表
     glossary_page_head_title: str = "术语表"
     glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_01: str = "原文"
     glossary_page_table_row_02: str = "译文"
     glossary_page_table_row_03: str = "描述"
-    glossary_page_import: str = "导入"
-    glossary_page_import_toast: str = "数据已导入 …"
-    glossary_page_export: str = "导出"
-    glossary_page_export_toast: str = "数据已导出到应用根目录 …"
-    glossary_page_add: str = "添加"
-    glossary_page_add_toast: str = "新行已添加 …"
-    glossary_page_save: str = "保存"
-    glossary_page_save_toast: str = "数据已保存 …"
-    glossary_page_reset: str = "重置"
-    glossary_page_reset_toast: str = "数据已重置 …"
-    glossary_page_reset_alert: str = "是否确认重置为默认数据 … ？"
     glossary_page_kg: str = "一键制作工具"
 
     # 译前替换
@@ -311,34 +315,12 @@ class LocalizerBase():
     )
     pre_translation_replacement_page_table_row_01: str = "原文"
     pre_translation_replacement_page_table_row_02: str = "替换"
-    pre_translation_replacement_page_import: str = "导入"
-    pre_translation_replacement_page_import_toast: str = "数据已导入 …"
-    pre_translation_replacement_page_export: str = "导出"
-    pre_translation_replacement_page_export_toast: str = "数据已导出到应用根目录 …"
-    pre_translation_replacement_page_add: str = "添加"
-    pre_translation_replacement_page_add_toast: str = "新行已添加 …"
-    pre_translation_replacement_page_save: str = "保存"
-    pre_translation_replacement_page_save_toast: str = "数据已保存 …"
-    pre_translation_replacement_page_reset: str = "重置"
-    pre_translation_replacement_page_reset_toast: str = "数据已重置 …"
-    pre_translation_replacement_page_reset_alert: str = "是否确认重置为默认数据 … ？"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     post_translation_replacement_page_table_row_01: str = "原文"
     post_translation_replacement_page_table_row_02: str = "替换"
-    post_translation_replacement_page_import: str = "导入"
-    post_translation_replacement_page_import_toast: str = "数据已导入 …"
-    post_translation_replacement_page_export: str = "导出"
-    post_translation_replacement_page_export_toast: str = "数据已导出到应用根目录 …"
-    post_translation_replacement_page_add: str = "添加"
-    post_translation_replacement_page_add_toast: str = "新行已添加 …"
-    post_translation_replacement_page_save: str = "保存"
-    post_translation_replacement_page_save_toast: str = "数据已保存 …"
-    post_translation_replacement_page_reset: str = "重置"
-    post_translation_replacement_page_reset_toast: str = "数据已重置 …"
-    post_translation_replacement_page_reset_alert: str = "是否确认重置为默认数据 … ？"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
@@ -349,11 +331,6 @@ class LocalizerBase():
         ""
         ""
     )
-    custom_prompt_zh_page_save: str = "保存"
-    custom_prompt_zh_page_save_toast: str = "数据已保存 …"
-    custom_prompt_zh_page_reset: str = "重置"
-    custom_prompt_zh_page_reset_toast: str = "数据已重置 …"
-    custom_prompt_zh_page_reset_alert: str = "是否确认重置为默认数据 … ？"
 
     # 自定义提示词 - 英文
     custom_prompt_en_page_head: str = "译文语言设置为非中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
@@ -364,11 +341,6 @@ class LocalizerBase():
         ""
         ""
     )
-    custom_prompt_en_page_save: str = "保存"
-    custom_prompt_en_page_save_toast: str = "数据已保存 …"
-    custom_prompt_en_page_reset: str = "重置"
-    custom_prompt_en_page_reset_toast: str = "数据已重置 …"
-    custom_prompt_en_page_reset_alert: str = "是否确认重置为默认数据 … ？"
 
     # 百宝箱
     tool_box_page_batch_correction: str = "批量修正"

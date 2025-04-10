@@ -279,23 +279,27 @@ class LocalizerEN(LocalizerBase):
         "Please <font color='darkgoldenrod'><b>judge for yourself</b></font> whether to enable it, and it should only be enabled when <font color='darkgoldenrod'><b>translating MTool text</b></font>"
     )
 
+    # 质量类通用
+    quality_import: str = "Import"
+    quality_import_toast: str = "Data imported …"
+    quality_export: str = "Export"
+    quality_export_toast: str = "Data exported to application root directory …"
+    quality_add: str = "Add"
+    quality_add_toast: str = "New row added …"
+    quality_save: str = "Save"
+    quality_save_toast: str = "Data saved …"
+    quality_reset: str = "Reset"
+    quality_reset_toast: str = "Data reset …"
+    quality_reset_alert: str = "Confirm reset to default data … ?"
+    quality_regex_on: str = "Regex On"
+    quality_regex_off: str = "Regex OFF"
+
     # 术语表
     glossary_page_head_title: str = "Glossary"
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_01: str = "Original Text"
     glossary_page_table_row_02: str = "Translated Text"
     glossary_page_table_row_03: str = "Description"
-    glossary_page_import: str = "Import"
-    glossary_page_import_toast: str = "Data imported …"
-    glossary_page_export: str = "Export"
-    glossary_page_export_toast: str = "Data exported to application root directory …"
-    glossary_page_add: str = "Add"
-    glossary_page_add_toast: str = "New row added …"
-    glossary_page_save: str = "Save"
-    glossary_page_save_toast: str = "Data saved …"
-    glossary_page_reset: str = "Reset"
-    glossary_page_reset_toast: str = "Data reset …"
-    glossary_page_reset_alert: str = "Confirm reset to default data … ?"
     glossary_page_kg: str = "One-Click Tools"
 
     # 译前替换
@@ -311,34 +315,12 @@ class LocalizerEN(LocalizerBase):
     )
     pre_translation_replacement_page_table_row_01: str = "Original Text"
     pre_translation_replacement_page_table_row_02: str = "Replacement"
-    pre_translation_replacement_page_import: str = "Import"
-    pre_translation_replacement_page_import_toast: str = "Data imported …"
-    pre_translation_replacement_page_export: str = "Export"
-    pre_translation_replacement_page_export_toast: str = "Data exported to application root directory …"
-    pre_translation_replacement_page_add: str = "Add"
-    pre_translation_replacement_page_add_toast: str = "New row added …"
-    pre_translation_replacement_page_save: str = "Save"
-    pre_translation_replacement_page_save_toast: str = "Data saved …"
-    pre_translation_replacement_page_reset: str = "Reset"
-    pre_translation_replacement_page_reset_toast: str = "Data reset …"
-    pre_translation_replacement_page_reset_alert: str = "Confirm reset to default data … ?"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
     post_translation_replacement_page_table_row_01: str = "Original Text"
     post_translation_replacement_page_table_row_02: str = "Replacement"
-    post_translation_replacement_page_import: str = "Import"
-    post_translation_replacement_page_import_toast: str = "Data imported …"
-    post_translation_replacement_page_export: str = "Export"
-    post_translation_replacement_page_export_toast: str = "Data exported to application root directory …"
-    post_translation_replacement_page_add: str = "Add"
-    post_translation_replacement_page_add_toast: str = "New row added …"
-    post_translation_replacement_page_save: str = "Save"
-    post_translation_replacement_page_save_toast: str = "Data saved …"
-    post_translation_replacement_page_reset: str = "Reset"
-    post_translation_replacement_page_reset_toast: str = "Data reset …"
-    post_translation_replacement_page_reset_alert: str = "Confirm reset to default data … ?"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"
@@ -349,11 +331,6 @@ class LocalizerEN(LocalizerBase):
         "<br>"
         "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to Chinese</b></font>"
     )
-    custom_prompt_zh_page_save: str = "Save"
-    custom_prompt_zh_page_save_toast: str = "Data saved …"
-    custom_prompt_zh_page_reset: str = "Reset"
-    custom_prompt_zh_page_reset_toast: str = "Data reset …"
-    custom_prompt_zh_page_reset_alert: str = "Confirm reset to default data … ?"
 
     # 自定义提示词 - 英文
     custom_prompt_en_page_head: str = "Custom prompt used when target language is set to non-Chinese languages (SakuraLLM model not supported)"
@@ -364,11 +341,6 @@ class LocalizerEN(LocalizerBase):
         "<br>"
         "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>"
     )
-    custom_prompt_en_page_save: str = "Save"
-    custom_prompt_en_page_save_toast: str = "Data saved …"
-    custom_prompt_en_page_reset: str = "Reset"
-    custom_prompt_en_page_reset_toast: str = "Data reset …"
-    custom_prompt_en_page_reset_alert: str = "Confirm reset to default data … ?"
 
     # 百宝箱
     tool_box_page_batch_correction: str = "Batch Correction"
