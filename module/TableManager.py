@@ -117,7 +117,7 @@ class TableManager():
                     {
                         "src": data[0].text().strip(),
                         "dst": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
-                        "regex": data[2].text().strip() if isinstance(data[2], QTableWidgetItem) else "",
+                        "info": data[2].text().strip() if isinstance(data[2], QTableWidgetItem) else "",
                     }
                 )
             else:
