@@ -240,9 +240,11 @@ class ReTranslationPage(QWidget, Base):
                 item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
             elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
                 item_src.set_dst(item_dst.get_dst())
+                item_src.set_name_dst(item_dst.get_name_dst())
                 item_src.set_status(Base.TranslationStatus.TRANSLATED_IN_PAST)
             else:
                 item_src.set_dst(item_dst.get_dst())
+                item_src.set_name_dst(item_dst.get_name_dst())
                 item_src.set_status(Base.TranslationStatus.EXCLUDED)
 
         return project, items_src, ""
