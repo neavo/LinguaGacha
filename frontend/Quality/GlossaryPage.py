@@ -1,9 +1,6 @@
 import os
 from functools import partial
 
-import openpyxl
-import openpyxl.worksheet.worksheet
-import rapidjson as json
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
@@ -24,62 +21,47 @@ from qfluentwidgets import CommandButton
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
-from module.XLSXHelper import XLSXHelper
-from module.TableHelper import TableHelper
+from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class GlossaryPage(QWidget, Base):
 
-    PRESET_PATH: str = "resource/glossary_preset"
-
-    # 表格每列对应的数据字段
-    KEYS = (
-        "src",
-        "dst",
-        "info",
-    )
+    BASE: str = "glossary"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 根据应用语言加载默认设置
-        if Localizer.get_app_language() == BaseLanguage.ZH:
-            self.default = {
-                "glossary_enable": True,
-                "glossary_data": [],
-            }
-        else:
-            self.default = {
-                "glossary_enable": True,
-                "glossary_data": [],
-            }
+        # 默认设置
+        self.default = {
+            f"{__class__.BASE}_enable": True,
+            f"{__class__.BASE}_data": [],
+        }
 
         # 载入并保存默认配置
         config = self.save_config(self.load_config_from_default())
 
         # 设置主容器
-        self.container = QVBoxLayout(self)
-        self.container.setSpacing(8)
-        self.container.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_head(self.container, config, window)
-        self.add_widget_body(self.container, config, window)
-        self.add_widget_foot(self.container, config, window)
+        self.add_widget_head(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
+        self.add_widget_foot(self.root, config, window)
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("glossary_enable"))
+            widget.set_checked(config.get(f"{__class__.BASE}_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
-            config["glossary_enable"] = checked
+            config[f"{__class__.BASE}_enable"] = checked
             self.save_config(config)
 
         parent.addWidget(
@@ -123,7 +105,7 @@ class GlossaryPage(QWidget, Base):
             menu.addAction(
                 Action(
                     FluentIcon.ADD,
-                    Localizer.get().table_insert_row,
+                    Localizer.get().quality_insert_row,
                     triggered = lambda _: insert_row(self.table),
                 )
             )
@@ -131,7 +113,7 @@ class GlossaryPage(QWidget, Base):
             menu.addAction(
                 Action(
                     FluentIcon.DELETE,
-                    Localizer.get().table_delete_row,
+                    Localizer.get().quality_delete_row,
                     triggered = lambda _: delete_row(self.table),
                 )
             )
@@ -144,11 +126,13 @@ class GlossaryPage(QWidget, Base):
         self.table.setBorderRadius(4)
         self.table.setBorderVisible(True)
         self.table.setWordWrap(False)
-        self.table.setColumnCount(len(GlossaryPage.KEYS))
-        self.table.resizeRowsToContents() # 设置行高度自适应内容
-        self.table.resizeColumnsToContents() # 设置列宽度自适应内容
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) # 撑满宽度
+        self.table.setColumnCount(3)
         self.table.setSelectRightClickedRow(True) # 右键选中行
+
+        # 设置表格列宽
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
 
         # 注册事件
         self.table.itemChanged.connect(item_changed)
@@ -162,11 +146,16 @@ class GlossaryPage(QWidget, Base):
                 Localizer.get().glossary_page_table_row_01,
                 Localizer.get().glossary_page_table_row_02,
                 Localizer.get().glossary_page_table_row_03,
-            ),
+            )
         )
 
         # 向表格更新数据
-        TableHelper.update_to_table(self.table, config.get("glossary_data"), GlossaryPage.KEYS)
+        self.table_manager = TableManager(
+            type = TableManager.Type.GLOSSARY,
+            data = config.get(f"{__class__.BASE}_data"),
+            table = self.table,
+        )
+        self.table_manager.sync()
 
     # 底部
     def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
@@ -174,7 +163,7 @@ class GlossaryPage(QWidget, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
-        self.command_bar_card.set_minimum_width(512)
+        self.command_bar_card.set_minimum_width(640)
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
@@ -183,8 +172,6 @@ class GlossaryPage(QWidget, Base):
         self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
-        self.add_command_bar_action_kg(self.command_bar_card, config, window)
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # 导入
@@ -192,24 +179,17 @@ class GlossaryPage(QWidget, Base):
 
         def triggered() -> None:
             # 选择文件
-            path, _ = QFileDialog.getOpenFileName(None, Localizer.get().select_file, "", Localizer.get().select_file_type)
+            path, _ = QFileDialog.getOpenFileName(None, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
             if not isinstance(path, str) or path == "":
                 return
 
             # 从文件加载数据
-            data = TableHelper.load_from_file(path, GlossaryPage.KEYS)
+            self.table_manager.load_from_file(path)
+            self.table_manager.sync()
 
-            # 读取配置文件
+            # 更新配置文件
             config = self.load_config()
-            config["glossary_data"].extend(data)
-
-            # 向表格更新数据
-            TableHelper.update_to_table(self.table, config["glossary_data"], GlossaryPage.KEYS)
-
-            # 从表格加载数据（去重后）
-            config["glossary_data"] = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
-
-            # 保存配置文件
+            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
             config = self.save_config(config)
 
             # 弹出提示
@@ -225,33 +205,9 @@ class GlossaryPage(QWidget, Base):
     # 导出
     def add_command_bar_action_export(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
-        def export_to_xlsx(data: list[dict[str, str]], path: str) -> None:
-            # 新建工作表
-            book: openpyxl.Workbook = openpyxl.Workbook()
-            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
-
-            # 设置表头
-            sheet.column_dimensions["A"].width = 32
-            sheet.column_dimensions["B"].width = 32
-            sheet.column_dimensions["C"].width = 32
-
-            # 将数据写入工作表
-            for row, item in enumerate(data):
-                XLSXHelper.set_cell_value(sheet, row + 1, 1, item.get("src", ""), 10)
-                XLSXHelper.set_cell_value(sheet, row + 1, 2, item.get("dst", ""), 10)
-                XLSXHelper.set_cell_value(sheet, row + 1, 3, item.get("info", ""), 10)
-
-            # 保存工作簿
-            book.save(path, )
-
         def triggered() -> None:
-            # 从表格加载数据
-            data = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
-
             # 导出文件
-            export_to_xlsx(data, f"{Localizer.get().path_glossary_export}.xlsx")
-            with open(f"{Localizer.get().path_glossary_export}.json", "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(data, indent = 4, ensure_ascii = False))
+            self.table_manager.export(Localizer.get().path_glossary_export)
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -284,22 +240,14 @@ class GlossaryPage(QWidget, Base):
     def add_command_bar_action_save(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            # 加载配置文件
+            # 清空数据，再从表格加载数据
+            self.table_manager.set_data([])
+            self.table_manager.load_from_table()
+            self.table_manager.sync()
+
+            # 更新配置文件
             config = self.load_config()
-
-            # 从表格加载数据
-            config["glossary_data"] = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
-
-            # 清空表格
-            self.table.clearContents()
-
-            # 向表格更新数据
-            TableHelper.update_to_table(self.table, config["glossary_data"], GlossaryPage.KEYS)
-
-            # 从表格加载数据（去重后）
-            config["glossary_data"] = TableHelper.load_from_table(self.table, GlossaryPage.KEYS)
-
-            # 保存配置文件
+            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
             config = self.save_config(config)
 
             # 弹出提示
@@ -321,9 +269,9 @@ class GlossaryPage(QWidget, Base):
             filenames: list[str] = []
 
             try:
-                for root, _, filenames in os.walk(f"{__class__.PRESET_PATH}/{Localizer.get_app_language().lower()}"):
+                for _, _, filenames in os.walk(f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"):
                     filenames = [v.lower().removesuffix(".json") for v in filenames if v.lower().endswith(".json")]
-            except Exception as e:
+            except Exception:
                 pass
 
             return filenames
@@ -336,11 +284,14 @@ class GlossaryPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            self.table.clearContents()
+            # 重置数据
+            self.table_manager.set_data(self.default.get(f"{__class__.BASE}_data"))
+            self.table_manager.sync()
+
+            # 更新配置文件
             config = self.load_config()
-            config["glossary_data"] = self.default.get("glossary_data")
+            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
             config = self.save_config(config)
-            TableHelper.update_to_table(self.table, config.get("glossary_data"), __class__.KEYS)
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -349,22 +300,15 @@ class GlossaryPage(QWidget, Base):
             })
 
         def apply_preset(filename: str) -> None:
-            path: str = f"{__class__.PRESET_PATH}/{Localizer.get_app_language().lower()}/{filename}.json"
+            path: str = f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
 
             # 从文件加载数据
-            data = TableHelper.load_from_file(path, __class__.KEYS)
+            self.table_manager.load_from_file(path)
+            self.table_manager.sync()
 
-            # 读取配置文件
+            # 更新配置文件
             config = self.load_config()
-            config["glossary_data"].extend(data)
-
-            # 向表格更新数据
-            TableHelper.update_to_table(self.table, config["glossary_data"], __class__.KEYS)
-
-            # 从表格加载数据（去重后）
-            config["glossary_data"] = TableHelper.load_from_table(self.table, __class__.KEYS)
-
-            # 保存配置文件
+            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
             config = self.save_config(config)
 
             # 弹出提示

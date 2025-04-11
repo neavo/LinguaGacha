@@ -1,0 +1,56 @@
+[
+    {
+        "src": "\\((.+)/.+\\)",
+        "dst": "\\1",
+        "info": "(漢字/かんじ)",
+        "regex": true
+    },
+    {
+        "src": "\\[(.+)/.+\\]",
+        "dst": "\\1",
+        "info": "[漢字/かんじ]",
+        "regex": true
+    },
+    {
+        "src": "\\|(.+?)\\[.+?\\]",
+        "dst": "\\1",
+        "info": "|漢字[かんじ]",
+        "regex": true
+    },
+    {
+        "src": "\\\\r\\[(.+?),.+?\\]",
+        "dst": "\\1",
+        "info": "WOLF - \r[漢字,かんじ]",
+        "regex": true
+    },
+    {
+        "src": "\\[r_.+?\\]\\[ch_(.+?)\\]",
+        "dst": "\\1",
+        "info": "[r_かんじ][ch_漢字]",
+        "regex": true
+    },
+    {
+        "src": "\\[ch_(.+?)\\]",
+        "dst": "\\1",
+        "info": "[ch_漢字]",
+        "regex": true
+    },
+    {
+        "src": "<ruby\\s*=\\s*.*?>(.*?)</ruby>",
+        "dst": "\\1",
+        "info": "<ruby = かんじ>漢字</ruby>",
+        "regex": true
+    },
+    {
+        "src": "<ruby>.*?<rb>(.*?)</rb>.*?</ruby>",
+        "dst": "\\1",
+        "info": "<ruby><rb>漢字</rb><rtc><rt>かんじ</rt></rtc><rtc><rt>Chinese character</rt></rtc></ruby>",
+        "regex": true
+    },
+    {
+        "src": "\\[ruby text\\s*=\\s*\".*?\"\\]",
+        "dst": "",
+        "info": "[ruby text=かんじ] [ruby text = かんじ] [ruby text=\"かんじ\"] [ruby text = \"かんじ\"]",
+        "regex": true
+    }
+]
