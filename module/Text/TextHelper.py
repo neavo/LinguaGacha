@@ -42,47 +42,23 @@ class TextHelper:
         chr(0x2665),                                    # ♥
     }
 
-    # 汉字
-    CJK = TextBase.CJK()
-
-    # 拉丁文
-    Latin = TextBase.Latin()
-
-    # 日文
-    JA = TextBase.JA()
-
-    # 韩文
-    KO = TextBase.KO()
-
-    # 俄文
-    RU = TextBase.RU()
-
-    # 德文
-    DE = TextBase.DE()
-
-    # 法文
-    FR = TextBase.FR()
-
-    # 西班牙文
-    ES = TextBase.ES()
-
-    # 意大利文
-    IT = TextBase.IT()
-
-    # 葡萄牙文
-    PT = TextBase.PT()
-
-    # 匈牙利文
-    HU = TextBase.HU()
-
-    # 泰文
-    TH = TextBase.TH()
-
-    # 印尼文
-    ID = TextBase.ID()
-
-    # 越南文
-    VI = TextBase.VI()
+    CJK = TextBase.CJK()                                # 汉字
+    Latin = TextBase.Latin()                            # 拉丁文
+    JA = TextBase.JA()                                  # 日文 (Japanese)
+    KO = TextBase.KO()                                  # 韩文 (Korean)
+    RU = TextBase.RU()                                  # 阿拉伯文 (Russian)
+    AR = TextBase.AR()                                  # 俄文 (Arabic)
+    DE = TextBase.DE()                                  # 德文 (German)
+    FR = TextBase.FR()                                  # 法文 (French)
+    PL = TextBase.PL()                                  # 法文 (French)
+    ES = TextBase.ES()                                  # 西班牙文 (Spanish)
+    IT = TextBase.IT()                                  # 意大利文 (Italian)
+    PT = TextBase.PT()                                  # 葡萄牙文 (Portuguese)
+    HU = TextBase.HU()                                  # 匈牙利文 (Hungrarian)
+    TR = TextBase.TR()                                  # 土耳其文 (Turkish)
+    TH = TextBase.TH()                                  # 泰文 (Thai)
+    ID = TextBase.ID()                                  # 印尼文 (Indonesian)
+    VI = TextBase.VI()                                  # 越南文 (Vietnamese)
 
     # 判断一个字符是否是标点符号
     def is_punctuation(char: str) -> bool:

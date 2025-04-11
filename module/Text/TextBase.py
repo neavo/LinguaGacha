@@ -93,6 +93,19 @@ class TextBase:
         for c in range(start, end + 1)
     }
 
+    # 阿拉伯文字符
+    AR_SET: set[str] = {
+        chr(c)
+        for start, end in (
+            (0x0600, 0x06FF),                           # 阿拉伯文区块
+            (0x0750, 0x077F),                           # 阿拉伯文补充区块
+            (0x08A0, 0x08FF),                           # 阿拉伯文扩展-A
+            (0xFB50, 0xFDFF),                           # 阿拉伯文表达形式-A
+            (0xFE70, 0xFEFF),                           # 阿拉伯文表达形式-B
+        )
+        for c in range(start, end + 1)
+    }
+
     # 德文字符 (Latin 扩展 + 特殊字符)
     DE_SET: set[str]  = LATIN_SET | {
         "Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"
@@ -245,6 +258,11 @@ class KO(TextBase):
 class RU(TextBase):
     def char(self, c: str) -> bool:
         return c in TextBase.RU_SET
+
+# 阿拉伯文
+class AR(TextBase):
+    def char(self, c: str) -> bool:
+        return c in TextBase.AR_SET
 
 # 德文
 class DE(TextBase):
