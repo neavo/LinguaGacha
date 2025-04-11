@@ -1,0 +1,56 @@
+[
+    {
+        "src": "スキル",
+        "dst": "Skill",
+        "info": ""
+    },
+    {
+        "src": "アイテム",
+        "dst": "Item",
+        "info": ""
+    },
+    {
+        "src": "ステータス",
+        "dst": "Status",
+        "info": ""
+    },
+    {
+        "src": "大事なもの",
+        "dst": "Key Item",
+        "info": ""
+    },
+    {
+        "src": "セーブ",
+        "dst": "Save",
+        "info": ""
+    },
+    {
+        "src": "ロード",
+        "dst": "Load",
+        "info": ""
+    },
+    {
+        "src": "オプション",
+        "dst": "Option",
+        "info": ""
+    },
+    {
+        "src": "コンティニュー",
+        "dst": "Continue",
+        "info": ""
+    },
+    {
+        "src": "ニューゲーム",
+        "dst": "New Game",
+        "info": ""
+    },
+    {
+        "src": "タイトルへ",
+        "dst": "Back to Title",
+        "info": ""
+    },
+    {
+        "src": "",
+        "dst": ""
+    }
+]

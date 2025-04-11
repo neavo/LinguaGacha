@@ -1,13 +1,18 @@
+import os
+from functools import partial
+
 from PyQt5.QtCore import QEvent
+from PyQt5.QtCore import QPoint
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 
 from qfluentwidgets import Action
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import MessageBox
-from qfluentwidgets import TextBrowser
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import CommandButton
 from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
@@ -19,6 +24,8 @@ from widget.EmptyCard import EmptyCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class CustomPromptENPage(QWidget, Base):
+
+    PRESET_PATH: str = "resource/custom_prompt/en"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -98,11 +105,11 @@ class CustomPromptENPage(QWidget, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
-        self.add_command_bar_action_01(self.command_bar_card, config, window)
-        self.add_command_bar_action_02(self.command_bar_card, config, window)
+        self.add_command_bar_action_save(self.command_bar_card, config, window)
+        self.add_command_bar_action_preset(self.command_bar_card, config, window)
 
     # 保存
-    def add_command_bar_action_01(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_save(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
         def triggered() -> None:
             # 读取配置文件
             config = self.load_config()
@@ -123,9 +130,23 @@ class CustomPromptENPage(QWidget, Base):
             Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
         )
 
-    # 重置
-    def add_command_bar_action_02(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
-        def triggered() -> None:
+    # 预设
+    def add_command_bar_action_preset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+
+        widget: CommandButton = None
+
+        def load_preset() -> list[str]:
+            filenames: list[str] = []
+
+            try:
+                for root, _, filenames in os.walk(f"{__class__.PRESET_PATH}"):
+                    filenames = [v.lower().removesuffix(".txt") for v in filenames if v.lower().endswith(".txt")]
+            except Exception:
+                pass
+
+            return filenames
+
+        def reset() -> None:
             message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
@@ -133,19 +154,10 @@ class CustomPromptENPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            # 清空控件
             self.main_text.setPlainText("")
-
-            # 读取配置文件
             config = self.load_config()
-
-            # 加载默认设置
             config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.EN)
-
-            # 保存配置文件
             config = self.save_config(config)
-
-            # 向控件更新数据
             self.main_text.setPlainText(config.get("custom_prompt_en_data"))
 
             # 弹出提示
@@ -154,6 +166,51 @@ class CustomPromptENPage(QWidget, Base):
                 "message": Localizer.get().quality_reset_toast,
             })
 
-        parent.add_action(
-            Action(FluentIcon.DELETE, Localizer.get().quality_reset, parent, triggered = triggered),
-        )
+        def apply_preset(filename: str) -> None:
+            path: str = f"{__class__.PRESET_PATH}/{filename}.txt"
+
+            prompt: str = ""
+            try:
+                with open(path, "r", encoding = "utf-8-sig") as reader:
+                    prompt = reader.read().strip()
+            except Exception:
+                pass
+
+            # 读取配置文件
+            self.main_text.setPlainText("")
+            config = self.load_config()
+            config["custom_prompt_en_data"] = prompt
+            config = self.save_config(config)
+            self.main_text.setPlainText(config.get("custom_prompt_en_data"))
+
+            # 弹出提示
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_import_toast,
+            })
+
+        def triggered() -> None:
+            menu = RoundMenu("", widget)
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().quality_reset,
+                    triggered = reset,
+                )
+            )
+            for v in load_preset():
+                menu.addAction(
+                    Action(
+                        FluentIcon.EDIT,
+                        v,
+                        triggered = partial(apply_preset, v),
+                    )
+                )
+            menu.exec(widget.mapToGlobal(QPoint(0, -menu.height())))
+
+        widget = parent.add_action(Action(
+            FluentIcon.TRANSPARENT,
+            Localizer.get().quality_preset,
+            parent = parent,
+            triggered = triggered
+        ))

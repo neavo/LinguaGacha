@@ -288,10 +288,11 @@ class LocalizerEN(LocalizerBase):
     quality_add_toast: str = "New row added …"
     quality_save: str = "Save"
     quality_save_toast: str = "Data saved …"
+    quality_preset: str = "Preset"
     quality_reset: str = "Reset"
     quality_reset_toast: str = "Data reset …"
     quality_reset_alert: str = "Confirm reset to default data … ?"
-    quality_regex_on: str = "Regex On"
+    quality_regex_on: str = "Regex ON"
     quality_regex_off: str = "Regex OFF"
 
     # 术语表

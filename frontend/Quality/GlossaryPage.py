@@ -1,3 +1,6 @@
+import os
+from functools import partial
+
 import openpyxl
 import openpyxl.worksheet.worksheet
 import rapidjson as json
@@ -17,6 +20,7 @@ from qfluentwidgets import FluentIcon
 from qfluentwidgets import MessageBox
 from qfluentwidgets import TableWidget
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import CommandButton
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
@@ -28,6 +32,8 @@ from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class GlossaryPage(QWidget, Base):
+
+    PRESET_PATH: str = "resource/glossary_preset"
 
     # 表格每列对应的数据字段
     KEYS = (
@@ -44,24 +50,12 @@ class GlossaryPage(QWidget, Base):
         if Localizer.get_app_language() == BaseLanguage.ZH:
             self.default = {
                 "glossary_enable": True,
-                "glossary_data": [
-                    {
-                        "src": "ダリヤ",
-                        "dst": "达莉雅",
-                        "info": "女性名字",
-                    },
-                ],
+                "glossary_data": [],
             }
         else:
             self.default = {
                 "glossary_enable": True,
-                "glossary_data": [
-                    {
-                        "src": "ダリヤ",
-                        "dst": "Daria",
-                        "info": "female name",
-                    }
-                ],
+                "glossary_data": [],
             }
 
         # 载入并保存默认配置
@@ -187,7 +181,7 @@ class GlossaryPage(QWidget, Base):
         self.add_command_bar_action_add(self.command_bar_card, config, window)
         self.add_command_bar_action_save(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_reset(self.command_bar_card, config, window)
+        self.add_command_bar_action_preset(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
         self.add_command_bar_action_kg(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
@@ -318,10 +312,23 @@ class GlossaryPage(QWidget, Base):
             Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
         )
 
-    # 重置
-    def add_command_bar_action_reset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    # 预设
+    def add_command_bar_action_preset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
 
-        def triggered() -> None:
+        widget: CommandButton = None
+
+        def load_preset() -> list[str]:
+            filenames: list[str] = []
+
+            try:
+                for root, _, filenames in os.walk(f"{__class__.PRESET_PATH}/{Localizer.get_app_language().lower()}"):
+                    filenames = [v.lower().removesuffix(".json") for v in filenames if v.lower().endswith(".json")]
+            except Exception as e:
+                pass
+
+            return filenames
+
+        def reset() -> None:
             message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
@@ -329,20 +336,11 @@ class GlossaryPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            # 清空表格
             self.table.clearContents()
-
-            # 加载配置文件
             config = self.load_config()
-
-            # 加载默认设置
             config["glossary_data"] = self.default.get("glossary_data")
-
-            # 保存配置文件
             config = self.save_config(config)
-
-            # 向表格更新数据
-            TableHelper.update_to_table(self.table, config.get("glossary_data"), GlossaryPage.KEYS)
+            TableHelper.update_to_table(self.table, config.get("glossary_data"), __class__.KEYS)
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -350,9 +348,56 @@ class GlossaryPage(QWidget, Base):
                 "message": Localizer.get().quality_reset_toast,
             })
 
-        parent.add_action(
-            Action(FluentIcon.DELETE, Localizer.get().quality_reset, parent, triggered = triggered),
-        )
+        def apply_preset(filename: str) -> None:
+            path: str = f"{__class__.PRESET_PATH}/{Localizer.get_app_language().lower()}/{filename}.json"
+
+            # 从文件加载数据
+            data = TableHelper.load_from_file(path, __class__.KEYS)
+
+            # 读取配置文件
+            config = self.load_config()
+            config["glossary_data"].extend(data)
+
+            # 向表格更新数据
+            TableHelper.update_to_table(self.table, config["glossary_data"], __class__.KEYS)
+
+            # 从表格加载数据（去重后）
+            config["glossary_data"] = TableHelper.load_from_table(self.table, __class__.KEYS)
+
+            # 保存配置文件
+            config = self.save_config(config)
+
+            # 弹出提示
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_import_toast,
+            })
+
+        def triggered() -> None:
+            menu = RoundMenu("", widget)
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().quality_reset,
+                    triggered = reset,
+                )
+            )
+            for v in load_preset():
+                menu.addAction(
+                    Action(
+                        FluentIcon.EDIT,
+                        v,
+                        triggered = partial(apply_preset, v),
+                    )
+                )
+            menu.exec(widget.mapToGlobal(QPoint(0, -menu.height())))
+
+        widget = parent.add_action(Action(
+            FluentIcon.TRANSPARENT,
+            Localizer.get().quality_preset,
+            parent = parent,
+            triggered = triggered
+        ))
 
     # KG
     def add_command_bar_action_kg(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:

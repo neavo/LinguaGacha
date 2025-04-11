@@ -288,11 +288,12 @@ class LocalizerBase():
     quality_add_toast: str = "新行已添加 …"
     quality_save: str = "保存"
     quality_save_toast: str = "数据已保存 …"
+    quality_preset: str = "预设"
     quality_reset: str = "重置"
     quality_reset_toast: str = "数据已重置 …"
     quality_reset_alert: str = "是否确认重置为默认数据 … ？"
-    quality_regex_on: str = "正则模式已启用"
-    quality_regex_off: str = "正则模式已关闭"
+    quality_regex_on: str = "正则模式 ON"
+    quality_regex_off: str = "正则模式 OFF"
 
     # 术语表
     glossary_page_head_title: str = "术语表"
