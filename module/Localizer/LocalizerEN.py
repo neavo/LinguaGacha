@@ -36,10 +36,6 @@ class LocalizerEN(LocalizerBase):
     alert_no_data: str = "No valid data …"
     alert_reset_timer: str = "Confirm to reset timer?"
     alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
-    select_file: str = "Select File"
-    select_file_type: str = "Support Format (*.json *.xlsx)"
-    table_delete_row: str = "Delete Row"
-    table_insert_row: str = "Insert Row"
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
@@ -292,14 +288,17 @@ class LocalizerEN(LocalizerBase):
     quality_reset: str = "Reset"
     quality_reset_toast: str = "Data reset …"
     quality_reset_alert: str = "Confirm reset to default data … ?"
-    quality_regex_on: str = "Regex ON"
-    quality_regex_off: str = "Regex OFF"
+    quality_select_file: str = "Select File"
+    quality_select_file_type: str = "Support Format (*.json *.xlsx)"
+    quality_delete_row: str = "Delete Row"
+    quality_insert_row: str = "Insert Row"
+    quality_switch_regex: str = "Regex Switch"
 
     # 术语表
     glossary_page_head_title: str = "Glossary"
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
-    glossary_page_table_row_01: str = "Original Text"
-    glossary_page_table_row_02: str = "Translated Text"
+    glossary_page_table_row_01: str = "Original"
+    glossary_page_table_row_02: str = "Translated"
     glossary_page_table_row_03: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 
@@ -314,14 +313,16 @@ class LocalizerEN(LocalizerBase):
         "<br>"
         "• Special handling is needed for games with custom names. Click the bottom-right button to see <font color='darkgoldenrod'><b>Wiki</b></font> instructions"
     )
-    pre_translation_replacement_page_table_row_01: str = "Original Text"
+    pre_translation_replacement_page_table_row_01: str = "Original"
     pre_translation_replacement_page_table_row_02: str = "Replacement"
+    pre_translation_replacement_page_table_row_03: str = "Regex"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
-    post_translation_replacement_page_table_row_01: str = "Original Text"
+    post_translation_replacement_page_table_row_01: str = "Original"
     post_translation_replacement_page_table_row_02: str = "Replacement"
+    post_translation_replacement_page_table_row_03: str = "Regex"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"

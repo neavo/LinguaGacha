@@ -285,13 +285,11 @@ class TranslatorTask(Base):
             return data
 
         replace_dict: list[dict] = self.config.get("pre_translation_replacement_data")
-        if self.config.get("pre_translation_replacement_regex") == False:
-            for k in data:
-                for v in replace_dict:
+        for k in data:
+            for v in replace_dict:
+                if v.get("regex", False) != True:
                     data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
-        else:
-            for k in data:
-                for v in replace_dict:
+                else:
                     data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
 
         return data
@@ -302,13 +300,11 @@ class TranslatorTask(Base):
             return data
 
         replace_dict: list[dict] = self.config.get("post_translation_replacement_data")
-        if self.config.get("post_translation_replacement_regex") == False:
-            for k in data:
-                for v in replace_dict:
+        for k in data:
+            for v in replace_dict:
+                if v.get("regex", False) != True:
                     data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
-        else:
-            for k in data:
-                for v in replace_dict:
+                else:
                     data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
 
         return data

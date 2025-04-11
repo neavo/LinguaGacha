@@ -1,0 +1,14 @@
+[
+    {
+        "src": "^\"",
+        "dst": "「",
+        "info": "",
+        "regex": true
+    },
+    {
+        "src": "\"$",
+        "dst": "」",
+        "info": "",
+        "regex": true
+    }
+]

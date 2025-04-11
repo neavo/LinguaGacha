@@ -36,10 +36,6 @@ class LocalizerBase():
     alert_no_data: str = "没有有效数据 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
-    select_file: str = "选择文件"
-    select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
-    table_delete_row: str = "删除行"
-    table_insert_row: str = "插入行"
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"
@@ -292,8 +288,11 @@ class LocalizerBase():
     quality_reset: str = "重置"
     quality_reset_toast: str = "数据已重置 …"
     quality_reset_alert: str = "是否确认重置为默认数据 … ？"
-    quality_regex_on: str = "正则模式 ON"
-    quality_regex_off: str = "正则模式 OFF"
+    quality_select_file: str = "选择文件"
+    quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
+    quality_delete_row: str = "删除行"
+    quality_insert_row: str = "插入行"
+    quality_switch_regex: str = "切换正则模式"
 
     # 术语表
     glossary_page_head_title: str = "术语表"
@@ -316,12 +315,14 @@ class LocalizerBase():
     )
     pre_translation_replacement_page_table_row_01: str = "原文"
     pre_translation_replacement_page_table_row_02: str = "替换"
+    pre_translation_replacement_page_table_row_03: str = "正则"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     post_translation_replacement_page_table_row_01: str = "原文"
     post_translation_replacement_page_table_row_02: str = "替换"
+    post_translation_replacement_page_table_row_03: str = "正则"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
