@@ -321,7 +321,7 @@ class GlossaryPage(QWidget, Base):
             menu = RoundMenu("", widget)
             menu.addAction(
                 Action(
-                    FluentIcon.DELETE,
+                    FluentIcon.CLEAR_SELECTION,
                     Localizer.get().quality_reset,
                     triggered = reset,
                 )
@@ -337,7 +337,7 @@ class GlossaryPage(QWidget, Base):
             menu.exec(widget.mapToGlobal(QPoint(0, -menu.height())))
 
         widget = parent.add_action(Action(
-            FluentIcon.TRANSPARENT,
+            FluentIcon.EXPRESSIVE_INPUT_ENTRY,
             Localizer.get().quality_preset,
             parent = parent,
             triggered = triggered
