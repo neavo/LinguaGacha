@@ -54,7 +54,7 @@ class EPUB(Base):
             # 数据处理
             with zipfile.ZipFile(abs_path, "r") as zip_reader:
                 for path in zip_reader.namelist():
-                    if path.lower().endswith((".html", ".xhtml")):
+                    if path.lower().endswith((".htm", ".html", ".xhtml")):
                         with zip_reader.open(path) as reader:
                             bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
                             for dom in bs.find_all(EPUB.EPUB_TAGS):
@@ -206,7 +206,7 @@ class EPUB(Base):
                             process_opf(zip_reader, path)
                         elif path.lower().endswith(".ncx"):
                             process_ncx(zip_reader, path, items)
-                        elif path.lower().endswith((".html", ".xhtml")):
+                        elif path.lower().endswith((".htm", ".html", ".xhtml")):
                             process_html(zip_reader, path, items, False)
                         else:
                             zip_writer.writestr(path, zip_reader.read(path))
@@ -228,7 +228,7 @@ class EPUB(Base):
                             process_opf(zip_reader, path)
                         elif path.lower().endswith(".ncx"):
                             process_ncx(zip_reader, path, items)
-                        elif path.lower().endswith((".html", ".xhtml")):
+                        elif path.lower().endswith((".htm", ".html", ".xhtml")):
                             process_html(zip_reader, path, items, True)
                         else:
                             zip_writer.writestr(path, zip_reader.read(path))
