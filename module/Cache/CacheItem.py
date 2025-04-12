@@ -204,12 +204,12 @@ class CacheItem(BaseData):
             self.text_type = type
 
     # 获取翻译状态
-    def get_status(self) -> int:
+    def get_status(self) -> str:
         with self.lock:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, status: int) -> None:
+    def set_status(self, status: str) -> None:
         with self.lock:
             self.status = status
 
