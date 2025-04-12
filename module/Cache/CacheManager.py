@@ -186,7 +186,7 @@ class CacheManager(Base):
             # 如果 Token/行数 超限 或 数据来源跨文件，则结束此片段
             elif chunk_length + current_length > limit or len(chunk) >= line_limit or item.get_file_path() != chunk[-1].get_file_path():
                 chunks.append(chunk)
-                preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], i))
+                preceding_chunks.append(self.generate_preceding_chunks(chunk, i))
 
                 chunk = []
                 chunk_length = 0
@@ -197,19 +197,19 @@ class CacheManager(Base):
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:
             chunks.append(chunk)
-            preceding_chunks.append(self.generate_preceding_chunks(chunk[-1], i))
+            preceding_chunks.append(self.generate_preceding_chunks(chunk, i + 1))
 
         return chunks, preceding_chunks
 
     # 生成参考上文数据条目片段
-    def generate_preceding_chunks(self, start_item: CacheItem, start_index: int) -> list[list[CacheItem]]:
+    def generate_preceding_chunks(self, chunk: list[CacheItem], start_index: int) -> list[list[CacheItem]]:
         result: list[CacheItem] = []
 
-        for i in range(start_index - 1, -1, -1):
+        for i in range(start_index - len(chunk) - 1, -1, -1):
             item = self.items[i]
 
             # 跳过 已排除 的数据
-            if item.get_status() in (Base.TranslationStatus.EXCLUDED):
+            if item.get_status() == Base.TranslationStatus.EXCLUDED:
                 continue
 
             # 跳过空数据
@@ -222,7 +222,7 @@ class CacheManager(Base):
                 break
 
             # 候选数据与当前任务不在同一个文件时，结束搜索
-            if item.get_file_path() != start_item.get_file_path():
+            if item.get_file_path() != chunk[-1].get_file_path():
                 break
 
             # 候选数据以指定标点结尾时，添加到结果中
@@ -231,4 +231,5 @@ class CacheManager(Base):
             else:
                 break
 
-        return sorted(result, key = lambda x: x.get_row(), reverse = False)
+        # 简单逆序
+        return result[::-1]
