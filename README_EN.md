@@ -77,11 +77,15 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20250411 v0.24.1
-  - Quality Feature Module
+- 20250413 v0.24.2
+  - OPT - Optimize logic from preceding context
+  - OPT - Optimize `EPUB` compatibility
+
+- 20250412 v0.24.1
+  - Topic: Quality Feature
     - `Pre-translation Replacement` `Post-translation Replacement` supports Regex mode
     - `Glossary` `Pre-translation Replacement` `Post-translation Replacement` supports preset functionality
-  - Fix - Issue where name field is reset during partial re-translation
+  - FIX - Issue where name field is reset during partial re-translation
 
 - 20250410 v0.23.1
   - FIX - Fixed a compatibility issue when reading exported game text (.rpy) from [RenPy](https://www.renpy.org)
