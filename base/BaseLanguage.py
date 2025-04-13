@@ -27,7 +27,7 @@ class BaseLanguage(BaseData):
         JA: {"zh": "日文", "en": "Japanese"},
         KO: {"zh": "韩文", "en": "Korean"},
         RU: {"zh": "俄文", "en": "Russian"},
-        # AR: {"zh": "阿拉伯文", "en": "Arabic"},
+        AR: {"zh": "阿拉伯文", "en": "Arabic"},
         DE: {"zh": "德文", "en": "German"},
         FR: {"zh": "法文", "en": "French"},
         PL: {"zh": "波兰文", "en": "Polish"},
