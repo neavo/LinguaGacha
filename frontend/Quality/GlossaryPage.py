@@ -4,6 +4,7 @@ from functools import partial
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
+from PyQt5.QtCore import QEvent
 from PyQt5.QtCore import QPoint
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QFileDialog
@@ -52,6 +53,15 @@ class GlossaryPage(QWidget, Base):
         self.add_widget_head(self.root, config, window)
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
+
+        # 注册事件
+        self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
+
+    # 术语表刷新事件
+    def glossary_refresh(self, event: int, data: dict) -> None:
+        config = self.load_config()
+        self.table_manager.set_data(config.get(f"{__class__.BASE}_data"))
+        self.table_manager.sync()
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:

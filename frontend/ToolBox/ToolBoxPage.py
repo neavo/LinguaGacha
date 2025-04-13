@@ -88,6 +88,7 @@ class ToolBoxPage(QWidget, Base):
         # 添加控件
         self.add_batch_correction(self.flow_layout, config, window)
         self.add_re_translation(self.flow_layout, config, window)
+        self.add_name_extraction(self.flow_layout, config, window)
 
     # 批量修正
     def add_batch_correction(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
@@ -113,6 +114,20 @@ class ToolBoxPage(QWidget, Base):
             parent = self,
             title = Localizer.get().tool_box_page_re_translation,
             description = Localizer.get().tool_box_page_re_translation_desc,
+            init = None,
+            clicked = clicked,
+        ))
+
+    # 姓名字段提取
+    def add_name_extraction(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
+        def clicked(widget: ItemCard) -> None:
+            window.switchTo(window.name_extraction_page)
+
+        parent.addWidget(ItemCard(
+            parent = self,
+            title = Localizer.get().tool_box_page_name_extraction,
+            description = Localizer.get().tool_box_page_name_extraction_desc,
             init = None,
             clicked = clicked,
         ))

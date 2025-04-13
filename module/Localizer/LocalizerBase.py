@@ -31,6 +31,7 @@ class LocalizerBase():
     auto: str = "自动"
     wiki: str = "功能说明"
     inject: str = "注入"
+    generate: str = "生成"
     task_success: str = "任务执行成功 …"
     task_failure: str = "任务执行失败 …"
     alert_no_data: str = "没有有效数据 …"
@@ -76,6 +77,7 @@ class LocalizerBase():
     path_result_check_untranslated: str = "结果检查_未翻译的条目.json"
     path_result_check_retry_count_threshold: str = "结果检查_重试次数达到阈值.json"
     path_result_batch_correction: str = "批量修正.xlsx"
+    path_result_name_extraction: str = "姓名字段提取.xlsx"
 
     # 日志
     log_debug_mode: str = "调试模式已启用 …"
@@ -349,6 +351,11 @@ class LocalizerBase():
     tool_box_page_batch_correction_desc: str = "根据翻译完成时生成的结果检查文件中的数据，对可能存在的翻译错误进行批量修正，实现快速修正译文结果的目的"
     tool_box_page_re_translation: str = "部分重翻"
     tool_box_page_re_translation_desc: str = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正"
+    tool_box_page_name_extraction: str = "姓名字段提取"
+    tool_box_page_name_extraction_desc: str = (
+        "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段数据，"
+        "自动生成对应的术语表数据，方便后续进行翻译"
+    )
 
     # 百宝箱 - 批量修正
     batch_correction_page: str = "批量修正"
@@ -367,7 +374,7 @@ class LocalizerBase():
     batch_correction_page_step_01_desc: str = (
         "从结果检查文件中提取可能包含翻译错误的数据"
         "<br>"
-        f"然后在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成用于编辑的数据文件 <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font>"
+        f"然后自动在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成用于编辑的数据文件 <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font>"
     )
     batch_correction_page_step_02: str = "第二步 - 注入修正数据"
     batch_correction_page_step_02_desc: str = (
@@ -406,3 +413,27 @@ class LocalizerBase():
     )
     re_translation_page_white_list_placeholder: str = "请输入关键字 …"
     re_translation_page_alert_not_equal: str = "原文与译文的行数不匹配 …"
+
+    # 百宝箱 - 姓名字段提取
+    name_extraction_page: str = "姓名字段提取"
+    name_extraction_page_desc: str = (
+        "将从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中所有符合条件的文件中提取角色姓名字段，自动生成对应的术语表数据"
+        "<br>"
+        "支持格式："
+        "<br>"
+        "• RenPy 导出游戏文本（.rpy）"
+        "<br>"
+        "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
+    )
+    name_extraction_page_step_01: str = "第一步 - 提取数据"
+    name_extraction_page_step_01_desc: str = (
+        "提取姓名字段及与其相关的上下文，发送至翻译器进行翻译"
+        "<br>"
+        f"翻译完成后，将在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成 <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> 文件"
+    )
+    name_extraction_page_step_02: str = "第二步 - 生成术语表"
+    name_extraction_page_step_02_desc: str = (
+        f"将从 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内的 <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> 文件中提取翻译后的数据"
+        "<br>"
+        "然后生成对应的术语表数据，请注意检查生成的术语表数据是否正确"
+    )

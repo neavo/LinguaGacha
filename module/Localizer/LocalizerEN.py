@@ -31,6 +31,7 @@ class LocalizerEN(LocalizerBase):
     auto: str = "Auto"
     wiki: str = "Wiki"
     inject: str = "Inject"
+    generate: str = "Generate"
     task_success: str = "Task succeeded …"
     task_failure: str = "Task failed …"
     alert_no_data: str = "No valid data …"
@@ -76,6 +77,7 @@ class LocalizerEN(LocalizerBase):
     path_result_check_untranslated: str = "result_check_untranslated_entries.json"
     path_result_check_retry_count_threshold: str = "result_check_retry_count_reach_threshold.json"
     path_result_batch_correction: str = "batch_correction.xlsx"
+    path_result_name_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
     log_debug_mode: str = "Debug mode enabled …"
@@ -349,6 +351,11 @@ class LocalizerEN(LocalizerBase):
     tool_box_page_batch_correction_desc: str = "Checks the translated file against the generated translation results and performs batch correction on potential errors, enabling quick refinement of translation outputs"
     tool_box_page_re_translation: str = "Partial Re-Translation"
     tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
+    tool_box_page_name_extraction: str = "Name-Field Extraction"
+    tool_box_page_name_extraction_desc: str = (
+        "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
+        "and automatically generate corresponding glossary data to facilitate subsequent translation."
+    )
 
     # 百宝箱 - 批量修正
     batch_correction_page: str = "Batch Correction"
@@ -365,9 +372,9 @@ class LocalizerEN(LocalizerBase):
     )
     batch_correction_page_step_01: str = "Step 1 - Generate Correction Data"
     batch_correction_page_step_01_desc: str = (
-        "Extracts data that may contain translation errors from the result inspection file"
+        "Extract data that may contain translation errors from the result check file"
         "<br>"
-        f"Then generates a data file <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font> for editing in the <font color='darkgoldenrod'><b>output folder</b></font>"
+        f"Then automatically generate a data file for editing named <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font> in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
     )
     batch_correction_page_step_02: str = "Step 2 - Inject Correction Data"
     batch_correction_page_step_02_desc: str = (
@@ -406,3 +413,27 @@ class LocalizerEN(LocalizerBase):
     )
     re_translation_page_white_list_placeholder: str = "Please enter keywords …"
     re_translation_page_alert_not_equal: str = "The number of lines in the original and translated texts does not match …"
+
+    # 百宝箱 - 姓名字段提取
+    name_extraction_page: str = "Name-Field Extraction"
+    name_extraction_page_desc: str = (
+        "Extract character name fields from all eligible files in the <font color='darkgoldenrod'><b>Input Folder</b></font> and automatically generate corresponding glossary data."
+        "<br>"
+        "Supported formats:"
+        "<br>"
+        "• RenPy exported game text (.rpy)"
+        "<br>"
+        "• VNTextPatch or SExtractor exported game text with name field (.json)"
+    )
+    name_extraction_page_step_01: str = "Step 1 - Extract Data"
+    name_extraction_page_step_01_desc: str = (
+        "Extract name fields and their related context, and send them to the translator for translation"
+        "<br>"
+        f"After translation is complete, the <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
+    )
+    name_extraction_page_step_02: str = "Step 2 - Generate Glossary"
+    name_extraction_page_step_02_desc: str = (
+        f"Extract translated data from the <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> file in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
+        "<br>"
+        "Then generate the corresponding glossary data, check if the generated glossary data is correct"
+    )
