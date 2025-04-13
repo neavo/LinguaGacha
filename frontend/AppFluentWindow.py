@@ -37,8 +37,8 @@ from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplace
 from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
 from frontend.ToolBox.ToolBoxPage import ToolBoxPage
 from frontend.ToolBox.ReTranslationPage import ReTranslationPage
-from frontend.ToolBox.NameExtractionPage import NameExtractionPage
 from frontend.ToolBox.BatchCorrectionPage import BatchCorrectionPage
+from frontend.ToolBox.NameFieldExtractionPage import NameFieldExtractionPage
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -438,5 +438,5 @@ class AppFluentWindow(FluentWindow, Base):
         self.stackedWidget.addWidget(self.re_translation_page)
 
         # 姓名字段注入
-        self.name_extraction_page = NameExtractionPage("name_extraction_page", self)
-        self.stackedWidget.addWidget(self.name_extraction_page)
+        self.name_field_extraction_page = NameFieldExtractionPage("name_field_extraction_page", self)
+        self.stackedWidget.addWidget(self.name_field_extraction_page)

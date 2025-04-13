@@ -3,6 +3,8 @@ import time
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
+from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QEvent
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -23,7 +25,7 @@ from widget.Separator import Separator
 from widget.EmptyCard import EmptyCard
 from widget.CommandBarCard import CommandBarCard
 
-class NameExtractionPage(QWidget, Base):
+class NameFieldExtractionPage(QWidget, Base):
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -46,22 +48,27 @@ class NameExtractionPage(QWidget, Base):
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         parent.addWidget(
             EmptyCard(
-                title = Localizer.get().name_extraction_page,
-                description = Localizer.get().name_extraction_page_desc,
+                title = Localizer.get().name_field_extraction_page,
+                description = Localizer.get().name_field_extraction_page_desc,
                 init = None,
             )
         )
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+        # 创建滚动区域的内容容器
         scroll_area_vbox_widget = QWidget()
         scroll_area_vbox = QVBoxLayout(scroll_area_vbox_widget)
         scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
+
+        # 创建滚动区域
         scroll_area = SingleDirectionScrollArea(orient = Qt.Vertical)
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.enableTransparentBackground()
-        parent.addWidget(scroll_area_vbox_widget)
+
+        # 将滚动区域添加到父布局
+        parent.addWidget(scroll_area)
 
         # 添加控件
         scroll_area_vbox.addWidget(Separator())
@@ -93,8 +100,8 @@ class NameExtractionPage(QWidget, Base):
             widget.add_widget(push_button)
 
         widget = EmptyCard(
-            title = Localizer.get().name_extraction_page_step_01,
-            description = Localizer.get().name_extraction_page_step_01_desc,
+            title = Localizer.get().name_field_extraction_page_step_01,
+            description = Localizer.get().name_field_extraction_page_step_01_desc,
             init = init,
         )
         widget.setFixedHeight(96)
@@ -110,8 +117,8 @@ class NameExtractionPage(QWidget, Base):
             widget.setFixedHeight(96)
 
         parent.addWidget(EmptyCard(
-            title = Localizer.get().name_extraction_page_step_02,
-            description = Localizer.get().name_extraction_page_step_02_desc,
+            title = Localizer.get().name_field_extraction_page_step_02,
+            description = Localizer.get().name_field_extraction_page_step_02_desc,
             init = init,
         ))
 
@@ -144,7 +151,7 @@ class NameExtractionPage(QWidget, Base):
                 "dst": f"【{name}】\n{src}",
                 "row": len(items) + 1,
                 "file_type": CacheItem.FileType.XLSX,
-                "file_path": Localizer.get().path_result_name_extraction,
+                "file_path": Localizer.get().path_result_name_field_extraction,
                 "translation_status": Base.TranslationStatus.UNTRANSLATED,
             }))
 
@@ -186,7 +193,7 @@ class NameExtractionPage(QWidget, Base):
         config = self.load_config()
         config["input_folder"] = config.get("output_folder")
         _, items = FileManager(config).read_from_path()
-        items = [v for v in items if v.get_file_path() == Localizer.get().path_result_name_extraction]
+        items = [v for v in items if v.get_file_path() == Localizer.get().path_result_name_field_extraction]
 
         # 获取角色姓名映射表
         names: dict[str, str] = {}

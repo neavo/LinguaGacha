@@ -82,14 +82,19 @@ class BatchCorrectionPage(QWidget, Base):
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+        # 创建滚动区域的内容容器
         scroll_area_vbox_widget = QWidget()
         scroll_area_vbox = QVBoxLayout(scroll_area_vbox_widget)
         scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
+
+        # 创建滚动区域
         scroll_area = SingleDirectionScrollArea(orient = Qt.Vertical)
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.enableTransparentBackground()
-        parent.addWidget(scroll_area_vbox_widget)
+
+        # 将滚动区域添加到父布局
+        parent.addWidget(scroll_area)
 
         # 添加控件
         scroll_area_vbox.addWidget(Separator())
