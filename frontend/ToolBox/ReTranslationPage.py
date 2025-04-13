@@ -30,6 +30,7 @@ from module.File.TRANS.TRANS import TRANS
 from module.File.RENPY import RENPY
 from module.File.KVJSON import KVJSON
 from module.File.MESSAGEJSON import MESSAGEJSON
+from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Cache.CacheProject import CacheProject
@@ -188,10 +189,20 @@ class ReTranslationPage(QWidget, Base):
 
     # 处理单文件部分
     def process_single(self) -> tuple[CacheProject, list[CacheItem], str]:
-        # 加载译文
+        # 读取译文
         config = self.load_config()
         config["input_folder"] = f"{config.get("input_folder")}/dst"
-        project, items_dst = self.read_from_path_single(config)
+        project, items_dst = FileManager(config).read_from_path()
+        items_dst = [
+            v for v in items_dst
+            if v.get_file_type() in (
+                CacheItem.FileType.XLSX,
+                CacheItem.FileType.WOLFXLSX,
+                CacheItem.FileType.RENPY,
+                CacheItem.FileType.TRANS,
+                CacheItem.FileType.KVJSON,
+            )
+        ]
         items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
         # 加载关键词
@@ -214,16 +225,38 @@ class ReTranslationPage(QWidget, Base):
 
     # 处理双文件部分
     def process_double(self) -> tuple[CacheProject, list[CacheItem], str]:
-        # 加载译文
+        # 读取译文
         config = self.load_config()
         config["input_folder"] = f"{config.get("input_folder")}/dst"
-        project, items_dst = self.read_from_path_double(config)
+        project, items_dst = FileManager(config).read_from_path()
+        items_dst = [
+            v for v in items_dst
+            if v.get_file_type() in (
+                CacheItem.FileType.MD,
+                CacheItem.FileType.TXT,
+                CacheItem.FileType.ASS,
+                CacheItem.FileType.SRT,
+                CacheItem.FileType.EPUB,
+                CacheItem.FileType.MESSAGEJSON,
+            )
+        ]
         items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
-        # 加载原文
+        # 读取原文
         config = self.load_config()
         config["input_folder"] = f"{config.get("input_folder")}/src"
-        project, items_src = self.read_from_path_double(config)
+        project, items_src = FileManager(config).read_from_path()
+        items_src = [
+            v for v in items_src
+            if v.get_file_type() in (
+                CacheItem.FileType.MD,
+                CacheItem.FileType.TXT,
+                CacheItem.FileType.ASS,
+                CacheItem.FileType.SRT,
+                CacheItem.FileType.EPUB,
+                CacheItem.FileType.MESSAGEJSON,
+            )
+        ]
         items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
         # 有效性检查
@@ -253,56 +286,3 @@ class ReTranslationPage(QWidget, Base):
                 item_src.set_status(Base.TranslationStatus.EXCLUDED)
 
         return project, items_src, ""
-
-    # 读
-    def read_from_path_single(self, config: dict) -> tuple[CacheProject, list[CacheItem]]:
-        project: CacheProject = CacheProject({
-            "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
-        })
-
-        items: list[CacheItem] = []
-        try:
-            paths: list[str] = []
-            input_folder: str = config.get("input_folder")
-            if os.path.isfile(input_folder):
-                paths = [input_folder]
-            elif os.path.isdir(input_folder):
-                for root, _, files in os.walk(input_folder):
-                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
-
-            items.extend(XLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
-            items.extend(WOLFXLSX(config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
-            items.extend(RENPY(config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
-            items.extend(TRANS(config).read_from_path([path for path in paths if path.lower().endswith(".trans")]))
-            items.extend(KVJSON(config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
-        except Exception as e:
-            self.error(f"{Localizer.get().log_read_file_fail}", e)
-
-        return project, items
-
-    # 读
-    def read_from_path_double(self, config: dict) -> tuple[CacheProject, list[CacheItem]]:
-        project: CacheProject = CacheProject({
-            "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
-        })
-
-        items: list[CacheItem] = []
-        try:
-            paths: list[str] = []
-            input_folder: str = config.get("input_folder")
-            if os.path.isfile(input_folder):
-                paths = [input_folder]
-            elif os.path.isdir(input_folder):
-                for root, _, files in os.walk(input_folder):
-                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
-
-            items.extend(MD(config).read_from_path([path for path in paths if path.lower().endswith(".md")]))
-            items.extend(TXT(config).read_from_path([path for path in paths if path.lower().endswith(".txt")]))
-            items.extend(ASS(config).read_from_path([path for path in paths if path.lower().endswith(".ass")]))
-            items.extend(SRT(config).read_from_path([path for path in paths if path.lower().endswith(".srt")]))
-            items.extend(EPUB(config).read_from_path([path for path in paths if path.lower().endswith(".epub")]))
-            items.extend(MESSAGEJSON(config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
-        except Exception as e:
-            self.error(f"{Localizer.get().log_read_file_fail}", e)
-
-        return project, items

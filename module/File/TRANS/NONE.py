@@ -29,27 +29,22 @@ class NONE():
 
     # 检查
     def check(self, path: str, data: list[str], tag: list[str], context: list[str]) -> tuple[str, str, list[str], str, bool]:
+        src: str = data[0] if len(data) > 0 and isinstance(data[0], str) else ""
+        dst: str = data[1] if len(data) > 1 and isinstance(data[1], str) else src
+
         # 如果数据为空，则跳过
-        if len(data) == 0 or not isinstance(data[0], str):
-            src: str = ""
-            dst: str = ""
+        if src == "":
             status: str = Base.TranslationStatus.EXCLUDED
             skip_internal_filter: bool = False
         # 如果包含 水蓝色 标签，则翻译
         elif any(v == "aqua" for v in tag):
-            src: str = data[0]
-            dst: str = data[0]
             status: str = Base.TranslationStatus.UNTRANSLATED
             skip_internal_filter: bool = True
         # 如果 第一列、第二列 都有文本，则跳过
-        elif len(data) >= 2 and isinstance(data[1], str) and data[1].strip() != "":
-            src: str = data[0]
-            dst: str = data[1]
+        elif dst != "" and src != dst:
             status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
             skip_internal_filter: bool = False
         else:
-            src: str = data[0]
-            dst: str = data[0]
             block = self.filter(src, path, tag, context)
             skip_internal_filter: bool = False
 

@@ -69,7 +69,7 @@ class KVJSON(Base):
                             items.append(
                                 CacheItem({
                                     "src": src,
-                                    "dst": src,
+                                    "dst": dst,
                                     "row": len(items),
                                     "file_type": CacheItem.FileType.KVJSON,
                                     "file_path": rel_path,

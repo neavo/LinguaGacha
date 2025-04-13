@@ -120,7 +120,7 @@ class RENPY(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": src,
+                            "dst": dst,
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,

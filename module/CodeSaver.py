@@ -6,11 +6,13 @@ from module.Cache.CacheItem import CacheItem
 
 class CodeSaver(Base):
 
+    # \c[17]\n[1]：「ぐっ……」
+
     # 通用规则
     REGEX_NONE: tuple[str] = (
         r"\s",                                                                      # 空白字符
         r"\u3000",                                                                  # 全角空格
-        r"\\n",                                                                     # 换行符 \n
+        # r"\\n",                                                                   # 换行符 \n
         r"<br>",                                                                    # 换行符 <br>
     )
 
@@ -34,7 +36,7 @@ class CodeSaver(Base):
         r"\\fi",                                                                    # 倾斜
         r"\\\{",                                                                    # 放大字体 \{
         r"\\\}",                                                                    # 缩小字体 \}
-        r"\\g",                                                                     # 显示货币 \G
+        # r"\\g",                                                                   # 显示货币 \G
         r"\\\$",                                                                    # 打开金币框 \$
         r"\\\.",                                                                    # 等待0.25秒 \.
         r"\\\|",                                                                    # 等待1秒 \|
@@ -56,14 +58,14 @@ class CodeSaver(Base):
     REGEX_SUFFIX_NONE: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE)})+$", re.IGNORECASE)
 
     REGEX_BASE_KAG_RENPY: re.Pattern = re.compile(rf"{"|".join(REGEX_KAG_RENPY)}", re.IGNORECASE)
-    REGEX_CHECK_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+", re.IGNORECASE)
-    REGEX_PREFIX_KAG_RENPY: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+", re.IGNORECASE)
-    REGEX_SUFFIX_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_KAG_RENPY)})+$", re.IGNORECASE)
+    REGEX_CHECK_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_KAG_RENPY + REGEX_NONE)})+", re.IGNORECASE)
+    REGEX_PREFIX_KAG_RENPY: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_KAG_RENPY + REGEX_NONE)})+", re.IGNORECASE)
+    REGEX_SUFFIX_KAG_RENPY: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_KAG_RENPY + REGEX_NONE)})+$", re.IGNORECASE)
 
     REGEX_BASE_WOLF_RPGMAKER: re.Pattern = re.compile(rf"{"|".join(REGEX_WOLF_RPGMAKER)}", re.IGNORECASE)
-    REGEX_CHECK_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+", re.IGNORECASE)
-    REGEX_PREFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+", re.IGNORECASE)
-    REGEX_SUFFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE + REGEX_WOLF_RPGMAKER)})+$", re.IGNORECASE)
+    REGEX_CHECK_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_WOLF_RPGMAKER + REGEX_NONE)})+", re.IGNORECASE)
+    REGEX_PREFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_WOLF_RPGMAKER + REGEX_NONE)})+", re.IGNORECASE)
+    REGEX_SUFFIX_WOLF_RPGMAKER: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_WOLF_RPGMAKER + REGEX_NONE)})+$", re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()
