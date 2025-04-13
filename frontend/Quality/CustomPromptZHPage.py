@@ -57,11 +57,6 @@ class CustomPromptZHPage(QWidget, Base):
         self.add_widget_body(self.container, config, window)
         self.add_widget_footer(self.container, config, window)
 
-    # 页面每次展示时触发
-    def showEvent(self, event: QEvent) -> None:
-        super().showEvent(event)
-        self.show_event_body(self, event) if callable(getattr(self, "show_event_body", None)) else None
-
     # 头部
     def add_widget_header(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def widget_init(widget: SwitchButtonCard) -> None:
@@ -83,16 +78,12 @@ class CustomPromptZHPage(QWidget, Base):
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def update_widget(widget: PlainTextEdit) -> None:
-            config = self.load_config()
-            self.main_text.setPlainText(config.get("custom_prompt_zh_data"))
-
         self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(BaseLanguage.ZH))
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
         self.main_text = PlainTextEdit(self)
-        self.show_event_body = lambda _, event: update_widget(self.main_text)
+        self.main_text.setPlainText(config.get("custom_prompt_zh_data"))
         parent.addWidget(self.main_text)
 
         self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(BaseLanguage.ZH).replace("\n", ""))

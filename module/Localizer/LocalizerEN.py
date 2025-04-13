@@ -77,7 +77,7 @@ class LocalizerEN(LocalizerBase):
     path_result_check_untranslated: str = "result_check_untranslated_entries.json"
     path_result_check_retry_count_threshold: str = "result_check_retry_count_reach_threshold.json"
     path_result_batch_correction: str = "batch_correction.xlsx"
-    path_result_name_extraction: str = "name_field_extraction.xlsx"
+    path_result_name_field_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
     log_debug_mode: str = "Debug mode enabled …"
@@ -351,8 +351,8 @@ class LocalizerEN(LocalizerBase):
     tool_box_page_batch_correction_desc: str = "Checks the translated file against the generated translation results and performs batch correction on potential errors, enabling quick refinement of translation outputs"
     tool_box_page_re_translation: str = "Partial Re-Translation"
     tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
-    tool_box_page_name_extraction: str = "Name-Field Extraction"
-    tool_box_page_name_extraction_desc: str = (
+    tool_box_page_name_field_extraction: str = "Name-Field Extraction"
+    tool_box_page_name_field_extraction_desc: str = (
         "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
         "and automatically generate corresponding glossary data to facilitate subsequent translation."
     )
@@ -415,25 +415,27 @@ class LocalizerEN(LocalizerBase):
     re_translation_page_alert_not_equal: str = "The number of lines in the original and translated texts does not match …"
 
     # 百宝箱 - 姓名字段提取
-    name_extraction_page: str = "Name-Field Extraction"
-    name_extraction_page_desc: str = (
-        "Extract character name fields from all eligible files in the <font color='darkgoldenrod'><b>Input Folder</b></font> and automatically generate corresponding glossary data."
+    name_field_extraction_page: str = "Name-Field Extraction"
+    name_field_extraction_page_desc: str = (
+        "Extract character name fields from all eligible files in the <font color='darkgoldenrod'><b>input folder</b></font> and automatically generate corresponding glossary data"
+        "<br>"
+        "Please note: This function <font color='darkgoldenrod'><b>cannot extract terms from the main text</b></font>, and cannot replace the <font color='darkgoldenrod'><b>KeywordGacha</b></font> tool"
         "<br>"
         "Supported formats:"
         "<br>"
         "• RenPy exported game text (.rpy)"
         "<br>"
-        "• VNTextPatch or SExtractor exported game text with name field (.json)"
+        "• VNTextPatch or SExtractor exported game text with name fields (.json)"
     )
-    name_extraction_page_step_01: str = "Step 1 - Extract Data"
-    name_extraction_page_step_01_desc: str = (
+    name_field_extraction_page_step_01: str = "Step 1 - Extract Data"
+    name_field_extraction_page_step_01_desc: str = (
         "Extract name fields and their related context, and send them to the translator for translation"
         "<br>"
-        f"After translation is complete, the <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
+        f"After translation is complete, the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
     )
-    name_extraction_page_step_02: str = "Step 2 - Generate Glossary"
-    name_extraction_page_step_02_desc: str = (
-        f"Extract translated data from the <font color='darkgoldenrod'><b>{path_result_name_extraction}</b></font> file in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
+    name_field_extraction_page_step_02: str = "Step 2 - Generate Glossary"
+    name_field_extraction_page_step_02_desc: str = (
+        f"Extract translated data from the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
         "<br>"
         "Then generate the corresponding glossary data, check if the generated glossary data is correct"
     )
