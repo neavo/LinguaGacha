@@ -28,6 +28,7 @@ class Base():
         APP_UPDATE_DOWNLOAD_UPDATE: int = 530                   # 检查更新 - 下载进度更新
         APP_UPDATE_EXTRACT: int = 540                           # 检查更新 - 解压
         APP_TOAST_SHOW: int = 600                               # 显示 Toast
+        GLOSSARY_REFRESH: int = 700                             # 术语表刷新
         APP_SHUT_DOWN: int = 1000                               # 应用关闭
 
     # 任务状态

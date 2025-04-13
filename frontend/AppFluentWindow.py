@@ -37,6 +37,7 @@ from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplace
 from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
 from frontend.ToolBox.ToolBoxPage import ToolBoxPage
 from frontend.ToolBox.ReTranslationPage import ReTranslationPage
+from frontend.ToolBox.NameExtractionPage import NameExtractionPage
 from frontend.ToolBox.BatchCorrectionPage import BatchCorrectionPage
 
 class AppFluentWindow(FluentWindow, Base):
@@ -359,8 +360,9 @@ class AppFluentWindow(FluentWindow, Base):
     # 添加第三节
     def add_quality_pages(self) -> None:
         # 术语表
+        self.glossary_page = GlossaryPage("glossary_page", self)
         self.addSubInterface(
-            GlossaryPage("glossary_page", self),
+            self.glossary_page,
             FluentIcon.DICTIONARY,
             Localizer.get().app_glossary_page,
             NavigationItemPosition.SCROLL,
@@ -434,3 +436,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)
         self.stackedWidget.addWidget(self.re_translation_page)
+
+        # 姓名字段注入
+        self.name_extraction_page = NameExtractionPage("name_extraction_page", self)
+        self.stackedWidget.addWidget(self.name_extraction_page)
