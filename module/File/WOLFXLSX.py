@@ -106,7 +106,7 @@ class WOLFXLSX(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": src,
+                            "dst": dst,
                             "row": row,
                             "file_type": CacheItem.FileType.WOLFXLSX,
                             "file_path": rel_path,

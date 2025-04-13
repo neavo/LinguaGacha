@@ -49,6 +49,7 @@ class XLSX(Base):
 
                 src = str(src)
                 dst = str(dst) if dst is not None else ""
+
                 if src == "":
                     items.append(
                         CacheItem({
@@ -75,7 +76,7 @@ class XLSX(Base):
                     items.append(
                         CacheItem({
                             "src": src,
-                            "dst": src,
+                            "dst": dst,
                             "row": row,
                             "file_type": CacheItem.FileType.XLSX,
                             "file_path": rel_path,
