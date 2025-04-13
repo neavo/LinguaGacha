@@ -167,15 +167,16 @@ class CacheManager(Base):
         return len([item for item in self.items if item.get_status() == status])
 
     # 生成缓存数据条目片段
-    def generate_item_chunks(self, limit: int) -> list[list[CacheItem]]:
+    def generate_item_chunks(self, token_limit: int) -> list[list[CacheItem]]:
         # 根据 Token 阈值计算行数阈值，避免大量短句导致行数太多
-        line_limit = max(8, int(limit / 16))
+        line_limit = max(8, int(token_limit / 16))
 
         skip: int = 0
+        line_length: int = 0
+        token_length: int = 0
         chunk: list[CacheItem] = []
         chunks: list[list[CacheItem]] = []
         preceding_chunks: list[list[CacheItem]] = []
-        chunk_length: int = 0
         for i, item in enumerate(self.items):
             # 跳过状态不是 未翻译 的数据
             if item.get_status() != Base.TranslationStatus.UNTRANSLATED:
@@ -183,20 +184,27 @@ class CacheManager(Base):
                 continue
 
             # 每个片段的第一条不判断是否超限，以避免特别长的文本导致死循环
-            current_length = item.get_token_count()
+            current_line_length = sum(1 for line in item.get_src().splitlines() if line.strip())
+            current_token_length = item.get_token_count()
             if len(chunk) == 0:
                 pass
-            # 如果 Token/行数 超限 或 数据来源跨文件，则结束此片段
-            elif chunk_length + current_length > limit or len(chunk) >= line_limit or item.get_file_path() != chunk[-1].get_file_path():
+            # 如果 行数超限、Token 超限、数据来源跨文件，则结束此片段
+            elif (
+                line_length + current_line_length > line_limit
+                or token_length + current_token_length > token_limit
+                or item.get_file_path() != chunk[-1].get_file_path()
+            ):
                 chunks.append(chunk)
                 preceding_chunks.append(self.generate_preceding_chunks(chunk, i, skip))
                 skip = 0
 
                 chunk = []
-                chunk_length = 0
+                line_length = 0
+                token_length = 0
 
             chunk.append(item)
-            chunk_length = chunk_length + current_length
+            line_length = line_length + current_line_length
+            token_length = token_length + current_token_length
 
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:
