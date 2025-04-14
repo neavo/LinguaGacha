@@ -127,10 +127,7 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        if self.config.get("auto_glossary_enable") == False:
-            dst_dict, glossary_auto, response_decode_log = ResponseDecoder().decode(response_result)
-        else:
-            dst_dict, glossary_auto, response_decode_log = ResponseDecoder().decode_mix(response_result)
+        dst_dict, glossary_auto = ResponseDecoder().decode(response_result)
 
         # 确保 kv 都为字符串
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
@@ -151,9 +148,6 @@ class TranslatorTask(Base):
         if response_result != "":
             file_log.append(Localizer.get().translator_task_response_result + response_result)
             console_log.append(Localizer.get().translator_task_response_result + response_result) if LogHelper.is_debug() else None
-        if response_decode_log != "":
-            file_log.append(response_decode_log)
-            console_log.append(response_decode_log) if LogHelper.is_debug() else None
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0

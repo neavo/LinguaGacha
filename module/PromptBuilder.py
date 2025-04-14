@@ -183,6 +183,27 @@ class PromptBuilder(Base):
 
         return prefix + "\n" + f"{", ".join(samples)}"
 
+    # 构建输入
+    def build_inputs(self, src_dict: dict) -> str:
+        inputs: str = "\n".join(
+            json.dumps({k: v}, indent = None, ensure_ascii = False) for k, v in src_dict.items()
+        )
+
+        if self.target_language == BaseLanguage.ZH:
+            return (
+                "输入："
+                "\n" + "```jsonline"
+                f"{inputs}"
+                "\n" + "```"
+            )
+        else:
+            return (
+                "Input:"
+                "\n" + "```jsonline"
+                f"{inputs}"
+                "\n" + "```"
+            )
+
     # 生成提示词
     def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
         # 初始化
@@ -190,36 +211,38 @@ class PromptBuilder(Base):
         extra_log: list[str] = []
 
         # 基础提示词
-        main = self.build_main()
+        content = self.build_main()
 
         # 参考上文
         if len(preceding_items) > 0:
             result = self.build_preceding(preceding_items)
             if result != "":
-                main = main + "\n" + result
+                content = content + "\n" + result
                 extra_log.append(result)
 
         # 术语表
         if self.glossary_enable == True:
             result = self.build_glossary(src_dict)
             if result != "":
-                main = main + "\n" + result
+                content = content + "\n" + result
                 extra_log.append(result)
 
         # 控制字符示例
-        result = self.build_control_characters_samples(main, samples)
+        result = self.build_control_characters_samples(content, samples)
         if result != "":
-            main = main + "\n" + result
+            content = content + "\n" + result
             extra_log.append(result)
+
+        # 输入
+        result = self.build_inputs(src_dict)
+        if result != "":
+            content = content + "\n" + result
+            # extra_log.append(result)
 
         # 构建提示词列表
         messages.append({
             "role": "user",
-            "content": (
-                main
-                + "\n" + "原文文本："
-                + "\n" + json.dumps(src_dict, indent = None, ensure_ascii = False)
-            ),
+            "content": content,
         })
 
         return messages, extra_log
@@ -237,11 +260,11 @@ class PromptBuilder(Base):
         })
 
         # 术语表
-        main = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
+        content = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
         if self.glossary_enable == True:
             result = self.build_glossary_sakura(src_dict)
             if result != "":
-                main = (
+                content = (
                     "根据以下术语表（可以为空）：\n" + result
                     + "\n" + "将下面的日文文本根据对应关系和备注翻译成中文：\n" + "\n".join(src_dict.values())
                 )
@@ -250,7 +273,7 @@ class PromptBuilder(Base):
         # 构建提示词列表
         messages.append({
             "role": "user",
-            "content": main,
+            "content": content,
         })
 
         return messages, extra_log

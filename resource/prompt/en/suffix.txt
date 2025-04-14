@@ -1,4 +1,4 @@
-Output translation results in code block, following the format below, no extra explanation or description needed:
-```json
-{"<ID>":"<Translated Text>"}
+Output the translation result in the code block using JSONLINE:
+```jsonline
+{"<INDEX>":"<Translated Text>"}
 ```
