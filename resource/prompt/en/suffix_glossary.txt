@@ -1,2 +1,5 @@
-Output translation results and character names not found in the input glossary in code block, following the format below, no extra explanation or description needed:
-{"translation":{"<ID>":"<Translated Text>"},"name":[{"src":"<Original Text>","dst":"<Translated Text>","info":"<Male/Female/Unknown>"}]}
+Output the translation result and character names not in the input glossary using JSONLINE in the code block:
+```jsonline
+{"<INDEX>":"<Translated Text>"}
+{"src":"<Original Term of Gloosary>","dst":"<Translated Term of Gloosary>","gender":"<Male/Female/Unknown>"}
+```
