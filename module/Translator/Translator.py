@@ -104,9 +104,6 @@ class Translator(Base):
 
     # 翻译状态检查
     def translation_project_status_check_target(self) -> None:
-        # 等一下，等页面切换效果结束再执行，避免争抢 CPU 资源，导致 UI 卡顿
-        time.sleep(0.5)
-
         # 检查结果的默认值
         status = Base.TranslationStatus.UNTRANSLATED
 

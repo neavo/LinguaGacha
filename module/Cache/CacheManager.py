@@ -49,7 +49,7 @@ class CacheManager(Base):
 
     # 应用关闭事件
     def app_shut_down(self, event: int, data: dict) -> None:
-        self.app_shut_down = True
+        self.app_shut_down_flag = True
 
     # 保存缓存到文件
     def save_to_file(self, project: CacheProject = None, items: list[CacheItem] = None, output_folder: str = None) -> None:
@@ -80,7 +80,7 @@ class CacheManager(Base):
             time.sleep(self.SAVE_INTERVAL)
 
             # 接收到退出信号则停止
-            if getattr(self, "app_shut_down", False)  == True:
+            if getattr(self, "app_shut_down_flag", False)  == True:
                 break
 
             # 接收到保存信号则保存

@@ -62,11 +62,15 @@ class PlatformPage(QWidget, Base):
 
     # 加载默认平台数据
     def load_default_platforms(self) -> list[dict]:
-        platforms = []
+        platforms:list[dict[str, str | list[str]]] = []
         platforms_path = f"./resource/platforms/{Localizer.get_app_language().lower()}/"
         for path in [file.path for file in os.scandir(platforms_path) if file.is_file() and file.name.endswith(".json")]:
             with open(path, "r", encoding = "utf-8-sig") as reader:
                 platforms.append(json.load(reader))
+
+        # 重设 id 以避免 id 不连续的问题
+        for i, platform in enumerate(sorted(platforms, key = lambda x: x.get("id"))):
+            platform["id"] = i
 
         return sorted(platforms, key = lambda x: x.get("id"))
 
