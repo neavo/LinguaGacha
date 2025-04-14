@@ -6,7 +6,7 @@
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "【请从 在线推理 页面获取 ep 开头的接入点名称】",
+    "model": "deepseek-v3-250324",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,

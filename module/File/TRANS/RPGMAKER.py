@@ -14,11 +14,11 @@ class RPGMAKER(NONE):
     BLACKLIST_ADDRESS: tuple[re.Pattern] = (
         re.compile(r"^(?=.*MZ Plugin Command)(?!.*text).*", flags = re.IGNORECASE),
         re.compile(r"filename", flags = re.IGNORECASE),
+        re.compile(r"/events/\d+/name", flags = re.IGNORECASE),
         re.compile(r"Tilesets/\d+/name", flags = re.IGNORECASE),
         re.compile(r"MapInfos/\d+/name", flags = re.IGNORECASE),
         re.compile(r"Animations/\d+/name", flags = re.IGNORECASE),
         re.compile(r"CommonEvents/\d+/name", flags = re.IGNORECASE),
-        re.compile(r"Map\d+/events/\d+/name", flags = re.IGNORECASE),
     )
 
     # 过滤
