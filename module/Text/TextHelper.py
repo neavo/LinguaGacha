@@ -118,7 +118,7 @@ class TextHelper:
         current_segment: list[str] = []
 
         for char in text:
-            if TextHelper.is_punctuation(char) or (split_by_space and char in (0x0020, 0x3000)):
+            if TextHelper.is_punctuation(char) or (split_by_space and char in (chr(0x0020), chr(0x3000))):
                 if current_segment != []:
                     result.append("".join(current_segment))
                     current_segment = []

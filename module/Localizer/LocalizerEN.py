@@ -260,21 +260,29 @@ class LocalizerEN(LocalizerBase):
     # 高级功能
     advance_feature_page_auto_glossary_enable: str = "Auto Complete Glossary (Experimental feature, SakuraLLM model not supported)"
     advance_feature_page_auto_glossary_enable_desc: str = (
-        "When enabled, this feature analyzes text during translation to automatically fill in missing proper noun entries in the glossary"
+        "Attempts to automatically add missing proper noun entries to the glossary during translation"
         "<br>"
-        "This feature is designed to only identify and fill in gaps, and cannot replace manually glossaries. It only works when <font color='darkgoldenrod'><b>Glossary</b></font> is enabled"
+        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
         "<br>"
-        "May cause <font color='darkgoldenrod'><b>negative effects</b></font> or <font color='darkgoldenrod'><b>translation anomalies</b></font>. Theoretically, it only has positive effects on powerful models at the DeepSeek R1 level"
+        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
         "<br>"
-        "Please <font color='darkgoldenrod'><b>judge for yourself</b></font> whether to enable it"
+        "May cause <font color='darkgoldenrod'><b>negative effects</b></font> or <font color='darkgoldenrod'><b>translation anomalies</b></font>"
+        "<br>"
+        "Positive results are generally expected only with powerful models (e.g., DeepSeek R1)"
+        "<br>"
+        "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
     )
     advance_feature_page_mtool_optimizer_enable: str = "MTool Optimizer"
     advance_feature_page_mtool_optimizer_enable_desc: str = (
-        "When enabled, this feature can reduce translation time and token consumption by up to 40% when translating MTool text"
+        "Can reduce translation time and token usage by up to 40% when translating MTool text"
         "<br>"
-        "May cause issues such as <font color='darkgoldenrod'><b>residual original text</b></font> or <font color='darkgoldenrod'><b>incoherent sentences</b></font>"
+        "May lead to issues like <font color='darkgoldenrod'><b>residual original text</b></font> or <font color='darkgoldenrod'><b>incoherent sentences</b></font>"
         "<br>"
-        "Please <font color='darkgoldenrod'><b>judge for yourself</b></font> whether to enable it, and it should only be enabled when <font color='darkgoldenrod'><b>translating MTool text</b></font>"
+        "It should <font color='darkgoldenrod'><b>only be enabled when translating MTool text</b></font>"
+        "<br>"
+        "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
+        ""
+        ""
     )
 
     # 质量类通用
@@ -354,7 +362,7 @@ class LocalizerEN(LocalizerBase):
     tool_box_page_name_field_extraction: str = "Name-Field Extraction"
     tool_box_page_name_field_extraction_desc: str = (
         "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
-        "and automatically generate corresponding glossary data to facilitate subsequent translation."
+        "and automatically generate corresponding glossary data to facilitate subsequent translation"
     )
 
     # 百宝箱 - 批量修正
