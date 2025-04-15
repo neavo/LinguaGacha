@@ -12,6 +12,7 @@ class ResponseDecoder(Base):
         dst_dict: dict[str, str] = {}
         glossary_list: list[dict[str, str]] = []
 
+        # 按行解析失败时，尝试按照普通 JSON 字典进行解析
         for line in response.splitlines():
             json_data = repair.loads(line)
             if isinstance(json_data, dict):
@@ -31,6 +32,12 @@ class ResponseDecoder(Base):
                                 "info": json_data.get("gender")
                             }
                         )
+
+        # 按行解析失败时，尝试按照普通 JSON 字典进行解析
+        if len(dst_dict) == 0:
+            json_data = repair.loads(response)
+            if isinstance(json_data, dict) and isinstance(json_data.get("0"), str):
+                dst_dict = json_data
 
         # 返回默认值
         return dst_dict, glossary_list
