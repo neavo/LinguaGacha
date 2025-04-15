@@ -36,6 +36,10 @@ class TranslatorTask(Base):
     OPENCCS2T = opencc.OpenCC("s2t")
     OPENCCT2S = opencc.OpenCC("t2s")
 
+    # 自动术语表相关
+    GLOSSARY_SAVE_TIME: float = time.time()
+    GLOSSARY_SAVE_INTERVAL: int = 15
+
     # 正则规则
     RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
 
@@ -127,7 +131,7 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        dst_dict, glossary_auto = ResponseDecoder().decode(response_result)
+        dst_dict, glossary_list = ResponseDecoder().decode(response_result)
 
         # 确保 kv 都为字符串
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
@@ -169,7 +173,7 @@ class TranslatorTask(Base):
 
             # 更新术语表
             with TranslatorTask.LOCK:
-                self.merge_glossary(glossary_auto)
+                TranslatorTask.GLOSSARY_SAVE_TIME = self.merge_glossary(glossary_list, TranslatorTask.GLOSSARY_SAVE_TIME)
 
             # 更新缓存数据
             dst_sub_lines = list(dst_dict.values())
@@ -222,16 +226,20 @@ class TranslatorTask(Base):
         return data
 
     # 合并术语表
-    def merge_glossary(self, glossary_auto: list[dict[str, str]]) -> list[dict]:
-        data: list[dict] = self.config.get("glossary_data")
-        if self.config.get("glossary_enable") == False or self.config.get("auto_glossary_enable") == False:
-            return data
+    def merge_glossary(self, glossary_list: list[dict[str, str]], last_save_time: float) -> float:
+        # 有效性检查
+        if self.config.get("glossary_enable") == False:
+            return last_save_time
+        if self.config.get("auto_glossary_enable") == False:
+            return last_save_time
 
         # 提取现有术语表的原文列表
+        data: list[dict] = self.config.get("glossary_data")
         keys = {item.get("src", "") for item in data}
 
         # 合并去重后的术语表
-        for item in glossary_auto:
+        changed: bool = False
+        for item in glossary_list:
             src = item.get("src", "").strip()
             dst = item.get("dst", "").strip()
             info = item.get("info", "").strip()
@@ -241,14 +249,15 @@ class TranslatorTask(Base):
                 continue
 
             # 将原文和译文都按标点切分
-            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space = False)
-            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space = False)
+            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space = True)
+            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space = True)
             if len(srcs) != len(dsts):
                 if src == dst:
                     continue
                 if src == "" or dst == "":
                     continue
                 if not any(key in src or src in key for key in keys):
+                    changed = True
                     keys.add(src)
                     data.append({
                         "src": src,
@@ -264,6 +273,7 @@ class TranslatorTask(Base):
                     if src == "" or dst == "":
                         continue
                     if not any(key in src or src in key for key in keys):
+                        changed = True
                         keys.add(src)
                         data.append({
                             "src": src,
@@ -271,7 +281,19 @@ class TranslatorTask(Base):
                             "info": info,
                         })
 
-        return data
+        if changed == True and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL:
+            # 更新配置文件
+            config = self.load_config()
+            config["glossary_data"] = data
+            self.save_config(config)
+
+            # 术语表刷新事件
+            self.emit(Base.Event.GLOSSARY_REFRESH, {})
+
+            return time.time()
+
+        # 返回原始值
+        return last_save_time
 
     # 译前替换
     def replace_before_translation(self, data: dict[str, str]) -> dict:

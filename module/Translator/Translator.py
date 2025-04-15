@@ -421,6 +421,16 @@ class Translator(Base):
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[CacheItem]) -> None:
+        # 启用自动术语表的时，更新配置文件
+        if self.config.get("glossary_enable") == True and self.config.get("auto_glossary_enable") == True:
+            # 更新配置文件
+            config = self.load_config()
+            config["glossary_data"] = self.config.get("glossary_data")
+            self.save_config(config)
+
+            # 术语表刷新事件
+            self.emit(Base.Event.GLOSSARY_REFRESH, {})
+
         # 检查结果
         ResultChecker(self.config, items).check()
 
