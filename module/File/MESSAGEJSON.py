@@ -45,7 +45,7 @@ class MESSAGEJSON(Base):
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
         items: list[CacheItem] = []
-        for abs_path in set(abs_paths):
+        for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 

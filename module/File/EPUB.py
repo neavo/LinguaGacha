@@ -42,8 +42,8 @@ class EPUB(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items = []
-        for abs_path in set(abs_paths):
+        items:list[CacheItem] = []
+        for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
@@ -185,12 +185,12 @@ class EPUB(Base):
         ]
 
         # 按文件路径分组
-        data: dict[str, list[str]] = {}
+        group: dict[str, list[str]] = {}
         for item in target:
-            data.setdefault(item.get_file_path(), []).append(item)
+            group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 
@@ -212,7 +212,7 @@ class EPUB(Base):
                             zip_writer.writestr(path, zip_reader.read(path))
 
         # 分别处理每个文件（双语）
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             # 按行号排序
             items = sorted(items, key = lambda x: x.get_row())
 

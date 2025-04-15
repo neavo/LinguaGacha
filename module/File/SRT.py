@@ -42,8 +42,8 @@ class SRT(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items = []
-        for abs_path in set(abs_paths):
+        items:list[CacheItem] = []
+        for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
@@ -88,12 +88,12 @@ class SRT(Base):
         ]
 
         # 按文件路径分组
-        data: dict[str, list[str]] = {}
+        group: dict[str, list[str]] = {}
         for item in target:
-            data.setdefault(item.get_file_path(), []).append(item)
+            group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             abs_path = os.path.join(self.output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
 
@@ -111,7 +111,7 @@ class SRT(Base):
                     writer.write("\n\n")
 
         # 分别处理每个文件（双语）
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             result: list[str] = []
             for item in items:
                 if ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() == item.get_dst():
