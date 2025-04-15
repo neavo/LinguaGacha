@@ -8,7 +8,7 @@ class MD(Base):
 
     # 添加图片匹配的正则表达式
     IMAGE_PATTERN = re.compile(r'!\[.*?\]\(.*?\)')
-    
+
     def __init__(self, config: dict) -> None:
         super().__init__()
 
@@ -31,9 +31,9 @@ class MD(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items = []
-        
-        for abs_path in set(abs_paths):
+        items:list[CacheItem] = []
+
+        for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
@@ -41,12 +41,12 @@ class MD(Base):
             with open(abs_path, "r", encoding = "utf-8-sig") as reader:
                 lines = [line.removesuffix("\n") for line in reader.readlines()]
                 in_code_block = False  # 跟踪是否在代码块内
-                
+
                 for line in lines:
                     # 检查是否进入或退出代码块
                     if line.strip().startswith("```"):
                         in_code_block = not in_code_block
-                    
+
                     # 如果是图片行或在代码块内，设置状态为 EXCLUDED
                     if (MD.IMAGE_PATTERN.search(line) or in_code_block):
                         items.append(
@@ -83,12 +83,12 @@ class MD(Base):
         ]
 
         # 按文件路径分组
-        data: dict[str, list[str]] = {}
+        group: dict[str, list[str]] = {}
         for item in target:
-            data.setdefault(item.get_file_path(), []).append(item)
+            group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in data.items():
+        for rel_path, items in group.items():
             abs_path = os.path.join(self.output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok = True)
             with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
