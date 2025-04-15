@@ -77,6 +77,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250415 v0.25.1
+  - OPT - Auto Glossary data persistence
+  - OPT - Optimize stability of result parsing (including Auto Glossary data)
+
 - 20250413 v0.25.0
   - NEW - Arabic support
   - NEW - Name-Field extraction feature (Treasure Chest)

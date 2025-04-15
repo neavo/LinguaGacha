@@ -74,6 +74,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250415 v0.25.1
+  - 调整 - 自动术语表数据持久化
+  - 调整 - 优化返回结果解析（包括自动术语表数据）的稳定性
+
 - 20250413 v0.25.0
   - 新增 - 阿拉伯文支持
   - 新增 - 姓名字段提取功能（百宝箱）
