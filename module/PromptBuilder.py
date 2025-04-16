@@ -205,7 +205,7 @@ class PromptBuilder(Base):
             )
 
     # 生成提示词
-    def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str]) -> tuple[list[dict], list[str]]:
+    def generate_prompt(self, src_dict: dict, preceding_items: list[CacheItem], samples: list[str], local_flag: bool) -> tuple[list[dict], list[str]]:
         # 初始化
         messages: list[dict[str, str]] = []
         extra_log: list[str] = []
@@ -214,7 +214,7 @@ class PromptBuilder(Base):
         content = self.build_main()
 
         # 参考上文
-        if len(preceding_items) > 0:
+        if local_flag == False and len(preceding_items) > 0:
             result = self.build_preceding(preceding_items)
             if result != "":
                 content = content + "\n" + result

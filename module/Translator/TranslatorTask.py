@@ -42,6 +42,7 @@ class TranslatorTask(Base):
 
     # 正则规则
     RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
+    RE_LOCAL_FLAG = re.compile(r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+", flags = re.IGNORECASE)
 
     # 类线程锁
     LOCK = threading.Lock()
@@ -95,12 +96,15 @@ class TranslatorTask(Base):
                 ResponseChecker.Error.LINE_ERROR_DEGRADATION: Localizer.get().response_checker_line_error_degradation,
             }
 
+        # 初始化本地标识
+        self.local_flag: bool = __class__.RE_LOCAL_FLAG.search(self.platform.get("api_url").strip()) is not None
+
     # 启动任务
     def start(self, current_round: int) -> dict:
-        return self.request(self.src_dict, self.item_dict, self.preceding_items, self.samples, current_round)
+        return self.request(self.src_dict, self.item_dict, self.preceding_items, self.samples, self.local_flag, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], local_flag: bool, current_round: int) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -114,7 +118,7 @@ class TranslatorTask(Base):
 
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, console_log = self.prompt_builder.generate_prompt(src_dict, preceding_items, samples)
+            self.messages, console_log = self.prompt_builder.generate_prompt(src_dict, preceding_items, samples, local_flag)
         else:
             self.messages, console_log = self.prompt_builder.generate_prompt_sakura(src_dict)
 
