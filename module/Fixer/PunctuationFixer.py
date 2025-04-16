@@ -129,13 +129,13 @@ class PunctuationFixer():
                 dst = f"{dst[:-1]}{src[-1]}"
 
         # 移除首尾多余的引号
-        for v in ("‘", "“", "「", "『"):
-            if dst.startswith(v) and not src.startswith(v) and dst.count(v) > src.count(v):
-                dst = dst[1:]
-                break
-        for v in ("’", "”", "」", "』"):
-            if dst.endswith(v) and not src.endswith(v) and dst.count(v) > src.count(v):
-                dst = dst[:-1]
-                break
+        # for v in ("‘", "“", "「", "『"):
+        #     if dst.startswith(v) and not src.startswith(v) and dst.count(v) > src.count(v):
+        #         dst = dst[1:]
+        #         break
+        # for v in ("’", "”", "」", "』"):
+        #     if dst.endswith(v) and not src.endswith(v) and dst.count(v) > src.count(v):
+        #         dst = dst[:-1]
+        #         break
 
         return dst
