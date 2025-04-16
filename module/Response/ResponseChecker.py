@@ -7,7 +7,6 @@ from module.Cache.CacheItem import CacheItem
 from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
 from module.CodeSaver import CodeSaver
-from module.PromptBuilder import PromptBuilder
 
 class ResponseChecker(Base):
 
@@ -59,10 +58,7 @@ class ResponseChecker(Base):
             return [ResponseChecker.Error.NONE] * len(src_dict)
 
         # 行数检查
-        if not (
-            len(src_dict) == len(dst_dict) # 原文与译文行数一致
-            and all(str(key) in dst_dict for key in range(len(dst_dict))) # 译文的 Key 的值为从 0 开始的连续数值字符
-        ):
+        if len(src_dict) != len(dst_dict):
             return [ResponseChecker.Error.FAIL_LINE_COUNT] * len(src_dict)
 
         # 逐行检查

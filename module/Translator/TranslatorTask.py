@@ -157,7 +157,7 @@ class TranslatorTask(Base):
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in check_result):
             # 提取姓名
-            name_dsts: list[str] = self.extract_name(src_dict, dst_dict)
+            name_list: list[str] = self.extract_name(src_dict, dst_dict)
 
             # 自动修复
             dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, item_dict)
@@ -176,19 +176,15 @@ class TranslatorTask(Base):
                 TranslatorTask.GLOSSARY_SAVE_TIME = self.merge_glossary(glossary_list, TranslatorTask.GLOSSARY_SAVE_TIME)
 
             # 更新缓存数据
-            dst_sub_lines = list(dst_dict.values())
-            check_result_lines = check_result.copy()
-            for item, name_dst in zip(self.items, name_dsts):
-                dst, dst_sub_lines, check_result_lines = item.merge_sub_lines(dst_sub_lines, check_result_lines)
-                if isinstance(dst, list):
-                    if name_dst is not None:
-                        name_src: str | tuple[str] = item.get_name_src()
-                        if isinstance(name_src, str) and name_src != "":
-                            item.set_name_dst(name_dst)
-                        elif isinstance(name_src, list) and len(name_src) > 0:
-                            item.set_name_dst([name_dst] + name_src[1:])
+            dst_list = list(dst_dict.values())
+            check_list = check_result.copy()
+            for item, name in zip(self.items, name_list):
+                dsts, _ = item.merge_sub_lines(dst_list, check_list)
+                if isinstance(dsts, list):
+                    if name is not None:
+                        item.set_first_name_dst(name)
 
-                    item.set_dst("\n".join(dst))
+                    item.set_dst("\n".join(dsts))
                     item.set_status(Base.TranslationStatus.TRANSLATED)
                     updated_count = updated_count + 1
 
@@ -252,9 +248,13 @@ class TranslatorTask(Base):
             srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space = True)
             dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space = True)
             if len(srcs) != len(dsts):
-                if src == dst:
-                    continue
-                if src == "" or dst == "":
+                srcs = [src]
+                dsts = [dst]
+
+            for src, dst in zip(srcs, dsts):
+                src = src.strip()
+                dst = dst.strip()
+                if src == dst or src == "" or dst == "":
                     continue
                 if not any(key in src or src in key for key in keys):
                     changed = True
@@ -264,22 +264,6 @@ class TranslatorTask(Base):
                         "dst": dst,
                         "info": info,
                     })
-            else:
-                for src, dst in zip(srcs, dsts):
-                    src = src.strip()
-                    dst = dst.strip()
-                    if src == dst:
-                        continue
-                    if src == "" or dst == "":
-                        continue
-                    if not any(key in src or src in key for key in keys):
-                        changed = True
-                        keys.add(src)
-                        data.append({
-                            "src": src,
-                            "dst": dst,
-                            "info": info,
-                        })
 
         if changed == True and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL:
             # 更新配置文件
@@ -377,12 +361,9 @@ class TranslatorTask(Base):
 
             # 注入姓名
             item = item_dict.get(k)
-            name_src: str | tuple[str] = item.get_name_src()
-            if isinstance(name_src, str) and name_src != "":
-                src_dict[k] = f"【{name_src}】" + src_dict.get(k, "")
-                name_key_set.add(k)
-            elif isinstance(name_src, list) and len(name_src) > 0:
-                src_dict[k] = f"【{name_src[0]}】" + src_dict.get(k, "")
+            name: str = item.get_first_name_src()
+            if name is not None:
+                src_dict[k] = f"【{name}】{src_dict.get(k, "")}"
                 name_key_set.add(k)
 
         return name_key_set
