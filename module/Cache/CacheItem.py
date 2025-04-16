@@ -241,33 +241,53 @@ class CacheItem(BaseData):
 
             return CacheItem.TOKEN_COUNT_CACHE[self.src]
 
+    # 获取第一个角色姓名原文
+    def get_first_name_src(self) -> str:
+        name: str = None
+
+        name_src: str | list[str] = self.get_name_src()
+        if isinstance(name_src, str) and name_src != "":
+            name = name_src
+        elif isinstance(name_src, list) and name_src != []:
+            name = name_src[0]
+
+        return name
+
+    # 设置第一个角色姓名译文
+    def set_first_name_dst(self, name: str) -> None:
+        name_src: str | list[str] = self.get_name_src()
+        if isinstance(name_src, str) and name_src != "":
+            self.set_name_dst(name)
+        elif isinstance(name_src, list) and name_src != []:
+            self.set_name_dst([name] + name_src[1:])
+
     # 将原文切片
     def split_sub_lines(self) -> list[str]:
         with self.lock:
             return [sub_line for sub_line in self.src.split("\n") if sub_line.strip() != ""]
 
     # 从切片中合并译文
-    def merge_sub_lines(self, dst_sub_lines: list[str], check_result: list[int]) -> tuple[str, list[str], list[str]]:
+    def merge_sub_lines(self, dst_list: list[str], check_list: list[str]) -> tuple[list[str], list[str]]:
         from module.Response.ResponseChecker import ResponseChecker
 
-        dst: list[str] = []
-        check: list[str] = []
-        for src_sub_line in self.src.split("\n"):
-            if src_sub_line == "":
-                dst.append("")
-            elif src_sub_line.strip() == "":
-                dst.append(src_sub_line)
-            elif len(dst_sub_lines) > 0:
-                check.append(check_result.pop(0))
-                dst.append(str(dst_sub_lines.pop(0)))
+        dsts: list[str] = []
+        checks: list[str] = []
+        for src_line in self.src.split("\n"):
+            if src_line == "":
+                dsts.append("")
+            elif src_line.strip() == "":
+                dsts.append(src_line)
+            elif len(dst_list) > 0:
+                dsts.append(dst_list.pop(0))
+                checks.append(check_list.pop(0))
             # 冗余步骤
             # 当跳过行数检查步骤时，原文行数可能大于译文行数，此时需要填充多出来的行数
             else:
-                check.append(ResponseChecker.Error.NONE)
-                dst.append("")
+                checks.append(ResponseChecker.Error.NONE)
+                dsts.append("")
 
         # 如果当前片段中有没通过检查的子句，则将返回结果置空，以示当前片段需要重新翻译
-        if any(v != ResponseChecker.Error.NONE for v in check):
-            return None, dst_sub_lines, check_result
+        if any(v != ResponseChecker.Error.NONE for v in checks):
+            return None, None
         else:
-            return dst, dst_sub_lines, check_result
+            return dsts, checks

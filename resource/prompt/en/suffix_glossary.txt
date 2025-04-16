@@ -1,5 +1,5 @@
-Output the translation result and character names not in the input glossary using JSONLINE in the code block:
+Use JSONLINE in the code block to output translation results and character name terms not present in the input glossary:
 ```jsonline
 {"<INDEX>":"<Translated Text>"}
-{"src":"<Original Term of Gloosary>","dst":"<Translated Term of Gloosary>","gender":"<Male/Female/Unknown>"}
+{"src":"<Original Term>","dst":"<Translated Term>","gender":"<Determine gender based on context: Male/Female>"}
 ```

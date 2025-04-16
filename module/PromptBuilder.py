@@ -89,12 +89,12 @@ class PromptBuilder(Base):
             return ""
         elif self.target_language == BaseLanguage.ZH:
             return (
-                "参考上文（仅用于参考，无需翻译）："
+                "参考上文："
                 + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
             )
         else:
             return (
-                "Preceding Text (for reference only, no translation needed):"
+                "Preceding Context:"
                 + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
             )
 
@@ -193,14 +193,14 @@ class PromptBuilder(Base):
             return (
                 "输入："
                 "\n" + "```jsonline"
-                f"{inputs}"
+                "\n" + f"{inputs}"
                 "\n" + "```"
             )
         else:
             return (
                 "Input:"
                 "\n" + "```jsonline"
-                f"{inputs}"
+                "\n" + f"{inputs}"
                 "\n" + "```"
             )
 
