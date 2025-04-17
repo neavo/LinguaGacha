@@ -77,6 +77,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250417 v0.25.2
+  - OPT - Improved stability for Auto Glossary results
+  - OPT - Disabled Preceding Context by default on local api, can be manually enabled in [Expert Settings](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig-%E2%80%90-EN)
+
 - 20250415 v0.25.1
   - OPT - Auto Glossary data persistence
   - OPT - Optimize stability of result parsing (including Auto Glossary data)
@@ -84,34 +88,6 @@
 - 20250413 v0.25.0
   - NEW - Arabic support
   - NEW - Name-Field extraction feature (Treasure Chest)
-
-- 20250413 v0.24.2
-  - OPT - Optimize logic from preceding context
-  - OPT - Optimize `EPUB` compatibility
-
-- 20250412 v0.24.1
-  - Topic: Quality Feature
-    - `Pre-translation Replacement` `Post-translation Replacement` supports Regex mode
-    - `Glossary` `Pre-translation Replacement` `Post-translation Replacement` supports preset functionality
-  - FIX - Issue where name field is reset during partial re-translation
-
-- 20250410 v0.23.1
-  - FIX - Fixed a compatibility issue when reading exported game text (.rpy) from [RenPy](https://www.renpy.org)
-
-- 20250410 v0.23.0
-  - NEW - Support for `Polish` `Turkish`
-  - OPT - Optimize translation process
-    - Strengthened support for `KAG` text
-    - Adjusted default prompt words to save Token consumption
-
-- 20250408 v0.22.0
-  - OPT - Optimize punctuation repair logic
-  - OPT - Optimize code preservation, repair, and check logic
-  - OPT - Open SakuraLLM model settings
-  - OPT - Automated character name injection, feature introduction [Name Injection](https://github.com/neavo/LinguaGacha/wiki/NameInjection-%E2%80%90-EN)
-    - Automatically complete the unified translation of character name fields
-    - Use character name fields as translation auxiliary information to improve translation quality
-    - The original manual function has been removed
 
 ## Support 😥
 - Runtime logs are stored in `log` folder
