@@ -3,6 +3,7 @@ import rapidjson as json
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
+from module.ExpertConfig import ExpertConfig
 
 class PromptBuilder(Base):
 
@@ -85,7 +86,7 @@ class PromptBuilder(Base):
 
     # 构造参考上文
     def build_preceding(self, preceding_items: list[CacheItem]) -> str:
-        if preceding_items == []:
+        if len(preceding_items) == 0:
             return ""
         elif self.target_language == BaseLanguage.ZH:
             return (
@@ -214,7 +215,7 @@ class PromptBuilder(Base):
         content = self.build_main()
 
         # 参考上文
-        if local_flag == False and len(preceding_items) > 0:
+        if local_flag == False or ExpertConfig.get().preceding_disable_on_local == False:
             result = self.build_preceding(preceding_items)
             if result != "":
                 content = content + "\n" + result

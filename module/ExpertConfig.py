@@ -18,6 +18,9 @@ class ExpertConfig(Base, BaseData):
         # 参考上文行数阈值
         self.preceding_lines_threshold: int = 3
 
+        # 本地接口禁用参考上文
+        self.preceding_disable_on_local: bool = True
+
         # 双语输出文件中重复行去重
         self.deduplication_in_bilingual: bool = True
 
