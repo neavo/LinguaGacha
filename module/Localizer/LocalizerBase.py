@@ -258,20 +258,6 @@ class LocalizerBase():
     basic_settings_page_max_round_content: str = "当完成一轮翻译后，如果还有未翻译的条目，将重新开始新的翻译流程，直到翻译完成或者达到最大轮次"
 
     # 高级功能
-    advance_feature_page_auto_glossary_enable: str = "自动补全术语表（实验性功能，不支持 SakuraLLM 模型）"
-    advance_feature_page_auto_glossary_enable_desc: str = (
-        "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
-        "<br>"
-        "此功能设计目的仅为查漏补缺，并不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font>，获取到的补充术语将直接 <font color='darkgoldenrod'><b>写入术语表</b></font>"
-        "<br>"
-        "可能导致 <font color='darkgoldenrod'><b>负面效果</b></font> 或 <font color='darkgoldenrod'><b>翻译异常</b></font>，理论上只有在 DeepSeek R1 级别的强力模型上才会有正面效果，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用"
-        ""
-        ""
-        ""
-        ""
-        ""
-        ""
-    )
     advance_feature_page_mtool_optimizer_enable: str = "MTool 优化器"
     advance_feature_page_mtool_optimizer_enable_desc: str = (
         "在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗"
@@ -279,6 +265,18 @@ class LocalizerBase():
         "可能导致 <font color='darkgoldenrod'><b>原文残留</b></font> 或 <font color='darkgoldenrod'><b>语句不连贯</b></font> 等问题，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，并且只应在 <font color='darkgoldenrod'><b>翻译 MTool 文本时</b></font> 启用"
         ""
         ""
+        ""
+        ""
+        ""
+        ""
+    )
+    advance_feature_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
+    advance_feature_page_auto_glossary_enable_desc: str = (
+        "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
+        "<br>"
+        "此功能设计目的仅为查漏补缺，并不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font>，获取到的补充术语将直接 <font color='darkgoldenrod'><b>写入术语表</b></font>"
+        "<br>"
+        "可能会产生 <font color='darkgoldenrod'><b>不正确或不合适的术语条目</b></font>，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，建议仅在 DeepSeek V3/R1 级别的强力模型使用此功能"
         ""
         ""
         ""
@@ -339,7 +337,7 @@ class LocalizerBase():
     custom_prompt_zh_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
-        "注意：前缀、后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为中文时</b></font> 才会使用本页中的自定义提示词"
         ""
         ""
     )
@@ -349,7 +347,7 @@ class LocalizerBase():
     custom_prompt_en_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
-        "注意：前缀、后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词"
         ""
         ""
     )

@@ -100,11 +100,11 @@ class TranslatorTask(Base):
         self.local_flag: bool = __class__.RE_LOCAL_FLAG.search(self.platform.get("api_url").strip()) is not None
 
     # 启动任务
-    def start(self, current_round: int) -> dict:
+    def start(self, current_round: int) -> dict[str, str]:
         return self.request(self.src_dict, self.item_dict, self.preceding_items, self.samples, self.local_flag, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], local_flag: bool, current_round: int) -> dict:
+    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], local_flag: bool, current_round: int) -> dict[str, str]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -164,7 +164,7 @@ class TranslatorTask(Base):
             name_list: list[str] = self.extract_name(src_dict, dst_dict)
 
             # 自动修复
-            dst_dict: dict[str, str] = self.auto_fix(src_dict, dst_dict, item_dict)
+            dst_dict = self.auto_fix(src_dict, dst_dict, item_dict)
 
             # 代码救星后处理
             dst_dict = self.code_saver.post_process(src_dict, dst_dict)
@@ -219,7 +219,7 @@ class TranslatorTask(Base):
             }
 
     # 正规化
-    def normalize(self, data: dict[str, str]) -> dict:
+    def normalize(self, data: dict[str, str]) -> dict[str, str]:
         for k in data.keys():
             data[k] = Normalizer.normalize(data.get(k, ""))
 
@@ -284,7 +284,7 @@ class TranslatorTask(Base):
         return last_save_time
 
     # 译前替换
-    def replace_before_translation(self, data: dict[str, str]) -> dict:
+    def replace_before_translation(self, data: dict[str, str]) -> dict[str, str]:
         if self.config.get("pre_translation_replacement_enable") == False:
             return data
 
@@ -299,7 +299,7 @@ class TranslatorTask(Base):
         return data
 
     # 译后替换
-    def replace_after_translation(self, data: dict[str, str]) -> dict:
+    def replace_after_translation(self, data: dict[str, str]) -> dict[str, str]:
         if self.config.get("post_translation_replacement_enable") == False:
             return data
 
@@ -314,7 +314,7 @@ class TranslatorTask(Base):
         return data
 
     # 中文字型转换
-    def convert_chinese_character_form(self, data: dict[str, str]) -> dict:
+    def convert_chinese_character_form(self, data: dict[str, str]) -> dict[str, str]:
         if self.config.get("target_language") != BaseLanguage.ZH:
             return data
 
@@ -324,7 +324,7 @@ class TranslatorTask(Base):
             return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
 
     # 自动修复
-    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> dict:
+    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> dict[str, str]:
         source_language = self.config.get("source_language")
         target_language = self.config.get("target_language")
 
@@ -355,7 +355,7 @@ class TranslatorTask(Base):
         return dst_dict
 
     # 注入姓名
-    def inject_name(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], start_key_set: set[str]) -> dict:
+    def inject_name(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], start_key_set: set[str]) -> dict[str, str]:
         name_key_set: set[str] = set()
 
         for k in src_dict:
@@ -373,7 +373,7 @@ class TranslatorTask(Base):
         return name_key_set
 
     # 提取姓名
-    def extract_name(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict:
+    def extract_name(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict[str, str]:
         name_dsts: list[str] = []
 
         for k in dst_dict:

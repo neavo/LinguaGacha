@@ -258,20 +258,6 @@ class LocalizerEN(LocalizerBase):
     basic_settings_page_max_round_content: str = "After one translation round, if entries are still untranslated, restart translation until finished or the round limit is reached"
 
     # 高级功能
-    advance_feature_page_auto_glossary_enable: str = "Auto Complete Glossary (Experimental feature, SakuraLLM model not supported)"
-    advance_feature_page_auto_glossary_enable_desc: str = (
-        "Attempts to automatically add missing proper noun entries to the glossary during translation"
-        "<br>"
-        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
-        "<br>"
-        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
-        "<br>"
-        "May cause <font color='darkgoldenrod'><b>negative effects</b></font> or <font color='darkgoldenrod'><b>translation anomalies</b></font>"
-        "<br>"
-        "Positive results are generally expected only with powerful models (e.g., DeepSeek R1)"
-        "<br>"
-        "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
-    )
     advance_feature_page_mtool_optimizer_enable: str = "MTool Optimizer"
     advance_feature_page_mtool_optimizer_enable_desc: str = (
         "Can reduce translation time and token usage by up to 40% when translating MTool text"
@@ -283,6 +269,18 @@ class LocalizerEN(LocalizerBase):
         "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
         ""
         ""
+    )
+    advance_feature_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
+    advance_feature_page_auto_glossary_enable_desc: str = (
+        "Attempts to automatically add missing proper noun entries to the glossary during translation"
+        "<br>"
+        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
+        "<br>"
+        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
+        "<br>"
+        "May generate <font color='darkgoldenrod'><b>incorrect or inappropriate terminology entries</b></font>, please <font color='darkgoldenrod'><b>use your own judgment</b></font> on whether to enable it"
+        "<br>"
+        "It is recommended to use this feature only with powerful models like DeepSeek V3/R1"
     )
 
     # 质量类通用
