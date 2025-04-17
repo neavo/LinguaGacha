@@ -130,7 +130,6 @@ class BatchCorrectionPage(QWidget, Base):
             description = Localizer.get().batch_correction_page_step_01_desc,
             init = init,
         )
-        widget.setFixedHeight(96)
         parent.addWidget(widget)
 
     # 第二步
@@ -140,7 +139,6 @@ class BatchCorrectionPage(QWidget, Base):
             push_button = PushButton(FluentIcon.SAVE_AS, Localizer.get().inject)
             push_button.clicked.connect(lambda: self.step_02_clicked(window))
             widget.add_widget(push_button)
-            widget.setFixedHeight(128)
 
         parent.addWidget(EmptyCard(
             title = Localizer.get().batch_correction_page_step_02,

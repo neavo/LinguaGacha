@@ -104,7 +104,6 @@ class NameFieldExtractionPage(QWidget, Base):
             description = Localizer.get().name_field_extraction_page_step_01_desc,
             init = init,
         )
-        widget.setFixedHeight(96)
         parent.addWidget(widget)
 
     # 第一步
@@ -114,7 +113,6 @@ class NameFieldExtractionPage(QWidget, Base):
             push_button = PushButton(FluentIcon.SAVE_AS, Localizer.get().generate)
             push_button.clicked.connect(lambda: self.step_02_clicked(window))
             widget.add_widget(push_button)
-            widget.setFixedHeight(96)
 
         parent.addWidget(EmptyCard(
             title = Localizer.get().name_field_extraction_page_step_02,
