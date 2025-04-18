@@ -244,6 +244,19 @@ class TranslatorRequester(Base):
     # 发起请求
     def request_google(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
         try:
+            thinking_config = None
+            if "gemini-2.5-flash" in self.platform.get("model"):
+                if thinking == True:
+                    thinking_config = types.ThinkingConfig(
+                        thinking_budget = 1024,
+                        include_thoughts = True,
+                    )
+                else:
+                    thinking_config = types.ThinkingConfig(
+                        thinking_budget = 0,
+                        include_thoughts = False,
+                    )
+
             client: genai.Client = self.get_client(
                 self.platform,
                 self.config.get("request_timeout"),
@@ -257,10 +270,7 @@ class TranslatorRequester(Base):
                     presence_penalty = pp,
                     frequency_penalty = fp,
                     max_output_tokens = 4096,
-                    # thinking_config = types.ThinkingConfig(
-                    #     thinking_budget = 1024,
-                    #     include_thoughts = True,
-                    # ),
+                    thinking_config = thinking_config,
                     safety_settings = [
                         types.SafetySetting(
                             category = "HARM_CATEGORY_HARASSMENT",
@@ -283,7 +293,6 @@ class TranslatorRequester(Base):
             )
 
             # 提取回复内容
-            # self.debug(response.to_json_dict())
             response_result = response.text
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)

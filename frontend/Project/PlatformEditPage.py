@@ -66,7 +66,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.add_widget_api_key(self.vbox, config, window)
 
         # 思考模式
-        if self.platform.get("api_format") in (Base.APIFormat.ANTHROPIC,):
+        if self.platform.get("api_format") in (Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
             self.add_widget_thinking(self.vbox, config, window)
 
         # 模型名称
@@ -162,7 +162,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             )
         )
 
-    # 接口格式
+    # 思考模式
     def add_widget_thinking(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def init(widget: SwitchButtonCard) -> None:
             widget.set_checked(self.platform.get("thinking", False))
@@ -173,10 +173,17 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.update_platform_to_config(self.platform, config)
             self.save_config(config)
 
+        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
+            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Gemini-Flash-Preview-04-17"
+        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
+            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Claude-Sonnet-3.7"
+        else:
+            content: str = Localizer.get().platform_edit_page_thinking_content
+
         parent.addWidget(
             SwitchButtonCard(
                 Localizer.get().platform_edit_page_thinking_title,
-                Localizer.get().platform_edit_page_thinking_content,
+                content,
                 init = init,
                 checked_changed = checked_changed,
             )
