@@ -9,7 +9,7 @@
     "model": "deepseek-ai/DeepSeek-V3",
     "thinking": false,
     "top_p": 0.95,
-    "temperature": 0.75,
+    "temperature": 0.95,
     "presence_penalty": 0.0,
     "frequency_penalty": 0.0
 }
