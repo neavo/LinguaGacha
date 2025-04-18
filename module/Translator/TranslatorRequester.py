@@ -246,16 +246,12 @@ class TranslatorRequester(Base):
         try:
             thinking_config = None
             if "gemini-2.5-flash" in self.platform.get("model"):
-                if thinking == True:
-                    thinking_config = types.ThinkingConfig(
-                        thinking_budget = 1024,
-                        include_thoughts = True,
-                    )
-                else:
-                    thinking_config = types.ThinkingConfig(
-                        thinking_budget = 0,
-                        include_thoughts = False,
-                    )
+                pp = None
+                fp = None
+                thinking_config = types.ThinkingConfig(
+                    thinking_budget = 1024 if thinking == True else 0,
+                    include_thoughts = True,
+                )
 
             client: genai.Client = self.get_client(
                 self.platform,
