@@ -174,9 +174,9 @@ class PlatformEditPage(MessageBoxBase, Base):
             self.save_config(config)
 
         if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
-            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Gemini-Flash-Preview-04-17"
+            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Gemini-2.5-Flash"
         elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
-            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Claude-Sonnet-3.7"
+            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Claude-3.7-Sonnet"
         else:
             content: str = Localizer.get().platform_edit_page_thinking_content
 
@@ -209,6 +209,7 @@ class PlatformEditPage(MessageBoxBase, Base):
                 Localizer.get().platform_edit_page_model,
                 message_box_close = message_box_close
             )
+            message_box.set_text(self.platform.get("model"))
             message_box.exec()
 
         def triggered_sync() -> None:
