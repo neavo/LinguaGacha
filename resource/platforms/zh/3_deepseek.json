@@ -7,7 +7,7 @@
     ],
     "api_format": "OpenAI",
     "model": "deepseek-chat",
-    "think": false,
+    "thinking": false,
     "top_p": 0.95,
     "temperature": 0.75,
     "presence_penalty": 0.0,

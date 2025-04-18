@@ -182,7 +182,7 @@ class LocalizerBase():
     platform_edit_page_api_key_title: str = "接口密钥"
     platform_edit_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
     platform_edit_page_thinking_title: str = "优先使用思考模式"
-    platform_edit_page_thinking_content: str = "对于同时支持思考模式和普通模式的模型，优先使用思考模式，目前只有 Claude Sonnet 3.7 支持此功能"
+    platform_edit_page_thinking_content: str = "对于同时支持思考模式和普通模式的模型，优先使用思考模式，仅支持模型："
     platform_edit_page_model: str = "请输入模型名称 …"
     platform_edit_page_model_title: str = "模型名称"
     platform_edit_page_model_content: str = "当前使用的模型为 {MODEL}"
