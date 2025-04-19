@@ -8,14 +8,17 @@ from PyQt5.QtWidgets import QVBoxLayout
 import openai
 import anthropic
 from google import genai
+from qfluentwidgets import PushButton
+from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
+from module.Localizer.Localizer import Localizer
+from widget.LineEditMessageBox import LineEditMessageBox
 
 class ModelListPage(MessageBoxBase, Base):
 
@@ -23,7 +26,9 @@ class ModelListPage(MessageBoxBase, Base):
         super().__init__(window)
 
         # 初始化
-        self.id = id
+        self.id: int = id
+        self.filter: str = ""
+        self.models: list[str] = None
 
         # 载入配置文件
         config = self.load_config()
@@ -67,6 +72,31 @@ class ModelListPage(MessageBoxBase, Base):
         # 关闭窗口
         self.close()
 
+    # 过滤按钮点击事件
+    def filter_button_clicked(self, widget: PushButton, window: FluentWindow) -> None:
+        if self.filter != "":
+            self.filter = ""
+            self.filter_button.setText(Localizer.get().filter)
+
+            # 更新子控件
+            self.update_sub_widgets(self.flow_card)
+        else:
+            message_box = LineEditMessageBox(
+                window,
+                Localizer.get().platform_edit_page_model,
+                message_box_close = self.filter_message_box_close
+            )
+            message_box.set_text(self.filter)
+            message_box.exec()
+
+    # 过滤输入框关闭事件
+    def filter_message_box_close(self, widget: LineEditMessageBox, text: str) -> None:
+        self.filter = text.strip()
+        self.filter_button.setText(f"{Localizer.get().filter} - {self.filter}")
+
+        # 更新子控件
+        self.update_sub_widgets(self.flow_card)
+
     # 获取平台配置
     def get_platform_from_config(self, id: int, config: dict) -> None:
         for item in config.get("platforms", []):
@@ -89,12 +119,14 @@ class ModelListPage(MessageBoxBase, Base):
 
         try:
             if api_format == Base.APIFormat.GOOGLE:
-                client = genai.Client(api_key = api_key)
+                client = genai.Client(
+                    api_key = api_key,
+                )
                 return [model.name for model in client.models.list()]
             elif api_format == Base.APIFormat.ANTHROPIC:
                 client = anthropic.Anthropic(
                     api_key = api_key,
-                    base_url = api_url
+                    base_url = api_url,
                 )
                 return [model.id for model in client.models.list()]
             else:
@@ -102,7 +134,7 @@ class ModelListPage(MessageBoxBase, Base):
                     base_url = api_url,
                     api_key = api_key,
                 )
-                result = [model.id for model in client.models.list()]
+                return [model.id for model in client.models.list()]
         except Exception as e:
             self.debug(Localizer.get().model_list_page_fail, e)
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -114,16 +146,16 @@ class ModelListPage(MessageBoxBase, Base):
 
     # 更新子控件
     def update_sub_widgets(self, widget: FlowCard) -> None:
-        config = self.load_config()
-        platform = self.get_platform_from_config(self.id, config)
-        models = self.get_models(
-            platform.get("api_url"),
-            platform.get("api_key")[0],
-            platform.get("api_format"),
-        )
+        if self.models is None:
+            platform: dict = self.get_platform_from_config(self.id, self.load_config())
+            self.models = self.get_models(
+                platform.get("api_url"),
+                platform.get("api_key")[0],
+                platform.get("api_format"),
+            )
 
         widget.take_all_widgets()
-        for model in models:
+        for model in [v for v in self.models if self.filter.lower() in v.lower()]:
             pilled_button = PillPushButton(model)
             pilled_button.setFixedWidth(432)
             pilled_button.clicked.connect(partial(self.clicked, pilled_button))
@@ -131,9 +163,22 @@ class ModelListPage(MessageBoxBase, Base):
 
     # 模型名称
     def add_widget(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
+        self.filter_button: PushButton = None
+
+        def init(widget: FlowCard) -> None:
+            self.filter_button = PushButton(Localizer.get().filter)
+            self.filter_button.setIcon(FluentIcon.FILTER)
+            self.filter_button.setContentsMargins(4, 0, 4, 0)
+            self.filter_button.clicked.connect(lambda _: self.filter_button_clicked(self.filter_button, window))
+            widget.add_widget_to_head(self.filter_button)
+
+            # 更新子控件
+            self.update_sub_widgets(widget)
+
         self.flow_card = FlowCard(
-            Localizer.get().model_list_page_title,
-            Localizer.get().model_list_page_content,
-            init = lambda widget: self.update_sub_widgets(widget),
+            title = Localizer.get().model_list_page_title,
+            description = Localizer.get().model_list_page_content,
+            init = init,
         )
         parent.addWidget(self.flow_card)
