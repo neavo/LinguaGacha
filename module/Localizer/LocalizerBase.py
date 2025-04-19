@@ -31,6 +31,7 @@ class LocalizerBase():
     auto: str = "自动"
     wiki: str = "功能说明"
     inject: str = "注入"
+    filter: str = "过滤"
     generate: str = "生成"
     task_success: str = "任务执行成功 …"
     task_failure: str = "任务执行失败 …"

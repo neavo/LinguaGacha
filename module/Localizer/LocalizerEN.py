@@ -31,6 +31,7 @@ class LocalizerEN(LocalizerBase):
     auto: str = "Auto"
     wiki: str = "Wiki"
     inject: str = "Inject"
+    filter: str = "Filter"
     generate: str = "Generate"
     task_success: str = "Task succeeded …"
     task_failure: str = "Task failed …"
