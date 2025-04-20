@@ -1,3 +1,4 @@
+import re
 import threading
 
 import httpx
@@ -22,6 +23,9 @@ class TranslatorRequester(Base):
     SAKURA_CLIENTS: dict[str, openai.OpenAI] = {}
     OPENAI_CLIENTS: dict[str, openai.OpenAI] = {}
     ANTHROPIC_CLIENTS: dict[str, anthropic.Anthropic] = {}
+
+    # OPENAI 思考模型 o1 o3-mini o4-mini-20240406
+    REGEX_O_Series_MODEL: re.Pattern = re.compile(r"o\d$|o\d\-", flags = re.IGNORECASE)
 
     def __init__(self, config: dict, platform: dict, current_round: int) -> None:
         super().__init__()
@@ -116,9 +120,16 @@ class TranslatorRequester(Base):
                     )
                 return TranslatorRequester.SAKURA_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.GOOGLE:
-                # Gemini SDK 文档 - https://ai.google.dev/gemini-api/docs/libraries
+                # https://github.com/googleapis/python-genai
+                # https://ai.google.dev/gemini-api/docs/libraries
                 if api_key not in TranslatorRequester.GOOGLE_CLIENTS:
-                    TranslatorRequester.GOOGLE_CLIENTS[api_key] = genai.Client(api_key = api_key)
+                    TranslatorRequester.GOOGLE_CLIENTS[api_key] = genai.Client(
+                        api_key = api_key,
+                        http_options = types.HttpOptions(
+                            timeout = timeout * 1000,
+                            api_version = "v1alpha",
+                        ),
+                    )
                 return TranslatorRequester.GOOGLE_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.ANTHROPIC:
                 if api_key not in TranslatorRequester.ANTHROPIC_CLIENTS:
@@ -154,11 +165,6 @@ class TranslatorRequester(Base):
                 presence_penalty = pp,
                 frequency_penalty = fp,
                 max_tokens = max(512, self.config.get("task_token_limit")),
-                extra_query = {
-                    "do_sample": True,
-                    "num_beams": 1,
-                    "repetition_penalty": 1.0
-                },
                 extra_headers = {
                     "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
                 },
@@ -191,24 +197,45 @@ class TranslatorRequester(Base):
 
         return False, "", response_result, prompt_tokens, completion_tokens
 
+    # 生成请求参数
+    def generate_openai_args(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> dict:
+        args: dict = {
+            "model": self.platform.get("model"),
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": pp,
+            "presence_penalty": pp,
+            "frequency_penalty": fp,
+            "max_tokens": max(4 * 1024, self.config.get("task_token_limit")),
+            "extra_headers": {
+                "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+            }
+        }
+
+        # 根据是否为 OpenAI O-Series 模型对请求参数进行处理
+        if __class__.REGEX_O_Series_MODEL.search(self.platform.get("model")) is not None:
+            args.pop("top_p")
+            args.pop("presence_penalty")
+            args.pop("frequency_penalty")
+            args.pop("temperature")
+
+            args.pop("max_tokens")
+            args["max_completion_tokens"] = max(4 * 1024, self.config.get("task_token_limit"))
+
+        return args
+
     # 发起请求
     def request_openai(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, str, int, int]:
         try:
+            # 获取客户端
             client: openai.OpenAI = self.get_client(
                 self.platform,
                 self.config.get("request_timeout"),
             )
-            response = client.chat.completions.create(
-                model = self.platform.get("model"),
-                messages = messages,
-                temperature = temperature,
-                top_p = top_p,
-                presence_penalty = pp,
-                frequency_penalty = fp,
-                max_tokens = 4096,
-                extra_headers = {
-                    "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
-                },
+
+            # 发起请求
+            response: openai.types.completion.Completion = client.chat.completions.create(
+                **self.generate_openai_args(messages, thinking, temperature, top_p, pp, fp)
             )
 
             # 提取回复内容
@@ -241,51 +268,61 @@ class TranslatorRequester(Base):
 
         return False, response_think, response_result, prompt_tokens, completion_tokens
 
+    # 生成请求参数
+    def generate_google_args(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> dict[str, str | int | float]:
+        args: dict = {
+            "temperature": temperature,
+            "top_p": top_p,
+            "presence_penalty": pp,
+            "frequency_penalty": fp,
+            "max_output_tokens": max(4 * 1024, self.config.get("task_token_limit")),
+            "safety_settings": (
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_HARASSMENT",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_HATE_SPEECH",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold = "BLOCK_NONE",
+                ),
+            ),
+        }
+
+        # 是否使用思考模型对请求参数进行处理
+        if any(v in self.platform.get("model") for v in ("2.5", "thinking")):
+            args.pop("presence_penalty")
+            args.pop("frequency_penalty")
+            args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget = 1024 if thinking == True else 0,
+                include_thoughts = thinking == True,
+            )
+
+        return {
+            "model": self.platform.get("model"),
+            "contents": [v.get("content") for v in messages if v.get("role") == "user"],
+            "config": types.GenerateContentConfig(**args),
+        }
+
     # 发起请求
     def request_google(self, messages: list[dict], thinking: bool, temperature: float, top_p: float, pp: float, fp: float) -> tuple[bool, str, int, int]:
         try:
-            thinking_config = None
-            if "gemini-2.5-flash" in self.platform.get("model"):
-                pp = None
-                fp = None
-                thinking_config = types.ThinkingConfig(
-                    thinking_budget = 1024 if thinking == True else 0,
-                    include_thoughts = True,
-                )
-
+            # 获取客户端
             client: genai.Client = self.get_client(
                 self.platform,
                 self.config.get("request_timeout"),
             )
-            response = client.models.generate_content(
-                model = self.platform.get("model"),
-                contents = [v.get("content") for v in messages if v.get("role") == "user"],
-                config = types.GenerateContentConfig(
-                    temperature = temperature,
-                    top_p = top_p,
-                    presence_penalty = pp,
-                    frequency_penalty = fp,
-                    max_output_tokens = 4096,
-                    thinking_config = thinking_config,
-                    safety_settings = [
-                        types.SafetySetting(
-                            category = "HARM_CATEGORY_HARASSMENT",
-                            threshold = "BLOCK_NONE",
-                        ),
-                        types.SafetySetting(
-                            category = "HARM_CATEGORY_HATE_SPEECH",
-                            threshold = "BLOCK_NONE",
-                        ),
-                        types.SafetySetting(
-                            category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            threshold = "BLOCK_NONE",
-                        ),
-                        types.SafetySetting(
-                            category = "HARM_CATEGORY_DANGEROUS_CONTENT",
-                            threshold = "BLOCK_NONE",
-                        ),
-                    ]
-                ),
+
+            # 发起请求
+            response: types.GenerateContentResponse = client.models.generate_content(
+                **self.generate_google_args(messages, thinking, temperature, top_p, pp, fp)
             )
 
             # 提取回复内容
@@ -324,7 +361,7 @@ class TranslatorRequester(Base):
                         "type": "enabled",
                         "budget_tokens": 1024
                     },
-                    max_tokens = 4096,
+                    max_tokens = max(4 * 1024, self.config.get("task_token_limit")),
                     extra_headers = {
                         "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
                     },
@@ -335,7 +372,7 @@ class TranslatorRequester(Base):
                     messages = messages,
                     temperature = temperature,
                     top_p = top_p,
-                    max_tokens = 4096,
+                    max_tokens = max(4 * 1024, self.config.get("task_token_limit")),
                     extra_headers = {
                         "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
                     },
