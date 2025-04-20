@@ -260,7 +260,7 @@ class TranslatorTask(Base):
                 dst = dst.strip()
                 if src == dst or src == "" or dst == "":
                     continue
-                if not any(key in src or src in key for key in keys):
+                if not any(key == src for key in keys):
                     changed = True
                     keys.add(src)
                     data.append({

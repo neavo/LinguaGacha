@@ -24,10 +24,10 @@ from base.BaseLanguage import BaseLanguage
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
+from frontend.TranslationPage import TranslationPage
 from frontend.BaseNavigationItem import BaseNavigationItem
 from frontend.Project.ProjectPage import ProjectPage
 from frontend.Project.PlatformPage import PlatformPage
-from frontend.Project.TranslationPage import TranslationPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.AdvanceFeaturePage import AdvanceFeaturePage
 from frontend.Quality.GlossaryPage import GlossaryPage
@@ -259,6 +259,8 @@ class AppFluentWindow(FluentWindow, Base):
     def add_pages(self) -> None:
         self.add_project_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
+        self.add_task_pages()
+        self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_setting_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_quality_pages()
@@ -312,7 +314,7 @@ class AppFluentWindow(FluentWindow, Base):
             position = NavigationItemPosition.BOTTOM
         )
 
-    # 添加第一节
+    # 添加项目类页面
     def add_project_pages(self) -> None:
         # 接口管理
         self.addSubInterface(
@@ -330,6 +332,8 @@ class AppFluentWindow(FluentWindow, Base):
             NavigationItemPosition.SCROLL
         )
 
+    # 添加任务类页面
+    def add_task_pages(self) -> None:
         # 开始翻译
         self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
@@ -339,7 +343,7 @@ class AppFluentWindow(FluentWindow, Base):
             NavigationItemPosition.SCROLL
         )
 
-    # 添加第二节
+    # 添加设置类页面
     def add_setting_pages(self) -> None:
         # 基础设置
         self.addSubInterface(
@@ -357,7 +361,7 @@ class AppFluentWindow(FluentWindow, Base):
             NavigationItemPosition.SCROLL
         )
 
-    # 添加第三节
+    # 添加质量类页面
     def add_quality_pages(self) -> None:
         # 术语表
         self.glossary_page = GlossaryPage("glossary_page", self)
@@ -419,7 +423,7 @@ class AppFluentWindow(FluentWindow, Base):
                 parent = self.custom_prompt_navigation_item,
             )
 
-    # 添加第四节
+    # 添加百宝箱页面
     def add_tool_box_pages(self) -> None:
         # 百宝箱
         self.addSubInterface(
