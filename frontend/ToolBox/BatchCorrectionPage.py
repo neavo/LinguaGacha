@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import threading
 
 import openpyxl
 import openpyxl.worksheet.worksheet
@@ -319,6 +320,13 @@ class BatchCorrectionPage(QWidget, Base):
                         break
 
         # 写入文件
+        threading.Thread(
+            target = self.write_to_path_task,
+            args = (config, items),
+        ).start()
+
+    # 写入文件
+    def write_to_path_task(self, config: dict, items: list[CacheItem]) -> None:
         FileManager(config).write_to_path(items)
         shutil.rmtree(f"{config.get("output_folder")}/{Localizer.get().path_bilingual}", ignore_errors = True)
 
@@ -327,6 +335,7 @@ class BatchCorrectionPage(QWidget, Base):
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().task_success,
         })
+
 
     # 根据原文换行符对修正文本中的换行符进行转换
     def auto_convert_line_break(self, src: str, fix: str) -> str:
