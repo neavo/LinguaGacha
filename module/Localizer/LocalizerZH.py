@@ -1,6 +1,6 @@
 
 
-class LocalizerBase():
+class LocalizerZH():
 
     # 保留
     switch_language: str = (

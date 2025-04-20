@@ -1,18 +1,17 @@
-from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from module.Localizer.LocalizerZH import LocalizerZH
 from module.Localizer.LocalizerEN import LocalizerEN
-from module.Localizer.LocalizerBase import LocalizerBase
 
 class Localizer():
 
     APP_LANGUAGE = BaseLanguage.ZH
 
     @classmethod
-    def get(cls) -> LocalizerBase | LocalizerEN:
+    def get(cls) -> LocalizerZH | LocalizerEN:
         if cls.APP_LANGUAGE == BaseLanguage.EN:
             return LocalizerEN
         else:
-            return LocalizerBase
+            return LocalizerZH
 
     @classmethod
     def get_app_language(cls) -> str:

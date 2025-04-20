@@ -25,7 +25,7 @@ from widget.EmptyCard import EmptyCard
 from widget.Separator import Separator
 from module.Localizer.Localizer import Localizer
 from module.Localizer.LocalizerEN import LocalizerEN
-from module.Localizer.LocalizerBase import LocalizerBase
+from module.Localizer.LocalizerZH import LocalizerZH
 from widget.CommandBarCard import CommandBarCard
 
 class BatchCorrectionPage(QWidget, Base):
@@ -50,7 +50,7 @@ class BatchCorrectionPage(QWidget, Base):
     FILE_NAME_WHITELIST: re.Pattern = re.compile(r"^(结果检查_|result_check_)([^\\/]+)\.json$", flags = re.IGNORECASE)
     FILE_NAME_BLACKLIST: tuple[str] = (
         LocalizerEN.path_result_check_untranslated,
-        LocalizerBase.path_result_check_untranslated,
+        LocalizerZH.path_result_check_untranslated,
     )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
