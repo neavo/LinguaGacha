@@ -3,7 +3,7 @@ import itertools
 
 from module.File.TRANS.NONE import NONE
 from module.Cache.CacheItem import CacheItem
-from module.LogHelper import LogHelper
+from base.LogManager import LogManager
 
 class WOLF(NONE):
 

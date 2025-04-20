@@ -58,7 +58,7 @@ class GlossaryPage(QWidget, Base):
         self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
 
     # 术语表刷新事件
-    def glossary_refresh(self, event: int, data: dict) -> None:
+    def glossary_refresh(self, event: str, data: dict) -> None:
         config = self.load_config()
         self.table_manager.set_data(config.get(f"{__class__.BASE}_data"))
         self.table_manager.sync()

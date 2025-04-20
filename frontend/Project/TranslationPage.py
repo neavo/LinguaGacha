@@ -117,7 +117,7 @@ class TranslationPage(QWidget, Base):
         self.emit(Base.Event.PROJECT_STATUS, {})
 
     # 应用关闭事件
-    def app_shut_down(self, event: int, data: dict) -> None:
+    def app_shut_down(self, event: str, data: dict) -> None:
         self.app_shut_down_flag = True
 
     # 更新 frontend 定时器
@@ -133,7 +133,7 @@ class TranslationPage(QWidget, Base):
             self.ui_update_timer.stop()
 
     # 更新按钮状态事件
-    def update_button_status(self, event: int, data: dict) -> None:
+    def update_button_status(self, event: str, data: dict) -> None:
         if Base.WORK_STATUS == Base.Status.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
@@ -158,11 +158,11 @@ class TranslationPage(QWidget, Base):
             self.action_continue.setEnabled(False)
 
     # 翻译更新事件
-    def translation_update(self, event: int, data: dict) -> None:
+    def translation_update(self, event: str, data: dict) -> None:
         self.data = data
 
     # 翻译停止完成事件
-    def translation_stop_done(self, event: int, data: dict) -> None:
+    def translation_stop_done(self, event: str, data: dict) -> None:
         # 更新按钮状态
         self.update_button_status(event, data)
 
@@ -277,7 +277,7 @@ class TranslationPage(QWidget, Base):
             self.ring.setFormat(Localizer.get().translation_page_status_idle)
 
     # 缓存文件自动保存事件
-    def cache_file_auto_save(self, event: int, data: dict) -> None:
+    def cache_file_auto_save(self, event: str, data: dict) -> None:
         if self.indeterminate.isHidden():
             self.indeterminate_show(Localizer.get().translation_page_indeterminate_saving)
 

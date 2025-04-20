@@ -9,7 +9,7 @@ from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
-from module.LogHelper import LogHelper
+from base.LogManager import LogManager
 from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
@@ -126,8 +126,8 @@ class AppSettingsPage(QWidget, Base):
                 os.remove("./debug.txt") if os.path.isfile("./debug.txt") else None
 
             # 重置调试模式状态
-            LogHelper.reset_debug()
-            LogHelper.is_debug()
+            LogManager.reset_debug()
+            LogManager.is_debug()
 
         parent.addWidget(
             SwitchButtonCard(

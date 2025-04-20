@@ -14,7 +14,7 @@ class PlatformTester(Base):
         self.subscribe(Base.Event.PLATFORM_TEST_START, self.platform_test_start)
 
     # 接口测试开始事件
-    def platform_test_start(self, event: int, data: dict) -> None:
+    def platform_test_start(self, event: str, data: dict) -> None:
         if Base.WORK_STATUS != Base.Status.IDLE:
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
@@ -27,7 +27,7 @@ class PlatformTester(Base):
             ).start()
 
     # 接口测试开始
-    def platform_test_start_target(self, event: int, data: dict) -> None:
+    def platform_test_start_target(self, event: str, data: dict) -> None:
         # 更新运行状态
         Base.WORK_STATUS = Base.Status.TESTING
 

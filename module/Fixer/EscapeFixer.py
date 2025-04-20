@@ -1,6 +1,6 @@
 import re
 
-from module.LogHelper import LogHelper
+from base.LogManager import LogManager
 
 class EscapeFixer():
 

@@ -110,7 +110,7 @@ class AppFluentWindow(FluentWindow, Base):
             event.accept()
 
     # 响应显示 Toast 事件
-    def show_toast(self, event: int, data: dict) -> None:
+    def show_toast(self, event: str, data: dict) -> None:
         toast_type = data.get("type", Base.ToastType.INFO)
         toast_message = data.get("message", "")
         toast_duration = data.get("duration", 2500)
@@ -192,7 +192,7 @@ class AppFluentWindow(FluentWindow, Base):
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 检查应用更新完成事件
-    def app_update_check_done(self, event: int, data: dict) -> None:
+    def app_update_check_done(self, event: str, data: dict) -> None:
         result: dict = data.get("result", {})
         a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.VERSION)[-1]
         x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
@@ -216,7 +216,7 @@ class AppFluentWindow(FluentWindow, Base):
             })
 
     # 下载应用更新事件
-    def app_update_download_update(self, event: int, data: dict) -> None:
+    def app_update_download_update(self, event: str, data: dict) -> None:
         error: Exception = data.get("error")
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
