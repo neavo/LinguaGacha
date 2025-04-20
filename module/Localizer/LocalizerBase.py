@@ -251,7 +251,7 @@ class LocalizerBase():
     basic_settings_page_task_token_limit_content: str = "每个翻译任务一次性向模型发送的文本长度的最大值，单位为 Token"
     basic_settings_page_request_timeout_title: str = "请求超时时间"
     basic_settings_page_request_timeout_content: str = (
-        "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒，不支持 Google 系列模型"
+        "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒"
         ""
         ""
     )

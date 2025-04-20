@@ -253,7 +253,7 @@ class LocalizerEN(LocalizerBase):
     basic_settings_page_request_timeout_content: str = (
         "Timeout duration for a model's response to a translation request"
         "\n"
-        "If the model doesn't respond in time, the translation task will fail, unit is Seconds. Not applicable to Google models"
+        "If the model doesn't respond in time, the translation task will fail, unit is Seconds"
     )
     basic_settings_page_max_round_title: str = "Maximum Translation Rounds"
     basic_settings_page_max_round_content: str = "After one translation round, if entries are still untranslated, restart translation until finished or the round limit is reached"
