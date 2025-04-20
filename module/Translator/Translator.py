@@ -16,8 +16,10 @@ from module.Cache.CacheManager import CacheManager
 from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Localizer.Localizer import Localizer
+from module.Translator.TaskLimiter import TaskLimiter
 from module.Translator.TranslatorTask import TranslatorTask
 from module.Translator.TranslatorRequester import TranslatorRequester
+from module.ExpertConfig import ExpertConfig
 from module.PromptBuilder import PromptBuilder
 from module.ResultChecker import ResultChecker
 
@@ -263,8 +265,10 @@ class Translator(Base):
             self.print("")
 
             # 开始执行翻译任务
+            task_limiter = TaskLimiter(rps = self.config.get("batch_size"), rpm = ExpertConfig.get().rpm_threshold)
             with concurrent.futures.ThreadPoolExecutor(max_workers = self.config.get("batch_size"), thread_name_prefix = "translator") as executor:
                 for task in tasks:
+                    task_limiter.wait()
                     future = executor.submit(task.start, current_round)
                     future.add_done_callback(self.task_done_callback)
 
