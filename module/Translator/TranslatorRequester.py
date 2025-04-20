@@ -203,7 +203,7 @@ class TranslatorRequester(Base):
             "model": self.platform.get("model"),
             "messages": messages,
             "temperature": temperature,
-            "top_p": pp,
+            "top_p": top_p,
             "presence_penalty": pp,
             "frequency_penalty": fp,
             "max_tokens": max(4 * 1024, self.config.get("task_token_limit")),
