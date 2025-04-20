@@ -1,6 +1,5 @@
 from base.BaseData import BaseData
 
-
 class BaseLanguage(BaseData):
 
     ZH: str = "ZH"                                          # 中文 (Chinese)
@@ -21,7 +20,7 @@ class BaseLanguage(BaseData):
     ID: str = "ID"                                          # 印尼文 (Indonesian)
     VI: str = "VI"                                          # 越南文 (Vietnamese)
 
-    LANGUAGE_NAMES = {
+    LANGUAGE_NAMES: dict[str, dict[str, str]] = {
         ZH: {"zh": "中文", "en": "Chinese"},
         EN: {"zh": "英文", "en": "English"},
         JA: {"zh": "日文", "en": "Japanese"},

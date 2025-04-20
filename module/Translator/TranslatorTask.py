@@ -23,7 +23,7 @@ from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
-from module.LogHelper import LogHelper
+from base.LogManager import LogManager
 from module.CodeSaver import CodeSaver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
@@ -155,7 +155,7 @@ class TranslatorTask(Base):
             console_log.append(Localizer.get().translator_task_response_think + response_think)
         if response_result != "":
             file_log.append(Localizer.get().translator_task_response_result + response_result)
-            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogHelper.is_debug() else None
+            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogManager.is_debug() else None
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0

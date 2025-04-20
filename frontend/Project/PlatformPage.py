@@ -54,7 +54,7 @@ class PlatformPage(QWidget, Base):
         })
 
     # 接口测试完成
-    def platform_test_done(self, event: int, data: dict) -> None:
+    def platform_test_done(self, event: str, data: dict) -> None:
         self.emit(Base.Event.APP_TOAST_SHOW, {
             "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
             "message": data.get("result_msg", "")

@@ -15,7 +15,7 @@ from qfluentwidgets import setTheme
 from base.BaseLanguage import BaseLanguage
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
-from module.LogHelper import LogHelper
+from base.LogManager import LogManager
 from module.Translator.Translator import Translator
 from module.ExpertConfig import ExpertConfig
 from module.VersionManager import VersionManager
@@ -29,7 +29,7 @@ def excepthook(exc_type, exc_value, exc_traceback) -> None:
         return
 
     # 使用LogHelper记录异常信息
-    LogHelper.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
+    LogManager.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
 
 # 载入配置文件
 def load_config() -> dict:
@@ -88,8 +88,8 @@ if __name__ == "__main__":
     Localizer.set_app_language(config.get("app_language", BaseLanguage.ZH))
 
     # 打印日志
-    LogHelper.info(f"LinguaGacha {version}")
-    LogHelper.debug(Localizer.get().log_debug_mode) if LogHelper.is_debug() else None
+    LogManager.info(f"LinguaGacha {version}")
+    LogManager.debug(Localizer.get().log_debug_mode) if LogManager.is_debug() else None
 
     # 设置全局缩放比例
     if config.get("scale_factor", "") == "50%":

@@ -41,11 +41,11 @@ class Translator(Base):
         self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
 
     # 应用关闭事件
-    def app_shut_down(self, event: int, data: dict) -> None:
+    def app_shut_down(self, event: str, data: dict) -> None:
         Base.WORK_STATUS = Base.Status.STOPPING
 
     # 翻译停止事件
-    def translation_stop(self, event: int, data: dict) -> None:
+    def translation_stop(self, event: str, data: dict) -> None:
         # 设置运行状态为停止中
         Base.WORK_STATUS = Base.Status.STOPPING
 
@@ -65,7 +65,7 @@ class Translator(Base):
         threading.Thread(target = target).start()
 
     # 翻译开始事件
-    def translation_start(self, event: int, data: dict) -> None:
+    def translation_start(self, event: str, data: dict) -> None:
         if Base.WORK_STATUS != Base.Status.IDLE:
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
@@ -78,7 +78,7 @@ class Translator(Base):
             ).start()
 
     # 翻译结果手动导出事件
-    def translation_manual_export(self, event: int, data: dict) -> None:
+    def translation_manual_export(self, event: str, data: dict) -> None:
         if Base.WORK_STATUS == Base.Status.TRANSLATING:
             threading.Thread(
                 target = self.translation_manual_export_target,
@@ -86,7 +86,7 @@ class Translator(Base):
             ).start()
 
     # 翻译结果手动导出事件
-    def translation_manual_export_target(self, event: int, data: dict) -> None:
+    def translation_manual_export_target(self, event: str, data: dict) -> None:
         # 复制一份以避免影响原始数据
         items = self.cache_manager.copy_items()
 
@@ -97,7 +97,7 @@ class Translator(Base):
         self.check_and_wirte_result(items)
 
     # 翻译状态检查事件
-    def translation_project_status_check(self, event: int, data: dict) -> None:
+    def translation_project_status_check(self, event: str, data: dict) -> None:
         threading.Thread(
             target = self.translation_project_status_check_target
         ).start()

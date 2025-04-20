@@ -28,7 +28,6 @@ class ExpertConfig(Base, BaseData):
         self.result_checker_retry_count_threshold: bool = False
 
         # 初始化
-        del self.default
         if not os.path.isfile(ExpertConfig.EXPERT_CONFIG_PATH):
             os.makedirs(os.path.dirname(ExpertConfig.EXPERT_CONFIG_PATH), exist_ok = True)
             with open(ExpertConfig.EXPERT_CONFIG_PATH, "w", encoding = "utf-8") as writer:

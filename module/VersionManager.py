@@ -50,21 +50,21 @@ class VersionManager(Base):
         VersionManager.VERSION = version
 
     # 检查更新
-    def app_update_check(self, event: int, data: dict) -> None:
+    def app_update_check(self, event: str, data: dict) -> None:
         threading.Thread(
             target = self.app_update_check_task,
             args = (event, data),
         ).start()
 
     # 检查更新 - 下载
-    def app_update_download(self, event: int, data: dict) -> None:
+    def app_update_download(self, event: str, data: dict) -> None:
         threading.Thread(
             target = self.app_update_download_task,
             args = (event, data),
         ).start()
 
     # 检查更新 - 解压
-    def app_update_extract(self, event: int, data: dict) -> None:
+    def app_update_extract(self, event: str, data: dict) -> None:
         with VersionManager.LOCK:
             if VersionManager.IN_EXTRACTING == False:
                 threading.Thread(
@@ -73,7 +73,7 @@ class VersionManager(Base):
                 ).start()
 
     # 检查更新
-    def app_update_check_task(self, event: int, data: dict) -> None:
+    def app_update_check_task(self, event: str, data: dict) -> None:
         try:
             # 获取更新信息
             response = httpx.get(VersionManager.API_URL, timeout = 60)
@@ -87,7 +87,7 @@ class VersionManager(Base):
             pass
 
     # 检查更新 - 下载
-    def app_update_download_task(self, event: int, data: dict) -> None:
+    def app_update_download_task(self, event: str, data: dict) -> None:
         try:
             # 获取更新信息
             response = httpx.get(VersionManager.API_URL, timeout = 60)
@@ -128,7 +128,7 @@ class VersionManager(Base):
             })
 
     # 检查更新 - 解压
-    def app_update_extract_task(self, event: int, data: dict) -> None:
+    def app_update_extract_task(self, event: str, data: dict) -> None:
         # 更新状态
         with VersionManager.LOCK:
             VersionManager.IN_EXTRACTING = True

@@ -48,7 +48,7 @@ class CacheManager(Base):
             threading.Thread(target = self.save_to_file_tick).start()
 
     # 应用关闭事件
-    def app_shut_down(self, event: int, data: dict) -> None:
+    def app_shut_down(self, event: str, data: dict) -> None:
         self.app_shut_down_flag = True
 
     # 保存缓存到文件
