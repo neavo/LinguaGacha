@@ -1,6 +1,6 @@
-from module.Localizer.LocalizerBase import LocalizerBase
+from module.Localizer.LocalizerZH import LocalizerZH
 
-class LocalizerEN(LocalizerBase):
+class LocalizerEN(LocalizerZH):
 
     # 保留
     switch_language: str = (
