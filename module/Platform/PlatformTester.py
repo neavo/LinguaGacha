@@ -67,7 +67,7 @@ class PlatformTester(Base):
             messages = [
                 {
                     "role": "user",
-                    "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
+                    "content": "将下面的日文文本翻译成中文，按输入格式返回结果：{\"0\":\"魔導具師ダリヤはうつむかない\"}",
                 },
             ]
 
@@ -79,7 +79,7 @@ class PlatformTester(Base):
         for key in platform.get("api_key"):
             self.print("")
             self.info(f"{Localizer.get().platofrm_tester_key} - {key}")
-            self.info(f"{Localizer.get().platofrm_tester_messages} - {messages}")
+            self.info(f"{Localizer.get().platofrm_tester_messages}\n{messages}")
             skip, response_think, response_result, _, _ = requester.request(messages)
 
             # 提取回复内容
@@ -88,11 +88,11 @@ class PlatformTester(Base):
                 self.warning(Localizer.get().log_api_test_fail)
             elif response_think == "":
                 success.append(key)
-                self.info(f"{Localizer.get().platofrm_tester_response_result} - {response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
             else:
                 success.append(key)
-                self.info(f"{Localizer.get().platofrm_tester_response_think} - {response_result}")
-                self.info(f"{Localizer.get().platofrm_tester_response_result} - {response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_think}\n{response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
 
         # 测试结果
         result_msg = (
