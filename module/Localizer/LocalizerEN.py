@@ -243,20 +243,20 @@ class LocalizerEN(LocalizerZH):
     # 基础设置
     basic_settings_page_batch_size_title: str = "Concurrent Tasks"
     basic_settings_page_batch_size_content: str = (
-        "Maximum number of translation tasks executed simultaneously"
-        "\n"
-        "Setting appropriately can greatly increase translation speed. Please refer to the API platform's limits for settings"
+        "The maximum number of tasks executed concurrently"
+        "<br>"
+        "Setting this appropriately can significantly increase task speed, please refer to the API documentation for configuration (0 = Auto)"
     )
-    basic_settings_page_task_token_limit_title: str = "Task Length Threshold"
-    basic_settings_page_task_token_limit_content: str = "Maximum text length sent to the model at once for each translation task, unit is Token"
+    basic_settings_page_token_threshold_title: str = "Task Length Threshold"
+    basic_settings_page_token_threshold_content: str = "The maximum number of text tokens contained in each task"
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
-        "Timeout duration for a model's response to a translation request"
-        "\n"
-        "If the model doesn't respond in time, the translation task will fail, unit is Seconds"
+        "The maximum time (in seconds) to wait for a model response when initiating a translation task request"
+        "<br>"
+        "If no response is received after the timeout, the task will be considered failed"
     )
-    basic_settings_page_max_round_title: str = "Maximum Translation Rounds"
-    basic_settings_page_max_round_content: str = "After one translation round, if entries are still untranslated, restart translation until finished or the round limit is reached"
+    basic_settings_page_max_round_title: str = "Maximum Rounds"
+    basic_settings_page_max_round_content: str = "After completing a round of tasks, failed tasks will be retried in a new round until all are completed or the round threshold is reached"
 
     # 高级功能
     advance_feature_page_mtool_optimizer_enable: str = "MTool Optimizer"

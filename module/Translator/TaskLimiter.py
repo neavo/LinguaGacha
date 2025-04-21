@@ -12,7 +12,7 @@ class TaskLimiter:
 
     # 计算最大令牌数
     def _calculate_max_tokens(self) -> float:
-        return max(
+        return min(
             self.rps if self.rps > 0 else 0,
             self.rpm / 60 if self.rpm > 0 else 0,
         )

@@ -15,7 +15,7 @@ class BasicSettingsPage(QWidget, Base):
 
         # 默认配置
         self.default = {
-            "task_token_limit": 384,
+            "token_threshold": 384,
             "batch_size": 0,
             "request_timeout": 120,
             "max_round": 16,
@@ -31,7 +31,7 @@ class BasicSettingsPage(QWidget, Base):
 
         # 添加控件
         self.add_widget_batch_size(self.vbox, config, window)
-        self.add_widget_task_token_limit(self.vbox, config, window)
+        self.add_widget_token_threshold(self.vbox, config, window)
         self.add_widget_request_timeout(self.vbox, config, window)
         self.add_widget_max_round(self.vbox, config, window)
 
@@ -59,20 +59,20 @@ class BasicSettingsPage(QWidget, Base):
         )
 
     # 翻译任务长度阈值
-    def add_widget_task_token_limit(self, parent: QLayout, config: dict, window: FluentWindow)-> None:
+    def add_widget_token_threshold(self, parent: QLayout, config: dict, window: FluentWindow)-> None:
         def init(widget: SpinCard) -> None:
             widget.set_range(0, 9999999)
-            widget.set_value(config.get("task_token_limit"))
+            widget.set_value(config.get("token_threshold"))
 
         def value_changed(widget: SpinCard, value: int) -> None:
             config = self.load_config()
-            config["task_token_limit"] = value
+            config["token_threshold"] = value
             self.save_config(config)
 
         parent.addWidget(
             SpinCard(
-                Localizer.get().basic_settings_page_task_token_limit_title,
-                Localizer.get().basic_settings_page_task_token_limit_content,
+                Localizer.get().basic_settings_page_token_threshold_title,
+                Localizer.get().basic_settings_page_token_threshold_content,
                 init = init,
                 value_changed = value_changed,
             )

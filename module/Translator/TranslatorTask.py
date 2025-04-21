@@ -41,13 +41,12 @@ class TranslatorTask(Base):
     GLOSSARY_SAVE_INTERVAL: int = 15
 
     # 正则规则
-    RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
-    RE_LOCAL_FLAG = re.compile(r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+", flags = re.IGNORECASE)
+    REGEX_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
 
     # 类线程锁
     LOCK = threading.Lock()
 
-    def __init__(self, config: dict, platform: dict, items: list[CacheItem], preceding_items: list[CacheItem], cache_manager: CacheManager) -> None:
+    def __init__(self, config: dict, platform: dict, local_flag: bool, items: list[CacheItem], preceding_items: list[CacheItem]) -> None:
         super().__init__()
 
         # 初始化
@@ -55,8 +54,8 @@ class TranslatorTask(Base):
         self.preceding_items = preceding_items
         self.config = config
         self.platform = platform
+        self.local_flag = local_flag
         self.code_saver = CodeSaver()
-        self.cache_manager = cache_manager
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
 
@@ -95,9 +94,6 @@ class TranslatorTask(Base):
                 ResponseChecker.Error.LINE_ERROR_SIMILARITY: Localizer.get().response_checker_line_error_similarity,
                 ResponseChecker.Error.LINE_ERROR_DEGRADATION: Localizer.get().response_checker_line_error_degradation,
             }
-
-        # 初始化本地标识
-        self.local_flag: bool = __class__.RE_LOCAL_FLAG.search(self.platform.get("api_url").strip()) is not None
 
     # 启动任务
     def start(self, current_round: int) -> dict[str, str]:
@@ -378,19 +374,19 @@ class TranslatorTask(Base):
 
         for k in dst_dict:
             if k in self.start_key_set:
-                result: re.Match[str] = __class__.RE_NAME.search(dst_dict.get(k, ""))
+                result: re.Match[str] = __class__.REGEX_NAME.search(dst_dict.get(k, ""))
                 if result is None:
                     name_dsts.append(None)
                 elif k not in self.name_key_set:
                     name_dsts.append(None)
                 elif result.group(1) is not None:
                     name_dsts.append(result.group(1))
-                    dst_dict[k] = __class__.RE_NAME.sub("", dst_dict.get(k, ""))
-                    src_dict[k] = __class__.RE_NAME.sub("", src_dict.get(k, ""))
+                    dst_dict[k] = __class__.REGEX_NAME.sub("", dst_dict.get(k, ""))
+                    src_dict[k] = __class__.REGEX_NAME.sub("", src_dict.get(k, ""))
                 else:
                     name_dsts.append(result.group(2))
-                    dst_dict[k] = __class__.RE_NAME.sub("", dst_dict.get(k, ""))
-                    src_dict[k] = __class__.RE_NAME.sub("", src_dict.get(k, ""))
+                    dst_dict[k] = __class__.REGEX_NAME.sub("", dst_dict.get(k, ""))
+                    src_dict[k] = __class__.REGEX_NAME.sub("", src_dict.get(k, ""))
 
         return name_dsts
 
