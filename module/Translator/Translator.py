@@ -4,6 +4,7 @@ import time
 import shutil
 import threading
 import concurrent.futures
+from typing import Any
 from itertools import zip_longest
 
 import httpx
@@ -129,12 +130,13 @@ class Translator(Base):
 
         # 初始化
         self.config = self.load_config()
-        self.platform = {}
+        self.platform: dict[str, Any] = {}
         for platform in self.config.get("platforms"):
             if platform.get("id") == self.config.get("activate_platform"):
                 self.platform = platform
                 break
         self.initialize_proxy()
+        self.initialize_local_flag()
         self.initialize_batch_size()
 
         # 重置请求器
@@ -222,10 +224,10 @@ class Translator(Base):
 
             # 第二轮开始对半切分
             if current_round > 0:
-                self.config["task_token_limit"] = max(1, int(self.config.get("task_token_limit") / 2))
+                self.config["token_threshold"] = max(1, int(self.config.get("token_threshold") / 3))
 
             # 生成缓存数据条目片段
-            chunks, preceding_chunks = self.cache_manager.generate_item_chunks(self.config.get("task_token_limit"))
+            chunks, preceding_chunks = self.cache_manager.generate_item_chunks(self.config.get("token_threshold"))
 
             # 仅在第一轮启用参考上文功能
             if current_round > 0:
@@ -239,9 +241,9 @@ class Translator(Base):
                     TranslatorTask(
                         self.config,
                         self.platform,
+                        self.local_flag,
                         items,
                         preceding_items,
-                        self.cache_manager,
                     )
                 )
             self.print("")
@@ -300,6 +302,14 @@ class Translator(Base):
         else:
             os.environ["http_proxy"] = self.config.get("proxy_url")
             os.environ["https_proxy"] = self.config.get("proxy_url")
+
+    # 初始化本地接口标识
+    def initialize_local_flag(self) -> None:
+        self.local_flag = re.search(
+            r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
+            self.platform.get("api_url"),
+            flags = re.IGNORECASE,
+        ) is not None
 
     # 初始化 batch_size
     def initialize_batch_size(self) -> None:

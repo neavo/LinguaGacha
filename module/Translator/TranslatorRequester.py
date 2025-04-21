@@ -83,7 +83,7 @@ class TranslatorRequester(Base):
                 args,
             )
 
-        return skip, response_think.strip(), response_result.strip(), prompt_tokens, completion_tokens
+        return skip, response_think, response_result, prompt_tokens, completion_tokens
 
     # 获取客户端
     def get_client(self, platform: dict, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
@@ -149,7 +149,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(512, self.config.get("task_token_limit")),
+            "max_tokens": max(512, self.config.get("token_threshold")),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }
@@ -203,7 +203,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.get("task_token_limit")),
+            "max_tokens": max(4 * 1024, self.config.get("token_threshold")),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }
@@ -215,7 +215,7 @@ class TranslatorRequester(Base):
             __class__.REGEX_O_Series_MODEL.search(self.platform.get("model")) is not None
         ):
             args.pop("max_tokens")
-            args["max_completion_tokens"] = max(4 * 1024, self.config.get("task_token_limit"))
+            args["max_completion_tokens"] = max(4 * 1024, self.config.get("token_threshold"))
 
         return args
 
@@ -266,7 +266,7 @@ class TranslatorRequester(Base):
     # 生成请求参数
     def generate_google_args(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
         args: dict = args | {
-            "max_output_tokens": max(4 * 1024, self.config.get("task_token_limit")),
+            "max_output_tokens": max(4 * 1024, self.config.get("token_threshold")),
             "safety_settings": (
                 types.SafetySetting(
                     category = "HARM_CATEGORY_HARASSMENT",
@@ -315,7 +315,7 @@ class TranslatorRequester(Base):
             )
 
             # 提取回复内容
-            response_result = response.text
+            response_result = response.text.strip()
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
@@ -339,7 +339,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.get("task_token_limit")),
+            "max_tokens": max(4 * 1024, self.config.get("token_threshold")),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }

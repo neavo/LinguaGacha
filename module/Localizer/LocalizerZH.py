@@ -241,22 +241,22 @@ class LocalizerZH():
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 基础设置
-    basic_settings_page_batch_size_title: str = "并发任务数"
+    basic_settings_page_batch_size_title: str = "并发任务数量"
     basic_settings_page_batch_size_content: str = (
-        "同时执行的翻译任务的最大数量，合理设置可以极大的增加翻译速度，请参考接口平台的限制进行设置，本地接口无需设置"
+        "同时执行的任务的最大数量，合理设置可以极大的增加任务速度，请参考 API 平台的文档进行设置（0 = 自动）"
         ""
         ""
     )
-    basic_settings_page_task_token_limit_title: str = "翻译任务长度阈值"
-    basic_settings_page_task_token_limit_content: str = "每个翻译任务一次性向模型发送的文本长度的最大值，单位为 Token"
-    basic_settings_page_request_timeout_title: str = "请求超时时间"
+    basic_settings_page_token_threshold_title: str = "任务长度阈值"
+    basic_settings_page_token_threshold_content: str = "每个任务所包含的文本的最大 Token 数量"
+    basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
-        "翻译任务发起请求时等待模型回复的最长时间，超时仍未收到回复，则会判断为任务失败，单位为秒"
+        "翻译任务发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
         ""
         ""
     )
-    basic_settings_page_max_round_title: str = "翻译流程最大轮次"
-    basic_settings_page_max_round_content: str = "当完成一轮翻译后，如果还有未翻译的条目，将重新开始新的翻译流程，直到翻译完成或者达到最大轮次"
+    basic_settings_page_max_round_title: str = "任务轮次阈值"
+    basic_settings_page_max_round_content: str = "当完成一轮任务后，将在新的轮次中对失败的任务进行重试，直到全部完成或达到轮次阈值"
 
     # 高级功能
     advance_feature_page_mtool_optimizer_enable: str = "MTool 优化器"
