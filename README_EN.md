@@ -52,14 +52,15 @@
 ## User Guide 📝
 - Overall
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF-%E2%80%90-EN)
-  - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker-%E2%80%90-EN)
+  - [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
+  - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
+  - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=NbpyL2fMgDc)
 - Feature Description
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/Glossary-%E2%80%90-EN)　　[Replacement](https://github.com/neavo/LinguaGacha/wiki/Replacement-%E2%80%90-EN)　　[Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation-%E2%80%90-EN)
-  - [Expert Config](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig-%E2%80%90-EN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer-%E2%80%90-EN)
-  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection-%E2%80%90-EN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslation-%E2%80%90-EN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction-%E2%80%90-EN)
+  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)　　[Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)
+  - [Expert Config](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
+  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
@@ -77,24 +78,17 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250420 v0.25.7
+  - OPT - Model parameter customization can now be turned off (default is off)
+  - NEW - Requests per minute threshold [Expert Settings](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)
+    - Primarily used with certain rate-limited APIs, such as [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
+
 - 20250420 v0.25.6
   - OPT - Model list page is now filterable
   - FIX - Issue where OpenAI O-Series models could not be used normally
 
 - 20250418 v0.25.4
   - OPT - Support for `Gemini-2.5-Flash` Thinking Mode Switch
-
-- 20250417 v0.25.2
-  - OPT - Improved stability for Auto Glossary results
-  - OPT - Disabled Preceding Context by default on local api, can be manually enabled in [Expert Settings](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig-%E2%80%90-EN)
-
-- 20250415 v0.25.1
-  - OPT - Auto Glossary data persistence
-  - OPT - Optimize stability of result parsing (including Auto Glossary data)
-
-- 20250413 v0.25.0
-  - NEW - Arabic support
-  - NEW - Name-Field extraction feature (Treasure Chest)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

@@ -48,6 +48,7 @@
 ## 使用教程 📝
 - 综合
   - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 手把手教学，有手就行，新手必看`
+  - [Google Gemini 免费接口](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFree)
   - [高质量翻译 WOLF 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [高质量翻译 RPGMaker 系列引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
@@ -74,24 +75,17 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250420 v0.25.7
+  - 调整 - 模型参数自定义可以关闭了（默认关闭）
+  - 新增 - 每分钟请求数阈值 [专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig)
+    - 主要用于配合某些限速 API 使用，比如 [Google Gemini 免费接口](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFree)
+
 - 20250420 v0.25.6
   - 调整 - 模型列表页面可以筛选了
   - 修正 - OpenAI O-Series 模型不能正常使用的问题
 
 - 20250418 v0.25.4
   - 调整 - 支持 `Gemini-2.5-Flash` 思考模式开关
-
-- 20250417 v0.25.2
-  - 调整 - 自动术语表结果稳定性优化
-  - 调整 - 在本地接口上默认禁用参考上文功能，可在 [专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig) 中手动开启
-
-- 20250415 v0.25.1
-  - 调整 - 自动术语表数据持久化
-  - 调整 - 优化返回结果解析（包括自动术语表数据）的稳定性
-
-- 20250413 v0.25.0
-  - 新增 - 阿拉伯文支持
-  - 新增 - 姓名字段提取功能（百宝箱）
 
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
