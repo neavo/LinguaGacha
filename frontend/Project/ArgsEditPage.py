@@ -106,7 +106,6 @@ class ArgsEditPage(MessageBoxBase, Base):
         self.update_platform_to_config(self.platform, config)
         self.save_config(config)
 
-
     # top_p
     def add_widget_top_p(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
@@ -114,7 +113,6 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "top_p"))
             widget.add_widget(switch_button)
 
             widget.set_range(0, 100)
@@ -124,6 +122,9 @@ class ArgsEditPage(MessageBoxBase, Base):
             # 设置可见性
             widget.set_visible(self.platform.get("top_p_custom_enable") == True)
             switch_button.setChecked(self.platform.get("top_p_custom_enable") == True)
+
+            # 最后注册事件，避免在页面初始化的过程中重置设置数据
+            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "top_p"))
 
         parent.addWidget(
             SliderCard(
@@ -141,7 +142,6 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "temperature"))
             widget.add_widget(switch_button)
 
             widget.set_range(0, 200)
@@ -151,6 +151,9 @@ class ArgsEditPage(MessageBoxBase, Base):
             # 设置可见性
             widget.set_visible(self.platform.get("temperature_custom_enable") == True)
             switch_button.setChecked(self.platform.get("temperature_custom_enable") == True)
+
+            # 最后注册事件，避免在页面初始化的过程中重置设置数据
+            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "temperature"))
 
         parent.addWidget(
             SliderCard(
@@ -168,7 +171,6 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "presence_penalty"))
             widget.add_widget(switch_button)
 
             widget.set_range(-200, 200)
@@ -178,6 +180,9 @@ class ArgsEditPage(MessageBoxBase, Base):
             # 设置可见性
             widget.set_visible(self.platform.get("presence_penalty_custom_enable") == True)
             switch_button.setChecked(self.platform.get("presence_penalty_custom_enable") == True)
+
+            # 最后注册事件，避免在页面初始化的过程中重置设置数据
+            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "presence_penalty"))
 
         parent.addWidget(
             SliderCard(
@@ -195,7 +200,6 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "frequency_penalty"))
             widget.add_widget(switch_button)
 
             widget.set_range(-200, 200)
@@ -205,6 +209,9 @@ class ArgsEditPage(MessageBoxBase, Base):
             # 设置可见性
             widget.set_visible(self.platform.get("frequency_penalty_custom_enable") == True)
             switch_button.setChecked(self.platform.get("frequency_penalty_custom_enable") == True)
+
+            # 最后注册事件，避免在页面初始化的过程中重置设置数据
+            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "frequency_penalty"))
 
         parent.addWidget(
             SliderCard(

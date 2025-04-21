@@ -214,7 +214,7 @@ class TranslatorRequester(Base):
             self.platform.get("api_url").startswith("https://api.openai.com") or
             __class__.REGEX_O_Series_MODEL.search(self.platform.get("model")) is not None
         ):
-            args.pop("max_tokens")
+            args.pop("max_tokens", None)
             args["max_completion_tokens"] = max(4 * 1024, self.config.get("token_threshold"))
 
         return args
@@ -346,8 +346,8 @@ class TranslatorRequester(Base):
         }
 
         # 移除 Anthropic 模型不支持的参数
-        args.pop("presence_penalty")
-        args.pop("frequency_penalty")
+        args.pop("presence_penalty", None)
+        args.pop("frequency_penalty", None)
 
         # 根据是否为 Thinking 模型对请求参数进行处理
         if thinking == True:
