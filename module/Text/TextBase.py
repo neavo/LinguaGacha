@@ -40,7 +40,10 @@ class TextBase:
             (0x3130, 0x318F),                           # 韩文兼容字母 (Hangul Compatibility Jamo)
         )
         for c in range(start, end + 1)
-        if not (0xFF01 <= c <= 0xFF60 or 0x3000 <= c <= 0x303F)  # 排除全角标点符号
+        if not (
+            0xFF01 <= c <= 0xFF60                       # 排除 全角标点符号
+            or 0x3000 <= c <= 0x303F                    # 排除 全角标点符号
+        )
     }
     HANGUL_RANGE: str = r"\u1100-\u11FF\uA960-\uA97F\uD7B0-\uD7FF\uAC00-\uD7AF\u3130-\u318F"
 
@@ -52,9 +55,12 @@ class TextBase:
         )
         for c in range(start, end + 1)
         if not (
-            0xFF01 <= c <= 0xFF60                       # 排除全角标点符号
-            or 0x3000 <= c <= 0x303F                    # 排除全角标点符号
-            or c in (0x309B, 0x309C)                    # 排除 0x309B 濁点 ゛ 0x309C 半濁点 ゜
+            0xFF01 <= c <= 0xFF60                       # 排除 全角标点符号
+            or 0x3000 <= c <= 0x303F                    # 排除 全角标点符号
+            or c in (
+                0x309B,                                 # 排除 0x309B 濁点 ゛
+                0x309C,                                 # 排除 0x309C 半濁点 ゜
+            )
         )
     }
     HIRAGANA_RANGE: str = r"\u3040-\u309F"
@@ -63,17 +69,18 @@ class TextBase:
     KATAKANA_SET: set[str]  = {
         chr(c)
         for start, end in (
-            (0x30A0, 0x30FF),                          # 片假名
-            (0xFF65, 0xFF9F),                          # 半角片假名（包括半角浊音、半角拗音等）
-            (0x31F0, 0x31FF),                          # 片假名语音扩展
+            (0x30A0, 0x30FF),                           # 片假名
+            (0x31F0, 0x31FF),                           # 片假名语音扩展
+            (0xFF65, 0xFF9F),                           # 半角片假名（包括半角浊音、半角拗音等）
         )
         for c in range(start, end + 1)
         if not (
-            0xFF01 <= c <= 0xFF60                       # 排除全角标点符号
-            or 0x3000 <= c <= 0x303F                    # 排除全角标点符号
+            0xFF01 <= c <= 0xFF60                       # 排除 全角标点符号
+            or 0x3000 <= c <= 0x303F                    # 排除 全角标点符号
             or c in (
-                0x30FB,                                 # 排除中点 ・
-                0x30FC,                                 # 排除長音符 ー
+                0xFF65,                                 # 排除 半角中点 ･
+                0x30FB,                                 # 排除 全角中点 ・
+                0x30FC,                                 # 排除 長音符 ー
             )
         )
     }
