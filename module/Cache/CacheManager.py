@@ -1,8 +1,7 @@
 import os
 import time
+import json
 import threading
-
-import rapidjson as json
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem

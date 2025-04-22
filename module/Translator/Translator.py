@@ -136,8 +136,8 @@ class Translator(Base):
                 self.platform = platform
                 break
         self.initialize_proxy()
-        self.initialize_local_flag()
-        self.initialize_batch_size()
+        self.local_flag = self.initialize_local_flag()
+        self.batch_size = self.initialize_batch_size()
 
         # 重置请求器
         TranslatorRequester.reset()
@@ -263,12 +263,12 @@ class Translator(Base):
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
                 self.print("")
-            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.config.get("batch_size"))))
+            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.batch_size)))
             self.print("")
 
             # 开始执行翻译任务
-            task_limiter = TaskLimiter(rps = self.config.get("batch_size"), rpm = ExpertConfig.get().rpm_threshold)
-            with concurrent.futures.ThreadPoolExecutor(max_workers = self.config.get("batch_size"), thread_name_prefix = "translator") as executor:
+            task_limiter = TaskLimiter(rps = self.batch_size, rpm = ExpertConfig.get().rpm_threshold)
+            with concurrent.futures.ThreadPoolExecutor(max_workers = self.batch_size, thread_name_prefix = "translator") as executor:
                 for task in tasks:
                     task_limiter.wait()
                     future = executor.submit(task.start, current_round)
@@ -304,8 +304,8 @@ class Translator(Base):
             os.environ["https_proxy"] = self.config.get("proxy_url")
 
     # 初始化本地接口标识
-    def initialize_local_flag(self) -> None:
-        self.local_flag = re.search(
+    def initialize_local_flag(self) -> bool:
+        return re.search(
             r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
             self.platform.get("api_url"),
             flags = re.IGNORECASE,
@@ -323,9 +323,11 @@ class Translator(Base):
             self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
 
         if isinstance(response_json, list) and len(response_json) > 0:
-            self.config["batch_size"] = len(response_json)
+            return len(response_json)
         elif self.config.get("batch_size") == 0:
-            self.config["batch_size"] = 4
+            return 4
+        else:
+            return self.config.get("batch_size")
 
     # 规则过滤
     def rule_filter(self, items: list[CacheItem]) -> None:

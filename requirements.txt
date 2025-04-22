@@ -15,4 +15,3 @@ rich
 tqdm
 httpx
 json-repair
-python-rapidjson

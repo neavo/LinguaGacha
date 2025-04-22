@@ -1,8 +1,8 @@
 import re
+import json
 import threading
 
 import httpx
-import rapidjson as json
 import openai
 import anthropic
 from google import genai

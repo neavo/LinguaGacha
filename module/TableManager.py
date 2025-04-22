@@ -1,7 +1,7 @@
+import json
 import openpyxl
 import openpyxl.worksheet.worksheet
 
-import rapidjson as json
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import TableWidget

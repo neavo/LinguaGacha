@@ -2,7 +2,7 @@ import os
 import threading
 from typing import Callable
 
-import rapidjson as json
+import json
 
 from base.EventManager import EventManager
 from base.LogManager import LogManager

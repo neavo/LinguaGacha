@@ -1,7 +1,7 @@
 import os
 from functools import partial
 
-import rapidjson as json
+import json
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
