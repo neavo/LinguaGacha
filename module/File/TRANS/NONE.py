@@ -48,7 +48,7 @@ class NONE():
             block = self.filter(src, path, tag, context)
             skip_internal_filter: bool = False
 
-            # 如果全部数据需要不需要过滤，则移除 red blue gold 标签
+            # 如果全部数据都不需要过滤，则移除 red blue gold 标签
             if all(v == False for v in block):
                 tag: list[str] = [v for v in tag if v not in ("red", "blue", "gold")]
             # 如果任意数据需要过滤，且不包含 red blue gold 标签，则添加 gold 标签
@@ -69,8 +69,8 @@ class NONE():
             return [True] * len(context)
 
         block: list[bool] = []
-        for _ in context:
-            # 如果在标签黑名单，则需要过滤
+        for _ in range(len(context) if len(context) > 0 else 1):
+            # 包含 red blue 标签，则过滤
             if any(v in ("red", "blue") for v in tag):
                 block.append(True)
             # 默认，无需过滤
