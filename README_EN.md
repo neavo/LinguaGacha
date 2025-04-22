@@ -78,7 +78,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20250420 v0.25.7
+- 20250423 v0.25.8
+  - OPT - Optimize file reading compatibility
+
+- 20250422 v0.25.7
   - OPT - Model parameter customization can now be turned off (default is off)
   - NEW - Requests per minute threshold [Expert Settings](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)
     - Primarily used with certain rate-limited APIs, such as [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
