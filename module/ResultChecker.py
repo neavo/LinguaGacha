@@ -1,7 +1,7 @@
 import os
+import json
 
 import opencc
-import rapidjson as json
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage

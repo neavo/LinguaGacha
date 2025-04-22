@@ -5,7 +5,7 @@ import threading
 
 import openpyxl
 import openpyxl.worksheet.worksheet
-import rapidjson as json
+import json
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl

@@ -1,7 +1,6 @@
 import os
+import json
 from typing import Self
-
-import rapidjson as json
 
 from base.Base import Base
 from base.BaseData import BaseData

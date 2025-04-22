@@ -1,9 +1,9 @@
 import os
 import sys
+import json
 import ctypes
 import traceback
 
-import rapidjson as json
 from rich.console import Console
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QIcon

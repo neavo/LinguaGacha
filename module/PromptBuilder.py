@@ -1,4 +1,4 @@
-import rapidjson as json
+import json
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage

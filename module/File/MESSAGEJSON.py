@@ -1,6 +1,5 @@
 import os
-
-import rapidjson as json
+import json
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem

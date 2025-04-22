@@ -1,8 +1,7 @@
 import os
+import json
 import shutil
 import itertools
-
-import rapidjson as json
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
