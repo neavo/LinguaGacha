@@ -6,12 +6,9 @@ from module.Cache.CacheItem import CacheItem
 
 class CodeSaver(Base):
 
-    # \c[17]\n[1]：「ぐっ……」
-
     # 通用规则
     REGEX_NONE: tuple[str] = (
         r"\s",                                                                      # 空白字符
-        r"\u3000",                                                                  # 全角空格
         # r"\\n",                                                                   # 换行符 \n
         r"<br>",                                                                    # 换行符 <br>
     )
@@ -49,10 +46,10 @@ class CodeSaver(Base):
     )
 
     # 占位符文本
-    PLACEHOLDER: re.Pattern = "{PLACEHOLDER}"
+    PLACEHOLDER: str = "{PLACEHOLDER}"
 
     # 正则表达式
-    REGEX_BLANK: re.Pattern = re.compile(r"[\s\u3000]+", re.IGNORECASE)
+    REGEX_BLANK: re.Pattern = re.compile(r"\s+", re.IGNORECASE)
 
     REGEX_PREFIX_NONE: re.Pattern = re.compile(rf"^(?:{"|".join(REGEX_NONE)})+", re.IGNORECASE)
     REGEX_SUFFIX_NONE: re.Pattern = re.compile(rf"(?:{"|".join(REGEX_NONE)})+$", re.IGNORECASE)
@@ -72,8 +69,8 @@ class CodeSaver(Base):
 
         # 初始化
         self.placeholders: set[str] = set()
-        self.prefix_codes: dict[str, str] = {}
-        self.suffix_codes: dict[str, str] = {}
+        self.prefix_codes: dict[str, list[str]] = {}
+        self.suffix_codes: dict[str, list[str]] = {}
 
     # 预处理
     def pre_process(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> tuple[dict[str, str], list[str]]:
@@ -94,7 +91,7 @@ class CodeSaver(Base):
                 samples_ex: list[str] = self.pre_process_none(k, src_dict)
                 samples.extend(samples_ex)
 
-        return src_dict, list(set({v.strip() for v in samples if v.strip() != ""}))
+        return src_dict, list(dict.fromkeys([v.strip() for v in samples if v.strip() != ""]))
 
     # 预处理 - None
     def pre_process_none(self, k: str, src_dict: dict[str, str]) -> list[str]:
@@ -171,7 +168,7 @@ class CodeSaver(Base):
 
     # 检查代码段
     def check(self, src: str, dst: str, text_type: str) -> bool:
-        if text_type in (CacheItem.TextType.KAG, CacheItem.TextType.RPGMAKER):
+        if text_type in (CacheItem.TextType.KAG, CacheItem.TextType.RENPY):
             x: list[str] = CodeSaver.REGEX_CHECK_KAG_RENPY.findall(src)
             y: list[str] = CodeSaver.REGEX_CHECK_KAG_RENPY.findall(dst)
         elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
