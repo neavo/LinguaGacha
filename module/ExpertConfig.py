@@ -14,9 +14,6 @@ class ExpertConfig(Base, BaseData):
     def __init__(self) -> None:
         super().__init__()
 
-        # 每分钟请求数阈值
-        self.rpm_threshold: int = 0
-
         # 参考上文行数阈值
         self.preceding_lines_threshold: int = 3
 

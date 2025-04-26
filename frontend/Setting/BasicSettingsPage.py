@@ -16,7 +16,8 @@ class BasicSettingsPage(QWidget, Base):
         # 默认配置
         self.default = {
             "token_threshold": 384,
-            "batch_size": 0,
+            "rps_threshold": 0,
+            "rpm_threshold": 0,
             "request_timeout": 120,
             "max_round": 16,
         }
@@ -30,7 +31,8 @@ class BasicSettingsPage(QWidget, Base):
         self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_batch_size(self.vbox, config, window)
+        self.add_widget_rps_threshold(self.vbox, config, window)
+        self.add_widget_rpm_threshold(self.vbox, config, window)
         self.add_widget_token_threshold(self.vbox, config, window)
         self.add_widget_request_timeout(self.vbox, config, window)
         self.add_widget_max_round(self.vbox, config, window)
@@ -38,21 +40,43 @@ class BasicSettingsPage(QWidget, Base):
         # 填充
         self.vbox.addStretch(1) # 确保控件顶端对齐
 
-    # 并发任务数
-    def add_widget_batch_size(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    # 每秒任务数阈值
+    def add_widget_rps_threshold(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
         def init(widget: SpinCard) -> None:
             widget.set_range(0, 9999999)
-            widget.set_value(config.get("batch_size"))
+            widget.set_value(config.get("rps_threshold"))
 
         def value_changed(widget: SpinCard, value: int) -> None:
             config = self.load_config()
-            config["batch_size"] = value
+            config["rps_threshold"] = value
             self.save_config(config)
 
         parent.addWidget(
             SpinCard(
-                Localizer.get().basic_settings_page_batch_size_title,
-                Localizer.get().basic_settings_page_batch_size_content,
+                Localizer.get().basic_settings_page_rps_threshold_title,
+                Localizer.get().basic_settings_page_rps_threshold_content,
+                init = init,
+                value_changed = value_changed,
+            )
+        )
+
+    # 每分钟任务数阈值
+    def add_widget_rpm_threshold(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
+        def init(widget: SpinCard) -> None:
+            widget.set_range(0, 9999999)
+            widget.set_value(config.get("rpm_threshold"))
+
+        def value_changed(widget: SpinCard, value: int) -> None:
+            config = self.load_config()
+            config["rpm_threshold"] = value
+            self.save_config(config)
+
+        parent.addWidget(
+            SpinCard(
+                Localizer.get().basic_settings_page_rpm_threshold_title,
+                Localizer.get().basic_settings_page_rpm_threshold_content,
                 init = init,
                 value_changed = value_changed,
             )
