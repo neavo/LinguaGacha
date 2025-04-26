@@ -97,7 +97,7 @@ class LocalizerZH():
     translator_name: str = "接口名称"
     translator_model: str = "模型名称"
     translator_proxy_url: str = "生效中的 网络代理"
-    translator_begin: str = "即将开始执行翻译任务，预计任务总数为 {TASKS}, 并发任务数为 {BATCH_SIZE}，请注意保持网络通畅 …"
+    translator_begin: str = "即将开始执行翻译任务，预计任务总数为 {TASKS}, 请注意保持网络通畅 …"
     translator_writing: str = "正在写入翻译数据，等稍候 …"
     translator_done: str = "所有文本均已翻译，翻译任务已结束 …"
     translator_fail: str = "已到最大翻译轮次，仍有部分文本未翻译，请检查翻译结果 …"
@@ -241,9 +241,19 @@ class LocalizerZH():
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 基础设置
-    basic_settings_page_batch_size_title: str = "并发任务数量"
-    basic_settings_page_batch_size_content: str = (
-        "同时执行的任务的最大数量，合理设置可以极大的增加任务速度，请参考 API 平台的文档进行设置（0 = 自动）"
+    basic_settings_page_rps_threshold_title: str = "每秒钟任务数量阈值"
+    basic_settings_page_rps_threshold_content: str = (
+        "每秒钟可执行的任务数量的最大值，即 <font color='darkgoldenrod'><b>RPS</b></font> 阈值"
+        "<br>"
+        "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
+        ""
+        ""
+    )
+    basic_settings_page_rpm_threshold_title: str = "每分钟任务数量阈值"
+    basic_settings_page_rpm_threshold_content: str = (
+        "每分钟可执行的任务数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 阈值"
+        "<br>"
+        "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
         ""
         ""
     )

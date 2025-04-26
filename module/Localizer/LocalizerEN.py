@@ -97,7 +97,7 @@ class LocalizerEN(LocalizerZH):
     translator_name: str = "API Name"
     translator_model: str = "Model Name"
     translator_proxy_url: str = "Active Network Proxy"
-    translator_begin: str = "Translation task is about to start, estimated total tasks: {TASKS}, concurrent tasks: {BATCH_SIZE}. Please ensure network connection …"
+    translator_begin: str = "Translation task is about to start, estimated total tasks: {TASKS}. Please ensure network connection …"
     translator_writing: str = "Writing translation data, please wait …"
     translator_done: str = "All texts are translated, translation task finished …"
     translator_fail: str = "Maximum translation rounds reached, some texts are still untranslated. Please check the translation results …"
@@ -241,11 +241,21 @@ class LocalizerEN(LocalizerZH):
     translation_page_timer: str = "Waiting time before delayed startup"
 
     # 基础设置
-    basic_settings_page_batch_size_title: str = "Concurrent Tasks"
-    basic_settings_page_batch_size_content: str = (
-        "The maximum number of tasks executed concurrently"
+    basic_settings_page_rps_threshold_title: str = "Tasks Per Second Threshold"
+    basic_settings_page_rps_threshold_content: str = (
+        "The maximum number of tasks that can be executed per second, i.e., the <font color='darkgoldenrod'><b>RPS</b></font> threshold"
         "<br>"
-        "Setting this appropriately can significantly increase task speed, please refer to the API documentation for configuration (0 = Auto)"
+        "Reasonable settings can significantly speed up task completion"
+        "<br>"
+        "Please refer to the API platform documentation for settings, 0 = Automatic"
+    )
+    basic_settings_page_rpm_threshold_title: str = "Tasks Per Minute Threshold"
+    basic_settings_page_rpm_threshold_content: str = (
+        "The maximum number of tasks that can be executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> threshold"
+        "<br>"
+        "Reasonable settings can significantly speed up task completion"
+        "<br>"
+        "Please refer to the API platform documentation for settings, 0 = Automatic"
     )
     basic_settings_page_token_threshold_title: str = "Task Length Threshold"
     basic_settings_page_token_threshold_content: str = "The maximum number of text tokens contained in each task"

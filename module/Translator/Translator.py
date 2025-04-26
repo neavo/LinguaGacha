@@ -27,6 +27,8 @@ from module.ResultChecker import ResultChecker
 # 翻译器
 class Translator(Base):
 
+    DEFAULT_RPS_THRESHOLD: int = 8
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -137,7 +139,7 @@ class Translator(Base):
                 break
         self.initialize_proxy()
         self.local_flag = self.initialize_local_flag()
-        self.batch_size = self.initialize_batch_size()
+        self.rps_threshold, self.rpm_threshold = self.initialize_rps_rpm_threshold()
 
         # 重置请求器
         TranslatorRequester.reset()
@@ -263,12 +265,12 @@ class Translator(Base):
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
                 self.print("")
-            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))).replace("{BATCH_SIZE}", str(self.batch_size)))
+            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))))
             self.print("")
 
             # 开始执行翻译任务
-            task_limiter = TaskLimiter(rps = self.batch_size, rpm = ExpertConfig.get().rpm_threshold)
-            with concurrent.futures.ThreadPoolExecutor(max_workers = self.batch_size, thread_name_prefix = "translator") as executor:
+            task_limiter = TaskLimiter(rps = self.rps_threshold, rpm = self.rpm_threshold)
+            with concurrent.futures.ThreadPoolExecutor(max_workers = max(self.rps_threshold, self.rpm_threshold), thread_name_prefix = "translator") as executor:
                 for task in tasks:
                     task_limiter.wait()
                     future = executor.submit(task.start, current_round)
@@ -311,8 +313,11 @@ class Translator(Base):
             flags = re.IGNORECASE,
         ) is not None
 
-    # 初始化 batch_size
-    def initialize_batch_size(self) -> None:
+    # 初始化 RPS RPM 阈值
+    def initialize_rps_rpm_threshold(self) -> tuple[int, int]:
+        rps_threshold: int = self.config.get("rps_threshold")
+        rpm_threshold: int = self.config.get("rpm_threshold")
+
         try:
             response_json = None
             response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
@@ -323,11 +328,13 @@ class Translator(Base):
             self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
 
         if isinstance(response_json, list) and len(response_json) > 0:
-            return len(response_json)
-        elif self.config.get("batch_size") == 0:
-            return 4
+            return len(response_json), rpm_threshold
+        elif rps_threshold == 0 and rpm_threshold == 0:
+            return __class__.DEFAULT_RPS_THRESHOLD, 0
+        elif rps_threshold == 0 and rpm_threshold > 0:
+            return 0, rpm_threshold
         else:
-            return self.config.get("batch_size")
+            return rps_threshold, rpm_threshold
 
     # 规则过滤
     def rule_filter(self, items: list[CacheItem]) -> None:
