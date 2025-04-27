@@ -241,21 +241,21 @@ class LocalizerEN(LocalizerZH):
     translation_page_timer: str = "Waiting time before delayed startup"
 
     # 基础设置
-    basic_settings_page_rps_threshold_title: str = "Tasks Per Second Threshold"
-    basic_settings_page_rps_threshold_content: str = (
-        "The maximum number of tasks that can be executed per second, i.e., the <font color='darkgoldenrod'><b>RPS</b></font> threshold"
+    basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"
+    basic_settings_page_max_workers_content: str = (
+        "Maximum number of tasks executing simultaneously"
         "<br>"
-        "Reasonable settings can significantly speed up task completion"
+        "Proper configuration can significantly speed up task completion"
         "<br>"
-        "Please refer to the API platform documentation for settings, 0 = Automatic"
+        "Please refer to the API platform's documentation for settings, 0 = Automatic"
     )
-    basic_settings_page_rpm_threshold_title: str = "Tasks Per Minute Threshold"
+    basic_settings_page_rpm_threshold_title: str = "Requests Per Minute Threshold"
     basic_settings_page_rpm_threshold_content: str = (
-        "The maximum number of tasks that can be executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> threshold"
+        "Maximum total number of tasks executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> threshold"
         "<br>"
-        "Reasonable settings can significantly speed up task completion"
+        "Proper configuration can significantly speed up task completion"
         "<br>"
-        "Please refer to the API platform documentation for settings, 0 = Automatic"
+        "Please refer to the API platform's documentation for settings, 0 = Automatic"
     )
     basic_settings_page_token_threshold_title: str = "Task Length Threshold"
     basic_settings_page_token_threshold_content: str = "The maximum number of text tokens contained in each task"

@@ -241,9 +241,9 @@ class LocalizerZH():
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 基础设置
-    basic_settings_page_rps_threshold_title: str = "每秒钟任务数量阈值"
-    basic_settings_page_rps_threshold_content: str = (
-        "每秒钟可执行的任务数量的最大值，即 <font color='darkgoldenrod'><b>RPS</b></font> 阈值"
+    basic_settings_page_max_workers_title: str = "并发任务阈值"
+    basic_settings_page_max_workers_content: str = (
+        "同时执行的任务数量的最大值"
         "<br>"
         "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
         ""
@@ -251,7 +251,7 @@ class LocalizerZH():
     )
     basic_settings_page_rpm_threshold_title: str = "每分钟任务数量阈值"
     basic_settings_page_rpm_threshold_content: str = (
-        "每分钟可执行的任务数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 阈值"
+        "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 阈值"
         "<br>"
         "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
         ""
