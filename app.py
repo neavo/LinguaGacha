@@ -62,9 +62,10 @@ if __name__ == "__main__":
             kernel32.SetConsoleMode(hStdin, mode)
 
     # 启用了高 DPI 缩放
+    # 1. 全局缩放使能 (Enable High DPI Scaling)
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
     # 设置工作目录
     script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -108,7 +109,8 @@ if __name__ == "__main__":
     app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
 
     # 设置全局字体属性，解决狗牙问题
-    font = QFont("Consolas")
+    font = QFont()
+    font.setStyleStrategy(QFont.PreferAntialias)
     if config.get("font_hinting", True) == True:
         font.setHintingPreference(QFont.PreferFullHinting)
     else:

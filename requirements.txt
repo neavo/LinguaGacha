@@ -1,5 +1,4 @@
 # System
-PyQt5
 PyQt-Fluent-Widgets[full]
 openai
 anthropic
