@@ -27,8 +27,6 @@ from module.ResultChecker import ResultChecker
 # 翻译器
 class Translator(Base):
 
-    DEFAULT_RPS_THRESHOLD: int = 8
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -138,8 +136,8 @@ class Translator(Base):
                 self.platform = platform
                 break
         self.initialize_proxy()
-        self.local_flag = self.initialize_local_flag()
-        self.rps_threshold, self.rpm_threshold = self.initialize_rps_rpm_threshold()
+        local_flag = self.initialize_local_flag()
+        max_workers, rpm_threshold = self.initialize_max_workers()
 
         # 重置请求器
         TranslatorRequester.reset()
@@ -243,7 +241,7 @@ class Translator(Base):
                     TranslatorTask(
                         self.config,
                         self.platform,
-                        self.local_flag,
+                        local_flag,
                         items,
                         preceding_items,
                     )
@@ -269,8 +267,8 @@ class Translator(Base):
             self.print("")
 
             # 开始执行翻译任务
-            task_limiter = TaskLimiter(rps = self.rps_threshold, rpm = self.rpm_threshold)
-            with concurrent.futures.ThreadPoolExecutor(max_workers = max(self.rps_threshold, self.rpm_threshold), thread_name_prefix = "translator") as executor:
+            task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold)
+            with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers,thread_name_prefix = "translator") as executor:
                 for task in tasks:
                     task_limiter.wait()
                     future = executor.submit(task.start, current_round)
@@ -313,28 +311,34 @@ class Translator(Base):
             flags = re.IGNORECASE,
         ) is not None
 
-    # 初始化 RPS RPM 阈值
-    def initialize_rps_rpm_threshold(self) -> tuple[int, int]:
-        rps_threshold: int = self.config.get("rps_threshold")
+    # 初始化 速度控制
+    def initialize_max_workers(self) -> tuple[int, int]:
+        max_workers: int = self.config.get("max_workers")
         rpm_threshold: int = self.config.get("rpm_threshold")
 
-        try:
-            response_json = None
-            response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
-            response.raise_for_status()
-            response_json = response.json()
-        except Exception as e:
-            self.print("")
-            self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
+        # 当 max_workers = 0 时，尝试获取 llama.cpp 槽数
+        if max_workers == 0:
+            try:
+                response_json = None
+                response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
+                response.raise_for_status()
+                response_json = response.json()
+            except Exception as e:
+                self.print("")
+                self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
+            if isinstance(response_json, list) and len(response_json) > 0:
+                max_workers = len(response_json)
 
-        if isinstance(response_json, list) and len(response_json) > 0:
-            return len(response_json), rpm_threshold
-        elif rps_threshold == 0 and rpm_threshold == 0:
-            return __class__.DEFAULT_RPS_THRESHOLD, 0
-        elif rps_threshold == 0 and rpm_threshold > 0:
-            return 0, rpm_threshold
-        else:
-            return rps_threshold, rpm_threshold
+        if max_workers == 0 and rpm_threshold == 0:
+            max_workers = 8
+            rpm_threshold = 0
+        elif max_workers > 0 and rpm_threshold == 0:
+            pass
+        elif max_workers == 0 and rpm_threshold > 0:
+            max_workers = 8192
+            rpm_threshold = rpm_threshold
+
+        return max_workers, rpm_threshold
 
     # 规则过滤
     def rule_filter(self, items: list[CacheItem]) -> None:

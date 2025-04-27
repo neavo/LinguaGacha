@@ -16,7 +16,7 @@ class BasicSettingsPage(QWidget, Base):
         # 默认配置
         self.default = {
             "token_threshold": 384,
-            "rps_threshold": 0,
+            "max_workers": 0,
             "rpm_threshold": 0,
             "request_timeout": 120,
             "max_round": 16,
@@ -31,7 +31,7 @@ class BasicSettingsPage(QWidget, Base):
         self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_rps_threshold(self.vbox, config, window)
+        self.add_widget_max_workers(self.vbox, config, window)
         self.add_widget_rpm_threshold(self.vbox, config, window)
         self.add_widget_token_threshold(self.vbox, config, window)
         self.add_widget_request_timeout(self.vbox, config, window)
@@ -41,21 +41,21 @@ class BasicSettingsPage(QWidget, Base):
         self.vbox.addStretch(1) # 确保控件顶端对齐
 
     # 每秒任务数阈值
-    def add_widget_rps_threshold(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_max_workers(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SpinCard) -> None:
             widget.set_range(0, 9999999)
-            widget.set_value(config.get("rps_threshold"))
+            widget.set_value(config.get("max_workers"))
 
         def value_changed(widget: SpinCard, value: int) -> None:
             config = self.load_config()
-            config["rps_threshold"] = value
+            config["max_workers"] = value
             self.save_config(config)
 
         parent.addWidget(
             SpinCard(
-                Localizer.get().basic_settings_page_rps_threshold_title,
-                Localizer.get().basic_settings_page_rps_threshold_content,
+                Localizer.get().basic_settings_page_max_workers_title,
+                Localizer.get().basic_settings_page_max_workers_content,
                 init = init,
                 value_changed = value_changed,
             )
