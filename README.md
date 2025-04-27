@@ -75,6 +75,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250427 v0.25.9
+  - 调整 - 为 `每分钟任务数量阈值` 提供设置界面
+  - 修正 - 几处文件兼容性问题
+    - `ALL` 重复全角空格导致生成任务时卡死的问题
+    - `RPY` 包含引号的文本翻译状态判断错误的问题
+
 - 20250423 v0.25.8
   - 调整 - 优化文件读取兼容性
 
@@ -82,13 +88,6 @@
   - 调整 - 模型参数自定义可以关闭了（默认关闭）
   - 新增 - 每分钟请求数阈值 [专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig)
     - 主要用于配合某些限速 API 使用，比如 [Google Gemini 免费接口](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFree)
-
-- 20250420 v0.25.6
-  - 调整 - 模型列表页面可以筛选了
-  - 修正 - OpenAI O-Series 模型不能正常使用的问题
-
-- 20250418 v0.25.4
-  - 调整 - 支持 `Gemini-2.5-Flash` 思考模式开关
 
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
