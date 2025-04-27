@@ -56,6 +56,10 @@ class RENPY(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
+
+        def process(text: str) -> str:
+            return text.replace("\\n", "\n").replace("\\\"", "\"")
+
         items: list[CacheItem] = []
         for abs_path in abs_paths:
             # 获取相对路径
@@ -73,11 +77,11 @@ class RENPY(Base):
                 if is_content_line == False and len(results) > 0:
                     continue
                 elif is_content_line == True and len(results) == 1:
-                    src = results[0].replace("\\n", "\n").replace("\\\"", "\"")
+                    src = results[0]
                     dst = self.find_dst(i + 1, line, lines)
                     name = None
                 elif is_content_line == True and len(results) >= 2:
-                    src = results[1].replace("\\n", "\n").replace("\\\"", "\"")
+                    src = results[1]
                     dst = self.find_dst(i + 1, line, lines)
                     name = results[0]
                 else:
@@ -89,7 +93,7 @@ class RENPY(Base):
                 if src == "":
                     items.append(
                         CacheItem({
-                            "src": src,
+                            "src": process(src),
                             "dst": dst,
                             "name_src": name,
                             "name_dst": name,
@@ -104,7 +108,7 @@ class RENPY(Base):
                 elif dst != "" and src != dst:
                     items.append(
                         CacheItem({
-                            "src": src,
+                            "src": process(src),
                             "dst": dst,
                             "name_src": name,
                             "name_dst": name,
@@ -119,7 +123,7 @@ class RENPY(Base):
                 else:
                     items.append(
                         CacheItem({
-                            "src": src,
+                            "src": process(src),
                             "dst": dst,
                             "name_src": name,
                             "name_dst": name,
