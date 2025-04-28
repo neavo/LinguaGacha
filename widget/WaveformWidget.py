@@ -52,7 +52,7 @@ class WaveformWidget(QLabel):
         # 初始化画笔
         painter = QPainter(self)
         painter.setFont(self.font)
-        painter.setPen(Qt.white if isDarkTheme() else Qt.black)
+        painter.setPen(Qt.GlobalColor.white if isDarkTheme() else Qt.GlobalColor.black)
 
         # 归一化以增大波形起伏
         min_val = min(self.history)

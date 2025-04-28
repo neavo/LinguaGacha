@@ -76,7 +76,7 @@ class ReTranslationPage(QWidget, Base):
         scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
 
         # 创建滚动区域
-        scroll_area = SingleDirectionScrollArea(orient = Qt.Vertical)
+        scroll_area = SingleDirectionScrollArea(orient = Qt.Orientation.Vertical)
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.enableTransparentBackground()

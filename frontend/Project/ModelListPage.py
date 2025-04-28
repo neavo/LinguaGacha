@@ -42,7 +42,7 @@ class ModelListPage(MessageBoxBase, Base):
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
 
         # 设置滚动器
-        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Vertical)
+        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Orientation.Vertical)
         self.scroller.setWidgetResizable(True)
         self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self.viewLayout.addWidget(self.scroller)

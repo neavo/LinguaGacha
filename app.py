@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # 启用了高 DPI 缩放
     # 1. 全局缩放使能 (Enable High DPI Scaling)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
@@ -110,11 +110,11 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    font.setStyleStrategy(QFont.PreferAntialias)
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     if config.get("font_hinting", True) == True:
-        font.setHintingPreference(QFont.PreferFullHinting)
+        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     else:
-        font.setHintingPreference(QFont.PreferNoHinting)
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
 
     # 初始化实例

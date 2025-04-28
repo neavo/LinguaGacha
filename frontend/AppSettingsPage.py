@@ -36,7 +36,7 @@ class AppSettingsPage(QWidget, Base):
         self.container.setContentsMargins(0, 0, 0, 0)
 
         # 设置滚动容器
-        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Vertical)
+        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Orientation.Vertical)
         self.scroller.setWidgetResizable(True)
         self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self.container.addWidget(self.scroller)

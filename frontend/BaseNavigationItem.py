@@ -11,10 +11,10 @@ class BaseNavigationItem(QWidget):
         super().__init__(parent = parent)
 
         self.label = SubtitleLabel("", self)
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.addWidget(self.label, 1, Qt.AlignCenter)
+        self.hBoxLayout.addWidget(self.label, 1, Qt.AlignmentFlag.AlignCenter)
 
         # 必须给子界面设置全局唯一的对象名
         self.setObjectName(text.replace(' ', '-'))

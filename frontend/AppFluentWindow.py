@@ -129,7 +129,7 @@ class AppFluentWindow(FluentWindow, Base):
             content = toast_message,
             parent = self,
             duration = toast_duration,
-            orient = Qt.Horizontal,
+            orient = Qt.Orientation.Horizontal,
             position = InfoBarPosition.TOP,
             isClosable = True,
         )
