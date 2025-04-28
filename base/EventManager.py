@@ -16,7 +16,7 @@ class EventManager(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self.signal.connect(self.process_event, Qt.QueuedConnection)
+        self.signal.connect(self.process_event, Qt.ConnectionType.QueuedConnection)
 
     @classmethod
     def get(cls) -> Self:

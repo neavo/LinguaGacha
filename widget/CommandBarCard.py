@@ -17,7 +17,7 @@ class CommandBarCard(CardWidget):
 
         # 文本控件
         self.command_bar = CommandBar()
-        self.command_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.command_bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.hbox.addWidget(self.command_bar)
 
     def add_widget(self, widget):

@@ -41,12 +41,12 @@ class DashboardCard(CardWidget):
         self.unit_vbox.setContentsMargins(0, 0, 0, 0)
 
         self.unit_label = StrongBodyLabel(unit, self)
-        self.unit_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.unit_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.unit_vbox.addSpacing(20)
         self.unit_vbox.addWidget(self.unit_label)
 
         self.value_label = LargeTitleLabel(value, self)
-        self.value_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
 
         self.body_hbox.addStretch(1)
         self.body_hbox.addWidget(self.value_label, 1)

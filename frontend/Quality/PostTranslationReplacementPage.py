@@ -78,7 +78,7 @@ class PostTranslationReplacementPage(QWidget, Base):
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def item_changed(item: QTableWidgetItem) -> None:
-            item.setTextAlignment(Qt.AlignCenter)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
         def insert_row(table: TableWidget) -> None:
             selected_index = self.table.selectedIndexes()
@@ -154,21 +154,23 @@ class PostTranslationReplacementPage(QWidget, Base):
         self.table.setBorderVisible(True)
         self.table.setWordWrap(False)
         self.table.setColumnCount(3)
-        self.table.setSelectRightClickedRow(True) # 右键选中行
+        self.table.setSortingEnabled(True)
+        self.table.horizontalHeader().setSortIndicatorShown(True)
+        self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
         self.table.setColumnWidth(2, 64)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
 
         # 注册事件
         self.table.itemChanged.connect(item_changed)
-        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(custom_context_menu_requested)
 
         # 设置水平表头并隐藏垂直表头
-        self.table.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+        self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
                 Localizer.get().post_translation_replacement_page_table_row_01,

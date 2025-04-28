@@ -35,7 +35,7 @@ class ItemCard(CardWidget):
         self.vbox.addWidget(self.head_hbox_container)
 
         self.title_label = SubtitleLabel(title, self)
-        self.title_label.setAttribute(Qt.WA_TransparentForMouseEvents) # 在上层控件上禁用鼠标事件以将事件向下层传播
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents) # 在上层控件上禁用鼠标事件以将事件向下层传播
         self.head_hbox.addWidget(self.title_label)
         self.head_hbox.addStretch(1)
         self.title_button = TransparentToolButton(FluentIcon.PAGE_RIGHT)
@@ -53,7 +53,7 @@ class ItemCard(CardWidget):
         self.description_label = CaptionLabel(description, self)
         self.description_label.setWordWrap(True)
         self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        self.description_label.setAttribute(Qt.WA_TransparentForMouseEvents) # 在上层控件上禁用鼠标事件以将事件向下层传播
+        self.description_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents) # 在上层控件上禁用鼠标事件以将事件向下层传播
         self.vbox.addWidget(self.description_label, 1)
 
         if callable(init):

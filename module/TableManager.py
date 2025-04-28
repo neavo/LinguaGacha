@@ -57,7 +57,7 @@ class TableManager():
                             item = QTableWidgetItem("✅")
                         else:
                             item = QTableWidgetItem("")
-                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.table.setItem(row, col, item)
 
     # 导出

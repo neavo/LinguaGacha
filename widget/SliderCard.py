@@ -36,11 +36,11 @@ class SliderCard(CardWidget):
         self.root.addStretch(1)
 
         # 添加控件
-        self.slider = Slider(Qt.Horizontal)
+        self.slider = Slider(Qt.Orientation.Horizontal)
         self.slider.setFixedWidth(256)
         self.slider_value_label = StrongBodyLabel(title, self)
         self.slider_value_label.setFixedWidth(48)
-        self.slider_value_label.setAlignment(Qt.AlignCenter)
+        self.slider_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.root.addWidget(self.slider)
         self.root.addWidget(self.slider_value_label)
 
