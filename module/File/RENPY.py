@@ -121,10 +121,16 @@ class RENPY(Base):
                         })
                     )
                 else:
+                    # 此时存在两种情况：
+                    # 1. 源文与译文相同
+                    # 2. 源文不为空且译文为空
+                    # 在后续翻译步骤中，语言过滤等情况可能导致实际不翻译此条目
+                    # 而如果翻译后文件中 译文 为空，则实际游戏内文本显示也将为空
+                    # 为了避免这种情况，应该在添加数据时直接设置 dst 为 src 以避免出现预期以外的空译文
                     items.append(
                         CacheItem({
                             "src": process(src),
-                            "dst": dst,
+                            "dst": process(src),
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,
