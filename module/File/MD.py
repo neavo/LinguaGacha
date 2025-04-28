@@ -2,6 +2,7 @@ import os
 import re
 
 from base.Base import Base
+from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 
 class MD(Base):
@@ -37,8 +38,11 @@ class MD(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
+            # 获取文件编码
+            encoding = TextHelper.get_enconding(path = abs_path, auto_suffix = True)
+
             # 数据处理
-            with open(abs_path, "r", encoding = "utf-8-sig") as reader:
+            with open(abs_path, "r", encoding = encoding) as reader:
                 lines = [line.removesuffix("\n") for line in reader.readlines()]
                 in_code_block = False  # 跟踪是否在代码块内
 

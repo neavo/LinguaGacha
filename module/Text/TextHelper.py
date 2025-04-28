@@ -1,6 +1,8 @@
 import re
 import unicodedata
 
+import charset_normalizer
+
 from module.Text import TextBase
 
 class TextHelper:
@@ -61,31 +63,38 @@ class TextHelper:
     VI = TextBase.VI()                                  # 越南文 (Vietnamese)
 
     # 判断一个字符是否是标点符号
-    def is_punctuation(char: str) -> bool:
-        return TextHelper.is_cjk_punctuation(char) or TextHelper.is_latin_punctuation(char) or TextHelper.is_special_punctuation(char)
+    @classmethod
+    def is_punctuation(cls, char: str) -> bool:
+        return cls.is_cjk_punctuation(char) or cls.is_latin_punctuation(char) or cls.is_special_punctuation(char)
 
     # 判断一个字符是否是汉字标点符号
-    def is_cjk_punctuation(char: str) -> bool:
-        return char in TextHelper.CJK_PUNCTUATION_SET
+    @classmethod
+    def is_cjk_punctuation(cls, char: str) -> bool:
+        return char in cls.CJK_PUNCTUATION_SET
 
     # 判断一个字符是否是拉丁标点符号
-    def is_latin_punctuation(char: str) -> bool:
-        return char in TextHelper.LATIN_PUNCTUATION_SET
+    @classmethod
+    def is_latin_punctuation(cls, char: str) -> bool:
+        return char in cls.LATIN_PUNCTUATION_SET
 
     # 判断一个字符是否是特殊标点符号
-    def is_special_punctuation(char: str) -> bool:
-        return char in TextHelper.SPECIAL_PUNCTUATION_SET
+    @classmethod
+    def is_special_punctuation(cls, char: str) -> bool:
+        return char in cls.SPECIAL_PUNCTUATION_SET
 
     # 判断输入的字符串是否包含至少一个标点符号
-    def any_punctuation(text: str) -> bool:
-        return any(TextHelper.is_punctuation(char) for char in text)
+    @classmethod
+    def any_punctuation(cls, text: str) -> bool:
+        return any(cls.is_punctuation(char) for char in text)
 
     # 判断输入的字符串是否全部为标点符号
-    def all_punctuation(text: str) -> bool:
-        return all(TextHelper.is_punctuation(char) for char in text)
+    @classmethod
+    def all_punctuation(cls, text: str) -> bool:
+        return all(cls.is_punctuation(char) for char in text)
 
     # 移除开头结尾的标点符号
-    def strip_punctuation(text: str) -> str:
+    @classmethod
+    def strip_punctuation(cls, text: str) -> str:
         text = text.strip()
 
         if not text:
@@ -95,11 +104,11 @@ class TextHelper:
         start, end = 0, len(text_list) - 1
 
         # 移除开头的标点符号
-        while start <= end and TextHelper.is_punctuation(text_list[start]):
+        while start <= end and cls.is_punctuation(text_list[start]):
             start += 1
 
         # 移除结尾的标点符号
-        while end >= start and TextHelper.is_punctuation(text_list[end]):
+        while end >= start and cls.is_punctuation(text_list[end]):
             end -= 1
 
         # 越界检测
@@ -109,16 +118,18 @@ class TextHelper:
         return "".join(text_list[start : end + 1])
 
     # 移除开头结尾的阿拉伯数字
-    def strip_arabic_numerals(text: str) -> str:
+    @classmethod
+    def strip_arabic_numerals(cls, text: str) -> str:
         return re.sub(r"^\d+|\d+$", "", text)
 
     # 按标点符号分割字符串
-    def split_by_punctuation(text: str, split_by_space: bool) -> list[str]:
+    @classmethod
+    def split_by_punctuation(cls, text: str, split_by_space: bool) -> list[str]:
         result: list[str] = []
         current_segment: list[str] = []
 
         for char in text:
-            if TextHelper.is_punctuation(char) or (split_by_space and char in (chr(0x0020), chr(0x3000))):
+            if cls.is_punctuation(char) or (split_by_space and char in (chr(0x0020), chr(0x3000))):
                 if current_segment != []:
                     result.append("".join(current_segment))
                     current_segment = []
@@ -132,14 +143,16 @@ class TextHelper:
         return [segment for segment in result if segment]
 
     # 计算字符串的实际显示长度
-    def get_display_lenght(text: str) -> int:
+    @classmethod
+    def get_display_lenght(cls, text: str) -> int:
         # unicodedata.east_asian_width(c) 返回字符 c 的东亚洲宽度属性。
         # NaH 表示窄（Narrow）、中立（Neutral）和半宽（Halfwidth）字符，这些字符通常被认为是半角字符。
         # 其他字符（如全宽字符）的宽度属性为 W 或 F，这些字符被认为是全角字符。
         return sum(1 if unicodedata.east_asian_width(c) in "NaH" else 2 for c in text)
 
     # 计算 Jaccard 相似度
-    def check_similarity_by_jaccard(x: str, y: str) -> float:
+    @classmethod
+    def check_similarity_by_jaccard(cls, x: str, y: str) -> float:
         set_x = set(x)
         set_y = set(y)
 
@@ -151,3 +164,23 @@ class TextHelper:
 
         # 计算并返回相似度，完全一致是 1，完全不同是 0
         return intersection / union if union > 0 else 0.0
+
+    # 获取文件编码
+    @classmethod
+    def get_enconding(cls, path: str, auto_suffix: bool) -> str:
+        encoding: str = "utf-8"
+
+        try:
+            encoding = charset_normalizer.from_path(path).best().encoding
+        except Exception:
+            pass
+
+        # utf-8 是 ascii 的严格超集
+        # 所以如果检测到 ascii 可视为 utf-8
+        if encoding == "ascii":
+            encoding = "utf-8"
+
+        if encoding == "utf-8" and auto_suffix == True:
+            encoding = "utf-8-sig"
+
+        return encoding
