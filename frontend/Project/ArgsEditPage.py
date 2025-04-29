@@ -63,11 +63,11 @@ class ArgsEditPage(MessageBoxBase, Base):
         scroll_area_vbox.addStretch(1)
 
     # 获取平台配置
-    def get_platform_from_config(self, id: int, config: dict) -> dict:
-        platform: dict = None
-        for platform in config.get("platforms", []):
-            if platform.get("id", 0) == id:
-                return platform
+    def get_platform_from_config(self, id: int, config: dict) -> dict[str, str | bool | int | float | list[str]]:
+        item: dict[str, str | bool | int | float | list[str]] = None
+        for item in config.get("platforms", []):
+            if item.get("id", 0) == id:
+                return item
 
     # 更新平台配置
     def update_platform_to_config(self, new: dict, config: dict) -> None:

@@ -98,13 +98,11 @@ class ModelListPage(MessageBoxBase, Base):
         self.update_sub_widgets(self.flow_card)
 
     # 获取平台配置
-    def get_platform_from_config(self, id: int, config: dict) -> None:
+    def get_platform_from_config(self, id: int, config: dict) -> dict[str, str | bool | int | float | list[str]]:
+        item: dict[str, str | bool | int | float | list[str]] = None
         for item in config.get("platforms", []):
             if item.get("id", 0) == id:
-                platform = item
-                break
-
-        return platform
+                return item
 
     # 更新平台配置
     def update_platform_to_config(self, platform: dict, config: dict) -> None:

@@ -58,7 +58,7 @@ class PostTranslationReplacementPage(QWidget, Base):
     def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get(f"{__class__.BASE}_enable"))
+            widget.get_switch_button().setChecked(config.get(f"{__class__.BASE}_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()

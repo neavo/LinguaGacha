@@ -24,8 +24,17 @@ class TranslatorRequester(Base):
     OPENAI_CLIENTS: dict[str, openai.OpenAI] = {}
     ANTHROPIC_CLIENTS: dict[str, anthropic.Anthropic] = {}
 
-    # OPENAI 思考模型 o1 o3-mini o4-mini-20240406
-    REGEX_O_Series_MODEL: re.Pattern = re.compile(r"o\d$|o\d\-", flags = re.IGNORECASE)
+    # qwen3_instruct_8b_q6k
+    RE_QWEN3: re.Pattern = re.compile(r"qwen3", flags = re.IGNORECASE)
+
+    # gemini-2.5-flash
+    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
+
+    # claude-3-7-sonnet
+    RE_CLAUDE_3_7_SONNET: re.Pattern = re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE)
+
+    # o1 o3-mini o4-mini-20240406
+    RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
 
     def __init__(self, config: dict, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
         super().__init__()
@@ -59,31 +68,31 @@ class TranslatorRequester(Base):
 
         # 发起请求
         if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
-            skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_sakura(
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_sakura(
                 messages,
                 thinking,
                 args,
             )
         elif self.platform.get("api_format") == Base.APIFormat.GOOGLE:
-            skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_google(
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_google(
                 messages,
                 thinking,
                 args,
             )
         elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
-            skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_anthropic(
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_anthropic(
                 messages,
                 thinking,
                 args,
             )
         else:
-            skip, response_think, response_result, prompt_tokens, completion_tokens = self.request_openai(
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_openai(
                 messages,
                 thinking,
                 args,
             )
 
-        return skip, response_think, response_result, prompt_tokens, completion_tokens
+        return skip, response_think, response_result, input_tokens, output_tokens
 
     # 获取客户端
     def get_client(self, platform: dict, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
@@ -145,7 +154,7 @@ class TranslatorRequester(Base):
                 return TranslatorRequester.OPENAI_CLIENTS.get(api_key)
 
     # 生成请求参数
-    def generate_sakura_args(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> dict:
+    def generate_sakura_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
@@ -158,7 +167,7 @@ class TranslatorRequester(Base):
         return args
 
     # 发起请求
-    def request_sakura(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_sakura(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
             client: openai.OpenAI = self.get_client(
@@ -179,15 +188,15 @@ class TranslatorRequester(Base):
 
         # 获取输入消耗
         try:
-            prompt_tokens = int(response.usage.prompt_tokens)
+            input_tokens = int(response.usage.input_tokens)
         except Exception:
-            prompt_tokens = 0
+            input_tokens = 0
 
-        # 获取回复消耗
+        # 获取输出消耗
         try:
-            completion_tokens = int(response.usage.completion_tokens)
+            output_tokens = int(response.usage.output_tokens)
         except Exception:
-            completion_tokens = 0
+            output_tokens = 0
 
         # Sakura 返回的内容多行文本，将其转换为 JSON 字符串
         response_result = json.dumps(
@@ -196,10 +205,10 @@ class TranslatorRequester(Base):
             ensure_ascii = False,
         )
 
-        return False, "", response_result, prompt_tokens, completion_tokens
+        return False, "", response_result, input_tokens, output_tokens
 
     # 生成请求参数
-    def generate_openai_args(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> dict:
+    def generate_openai_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
@@ -209,18 +218,26 @@ class TranslatorRequester(Base):
             }
         }
 
-        # 根据是否为 OpenAI O-Series 模型对请求参数进行处理
+        # OpenAI O-Series 模型兼容性处理
         if (
             self.platform.get("api_url").startswith("https://api.openai.com") or
-            __class__.REGEX_O_Series_MODEL.search(self.platform.get("model")) is not None
+            __class__.RE_O_SERIES.search(self.platform.get("model")) is not None
         ):
             args.pop("max_tokens", None)
             args["max_completion_tokens"] = max(4 * 1024, self.config.get("token_threshold"))
 
+        # 思考模式切换 - QWEN3
+        if __class__.RE_QWEN3.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                pass
+            else:
+                if "/no_think" not in messages[-1].get("content", ""):
+                    messages[-1]["content"] = messages[-1].get("content") + "\n" + "/no_think"
+
         return args
 
     # 发起请求
-    def request_openai(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_openai(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
             client: openai.OpenAI = self.get_client(
@@ -251,20 +268,20 @@ class TranslatorRequester(Base):
 
         # 获取输入消耗
         try:
-            prompt_tokens = int(response.usage.prompt_tokens)
+            input_tokens = int(response.usage.input_tokens)
         except Exception:
-            prompt_tokens = 0
+            input_tokens = 0
 
-        # 获取回复消耗
+        # 获取输出消耗
         try:
-            completion_tokens = int(response.usage.completion_tokens)
+            output_tokens = int(response.usage.output_tokens)
         except Exception:
-            completion_tokens = 0
+            output_tokens = 0
 
-        return False, response_think, response_result, prompt_tokens, completion_tokens
+        return False, response_think, response_result, input_tokens, output_tokens
 
     # 生成请求参数
-    def generate_google_args(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
+    def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
         args: dict = args | {
             "max_output_tokens": max(4 * 1024, self.config.get("token_threshold")),
             "safety_settings": (
@@ -287,12 +304,18 @@ class TranslatorRequester(Base):
             ),
         }
 
-        # 是否使用思考模型对请求参数进行处理
-        if any(v in self.platform.get("model") for v in ("2.5", "thinking")):
-            args["thinking_config"] = types.ThinkingConfig(
-                thinking_budget = 1024 if thinking == True else 0,
-                include_thoughts = thinking == True,
-            )
+        # 思考模式切换 - Gemini 2.5 Flash
+        if __class__.RE_GEMINI_2_5_FLASH.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget = 1024,
+                    include_thoughts = True,
+                )
+            else:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget = 0,
+                    include_thoughts = False,
+                )
 
         return {
             "model": self.platform.get("model"),
@@ -301,7 +324,7 @@ class TranslatorRequester(Base):
         }
 
     # 发起请求
-    def request_google(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> tuple[bool, str, int, int]:
+    def request_google(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, int, int]:
         try:
             # 获取客户端
             client: genai.Client = self.get_client(
@@ -320,22 +343,24 @@ class TranslatorRequester(Base):
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
-        # 获取指令消耗
+        # 获取输入消耗
         try:
-            prompt_tokens = int(response.usage_metadata.prompt_token_count)
+            input_tokens = int(response.usage_metadata.prompt_token_count)
         except Exception:
-            prompt_tokens = 0
+            input_tokens = 0
 
-        # 获取回复消耗
+        # 获取输出消耗
         try:
-            completion_tokens = int(response.usage_metadata.candidates_token_count)
+            total_token_count = int(response.usage_metadata.total_token_count)
+            prompt_token_count = int(response.usage_metadata.prompt_token_count)
+            output_tokens = total_token_count - prompt_token_count
         except Exception:
-            completion_tokens = 0
+            output_tokens = 0
 
-        return False, "", response_result, prompt_tokens, completion_tokens
+        return False, "", response_result, input_tokens, output_tokens
 
     # 生成请求参数
-    def generate_anthropic_args(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> dict:
+    def generate_anthropic_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
@@ -349,17 +374,20 @@ class TranslatorRequester(Base):
         args.pop("presence_penalty", None)
         args.pop("frequency_penalty", None)
 
-        # 根据是否为 Thinking 模型对请求参数进行处理
-        if thinking == True:
-            args["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": 1024,
-            }
+        # 思考模式切换 - Claude 3.7 Sonnet
+        if __class__.RE_CLAUDE_3_7_SONNET.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                args["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 1024,
+                }
+            else:
+                pass
 
         return args
 
     # 发起请求
-    def request_anthropic(self, messages: list[dict], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_anthropic(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
             client: anthropic.Anthropic = self.get_client(
@@ -391,14 +419,14 @@ class TranslatorRequester(Base):
 
         # 获取输入消耗
         try:
-            prompt_tokens = int(response.usage.input_tokens)
+            input_tokens = int(response.usage.input_tokens)
         except Exception:
-            prompt_tokens = 0
+            input_tokens = 0
 
-        # 获取回复消耗
+        # 获取输出消耗
         try:
-            completion_tokens = int(response.usage.output_tokens)
+            output_tokens = int(response.usage.output_tokens)
         except Exception:
-            completion_tokens = 0
+            output_tokens = 0
 
-        return False, response_think, response_result, prompt_tokens, completion_tokens
+        return False, response_think, response_result, input_tokens, output_tokens

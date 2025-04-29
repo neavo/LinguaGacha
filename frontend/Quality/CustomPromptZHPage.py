@@ -60,7 +60,7 @@ class CustomPromptZHPage(QWidget, Base):
     # 头部
     def add_widget_header(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
         def widget_init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("custom_prompt_zh_enable"))
+            widget.get_switch_button().setChecked(config.get("custom_prompt_zh_enable"))
 
         def widget_callback(widget, checked: bool) -> None:
             config = self.load_config()

@@ -98,7 +98,7 @@ class AppSettingsPage(QWidget, Base):
     # 应用字体优化
     def add_widget_font_hinting(self, parent, config) -> None:
         def init(widget) -> None:
-            widget.set_checked(config.get("font_hinting"))
+            widget.get_switch_button().setChecked(config.get("font_hinting"))
 
         def checked_changed(widget, checked: bool) -> None:
             config = self.load_config()
@@ -117,7 +117,7 @@ class AppSettingsPage(QWidget, Base):
     # 调试模式
     def add_widget_debug_mode(self, parent, config) -> None:
         def init(widget) -> None:
-            widget.set_checked(os.path.isfile("./debug.txt"))
+            widget.get_switch_button().setChecked(os.path.isfile("./debug.txt"))
 
         def checked_changed(widget, checked: bool) -> None:
             if checked == True:

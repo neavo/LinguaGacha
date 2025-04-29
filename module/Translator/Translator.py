@@ -20,7 +20,6 @@ from module.Localizer.Localizer import Localizer
 from module.Translator.TaskLimiter import TaskLimiter
 from module.Translator.TranslatorTask import TranslatorTask
 from module.Translator.TranslatorRequester import TranslatorRequester
-from module.ExpertConfig import ExpertConfig
 from module.PromptBuilder import PromptBuilder
 from module.ResultChecker import ResultChecker
 
@@ -172,8 +171,8 @@ class Translator(Base):
                 "start_time": time.time(),
                 "total_line": 0,
                 "line": 0,
-                "token": 0,
-                "total_completion_tokens": 0,
+                "total_tokens": 0,
+                "total_output_tokens": 0,
                 "time": 0,
             }
 
@@ -483,8 +482,8 @@ class Translator(Base):
                 new["start_time"] = self.extras.get("start_time", 0)
                 new["total_line"] = self.extras.get("total_line", 0)
                 new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
-                new["token"] = self.extras.get("token", 0) + result.get("prompt_tokens", 0) + result.get("completion_tokens", 0)
-                new["total_completion_tokens"] = self.extras.get("total_completion_tokens", 0) + result.get("completion_tokens", 0)
+                new["total_tokens"] = self.extras.get("total_tokens", 0) + result.get("input_tokens", 0) + result.get("output_tokens", 0)
+                new["total_output_tokens"] = self.extras.get("total_output_tokens", 0) + result.get("output_tokens", 0)
                 new["time"] = time.time() - self.extras.get("start_time", 0)
                 self.extras = new
 

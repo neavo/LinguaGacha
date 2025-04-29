@@ -1,3 +1,6 @@
+import re
+from typing import Any
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
@@ -13,9 +16,9 @@ from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
+from module.Translator.TranslatorRequester import TranslatorRequester
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
-from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -35,7 +38,8 @@ class PlatformEditPage(MessageBoxBase, Base):
         self.cancelButton.hide()
 
         # 获取平台配置
-        self.get_platform_from_config(id, config)
+        self.id = id
+        self.platform = self.get_platform_from_config(id, config)
 
         # 设置主布局
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
@@ -65,23 +69,23 @@ class PlatformEditPage(MessageBoxBase, Base):
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_api_key(self.vbox, config, window)
 
-        # 思考模式
-        if self.platform.get("api_format") in (Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
-            self.add_widget_thinking(self.vbox, config, window)
-
         # 模型名称
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_model(self.vbox, config, window)
+
+        # 思考模式
+        if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+            self.add_widget_thinking(self.vbox, config, window)
 
         # 填充
         self.vbox.addStretch(1)
 
     # 获取平台配置
-    def get_platform_from_config(self, id: int, config: dict) -> None:
-        for platform in config.get("platforms", []):
-            if platform.get("id", 0) == id:
-                self.platform: dict = platform
-                break
+    def get_platform_from_config(self, id: int, config: dict) -> dict[str, str | bool | int | float | list[str]]:
+        item: dict[str, str | bool | int | float | list[str]] = None
+        for item in config.get("platforms", []):
+            if item.get("id", 0) == id:
+                return item
 
     # 更新平台配置
     def update_platform_to_config(self, platform: dict, config: dict) -> None:
@@ -92,6 +96,7 @@ class PlatformEditPage(MessageBoxBase, Base):
 
     # 接口名称
     def add_widget_name(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("name"))
             widget.set_fixed_width(256)
@@ -114,6 +119,7 @@ class PlatformEditPage(MessageBoxBase, Base):
 
     # 接口地址
     def add_widget_api_url(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
         def init(widget: LineEditCard) -> None:
             widget.set_text(self.platform.get("api_url"))
             widget.set_fixed_width(384)
@@ -137,7 +143,7 @@ class PlatformEditPage(MessageBoxBase, Base):
     # 接口密钥
     def add_widget_api_key(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
-        def text_changed(widget: GroupCard) -> None:
+        def text_changed(widget: PlainTextEdit) -> None:
             config = self.load_config()
 
             self.platform["api_key"] = [
@@ -159,33 +165,6 @@ class PlatformEditPage(MessageBoxBase, Base):
                 Localizer.get().platform_edit_page_api_key_title,
                 Localizer.get().platform_edit_page_api_key_content,
                 init = init,
-            )
-        )
-
-    # 思考模式
-    def add_widget_thinking(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(self.platform.get("thinking", False))
-
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
-            config = self.load_config()
-            self.platform["thinking"] = checked
-            self.update_platform_to_config(self.platform, config)
-            self.save_config(config)
-
-        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
-            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Gemini-2.5-Flash"
-        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
-            content: str = f"{Localizer.get().platform_edit_page_thinking_content} Claude-3.7-Sonnet"
-        else:
-            content: str = Localizer.get().platform_edit_page_thinking_content
-
-        parent.addWidget(
-            SwitchButtonCard(
-                Localizer.get().platform_edit_page_thinking_title,
-                content,
-                init = init,
-                checked_changed = checked_changed,
             )
         )
 
@@ -218,7 +197,7 @@ class PlatformEditPage(MessageBoxBase, Base):
 
             # 更新 UI 文本
             config = self.load_config()
-            self.get_platform_from_config(self.platform.get("id"), config)
+            self.platform = self.get_platform_from_config(self.id, config)
             empty_card.set_description(
                 Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
@@ -252,3 +231,24 @@ class PlatformEditPage(MessageBoxBase, Base):
             )
         )
         drop_down_push_button.setMenu(menu)
+
+    # 思考模式
+    def add_widget_thinking(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(self.platform.get("thinking", False))
+
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+            config = self.load_config()
+            self.platform["thinking"] = checked
+            self.update_platform_to_config(self.platform, config)
+            self.save_config(config)
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().platform_edit_page_thinking_title,
+                description = Localizer.get().platform_edit_page_thinking_content,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
