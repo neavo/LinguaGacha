@@ -78,9 +78,16 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250429 v0.25.10
+  - OPT - Added support for sorting table data by clicking headers
+  - OPT - Automatically convert input data to `UTF-8` encoding
+  - OPT - Added support for switching between `Thinking Mode` and `Normal Mode` for `Qwen3` series models
+  - Fixed - File compatibility issue
+    - `RPY` Text not requiring translation is now kept original in translated files
+
 - 20250427 v0.25.9
   - OPT - Add UI setting for `Tasks per minute threshold`
-  - FIX- A few file compatibility issues
+  - FIX - File compatibility issues
     - `ALL` Fixed freezes during task generation caused by repeated full-width spaces
     - `RPY` Fixed incorrect detection of translation status for text containing quotes
 
