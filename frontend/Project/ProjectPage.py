@@ -160,7 +160,7 @@ class ProjectPage(QWidget, Base):
     def add_widget_traditional_chinese(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("traditional_chinese_enable"))
+            widget.get_switch_button().setChecked(config.get("traditional_chinese_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()

@@ -120,14 +120,14 @@ class TranslatorTask(Base):
 
         # 发起请求
         requester = TranslatorRequester(self.config, self.platform, current_round)
-        skip, response_think, response_result, prompt_tokens, completion_tokens = requester.request(self.messages)
+        skip, response_think, response_result, input_tokens, output_tokens = requester.request(self.messages)
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip == True:
             return {
                 "row_count": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
             }
 
         # 提取回复内容
@@ -192,8 +192,8 @@ class TranslatorTask(Base):
         self.print_log_table(
             check_result,
             start_time,
-            prompt_tokens,
-            completion_tokens,
+            input_tokens,
+            output_tokens,
             [line.strip() for line in src_dict.values()],
             [line.strip() for line in dst_dict.values()],
             file_log,
@@ -204,14 +204,14 @@ class TranslatorTask(Base):
         if updated_count > 0:
             return {
                 "row_count": updated_count,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
             }
         else:
             return {
                 "row_count": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
             }
 
     # 正规化

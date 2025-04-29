@@ -38,7 +38,7 @@ class AdvanceFeaturePage(QWidget, Base):
     def add_widget_mtool(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("mtool_optimizer_enable"))
+            widget.get_switch_button().setChecked(config.get("mtool_optimizer_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()
@@ -58,7 +58,7 @@ class AdvanceFeaturePage(QWidget, Base):
     def add_widget_auto_glossary(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.set_checked(config.get("auto_glossary_enable"))
+            widget.get_switch_button().setChecked(config.get("auto_glossary_enable"))
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
             config = self.load_config()

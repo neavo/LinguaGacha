@@ -1,3 +1,5 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -9,7 +11,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class SwitchButtonCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, checked_changed = None) -> None:
+    def __init__(self, title: str, description: str, init: Callable = None, checked_changed: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -43,6 +45,5 @@ class SwitchButtonCard(CardWidget):
         if callable(checked_changed):
             self.switch_button.checkedChanged.connect(lambda checked: checked_changed(self, checked))
 
-    # 设置选中状态
-    def set_checked(self, checked: bool) -> None:
-        self.switch_button.setChecked(checked)
+    def get_switch_button(self) -> SwitchButton:
+        return self.switch_button

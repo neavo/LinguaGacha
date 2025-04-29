@@ -242,7 +242,7 @@ class TranslationPage(QWidget, Base):
         if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
             return None
 
-        token = self.data.get("token", 0)
+        token = self.data.get("total_tokens", 0)
         if token < 1000:
             self.token.set_unit("Token")
             self.token.set_value(f"{token}")
@@ -253,7 +253,7 @@ class TranslationPage(QWidget, Base):
             self.token.set_unit("MToken")
             self.token.set_value(f"{(token / 1000 / 1000):.2f}")
 
-        speed = self.data.get("total_completion_tokens", 0) / max(1, time.time() - self.data.get("start_time", 0))
+        speed = self.data.get("total_output_tokens", 0) / max(1, time.time() - self.data.get("start_time", 0))
         self.waveform.add_value(speed)
         if speed < 1000:
             self.speed.set_unit("T/S")

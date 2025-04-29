@@ -155,8 +155,8 @@ class ReTranslationPage(QWidget, Base):
                 "start_time": time.time(),
                 "total_line": len([item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
                 "line": 0,
-                "token": 0,
-                "total_completion_tokens": 0,
+                "total_tokens": 0,
+                "total_output_tokens": 0,
                 "time": 0,
             })
 
