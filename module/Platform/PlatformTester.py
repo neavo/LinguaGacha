@@ -91,7 +91,7 @@ class PlatformTester(Base):
                 self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
             else:
                 success.append(key)
-                self.info(f"{Localizer.get().platofrm_tester_response_think}\n{response_result}")
+                self.info(f"{Localizer.get().platofrm_tester_response_think}\n{response_think}")
                 self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
 
         # 测试结果

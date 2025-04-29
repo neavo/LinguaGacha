@@ -188,13 +188,13 @@ class TranslatorRequester(Base):
 
         # 获取输入消耗
         try:
-            input_tokens = int(response.usage.input_tokens)
+            input_tokens = int(response.usage.prompt_tokens)
         except Exception:
             input_tokens = 0
 
         # 获取输出消耗
         try:
-            output_tokens = int(response.usage.output_tokens)
+            output_tokens = int(response.usage.completion_tokens)
         except Exception:
             output_tokens = 0
 
@@ -268,13 +268,13 @@ class TranslatorRequester(Base):
 
         # 获取输入消耗
         try:
-            input_tokens = int(response.usage.input_tokens)
+            input_tokens = int(response.usage.prompt_tokens)
         except Exception:
             input_tokens = 0
 
         # 获取输出消耗
         try:
-            output_tokens = int(response.usage.output_tokens)
+            output_tokens = int(response.usage.completion_tokens)
         except Exception:
             output_tokens = 0
 

@@ -14,3 +14,4 @@ rich
 tqdm
 httpx
 json-repair
+charset-normalizer
