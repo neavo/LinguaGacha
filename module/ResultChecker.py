@@ -24,7 +24,7 @@ class ResultChecker(Base):
 
         # 初始化
         self.output_folder: str = config.get("output_folder")
-        self.source_language: str = config.get("source_language")
+        self.source_language: BaseLanguage.Enum = config.get("source_language")
         self.glossary_data: list[dict] = config.get("glossary_data")
         self.glossary_enable: bool = config.get("glossary_enable")
         self.traditional_chinese_enable: bool = config.get("traditional_chinese_enable")
@@ -78,7 +78,7 @@ class ResultChecker(Base):
 
     # 假名残留检查
     def check_kana(self) -> None:
-        if self.source_language != BaseLanguage.JA:
+        if self.source_language != BaseLanguage.Enum.JA:
             return None
 
         count = 0
@@ -104,7 +104,7 @@ class ResultChecker(Base):
 
     # 谚文残留检查
     def check_hangeul(self) -> None:
-        if self.source_language != BaseLanguage.KO:
+        if self.source_language != BaseLanguage.Enum.KO:
             return None
 
         count = 0

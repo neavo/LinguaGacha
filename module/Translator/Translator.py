@@ -11,6 +11,7 @@ import httpx
 from tqdm import tqdm
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
@@ -44,12 +45,12 @@ class Translator(Base):
 
     # 应用关闭事件
     def app_shut_down(self, event: str, data: dict) -> None:
-        Base.WORK_STATUS = Base.Status.STOPPING
+        Base.WORK_STATUS = Base.TaskStatus.STOPPING
 
     # 翻译停止事件
     def translation_stop(self, event: str, data: dict) -> None:
         # 设置运行状态为停止中
-        Base.WORK_STATUS = Base.Status.STOPPING
+        Base.WORK_STATUS = Base.TaskStatus.STOPPING
 
         def target() -> None:
             while True:
@@ -60,7 +61,7 @@ class Translator(Base):
                     self.print("")
 
                     # 设置运行状态
-                    Base.WORK_STATUS = Base.Status.IDLE
+                    Base.WORK_STATUS = Base.TaskStatus.IDLE
                     self.emit(Base.Event.TRANSLATION_STOP_DONE, {})
                     break
 
@@ -68,7 +69,7 @@ class Translator(Base):
 
     # 翻译开始事件
     def translation_start(self, event: str, data: dict) -> None:
-        if Base.WORK_STATUS != Base.Status.IDLE:
+        if Base.WORK_STATUS != Base.TaskStatus.IDLE:
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().translator_running,
@@ -81,7 +82,7 @@ class Translator(Base):
 
     # 翻译结果手动导出事件
     def translation_manual_export(self, event: str, data: dict) -> None:
-        if Base.WORK_STATUS == Base.Status.TRANSLATING:
+        if Base.WORK_STATUS == Base.TaskStatus.TRANSLATING:
             threading.Thread(
                 target = self.translation_manual_export_target,
                 args = (event, data),
@@ -110,7 +111,7 @@ class Translator(Base):
         status = Base.TranslationStatus.UNTRANSLATED
 
         # 只有翻译状态为 无任务 时才执行检查逻辑，其他情况直接返回默认值
-        if Base.WORK_STATUS == Base.Status.IDLE:
+        if Base.WORK_STATUS == Base.TaskStatus.IDLE:
             cache_manager = CacheManager(tick = False)
             cache_manager.load_project_from_file(self.load_config().get("output_folder"))
             status = cache_manager.get_project().get_status()
@@ -125,7 +126,7 @@ class Translator(Base):
         self.translating = True
 
         # 设置翻译状态为正在翻译状态
-        Base.WORK_STATUS = Base.Status.TRANSLATING
+        Base.WORK_STATUS = Base.TaskStatus.TRANSLATING
 
         # 初始化
         self.config = self.load_config()
@@ -191,11 +192,11 @@ class Translator(Base):
         # 开始循环
         for current_round in range(self.config.get("max_round") + 1):
             # 检测是否需要停止任务
-            if Base.WORK_STATUS == Base.Status.STOPPING:
+            if Base.WORK_STATUS == Base.TaskStatus.STOPPING:
                 # 循环次数比实际最大轮次要多一轮，当触发停止翻译的事件时，最后都会从这里退出任务
                 # 执行到这里说明停止翻译的任务已经执行完毕，可以重置内部状态了
                 self.translating = False
-                Base.WORK_STATUS = Base.Status.IDLE
+                Base.WORK_STATUS = Base.TaskStatus.IDLE
                 return None
 
             # 获取 待翻译 状态的条目数量
@@ -288,7 +289,7 @@ class Translator(Base):
 
         # 重置内部状态（正常完成翻译）
         self.translating = False
-        Base.WORK_STATUS = Base.Status.IDLE
+        Base.WORK_STATUS = Base.TaskStatus.IDLE
 
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_STOP_DONE, {})

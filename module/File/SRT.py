@@ -28,8 +28,8 @@ class SRT(Base):
         self.config: dict = config
         self.input_path: str = config.get("input_folder")
         self.output_path: str = config.get("output_folder")
-        self.source_language: str = config.get("source_language")
-        self.target_language: str = config.get("target_language")
+        self.source_language: BaseLanguage.Enum = config.get("source_language")
+        self.target_language: BaseLanguage.Enum = config.get("target_language")
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:

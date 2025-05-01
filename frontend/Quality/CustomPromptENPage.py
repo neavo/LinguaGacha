@@ -1,7 +1,6 @@
 import os
 from functools import partial
 
-from PyQt5.QtCore import QEvent
 from PyQt5.QtCore import QPoint
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
@@ -17,10 +16,11 @@ from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
+from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class CustomPromptENPage(QWidget, Base):
@@ -44,7 +44,7 @@ class CustomPromptENPage(QWidget, Base):
 
         # 设置默认数据
         if config.get("custom_prompt_en_data") == None:
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.EN)
+            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
             self.save_config(config)
 
         # 设置主容器
@@ -78,7 +78,7 @@ class CustomPromptENPage(QWidget, Base):
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(BaseLanguage.EN))
+        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(BaseLanguage.Enum.EN))
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
@@ -86,7 +86,7 @@ class CustomPromptENPage(QWidget, Base):
         self.main_text.setPlainText(config.get("custom_prompt_en_data"))
         parent.addWidget(self.main_text)
 
-        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(BaseLanguage.EN).replace("\n", " "))
+        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(BaseLanguage.Enum.EN).replace("\n", " "))
         self.suffix_body.remove_title()
         parent.addWidget(self.suffix_body)
 
@@ -147,7 +147,7 @@ class CustomPromptENPage(QWidget, Base):
 
             self.main_text.setPlainText("")
             config = self.load_config()
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.EN)
+            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
             config = self.save_config(config)
             self.main_text.setPlainText(config.get("custom_prompt_en_data"))
 

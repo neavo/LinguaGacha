@@ -1,4 +1,5 @@
 import json
+from enum import StrEnum
 
 import openpyxl
 import openpyxl.styles
@@ -10,10 +11,10 @@ from qfluentwidgets import TableWidget
 
 class TableManager():
 
-    class Type():
+    class Type(StrEnum):
 
-        GLOSSARY: str = "GLOSSARY"
-        REPLACEMENT: str = "REPLACEMENT"
+        GLOSSARY = "GLOSSARY"
+        REPLACEMENT = "REPLACEMENT"
 
     def __init__(self, type: str, data: list[dict[str, str]], table: TableWidget) -> None:
         super().__init__()

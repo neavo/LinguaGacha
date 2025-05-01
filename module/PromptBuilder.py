@@ -12,34 +12,34 @@ class PromptBuilder(Base):
 
         # 初始化
         self.config: dict = config
-        self.source_language: str = config.get("source_language")
-        self.target_language: str = config.get("target_language")
+        self.source_language: BaseLanguage.Enum = config.get("source_language")
+        self.target_language: BaseLanguage.Enum = config.get("target_language")
         self.glossary_data: list[dict] = config.get("glossary_data")
         self.glossary_enable: bool = config.get("glossary_enable")
         self.auto_glossary_enable: bool = config.get("auto_glossary_enable")
 
-    def get_base(self, language: str) -> str:
+    def get_base(self, language: BaseLanguage.Enum) -> str:
         if getattr(self, "base", None) is None:
             with open(f"resource/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
                 self.base = reader.read().strip()
 
         return self.base
 
-    def get_prefix(self, language: str) -> str:
+    def get_prefix(self, language: BaseLanguage.Enum) -> str:
         if getattr(self, "prefix", None) is None:
             with open(f"resource/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
                 self.prefix = reader.read().strip()
 
         return self.prefix
 
-    def get_suffix(self, language: str) -> str:
+    def get_suffix(self, language: BaseLanguage.Enum) -> str:
         if getattr(self, "suffix", None) is None:
             with open(f"resource/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
                 self.suffix = reader.read().strip()
 
         return self.suffix
 
-    def get_suffix_glossary(self, language: str) -> str:
+    def get_suffix_glossary(self, language: BaseLanguage.Enum) -> str:
         if getattr(self, "suffix_glossary", None) is None:
             with open(f"resource/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
                 self.suffix_glossary = reader.read().strip()
@@ -49,12 +49,12 @@ class PromptBuilder(Base):
     # 获取主提示词
     def build_main(self) -> str:
         # 判断提示词语言
-        if self.target_language == BaseLanguage.ZH:
-            prompt_language = BaseLanguage.ZH
+        if self.target_language == BaseLanguage.Enum.ZH:
+            prompt_language = BaseLanguage.Enum.ZH
             source_language = BaseLanguage.get_name_zh(self.source_language)
             target_language = BaseLanguage.get_name_zh(self.target_language)
         else:
-            prompt_language = BaseLanguage.EN
+            prompt_language = BaseLanguage.Enum.EN
             source_language = BaseLanguage.get_name_en(self.source_language)
             target_language = BaseLanguage.get_name_en(self.target_language)
 
@@ -64,9 +64,9 @@ class PromptBuilder(Base):
         self.get_suffix_glossary(prompt_language)
 
         # 判断是否是否自定义提示词
-        if prompt_language == BaseLanguage.ZH and self.config.get("custom_prompt_zh_enable") == True:
+        if prompt_language == BaseLanguage.Enum.ZH and self.config.get("custom_prompt_zh_enable") == True:
             base = self.config.get("custom_prompt_zh_data")
-        elif prompt_language == BaseLanguage.EN and self.config.get("custom_prompt_en_enable") == True:
+        elif prompt_language == BaseLanguage.Enum.EN and self.config.get("custom_prompt_en_enable") == True:
             base = self.config.get("custom_prompt_en_data")
         else:
             base = self.base
@@ -88,7 +88,7 @@ class PromptBuilder(Base):
     def build_preceding(self, preceding_items: list[CacheItem]) -> str:
         if len(preceding_items) == 0:
             return ""
-        elif self.target_language == BaseLanguage.ZH:
+        elif self.target_language == BaseLanguage.Enum.ZH:
             return (
                 "参考上文："
                 + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
@@ -125,7 +125,7 @@ class PromptBuilder(Base):
         # 返回结果
         if dict_lines == []:
             return ""
-        elif self.target_language == BaseLanguage.ZH:
+        elif self.target_language == BaseLanguage.Enum.ZH:
             return (
                 "术语表："
                 + "\n" + "\n".join(dict_lines)
@@ -177,7 +177,7 @@ class PromptBuilder(Base):
             return ""
 
         # 判断提示词语言
-        if self.target_language == BaseLanguage.ZH:
+        if self.target_language == BaseLanguage.Enum.ZH:
             prefix: str = "控制字符示例："
         else:
             prefix: str = "Control Characters Samples:"
@@ -190,7 +190,7 @@ class PromptBuilder(Base):
             json.dumps({k: v}, indent = None, ensure_ascii = False) for k, v in src_dict.items()
         )
 
-        if self.target_language == BaseLanguage.ZH:
+        if self.target_language == BaseLanguage.Enum.ZH:
             return (
                 "输入："
                 "\n" + "```jsonline"

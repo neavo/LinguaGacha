@@ -4,6 +4,7 @@ import json
 import threading
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Localizer.Localizer import Localizer

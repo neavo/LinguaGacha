@@ -23,6 +23,7 @@ from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import IndeterminateProgressRing
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from widget.DashboardCard import DashboardCard
 from widget.WaveformWidget import WaveformWidget
@@ -71,10 +72,10 @@ class TranslationPage(QWidget, Base):
         # 初始化
         self.data = {}
         self.status_text = {
-            Base.Status.IDLE: Localizer.get().translation_page_status_idle,
-            Base.Status.TESTING: Localizer.get().translation_page_status_testing,
-            Base.Status.TRANSLATING: Localizer.get().translation_page_status_translating,
-            Base.Status.STOPPING: Localizer.get().translation_page_status_stopping,
+            Base.TaskStatus.IDLE: Localizer.get().translation_page_status_idle,
+            Base.TaskStatus.TESTING: Localizer.get().translation_page_status_testing,
+            Base.TaskStatus.TRANSLATING: Localizer.get().translation_page_status_translating,
+            Base.TaskStatus.STOPPING: Localizer.get().translation_page_status_stopping,
         }
 
         # 载入配置文件
@@ -134,25 +135,25 @@ class TranslationPage(QWidget, Base):
 
     # 更新按钮状态事件
     def update_button_status(self, event: str, data: dict) -> None:
-        if Base.WORK_STATUS == Base.Status.IDLE:
+        if Base.WORK_STATUS == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Base.WORK_STATUS == Base.Status.TESTING:
+        elif Base.WORK_STATUS == Base.TaskStatus.TESTING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Base.WORK_STATUS == Base.Status.TRANSLATING:
+        elif Base.WORK_STATUS == Base.TaskStatus.TRANSLATING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_export.setEnabled(True)
-        elif Base.WORK_STATUS == Base.Status.STOPPING:
+        elif Base.WORK_STATUS == Base.TaskStatus.STOPPING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
 
-        if Base.WORK_STATUS == Base.Status.IDLE and data.get("status") == Base.TranslationStatus.TRANSLATING:
+        if Base.WORK_STATUS == Base.TaskStatus.IDLE and data.get("status") == Base.TranslationStatus.TRANSLATING:
             self.action_continue.setEnabled(True)
         else:
             self.action_continue.setEnabled(False)
@@ -171,7 +172,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         if self.data.get("start_time", 0) == 0:
@@ -202,7 +203,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         line = self.data.get("line", 0)
@@ -239,7 +240,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        if Base.WORK_STATUS not in (Base.Status.STOPPING, Base.Status.TRANSLATING):
+        if Base.WORK_STATUS not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         token = self.data.get("total_tokens", 0)
@@ -264,11 +265,11 @@ class TranslationPage(QWidget, Base):
 
     # 更新进度环
     def update_status(self, data: dict) -> None:
-        if Base.WORK_STATUS == Base.Status.STOPPING:
+        if Base.WORK_STATUS == Base.TaskStatus.STOPPING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
             self.ring.setFormat(f"{Localizer.get().translation_page_status_stopping}\n{percent * 100:.2f}%")
-        elif Base.WORK_STATUS == Base.Status.TRANSLATING:
+        elif Base.WORK_STATUS == Base.TaskStatus.TRANSLATING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
             self.ring.setFormat(f"{Localizer.get().translation_page_status_translating}\n{percent * 100:.2f}%")

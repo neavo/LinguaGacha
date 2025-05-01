@@ -86,7 +86,7 @@ if __name__ == "__main__":
     setTheme(Theme.DARK if config.get("theme", "light") == "dark" else Theme.LIGHT)
 
     # 设置应用语言
-    Localizer.set_app_language(config.get("app_language", BaseLanguage.ZH))
+    Localizer.set_app_language(config.get("app_language", BaseLanguage.Enum.ZH))
 
     # 打印日志
     LogManager.info(f"LinguaGacha {version}")
@@ -110,7 +110,6 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     if config.get("font_hinting", True) == True:
         font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     else:

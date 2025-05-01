@@ -9,9 +9,9 @@ class CacheProject(BaseData):
         super().__init__()
 
         # 默认值
-        self.id: str = ""                                           # 项目 ID
-        self.status: str = Base.TranslationStatus.UNTRANSLATED      # 翻译状态
-        self.extras: dict = {}                                      # 额外数据
+        self.id: str = ""                                                               # 项目 ID
+        self.status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED       # 翻译状态
+        self.extras: dict = {}                                                          # 额外数据
 
         # 初始化
         for k, v in args.items():
@@ -31,14 +31,14 @@ class CacheProject(BaseData):
             self.id = id
 
     # 获取翻译状态
-    def get_status(self) -> int:
+    def get_status(self) -> Base.TranslationStatus:
         with self.lock:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, translation_status: int) -> None:
+    def set_status(self, status: Base.TranslationStatus) -> None:
         with self.lock:
-            self.status = translation_status
+            self.status = status
 
     # 获取额外数据
     def get_extras(self) -> dict:

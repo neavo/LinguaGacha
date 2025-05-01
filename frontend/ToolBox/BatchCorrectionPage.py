@@ -1,11 +1,11 @@
 import os
 import re
+import json
 import shutil
 import threading
 
 import openpyxl
 import openpyxl.worksheet.worksheet
-import json
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
@@ -19,19 +19,20 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from base.EventManager import EventManager
 from widget.EmptyCard import EmptyCard
 from widget.Separator import Separator
 from widget.CommandBarCard import CommandBarCard
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
-from module.TableManager import TableManager
 from module.Localizer.Localizer import Localizer
 from module.Localizer.LocalizerEN import LocalizerEN
 from module.Localizer.LocalizerZH import LocalizerZH
+from module.TableManager import TableManager
 
 class BatchCorrectionPage(QWidget, Base):
 
-    SINGLE: tuple[str] = (
+    SINGLE: tuple[CacheItem.FileType] = (
         CacheItem.FileType.MD,
         CacheItem.FileType.TXT,
         CacheItem.FileType.ASS,
@@ -40,7 +41,7 @@ class BatchCorrectionPage(QWidget, Base):
         CacheItem.FileType.MESSAGEJSON,
     )
 
-    DOUBLE: tuple[str] = (
+    DOUBLE: tuple[CacheItem.FileType] = (
         CacheItem.FileType.XLSX,
         CacheItem.FileType.WOLFXLSX,
         CacheItem.FileType.RENPY,

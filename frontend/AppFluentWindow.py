@@ -21,6 +21,7 @@ from qfluentwidgets import NavigationAvatarWidget
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
@@ -56,7 +57,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 默认配置
         self.default = {
             "theme": "light",
-            "app_language": BaseLanguage.ZH,
+            "app_language": BaseLanguage.Enum.ZH,
         }
 
         # 载入并保存默认配置
@@ -159,11 +160,11 @@ class AppFluentWindow(FluentWindow, Base):
 
         if message_box.exec():
             config = self.load_config()
-            config["app_language"] = BaseLanguage.ZH
+            config["app_language"] = BaseLanguage.Enum.ZH
             self.save_config(config)
         else:
             config = self.load_config()
-            config["app_language"] = BaseLanguage.EN
+            config["app_language"] = BaseLanguage.Enum.EN
             self.save_config(config)
 
         self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -396,7 +397,7 @@ class AppFluentWindow(FluentWindow, Base):
             Localizer.get().app_custom_prompt_navigation_item,
             NavigationItemPosition.SCROLL,
         )
-        if Localizer.get_app_language() == BaseLanguage.EN:
+        if Localizer.get_app_language() == BaseLanguage.Enum.EN:
             self.addSubInterface(
                 CustomPromptENPage("custom_prompt_en_page", self),
                 FluentIcon.PENCIL_INK,

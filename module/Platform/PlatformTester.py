@@ -2,6 +2,7 @@ import os
 import threading
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 
@@ -15,7 +16,7 @@ class PlatformTester(Base):
 
     # 接口测试开始事件
     def platform_test_start(self, event: str, data: dict) -> None:
-        if Base.WORK_STATUS != Base.Status.IDLE:
+        if Base.WORK_STATUS != Base.TaskStatus.IDLE:
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().platofrm_tester_running,
@@ -29,7 +30,7 @@ class PlatformTester(Base):
     # 接口测试开始
     def platform_test_start_target(self, event: str, data: dict) -> None:
         # 更新运行状态
-        Base.WORK_STATUS = Base.Status.TESTING
+        Base.WORK_STATUS = Base.TaskStatus.TESTING
 
         platform = {}
         config = self.load_config()
@@ -104,7 +105,7 @@ class PlatformTester(Base):
         self.info(result_msg)
 
         # 更新运行状态
-        Base.WORK_STATUS = Base.Status.IDLE
+        Base.WORK_STATUS = Base.TaskStatus.IDLE
 
         # 发送完成事件
         self.emit(Base.Event.PLATFORM_TEST_DONE, {

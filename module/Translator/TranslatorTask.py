@@ -11,9 +11,9 @@ from rich.console import Console
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.EventManager import EventManager
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheManager import CacheManager
 from module.Fixer.CodeFixer import CodeFixer
 from module.Fixer.KanaFixer import KanaFixer
 from module.Fixer.EscapeFixer import EscapeFixer
@@ -105,7 +105,7 @@ class TranslatorTask(Base):
         start_time = time.time()
 
         # 检测是否需要停止任务
-        if Base.WORK_STATUS == Base.Status.STOPPING:
+        if Base.WORK_STATUS == Base.TaskStatus.STOPPING:
             return {}
 
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
@@ -311,7 +311,7 @@ class TranslatorTask(Base):
 
     # 中文字型转换
     def convert_chinese_character_form(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.get("target_language") != BaseLanguage.ZH:
+        if self.config.get("target_language") != BaseLanguage.Enum.ZH:
             return data
 
         if self.config.get("traditional_chinese_enable") == True:
@@ -330,10 +330,10 @@ class TranslatorTask(Base):
                 continue
 
             # 假名修复
-            if source_language == BaseLanguage.JA:
+            if source_language == BaseLanguage.Enum.JA:
                 dst_dict[k] = KanaFixer.fix(dst_dict[k])
             # 谚文修复
-            elif source_language == BaseLanguage.KO:
+            elif source_language == BaseLanguage.Enum.KO:
                 dst_dict[k] = HangeulFixer.fix(dst_dict[k])
 
             # 代码修复

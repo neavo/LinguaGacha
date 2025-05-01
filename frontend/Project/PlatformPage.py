@@ -13,6 +13,7 @@ from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import PrimaryDropDownPushButton
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
 from frontend.Project.PlatformEditPage import PlatformEditPage
