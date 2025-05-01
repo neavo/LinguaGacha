@@ -36,7 +36,7 @@ class TXT(Base):
             rel_path = os.path.relpath(abs_path, self.input_path)
 
             # 获取文件编码
-            encoding = TextHelper.get_enconding(path = abs_path, auto_suffix = True)
+            encoding = TextHelper.get_enconding(path = abs_path, add_sig_to_utf8 = True)
 
             # 数据处理
             with open(abs_path, "r", encoding = encoding) as reader:
