@@ -167,7 +167,7 @@ class TextHelper:
 
     # 获取文件编码
     @classmethod
-    def get_enconding(cls, path: str, auto_suffix: bool) -> str:
+    def get_enconding(cls, path: str, add_sig_to_utf8: bool) -> str:
         encoding: str = "utf-8"
 
         try:
@@ -180,7 +180,8 @@ class TextHelper:
         if encoding == "ascii":
             encoding = "utf-8"
 
-        if encoding == "utf-8" and auto_suffix == True:
+        # 如果需要添加 BOM 标识
+        if add_sig_to_utf8 == True and (encoding == "utf_8" or encoding == "utf-8"):
             encoding = "utf-8-sig"
 
         return encoding
