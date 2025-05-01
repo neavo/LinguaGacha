@@ -1,7 +1,4 @@
-import os
 import time
-import random
-from datetime import datetime
 
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
@@ -19,17 +16,7 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from module.File.MD import MD
-from module.File.SRT import SRT
-from module.File.TXT import TXT
-from module.File.ASS import ASS
-from module.File.EPUB import EPUB
-from module.File.XLSX import XLSX
-from module.File.WOLFXLSX import WOLFXLSX
-from module.File.TRANS.TRANS import TRANS
-from module.File.RENPY import RENPY
-from module.File.KVJSON import KVJSON
-from module.File.MESSAGEJSON import MESSAGEJSON
+from base.EventManager import EventManager
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager

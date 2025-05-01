@@ -1,5 +1,6 @@
 import re
 import threading
+from enum import StrEnum
 
 import tiktoken
 import tiktoken_ext
@@ -15,28 +16,28 @@ class CacheItem(BaseData):
     tiktoken_ext
     openai_public
 
-    class FileType():
+    class FileType(StrEnum):
 
-        MD: str = "MD"                                  # .md Markdown
-        TXT: str = "TXT"                                # .txt 文本文件
-        SRT: str = "SRT"                                # .srt 字幕文件
-        ASS: str = "ASS"                                # .ass 字幕文件
-        EPUB: str = "EPUB"                              # .epub
-        XLSX: str = "XLSX"                              # .xlsx Translator++ SExtractor
-        WOLFXLSX: str = "WOLFXLSX"                      # .xlsx WOLF 官方翻译工具导出文件
-        RENPY: str = "RENPY"                            # .rpy RenPy
-        TRANS: str = "TRANS"                            # .trans Translator++
-        KVJSON: str = "KVJSON"                          # .json MTool
-        MESSAGEJSON: str = "MESSAGEJSON"                # .json SExtractor
+        MD = "MD"                                  # .md Markdown
+        TXT = "TXT"                                # .txt 文本文件
+        SRT = "SRT"                                # .srt 字幕文件
+        ASS = "ASS"                                # .ass 字幕文件
+        EPUB = "EPUB"                              # .epub
+        XLSX = "XLSX"                              # .xlsx Translator++ SExtractor
+        WOLFXLSX = "WOLFXLSX"                      # .xlsx WOLF 官方翻译工具导出文件
+        RENPY = "RENPY"                            # .rpy RenPy
+        TRANS = "TRANS"                            # .trans Translator++
+        KVJSON = "KVJSON"                          # .json MTool
+        MESSAGEJSON = "MESSAGEJSON"                # .json SExtractor
 
-    class TextType():
+    class TextType(StrEnum):
 
-        NONE: str = "NONE"                              # 无类型，即纯文本
-        MD: str = "MD"                                  # Markdown
-        KAG: str = "KAG"                                # KAG 游戏文本
-        WOLF: str = "WOLF"                              # WOLF 游戏文本
-        RENPY: str = "RENPY"                            # RENPY 游戏文本
-        RPGMAKER: str = "RPGMAKER"                      # RPGMAKER 游戏文本
+        NONE = "NONE"                              # 无类型，即纯文本
+        MD = "MD"                                  # Markdown
+        KAG = "KAG"                                # KAG 游戏文本
+        WOLF = "WOLF"                              # WOLF 游戏文本
+        RENPY = "RENPY"                            # RENPY 游戏文本
+        RPGMAKER = "RPGMAKER"                      # RPGMAKER 游戏文本
 
     # 缓存 Token 数量
     TOKEN_COUNT_CACHE: dict[str, int] = {}
@@ -65,19 +66,19 @@ class CacheItem(BaseData):
         super().__init__()
 
         # 默认值
-        self.src: str = ""                                              # 原文
-        self.dst: str = ""                                              # 译文
-        self.name_src: str | tuple[str] = None                          # 角色姓名原文
-        self.name_dst: str | tuple[str] = None                          # 角色姓名译文
-        self.extra_field: str | dict = ""                               # 额外字段原文
-        self.tag: str = ""                                              # 标签
-        self.row: int = 0                                               # 行号
-        self.file_type: str = ""                                        # 原始文件的类型
-        self.file_path: str = ""                                        # 原始文件的相对路径
-        self.text_type: str = CacheItem.TextType.NONE                   # 文本的实际类型
-        self.status: str = Base.TranslationStatus.UNTRANSLATED          # 翻译状态
-        self.retry_count: int = 0                                       # 重试次数，当前只有单独重试的时候才增加此计数
-        self.skip_internal_filter: bool = False                         # 跳过内置过滤器
+        self.src: str = ""                                                          # 原文
+        self.dst: str = ""                                                          # 译文
+        self.name_src: str | tuple[str] = None                                      # 角色姓名原文
+        self.name_dst: str | tuple[str] = None                                      # 角色姓名译文
+        self.extra_field: str | dict = ""                                           # 额外字段原文
+        self.tag: str = ""                                                          # 标签
+        self.row: int = 0                                                           # 行号
+        self.file_type: __class__.FileType = ""                                     # 文件的类型
+        self.file_path: str = ""                                                    # 文件的相对路径
+        self.text_type: __class__.TextType = __class__.TextType.NONE                # 文本的实际类型
+        self.status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED   # 翻译状态
+        self.retry_count: int = 0                                                   # 重试次数，当前只有单独重试的时候才增加此计数
+        self.skip_internal_filter: bool = False                                     # 跳过内置过滤器
 
         # 初始化
         for k, v in args.items():
@@ -88,15 +89,15 @@ class CacheItem(BaseData):
 
         # 如果文件类型是 XLSX、TRANS、KVJSON、MESSAGEJSON，且没有文本类型，则判断实际的文本类型
         if (
-            self.get_file_type() in (CacheItem.FileType.XLSX, CacheItem.FileType.KVJSON, CacheItem.FileType.MESSAGEJSON)
-            and self.get_text_type() == CacheItem.TextType.NONE
+            self.get_file_type() in (__class__.FileType.XLSX, __class__.FileType.KVJSON, __class__.FileType.MESSAGEJSON)
+            and self.get_text_type() == __class__.TextType.NONE
         ):
-            if any(v.search(self.get_src()) is not None for v in CacheItem.REGEX_WOLF):
-                self.set_text_type(CacheItem.TextType.WOLF)
-            elif any(v.search(self.get_src()) is not None for v in CacheItem.REGEX_RPGMaker):
-                self.set_text_type(CacheItem.TextType.RPGMAKER)
-            elif any(v.search(self.get_src()) is not None for v in CacheItem.REGEX_RENPY):
-                self.set_text_type(CacheItem.TextType.RENPY)
+            if any(v.search(self.get_src()) is not None for v in __class__.REGEX_WOLF):
+                self.set_text_type(__class__.TextType.WOLF)
+            elif any(v.search(self.get_src()) is not None for v in __class__.REGEX_RPGMaker):
+                self.set_text_type(__class__.TextType.RPGMAKER)
+            elif any(v.search(self.get_src()) is not None for v in __class__.REGEX_RENPY):
+                self.set_text_type(__class__.TextType.RENPY)
 
     # 获取原文
     def get_src(self) -> str:
@@ -174,12 +175,12 @@ class CacheItem(BaseData):
             self.row = row
 
     # 获取文件类型
-    def get_file_type(self) -> str:
+    def get_file_type(self) -> FileType:
         with self.lock:
             return self.file_type
 
     # 设置文件类型
-    def set_file_type(self, type: str) -> None:
+    def set_file_type(self, type: FileType) -> None:
         with self.lock:
             self.file_type = type
 
@@ -194,22 +195,22 @@ class CacheItem(BaseData):
             self.file_path = path
 
     # 获取文本类型
-    def get_text_type(self) -> str:
+    def get_text_type(self) -> TextType:
         with self.lock:
             return self.text_type
 
     # 设置文本类型
-    def set_text_type(self, type: str) -> None:
+    def set_text_type(self, type: TextType) -> None:
         with self.lock:
             self.text_type = type
 
     # 获取翻译状态
-    def get_status(self) -> str:
+    def get_status(self) -> Base.TranslationStatus:
         with self.lock:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, status: str) -> None:
+    def set_status(self, status: Base.TranslationStatus) -> None:
         with self.lock:
             self.status = status
 
@@ -236,10 +237,10 @@ class CacheItem(BaseData):
     # 获取 Token 数量
     def get_token_count(self) -> int:
         with self.lock:
-            if self.src not in CacheItem.TOKEN_COUNT_CACHE:
-                CacheItem.TOKEN_COUNT_CACHE[self.src] = len(tiktoken.get_encoding("o200k_base").encode(self.src))
+            if self.src not in __class__.TOKEN_COUNT_CACHE:
+                __class__.TOKEN_COUNT_CACHE[self.src] = len(tiktoken.get_encoding("o200k_base").encode(self.src))
 
-            return CacheItem.TOKEN_COUNT_CACHE[self.src]
+            return __class__.TOKEN_COUNT_CACHE[self.src]
 
     # 获取第一个角色姓名原文
     def get_first_name_src(self) -> str:

@@ -1,75 +1,75 @@
 import os
+import json
 import threading
+from enum import StrEnum
 from typing import Callable
 
-import json
-
-from base.EventManager import EventManager
 from base.LogManager import LogManager
+from base.EventManager import EventManager
 
 class Base():
 
     # 事件
-    class Event():
+    class Event(StrEnum):
 
-        PLATFORM_TEST_DONE: str = "PLATFORM_TEST_DONE"                          # API 测试完成
-        PLATFORM_TEST_START: str = "PLATFORM_TEST_START"                        # API 测试开始
-        TRANSLATION_START: str = "TRANSLATION_START"                            # 翻译开始
-        TRANSLATION_STOP: str = "TRANSLATION_STOP"                              # 翻译停止
-        TRANSLATION_STOP_DONE: str = "TRANSLATION_STOP_DONE"                    # 翻译停止完成
-        TRANSLATION_UPDATE: str = "TRANSLATION_UPDATE"                          # 翻译状态更新
-        TRANSLATION_MANUAL_EXPORT: str = "TRANSLATION_MANUAL_EXPORT"            # 翻译结果手动导出
-        CACHE_FILE_AUTO_SAVE: str = "CACHE_FILE_AUTO_SAVE"                      # 缓存文件自动保存
-        PROJECT_STATUS: str = "PROJECT_STATUS"                                  # 项目状态检查
-        PROJECT_STATUS_CHECK_DONE: str = "PROJECT_STATUS_CHECK_DONE"            # 项目状态检查完成
-        APP_UPDATE_CHECK: str = "APP_UPDATE_CHECK"                              # 检查更新
-        APP_UPDATE_CHECK_DONE: str = "APP_UPDATE_CHECK_DONE"                    # 检查更新 - 完成
-        APP_UPDATE_DOWNLOAD: str = "APP_UPDATE_DOWNLOAD"                        # 检查更新 - 下载
-        APP_UPDATE_DOWNLOAD_UPDATE: str = "APP_UPDATE_DOWNLOAD_UPDATE"          # 检查更新 - 下载进度更新
-        APP_UPDATE_EXTRACT: str = "APP_UPDATE_EXTRACT"                          # 检查更新 - 解压
-        APP_TOAST_SHOW: str = "APP_TOAST_SHOW"                                  # 显示 Toast
-        GLOSSARY_REFRESH: str = "GLOSSARY_REFRESH"                              # 术语表刷新
-        APP_SHUT_DOWN: str = "APP_SHUT_DOWN"                                    # 应用关闭
+        PLATFORM_TEST_DONE = "PLATFORM_TEST_DONE"                          # API 测试完成
+        PLATFORM_TEST_START = "PLATFORM_TEST_START"                        # API 测试开始
+        TRANSLATION_START = "TRANSLATION_START"                            # 翻译开始
+        TRANSLATION_STOP = "TRANSLATION_STOP"                              # 翻译停止
+        TRANSLATION_STOP_DONE = "TRANSLATION_STOP_DONE"                    # 翻译停止完成
+        TRANSLATION_UPDATE = "TRANSLATION_UPDATE"                          # 翻译状态更新
+        TRANSLATION_MANUAL_EXPORT = "TRANSLATION_MANUAL_EXPORT"            # 翻译结果手动导出
+        CACHE_FILE_AUTO_SAVE = "CACHE_FILE_AUTO_SAVE"                      # 缓存文件自动保存
+        PROJECT_STATUS = "PROJECT_STATUS"                                  # 项目状态检查
+        PROJECT_STATUS_CHECK_DONE = "PROJECT_STATUS_CHECK_DONE"            # 项目状态检查完成
+        APP_UPDATE_CHECK = "APP_UPDATE_CHECK"                              # 检查更新
+        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"                    # 检查更新 - 完成
+        APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"                        # 检查更新 - 下载
+        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"          # 检查更新 - 下载进度更新
+        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                          # 检查更新 - 解压
+        APP_TOAST_SHOW = "APP_TOAST_SHOW"                                  # 显示 Toast
+        GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                              # 术语表刷新
+        APP_SHUT_DOWN = "APP_SHUT_DOWN"                                    # 应用关闭
+
+    # 接口格式
+    class APIFormat(StrEnum):
+
+        OPENAI = "OpenAI"
+        GOOGLE = "Google"
+        ANTHROPIC = "Anthropic"
+        SAKURALLM = "SakuraLLM"
+
+    # 接口格式
+    class ToastType(StrEnum):
+
+        INFO = "INFO"
+        ERROR = "ERROR"
+        SUCCESS = "SUCCESS"
+        WARNING = "WARNING"
 
     # 任务状态
-    class Status():
+    class TaskStatus(StrEnum):
 
-        IDLE: str = "IDLE"                                                      # 无任务
-        TESTING: str = "TESTING"                                                # 运行中
-        TRANSLATING: str = "TRANSLATING"                                        # 运行中
-        STOPPING: str = "STOPPING"                                              # 停止中
-
-    # 接口格式
-    class APIFormat():
-
-        OPENAI: str = "OpenAI"
-        GOOGLE: str = "Google"
-        ANTHROPIC: str = "Anthropic"
-        SAKURALLM: str = "SakuraLLM"
-
-    # 接口格式
-    class ToastType():
-
-        INFO: str = "INFO"
-        ERROR: str = "ERROR"
-        SUCCESS: str = "SUCCESS"
-        WARNING: str = "WARNING"
+        IDLE = "IDLE"                                                       # 无任务
+        TESTING = "TESTING"                                                 # 运行中
+        TRANSLATING = "TRANSLATING"                                         # 运行中
+        STOPPING = "STOPPING"                                               # 停止中
 
     # 翻译状态
-    class TranslationStatus():
+    class TranslationStatus(StrEnum):
 
-        UNTRANSLATED: str = "UNTRANSLATED"                      # 待翻译
-        TRANSLATING: str = "TRANSLATING"                        # 翻译中
-        TRANSLATED: str = "TRANSLATED"                          # 已翻译
-        TRANSLATED_IN_PAST: str = "TRANSLATED_IN_PAST"          # 过去已翻译
-        EXCLUDED: str = "EXCLUDED"                              # 已排除
-        DUPLICATED: str = "DUPLICATED"                          # 重复条目
+        UNTRANSLATED = "UNTRANSLATED"                                       # 待翻译
+        TRANSLATING = "TRANSLATING"                                         # 翻译中
+        TRANSLATED = "TRANSLATED"                                           # 已翻译
+        TRANSLATED_IN_PAST = "TRANSLATED_IN_PAST"                           # 过去已翻译
+        EXCLUDED = "EXCLUDED"                                               # 已排除
+        DUPLICATED = "DUPLICATED"                                           # 重复条目
 
     # 配置文件路径
     CONFIG_PATH: str = "./resource/config.json"
 
     # 类变量
-    WORK_STATUS: str = Status.IDLE
+    WORK_STATUS: TaskStatus = TaskStatus.IDLE
 
     # 类线程锁
     CONFIG_FILE_LOCK: threading.Lock = threading.Lock()
@@ -157,13 +157,13 @@ class Base():
         return config
 
     # 触发事件
-    def emit(self, event: str, data: dict) -> None:
+    def emit(self, event: Event, data: dict) -> None:
         EventManager.get().emit(event, data)
 
     # 订阅事件
-    def subscribe(self, event: str, hanlder: Callable) -> None:
+    def subscribe(self, event: Event, hanlder: Callable) -> None:
         EventManager.get().subscribe(event, hanlder)
 
     # 取消订阅事件
-    def unsubscribe(self, event: str, hanlder: Callable) -> None:
+    def unsubscribe(self, event: Event, hanlder: Callable) -> None:
         EventManager.get().unsubscribe(event, hanlder)

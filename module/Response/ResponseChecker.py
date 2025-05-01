@@ -48,7 +48,7 @@ class ResponseChecker(Base):
         self.target_language = self.config.get("target_language")
 
     # 检查
-    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
+    def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: BaseLanguage.Enum) -> list[str]:
         # 数据解析失败
         if len(dst_dict) == 0 or all(v == "" or v == None for v in dst_dict.values()):
             return [ResponseChecker.Error.FAIL_DATA] * len(src_dict)
@@ -70,7 +70,7 @@ class ResponseChecker(Base):
         return [ResponseChecker.Error.NONE] * len(src_dict)
 
     # 逐行检查错误
-    def check_lines(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: str) -> list[str]:
+    def check_lines(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: BaseLanguage.Enum) -> list[str]:
         check_result: list[int] = []
         for src, dst, item in zip(src_dict.values(), dst_dict.values(), item_dict.values()):
             src = src.strip()
@@ -102,24 +102,24 @@ class ResponseChecker(Base):
                 continue
 
             # 当原文语言为日语，且译文中包含平假名或片假名字符时，判断为 假名残留
-            if source_language == BaseLanguage.JA and (TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)):
+            if source_language == BaseLanguage.Enum.JA and (TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)):
                 check_result.append(ResponseChecker.Error.LINE_ERROR_KANA)
                 continue
 
             # 当原文语言为韩语，且译文中包含谚文字符时，判断为 谚文残留
-            if source_language == BaseLanguage.KO and TextHelper.KO.any_hangeul(dst):
+            if source_language == BaseLanguage.Enum.KO and TextHelper.KO.any_hangeul(dst):
                 check_result.append(ResponseChecker.Error.LINE_ERROR_HANGEUL)
                 continue
 
             # 判断是否包含或相似
             if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80 == True:
                 # 日翻中时，只有译文至少包含一个平假名或片假名字符时，才判断为 相似
-                if self.source_language == BaseLanguage.JA and self.target_language == BaseLanguage.ZH:
+                if self.source_language == BaseLanguage.Enum.JA and self.target_language == BaseLanguage.Enum.ZH:
                     if TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst):
                         check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
                         continue
                 # 韩翻中时，只有译文至少包含一个谚文字符时，才判断为 相似
-                elif self.source_language == BaseLanguage.KO and self.target_language == BaseLanguage.ZH:
+                elif self.source_language == BaseLanguage.Enum.KO and self.target_language == BaseLanguage.Enum.ZH:
                     if TextHelper.KO.any_hangeul(dst):
                         check_result.append(ResponseChecker.Error.LINE_ERROR_SIMILARITY)
                         continue

@@ -3,8 +3,6 @@ import time
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import QEvent
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -17,6 +15,7 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager

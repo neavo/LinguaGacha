@@ -4,28 +4,30 @@ import signal
 import shutil
 import zipfile
 import threading
+from enum import StrEnum
 
 import httpx
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import QUrl
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 
 class VersionManager(Base):
 
-    class Status():
+    class Status(StrEnum):
 
-        NONE: str = "NONE"
-        NEW_VERSION: str = "NEW_VERSION"
-        UPDATING: str = "UPDATING"
-        DOWNLOADED: str = "DOWNLOADED"
+        NONE = "NONE"
+        NEW_VERSION = "NEW_VERSION"
+        UPDATING = "UPDATING"
+        DOWNLOADED = "DOWNLOADED"
 
     # 版本号
     VERSION: str = "v0.0.0"
 
     # 更新状态
-    STATUS: str = Status.NONE
+    STATUS: Status = Status.NONE
 
     # 更新时的临时文件
     TEMP_FILE_PATH: str = "./resource/update.temp"

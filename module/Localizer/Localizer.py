@@ -4,11 +4,11 @@ from module.Localizer.LocalizerEN import LocalizerEN
 
 class Localizer():
 
-    APP_LANGUAGE = BaseLanguage.ZH
+    APP_LANGUAGE = BaseLanguage.Enum.ZH
 
     @classmethod
     def get(cls) -> LocalizerZH | LocalizerEN:
-        if cls.APP_LANGUAGE == BaseLanguage.EN:
+        if cls.APP_LANGUAGE == BaseLanguage.Enum.EN:
             return LocalizerEN
         else:
             return LocalizerZH
@@ -18,5 +18,5 @@ class Localizer():
         return cls.APP_LANGUAGE
 
     @classmethod
-    def set_app_language(cls, app_language: str) -> None:
+    def set_app_language(cls, app_language: BaseLanguage) -> None:
         cls.APP_LANGUAGE = app_language

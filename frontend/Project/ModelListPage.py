@@ -16,8 +16,9 @@ from qfluentwidgets import PillPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from widget.FlowCard import FlowCard
+from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
+from widget.FlowCard import FlowCard
 from widget.LineEditMessageBox import LineEditMessageBox
 
 class ModelListPage(MessageBoxBase, Base):
@@ -112,7 +113,7 @@ class ModelListPage(MessageBoxBase, Base):
                 break
 
     # 获取模型
-    def get_models(self, api_url: str, api_key: str, api_format: str) -> list[str]:
+    def get_models(self, api_url: str, api_key: str, api_format: Base.APIFormat) -> list[str]:
         result = []
 
         try:

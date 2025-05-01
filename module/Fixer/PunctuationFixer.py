@@ -55,7 +55,7 @@ class PunctuationFixer():
 
     # 检查并替换
     @classmethod
-    def fix(cls, src: str, dst: str, source_language: str, target_language: str) -> str:
+    def fix(cls, src: str, dst: str, source_language: BaseLanguage.Enum, target_language: BaseLanguage.Enum) -> str:
         # 首尾标点修正
         dst = cls.fix_start_end(src, dst, target_language)
 
@@ -115,7 +115,7 @@ class PunctuationFixer():
 
     # 首尾标点修正
     @classmethod
-    def fix_start_end(self, src: str, dst: str, target_language: str) -> str:
+    def fix_start_end(self, src: str, dst: str, target_language: BaseLanguage.Enum) -> str:
         # 纠正首尾错误的引号
         if dst.startswith(("'", "\"", "‘", "“", "「", "『")):
             if src.startswith(("「", "『")):

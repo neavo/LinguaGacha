@@ -20,8 +20,8 @@ class ProjectPage(QWidget, Base):
 
         # 默认配置
         self.default = {
-            "source_language": BaseLanguage.JA,
-            "target_language": BaseLanguage.ZH,
+            "source_language": BaseLanguage.Enum.JA,
+            "target_language": BaseLanguage.Enum.ZH,
             "input_folder": "./input",
             "output_folder": "./output",
             "traditional_chinese_enable": False,
@@ -31,7 +31,7 @@ class ProjectPage(QWidget, Base):
         config = self.save_config(self.load_config_from_default())
 
         # 根据应用语言构建语言列表
-        if Localizer.get_app_language() == BaseLanguage.ZH:
+        if Localizer.get_app_language() == BaseLanguage.Enum.ZH:
             self.languages = [BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()]
         else:
             self.languages = [BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()]
