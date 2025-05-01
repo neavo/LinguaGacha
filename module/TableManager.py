@@ -1,12 +1,12 @@
 import json
-import openpyxl
-import openpyxl.worksheet.worksheet
 
+import openpyxl
+import openpyxl.styles
+import openpyxl.worksheet.worksheet
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QModelIndex
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import TableWidget
-
-from module.XLSXHelper import XLSXHelper
 
 class TableManager():
 
@@ -23,42 +23,58 @@ class TableManager():
         self.data = data
         self.table = table
 
-    # 向表格更新数据
-    def sync(self) -> None:
-        # 清空表格
-        self.table.clearContents()
+        # 更新中标识
+        self.updating: bool = False
 
-        # 设置表格行数
-        self.table.setRowCount(max(12, len(self.data)))
+    # 重置
+    def reset(self) -> None:
+        self.data = []
+        self.table.clearContents()
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+
+    # 同步
+    def sync(self) -> None:
+        # 更新开始
+        self.set_updating(True)
 
         # 去重
         self.data = list({v.get("src"): v for v in self.data}.values())
+
+        # 填充表格
+        self.table.setRowCount(max(12, len(self.data) + 3))
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item is not None:
+                    item.setText("")
+                else:
+                    self.table.setItem(row, col, self.generate_item(col))
 
         # 遍历表格
         if self.type == __class__.Type.GLOSSARY:
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
                     if col == 0:
-                        item = QTableWidgetItem(v.get("src",  ""))
+                        self.table.item(row, col).setText(v.get("src", ""))
                     elif col == 1:
-                        item = QTableWidgetItem(v.get("dst", ""))
+                        self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
-                        item = QTableWidgetItem(v.get("info", ""))
-                    self.table.setItem(row, col, item)
+                        self.table.item(row, col).setText(v.get("info", ""))
         else:
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
                     if col == 0:
-                        item = QTableWidgetItem(v.get("src",  ""))
+                        self.table.item(row, col).setText(v.get("src", ""))
                     elif col == 1:
-                        item = QTableWidgetItem(v.get("dst", ""))
+                        self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
                         if v.get("regex", False) == True:
-                            item = QTableWidgetItem("✅")
+                            self.table.item(row, col).setText("✅")
                         else:
-                            item = QTableWidgetItem("")
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    self.table.setItem(row, col, item)
+                            self.table.item(row, col).setText("")
+
+        # 更新结束
+        self.set_updating(False)
 
     # 导出
     def export(self, path: str) -> None:
@@ -71,17 +87,17 @@ class TableManager():
         sheet.column_dimensions["B"].width = 32
         sheet.column_dimensions["C"].width = 32
         sheet.column_dimensions["D"].width = 32
-        XLSXHelper.set_cell_value(sheet, 1, 1, "src", 10)
-        XLSXHelper.set_cell_value(sheet, 1, 2, "dst", 10)
-        XLSXHelper.set_cell_value(sheet, 1, 3, "info", 10)
-        XLSXHelper.set_cell_value(sheet, 1, 4, "regex", 10)
+        TableManager.set_cell_value(sheet, 1, 1, "src", 10)
+        TableManager.set_cell_value(sheet, 1, 2, "dst", 10)
+        TableManager.set_cell_value(sheet, 1, 3, "info", 10)
+        TableManager.set_cell_value(sheet, 1, 4, "regex", 10)
 
         # 将数据写入工作表
         for row, item in enumerate(self.data):
-            XLSXHelper.set_cell_value(sheet, row + 2, 1, item.get("src", ""), 10)
-            XLSXHelper.set_cell_value(sheet, row + 2, 2, item.get("dst", ""), 10)
-            XLSXHelper.set_cell_value(sheet, row + 2, 3, item.get("info", ""), 10)
-            XLSXHelper.set_cell_value(sheet, row + 2, 4, item.get("regex", ""), 10)
+            TableManager.set_cell_value(sheet, row + 2, 1, item.get("src", ""), 10)
+            TableManager.set_cell_value(sheet, row + 2, 2, item.get("dst", ""), 10)
+            TableManager.set_cell_value(sheet, row + 2, 3, item.get("info", ""), 10)
+            TableManager.set_cell_value(sheet, row + 2, 4, item.get("regex", ""), 10)
 
         # 保存工作簿
         book.save(f"{path}.xlsx")
@@ -94,12 +110,124 @@ class TableManager():
     def get_data(self) -> list[dict[str, str]]:
         return self.data
 
-    # 获取数据
+    # 设置数据
     def set_data(self, data: list[dict[str, str]]) -> None:
         self.data = data
 
+    # 获取更新中标识
+    def get_updating(self) -> bool:
+        return self.updating
+
+    # 设置更新中标识
+    def set_updating(self, updating: bool) -> None:
+        self.updating = updating
+
+    # 生成新的条目
+    def generate_item(self, col: int) -> QTableWidgetItem:
+        item = QTableWidgetItem("")
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if self.type == __class__.Type.GLOSSARY:
+            pass
+        else:
+            if col == 2:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+        return item
+
+    # 设置单元格值
+    @classmethod
+    def set_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int, value: str, font_size: int = 9) -> None:
+        if value is None:
+            value = ""
+        elif isinstance(value, str) == False:
+            value = str(value)
+        # 如果单元格内容以单引号 ' 开头，Excel 会将其视为普通文本而不是公式
+        elif value.startswith("=") == True:
+            value = "'" + value
+
+        sheet.cell(row = row, column = column).value = value
+        sheet.cell(row = row, column = column).font = openpyxl.styles.Font(size = font_size)
+        sheet.cell(row = row, column = column).alignment  = openpyxl.styles.Alignment(wrap_text = True, vertical = "center", horizontal = "left")
+
+    # 插入行事件
+    def insert_row(self) -> None:
+        selected_index = self.table.selectedIndexes()
+
+        # 有效性检验
+        if selected_index == None or len(selected_index) == 0:
+            return
+
+        # 插入空行
+        self.table.insertRow(selected_index[0].row())
+
+    # 删除行事件
+    def delete_row(self) -> None:
+        selected_index = self.table.selectedIndexes()
+
+        # 有效性检验
+        if selected_index == None or len(selected_index) == 0:
+            return
+
+        # 逆序删除并去重以避免索引错误
+        for row in sorted({item.row() for item in selected_index}, reverse = True):
+            self.table.removeRow(row)
+
+    # 切换正则事件
+    def switch_regex(self) -> None:
+        selected_index: list[QModelIndex] = self.table.selectedIndexes()
+
+        # 有效性检验
+        if selected_index == None or len(selected_index) == 0:
+            return
+
+        # 切换正则模式
+        for row in {index.row() for index in selected_index}:
+            item = self.table.item(row, 2)
+            if item is None:
+                item = QTableWidgetItem()
+                self.table.setItem(row, 2, item)
+            if item.text().strip() != "✅":
+                item.setText("✅")
+            else:
+                item.setText("")
+
+    # 排序事件
+    def sort_indicator_changed(self, column: int, order: int) -> None:
+        # 更新开始
+        self.set_updating(True)
+
+        # 查找空行
+        empty_rows: list[int] = []
+        for row in range(self.table.rowCount()):
+            if all(
+                isinstance(self.table.item(row, col), QTableWidgetItem) and self.table.item(row, col).text() == ""
+                for col in range(self.table.columnCount())
+            ):
+                empty_rows.append(row)
+
+        # 逆序删除并去重以避免索引错误
+        for row in sorted(empty_rows, reverse = True):
+            self.table.removeRow(row)
+
+        # 执行排序
+        self.table.sortByColumn(column, order)
+
+        # 补齐空行并插入空文本
+        self.table.setRowCount(self.table.rowCount() + len(empty_rows))
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item is not None:
+                    pass
+                else:
+                    self.table.setItem(row, col, self.generate_item(col))
+
+        # 更新结束
+        self.set_updating(False)
+
     # 从表格加载数据
-    def load_from_table(self) -> None:
+    def append_data_from_table(self) -> None:
         for row in range(self.table.rowCount()):
             # 获取当前行所有条目
             data: list[QTableWidgetItem] = [
@@ -130,7 +258,7 @@ class TableManager():
                 )
 
     # 从文件加载数据
-    def load_from_file(self, path: str) -> None:
+    def append_data_from_file(self, path: str) -> None:
         result: list[dict[str, str]] = []
 
         if path.lower().endswith(".json"):

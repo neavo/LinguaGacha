@@ -8,7 +8,7 @@ import openpyxl.worksheet.worksheet
 
 from base.Base import Base
 from module.Cache.CacheItem import CacheItem
-from module.XLSXHelper import XLSXHelper
+from module.TableManager import TableManager
 
 class WOLFXLSX(Base):
 
@@ -145,8 +145,8 @@ class WOLFXLSX(Base):
             # 将数据写入工作表
             for item in items:
                 row: int = item.get_row()
-                XLSXHelper.set_cell_value(sheet, row, column = 6, value = item.get_src())
-                XLSXHelper.set_cell_value(sheet, row, column = 7, value = item.get_dst())
+                TableManager.set_cell_value(sheet, row, column = 6, value = item.get_src())
+                TableManager.set_cell_value(sheet, row, column = 7, value = item.get_dst())
 
             # 保存工作簿
             abs_path = f"{self.output_path}/{rel_path}"

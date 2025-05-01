@@ -75,8 +75,8 @@ class GlossaryPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().glossary_page_head_title,
-                Localizer.get().glossary_page_head_content,
+                getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_head_content"),
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -86,28 +86,24 @@ class GlossaryPage(QWidget, Base):
     def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
 
         def item_changed(item: QTableWidgetItem) -> None:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if self.table_manager.get_updating() == True:
+                pass
+            else:
+                # 清空数据，再从表格加载数据
+                self.table_manager.set_data([])
+                self.table_manager.append_data_from_table()
+                self.table_manager.sync()
 
-        def insert_row(table: TableWidget) -> None:
-            selected_index = self.table.selectedIndexes()
+                # 更新配置文件
+                config = self.load_config()
+                config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
+                config = self.save_config(config)
 
-            # 有效性检验
-            if selected_index == None or len(selected_index) == 0:
-                return
-
-            # 插入空行
-            table.insertRow(selected_index[0].row())
-
-        def delete_row(table: TableWidget) -> None:
-            selected_index = self.table.selectedIndexes()
-
-            # 有效性检验
-            if selected_index == None or len(selected_index) == 0:
-                return
-
-            # 逆序删除并去重以避免索引错误
-            for row in sorted({item.row() for item in selected_index}, reverse = True):
-                table.removeRow(row)
+                # 弹出提示
+                self.emit(Base.Event.APP_TOAST_SHOW, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_save_toast,
+                })
 
         def custom_context_menu_requested(position: QPoint) -> None:
             menu = RoundMenu("", self.table)
@@ -115,7 +111,7 @@ class GlossaryPage(QWidget, Base):
                 Action(
                     FluentIcon.ADD,
                     Localizer.get().quality_insert_row,
-                    triggered = lambda _: insert_row(self.table),
+                    triggered = self.table_manager.insert_row,
                 )
             )
             menu.addSeparator()
@@ -123,7 +119,7 @@ class GlossaryPage(QWidget, Base):
                 Action(
                     FluentIcon.DELETE,
                     Localizer.get().quality_delete_row,
-                    triggered = lambda _: delete_row(self.table),
+                    triggered = self.table_manager.delete_row,
                 )
             )
             menu.exec(self.table.viewport().mapToGlobal(position))
@@ -136,8 +132,6 @@ class GlossaryPage(QWidget, Base):
         self.table.setBorderVisible(True)
         self.table.setWordWrap(False)
         self.table.setColumnCount(3)
-        self.table.setSortingEnabled(True)
-        self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
@@ -145,28 +139,30 @@ class GlossaryPage(QWidget, Base):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
-        # 注册事件
-        self.table.itemChanged.connect(item_changed)
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(custom_context_menu_requested)
-
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
-                Localizer.get().glossary_page_table_row_01,
-                Localizer.get().glossary_page_table_row_02,
-                Localizer.get().glossary_page_table_row_03,
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_01"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_02"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
             )
         )
 
         # 向表格更新数据
         self.table_manager = TableManager(
-            type = TableManager.Type.GLOSSARY,
+            type = TableManager.Type.REPLACEMENT,
             data = config.get(f"{__class__.BASE}_data"),
             table = self.table,
         )
         self.table_manager.sync()
+
+        # 注册事件
+        self.table.itemChanged.connect(item_changed)
+        self.table.customContextMenuRequested.connect(custom_context_menu_requested)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.horizontalHeader().setSortIndicatorShown(True)
+        self.table.horizontalHeader().sortIndicatorChanged.connect(self.table_manager.sort_indicator_changed)
 
     # 底部
     def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
@@ -178,11 +174,9 @@ class GlossaryPage(QWidget, Base):
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_add(self.command_bar_card, config, window)
-        self.add_command_bar_action_save(self.command_bar_card, config, window)
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
+        self.add_command_bar_action_kg(self.command_bar_card, config, window)
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # 导入
@@ -195,7 +189,10 @@ class GlossaryPage(QWidget, Base):
                 return
 
             # 从文件加载数据
-            self.table_manager.load_from_file(path)
+            data = self.table_manager.get_data()
+            self.table_manager.reset()
+            self.table_manager.set_data(data)
+            self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
             # 更新配置文件
@@ -218,7 +215,7 @@ class GlossaryPage(QWidget, Base):
 
         def triggered() -> None:
             # 导出文件
-            self.table_manager.export(Localizer.get().path_glossary_export)
+            self.table_manager.export(getattr(Localizer.get(), f"{__class__.BASE}_export"))
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -228,47 +225,6 @@ class GlossaryPage(QWidget, Base):
 
         parent.add_action(
             Action(FluentIcon.SHARE, Localizer.get().quality_export, parent, triggered = triggered),
-        )
-
-    # 添加新行
-    def add_command_bar_action_add(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
-
-        def triggered() -> None:
-            # 添加新行
-            self.table.setRowCount(self.table.rowCount() + 1)
-
-            # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_add_toast,
-            })
-
-        parent.add_action(
-            Action(FluentIcon.ADD_TO, Localizer.get().quality_add, parent, triggered = triggered),
-        )
-
-    # 保存
-    def add_command_bar_action_save(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
-
-        def triggered() -> None:
-            # 清空数据，再从表格加载数据
-            self.table_manager.set_data([])
-            self.table_manager.load_from_table()
-            self.table_manager.sync()
-
-            # 更新配置文件
-            config = self.load_config()
-            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
-            config = self.save_config(config)
-
-            # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            })
-
-        parent.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
         )
 
     # 预设
@@ -296,6 +252,7 @@ class GlossaryPage(QWidget, Base):
                 return
 
             # 重置数据
+            self.table_manager.reset()
             self.table_manager.set_data(self.default.get(f"{__class__.BASE}_data"))
             self.table_manager.sync()
 
@@ -314,7 +271,10 @@ class GlossaryPage(QWidget, Base):
             path: str = f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
 
             # 从文件加载数据
-            self.table_manager.load_from_file(path)
+            data = self.table_manager.get_data()
+            self.table_manager.reset()
+            self.table_manager.set_data(data)
+            self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
             # 更新配置文件

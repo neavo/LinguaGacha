@@ -19,15 +19,15 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from module.File.FileManager import FileManager
-from module.Cache.CacheItem import CacheItem
-from module.XLSXHelper import XLSXHelper
 from widget.EmptyCard import EmptyCard
 from widget.Separator import Separator
+from widget.CommandBarCard import CommandBarCard
+from module.File.FileManager import FileManager
+from module.Cache.CacheItem import CacheItem
+from module.TableManager import TableManager
 from module.Localizer.Localizer import Localizer
 from module.Localizer.LocalizerEN import LocalizerEN
 from module.Localizer.LocalizerZH import LocalizerZH
-from widget.CommandBarCard import CommandBarCard
 
 class BatchCorrectionPage(QWidget, Base):
 
@@ -210,11 +210,11 @@ class BatchCorrectionPage(QWidget, Base):
         sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
 
         # 添加表头
-        XLSXHelper.set_cell_value(sheet, 1, 1, Localizer.get().batch_correction_page_title_01)
-        XLSXHelper.set_cell_value(sheet, 1, 2, Localizer.get().batch_correction_page_title_02)
-        XLSXHelper.set_cell_value(sheet, 1, 3, Localizer.get().batch_correction_page_title_03)
-        XLSXHelper.set_cell_value(sheet, 1, 4, Localizer.get().batch_correction_page_title_04)
-        XLSXHelper.set_cell_value(sheet, 1, 5, Localizer.get().batch_correction_page_title_05)
+        TableManager.set_cell_value(sheet, 1, 1, Localizer.get().batch_correction_page_title_01)
+        TableManager.set_cell_value(sheet, 1, 2, Localizer.get().batch_correction_page_title_02)
+        TableManager.set_cell_value(sheet, 1, 3, Localizer.get().batch_correction_page_title_03)
+        TableManager.set_cell_value(sheet, 1, 4, Localizer.get().batch_correction_page_title_04)
+        TableManager.set_cell_value(sheet, 1, 5, Localizer.get().batch_correction_page_title_05)
 
         # 设置表头
         sheet.auto_filter.ref = "A1:E1"
@@ -226,11 +226,11 @@ class BatchCorrectionPage(QWidget, Base):
 
         # 添加数据
         for i, item in enumerate(items):
-            XLSXHelper.set_cell_value(sheet, i + 2, 1, item.get("file_path"))
-            XLSXHelper.set_cell_value(sheet, i + 2, 2, "\n".join(item.get("group")))
-            XLSXHelper.set_cell_value(sheet, i + 2, 3, item.get("src"))
-            XLSXHelper.set_cell_value(sheet, i + 2, 4, item.get("dst"))
-            XLSXHelper.set_cell_value(sheet, i + 2, 5, item.get("dst"))
+            TableManager.set_cell_value(sheet, i + 2, 1, item.get("file_path"))
+            TableManager.set_cell_value(sheet, i + 2, 2, "\n".join(item.get("group")))
+            TableManager.set_cell_value(sheet, i + 2, 3, item.get("src"))
+            TableManager.set_cell_value(sheet, i + 2, 4, item.get("dst"))
+            TableManager.set_cell_value(sheet, i + 2, 5, item.get("dst"))
 
         # 保存工作簿
         abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}"
