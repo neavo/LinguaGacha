@@ -78,26 +78,23 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250502 v0.25.11
+  - OPT - Added support for auto-saving table data in `Glossary` `Pre-translation Replace` `Post-translation Replace`
+  - FIX - File compatibility
+    - `SRT` Fixed an issue where the first entry could not be read from files encoded with `UTF-8-BOM`
+
 - 20250429 v0.25.10
   - OPT - Added support for sorting table data by clicking headers
   - OPT - Automatically convert input data to `UTF-8` encoding
   - OPT - Added support for switching between `Thinking Mode` and `Normal Mode` for `Qwen3` series models
-  - Fixed - File compatibility issue
+  - Fixed - File compatibility
     - `RPY` Text not requiring translation is now kept original in translated files
 
 - 20250427 v0.25.9
   - OPT - Add UI setting for `Tasks per minute threshold`
-  - FIX - File compatibility issues
+  - FIX - File compatibility
     - `ALL` Fixed freezes during task generation caused by repeated full-width spaces
     - `RPY` Fixed incorrect detection of translation status for text containing quotes
-
-- 20250423 v0.25.8
-  - OPT - Optimize file reading compatibility
-
-- 20250422 v0.25.7
-  - OPT - Model parameter customization can now be turned off (default is off)
-  - NEW - Requests per minute threshold [Expert Settings](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)
-    - Primarily used with certain rate-limited APIs, such as [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder
