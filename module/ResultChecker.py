@@ -208,12 +208,15 @@ class ResultChecker(Base):
         count = 0
         result: dict[str, dict] = {}
         for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
+            seen = set()
             for v in self.glossary_data:
                 glossary_src = v.get("src", "")
                 glossary_dst = v.get("dst", "")
                 if glossary_src in src_repl and glossary_dst not in dst_repl:
-                    count = count + 1
+                    seen.add(item.get_src())
                     result.setdefault(f"{item.get_file_path()} | {glossary_src} -> {glossary_dst}", {})[item.get_src()] = item.get_dst()
+            # 避免对同一条目重复计数
+            count = count + len(seen)
 
         if count == 0:
             self.info(Localizer.get().file_checker_glossary)
