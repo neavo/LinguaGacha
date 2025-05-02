@@ -12,10 +12,10 @@ from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 
+from base.LogManager import LogManager
 from base.BaseLanguage import BaseLanguage
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
-from base.LogManager import LogManager
 from module.Translator.Translator import Translator
 from module.ExpertConfig import ExpertConfig
 from module.VersionManager import VersionManager

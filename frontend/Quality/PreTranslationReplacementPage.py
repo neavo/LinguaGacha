@@ -21,7 +21,6 @@ from qfluentwidgets import CommandButton
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
-from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -215,7 +214,7 @@ class PreTranslationReplacementPage(QWidget, Base):
 
         def triggered() -> None:
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"{__class__.BASE}_export"))
+            self.table_manager.export(getattr(Localizer.get(), f"path_{__class__.BASE}_export"))
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
