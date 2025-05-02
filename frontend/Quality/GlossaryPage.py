@@ -21,7 +21,6 @@ from qfluentwidgets import CommandButton
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
-from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -60,6 +59,7 @@ class GlossaryPage(QWidget, Base):
     # 术语表刷新事件
     def glossary_refresh(self, event: str, data: dict) -> None:
         config = self.load_config()
+        self.table_manager.reset()
         self.table_manager.set_data(config.get(f"{__class__.BASE}_data"))
         self.table_manager.sync()
 
@@ -152,7 +152,7 @@ class GlossaryPage(QWidget, Base):
 
         # 向表格更新数据
         self.table_manager = TableManager(
-            type = TableManager.Type.REPLACEMENT,
+            type = TableManager.Type.GLOSSARY,
             data = config.get(f"{__class__.BASE}_data"),
             table = self.table,
         )
@@ -216,7 +216,7 @@ class GlossaryPage(QWidget, Base):
 
         def triggered() -> None:
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"{__class__.BASE}_export"))
+            self.table_manager.export(getattr(Localizer.get(), f"path_{__class__.BASE}_export"))
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
