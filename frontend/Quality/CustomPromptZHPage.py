@@ -16,7 +16,6 @@ from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from base.EventManager import EventManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder

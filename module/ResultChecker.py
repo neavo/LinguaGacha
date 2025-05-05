@@ -127,7 +127,7 @@ class ResultChecker(Base):
     def check_text_preserve(self) -> None:
         count = 0
         result: dict[str, str] = {
-            Localizer.get().file_checker_code_alert_key: Localizer.get().file_checker_code_alert_value,
+            Localizer.get().file_checker_text_preserve_alert_key: Localizer.get().file_checker_text_preserve_alert_value,
         }
 
         for item in self.items_translated:
@@ -136,14 +136,14 @@ class ResultChecker(Base):
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
 
         if count == 0:
-            self.info(Localizer.get().file_checker_code)
+            self.info(Localizer.get().file_checker_text_preserve)
         else:
             target = f"{self.config.output_folder}/{Localizer.get().path_result_check_text_preserve}".replace("\\", "/")
             with open(target, "w", encoding = "utf-8") as writer:
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
             # 打印日志
-            message = Localizer.get().file_checker_code_full.replace("{COUNT}", f"{count}")
+            message = Localizer.get().file_checker_text_preserve_full.replace("{COUNT}", f"{count}")
             message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
             message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_text_preserve}")
             self.info(message)
