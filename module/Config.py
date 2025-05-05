@@ -5,6 +5,8 @@ from typing import Self
 
 from base.BaseData import BaseData
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
+from module.Localizer.Localizer import Localizer
 
 class Config(BaseData):
 
@@ -90,8 +92,9 @@ class Config(BaseData):
                         for k, v in config.items():
                             if hasattr(self, k):
                                 setattr(self, k, v)
-            except Exception:
-                pass
+            except Exception as e:
+                LogManager.error(f"{Localizer.get().log_read_file_fail}", e)
+
         return self
 
     def save(self) -> Self:
@@ -100,8 +103,9 @@ class Config(BaseData):
                 os.makedirs(os.path.dirname(__class__.CONFIG_PATH), exist_ok = True)
                 with open(__class__.CONFIG_PATH, "w", encoding = "utf-8") as writer:
                     json.dump(self.get_vars(), writer, indent = 4, ensure_ascii = False)
-            except Exception:
-                pass
+            except Exception as e:
+                LogManager.error(f"{Localizer.get().log_write_file_fail}", e)
+
         return self
 
     # 重置专家模式

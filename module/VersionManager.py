@@ -11,7 +11,6 @@ from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import QUrl
 
 from base.Base import Base
-from base.EventManager import EventManager
 from module.Localizer.Localizer import Localizer
 
 class VersionManager(Base):

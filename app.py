@@ -78,13 +78,14 @@ if __name__ == "__main__":
 
     # 打印日志
     LogManager.info(f"LinguaGacha {version}")
-    LogManager.debug(Localizer.get().log_expert_mode) if LogManager.is_expert_mode() else None
+    LogManager.info(Localizer.get().log_expert_mode) if LogManager.is_expert_mode() else None
 
     # 网络代理
     if config.proxy_enable == False or config.proxy_url == "":
         os.environ.pop("http_proxy", None)
         os.environ.pop("https_proxy", None)
     else:
+        LogManager.info(Localizer.get().log_proxy)
         os.environ["http_proxy"] = config.proxy_url
         os.environ["https_proxy"] = config.proxy_url
 
