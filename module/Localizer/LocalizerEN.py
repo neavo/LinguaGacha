@@ -56,23 +56,27 @@ class LocalizerEN(LocalizerZH):
     app_project_page: str = "Project Settings"
     app_translation_page: str = "Start Translation"
     app_basic_settings_page: str = "Basic Settings"
-    app_advance_Feature_page: str = "Advanced Features"
+    app_expert_settings_page: str = "Expert Settings"
     app_glossary_page: str = "Glossary"
-    app_pre_translation_replacement_page: str = "Pre-Translation Replacement"
-    app_post_translation_replacement_page: str = "Post-Translation Replacement"
+    app_text_preserve_page: str = "Text Preserve"
+    app_text_replacement_page: str = "Text Replacement"
+    app_pre_translation_replacement_page: str = "Pre-Translation"
+    app_post_translation_replacement_page: str = "Post-Translation"
     app_custom_prompt_navigation_item: str = "Custom Prompts"
     app_custom_prompt_zh_page: str = "Chinese Prompts"
     app_custom_prompt_en_page: str = "English Prompts"
-    app_tool_box_page: str = "Treasure Chest"
+    app_laboratory_page: str = "Laboratory"
+    app_treasure_chest_page: str = "Treasure Chest"
 
     # 路径
     path_bilingual: str = "bilingual"
     path_glossary_export: str = "export_glossary"
+    path_text_preserve_export: str = "export_text_preserve"
     path_pre_translation_replacement_export: str = "export_pre_translation_replacement"
     path_post_translation_replacement_export: str = "export_post_translation_replacement"
     path_result_check_kana: str = "result_check_residual_kana.json"
     path_result_check_hangeul: str = "result_check_residual_hangeul.json"
-    path_result_check_code: str = "result_check_incorrect_code.json"
+    path_result_check_text_preserve: str = "result_check_text_preserve.json"
     path_result_check_similarity: str = "result_check_high_similarity.json"
     path_result_check_glossary: str = "result_check_incorrect_glossary.json"
     path_result_check_untranslated: str = "result_check_untranslated_entries.json"
@@ -81,7 +85,7 @@ class LocalizerEN(LocalizerZH):
     path_result_name_field_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
-    log_debug_mode: str = "Debug mode enabled …"
+    log_expert_mode: str = "Expert Mode Enabled …"
     log_config_file_not_exist: str = "Configuration file not found …"
     log_api_test_fail: str = "API test failed … "
     log_task_fail: str = "Translation task failed …"
@@ -152,15 +156,16 @@ class LocalizerEN(LocalizerZH):
     response_decoder_translation_by_rule: str = "Translation data -> rule parsing after split, total {COUNT} entries"
 
     # 应用设置
-    app_settings_page_proxy_url: str = "Please enter network proxy address …"
-    app_settings_page_proxy_url_title: str = "Network Proxy"
-    app_settings_page_proxy_url_content: str = "When enabled, requests will be sent to the API using the set proxy address, e.g., http://127.0.0.1:7890"
-    app_settings_page_font_hinting_title: str = "Font Optimization"
-    app_settings_page_font_hinting_content: str = "When enabled, app ui font edge rendering will be smoother (will take effect after app restart)"
-    app_settings_page_debug_title: str = "Debug Mode"
-    app_settings_page_debug_content: str = "When enabled, the app will display additional debug information"
+    app_settings_page_expert_title: str = "Expert Mode"
+    app_settings_page_expert_content: str = "Enabling this feature will display more log information and provide more advanced setting options (takes effect after app restart)"
+    app_settings_page_font_hinting_title: str = "Font Hinting"
+    app_settings_page_font_hinting_content: str = "Enabling this feature will render the edges of UI fonts more smoothly (takes effect after app restart)"
     app_settings_page_scale_factor_title: str = "Global Scale Factor"
-    app_settings_page_scale_factor_content: str = "When enabled, the app interface will be scaled according to the selected ratio (will take effect after app restart)"
+    app_settings_page_scale_factor_content: str = "Enabling this feature will scale the app interface according to the selected ratio (takes effect after app restart)"
+    app_settings_page_proxy_url: str = "Please enter the network proxy address.."
+    app_settings_page_proxy_url_title: str = "Network Proxy"
+    app_settings_page_proxy_url_content: str = "Enabling this feature will use the set proxy address to send network requests, e.g., http://127.0.0.1:7890"
+    app_settings_page_restart: str = "The app needs to restart for changes to take effect. Please confirm.."
 
     # 接口管理
     platform_page_api_test_result: str = "API test result: {SUCCESS} successful, {FAILURE} failed …"
@@ -268,30 +273,20 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_max_round_title: str = "Maximum Rounds"
     basic_settings_page_max_round_content: str = "After completing a round of tasks, failed tasks will be retried in a new round until all are completed or the round threshold is reached"
 
-    # 高级功能
-    advance_feature_page_mtool_optimizer_enable: str = "MTool Optimizer"
-    advance_feature_page_mtool_optimizer_enable_desc: str = (
-        "Can reduce translation time and token usage by up to 40% when translating MTool text"
+    # 专家设置
+    expert_settings_page_preceding_lines_threshold: str = "Preceding Lines Threshold"
+    expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, 3 lines by default"
+    expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
+    expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
+    expert_settings_page_deduplication_in_bilingual: str = "Deduplicate Lines in Bilingual Output"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "In bilingual output files, remove lines where the translation is identical to the original text, enabled by default"
+    expert_settings_page_result_checker_retry_count_threshold: str = "Result Checker - Retry Count Reached Threshold"
+    expert_settings_page_result_checker_retry_count_threshold_desc: str = (
+        "Include a list of items that <font color='darkgoldenrod'><b>reached the retry threshold</b></font> in the result check report, disabled by default"
         "<br>"
-        "May lead to issues like <font color='darkgoldenrod'><b>residual original text</b></font> or <font color='darkgoldenrod'><b>incoherent sentences</b></font>"
+        "• During translation result checks, if an item still fails after reaching the retry threshold, the last result is used"
         "<br>"
-        "It should <font color='darkgoldenrod'><b>only be enabled when translating MTool text</b></font>"
-        "<br>"
-        "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
-        ""
-        ""
-    )
-    advance_feature_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
-    advance_feature_page_auto_glossary_enable_desc: str = (
-        "Attempts to automatically add missing proper noun entries to the glossary during translation"
-        "<br>"
-        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
-        "<br>"
-        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
-        "<br>"
-        "May generate <font color='darkgoldenrod'><b>incorrect or inappropriate terminology entries</b></font>, please <font color='darkgoldenrod'><b>use your own judgment</b></font> on whether to enable it"
-        "<br>"
-        "It is recommended to use this feature only with powerful models like DeepSeek V3/R1"
+        "• This feature allows you to individually verify if the final result taken is actually correct"
     )
 
     # 质量类通用
@@ -321,6 +316,20 @@ class LocalizerEN(LocalizerZH):
     glossary_page_table_row_03: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 
+    # Text Protection
+    text_preserve_page_head_title: str = "Custom Text Protection Rules"
+    text_preserve_page_head_content: str = (
+        "Protect text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
+        "<br>"
+        "<font color='darkgoldenrod'><b>Disabled by default</b></font>, please fully understand how to use this feature before enabling it"
+        "<br>"
+        "• Enabled - Protects text by matching it against the <font color='darkgoldenrod'><b>Regular Expression Rules</b></font> set on this page"
+        "<br>"
+        "• Disabled - Automatically detects text format and game engine, and applies smart protection rules, works well for most content"
+    )
+    text_preserve_page_table_row_01: str = "Rule"
+    text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
+
     # 译前替换
     pre_translation_replacement_page_head_title: str = "Pre-translation Replacement"
     pre_translation_replacement_page_head_content: str = (
@@ -344,7 +353,7 @@ class LocalizerEN(LocalizerZH):
     post_translation_replacement_page_table_row_03: str = "Regex"
 
     # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "Custom prompt used when target language is set to Chinese (SakuraLLM model not supported)"
+    custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"
     custom_prompt_zh_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
@@ -354,13 +363,39 @@ class LocalizerEN(LocalizerZH):
     )
 
     # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "Custom prompt used when target language is set to non-Chinese languages (SakuraLLM model not supported)"
+    custom_prompt_en_page_head: str = "Custom English Prompts (SakuraLLM model not supported)"
     custom_prompt_en_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
         "Note: The prefix and suffix are fixed and cannot be modified"
         "<br>"
         "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>"
+    )
+
+    # 实验室
+    laboratory_page_mtool_optimizer_enable: str = "MTool Optimizer"
+    laboratory_page_mtool_optimizer_enable_desc: str = (
+        "Can reduce translation time and token usage by up to 40% when translating MTool text"
+        "<br>"
+        "May lead to issues like <font color='darkgoldenrod'><b>residual original text</b></font> or <font color='darkgoldenrod'><b>incoherent sentences</b></font>"
+        "<br>"
+        "It should <font color='darkgoldenrod'><b>only be enabled when translating MTool text</b></font>"
+        "<br>"
+        "Please <font color='darkgoldenrod'><b>decide for yourself</b></font> whether to enable this feature"
+        ""
+        ""
+    )
+    laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
+    laboratory_page_auto_glossary_enable_desc: str = (
+        "Attempts to automatically add missing proper noun entries to the glossary during translation"
+        "<br>"
+        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
+        "<br>"
+        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
+        "<br>"
+        "May generate <font color='darkgoldenrod'><b>incorrect or inappropriate terminology entries</b></font>, please <font color='darkgoldenrod'><b>use your own judgment</b></font> on whether to enable it"
+        "<br>"
+        "It is recommended to use this feature only with powerful models like DeepSeek V3/R1"
     )
 
     # 百宝箱

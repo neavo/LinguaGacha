@@ -1,22 +1,23 @@
 import os
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ExpertConfig import ExpertConfig
 
 class TXT(Base):
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:
@@ -80,7 +81,7 @@ class TXT(Base):
             with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
                 result: list[str] = []
                 for item in items:
-                    if ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() == item.get_dst():
+                    if self.config.deduplication_in_bilingual == True and item.get_src() == item.get_dst():
                         result.append(item.get_dst())
                     else:
                         result.append(f"{item.get_src()}\n{item.get_dst()}")

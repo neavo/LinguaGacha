@@ -1,159 +1,185 @@
 import os
-
+import sys
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
+from qfluentwidgets import MessageBox
+from qfluentwidgets import FluentWindow
 from qfluentwidgets import SwitchButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from base.LogManager import LogManager
 from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class AppSettingsPage(QWidget, Base):
 
-    def __init__(self, text: str, window) -> None:
+    def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "proxy_url": "",
-            "proxy_enable": False,
-            "font_hinting": True,
-            "scale_factor": Localizer.get().auto,
-        }
-
         # 载入并保存默认配置
-        config = self.save_config(self.load_config_from_default())
+        config = Config().load().save()
 
         # 设置主容器
-        self.container = QVBoxLayout(self)
-        self.container.setContentsMargins(0, 0, 0, 0)
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
-        # 设置滚动容器
-        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Orientation.Vertical)
-        self.scroller.setWidgetResizable(True)
-        self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        self.container.addWidget(self.scroller)
+        # 创建滚动区域的内容容器
+        scroll_area_vbox_widget = QWidget()
+        scroll_area_vbox = QVBoxLayout(scroll_area_vbox_widget)
+        scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
 
-        # 设置容器
-        self.vbox_parent = QWidget(self)
-        self.vbox_parent.setStyleSheet("QWidget { background: transparent; }")
-        self.vbox = QVBoxLayout(self.vbox_parent)
-        self.vbox.setSpacing(8)
-        self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
-        self.scroller.setWidget(self.vbox_parent)
+        # 创建滚动区域
+        scroll_area = SingleDirectionScrollArea(orient = Qt.Orientation.Vertical)
+        scroll_area.setWidget(scroll_area_vbox_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.enableTransparentBackground()
+
+        # 将滚动区域添加到父布局
+        self.root.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_proxy(self.vbox, config)
-        self.add_widget_font_hinting(self.vbox, config)
-        self.add_widget_debug_mode(self.vbox, config)
-        self.add_widget_scale_factor(self.vbox, config)
+        self.add_widget_expert_mode(scroll_area_vbox, config, window)
+        self.add_widget_font_hinting(scroll_area_vbox, config, window)
+        self.add_widget_scale_factor(scroll_area_vbox, config, window)
+        self.add_widget_proxy(scroll_area_vbox, config, window)
 
         # 填充
-        self.vbox.addStretch(1)
+        scroll_area_vbox.addStretch(1)
 
-    # 网络代理地址
-    def add_widget_proxy(self, parent, config) -> None:
+    # 专家模式
+    def add_widget_expert_mode(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
-        def checked_changed(swicth_button, checked: bool) -> None:
-            swicth_button.setChecked(checked)
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(
+                config.expert_mode
+            )
 
-            config = self.load_config()
-            config["proxy_enable"] = checked
-            self.save_config(config)
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_restart, self)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.hide()
 
-        def init(widget) -> None:
-            widget.set_text(config.get("proxy_url"))
+            if message_box.exec():
+                config = Config().load()
+                config.reset_expert_settings()
+                config.expert_mode = widget.get_switch_button().isChecked()
+                config.save()
+
+                # 重启应用
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().app_settings_page_expert_title,
+                description = Localizer.get().app_settings_page_expert_content,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 字体优化
+    def add_widget_font_hinting(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(config.font_hinting)
+
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_restart, self)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.hide()
+
+            if message_box.exec():
+                config = Config().load()
+                config.font_hinting = checked
+                config.save()
+
+                # 重启应用
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().app_settings_page_font_hinting_title,
+                description = Localizer.get().app_settings_page_font_hinting_content,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 全局缩放
+    def add_widget_scale_factor(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: ComboBoxCard) -> None:
+            widget.set_current_index(max(0, widget.find_text(config.scale_factor)))
+
+        def current_changed(widget: ComboBoxCard) -> None:
+            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_restart, self)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.hide()
+
+            if message_box.exec():
+                config = Config().load()
+                config.scale_factor = widget.get_current_text()
+                config.save()
+
+                # 重启应用
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        parent.addWidget(
+            ComboBoxCard(
+                title = Localizer.get().app_settings_page_scale_factor_title,
+                description = Localizer.get().app_settings_page_scale_factor_content,
+                items = (Localizer.get().auto, "50%", "75%", "150%", "200%"),
+                init = init,
+                current_changed = current_changed,
+            )
+        )
+
+    # 网络代理
+    def add_widget_proxy(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def checked_changed(swicth_button: SwitchButton, checked: bool) -> None:
+            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_restart, self)
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.hide()
+
+            if message_box.exec():
+                config = Config().load()
+                config.proxy_enable = checked
+                config.save()
+
+                # 重启应用
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        def init(widget: LineEditCard) -> None:
+            widget.set_text(config.proxy_url)
             widget.set_fixed_width(256)
             widget.set_placeholder_text(Localizer.get().app_settings_page_proxy_url)
 
             swicth_button = SwitchButton()
-            swicth_button.setOnText(Localizer.get().enable)
-            swicth_button.setOffText(Localizer.get().disable)
-            swicth_button.setChecked(config.get("proxy_enable", False))
+            swicth_button.setOnText("")
+            swicth_button.setOffText("")
+            swicth_button.setChecked(config.proxy_enable)
             swicth_button.checkedChanged.connect(lambda checked: checked_changed(swicth_button, checked))
             widget.add_spacing(8)
             widget.add_widget(swicth_button)
 
-        def text_changed(widget, text: str) -> None:
-            config = self.load_config()
-            config["proxy_url"] = text.strip()
-            self.save_config(config)
+        def text_changed(widget: LineEditCard, text: str) -> None:
+            config = Config().load()
+            config.proxy_url = text.strip()
+            config.save()
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().app_settings_page_proxy_url_title,
-                Localizer.get().app_settings_page_proxy_url_content,
+                title = Localizer.get().app_settings_page_proxy_url_title,
+                description = Localizer.get().app_settings_page_proxy_url_content,
                 init = init,
                 text_changed = text_changed,
-            )
-        )
-
-    # 应用字体优化
-    def add_widget_font_hinting(self, parent, config) -> None:
-        def init(widget) -> None:
-            widget.get_switch_button().setChecked(config.get("font_hinting"))
-
-        def checked_changed(widget, checked: bool) -> None:
-            config = self.load_config()
-            config["font_hinting"] = checked
-            self.save_config(config)
-
-        parent.addWidget(
-            SwitchButtonCard(
-                Localizer.get().app_settings_page_font_hinting_title,
-                Localizer.get().app_settings_page_font_hinting_content,
-                init = init,
-                checked_changed = checked_changed,
-            )
-        )
-
-    # 调试模式
-    def add_widget_debug_mode(self, parent, config) -> None:
-        def init(widget) -> None:
-            widget.get_switch_button().setChecked(os.path.isfile("./debug.txt"))
-
-        def checked_changed(widget, checked: bool) -> None:
-            if checked == True:
-                open("./debug.txt", "w").close()
-            else:
-                os.remove("./debug.txt") if os.path.isfile("./debug.txt") else None
-
-            # 重置调试模式状态
-            LogManager.reset_debug()
-            LogManager.is_debug()
-
-        parent.addWidget(
-            SwitchButtonCard(
-                Localizer.get().app_settings_page_debug_title,
-                Localizer.get().app_settings_page_debug_content,
-                init = init,
-                checked_changed = checked_changed,
-            )
-        )
-
-    # 全局缩放比例
-    def add_widget_scale_factor(self, parent, config) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            widget.set_current_index(max(0, widget.find_text(config.get("scale_factor"))))
-
-        def current_changed(widget: ComboBoxCard) -> None:
-            config = self.load_config()
-            config["scale_factor"] = widget.get_current_text()
-            self.save_config(config)
-
-        parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().app_settings_page_scale_factor_title,
-                Localizer.get().app_settings_page_scale_factor_content,
-                (Localizer.get().auto, "50%", "75%", "150%", "200%"),
-                init = init,
-                current_changed = current_changed,
             )
         )

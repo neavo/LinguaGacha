@@ -23,10 +23,9 @@ class RuleFilter():
 
     RE_ALL: tuple[re.Pattern] = (
         re.compile(r"^EV\d+$", flags = re.IGNORECASE),
-        re.compile(r"^<.+:.+>$", flags = re.IGNORECASE),
-        re.compile(r"^\{#file_time\}", flags = re.IGNORECASE),                      # RenPy 存档时间
         re.compile(r"^DejaVu Sans$", flags = re.IGNORECASE),                        # RenPy 默认字体名称
         re.compile(r"^Opendyslexic$", flags = re.IGNORECASE),                       # RenPy 默认字体名称
+        re.compile(r"^\{#file_time\}", flags = re.IGNORECASE),                      # RenPy 存档时间
     )
 
     def filter(src: str, skip_internal_filter: bool) -> bool:
@@ -39,7 +38,7 @@ class RuleFilter():
             line = line.strip().lower()
 
             # 空字符串
-            if line == "":
+            if line.strip() == "":
                 flags.append(True)
                 continue
 

@@ -1,10 +1,11 @@
 import os
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ExpertConfig import ExpertConfig
 
 class ASS(Base):
 
@@ -25,15 +26,15 @@ class ASS(Base):
     # Dialogue: 0,0:00:14.00,0:00:15.88,Default,,0,0,0,,えーこの部屋一人で使\Nえるとか最高じゃん
     # Dialogue: 0,0:00:15.88,0:00:17.30,Default,,0,0,0,,えるとか最高じゃん
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:
@@ -118,7 +119,7 @@ class ASS(Base):
         for rel_path, items in group.items():
             result: list[str] = []
             for item in items:
-                if ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() == item.get_dst():
+                if self.config.deduplication_in_bilingual == True and item.get_src() == item.get_dst():
                     line = item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
                     line = line.replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
                     result.append(line)

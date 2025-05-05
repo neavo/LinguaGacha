@@ -19,9 +19,8 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from base.EventManager import EventManager
+from module.Config import Config
 from widget.EmptyCard import EmptyCard
-from widget.Separator import Separator
 from widget.CommandBarCard import CommandBarCard
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
@@ -59,21 +58,21 @@ class BatchCorrectionPage(QWidget, Base):
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 载入配置文件
-        config = self.load_config()
+        # 载入并保存默认配置
+        config = Config().load().save()
 
         # 设置主容器
-        self.vbox = QVBoxLayout(self)
-        self.vbox.setSpacing(8)
-        self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_head(self.vbox, config, window)
-        self.add_widget_body(self.vbox, config, window)
-        self.add_widget_foot(self.vbox, config, window)
+        self.add_widget_head(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
+        self.add_widget_foot(self.root, config, window)
 
     # 头部
-    def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         parent.addWidget(
             EmptyCard(
                 title = Localizer.get().batch_correction_page,
@@ -83,7 +82,7 @@ class BatchCorrectionPage(QWidget, Base):
         )
 
     # 主体
-    def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         # 创建滚动区域的内容容器
         scroll_area_vbox_widget = QWidget()
         scroll_area_vbox = QVBoxLayout(scroll_area_vbox_widget)
@@ -99,13 +98,12 @@ class BatchCorrectionPage(QWidget, Base):
         parent.addWidget(scroll_area)
 
         # 添加控件
-        scroll_area_vbox.addWidget(Separator())
         self.add_step_01(scroll_area_vbox, config, window)
         self.add_step_02(scroll_area_vbox, config, window)
         scroll_area_vbox.addStretch(1)
 
     # 底部
-    def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_foot(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
@@ -114,13 +112,13 @@ class BatchCorrectionPage(QWidget, Base):
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # WiKi
-    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
         push_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki")))
         parent.add_widget(push_button)
 
     # 第一步
-    def add_step_01(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_step_01(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: EmptyCard) -> None:
             push_button = PushButton(FluentIcon.PLAY, Localizer.get().start)
@@ -135,7 +133,7 @@ class BatchCorrectionPage(QWidget, Base):
         parent.addWidget(widget)
 
     # 第二步
-    def add_step_02(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_step_02(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: EmptyCard) -> None:
             push_button = PushButton(FluentIcon.SAVE_AS, Localizer.get().inject)
@@ -149,17 +147,17 @@ class BatchCorrectionPage(QWidget, Base):
         ))
 
     # WiKi
-    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
         push_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki")))
         parent.add_widget(push_button)
 
     # 第一步点击事件
     def step_01_clicked(self, window: FluentWindow) -> None:
-        config: dict[str, str] = self.load_config()
+        config = Config().load()
 
         data_dict: dict[str, dict] = {}
-        for entry in os.scandir(config.get("input_folder")):
+        for entry in os.scandir(config.input_folder):
             if (
                 entry.is_file()
                 and BatchCorrectionPage.FILE_NAME_WHITELIST.search(entry.name) is not None
@@ -234,7 +232,7 @@ class BatchCorrectionPage(QWidget, Base):
             TableManager.set_cell_value(sheet, i + 2, 5, item.get("dst"))
 
         # 保存工作簿
-        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}"
+        abs_path = f"{config.output_folder}/{Localizer.get().path_result_batch_correction}"
         os.makedirs(os.path.dirname(abs_path), exist_ok = True)
         book.save(abs_path)
 
@@ -246,10 +244,10 @@ class BatchCorrectionPage(QWidget, Base):
 
     # 第二步点击事件
     def step_02_clicked(self, window: FluentWindow) -> None:
-        config: dict[str, str] = self.load_config()
+        config = Config().load()
 
         data_dict: dict[str, list[dict[str, str]]] = {}
-        abs_path = f"{config.get("output_folder")}/{Localizer.get().path_result_batch_correction}"
+        abs_path = f"{config.output_folder}/{Localizer.get().path_result_batch_correction}"
         try:
             # 数据处理
             book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
@@ -327,9 +325,9 @@ class BatchCorrectionPage(QWidget, Base):
         ).start()
 
     # 写入文件
-    def write_to_path_task(self, config: dict, items: list[CacheItem]) -> None:
+    def write_to_path_task(self, config: Config, items: list[CacheItem]) -> None:
         FileManager(config).write_to_path(items)
-        shutil.rmtree(f"{config.get("output_folder")}/{Localizer.get().path_bilingual}", ignore_errors = True)
+        shutil.rmtree(f"{config.output_folder}/{Localizer.get().path_bilingual}", ignore_errors = True)
 
         # 提示
         self.emit(Base.Event.APP_TOAST_SHOW, {

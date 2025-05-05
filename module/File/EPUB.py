@@ -8,9 +8,10 @@ from bs4 import BeautifulSoup
 from lxml import etree
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ExpertConfig import ExpertConfig
 
 class EPUB(Base):
 
@@ -20,15 +21,15 @@ class EPUB(Base):
     # EPUB 文件中读取的标签范围
     EPUB_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:
@@ -159,8 +160,8 @@ class EPUB(Base):
                     # 输出双语
                     if bilingual == True:
                         if (
-                            ExpertConfig.get().deduplication_in_bilingual != True
-                            or (ExpertConfig.get().deduplication_in_bilingual == True and item.get_src() != item.get_dst())
+                            self.config.deduplication_in_bilingual != True
+                            or (self.config.deduplication_in_bilingual == True and item.get_src() != item.get_dst())
                         ):
                             line_src = copy.copy(dom)
                             line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.50;"

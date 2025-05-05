@@ -1,13 +1,12 @@
 from functools import partial
 
+import openai
+import anthropic
+from google import genai
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
-import openai
-import anthropic
-from google import genai
 from qfluentwidgets import PushButton
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
@@ -16,7 +15,7 @@ from qfluentwidgets import PillPushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from base.EventManager import EventManager
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -31,8 +30,8 @@ class ModelListPage(MessageBoxBase, Base):
         self.filter: str = ""
         self.models: list[str] = None
 
-        # 载入配置文件
-        config = self.load_config()
+        # 载入并保存默认配置
+        config = Config().load().save()
 
         # 设置框体
         self.widget.setFixedSize(960, 720)
@@ -64,11 +63,11 @@ class ModelListPage(MessageBoxBase, Base):
 
     # 点击事件
     def clicked(self, widget: PillPushButton) -> None:
-        config = self.load_config()
-        platform = self.get_platform_from_config(self.id, config)
+        config = Config().load()
+        platform = config.get_platform(self.id)
         platform["model"] = widget.text().strip()
-        self.update_platform_to_config(platform, config)
-        self.save_config(config)
+        config.set_platform(platform)
+        config.save()
 
         # 关闭窗口
         self.close()
@@ -97,20 +96,6 @@ class ModelListPage(MessageBoxBase, Base):
 
         # 更新子控件
         self.update_sub_widgets(self.flow_card)
-
-    # 获取平台配置
-    def get_platform_from_config(self, id: int, config: dict) -> dict[str, str | bool | int | float | list[str]]:
-        item: dict[str, str | bool | int | float | list[str]] = None
-        for item in config.get("platforms", []):
-            if item.get("id", 0) == id:
-                return item
-
-    # 更新平台配置
-    def update_platform_to_config(self, platform: dict, config: dict) -> None:
-        for i, item in enumerate(config.get("platforms", [])):
-            if item.get("id", 0) == platform.get("id", 0):
-                config.get("platforms")[i] = platform
-                break
 
     # 获取模型
     def get_models(self, api_url: str, api_key: str, api_format: Base.APIFormat) -> list[str]:
@@ -146,7 +131,7 @@ class ModelListPage(MessageBoxBase, Base):
     # 更新子控件
     def update_sub_widgets(self, widget: FlowCard) -> None:
         if self.models is None:
-            platform: dict = self.get_platform_from_config(self.id, self.load_config())
+            platform: dict = Config().load().get_platform(self.id)
             self.models = self.get_models(
                 platform.get("api_url"),
                 platform.get("api_key")[0],
@@ -161,7 +146,7 @@ class ModelListPage(MessageBoxBase, Base):
             widget.add_widget(pilled_button)
 
     # 模型名称
-    def add_widget(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         self.filter_button: PushButton = None
 
@@ -176,6 +161,7 @@ class ModelListPage(MessageBoxBase, Base):
             self.update_sub_widgets(widget)
 
         self.flow_card = FlowCard(
+            parent = self,
             title = Localizer.get().model_list_page_title,
             description = Localizer.get().model_list_page_content,
             init = init,

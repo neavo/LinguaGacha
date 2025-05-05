@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 
 from base.Base import Base
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
 
@@ -36,7 +37,7 @@ class TranslatorRequester(Base):
     # o1 o3-mini o4-mini-20240406
     RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
 
-    def __init__(self, config: dict, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
+    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
         super().__init__()
 
         # 初始化
@@ -158,7 +159,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(512, self.config.get("token_threshold")),
+            "max_tokens": max(512, self.config.token_threshold),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }
@@ -172,7 +173,7 @@ class TranslatorRequester(Base):
             # 获取客户端
             client: openai.OpenAI = self.get_client(
                 self.platform,
-                self.config.get("request_timeout"),
+                self.config.request_timeout,
             )
 
             # 发起请求
@@ -212,7 +213,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.get("token_threshold")),
+            "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }
@@ -224,7 +225,7 @@ class TranslatorRequester(Base):
             __class__.RE_O_SERIES.search(self.platform.get("model")) is not None
         ):
             args.pop("max_tokens", None)
-            args["max_completion_tokens"] = max(4 * 1024, self.config.get("token_threshold"))
+            args["max_completion_tokens"] = max(4 * 1024, self.config.token_threshold)
 
         # 思考模式切换 - QWEN3
         if __class__.RE_QWEN3.search(self.platform.get("model")) is not None:
@@ -242,7 +243,7 @@ class TranslatorRequester(Base):
             # 获取客户端
             client: openai.OpenAI = self.get_client(
                 self.platform,
-                self.config.get("request_timeout"),
+                self.config.request_timeout,
             )
 
             # 发起请求
@@ -283,7 +284,7 @@ class TranslatorRequester(Base):
     # 生成请求参数
     def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
         args: dict = args | {
-            "max_output_tokens": max(4 * 1024, self.config.get("token_threshold")),
+            "max_output_tokens": max(4 * 1024, self.config.token_threshold),
             "safety_settings": (
                 types.SafetySetting(
                     category = "HARM_CATEGORY_HARASSMENT",
@@ -329,7 +330,7 @@ class TranslatorRequester(Base):
             # 获取客户端
             client: genai.Client = self.get_client(
                 self.platform,
-                self.config.get("request_timeout"),
+                self.config.request_timeout,
             )
 
             # 发起请求
@@ -364,7 +365,7 @@ class TranslatorRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.get("token_threshold")),
+            "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
             }
@@ -392,7 +393,7 @@ class TranslatorRequester(Base):
             # 获取客户端
             client: anthropic.Anthropic = self.get_client(
                 self.platform,
-                self.config.get("request_timeout"),
+                self.config.request_timeout,
             )
 
             # 发起请求

@@ -3,20 +3,15 @@ import json
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
-from module.ExpertConfig import ExpertConfig
+from module.Config import Config
 
 class PromptBuilder(Base):
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
-        self.glossary_data: list[dict] = config.get("glossary_data")
-        self.glossary_enable: bool = config.get("glossary_enable")
-        self.auto_glossary_enable: bool = config.get("auto_glossary_enable")
+        self.config: Config = config
 
     def get_base(self, language: BaseLanguage.Enum) -> str:
         if getattr(self, "base", None) is None:
@@ -49,14 +44,14 @@ class PromptBuilder(Base):
     # 获取主提示词
     def build_main(self) -> str:
         # 判断提示词语言
-        if self.target_language == BaseLanguage.Enum.ZH:
+        if self.config.target_language == BaseLanguage.Enum.ZH:
             prompt_language = BaseLanguage.Enum.ZH
-            source_language = BaseLanguage.get_name_zh(self.source_language)
-            target_language = BaseLanguage.get_name_zh(self.target_language)
+            source_language = BaseLanguage.get_name_zh(self.config.source_language)
+            target_language = BaseLanguage.get_name_zh(self.config.target_language)
         else:
             prompt_language = BaseLanguage.Enum.EN
-            source_language = BaseLanguage.get_name_en(self.source_language)
-            target_language = BaseLanguage.get_name_en(self.target_language)
+            source_language = BaseLanguage.get_name_en(self.config.source_language)
+            target_language = BaseLanguage.get_name_en(self.config.target_language)
 
         self.get_base(prompt_language)
         self.get_prefix(prompt_language)
@@ -64,15 +59,15 @@ class PromptBuilder(Base):
         self.get_suffix_glossary(prompt_language)
 
         # 判断是否是否自定义提示词
-        if prompt_language == BaseLanguage.Enum.ZH and self.config.get("custom_prompt_zh_enable") == True:
-            base = self.config.get("custom_prompt_zh_data")
-        elif prompt_language == BaseLanguage.Enum.EN and self.config.get("custom_prompt_en_enable") == True:
-            base = self.config.get("custom_prompt_en_data")
+        if prompt_language == BaseLanguage.Enum.ZH and self.config.custom_prompt_zh_enable == True:
+            base = self.config.custom_prompt_zh_data
+        elif prompt_language == BaseLanguage.Enum.EN and self.config.custom_prompt_en_enable == True:
+            base = self.config.custom_prompt_en_data
         else:
             base = self.base
 
         # 判断是否启用自动术语表
-        if self.auto_glossary_enable == False:
+        if self.config.auto_glossary_enable == False:
             suffix = self.suffix
         else:
             suffix = self.suffix_glossary
@@ -88,7 +83,7 @@ class PromptBuilder(Base):
     def build_preceding(self, preceding_items: list[CacheItem]) -> str:
         if len(preceding_items) == 0:
             return ""
-        elif self.target_language == BaseLanguage.Enum.ZH:
+        elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "参考上文："
                 + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in preceding_items])
@@ -106,7 +101,7 @@ class PromptBuilder(Base):
 
         # 筛选在输入词典中出现过的条目
         result = [
-            v for v in self.glossary_data
+            v for v in self.config.glossary_data
             if any(v.get("src") in lines for lines in lines)
         ]
 
@@ -125,7 +120,7 @@ class PromptBuilder(Base):
         # 返回结果
         if dict_lines == []:
             return ""
-        elif self.target_language == BaseLanguage.Enum.ZH:
+        elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "术语表："
                 + "\n" + "\n".join(dict_lines)
@@ -143,7 +138,7 @@ class PromptBuilder(Base):
 
         # 筛选在输入词典中出现过的条目
         result = [
-            v for v in self.glossary_data
+            v for v in self.config.glossary_data
             if any(v.get("src") in lines for lines in lines)
         ]
 
@@ -177,7 +172,7 @@ class PromptBuilder(Base):
             return ""
 
         # 判断提示词语言
-        if self.target_language == BaseLanguage.Enum.ZH:
+        if self.config.target_language == BaseLanguage.Enum.ZH:
             prefix: str = "控制字符示例："
         else:
             prefix: str = "Control Characters Samples:"
@@ -190,7 +185,7 @@ class PromptBuilder(Base):
             json.dumps({k: v}, indent = None, ensure_ascii = False) for k, v in src_dict.items()
         )
 
-        if self.target_language == BaseLanguage.Enum.ZH:
+        if self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "输入："
                 "\n" + "```jsonline"
@@ -215,14 +210,14 @@ class PromptBuilder(Base):
         content = self.build_main()
 
         # 参考上文
-        if local_flag == False or ExpertConfig.get().preceding_disable_on_local == False:
+        if local_flag == False or self.config.enable_preceding_on_local == True:
             result = self.build_preceding(preceding_items)
             if result != "":
                 content = content + "\n" + result
                 extra_log.append(result)
 
         # 术语表
-        if self.glossary_enable == True:
+        if self.config.glossary_enable == True:
             result = self.build_glossary(src_dict)
             if result != "":
                 content = content + "\n" + result
@@ -262,7 +257,7 @@ class PromptBuilder(Base):
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(src_dict.values())
-        if self.glossary_enable == True:
+        if self.config.glossary_enable == True:
             result = self.build_glossary_sakura(src_dict)
             if result != "":
                 content = (

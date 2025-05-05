@@ -56,23 +56,27 @@ class LocalizerZH():
     app_project_page: str = "项目设置"
     app_translation_page: str = "开始翻译"
     app_basic_settings_page: str = "基础设置"
-    app_advance_Feature_page: str = "高级功能"
+    app_expert_settings_page: str = "专家设置"
     app_glossary_page: str = "术语表"
+    app_text_preserve_page: str = "文本保护"
+    app_text_replacement_page: str = "文本替换"
     app_pre_translation_replacement_page: str = "译前替换"
     app_post_translation_replacement_page: str = "译后替换"
     app_custom_prompt_navigation_item: str = "自定义提示词"
     app_custom_prompt_zh_page: str = "中文提示词"
     app_custom_prompt_en_page: str = "英文提示词"
-    app_tool_box_page: str = "百宝箱"
+    app_laboratory_page: str = "实验室"
+    app_treasure_chest_page: str = "百宝箱"
 
     # 路径
     path_bilingual: str = "双语对照"
     path_glossary_export: str = "导出_术语表"
+    path_text_preserve_export: str = "导出_文本保护"
     path_pre_translation_replacement_export: str = "导出_译前替换"
     path_post_translation_replacement_export: str = "导出_译后替换"
     path_result_check_kana: str = "结果检查_假名残留.json"
     path_result_check_hangeul: str = "结果检查_谚文残留.json"
-    path_result_check_code: str = "结果检查_代码错误.json"
+    path_result_check_text_preserve: str = "结果检查_文本保护.json"
     path_result_check_similarity: str = "结果检查_相似度较高.json"
     path_result_check_glossary: str = "结果检查_术语表未生效.json"
     path_result_check_untranslated: str = "结果检查_未翻译的条目.json"
@@ -81,7 +85,7 @@ class LocalizerZH():
     path_result_name_field_extraction: str = "姓名字段提取.xlsx"
 
     # 日志
-    log_debug_mode: str = "调试模式已启用 …"
+    log_expert_mode: str = "专家模式已启用 …"
     log_config_file_not_exist: str = "配置文件不存在 …"
     log_api_test_fail: str = "接口测试失败 … "
     log_task_fail: str = "翻译任务失败 …"
@@ -152,15 +156,16 @@ class LocalizerZH():
     response_decoder_translation_by_rule: str = "翻译数据 -> 拆分后规则解析，共 {COUNT} 条"
 
     # 应用设置
-    app_settings_page_proxy_url: str = "请输入网络代理地址 …"
-    app_settings_page_proxy_url_title: str = "网络代理"
-    app_settings_page_proxy_url_content: str = "启用该功能后，将使用设置的代理地址向接口发送请求，例如 http://127.0.0.1:7890"
+    app_settings_page_expert_title: str = "专家模式"
+    app_settings_page_expert_content: str = "启用此功能后，将显示更多日志信息并提供更多高级设置选项（将在应用重启后生效）"
     app_settings_page_font_hinting_title: str = "字体优化"
     app_settings_page_font_hinting_content: str = "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
-    app_settings_page_debug_title: str = "调试模式"
-    app_settings_page_debug_content: str = "启用此功能后，应用将显示额外的调试信息"
     app_settings_page_scale_factor_title: str = "全局缩放比例"
     app_settings_page_scale_factor_content: str = "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
+    app_settings_page_proxy_url: str = "请输入网络代理地址 …"
+    app_settings_page_proxy_url_title: str = "网络代理"
+    app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求，例如 http://127.0.0.1:7890"
+    app_settings_page_restart: str = "应用即将重启以生效，请确认 …"
 
     # 接口管理
     platform_page_api_test_result: str = "接口测试结果：成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
@@ -268,30 +273,20 @@ class LocalizerZH():
     basic_settings_page_max_round_title: str = "任务轮次阈值"
     basic_settings_page_max_round_content: str = "当完成一轮任务后，将在新的轮次中对失败的任务进行重试，直到全部完成或达到轮次阈值"
 
-    # 高级功能
-    advance_feature_page_mtool_optimizer_enable: str = "MTool 优化器"
-    advance_feature_page_mtool_optimizer_enable_desc: str = (
-        "在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗"
+    # 专家设置
+    expert_settings_page_preceding_lines_threshold: str = "参考上文行数阈值"
+    expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认 3 行"
+    expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
+    expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
+    expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中对重复行去重"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "在双语输出文件中，译文与原文一致是否去重，默认启用"
+    expert_settings_page_result_checker_retry_count_threshold: str = "结果检查 - 重试次数达到阈值"
+    expert_settings_page_result_checker_retry_count_threshold_desc: str = (
+        "是否在结果检查报告里面输出 <font color='darkgoldenrod'><b>重试次数达到阈值</b></font> 的条目列表"
         "<br>"
-        "可能导致 <font color='darkgoldenrod'><b>原文残留</b></font> 或 <font color='darkgoldenrod'><b>语句不连贯</b></font> 等问题，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，并且只应在 <font color='darkgoldenrod'><b>翻译 MTool 文本时</b></font> 启用"
-        ""
-        ""
-        ""
-        ""
-        ""
-        ""
-    )
-    advance_feature_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
-    advance_feature_page_auto_glossary_enable_desc: str = (
-        "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
+        "• 在进行翻译结果检查时，如果重试达阈值依然未通过检查，就会取最后一次的结果"
         "<br>"
-        "此功能设计目的仅为查漏补缺，并不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font>，获取到的补充术语将直接 <font color='darkgoldenrod'><b>写入术语表</b></font>"
-        "<br>"
-        "可能会产生 <font color='darkgoldenrod'><b>不正确或不合适的术语条目</b></font>，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，建议仅在 DeepSeek V3/R1 级别的强力模型使用此功能"
-        ""
-        ""
-        ""
-        ""
+        "• 通过此功能，就可以逐一确认最后的取值实际上是否正确的"
     )
 
     # 质量类通用
@@ -321,6 +316,20 @@ class LocalizerZH():
     glossary_page_table_row_03: str = "描述"
     glossary_page_kg: str = "一键制作工具"
 
+    # 文本保护
+    text_preserve_page_head_title: str = "自定义文本保护规则"
+    text_preserve_page_head_content: str = (
+        "对文本中不需要翻译的代码段、控制字符、样式字符等文本进行保护，避免这些文本被错误的翻译"
+        "<br>"
+        "<font color='darkgoldenrod'><b>默认禁用</b></font>，启用前请充分了解此功能的使用方式"
+        "<br>"
+        "• 启用 - 根据本页中设置的 <font color='darkgoldenrod'><b>正则规则</b></font> 匹配对应的文本进行保护"
+        "<br>"
+        "• 禁用 - 自动判断文本格式与游戏引擎，智能选择合适的保护规则，在大部分内容中都可以取得较好的效果"
+    )
+    text_preserve_page_table_row_01: str = "规则"
+    text_preserve_page_table_row_02: str = "备注（仅作备忘，无实际作用）"
+
     # 译前替换
     pre_translation_replacement_page_head_title: str = "译前替换"
     pre_translation_replacement_page_head_content: str = (
@@ -344,7 +353,7 @@ class LocalizerZH():
     post_translation_replacement_page_table_row_03: str = "正则"
 
     # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "译文语言设置为中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
+    custom_prompt_zh_page_head: str = "自定义中文提示词（不支持 SakuraLLM 模型）"
     custom_prompt_zh_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
@@ -354,11 +363,37 @@ class LocalizerZH():
     )
 
     # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "译文语言设置为非中文时使用的自定义提示词（不支持 SakuraLLM 模型）"
+    custom_prompt_en_page_head: str = "自定义英文提示词（不支持 SakuraLLM 模型）"
     custom_prompt_en_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
         "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词"
+        ""
+        ""
+    )
+
+    # 实验室
+    laboratory_page_mtool_optimizer_enable: str = "MTool 优化器"
+    laboratory_page_mtool_optimizer_enable_desc: str = (
+        "在对 MTool 文本进行翻译时，至多可减少 40% 的 翻译时间 与 Token 消耗"
+        "<br>"
+        "可能导致 <font color='darkgoldenrod'><b>原文残留</b></font> 或 <font color='darkgoldenrod'><b>语句不连贯</b></font> 等问题，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，并且只应在 <font color='darkgoldenrod'><b>翻译 MTool 文本时</b></font> 启用"
+        ""
+        ""
+        ""
+        ""
+        ""
+        ""
+    )
+    laboratory_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
+    laboratory_page_auto_glossary_enable_desc: str = (
+        "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
+        "<br>"
+        "此功能设计目的仅为查漏补缺，并不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font>，获取到的补充术语将直接 <font color='darkgoldenrod'><b>写入术语表</b></font>"
+        "<br>"
+        "可能会产生 <font color='darkgoldenrod'><b>不正确或不合适的术语条目</b></font>，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，建议仅在 DeepSeek V3/R1 级别的强力模型使用此功能"
+        ""
+        ""
         ""
         ""
     )

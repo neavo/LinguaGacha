@@ -3,7 +3,8 @@ import re
 from rich import print
 
 from module.Cache.CacheItem import CacheItem
-from module.CodeSaver import CodeSaver
+from module.Config import Config
+from module.TextPreserver import TextPreserver
 
 class CodeFixer():
 
@@ -12,19 +13,16 @@ class CodeFixer():
 
     # 检查并替换
     @classmethod
-    def fix(cls, src: str, dst: str, text_type: str) -> str:
-        if text_type == CacheItem.TextType.RENPY:
-            rule: re.Pattern = CodeSaver.REGEX_BASE_KAG_RENPY
+    def fix(cls, src: str, dst: str, text_type: str, config: Config) -> str:
+        src_codes: list[str] = []
+        dst_codes: list[str] = []
+        rule: re.Pattern = TextPreserver(config).get_re_sample(
+            custom_enable = config.text_preserve_enable,
+            text_type = text_type,
+        )
+        if rule is not None:
             src_codes = rule.findall(src)
             dst_codes = rule.findall(dst)
-        elif text_type in (CacheItem.TextType.WOLF, CacheItem.TextType.RPGMAKER):
-            rule: re.Pattern = CodeSaver.REGEX_BASE_WOLF_RPGMAKER
-            src_codes = rule.findall(src)
-            dst_codes = rule.findall(dst)
-        else:
-            rule: re.Pattern = None
-            src_codes = []
-            dst_codes = []
 
         if src_codes == dst_codes:
             return dst

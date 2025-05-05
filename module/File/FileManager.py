@@ -3,7 +3,6 @@ import random
 from datetime import datetime
 
 from base.Base import Base
-
 from module.File.MD import MD
 from module.File.ASS import ASS
 from module.File.SRT import SRT
@@ -17,19 +16,16 @@ from module.File.KVJSON import KVJSON
 from module.File.MESSAGEJSON import MESSAGEJSON
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
 class FileManager(Base):
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
 
     # 读
     def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
@@ -40,7 +36,7 @@ class FileManager(Base):
         items: list[CacheItem] = []
         try:
             paths: list[str] = []
-            input_folder: str = self.config.get("input_folder")
+            input_folder: str = self.config.input_folder
             if os.path.isfile(input_folder):
                 paths = [input_folder]
             elif os.path.isdir(input_folder):

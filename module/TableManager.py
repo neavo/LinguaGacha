@@ -15,6 +15,7 @@ class TableManager():
 
         GLOSSARY = "GLOSSARY"
         REPLACEMENT = "REPLACEMENT"
+        TEXT_PRESERVE = "TEXT_PRESERVE"
 
     def __init__(self, type: str, data: list[dict[str, str]], table: TableWidget) -> None:
         super().__init__()
@@ -61,7 +62,7 @@ class TableManager():
                         self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
                         self.table.item(row, col).setText(v.get("info", ""))
-        else:
+        elif self.type == __class__.Type.REPLACEMENT:
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
                     if col == 0:
@@ -73,6 +74,13 @@ class TableManager():
                             self.table.item(row, col).setText("✅")
                         else:
                             self.table.item(row, col).setText("")
+        elif self.type == __class__.Type.TEXT_PRESERVE:
+            for row, v in enumerate(self.data):
+                for col in range(self.table.columnCount()):
+                    if col == 0:
+                        self.table.item(row, col).setText(v.get("src", ""))
+                    elif col == 1:
+                        self.table.item(row, col).setText(v.get("info", ""))
 
         # 更新结束
         self.set_updating(False)
@@ -130,9 +138,11 @@ class TableManager():
 
         if self.type == __class__.Type.GLOSSARY:
             pass
-        else:
+        elif self.type == __class__.Type.REPLACEMENT:
             if col == 2:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        elif self.type == __class__.Type.TEXT_PRESERVE:
+            pass
 
         return item
 
@@ -158,6 +168,9 @@ class TableManager():
         # 逆序删除并去重以避免索引错误
         for row in sorted({item.row() for item in selected_index}, reverse = True):
             self.table.removeRow(row)
+
+        # 删除行不会触发 itemChanged 事件，所以手动触发一下
+        self.table.itemChanged.emit(QTableWidgetItem())
 
     # 切换正则事件
     def switch_regex(self) -> None:
@@ -234,12 +247,19 @@ class TableManager():
                         "info": data[2].text().strip() if isinstance(data[2], QTableWidgetItem) else "",
                     }
                 )
-            else:
+            elif self.type == __class__.Type.REPLACEMENT:
                 self.data.append(
                     {
                         "src": data[0].text().strip(),
                         "dst": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
                         "regex": data[2].text().strip() == "✅" if isinstance(data[2], QTableWidgetItem) else False,
+                    }
+                )
+            elif self.type == __class__.Type.TEXT_PRESERVE:
+                self.data.append(
+                    {
+                        "src": data[0].text().strip(),
+                        "info": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
                     }
                 )
 

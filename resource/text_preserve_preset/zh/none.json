@@ -1,0 +1,14 @@
+[
+    {
+        "src": "<br>",
+        "dst": "",
+        "info": "换行符 <br>",
+        "regex": false
+    },
+    {
+        "src": "\\s",
+        "dst": "",
+        "info": "空白字符",
+        "regex": false
+    }
+]

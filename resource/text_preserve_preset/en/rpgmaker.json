@@ -1,0 +1,82 @@
+[
+    {
+        "src": "<.+?:.+?>",
+        "info": "Example - <sample:123>"
+    },
+    {
+        "src": "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
+        "info": "Example - en(!s[123]) en(v[123] >= 1)"
+    },
+    {
+        "src": "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
+        "info": "Example - if(!s[123]) if(v[123] >= 1)"
+    },
+    {
+        "src": "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}",
+        "info": "Example - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】"
+    },
+    {
+        "src": "%\\d+",
+        "info": "Example - %1 %2"
+    },
+    {
+        "src": "@\\d+",
+        "info": "WOLF Character ID"
+    },
+    {
+        "src": "\\\\[cus]db\\[.+?:.+?:.+?\\]",
+        "info": "WOLF Database Variable"
+    },
+    {
+        "src": "\\\\f[rbi]",
+        "info": "Text - Reset, Bold, Italicize "
+    },
+    {
+        "src": "\\\\[\\{\\}]",
+        "info": "Font - Enlarge, Shrink"
+    },
+    {
+        "src": "\\\\\\$",
+        "info": "Open gold window"
+    },
+    {
+        "src": "\\\\\\.",
+        "info": "Wait 0.25 seconds"
+    },
+    {
+        "src": "\\\\\\|",
+        "info": "Wait 1 second"
+    },
+    {
+        "src": "\\\\!",
+        "info": "Wait for button press"
+    },
+    {
+        "src": "\\\\>",
+        "info": "Display text on the same line"
+    },
+    {
+        "src": "\\\\<",
+        "info": "Cancel display of all text"
+    },
+    {
+        "src": "\\\\\\^",
+        "info": "No wait after displaying text"
+    },
+    {
+        "src": "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])",
+        "info": "Part before <> [] in /C<> \\FS<> /C[] \\FS[]"
+    },
+    {
+        "src": "\\\\[a-z](?=[^a-z<>\\[\\]])",
+        "info": "Single letter escape character - \\n \\e \\I"
+    },
+    {
+        "src": "<br>",
+        "info": "Line break"
+    },
+    {
+        "src": "\\s",
+        "info": "Whitespace character"
+    }
+]

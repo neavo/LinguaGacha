@@ -11,6 +11,7 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.SliderCard import SliderCard
 
@@ -24,8 +25,8 @@ class ArgsEditPage(MessageBoxBase, Base):
     def __init__(self, id: int, window: FluentWindow) -> None:
         super().__init__(window)
 
-        # 载入配置文件
-        config = self.load_config()
+        # 载入并保存默认配置
+        config = Config().load().save()
 
         # 设置框体
         self.widget.setFixedSize(960, 720)
@@ -33,7 +34,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         self.cancelButton.hide()
 
         # 获取平台配置
-        self.platform = self.get_platform_from_config(id, config)
+        self.platform = config.get_platform(id)
 
         # 设置主布局
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
@@ -62,31 +63,16 @@ class ArgsEditPage(MessageBoxBase, Base):
         # 填充
         scroll_area_vbox.addStretch(1)
 
-    # 获取平台配置
-    def get_platform_from_config(self, id: int, config: dict) -> dict[str, str | bool | int | float | list[str]]:
-        item: dict[str, str | bool | int | float | list[str]] = None
-        for item in config.get("platforms", []):
-            if item.get("id", 0) == id:
-                return item
-
-    # 更新平台配置
-    def update_platform_to_config(self, new: dict, config: dict) -> None:
-        old: dict = None
-        for i, old in enumerate(config.get("platforms", [])):
-            if old.get("id", 0) == new.get("id", 0):
-                config.get("platforms")[i] = new
-                break
-
     # 滑动条释放事件
     def slider_released(self, widget: SliderCard, arg: str) -> None:
         value = widget.get_value()
         widget.set_text(f"{(value / 100):.2f}")
 
         # 更新配置文件
-        config = self.load_config()
+        config = Config().load()
         self.platform[arg] = value / 100
-        self.update_platform_to_config(self.platform, config)
-        self.save_config(config)
+        config.set_platform(self.platform)
+        config.save()
 
     # 开关状态变化事件
     def checked_changed(self, widget: SliderCard, checked: bool, arg: str) -> None:
@@ -101,13 +87,13 @@ class ArgsEditPage(MessageBoxBase, Base):
         widget.set_value(int(getattr(__class__, f"{arg.upper()}_DEFAULT") * 100))
 
         # 更新配置文件
-        config = self.load_config()
+        config = Config().load()
         self.platform[f"{arg}_custom_enable"] = checked
-        self.update_platform_to_config(self.platform, config)
-        self.save_config(config)
+        config.set_platform(self.platform)
+        config.save()
 
     # top_p
-    def add_widget_top_p(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_top_p(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
@@ -136,7 +122,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         )
 
     # temperature
-    def add_widget_temperature(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_temperature(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
@@ -165,7 +151,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         )
 
     # presence_penalty
-    def add_widget_presence_penalty(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_presence_penalty(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
@@ -194,7 +180,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         )
 
     # frequency_penalty
-    def add_widget_frequency_penalty(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_frequency_penalty(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
@@ -223,7 +209,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         )
 
     # 添加链接
-    def add_widget_url(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
             url = "https://ai.google.dev/api/generate-content"
         elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:

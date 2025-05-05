@@ -11,7 +11,6 @@ from rich.console import Console
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from base.EventManager import EventManager
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Fixer.CodeFixer import CodeFixer
@@ -20,11 +19,12 @@ from module.Fixer.EscapeFixer import EscapeFixer
 from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
+from module.Config import Config
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
 from base.LogManager import LogManager
-from module.CodeSaver import CodeSaver
+from module.TextPreserver import TextPreserver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 from module.PromptBuilder import PromptBuilder
@@ -46,7 +46,7 @@ class TranslatorTask(Base):
     # 类线程锁
     LOCK = threading.Lock()
 
-    def __init__(self, config: dict, platform: dict, local_flag: bool, items: list[CacheItem], preceding_items: list[CacheItem]) -> None:
+    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[CacheItem], preceding_items: list[CacheItem]) -> None:
         super().__init__()
 
         # 初始化
@@ -55,7 +55,7 @@ class TranslatorTask(Base):
         self.config = config
         self.platform = platform
         self.local_flag = local_flag
-        self.code_saver = CodeSaver()
+        self.code_saver = TextPreserver(config)
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
 
@@ -109,7 +109,7 @@ class TranslatorTask(Base):
             return {}
 
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
-        if time.time() - start_time >= self.config.get("request_timeout"):
+        if time.time() - start_time >= self.config.request_timeout:
             return {}
 
         # 生成请求提示词
@@ -137,7 +137,7 @@ class TranslatorTask(Base):
         dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
 
         # 检查回复内容
-        check_result = self.response_checker.check(src_dict, dst_dict, item_dict, self.config.get("source_language"))
+        check_result = self.response_checker.check(src_dict, dst_dict, item_dict, self.config.source_language)
 
         # 当任务失败且是单条目任务时，更新重试次数
         if any(v != ResponseChecker.Error.NONE for v in check_result) != None and len(self.items) == 1:
@@ -151,7 +151,7 @@ class TranslatorTask(Base):
             console_log.append(Localizer.get().translator_task_response_think + response_think)
         if response_result != "":
             file_log.append(Localizer.get().translator_task_response_result + response_result)
-            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogManager.is_debug() else None
+            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogManager.is_expert_mode() else None
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
@@ -224,13 +224,13 @@ class TranslatorTask(Base):
     # 合并术语表
     def merge_glossary(self, glossary_list: list[dict[str, str]], last_save_time: float) -> float:
         # 有效性检查
-        if self.config.get("glossary_enable") == False:
+        if self.config.glossary_enable == False:
             return last_save_time
-        if self.config.get("auto_glossary_enable") == False:
+        if self.config.auto_glossary_enable == False:
             return last_save_time
 
         # 提取现有术语表的原文列表
-        data: list[dict] = self.config.get("glossary_data")
+        data: list[dict] = self.config.glossary_data
         keys = {item.get("src", "") for item in data}
 
         # 合并去重后的术语表
@@ -267,9 +267,9 @@ class TranslatorTask(Base):
 
         if changed == True and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL:
             # 更新配置文件
-            config = self.load_config()
-            config["glossary_data"] = data
-            self.save_config(config)
+            config = Config().load()
+            config.glossary_data = data
+            config.save()
 
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
@@ -281,10 +281,10 @@ class TranslatorTask(Base):
 
     # 译前替换
     def replace_before_translation(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.get("pre_translation_replacement_enable") == False:
+        if self.config.pre_translation_replacement_enable == False:
             return data
 
-        replace_dict: list[dict] = self.config.get("pre_translation_replacement_data")
+        replace_dict: list[dict] = self.config.pre_translation_replacement_data
         for k in data:
             for v in replace_dict:
                 if v.get("regex", False) != True:
@@ -296,10 +296,10 @@ class TranslatorTask(Base):
 
     # 译后替换
     def replace_after_translation(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.get("post_translation_replacement_enable") == False:
+        if self.config.post_translation_replacement_enable == False:
             return data
 
-        replace_dict: list[dict] = self.config.get("post_translation_replacement_data")
+        replace_dict: list[dict] = self.config.post_translation_replacement_data
         for k in data:
             for v in replace_dict:
                 if v.get("regex", False) != True:
@@ -311,18 +311,18 @@ class TranslatorTask(Base):
 
     # 中文字型转换
     def convert_chinese_character_form(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.get("target_language") != BaseLanguage.Enum.ZH:
+        if self.config.target_language != BaseLanguage.Enum.ZH:
             return data
 
-        if self.config.get("traditional_chinese_enable") == True:
+        if self.config.traditional_chinese_enable == True:
             return {k: TranslatorTask.OPENCCS2T.convert(v) for k, v in data.items()}
         else:
             return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
 
     # 自动修复
     def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> dict[str, str]:
-        source_language = self.config.get("source_language")
-        target_language = self.config.get("target_language")
+        source_language = self.config.source_language
+        target_language = self.config.target_language
 
         for k in dst_dict:
             # 有效性检查
@@ -337,7 +337,7 @@ class TranslatorTask(Base):
                 dst_dict[k] = HangeulFixer.fix(dst_dict[k])
 
             # 代码修复
-            dst_dict[k] = CodeFixer.fix(src_dict[k], dst_dict[k], item_dict.get(k).get_text_type())
+            dst_dict[k] = CodeFixer.fix(src_dict[k], dst_dict[k], item_dict.get(k).get_text_type(), self.config)
 
             # 转义修复
             dst_dict[k] = EscapeFixer.fix(src_dict[k], dst_dict[k])

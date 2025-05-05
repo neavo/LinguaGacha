@@ -2,7 +2,7 @@ import os
 import threading
 
 from base.Base import Base
-from base.EventManager import EventManager
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.Translator.TranslatorRequester import TranslatorRequester
 
@@ -32,21 +32,8 @@ class PlatformTester(Base):
         # 更新运行状态
         Base.WORK_STATUS = Base.TaskStatus.TESTING
 
-        platform = {}
-        config = self.load_config()
-        for item in config.get("platforms"):
-            if item.get("id") == data.get("id"):
-                platform = item
-                break
-
-        # 网络代理
-        if config.get("proxy_enable") == False or config.get("proxy_url") == "":
-            os.environ.pop("http_proxy", None)
-            os.environ.pop("https_proxy", None)
-        else:
-            os.environ["http_proxy"] = config.get("proxy_url")
-            os.environ["https_proxy"] = config.get("proxy_url")
-            self.info(f"{Localizer.get().platofrm_tester_proxy}{config.get("proxy_url")}")
+        config = Config().load()
+        platform = config.get_platform(data.get("id"))
 
         # 测试结果
         failure = []
