@@ -4,20 +4,20 @@ import time
 import shutil
 import threading
 import concurrent.futures
-from typing import Any
 from itertools import zip_longest
 
 import httpx
 from tqdm import tqdm
 
 from base.Base import Base
-from base.EventManager import EventManager
+from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Localizer.Localizer import Localizer
+from module.TextPreserver import TextPreserver
 from module.Translator.TaskLimiter import TaskLimiter
 from module.Translator.TranslatorTask import TranslatorTask
 from module.Translator.TranslatorRequester import TranslatorRequester
@@ -41,11 +41,6 @@ class Translator(Base):
         self.subscribe(Base.Event.TRANSLATION_START, self.translation_start)
         self.subscribe(Base.Event.TRANSLATION_MANUAL_EXPORT, self.translation_manual_export)
         self.subscribe(Base.Event.PROJECT_STATUS, self.translation_project_status_check)
-        self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
-
-    # 应用关闭事件
-    def app_shut_down(self, event: str, data: dict) -> None:
-        Base.WORK_STATUS = Base.TaskStatus.STOPPING
 
     # 翻译停止事件
     def translation_stop(self, event: str, data: dict) -> None:
@@ -113,7 +108,7 @@ class Translator(Base):
         # 只有翻译状态为 无任务 时才执行检查逻辑，其他情况直接返回默认值
         if Base.WORK_STATUS == Base.TaskStatus.IDLE:
             cache_manager = CacheManager(tick = False)
-            cache_manager.load_project_from_file(self.load_config().get("output_folder"))
+            cache_manager.load_project_from_file(Config().load().output_folder)
             status = cache_manager.get_project().get_status()
 
         self.emit(Base.Event.PROJECT_STATUS_CHECK_DONE, {
@@ -129,15 +124,13 @@ class Translator(Base):
         Base.WORK_STATUS = Base.TaskStatus.TRANSLATING
 
         # 初始化
-        self.config = self.load_config()
-        self.platform: dict[str, Any] = {}
-        for platform in self.config.get("platforms"):
-            if platform.get("id") == self.config.get("activate_platform"):
-                self.platform = platform
-                break
-        self.initialize_proxy()
+        self.config = Config().load()
+        self.platform = self.config.get_platform(self.config.activate_platform)
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()
+
+        # 重置文本保护器
+        TextPreserver.reset()
 
         # 重置请求器
         TranslatorRequester.reset()
@@ -146,9 +139,9 @@ class Translator(Base):
         try:
             # 根据 status 判断是否为继续翻译
             if status == Base.TranslationStatus.TRANSLATING:
-                self.cache_manager.load_from_file(self.config.get("output_folder"))
+                self.cache_manager.load_from_file(self.config.output_folder)
             else:
-                shutil.rmtree(f"{self.config.get("output_folder")}/cache", ignore_errors = True)
+                shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors = True)
                 project, items = FileManager(self.config).read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
@@ -190,7 +183,7 @@ class Translator(Base):
         self.mtool_optimizer_preprocess(self.cache_manager.get_items())
 
         # 开始循环
-        for current_round in range(self.config.get("max_round") + 1):
+        for current_round in range(self.config.max_round + 1):
             # 检测是否需要停止任务
             if Base.WORK_STATUS == Base.TaskStatus.STOPPING:
                 # 循环次数比实际最大轮次要多一轮，当触发停止翻译的事件时，最后都会从这里退出任务
@@ -211,7 +204,7 @@ class Translator(Base):
                 break
 
             # 达到最大翻译轮次时
-            if item_count_status_untranslated > 0 and current_round == self.config.get("max_round"):
+            if item_count_status_untranslated > 0 and current_round == self.config.max_round:
                 self.print("")
                 self.warning(Localizer.get().translator_fail)
                 self.warning(Localizer.get().translator_writing)
@@ -224,10 +217,13 @@ class Translator(Base):
 
             # 第二轮开始对半切分
             if current_round > 0:
-                self.config["token_threshold"] = max(1, int(self.config.get("token_threshold") / 3))
+                self.config.token_threshold = max(1, int(self.config.token_threshold / 3))
 
             # 生成缓存数据条目片段
-            chunks, preceding_chunks = self.cache_manager.generate_item_chunks(self.config.get("token_threshold"))
+            chunks, preceding_chunks = self.cache_manager.generate_item_chunks(
+                self.config.token_threshold,
+                self.config.preceding_lines_threshold,
+            )
 
             # 仅在第一轮启用参考上文功能
             if current_round > 0:
@@ -251,14 +247,11 @@ class Translator(Base):
             # 输出开始翻译的日志
             self.print("")
             self.info(f"{Localizer.get().translator_current_round} - {current_round + 1}")
-            self.info(f"{Localizer.get().translator_max_round} - {self.config.get("max_round")}")
+            self.info(f"{Localizer.get().translator_max_round} - {self.config.max_round}")
             self.print("")
             self.info(f"{Localizer.get().translator_name} - {self.platform.get("name")}")
             self.info(f"{Localizer.get().translator_api_url} - {self.platform.get("api_url")}")
             self.info(f"{Localizer.get().translator_model} - {self.platform.get("model")}")
-            if self.config.get("proxy_enable") == True and self.config.get("proxy_url") != "":
-                self.print("")
-                self.info(f"{Localizer.get().translator_proxy_url} - {self.config.get("proxy_url")}")
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
@@ -294,15 +287,6 @@ class Translator(Base):
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_STOP_DONE, {})
 
-    # 初始化网络代理
-    def initialize_proxy(self) -> None:
-        if self.config.get("proxy_enable") == False or self.config.get("proxy_url") == "":
-            os.environ.pop("http_proxy", None)
-            os.environ.pop("https_proxy", None)
-        else:
-            os.environ["http_proxy"] = self.config.get("proxy_url")
-            os.environ["https_proxy"] = self.config.get("proxy_url")
-
     # 初始化本地接口标识
     def initialize_local_flag(self) -> bool:
         return re.search(
@@ -313,8 +297,8 @@ class Translator(Base):
 
     # 初始化 速度控制
     def initialize_max_workers(self) -> tuple[int, int]:
-        max_workers: int = self.config.get("max_workers")
-        rpm_threshold: int = self.config.get("rpm_threshold")
+        max_workers: int = self.config.max_workers
+        rpm_threshold: int = self.config.rpm_threshold
 
         # 当 max_workers = 0 时，尝试获取 llama.cpp 槽数
         if max_workers == 0:
@@ -372,7 +356,7 @@ class Translator(Base):
         count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
 
         # 筛选出无效条目并标记为已排除
-        source_language = self.config.get("source_language")
+        source_language = self.config.source_language
         target = [
             v for v in items
             if LanguageFilter.filter(v.get_src(), source_language) == True
@@ -387,7 +371,7 @@ class Translator(Base):
 
     # MTool 优化器预处理
     def mtool_optimizer_preprocess(self, items: list[CacheItem]) -> None:
-        if len(items) == 0 or self.config.get("mtool_optimizer_enable") == False:
+        if len(items) == 0 or self.config.mtool_optimizer_enable == False:
             return None
 
         # 统计排除数量
@@ -422,7 +406,7 @@ class Translator(Base):
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[CacheItem]) -> None:
-        if len(items) == 0 or self.config.get("mtool_optimizer_enable") == False:
+        if len(items) == 0 or self.config.mtool_optimizer_enable == False:
             return None
 
         # 筛选
@@ -449,11 +433,11 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[CacheItem]) -> None:
         # 启用自动术语表的时，更新配置文件
-        if self.config.get("glossary_enable") == True and self.config.get("auto_glossary_enable") == True:
+        if self.config.glossary_enable == True and self.config.auto_glossary_enable == True:
             # 更新配置文件
-            config = self.load_config()
-            config["glossary_data"] = self.config.get("glossary_data")
-            self.save_config(config)
+            config = Config().load()
+            config.glossary_data = self.config.glossary_data
+            config.save()
 
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
@@ -464,7 +448,7 @@ class Translator(Base):
         # 写入文件
         FileManager(self.config).write_to_path(items)
         self.print("")
-        self.info(Localizer.get().translator_write.replace("{PATH}", self.config.get("output_folder")))
+        self.info(Localizer.get().translator_write.replace("{PATH}", self.config.output_folder))
         self.print("")
 
     # 翻译任务完成时
@@ -495,7 +479,7 @@ class Translator(Base):
             self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATING)
 
             # 请求保存缓存文件
-            self.cache_manager.require_save_to_file(self.config.get("output_folder"))
+            self.cache_manager.require_save_to_file(self.config.output_folder)
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)

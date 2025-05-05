@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 import ctypes
 import traceback
 
@@ -13,11 +12,10 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 
 from base.LogManager import LogManager
-from base.BaseLanguage import BaseLanguage
+from module.Config import Config
 from module.Platform.PlatformTester import PlatformTester
 from module.Localizer.Localizer import Localizer
 from module.Translator.Translator import Translator
-from module.ExpertConfig import ExpertConfig
 from module.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 
@@ -30,16 +28,6 @@ def excepthook(exc_type, exc_value, exc_traceback) -> None:
 
     # 使用LogHelper记录异常信息
     LogManager.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
-
-# 载入配置文件
-def load_config() -> dict:
-    config = {}
-
-    if os.path.exists("resource/config.json"):
-        with open("resource/config.json", "r", encoding = "utf-8-sig") as reader:
-            config = json.load(reader)
-
-    return config
 
 if __name__ == "__main__":
     # 捕获全局异常
@@ -75,32 +63,42 @@ if __name__ == "__main__":
     os.makedirs("./input", exist_ok=True)
     os.makedirs("./output", exist_ok=True)
 
-    # 载入配置文件
-    config = load_config()
+    # 载入并保存默认配置
+    config = Config().load()
 
     # 加载版本号
     with open("version.txt", "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
-    setTheme(Theme.DARK if config.get("theme", "light") == "dark" else Theme.LIGHT)
+    setTheme(Theme.DARK if config.theme == "dark" else Theme.LIGHT)
 
     # 设置应用语言
-    Localizer.set_app_language(config.get("app_language", BaseLanguage.Enum.ZH))
+    Localizer.set_app_language(config.app_language)
 
     # 打印日志
     LogManager.info(f"LinguaGacha {version}")
-    LogManager.debug(Localizer.get().log_debug_mode) if LogManager.is_debug() else None
+    LogManager.debug(Localizer.get().log_expert_mode) if LogManager.is_expert_mode() else None
+
+    # 网络代理
+    if config.proxy_enable == False or config.proxy_url == "":
+        os.environ.pop("http_proxy", None)
+        os.environ.pop("https_proxy", None)
+    else:
+        os.environ["http_proxy"] = config.proxy_url
+        os.environ["https_proxy"] = config.proxy_url
 
     # 设置全局缩放比例
-    if config.get("scale_factor", "") == "50%":
+    if config.scale_factor == "50%":
         os.environ["QT_SCALE_FACTOR"] = "0.50"
-    elif config.get("scale_factor", "") == "75%":
+    elif config.scale_factor == "75%":
         os.environ["QT_SCALE_FACTOR"] = "0.75"
-    elif config.get("scale_factor", "") == "150%":
+    elif config.scale_factor == "150%":
         os.environ["QT_SCALE_FACTOR"] = "1.50"
-    elif config.get("scale_factor", "") == "200%":
+    elif config.scale_factor == "200%":
         os.environ["QT_SCALE_FACTOR"] = "2.00"
+    else:
+        os.environ.pop("QT_SCALE_FACTOR", None)
 
     # 创建全局应用对象
     app = QApplication(sys.argv)
@@ -110,14 +108,11 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    if config.get("font_hinting", True) == True:
+    if config.font_hinting == True:
         font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     else:
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
-
-    # 初始化实例
-    ExpertConfig.get()
 
     # 创建翻译器
     translator = Translator()

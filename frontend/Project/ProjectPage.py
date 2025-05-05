@@ -7,6 +7,7 @@ from qfluentwidgets import FluentWindow
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.ComboBoxCard import ComboBoxCard
 from widget.PushButtonCard import PushButtonCard
@@ -18,17 +19,8 @@ class ProjectPage(QWidget, Base):
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "source_language": BaseLanguage.Enum.JA,
-            "target_language": BaseLanguage.Enum.ZH,
-            "input_folder": "./input",
-            "output_folder": "./output",
-            "traditional_chinese_enable": False,
-        }
-
         # 载入并保存默认配置
-        config = self.save_config(self.load_config_from_default())
+        config = Config().load().save()
 
         # 根据应用语言构建语言列表
         if Localizer.get_app_language() == BaseLanguage.Enum.ZH:
@@ -52,16 +44,16 @@ class ProjectPage(QWidget, Base):
         self.vbox.addStretch(1)
 
     # 原文语言
-    def add_widget_source_language(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+    def add_widget_source_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def init(widget: ComboBoxCard) -> None:
-            source_language = config.get("source_language")
+            source_language = config.source_language
             if source_language in BaseLanguage.get_languages():
                 widget.set_current_index(BaseLanguage.get_languages().index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
-            config = self.load_config()
-            config["source_language"] = BaseLanguage.get_languages()[widget.get_current_index()]
-            self.save_config(config)
+            config = Config().load()
+            config.source_language = BaseLanguage.get_languages()[widget.get_current_index()]
+            config.save()
 
         parent.addWidget(
             ComboBoxCard(
@@ -74,17 +66,17 @@ class ProjectPage(QWidget, Base):
         )
 
     # 译文语言
-    def add_widget_target_language(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+    def add_widget_target_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
 
         def init(widget: ComboBoxCard) -> None:
-            source_language = config.get("target_language")
+            source_language = config.target_language
             if source_language in BaseLanguage.get_languages():
                 widget.set_current_index(BaseLanguage.get_languages().index(source_language))
 
         def current_changed(widget: ComboBoxCard) -> None:
-            config = self.load_config()
-            config["target_language"] = BaseLanguage.get_languages()[widget.get_current_index()]
-            self.save_config(config)
+            config = Config().load()
+            config.target_language = BaseLanguage.get_languages()[widget.get_current_index()]
+            config.save()
 
         parent.addWidget(
             ComboBoxCard(
@@ -97,9 +89,9 @@ class ProjectPage(QWidget, Base):
         )
 
     # 输入文件夹
-    def add_widget_input_folder(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+    def add_widget_input_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def widget_init(widget: PushButtonCard) -> None:
-            widget.set_description(f"{Localizer.get().project_page_input_folder_content} {config.get("input_folder")}")
+            widget.set_description(f"{Localizer.get().project_page_input_folder_content} {config.input_folder}")
             widget.set_text(Localizer.get().project_page_input_folder_btn)
             widget.set_icon(FluentIcon.FOLDER_ADD)
 
@@ -113,9 +105,9 @@ class ProjectPage(QWidget, Base):
             widget.set_description(f"{Localizer.get().project_page_input_folder_content} {path.strip()}")
 
             # 更新并保存配置
-            config = self.load_config()
-            config["input_folder"] = path.strip()
-            self.save_config(config)
+            config = Config().load()
+            config.input_folder = path.strip()
+            config.save()
 
         parent.addWidget(
             PushButtonCard(
@@ -127,9 +119,9 @@ class ProjectPage(QWidget, Base):
         )
 
     # 输出文件夹
-    def add_widget_output_folder(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+    def add_widget_output_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def widget_init(widget: PushButtonCard) -> None:
-            widget.set_description(f"{Localizer.get().project_page_output_folder_content} {config.get("output_folder")}")
+            widget.set_description(f"{Localizer.get().project_page_output_folder_content} {config.output_folder}")
             widget.set_text(Localizer.get().project_page_output_folder_btn)
             widget.set_icon(FluentIcon.FOLDER_ADD)
 
@@ -143,9 +135,9 @@ class ProjectPage(QWidget, Base):
             widget.set_description(f"{Localizer.get().project_page_output_folder_content} {path.strip()}")
 
             # 更新并保存配置
-            config = self.load_config()
-            config["output_folder"] = path.strip()
-            self.save_config(config)
+            config = Config().load()
+            config.output_folder = path.strip()
+            config.save()
 
         parent.addWidget(
             PushButtonCard(
@@ -157,15 +149,16 @@ class ProjectPage(QWidget, Base):
         )
 
     # 输出文件夹
-    def add_widget_traditional_chinese(self, parent: QLayout, config: dict, windows: FluentWindow) -> None:
+    def add_widget_traditional_chinese(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.get("traditional_chinese_enable"))
+            widget.get_switch_button().setChecked(config.traditional_chinese_enable)
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
-            config = self.load_config()
-            config["traditional_chinese_enable"] = checked
-            self.save_config(config)
+            # 更新并保存配置
+            config = Config().load()
+            config.traditional_chinese_enable = checked
+            config.save()
 
         parent.addWidget(
             SwitchButtonCard(

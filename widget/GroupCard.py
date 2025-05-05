@@ -1,15 +1,18 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
+from widget.Separator import Separator
+
 class GroupCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None) -> None:
-        super().__init__(None)
+    def __init__(self, parent: QWidget, title: str, description: str, init: Callable = None, clicked: Callable = None) -> None:
+        super().__init__(parent)
 
         # 设置容器
         self.setBorderRadius(4)
@@ -24,12 +27,7 @@ class GroupCard(CardWidget):
         self.root.addWidget(self.description_label)
 
         # 添加分割线
-        line = QWidget(self)
-        line.setFixedHeight(1)
-        line.setStyleSheet("QWidget { background-color: #C0C0C0; }")
-        self.root.addSpacing(4)
-        self.root.addWidget(line)
-        self.root.addSpacing(4)
+        self.root.addWidget(Separator(self))
 
         # 添加流式布局容器
         self.vbox_container = QWidget(self)
@@ -41,6 +39,9 @@ class GroupCard(CardWidget):
         if callable(init):
             init(self)
 
+        if callable(clicked):
+            self.clicked.connect(lambda : clicked(self))
+
     def set_title(self, title: str) -> None:
         self.title_label.setText(title)
 
@@ -48,14 +49,5 @@ class GroupCard(CardWidget):
         self.description_label.setText(description)
 
     # 添加控件
-    def addWidget(self, widget) -> None:
+    def add_widget(self, widget) -> None:
         self.vbox.addWidget(widget)
-
-    # 添加分割线
-    def addSeparator(self) -> None:
-        line = QWidget(self)
-        line.setFixedHeight(1)
-        line.setStyleSheet("QWidget { background-color: #C0C0C0; }")
-        self.vbox.addSpacing(4)
-        self.vbox.addWidget(line)
-        self.vbox.addSpacing(4)

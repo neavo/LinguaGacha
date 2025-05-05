@@ -4,11 +4,9 @@ import json
 import threading
 
 from base.Base import Base
-from base.EventManager import EventManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Localizer.Localizer import Localizer
-from module.ExpertConfig import ExpertConfig
 
 class CacheManager(Base):
 
@@ -44,12 +42,7 @@ class CacheManager(Base):
 
         # 启动定时任务
         if tick == True:
-            self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
             threading.Thread(target = self.save_to_file_tick).start()
-
-    # 应用关闭事件
-    def app_shut_down(self, event: str, data: dict) -> None:
-        self.app_shut_down_flag = True
 
     # 保存缓存到文件
     def save_to_file(self, project: CacheProject = None, items: list[CacheItem] = None, output_folder: str = None) -> None:
@@ -77,11 +70,7 @@ class CacheManager(Base):
     # 保存缓存到文件的定时任务
     def save_to_file_tick(self) -> None:
         while True:
-            time.sleep(self.SAVE_INTERVAL)
-
-            # 接收到退出信号则停止
-            if getattr(self, "app_shut_down_flag", False)  == True:
-                break
+            time.sleep(__class__.SAVE_INTERVAL)
 
             # 接收到保存信号则保存
             if getattr(self, "save_to_file_require_flag", False)  == True:
@@ -167,9 +156,9 @@ class CacheManager(Base):
         return len([item for item in self.items if item.get_status() == status])
 
     # 生成缓存数据条目片段
-    def generate_item_chunks(self, token_limit: int) -> list[list[CacheItem]]:
+    def generate_item_chunks(self, token_threshold: int, preceding_lines_threshold: int) -> list[list[CacheItem]]:
         # 根据 Token 阈值计算行数阈值，避免大量短句导致行数太多
-        line_limit = max(8, int(token_limit / 16))
+        line_limit = max(8, int(token_threshold / 16))
 
         skip: int = 0
         line_length: int = 0
@@ -191,11 +180,11 @@ class CacheManager(Base):
             # 如果 行数超限、Token 超限、数据来源跨文件，则结束此片段
             elif (
                 line_length + current_line_length > line_limit
-                or token_length + current_token_length > token_limit
+                or token_length + current_token_length > token_threshold
                 or item.get_file_path() != chunk[-1].get_file_path()
             ):
                 chunks.append(chunk)
-                preceding_chunks.append(self.generate_preceding_chunks(chunk, i, skip))
+                preceding_chunks.append(self.generate_preceding_chunks(chunk, i, skip, preceding_lines_threshold))
                 skip = 0
 
                 chunk = []
@@ -209,13 +198,13 @@ class CacheManager(Base):
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:
             chunks.append(chunk)
-            preceding_chunks.append(self.generate_preceding_chunks(chunk, i + 1, skip))
+            preceding_chunks.append(self.generate_preceding_chunks(chunk, i + 1, skip, preceding_lines_threshold))
             skip = 0
 
         return chunks, preceding_chunks
 
     # 生成参考上文数据条目片段
-    def generate_preceding_chunks(self, chunk: list[CacheItem], start: int, skip: int) -> list[list[CacheItem]]:
+    def generate_preceding_chunks(self, chunk: list[CacheItem], start: int, skip: int, preceding_lines_threshold: int) -> list[list[CacheItem]]:
         result: list[CacheItem] = []
 
         for i in range(start - skip - len(chunk) - 1, -1, -1):
@@ -231,7 +220,7 @@ class CacheManager(Base):
                 continue
 
             # 候选数据超过阈值时，结束搜索
-            if len(result) >= ExpertConfig.get().preceding_lines_threshold:
+            if len(result) >= preceding_lines_threshold:
                 break
 
             # 候选数据与当前任务不在同一个文件时，结束搜索

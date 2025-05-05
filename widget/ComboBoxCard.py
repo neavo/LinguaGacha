@@ -1,7 +1,8 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import ComboBox
 from qfluentwidgets import CaptionLabel
@@ -9,7 +10,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class ComboBoxCard(CardWidget):
 
-    def __init__(self, title: str, description: str, items: list, init = None, current_changed = None) -> None:
+    def __init__(self, title: str, description: str, items: list, init: Callable = None, current_changed: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -41,6 +42,9 @@ class ComboBoxCard(CardWidget):
 
         if callable(current_changed):
             self.combo_box.currentIndexChanged.connect(lambda _: current_changed(self))
+
+    def get_combo_box(self) -> ComboBox:
+        return self.combo_box
 
     def set_items(self, items: list, values: list) -> None:
         self.combo_box.clear()

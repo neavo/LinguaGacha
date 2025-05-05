@@ -16,7 +16,7 @@ from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from base.EventManager import EventManager
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from widget.EmptyCard import EmptyCard
@@ -31,59 +31,50 @@ class CustomPromptENPage(QWidget, Base):
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认配置
-        self.default = {
-            "custom_prompt_en_enable": False,
-        }
-
         # 载入并保存默认配置
-        config = self.save_config(self.load_config_from_default())
-
-        # 载入配置文件
-        config = self.load_config()
-
-        # 设置默认数据
-        if config.get("custom_prompt_en_data") == None:
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
-            self.save_config(config)
+        config = Config().load()
+        if config.custom_prompt_en_data == None:
+            config.custom_prompt_en_data = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
+        config.save()
 
         # 设置主容器
-        self.container = QVBoxLayout(self)
-        self.container.setSpacing(8)
-        self.container.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
 
         # 添加控件
-        self.add_widget_header(self.container, config, window)
-        self.add_widget_body(self.container, config, window)
-        self.add_widget_footer(self.container, config, window)
+        self.add_widget_header(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
+        self.add_widget_footer(self.root, config, window)
 
     # 头部
-    def add_widget_header(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
-        def widget_init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.get("custom_prompt_en_enable"))
+    def add_widget_header(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
-        def widget_callback(widget, checked: bool) -> None:
-            config = self.load_config()
-            config["custom_prompt_en_enable"] = checked
-            self.save_config(config)
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(config.custom_prompt_en_enable)
+
+        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+            config = Config().load()
+            config.custom_prompt_en_enable = checked
+            config.save()
 
         parent.addWidget(
             SwitchButtonCard(
-                Localizer.get().custom_prompt_en_page_head,
-                Localizer.get().custom_prompt_en_page_head_desc,
-                widget_init,
-                widget_callback,
+                title = Localizer.get().custom_prompt_en_page_head,
+                description = Localizer.get().custom_prompt_en_page_head_desc,
+                init = init,
+                checked_changed = checked_changed,
             )
         )
 
     # 主体
-    def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(BaseLanguage.Enum.EN))
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
         self.main_text = PlainTextEdit(self)
-        self.main_text.setPlainText(config.get("custom_prompt_en_data"))
+        self.main_text.setPlainText(config.custom_prompt_en_data)
         parent.addWidget(self.main_text)
 
         self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(BaseLanguage.Enum.EN).replace("\n", " "))
@@ -91,7 +82,7 @@ class CustomPromptENPage(QWidget, Base):
         parent.addWidget(self.suffix_body)
 
     # 底部
-    def add_widget_footer(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_footer(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
@@ -100,16 +91,12 @@ class CustomPromptENPage(QWidget, Base):
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
 
     # 保存
-    def add_command_bar_action_save(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_save(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
-            # 读取配置文件
-            config = self.load_config()
-
-            # 从表格更新数据
-            config["custom_prompt_en_data"] = self.main_text.toPlainText().strip()
-
-            # 保存配置文件
-            config = self.save_config(config)
+            # 更新配置文件
+            config = Config().load()
+            config.custom_prompt_en_data = self.main_text.toPlainText().strip()
+            config.save()
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -122,7 +109,7 @@ class CustomPromptENPage(QWidget, Base):
         )
 
     # 预设
-    def add_command_bar_action_preset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_preset(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         widget: CommandButton = None
 
@@ -145,11 +132,13 @@ class CustomPromptENPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            self.main_text.setPlainText("")
-            config = self.load_config()
-            config["custom_prompt_en_data"] = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
-            config = self.save_config(config)
-            self.main_text.setPlainText(config.get("custom_prompt_en_data"))
+            # 更新配置文件
+            config = Config().load()
+            config.custom_prompt_en_data = PromptBuilder(config).get_base(BaseLanguage.Enum.EN)
+            config.save()
+
+            # 更新 UI
+            self.main_text.setPlainText(config.custom_prompt_en_data)
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -167,12 +156,13 @@ class CustomPromptENPage(QWidget, Base):
             except Exception:
                 pass
 
-            # 读取配置文件
-            self.main_text.setPlainText("")
-            config = self.load_config()
-            config["custom_prompt_en_data"] = prompt
-            config = self.save_config(config)
-            self.main_text.setPlainText(config.get("custom_prompt_en_data"))
+            # 更新配置文件
+            config = Config().load()
+            config.custom_prompt_en_data = prompt
+            config.save()
+
+            # 更新 UI
+            self.main_text.setPlainText(config.custom_prompt_en_data)
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {

@@ -1,29 +1,32 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
+from widget.Separator import Separator
+
 class FlowCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None) -> None:
-        super().__init__(None)
+    def __init__(self, parent: QWidget, title: str, description: str, init: Callable = None, clicked: Callable = None) -> None:
+        super().__init__(parent)
 
         # 设置容器
         self.setBorderRadius(4)
-        self.container = QVBoxLayout(self)
-        self.container.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root = QVBoxLayout(self)
+        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 添加头部容器
         self.head_container = QWidget(self)
         self.head_hbox = QHBoxLayout(self.head_container)
         self.head_hbox.setSpacing(8)
         self.head_hbox.setContentsMargins(0, 0, 0, 0)
-        self.container.addWidget(self.head_container)
+        self.root.addWidget(self.head_container)
 
         # 添加文本容器
         self.text_container = QWidget(self)
@@ -43,22 +46,20 @@ class FlowCard(CardWidget):
         self.head_hbox.addStretch(1)
 
         # 添加分割线
-        line = QWidget(self)
-        line.setFixedHeight(1)
-        line.setStyleSheet("QWidget { background-color: #C0C0C0; }")
-        self.container.addSpacing(4)
-        self.container.addWidget(line)
-        self.container.addSpacing(4)
+        self.root.addWidget(Separator(self))
 
         # 添加流式布局容器
         self.flow_container = QWidget(self)
         self.flow_layout = FlowLayout(self.flow_container, needAni = False)
         self.flow_layout.setSpacing(8)
         self.flow_layout.setContentsMargins(0, 0, 0, 0)
-        self.container.addWidget(self.flow_container)
+        self.root.addWidget(self.flow_container)
 
         if callable(init):
             init(self)
+
+        if callable(clicked):
+            self.clicked.connect(lambda : clicked(self))
 
     def set_title(self, title: str) -> None:
         self.title_label.setText(title)

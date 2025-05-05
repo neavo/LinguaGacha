@@ -2,7 +2,9 @@ import os
 import re
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 
 class RENPY(Base):
 
@@ -44,15 +46,15 @@ class RENPY(Base):
     # 匹配 RenPy 文本的规则
     RE_RENPY = re.compile(r"\"(.*?)(?<!\\)\"(?!\")", flags = re.IGNORECASE)
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:

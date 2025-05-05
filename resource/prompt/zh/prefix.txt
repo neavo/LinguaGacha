@@ -1,1 +1,1 @@
-任务目标是将{source_language}翻译成{target_language}。
+任务目标是将{source_language}翻译成{target_language}：

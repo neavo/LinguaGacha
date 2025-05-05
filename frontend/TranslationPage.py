@@ -3,6 +3,7 @@ import threading
 from typing import Callable
 
 from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTime
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
@@ -12,6 +13,7 @@ from PyQt5.QtWidgets import QVBoxLayout
 
 from qfluentwidgets import Action
 from qfluentwidgets import TimeEdit
+from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import MessageBox
@@ -19,15 +21,71 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import ProgressRing
 from qfluentwidgets import CaptionLabel
+from qfluentwidgets import SubtitleLabel
 from qfluentwidgets import StrongBodyLabel
+from qfluentwidgets import LargeTitleLabel
 from qfluentwidgets import IndeterminateProgressRing
 
 from base.Base import Base
-from base.EventManager import EventManager
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from widget.DashboardCard import DashboardCard
+from widget.Separator import Separator
 from widget.WaveformWidget import WaveformWidget
 from widget.CommandBarCard import CommandBarCard
+
+class DashboardCard(CardWidget):
+
+    def __init__(self, parent: QWidget, title: str, value: str, unit: str, init: Callable = None, clicked: Callable = None) -> None:
+        super().__init__(parent)
+
+        # 设置容器
+        self.setBorderRadius(4)
+        self.root = QVBoxLayout(self)
+        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+
+        self.title_label = SubtitleLabel(title, self)
+        self.root.addWidget(self.title_label)
+
+        # 添加分割线
+        self.root.addWidget(Separator(self))
+
+        # 添加控件
+        self.body_hbox_container = QWidget(self)
+        self.body_hbox = QHBoxLayout(self.body_hbox_container)
+        self.body_hbox.setSpacing(0)
+        self.body_hbox.setContentsMargins(0, 0, 0, 0)
+
+        self.unit_vbox_container = QWidget(self)
+        self.unit_vbox = QVBoxLayout(self.unit_vbox_container)
+        self.unit_vbox.setSpacing(0)
+        self.unit_vbox.setContentsMargins(0, 0, 0, 0)
+
+        self.unit_label = StrongBodyLabel(unit, self)
+        self.unit_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.unit_vbox.addSpacing(20)
+        self.unit_vbox.addWidget(self.unit_label)
+
+        self.value_label = LargeTitleLabel(value, self)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        self.body_hbox.addStretch(1)
+        self.body_hbox.addWidget(self.value_label, 1)
+        self.body_hbox.addSpacing(6)
+        self.body_hbox.addWidget(self.unit_vbox_container)
+        self.body_hbox.addStretch(1)
+        self.root.addWidget(self.body_hbox_container, 1)
+
+        if callable(init):
+            init(self)
+
+        if callable(clicked):
+            self.clicked.connect(lambda : clicked(self))
+
+    def set_unit(self, unit: str) -> None:
+        self.unit_label.setText(unit)
+
+    def set_value(self, value: str) -> None:
+        self.value_label.setText(value)
 
 class TimerMessageBox(MessageBoxBase):
 
@@ -78,8 +136,8 @@ class TranslationPage(QWidget, Base):
             Base.TaskStatus.STOPPING: Localizer.get().translation_page_status_stopping,
         }
 
-        # 载入配置文件
-        config = self.load_config()
+        # 载入并保存默认配置
+        config = Config().load().save()
 
         # 设置主容器
         self.container = QVBoxLayout(self)
@@ -92,15 +150,14 @@ class TranslationPage(QWidget, Base):
         self.add_widget_foot(self.container, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.PLATFORM_TEST_DONE, lambda event, data: self.update_button_status(event, data))
-        self.subscribe(Base.Event.PLATFORM_TEST_START, lambda event, data: self.update_button_status(event, data))
-        self.subscribe(Base.Event.TRANSLATION_START, lambda event, data: self.update_button_status(event, data))
-        self.subscribe(Base.Event.TRANSLATION_STOP, lambda event, data: self.update_button_status(event, data))
+        self.subscribe(Base.Event.PLATFORM_TEST_DONE, self.update_button_status)
+        self.subscribe(Base.Event.PLATFORM_TEST_START, self.update_button_status)
+        self.subscribe(Base.Event.TRANSLATION_START, self.update_button_status)
+        self.subscribe(Base.Event.TRANSLATION_STOP, self.update_button_status)
         self.subscribe(Base.Event.TRANSLATION_STOP_DONE, self.translation_stop_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.CACHE_FILE_AUTO_SAVE, self.cache_file_auto_save)
-        self.subscribe(Base.Event.PROJECT_STATUS_CHECK_DONE, lambda event, data: self.update_button_status(event, data))
-        self.subscribe(Base.Event.APP_SHUT_DOWN, self.app_shut_down)
+        self.subscribe(Base.Event.PROJECT_STATUS_CHECK_DONE, self.update_button_status)
 
         # 定时器
         self.ui_update_timer = QTimer(self)
@@ -117,10 +174,6 @@ class TranslationPage(QWidget, Base):
         # 触发事件
         self.emit(Base.Event.PROJECT_STATUS, {})
 
-    # 应用关闭事件
-    def app_shut_down(self, event: str, data: dict) -> None:
-        self.app_shut_down_flag = True
-
     # 更新 frontend 定时器
     def update_ui_tick(self) -> None:
         self.update_time(self.data)
@@ -128,10 +181,6 @@ class TranslationPage(QWidget, Base):
         self.update_token(self.data)
         self.update_task(self.data)
         self.update_status(self.data)
-
-        # 接收到退出信号则停止
-        if getattr(self, "app_shut_down_flag", False) == True:
-            self.ui_update_timer.stop()
 
     # 更新按钮状态事件
     def update_button_status(self, event: str, data: dict) -> None:
@@ -286,7 +335,7 @@ class TranslationPage(QWidget, Base):
             QTimer.singleShot(1500, lambda: self.indeterminate_hide())
 
     # 头部
-    def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.head_hbox_container = QWidget(self)
         self.head_hbox = QHBoxLayout(self.head_hbox_container)
         parent.addWidget(self.head_hbox_container)
@@ -322,7 +371,7 @@ class TranslationPage(QWidget, Base):
         self.head_hbox.addStretch(1)
 
     # 中部
-    def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.flow_container = QWidget(self)
         self.flow_layout = FlowLayout(self.flow_container, needAni = False)
         self.flow_layout.setSpacing(8)
@@ -339,7 +388,7 @@ class TranslationPage(QWidget, Base):
         self.container.addWidget(self.flow_container, 1)
 
     # 底部
-    def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_foot(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
@@ -369,77 +418,84 @@ class TranslationPage(QWidget, Base):
         self.command_bar_card.add_widget(self.indeterminate)
 
     # 累计时间
-    def add_time_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_time_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.time = DashboardCard(
-                title = Localizer.get().translation_page_card_time,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_time,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.time.setFixedSize(204, 204)
         parent.addWidget(self.time)
 
     # 剩余时间
-    def add_remaining_time_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_remaining_time_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.remaining_time = DashboardCard(
-                title = Localizer.get().translation_page_card_remaining_time,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_remaining_time,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.remaining_time.setFixedSize(204, 204)
         parent.addWidget(self.remaining_time)
 
     # 翻译行数
-    def add_line_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_line_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.line_card = DashboardCard(
-                title = Localizer.get().translation_page_card_line,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_line,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.line_card.setFixedSize(204, 204)
         parent.addWidget(self.line_card)
 
     # 剩余行数
-    def add_remaining_line_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_remaining_line_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.remaining_line = DashboardCard(
-                title = Localizer.get().translation_page_card_remaining_line,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_remaining_line,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.remaining_line.setFixedSize(204, 204)
         parent.addWidget(self.remaining_line)
 
     # 平均速度
-    def add_speed_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_speed_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.speed = DashboardCard(
-                title = Localizer.get().translation_page_card_speed,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_speed,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.speed.setFixedSize(204, 204)
         parent.addWidget(self.speed)
 
     # 累计消耗
-    def add_token_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_token_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.token = DashboardCard(
-                title = Localizer.get().translation_page_card_token,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_token,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.token.setFixedSize(204, 204)
         parent.addWidget(self.token)
 
     # 并行任务
-    def add_task_card(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_task_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.task = DashboardCard(
-                title = Localizer.get().translation_page_card_task,
-                value = Localizer.get().none,
-                unit = "",
-            )
+            parent = self,
+            title = Localizer.get().translation_page_card_task,
+            value = Localizer.get().none,
+            unit = "",
+        )
         self.task.setFixedSize(204, 204)
         parent.addWidget(self.task)
 
     # 开始
-    def add_command_bar_action_start(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_start(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
             if self.action_continue.isEnabled():
                 message_box = MessageBox(Localizer.get().alert, Localizer.get().alert_reset_translation, window)
@@ -459,7 +515,7 @@ class TranslationPage(QWidget, Base):
         )
 
     # 停止
-    def add_command_bar_action_stop(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_stop(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
             message_box = MessageBox(Localizer.get().alert, Localizer.get().translation_page_alert_pause, window)
             message_box.yesButton.setText(Localizer.get().confirm)
@@ -476,7 +532,7 @@ class TranslationPage(QWidget, Base):
         self.action_stop.setEnabled(False)
 
     # 继续翻译
-    def add_command_bar_action_continue(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_continue(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
             self.emit(Base.Event.TRANSLATION_START, {
@@ -489,7 +545,7 @@ class TranslationPage(QWidget, Base):
         self.action_continue.setEnabled(False)
 
     # 导出已完成的内容
-    def add_command_bar_action_export(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
             self.emit(Base.Event.TRANSLATION_MANUAL_EXPORT, {})
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -503,7 +559,7 @@ class TranslationPage(QWidget, Base):
         self.action_export.setEnabled(False)
 
     # 定时器
-    def add_command_bar_action_timer(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_timer(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         interval = 1
         delay_time = None

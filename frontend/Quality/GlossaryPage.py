@@ -21,6 +21,7 @@ from qfluentwidgets import CommandButton
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -34,14 +35,8 @@ class GlossaryPage(QWidget, Base):
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 默认设置
-        self.default = {
-            f"{__class__.BASE}_enable": True,
-            f"{__class__.BASE}_data": [],
-        }
-
         # 载入并保存默认配置
-        config = self.save_config(self.load_config_from_default())
+        config = Config().load().save()
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -58,21 +53,22 @@ class GlossaryPage(QWidget, Base):
 
     # 术语表刷新事件
     def glossary_refresh(self, event: str, data: dict) -> None:
-        config = self.load_config()
         self.table_manager.reset()
-        self.table_manager.set_data(config.get(f"{__class__.BASE}_data"))
+        self.table_manager.set_data(getattr(Config().load(), f"{__class__.BASE}_data"))
         self.table_manager.sync()
 
     # 头部
-    def add_widget_head(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.get(f"{__class__.BASE}_enable"))
+            widget.get_switch_button().setChecked(
+                getattr(config, f"{__class__.BASE}_enable")
+            )
 
         def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
-            config = self.load_config()
-            config[f"{__class__.BASE}_enable"] = checked
-            self.save_config(config)
+            config = Config().load()
+            setattr(config, f"{__class__.BASE}_enable", checked)
+            config.save()
 
         parent.addWidget(
             SwitchButtonCard(
@@ -84,7 +80,7 @@ class GlossaryPage(QWidget, Base):
         )
 
     # 主体
-    def add_widget_body(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def item_changed(item: QTableWidgetItem) -> None:
             if self.table_manager.get_updating() == True:
@@ -96,9 +92,9 @@ class GlossaryPage(QWidget, Base):
                 self.table_manager.sync()
 
                 # 更新配置文件
-                config = self.load_config()
-                config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
-                config = self.save_config(config)
+                config = Config().load()
+                setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+                config.save()
 
                 # 弹出提示
                 self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -153,7 +149,7 @@ class GlossaryPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type = TableManager.Type.GLOSSARY,
-            data = config.get(f"{__class__.BASE}_data"),
+            data = getattr(config, f"{__class__.BASE}_data"),
             table = self.table,
         )
         self.table_manager.sync()
@@ -166,7 +162,7 @@ class GlossaryPage(QWidget, Base):
         self.table.horizontalHeader().sortIndicatorChanged.connect(self.table_manager.sort_indicator_changed)
 
     # 底部
-    def add_widget_foot(self, parent: QLayout, config: dict, window: FluentWindow) -> None:
+    def add_widget_foot(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
@@ -181,7 +177,7 @@ class GlossaryPage(QWidget, Base):
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # 导入
-    def add_command_bar_action_import(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_import(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
             # 选择文件
@@ -197,9 +193,9 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.sync()
 
             # 更新配置文件
-            config = self.load_config()
-            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
-            config = self.save_config(config)
+            config = Config().load()
+            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            config.save()
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -212,7 +208,7 @@ class GlossaryPage(QWidget, Base):
         )
 
     # 导出
-    def add_command_bar_action_export(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
             # 导出文件
@@ -229,7 +225,7 @@ class GlossaryPage(QWidget, Base):
         )
 
     # 预设
-    def add_command_bar_action_preset(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_preset(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         widget: CommandButton = None
 
@@ -254,13 +250,13 @@ class GlossaryPage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(self.default.get(f"{__class__.BASE}_data"))
+            self.table_manager.set_data(getattr(Config(), f"{__class__.BASE}_data"))
             self.table_manager.sync()
 
             # 更新配置文件
-            config = self.load_config()
-            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
-            config = self.save_config(config)
+            config = Config().load()
+            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            config.save()
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -279,9 +275,9 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.sync()
 
             # 更新配置文件
-            config = self.load_config()
-            config[f"{__class__.BASE}_data"] = self.table_manager.get_data()
-            config = self.save_config(config)
+            config = Config().load()
+            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            config.save()
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -316,7 +312,7 @@ class GlossaryPage(QWidget, Base):
         ))
 
     # KG
-    def add_command_bar_action_kg(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_kg(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
@@ -326,7 +322,7 @@ class GlossaryPage(QWidget, Base):
         parent.add_widget(push_button)
 
     # WiKi
-    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: dict, window: FluentWindow) -> None:
+    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))

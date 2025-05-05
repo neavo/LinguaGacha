@@ -2,23 +2,25 @@ import os
 import re
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 
 class MD(Base):
 
     # 添加图片匹配的正则表达式
     IMAGE_PATTERN = re.compile(r'!\[.*?\]\(.*?\)')
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:

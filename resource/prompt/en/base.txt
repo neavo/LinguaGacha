@@ -1,4 +1,3 @@
-Task Requirements:
 1.Strictly translate line by line according to the input. Do not split or merge lines.
 2.Control characters in the original text such as whitespace, escape characters, English code must be preserved in the translation as they are.
 3.Translate all text completely, except for control characters, including onomatopoeia, interjections, and proper nouns (such as character names), etc.

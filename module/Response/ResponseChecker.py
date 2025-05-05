@@ -4,9 +4,10 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
-from module.CodeSaver import CodeSaver
+from module.TextPreserver import TextPreserver
 
 class ResponseChecker(Base):
 
@@ -38,14 +39,14 @@ class ResponseChecker(Base):
     # 退化检测规则
     RE_DEGRADATION = re.compile(r"(.{1,2})\1{16,}", flags = re.IGNORECASE)
 
-    def __init__(self, config: dict, items: list[CacheItem]) -> None:
+    def __init__(self, config: Config, items: list[CacheItem]) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
         self.config = config
-        self.source_language = self.config.get("source_language")
-        self.target_language = self.config.get("target_language")
+        self.source_language = self.config.source_language
+        self.target_language = self.config.target_language
 
     # 检查
     def check(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem], source_language: BaseLanguage.Enum) -> list[str]:
@@ -82,7 +83,7 @@ class ResponseChecker(Base):
                 continue
 
             # 原文内容包含代码救星占位符时，判断为正确翻译
-            if CodeSaver.PLACEHOLDER in src:
+            if TextPreserver.PLACEHOLDER in src:
                 check_result.append(ResponseChecker.Error.NONE)
                 continue
 

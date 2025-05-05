@@ -7,7 +7,9 @@ import openpyxl.styles
 import openpyxl.worksheet.worksheet
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from module.Cache.CacheItem import CacheItem
+from module.Config import Config
 from module.TableManager import TableManager
 
 class WOLFXLSX(Base):
@@ -30,15 +32,15 @@ class WOLFXLSX(Base):
         55,                                                             # 灰色
     )
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
-        self.config: dict = config
-        self.input_path: str = config.get("input_folder")
-        self.output_path: str = config.get("output_folder")
-        self.source_language: BaseLanguage.Enum = config.get("source_language")
-        self.target_language: BaseLanguage.Enum = config.get("target_language")
+        self.config = config
+        self.input_path: str = config.input_folder
+        self.output_path: str = config.output_folder
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
