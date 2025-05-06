@@ -65,7 +65,11 @@ class TextPreserver(Base):
         key = "CUSTOM" if custom_enable == True else text_type
 
         if key not in __class__.RE_SAMPLE:
-            __class__.RE_SAMPLE[key] = re.compile(rf"{"|".join(self.get_data(custom_enable, text_type))}", re.IGNORECASE)
+            data: list[dict[str, str]] = self.get_data(custom_enable, text_type)
+            if len(data) == 0:
+                __class__.RE_SAMPLE[key] = None
+            else:
+                __class__.RE_SAMPLE[key] = re.compile(rf"{"|".join(self.get_data(custom_enable, text_type))}", re.IGNORECASE)
 
         return __class__.RE_SAMPLE.get(key)
 
@@ -73,7 +77,11 @@ class TextPreserver(Base):
         key = "CUSTOM" if custom_enable == True else text_type
 
         if key not in __class__.RE_PREFIX:
-            __class__.RE_PREFIX[key] = re.compile(rf"^(?:{"|".join(self.get_data(custom_enable, text_type))})+", re.IGNORECASE)
+            data: list[dict[str, str]] = self.get_data(custom_enable, text_type)
+            if len(data) == 0:
+                __class__.RE_PREFIX[key] = None
+            else:
+                __class__.RE_PREFIX[key] = re.compile(rf"^(?:{"|".join(self.get_data(custom_enable, text_type))})+", re.IGNORECASE)
 
         return __class__.RE_PREFIX.get(key)
 
@@ -81,9 +89,24 @@ class TextPreserver(Base):
         key = "CUSTOM" if custom_enable == True else text_type
 
         if key not in __class__.RE_SUFFIX:
-            __class__.RE_SUFFIX[key] = re.compile(rf"(?:{"|".join(self.get_data(custom_enable, text_type))})+$", re.IGNORECASE)
+            data: list[dict[str, str]] = self.get_data(custom_enable, text_type)
+            if len(data) == 0:
+                __class__.RE_SUFFIX[key] = None
+            else:
+                __class__.RE_SUFFIX[key] = re.compile(rf"(?:{"|".join(self.get_data(custom_enable, text_type))})+$", re.IGNORECASE)
 
         return __class__.RE_SUFFIX.get(key)
+
+    # 按规则提取文本
+    def extract(self, rule: re.Pattern, k: str, src_dict: dict[str, str]) -> list[str]:
+        codes: list[str] = []
+
+        def repl(match: re.Match) -> str:
+            codes.append(match.group(0))
+            return ""
+        src_dict[k] = rule.sub(repl, src_dict.get(k))
+
+        return codes
 
     # 预处理
     def pre_process(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> tuple[dict[str, str], list[str]]:
@@ -96,8 +119,7 @@ class TextPreserver(Base):
                 text_type = item.get_text_type(),
             )
             if rule is not None:
-                self.prefix_codes[k] = rule.findall(src_dict.get(k))
-                src_dict[k] = rule.sub("", src_dict.get(k))
+                self.prefix_codes[k] = self.extract(rule, k, src_dict)
 
             # 查找与替换后缀代码段
             rule: re.Pattern = self.get_re_suffix(
@@ -105,8 +127,7 @@ class TextPreserver(Base):
                 text_type = item.get_text_type(),
             )
             if rule is not None:
-                self.suffix_codes[k] = rule.findall(src_dict.get(k))
-                src_dict[k] = rule.sub("", src_dict.get(k))
+                self.suffix_codes[k] = self.extract(rule, k, src_dict)
 
             # 如果处理后的文本为空，则记录 ID，并将文本替换为占位符
             if src_dict.get(k) == "":
@@ -119,7 +140,7 @@ class TextPreserver(Base):
                 text_type = item.get_text_type(),
             )
             if rule is not None:
-                samples.update(rule.findall(src_dict.get(k)))
+                samples.update([v.group(0) for v in rule.finditer(src_dict.get(k))])
 
             # 补充
             if item.get_text_type() == CacheItem.TextType.MD:
@@ -142,10 +163,12 @@ class TextPreserver(Base):
             dst_dict[k] = dst_dict.get(k).strip()
 
             # 还原前缀代码段
-            dst_dict[k] = "".join(self.prefix_codes.get(k)) + dst_dict.get(k)
+            if k in self.prefix_codes:
+                dst_dict[k] = "".join(self.prefix_codes.get(k)) + dst_dict.get(k)
 
             # 还原后缀代码段
-            dst_dict[k] = dst_dict.get(k) + "".join(self.suffix_codes.get(k))
+            if k in self.suffix_codes:
+                dst_dict[k] = dst_dict.get(k) + "".join(self.suffix_codes.get(k))
 
         return dst_dict
 
@@ -158,8 +181,8 @@ class TextPreserver(Base):
             text_type = text_type,
         )
         if rule is not None:
-            x = rule.findall(src)
-            y = rule.findall(dst)
+            x = [v.group(0) for v in rule.finditer(src)]
+            y = [v.group(0) for v in rule.finditer(dst)]
 
         x = [TextPreserver.RE_BLANK.sub("", v) for v in x if TextPreserver.RE_BLANK.sub("", v) != ""]
         y = [TextPreserver.RE_BLANK.sub("", v) for v in y if TextPreserver.RE_BLANK.sub("", v) != ""]

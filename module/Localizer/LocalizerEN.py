@@ -314,16 +314,16 @@ class LocalizerEN(LocalizerZH):
     glossary_page_table_row_03: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 
-    # Text Protection
-    text_preserve_page_head_title: str = "Custom Text Protection Rules"
+    # 文本保护
+    text_preserve_page_head_title: str = "Custom Text Preserve Rules"
     text_preserve_page_head_content: str = (
-        "Protect text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
+        "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
         "<br>"
-        "<font color='darkgoldenrod'><b>Disabled by default</b></font>, please fully understand how to use this feature before enabling it"
+        "<font color='darkgoldenrod'><b>Disabled by default</b></font>, before enabling, please carefully read the feature description in the <font color='darkgoldenrod'><b>Wiki</b></font> to ensure you fully understand how to use it"
         "<br>"
-        "• Enabled - Protects text by matching it against the <font color='darkgoldenrod'><b>Regular Expression Rules</b></font> set on this page"
+        "• Enabled - Preserve text by matching it against the <font color='darkgoldenrod'><b>Regular Expression Rules</b></font> set on this page"
         "<br>"
-        "• Disabled - Automatically detects text format and game engine, and applies smart protection rules, works well for most content"
+        "• Disabled - Automatically detects text format and game engine, and applies smart preserve rules, works well for most content"
     )
     text_preserve_page_table_row_01: str = "Rule"
     text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
