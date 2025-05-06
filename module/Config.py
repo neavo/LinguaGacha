@@ -45,6 +45,7 @@ class Config(BaseData):
         self.preceding_lines_threshold: int = 3
         self.enable_preceding_on_local: bool = False
         self.deduplication_in_bilingual: bool = True
+        self.write_translated_name_fields_to_file: bool = True
         self.result_checker_retry_count_threshold: bool = False
 
         # ProjectPage
@@ -112,8 +113,9 @@ class Config(BaseData):
     def reset_expert_settings(self) -> None:
         # ExpertSettingsPage
         self.preceding_lines_threshold: int = 3
-        self.enable_preceding_on_local: bool = True
+        self.enable_preceding_on_local: bool = False
         self.deduplication_in_bilingual: bool = True
+        self.write_translated_name_fields_to_file: bool = True
         self.result_checker_retry_count_threshold: bool = False
 
         # TextPreservePage

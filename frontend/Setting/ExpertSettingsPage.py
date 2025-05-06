@@ -43,6 +43,7 @@ class ExpertSettingsPage(QWidget, Base):
         self.add_widget_preceding_lines_threshold(scroll_area_vbox, config, window)
         self.add_widget_preceding_disable_on_local(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_bilingual(scroll_area_vbox, config, window)
+        self.add_widget_write_translated_name_fields_to_file(scroll_area_vbox, config, window)
         self.add_widget_result_checker_retry_count_threshold(scroll_area_vbox, config, window)
 
         # 填充
@@ -104,6 +105,26 @@ class ExpertSettingsPage(QWidget, Base):
             SwitchButtonCard(
                 title = Localizer.get().expert_settings_page_deduplication_in_bilingual,
                 description = Localizer.get().expert_settings_page_deduplication_in_bilingual_desc,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 将姓名字段译文写入译文文件
+    def add_widget_write_translated_name_fields_to_file(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(config.write_translated_name_fields_to_file)
+
+        def checked_changed(widget: SwitchButtonCard, value: int) -> None:
+            config = Config().load()
+            config.write_translated_name_fields_to_file = widget.get_switch_button().isChecked()
+            config.save()
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().expert_settings_page_write_translated_name_fields_to_file,
+                description = Localizer.get().expert_settings_page_write_translated_name_fields_to_file_desc,
                 init = init,
                 checked_changed = checked_changed,
             )

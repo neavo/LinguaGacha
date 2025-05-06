@@ -166,8 +166,11 @@ class RENPY(Base):
             if item.get_file_type() == CacheItem.FileType.RENPY
         ]
 
-        # 统一姓名
-        self.uniform_name(target)
+        # 统一或还原姓名字段
+        if self.config.write_translated_name_fields_to_file == False:
+            self.revert_name(target)
+        else:
+            self.uniform_name(target)
 
         # 按文件路径分组
         group: dict[str, list[str]] = {}
@@ -230,7 +233,22 @@ class RENPY(Base):
 
         return ""
 
-    # 统一姓名
+    # 还原姓名字段
+    def revert_name(self, items: list[CacheItem]) -> list[CacheItem]:
+        for item in items:
+            name_src = item.get_name_src()
+            name_dst = item.get_name_dst()
+
+            # 有效性检查
+            if name_src is None or name_dst is None:
+                continue
+
+            if isinstance(name_src, str):
+                item.set_name_dst(item.get_name_src())
+            elif isinstance(name_src, list):
+                item.set_name_dst(item.get_name_src())
+
+    # 统一姓名字段
     def uniform_name(self, items: list[CacheItem]) -> list[CacheItem]:
         # 统计
         result: dict[str, dict] = {}

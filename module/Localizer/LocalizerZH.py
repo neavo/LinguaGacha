@@ -277,7 +277,19 @@ class LocalizerZH():
     expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
     expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
     expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中对重复行去重"
-    expert_settings_page_deduplication_in_bilingual_desc: str = "在双语输出文件中，译文与原文一致是否去重，默认启用"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "在双语输出文件中，原文与译文一致时是否去重，默认启用"
+    expert_settings_page_write_translated_name_fields_to_file: str = "将姓名字段译文写入译文文件"
+    expert_settings_page_write_translated_name_fields_to_file_desc: str = (
+        "部分 <font color='darkgoldenrod'><b>GalGame</b></font> 中，姓名字段数据与立绘、配音等资源文件绑定，翻译后会报错，此时可以关闭该功能，默认启用"
+        "<br>"
+        "支持格式："
+        "<br>"
+        "• RenPy 导出游戏文本（.rpy）"
+        "<br>"
+        "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
+        ""
+        ""
+    )
     expert_settings_page_result_checker_retry_count_threshold: str = "结果检查 - 重试次数达到阈值"
     expert_settings_page_result_checker_retry_count_threshold_desc: str = (
         "是否在结果检查报告里面输出 <font color='darkgoldenrod'><b>重试次数达到阈值</b></font> 的条目列表"

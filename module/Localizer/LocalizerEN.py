@@ -277,7 +277,19 @@ class LocalizerEN(LocalizerZH):
     expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
     expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
     expert_settings_page_deduplication_in_bilingual: str = "Deduplicate Lines in Bilingual Output"
-    expert_settings_page_deduplication_in_bilingual_desc: str = "In bilingual output files, remove lines where the translation is identical to the original text, enabled by default"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "Whether to deduplicate when the source text and translated text are identical in bilingual output files, enabled by default"
+    expert_settings_page_write_translated_name_fields_to_file: str = "Write Translated Name Fields to the Translated File"
+    expert_settings_page_write_translated_name_fields_to_file_desc: str = (
+        "In some <font color='darkgoldenrod'><b>GalGame</b></font>, name field data is bound to resource files such as image or voice files"
+        "<br>"
+        "Translating these name fields can cause errors. In such cases, this feature can be disabled, enabled by default"
+        "<br>"
+        "Supported formats:"
+        "<br>"
+        "• RenPy exported game text (.rpy)"
+        "<br>"
+        "• VNTextPatch or SExtractor exported game text with name fields (.json)"
+    )
     expert_settings_page_result_checker_retry_count_threshold: str = "Result Checker - Retry Count Reached Threshold"
     expert_settings_page_result_checker_retry_count_threshold_desc: str = (
         "Include a list of items that <font color='darkgoldenrod'><b>reached the retry threshold</b></font> in the result check report, disabled by default"
