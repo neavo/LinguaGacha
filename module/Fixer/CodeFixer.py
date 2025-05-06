@@ -21,8 +21,8 @@ class CodeFixer():
             text_type = text_type,
         )
         if rule is not None:
-            src_codes = rule.findall(src)
-            dst_codes = rule.findall(dst)
+            src_codes = [v.group(0) for v in rule.finditer(src) if v.group(0).strip() != ""]
+            dst_codes = [v.group(0) for v in rule.finditer(dst) if v.group(0).strip() != ""]
 
         if src_codes == dst_codes:
             return dst
@@ -40,12 +40,15 @@ class CodeFixer():
 
     @classmethod
     def repl(cls, m: re.Match, i: list[int], mismatchs: list[int]) -> str:
-        if i[0] in mismatchs:
+        text: str = m.group(0)
+        if text.strip() == "":
+            return text
+        elif i[0] in mismatchs:
             i[0] = i[0] + 1
             return ""
         else:
             i[0] = i[0] + 1
-            return m.group(0)
+            return text
 
     # 判断是否是有序子集，并输出 y 中多余元素的索引
     @classmethod
@@ -79,8 +82,8 @@ class CodeFixer():
         return True, mismatchs
 
     @classmethod
-    def test(cls) -> None:
+    def test(cls, config: Config) -> None:
         x = "合計　\\V[62]！　やったやった♪　私の勝ちね！\n\\c[17]――レナリスの勝ち！　【３０００ G】手に入れた！\\c[0]\n\\$"
         y = "总计　\\V[62]！　哈哈！　我赢了！\n\\c[17]――雷纳里斯赢了！ 获得了\\c[2]【3000 G】\\c[0]！\\c[0]\n\\$"
-        z = cls().fix(x, y, CacheItem.TextType.RPGMAKER)
+        z = cls().fix(x, y, CacheItem.TextType.RPGMAKER, config)
         print(f"{repr(x)}\n{repr(y)}\n{repr(z)}")

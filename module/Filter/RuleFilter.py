@@ -1,5 +1,5 @@
 import re
-from module.Cache.CacheItem import CacheItem
+
 from module.Text.TextHelper import TextHelper
 
 class RuleFilter():

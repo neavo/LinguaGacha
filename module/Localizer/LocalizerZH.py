@@ -319,7 +319,7 @@ class LocalizerZH():
     text_preserve_page_head_content: str = (
         "对文本中不需要翻译的代码段、控制字符、样式字符等文本进行保护，避免这些文本被错误的翻译"
         "<br>"
-        "<font color='darkgoldenrod'><b>默认禁用</b></font>，启用前请充分了解此功能的使用方式"
+        "<font color='darkgoldenrod'><b>默认禁用</b></font>，启用前请仔细阅读 <font color='darkgoldenrod'><b>Wiki</b></font> 中的功能说明以确保充分理解使用方式"
         "<br>"
         "• 启用 - 根据本页中设置的 <font color='darkgoldenrod'><b>正则规则</b></font> 匹配对应的文本进行保护"
         "<br>"
