@@ -53,15 +53,11 @@ jobs:
       shell: cmd
       run: |
         xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
-        xcopy ".\resource\prompt\" ".\dist\LinguaGacha\resource\prompt\" /E /I /Q /H /Y
-        xcopy ".\resource\platforms\" ".\dist\LinguaGacha\resource\platforms\" /E /I /Q /H /Y
-        xcopy ".\resource\custom_prompt\" ".\dist\LinguaGacha\resource\custom_prompt\" /E /I /Q /H /Y
-        xcopy ".\resource\glossary_preset\" ".\dist\LinguaGacha\resource\glossary_preset\" /E /I /Q /H /Y
-        xcopy ".\resource\pre_translation_replacement_preset\" ".\dist\LinguaGacha\resource\pre_translation_replacement_preset\" /E /I /Q /H /Y
-        xcopy ".\resource\post_translation_replacement_preset\" ".\dist\LinguaGacha\resource\post_translation_replacement_preset\" /E /I /Q /H /Y
-        xcopy ".\resource\icon.ico" ".\dist\LinguaGacha\resource\" /Q /Y
-        xcopy ".\resource\icon_full.png" ".\dist\LinguaGacha\resource\" /Q /Y
-        xcopy ".\resource\icon_no_bg.png" ".\dist\LinguaGacha\resource\" /Q /Y
+        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
+        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
+
+        del /Q /F ".\dist\LinguaGacha\resource\7za.exe"
+        del /Q /F ".\dist\LinguaGacha\resource\pyinstaller.py"
 
     - name: Compress Archive
       shell: cmd
