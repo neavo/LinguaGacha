@@ -55,8 +55,8 @@
 - 视频教程
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
 - 功能说明
-  - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　[补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)
-  - [专家设置](https://github.com/neavo/LinguaGacha/wiki/ExpertConfig)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
+  - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
+  - [补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
   - [百宝箱 - 批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection)　　[百宝箱 - 部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
@@ -75,6 +75,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250506 v0.26.0
+  - 新增 - 专家模式，启用将开启一系列高级功能：
+    - 专家设置
+    - 高级日志信息
+    - [自定义文本保护规则](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)
+
 - 20250502 v0.25.11
   - 调整 - 支持 `术语表` `译前替换` `译后替换` 表格数据自动保存
   - 修正 - 文件兼容性

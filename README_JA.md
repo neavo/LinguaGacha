@@ -57,8 +57,8 @@
 - Video Tutorial
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=NbpyL2fMgDc)
 - Feature Description
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)　　[Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)
-  - [Expert Config](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
+  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
   - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 

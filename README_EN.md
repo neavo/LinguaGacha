@@ -58,8 +58,8 @@
 - Video Tutorial
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=NbpyL2fMgDc)
 - Feature Description
-  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)　　[Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)
-  - [Expert Config](https://github.com/neavo/LinguaGacha/wiki/ExpertConfigEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
+  - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
+  - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
   - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
@@ -78,6 +78,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250506 v0.26.0
+  - NEW - Expert Mode, which enables a series of advanced features:
+    - Expert Settings
+    - Advanced Log Information
+    - [Custom Text Preservation Rules](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)
+
 - 20250502 v0.25.11
   - OPT - Added support for auto-saving table data in `Glossary` `Pre-translation Replace` `Post-translation Replace`
   - FIX - File compatibility
