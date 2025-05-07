@@ -37,6 +37,9 @@ class TranslatorRequester(Base):
     # o1 o3-mini o4-mini-20240406
     RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
 
+    # 正则
+    RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
+
     def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
         super().__init__()
 
@@ -254,11 +257,11 @@ class TranslatorRequester(Base):
             # 提取回复内容
             message = response.choices[0].message
             if hasattr(message, "reasoning_content") and isinstance(message.reasoning_content, str):
-                response_think = message.reasoning_content.replace("\n\n", "\n").strip()
+                response_think = __class__.RE_LINE_BREAK.sub("\n", message.reasoning_content.strip())
                 response_result = message.content.strip()
             elif "</think>" in message.content:
                 splited = message.content.split("</think>")
-                response_think = splited[0].removeprefix("<think>").replace("\n\n", "\n").strip()
+                response_think = __class__.RE_LINE_BREAK.sub("\n", splited[0].removeprefix("<think>").strip())
                 response_result = splited[-1].strip()
             else:
                 response_think = ""
@@ -339,7 +342,16 @@ class TranslatorRequester(Base):
             )
 
             # 提取回复内容
-            response_result = response.text.strip()
+            response_think = ""
+            response_result = ""
+            if len(response.candidates) > 0 and len(response.candidates[-1].content.parts) > 0:
+                parts = response.candidates[-1].content.parts
+                think_messages = [v for v in parts if v.thought == True]
+                if len(think_messages) > 0:
+                    response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].text.strip())
+                result_messages = [v for v in parts if v.thought != True]
+                if len(result_messages) > 0:
+                    response_result = result_messages[-1].text.strip()
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
@@ -358,7 +370,7 @@ class TranslatorRequester(Base):
         except Exception:
             output_tokens = 0
 
-        return False, "", response_result, input_tokens, output_tokens
+        return False, response_think, response_result, input_tokens, output_tokens
 
     # 生成请求参数
     def generate_anthropic_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
@@ -411,7 +423,7 @@ class TranslatorRequester(Base):
                 response_result = ""
 
             if think_messages != []:
-                response_think = think_messages[-1].thinking.replace("\n\n", "\n").strip()
+                response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
             else:
                 response_think = ""
         except Exception as e:
