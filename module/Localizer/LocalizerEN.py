@@ -163,7 +163,7 @@ class LocalizerEN(LocalizerZH):
     app_settings_page_proxy_url: str = "Please enter the network proxy address …"
     app_settings_page_proxy_url_title: str = "Network Proxy"
     app_settings_page_proxy_url_content: str = "Enabling this feature will use the set proxy address to send network requests, e.g., http://127.0.0.1:7890"
-    app_settings_page_restart: str = "The app needs to restart for changes to take effect. Please confirm …"
+    app_settings_page_close: str = "The application will close, please confirm …"
 
     # 接口管理
     platform_page_api_test_result: str = "API test result: {SUCCESS} successful, {FAILURE} failed …"

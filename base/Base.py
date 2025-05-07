@@ -1,4 +1,3 @@
-import threading
 from enum import StrEnum
 from typing import Callable
 
