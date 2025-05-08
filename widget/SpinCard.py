@@ -1,7 +1,8 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import SpinBox
 from qfluentwidgets import CaptionLabel
@@ -9,7 +10,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class SpinCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, value_changed = None):
+    def __init__(self, title: str, description: str, init: Callable = None, value_changed: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -35,14 +36,11 @@ class SpinCard(CardWidget):
         self.spin_box = SpinBox()
         self.container.addWidget(self.spin_box)
 
-        if init:
+        if callable(init):
             init(self)
 
-        if value_changed:
-            self.spin_box.valueChanged.connect(lambda value: value_changed(self, value))
+        if callable(value_changed):
+            self.spin_box.valueChanged.connect(lambda _: value_changed(self))
 
-    def set_range(self, min, max) -> None:
-        self.spin_box.setRange(min, max)
-
-    def set_value(self, value) -> None:
-        self.spin_box.setValue(value)
+    def get_spin_box(self) -> SpinBox:
+        return self.spin_box

@@ -1,3 +1,4 @@
+from enum import StrEnum
 import os
 from functools import partial
 
@@ -27,13 +28,14 @@ from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class PreTranslationReplacementPage(QWidget, Base):
+class TextReplacementPage(QWidget, Base):
 
-    BASE: str = "pre_translation_replacement"
-
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(self, name: str, window: FluentWindow, base_key: str) -> None:
         super().__init__(window)
-        self.setObjectName(text.replace(" ", "-"))
+        self.setObjectName(name.replace(" ", "-"))
+
+        # 初始化
+        self.base_key = base_key
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -53,18 +55,18 @@ class PreTranslationReplacementPage(QWidget, Base):
 
         def init(widget: SwitchButtonCard) -> None:
             widget.get_switch_button().setChecked(
-                getattr(config, f"{__class__.BASE}_enable")
+                getattr(config, f"{self.base_key}_enable")
             )
 
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
-            setattr(config, f"{__class__.BASE}_enable", checked)
+            setattr(config, f"{self.base_key}_enable", widget.get_switch_button().isChecked())
             config.save()
 
         parent.addWidget(
             SwitchButtonCard(
-                getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
-                getattr(Localizer.get(), f"{__class__.BASE}_page_head_content"),
+                getattr(Localizer.get(), f"{self.base_key}_page_head_title"),
+                getattr(Localizer.get(), f"{self.base_key}_page_head_content"),
                 init = init,
                 checked_changed = checked_changed,
             )
@@ -84,7 +86,7 @@ class PreTranslationReplacementPage(QWidget, Base):
 
                 # 更新配置文件
                 config = Config().load()
-                setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+                setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
                 config.save()
 
                 # 弹出提示
@@ -140,16 +142,16 @@ class PreTranslationReplacementPage(QWidget, Base):
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
-                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_01"),
-                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_02"),
-                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
+                getattr(Localizer.get(), f"{self.base_key}_page_table_row_01"),
+                getattr(Localizer.get(), f"{self.base_key}_page_table_row_02"),
+                getattr(Localizer.get(), f"{self.base_key}_page_table_row_03"),
             )
         )
 
         # 向表格更新数据
         self.table_manager = TableManager(
             type = TableManager.Type.REPLACEMENT,
-            data = getattr(config, f"{__class__.BASE}_data"),
+            data = getattr(config, f"{self.base_key}_data"),
             table = self.table,
         )
         self.table_manager.sync()
@@ -193,7 +195,7 @@ class PreTranslationReplacementPage(QWidget, Base):
 
             # 更新配置文件
             config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
             config.save()
 
             # 弹出提示
@@ -211,7 +213,7 @@ class PreTranslationReplacementPage(QWidget, Base):
 
         def triggered() -> None:
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"path_{__class__.BASE}_export"))
+            self.table_manager.export(getattr(Localizer.get(), f"path_{self.base_key}_export"))
 
             # 弹出提示
             self.emit(Base.Event.APP_TOAST_SHOW, {
@@ -232,7 +234,7 @@ class PreTranslationReplacementPage(QWidget, Base):
             filenames: list[str] = []
 
             try:
-                for _, _, filenames in os.walk(f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"):
+                for _, _, filenames in os.walk(f"resource/{self.base_key}_preset/{Localizer.get_app_language().lower()}"):
                     filenames = [v.lower().removesuffix(".json") for v in filenames if v.lower().endswith(".json")]
             except Exception:
                 pass
@@ -249,12 +251,12 @@ class PreTranslationReplacementPage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(getattr(Config(), f"{__class__.BASE}_data"))
+            self.table_manager.set_data(getattr(Config(), f"{self.base_key}_data"))
             self.table_manager.sync()
 
             # 更新配置文件
             config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
             config.save()
 
             # 弹出提示
@@ -264,7 +266,7 @@ class PreTranslationReplacementPage(QWidget, Base):
             })
 
         def apply_preset(filename: str) -> None:
-            path: str = f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
+            path: str = f"resource/{self.base_key}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
 
             # 从文件加载数据
             data = self.table_manager.get_data()
@@ -275,7 +277,7 @@ class PreTranslationReplacementPage(QWidget, Base):
 
             # 更新配置文件
             config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
             config.save()
 
             # 弹出提示

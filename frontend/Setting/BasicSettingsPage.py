@@ -52,12 +52,12 @@ class BasicSettingsPage(QWidget, Base):
     def add_widget_max_workers(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.max_workers)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.max_workers)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.max_workers = value
+            config.max_workers = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
@@ -73,12 +73,12 @@ class BasicSettingsPage(QWidget, Base):
     def add_widget_rpm_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.rpm_threshold)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.rpm_threshold)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.rpm_threshold = value
+            config.rpm_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
@@ -94,12 +94,12 @@ class BasicSettingsPage(QWidget, Base):
     def add_widget_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.token_threshold)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.token_threshold)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.token_threshold = value
+            config.token_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
@@ -115,12 +115,12 @@ class BasicSettingsPage(QWidget, Base):
     def add_widget_request_timeout(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.request_timeout)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.request_timeout)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.request_timeout = value
+            config.request_timeout = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
@@ -136,12 +136,12 @@ class BasicSettingsPage(QWidget, Base):
     def add_widget_max_round(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.max_round)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.max_round)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.max_round = value
+            config.max_round = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(

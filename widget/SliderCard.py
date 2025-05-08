@@ -5,7 +5,6 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import Slider
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CaptionLabel
@@ -38,11 +37,11 @@ class SliderCard(CardWidget):
         # 添加控件
         self.slider = Slider(Qt.Orientation.Horizontal)
         self.slider.setFixedWidth(256)
-        self.slider_value_label = StrongBodyLabel(title, self)
-        self.slider_value_label.setFixedWidth(48)
-        self.slider_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.value_label = StrongBodyLabel(title, self)
+        self.value_label.setFixedWidth(48)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.root.addWidget(self.slider)
-        self.root.addWidget(self.slider_value_label)
+        self.root.addWidget(self.value_label)
 
         if callable(init):
             init(self)
@@ -50,21 +49,15 @@ class SliderCard(CardWidget):
         if callable(slider_released):
             self.slider.sliderReleased.connect(lambda: slider_released(self))
 
-    def set_text(self, text:str) -> None:
-        self.slider_value_label.setText(text)
+    def get_slider(self) -> Slider:
+        return self.slider
 
-    def get_value(self) -> int:
-        return self.slider.value()
-
-    def set_value(self, value: int) -> None:
-        self.slider.setValue(value)
-
-    def set_range(self, min: int, max: int) -> None:
-        self.slider.setRange(min, max)
+    def get_value_label(self) -> CaptionLabel:
+        return self.value_label
 
     def add_widget(self, widget: QWidget) -> None:
         self.root.addWidget(widget)
 
-    def set_visible(self, enabled: bool) -> None:
+    def set_slider_visible(self, enabled: bool) -> None:
         self.slider.setVisible(enabled)
-        self.slider_value_label.setVisible(enabled)
+        self.value_label.setVisible(enabled)

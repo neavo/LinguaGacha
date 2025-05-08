@@ -45,22 +45,3 @@ class ComboBoxCard(CardWidget):
 
     def get_combo_box(self) -> ComboBox:
         return self.combo_box
-
-    def set_items(self, items: list, values: list) -> None:
-        self.combo_box.clear()
-        self.combo_box.addItems(items)
-
-    def find_text(self, text: str) -> int:
-        return self.combo_box.findText(text)
-
-    def get_current_text(self) -> str:
-        return self.combo_box.currentText()
-
-    def set_current_text(self, text: str) -> None:
-        self.combo_box.setCurrentText(text)
-
-    def get_current_index(self) -> int:
-        return self.combo_box.currentIndex()
-
-    def set_current_index(self, index: int) -> None:
-        self.combo_box.setCurrentIndex(index)

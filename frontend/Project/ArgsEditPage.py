@@ -65,8 +65,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
     # 滑动条释放事件
     def slider_released(self, widget: SliderCard, arg: str) -> None:
-        value = widget.get_value()
-        widget.set_text(f"{(value / 100):.2f}")
+        value = widget.get_slider().value()
+        widget.get_value_label().setText(f"{(value / 100):.2f}")
 
         # 更新配置文件
         config = Config().load()
@@ -77,14 +77,14 @@ class ArgsEditPage(MessageBoxBase, Base):
     # 开关状态变化事件
     def checked_changed(self, widget: SliderCard, checked: bool, arg: str) -> None:
         if checked == True:
-            widget.set_visible(True)
+            widget.set_slider_visible(True)
         else:
-            widget.set_visible(False)
+            widget.set_slider_visible(False)
 
         # 重置为默认值
         self.platform[arg] = getattr(__class__, f"{arg.upper()}_DEFAULT")
-        widget.set_text(f"{getattr(__class__, f"{arg.upper()}_DEFAULT"):.2f}")
-        widget.set_value(int(getattr(__class__, f"{arg.upper()}_DEFAULT") * 100))
+        widget.get_value_label().setText(f"{getattr(__class__, f"{arg.upper()}_DEFAULT"):.2f}")
+        widget.get_slider().setValue(int(getattr(__class__, f"{arg.upper()}_DEFAULT") * 100))
 
         # 更新配置文件
         config = Config().load()
@@ -101,12 +101,12 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.set_range(0, 100)
-            widget.set_text(f"{self.platform.get("top_p"):.2f}")
-            widget.set_value(int(self.platform.get("top_p") * 100))
+            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setValue(int(self.platform.get("top_p") * 100))
+            widget.get_value_label().setText(f"{self.platform.get("top_p"):.2f}")
 
             # 设置可见性
-            widget.set_visible(self.platform.get("top_p_custom_enable") == True)
+            widget.set_slider_visible(self.platform.get("top_p_custom_enable") == True)
             switch_button.setChecked(self.platform.get("top_p_custom_enable") == True)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
@@ -130,12 +130,12 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.set_range(0, 200)
-            widget.set_text(f"{self.platform.get("temperature"):.2f}")
-            widget.set_value(int(self.platform.get("temperature") * 100))
+            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setValue(int(self.platform.get("temperature") * 100))
+            widget.get_value_label().setText(f"{self.platform.get("temperature"):.2f}")
 
             # 设置可见性
-            widget.set_visible(self.platform.get("temperature_custom_enable") == True)
+            widget.set_slider_visible(self.platform.get("temperature_custom_enable") == True)
             switch_button.setChecked(self.platform.get("temperature_custom_enable") == True)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
@@ -159,12 +159,12 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.set_range(-200, 200)
-            widget.set_text(f"{self.platform.get("presence_penalty"):.2f}")
-            widget.set_value(int(self.platform.get("presence_penalty") * 100))
+            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setValue(int(self.platform.get("presence_penalty") * 100))
+            widget.get_value_label().setText(f"{self.platform.get("presence_penalty"):.2f}")
 
             # 设置可见性
-            widget.set_visible(self.platform.get("presence_penalty_custom_enable") == True)
+            widget.set_slider_visible(self.platform.get("presence_penalty_custom_enable") == True)
             switch_button.setChecked(self.platform.get("presence_penalty_custom_enable") == True)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
@@ -188,12 +188,12 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.set_range(-200, 200)
-            widget.set_text(f"{self.platform.get("frequency_penalty"):.2f}")
-            widget.set_value(int(self.platform.get("frequency_penalty") * 100))
+            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setValue(int(self.platform.get("frequency_penalty") * 100))
+            widget.get_value_label().setText(f"{self.platform.get("frequency_penalty"):.2f}")
 
             # 设置可见性
-            widget.set_visible(self.platform.get("frequency_penalty_custom_enable") == True)
+            widget.set_slider_visible(self.platform.get("frequency_penalty_custom_enable") == True)
             switch_button.setChecked(self.platform.get("frequency_penalty_custom_enable") == True)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据

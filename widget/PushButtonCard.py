@@ -1,7 +1,8 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import PushButton
 from qfluentwidgets import CaptionLabel
@@ -9,7 +10,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class PushButtonCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, clicked = None) -> None:
+    def __init__(self, title: str, description: str, init: Callable = None, clicked: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -35,20 +36,17 @@ class PushButtonCard(CardWidget):
         self.push_button = PushButton("", self)
         self.container.addWidget(self.push_button)
 
-        if init is not None:
+        if callable(init):
             init(self)
 
-        if clicked is not None:
+        if callable(clicked):
             self.push_button.clicked.connect(lambda _: clicked(self))
 
-    def set_title(self, title: str) -> None:
-        self.title_label.setText(title)
+    def get_title_label(self) -> StrongBodyLabel:
+        return self.title_label
 
-    def set_description(self, description: str) -> None:
-        self.description_label.setText(description)
+    def get_description_label(self) -> CaptionLabel:
+        return self.description_label
 
-    def set_text(self, text: str) -> None:
-        self.push_button.setText(text)
-
-    def set_icon(self, icon: str) -> None:
-        self.push_button.setIcon(icon)
+    def get_push_button(self) -> PushButton:
+        return self.push_button
