@@ -86,7 +86,7 @@ class ModelListPage(MessageBoxBase, Base):
                 Localizer.get().platform_edit_page_model,
                 message_box_close = self.filter_message_box_close
             )
-            message_box.set_text(self.filter)
+            message_box.get_line_edit().setText(self.filter)
             message_box.exec()
 
     # 过滤输入框关闭事件

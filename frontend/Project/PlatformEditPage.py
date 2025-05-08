@@ -81,9 +81,9 @@ class PlatformEditPage(MessageBoxBase, Base):
     def add_widget_name(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: LineEditCard) -> None:
-            widget.set_text(self.platform.get("name"))
-            widget.set_fixed_width(256)
-            widget.set_placeholder_text(Localizer.get().platform_edit_page_name)
+            widget.get_line_edit().setText(self.platform.get("name"))
+            widget.get_line_edit().setFixedWidth(256)
+            widget.get_line_edit().setPlaceholderText(Localizer.get().platform_edit_page_name)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -104,9 +104,9 @@ class PlatformEditPage(MessageBoxBase, Base):
     def add_widget_api_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: LineEditCard) -> None:
-            widget.set_text(self.platform.get("api_url"))
-            widget.set_fixed_width(384)
-            widget.set_placeholder_text(Localizer.get().platform_edit_page_api_url)
+            widget.get_line_edit().setText(self.platform.get("api_url"))
+            widget.get_line_edit().setFixedWidth(384)
+            widget.get_line_edit().setPlaceholderText(Localizer.get().platform_edit_page_api_url)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -162,7 +162,7 @@ class PlatformEditPage(MessageBoxBase, Base):
             config.set_platform(self.platform)
             config.save()
 
-            empty_card.set_description(
+            empty_card.get_description_label().setText(
                 Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
 
@@ -172,7 +172,7 @@ class PlatformEditPage(MessageBoxBase, Base):
                 Localizer.get().platform_edit_page_model,
                 message_box_close = message_box_close
             )
-            message_box.set_text(self.platform.get("model"))
+            message_box.get_line_edit().setText(self.platform.get("model"))
             message_box.exec()
 
         def triggered_sync() -> None:
@@ -181,7 +181,7 @@ class PlatformEditPage(MessageBoxBase, Base):
 
             # 更新 UI 文本
             self.platform = Config().load().get_platform(self.id)
-            empty_card.set_description(
+            empty_card.get_description_label().setText(
                 Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
 
@@ -219,11 +219,13 @@ class PlatformEditPage(MessageBoxBase, Base):
     def add_widget_thinking(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(self.platform.get("thinking", False))
+            widget.get_switch_button().setChecked(
+                self.platform.get("thinking", False)
+            )
 
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
-            self.platform["thinking"] = checked
+            self.platform["thinking"] = widget.get_switch_button().isChecked()
             config.set_platform(self.platform)
             config.save()
 

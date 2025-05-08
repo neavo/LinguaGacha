@@ -56,9 +56,9 @@ class TextPreservePage(QWidget, Base):
                 getattr(config, f"{__class__.BASE}_enable")
             )
 
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
-            setattr(config, f"{__class__.BASE}_enable", checked)
+            setattr(config, f"{__class__.BASE}_enable", widget.get_switch_button().isChecked())
             config.save()
 
         parent.addWidget(

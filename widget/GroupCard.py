@@ -42,12 +42,6 @@ class GroupCard(CardWidget):
         if callable(clicked):
             self.clicked.connect(lambda : clicked(self))
 
-    def set_title(self, title: str) -> None:
-        self.title_label.setText(title)
-
-    def set_description(self, description: str) -> None:
-        self.description_label.setText(description)
-
     # 添加控件
     def add_widget(self, widget) -> None:
         self.vbox.addWidget(widget)

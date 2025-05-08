@@ -3,7 +3,6 @@ from typing import Callable
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import SwitchButton
 from qfluentwidgets import CaptionLabel
@@ -43,7 +42,7 @@ class SwitchButtonCard(CardWidget):
             init(self)
 
         if callable(checked_changed):
-            self.switch_button.checkedChanged.connect(lambda checked: checked_changed(self, checked))
+            self.switch_button.checkedChanged.connect(lambda _: checked_changed(self))
 
     def get_switch_button(self) -> SwitchButton:
         return self.switch_button

@@ -1,8 +1,9 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QFrame
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import LineEdit
 from qfluentwidgets import CaptionLabel
@@ -10,7 +11,7 @@ from qfluentwidgets import StrongBodyLabel
 
 class LineEditCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None, text_changed = None):
+    def __init__(self, title: str, description: str, init: Callable = None, text_changed: Callable = None):
         super().__init__(None)
 
         # 设置容器
@@ -19,7 +20,7 @@ class LineEditCard(CardWidget):
         self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 文本控件
-        self.vbox_container = QFrame(self)
+        self.vbox_container = QWidget(self)
         self.vbox = QVBoxLayout(self.vbox_container)
         self.vbox.setSpacing(0)
         self.vbox.setContentsMargins(0, 0, 0, 0)
@@ -41,11 +42,14 @@ class LineEditCard(CardWidget):
         self.line_edit.setClearButtonEnabled(True)
         self.hbox.addWidget(self.line_edit)
 
-        if init:
+        if callable(init):
             init(self)
 
-        if text_changed:
+        if callable(text_changed):
             self.line_edit.textChanged.connect(lambda text: text_changed(self, text))
+
+    def get_line_edit(self) -> LineEdit:
+        return self.line_edit
 
     # 添加控件
     def add_widget(self, widget) -> None:
@@ -54,19 +58,3 @@ class LineEditCard(CardWidget):
     # 添加间隔
     def add_spacing(self, spacing: int) -> None:
         self.hbox.addSpacing(spacing)
-
-    # 获取文本
-    def get_text(self) -> str:
-        self.line_edit.text()
-
-    # 设置文本
-    def set_text(self, text: str) -> None:
-        self.line_edit.setText(text)
-
-    # 设置输入框宽度
-    def set_fixed_width(self, width: int) -> None:
-        self.line_edit.setFixedWidth(width)
-
-    # 设置占位符
-    def set_placeholder_text(self, text: str) -> None:
-        self.line_edit.setPlaceholderText(text)

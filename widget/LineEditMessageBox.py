@@ -1,5 +1,6 @@
 from typing import Callable
 
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import LineEdit
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import StrongBodyLabel
@@ -8,8 +9,8 @@ from module.Localizer.Localizer import Localizer
 
 class LineEditMessageBox(MessageBoxBase):
 
-    def __init__(self, window, title: str, message_box_close: Callable = None) -> None:
-        super().__init__(parent = window)
+    def __init__(self, parent: QWidget, title: str, message_box_close: Callable = None) -> None:
+        super().__init__(parent = parent)
 
         # 初始化
         self.message_box_close = message_box_close
@@ -39,10 +40,5 @@ class LineEditMessageBox(MessageBoxBase):
 
             return True
 
-    # 设置文本
-    def set_text(self, text: str) -> None:
-        self.line_edit.setText(text)
-
-    # 设置提示文本
-    def set_placeholder_text(self, text: str) -> None:
-        self.line_edit.setPlaceholderText(text)
+    def get_line_edit(self) -> LineEdit:
+        return self.line_edit

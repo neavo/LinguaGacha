@@ -37,9 +37,9 @@ class LaboratoryPage(QWidget, Base):
                 config.mtool_optimizer_enable
             )
 
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
-            config.mtool_optimizer_enable = checked
+            config.mtool_optimizer_enable = widget.get_switch_button().isChecked()
             config.save()
 
         parent.addWidget(
@@ -59,9 +59,9 @@ class LaboratoryPage(QWidget, Base):
                 config.auto_glossary_enable
             )
 
-        def checked_changed(widget: SwitchButtonCard, checked: bool) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
-            config.auto_glossary_enable = checked
+            config.auto_glossary_enable = widget.get_switch_button().isChecked()
             config.save()
 
         parent.addWidget(

@@ -35,16 +35,14 @@ from frontend.Project.PlatformPage import PlatformPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Quality.GlossaryPage import GlossaryPage
+from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.TextPreservePage import TextPreservePage
-from frontend.Quality.CustomPromptZHPage import CustomPromptZHPage
-from frontend.Quality.CustomPromptENPage import CustomPromptENPage
-from frontend.Quality.PreTranslationReplacementPage import PreTranslationReplacementPage
-from frontend.Quality.PostTranslationReplacementPage import PostTranslationReplacementPage
+from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
-from frontend.Extra.ToolBox.ReTranslationPage import ReTranslationPage
-from frontend.Extra.ToolBox.BatchCorrectionPage import BatchCorrectionPage
-from frontend.Extra.ToolBox.NameFieldExtractionPage import NameFieldExtractionPage
+from frontend.Extra.ReTranslationPage import ReTranslationPage
+from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
+from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -381,26 +379,26 @@ class AppFluentWindow(FluentWindow, Base):
         ) if LogManager.is_expert_mode() else None
 
         # 文本替换
-        self.replacement_page = BasePage("replacement_page", self)
+        self.text_replacement_page = BasePage("replacement_page", self)
         self.addSubInterface(
-            interface = self.replacement_page,
+            interface = self.text_replacement_page,
             icon = FluentIcon.CLIPPING_TOOL,
             text = Localizer.get().app_text_replacement_page,
             position = NavigationItemPosition.SCROLL,
         ) if LogManager.is_expert_mode() else None
         self.addSubInterface(
-            interface = PreTranslationReplacementPage("pre_translation_replacement_page", self),
+            interface = TextReplacementPage("pre_translation_replacement_page", self, "pre_translation_replacement"),
             icon = FluentIcon.SEARCH,
             text = Localizer.get().app_pre_translation_replacement_page,
             position = NavigationItemPosition.SCROLL,
-            parent = self.replacement_page if LogManager.is_expert_mode() else None,
+            parent = self.text_replacement_page if LogManager.is_expert_mode() else None,
         )
         self.addSubInterface(
-            interface = PostTranslationReplacementPage("post_translation_replacement_page", self),
+            interface = TextReplacementPage("post_translation_replacement_page", self, "post_translation_replacement"),
             icon = FluentIcon.SEARCH_MIRROR,
             text = Localizer.get().app_post_translation_replacement_page,
             position = NavigationItemPosition.SCROLL,
-            parent = self.replacement_page if LogManager.is_expert_mode() else None,
+            parent = self.text_replacement_page if LogManager.is_expert_mode() else None,
         )
 
         # 自定义提示词
@@ -413,26 +411,26 @@ class AppFluentWindow(FluentWindow, Base):
         )
         if Localizer.get_app_language() == BaseLanguage.Enum.EN:
             self.addSubInterface(
-                CustomPromptENPage("custom_prompt_en_page", self),
+                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
                 FluentIcon.PENCIL_INK,
                 Localizer.get().app_custom_prompt_en_page,
                 parent = self.custom_prompt_page,
             )
             self.addSubInterface(
-                CustomPromptZHPage("custom_prompt_zh_page", self),
+                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
                 FluentIcon.PENCIL_INK,
                 Localizer.get().app_custom_prompt_zh_page,
                 parent = self.custom_prompt_page,
             )
         else:
             self.addSubInterface(
-                CustomPromptZHPage("custom_prompt_zh_page", self),
+                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
                 FluentIcon.PENCIL_INK,
                 Localizer.get().app_custom_prompt_zh_page,
                 parent = self.custom_prompt_page,
             )
             self.addSubInterface(
-                CustomPromptENPage("custom_prompt_en_page", self),
+                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
                 FluentIcon.PENCIL_INK,
                 Localizer.get().app_custom_prompt_en_page,
                 parent = self.custom_prompt_page,

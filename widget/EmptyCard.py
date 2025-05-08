@@ -1,14 +1,15 @@
+from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
 class EmptyCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init = None) -> None:
+    def __init__(self, title: str, description: str, init: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
@@ -18,14 +19,14 @@ class EmptyCard(CardWidget):
 
         # 文本控件
         self.vbox = QVBoxLayout()
+        self.root.addLayout(self.vbox)
 
         self.title_label = StrongBodyLabel(title, self)
+        self.vbox.addWidget(self.title_label)
+
         self.description_label = CaptionLabel(description, self)
         self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-
-        self.vbox.addWidget(self.title_label)
         self.vbox.addWidget(self.description_label)
-        self.root.addLayout(self.vbox)
 
         # 填充
         self.root.addStretch(1)
@@ -33,11 +34,11 @@ class EmptyCard(CardWidget):
         if callable(init):
             init(self)
 
-    def set_title(self, title: str) -> None:
-        self.title_label.setText(title)
+    def get_title_label(self) -> StrongBodyLabel:
+        return self.title_label
 
-    def set_description(self, description: str) -> None:
-        self.description_label.setText(description)
+    def get_description_label(self) -> CaptionLabel:
+        return self.description_label
 
     def add_widget(self, widget) -> None:
         self.root.addWidget(widget)

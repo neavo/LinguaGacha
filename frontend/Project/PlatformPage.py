@@ -127,6 +127,11 @@ class PlatformPage(QWidget, Base):
     def show_api_edit_page(self, id: int, widget: FlowCard, window: FluentWindow) -> None:
         PlatformEditPage(id, window).exec()
 
+        # 激活接口
+        config = Config().load()
+        config.activate_platform = id
+        config.save()
+
         # 更新控件
         self.update_custom_platform_widgets(widget, window)
 

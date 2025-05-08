@@ -1,11 +1,11 @@
 from typing import Callable
+
 from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon

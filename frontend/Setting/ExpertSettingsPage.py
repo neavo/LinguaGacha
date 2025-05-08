@@ -53,12 +53,12 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_preceding_lines_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SpinCard) -> None:
-            widget.set_range(0, 9999999)
-            widget.set_value(config.preceding_lines_threshold)
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.preceding_lines_threshold)
 
-        def value_changed(widget: SpinCard, value: int) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.preceding_lines_threshold = value
+            config.preceding_lines_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
@@ -74,9 +74,11 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_preceding_disable_on_local(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.enable_preceding_on_local)
+            widget.get_switch_button().setChecked(
+                config.enable_preceding_on_local
+            )
 
-        def checked_changed(widget: SwitchButtonCard, value: int) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
             config.enable_preceding_on_local = widget.get_switch_button().isChecked()
             config.save()
@@ -94,9 +96,11 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_deduplication_in_bilingual(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.deduplication_in_bilingual)
+            widget.get_switch_button().setChecked(
+                config.deduplication_in_bilingual
+            )
 
-        def checked_changed(widget: SwitchButtonCard, value: int) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
             config.deduplication_in_bilingual = widget.get_switch_button().isChecked()
             config.save()
@@ -114,9 +118,11 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_write_translated_name_fields_to_file(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.write_translated_name_fields_to_file)
+            widget.get_switch_button().setChecked(
+                config.write_translated_name_fields_to_file
+            )
 
-        def checked_changed(widget: SwitchButtonCard, value: int) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
             config.write_translated_name_fields_to_file = widget.get_switch_button().isChecked()
             config.save()
@@ -134,9 +140,11 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_result_checker_retry_count_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.result_checker_retry_count_threshold)
+            widget.get_switch_button().setChecked(
+                config.result_checker_retry_count_threshold
+            )
 
-        def checked_changed(widget: SwitchButtonCard, value: int) -> None:
+        def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
             config.result_checker_retry_count_threshold = widget.get_switch_button().isChecked()
             config.save()

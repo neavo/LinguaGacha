@@ -61,11 +61,11 @@ class FlowCard(CardWidget):
         if callable(clicked):
             self.clicked.connect(lambda : clicked(self))
 
-    def set_title(self, title: str) -> None:
-        self.title_label.setText(title)
+    def get_title_label(self) -> StrongBodyLabel:
+        return self.title_label
 
-    def set_description(self, description: str) -> None:
-        self.description_label.setText(description)
+    def get_description_label(self) -> CaptionLabel:
+        return self.description_label
 
     # 添加控件
     def add_widget(self, widget: QWidget) -> None:
