@@ -22,7 +22,7 @@ from qfluentwidgets import NavigationItemPosition
 from qfluentwidgets import NavigationAvatarWidget
 
 from base.Base import Base
-from base.BasePage import BasePage
+from frontend.EmptyPage import EmptyPage
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Config import Config
@@ -379,7 +379,7 @@ class AppFluentWindow(FluentWindow, Base):
         ) if LogManager.is_expert_mode() else None
 
         # 文本替换
-        self.text_replacement_page = BasePage("replacement_page", self)
+        self.text_replacement_page = EmptyPage("replacement_page", self)
         self.addSubInterface(
             interface = self.text_replacement_page,
             icon = FluentIcon.CLIPPING_TOOL,
@@ -402,7 +402,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 自定义提示词
-        self.custom_prompt_page = BasePage("custom_prompt_page", self)
+        self.custom_prompt_page = EmptyPage("custom_prompt_page", self)
         self.addSubInterface(
             self.custom_prompt_page,
             FluentIcon.LABEL,

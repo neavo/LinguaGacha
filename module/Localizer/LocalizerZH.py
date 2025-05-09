@@ -160,9 +160,9 @@ class LocalizerZH():
     app_settings_page_font_hinting_content: str = "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
     app_settings_page_scale_factor_title: str = "全局缩放比例"
     app_settings_page_scale_factor_content: str = "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
-    app_settings_page_proxy_url: str = "请输入网络代理地址 …"
+    app_settings_page_proxy_url: str = "示例 - http://127.0.0.1:7890"
     app_settings_page_proxy_url_title: str = "网络代理"
-    app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求，例如 http://127.0.0.1:7890"
+    app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求（将在应用重启后生效）"
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
     # 接口管理
