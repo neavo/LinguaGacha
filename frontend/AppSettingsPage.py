@@ -65,17 +65,17 @@ class AppSettingsPage(QWidget, Base):
             )
 
         def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.reset_expert_settings()
+            config.expert_mode = widget.get_switch_button().isChecked()
+            config.save()
+
             message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
+            # 关闭应用
             if message_box.exec():
-                config = Config().load()
-                config.reset_expert_settings()
-                config.expert_mode = widget.get_switch_button().isChecked()
-                config.save()
-
-                # 关闭应用
                 os.kill(os.getpid(), signal.SIGTERM)
 
         parent.addWidget(
@@ -96,16 +96,16 @@ class AppSettingsPage(QWidget, Base):
             )
 
         def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.font_hinting =  widget.get_switch_button().isChecked()
+            config.save()
+
             message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
+            # 关闭应用
             if message_box.exec():
-                config = Config().load()
-                config.font_hinting =  widget.get_switch_button().isChecked()
-                config.save()
-
-                # 关闭应用
                 os.kill(os.getpid(), signal.SIGTERM)
 
         parent.addWidget(
@@ -126,16 +126,16 @@ class AppSettingsPage(QWidget, Base):
             )
 
         def current_changed(widget: ComboBoxCard) -> None:
+            config = Config().load()
+            config.scale_factor = widget.get_current_text()
+            config.save()
+
             message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
+            # 关闭应用
             if message_box.exec():
-                config = Config().load()
-                config.scale_factor = widget.get_current_text()
-                config.save()
-
-                # 关闭应用
                 os.kill(os.getpid(), signal.SIGTERM)
 
         parent.addWidget(
@@ -152,16 +152,16 @@ class AppSettingsPage(QWidget, Base):
     def add_widget_proxy(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def checked_changed(swicth_button: SwitchButton, checked: bool) -> None:
+            config = Config().load()
+            config.proxy_enable = checked
+            config.save()
+
             message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
+            # 关闭应用
             if message_box.exec():
-                config = Config().load()
-                config.proxy_enable = checked
-                config.save()
-
-                # 关闭应用
                 os.kill(os.getpid(), signal.SIGTERM)
 
         def init(widget: LineEditCard) -> None:

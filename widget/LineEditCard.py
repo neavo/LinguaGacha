@@ -11,20 +11,20 @@ from qfluentwidgets import StrongBodyLabel
 
 class LineEditCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init: Callable = None, text_changed: Callable = None):
+    def __init__(self, title: str, description: str, init: Callable = None, text_changed: Callable = None) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
-        self.hbox = QHBoxLayout(self)
-        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root = QHBoxLayout(self)
+        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 文本控件
         self.vbox_container = QWidget(self)
         self.vbox = QVBoxLayout(self.vbox_container)
         self.vbox.setSpacing(0)
         self.vbox.setContentsMargins(0, 0, 0, 0)
-        self.hbox.addWidget(self.vbox_container)
+        self.root.addWidget(self.vbox_container)
 
         self.title_label = StrongBodyLabel(title, self)
         self.vbox.addWidget(self.title_label)
@@ -34,13 +34,13 @@ class LineEditCard(CardWidget):
         self.vbox.addWidget(self.description_label)
 
         # 填充
-        self.hbox.addStretch(1)
+        self.root.addStretch(1)
 
         # 添加控件
         self.line_edit = LineEdit()
         self.line_edit.setFixedWidth(192)
         self.line_edit.setClearButtonEnabled(True)
-        self.hbox.addWidget(self.line_edit)
+        self.root.addWidget(self.line_edit)
 
         if callable(init):
             init(self)
@@ -53,8 +53,8 @@ class LineEditCard(CardWidget):
 
     # 添加控件
     def add_widget(self, widget) -> None:
-        self.hbox.addWidget(widget)
+        self.root.addWidget(widget)
 
     # 添加间隔
     def add_spacing(self, spacing: int) -> None:
-        self.hbox.addSpacing(spacing)
+        self.root.addSpacing(spacing)
