@@ -11,6 +11,7 @@ from rich.console import Console
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
 from module.Fixer.CodeFixer import CodeFixer
@@ -23,7 +24,6 @@ from module.Config import Config
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
-from base.LogManager import LogManager
 from module.TextPreserver import TextPreserver
 from module.Normalizer import Normalizer
 from module.Translator.TranslatorRequester import TranslatorRequester
