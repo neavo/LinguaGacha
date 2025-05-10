@@ -31,27 +31,62 @@ class CacheManager(Base):
     )
 
     # 类线程锁
-    FILE_LOCK = threading.Lock()
+    LOCK = threading.Lock()
 
-    def __init__(self, tick: bool) -> None:
+    def __init__(self, service: bool) -> None:
         super().__init__()
 
         # 默认值
         self.project: CacheProject = CacheProject({})
         self.items: list[CacheItem] = []
 
+        # 初始化
+        self.require_flag: bool = False
+        self.require_path: str = ""
+        self.last_require_time: float = 0
+
         # 启动定时任务
-        if tick == True:
-            threading.Thread(target = self.save_to_file_tick).start()
+        if service == True:
+            threading.Thread(
+                target = self.task,
+            ).start()
+
+    # 保存缓存到文件的定时任务
+    def task(self) -> None:
+        while True:
+            # 休眠 1 秒
+            time.sleep(1.00)
+
+            if (
+                time.time() - self.last_require_time >= __class__.SAVE_INTERVAL
+                and self.require_flag == True
+            ):
+                # 创建上级文件夹
+                folder_path = f"{self.require_path}/cache"
+                os.makedirs(folder_path, exist_ok = True)
+
+                # 保存缓存到文件
+                self.save_to_file(
+                    project = self.project,
+                    items = self.items,
+                    output_folder = self.require_path,
+                )
+
+                # 触发事件
+                self.emit(Base.Event.CACHE_FILE_AUTO_SAVE, {})
+
+                # 重置标志
+                self.require_flag = False
+                self.last_require_time = time.time()
 
     # 保存缓存到文件
-    def save_to_file(self, project: CacheProject = None, items: list[CacheItem] = None, output_folder: str = None) -> None:
+    def save_to_file(self, project: CacheProject, items: list[CacheItem], output_folder: str) -> None:
         # 创建上级文件夹
         os.makedirs(f"{output_folder}/cache", exist_ok = True)
 
         # 保存缓存到文件
         path = f"{output_folder}/cache/items.json"
-        with CacheManager.FILE_LOCK:
+        with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
                     writer.write(json.dumps([item.get_vars() for item in items], indent = None, ensure_ascii = False))
@@ -60,46 +95,26 @@ class CacheManager(Base):
 
         # 保存项目数据到文件
         path = f"{output_folder}/cache/project.json"
-        with CacheManager.FILE_LOCK:
+        with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
                     writer.write(json.dumps(project.get_vars(), indent = None, ensure_ascii = False))
             except Exception as e:
                 self.debug(Localizer.get().log_write_cache_file_fail, e)
 
-    # 保存缓存到文件的定时任务
-    def save_to_file_tick(self) -> None:
-        while True:
-            time.sleep(__class__.SAVE_INTERVAL)
-
-            # 接收到保存信号则保存
-            if getattr(self, "save_to_file_require_flag", False)  == True:
-                # 创建上级文件夹
-                folder_path = f"{self.save_to_file_require_path}/cache"
-                os.makedirs(folder_path, exist_ok = True)
-
-                # 保存缓存到文件
-                self.save_to_file(
-                    project = self.project,
-                    items = self.items,
-                    output_folder = self.save_to_file_require_path,
-                )
-
-                # 触发事件
-                self.emit(Base.Event.CACHE_FILE_AUTO_SAVE, {})
-
-                # 重置标志
-                self.save_to_file_require_flag = False
+        # 重置标志
+        self.require_flag = False
+        self.last_require_time = time.time()
 
     # 请求保存缓存到文件
     def require_save_to_file(self, output_path: str) -> None:
-        self.save_to_file_require_flag = True
-        self.save_to_file_require_path = output_path
+        self.require_flag = True
+        self.require_path = output_path
 
     # 从文件读取数据
     def load_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/items.json"
-        with CacheManager.FILE_LOCK:
+        with __class__.LOCK:
             try:
                 if os.path.isfile(path):
                     with open(path, "r", encoding = "utf-8-sig") as reader:
@@ -108,7 +123,7 @@ class CacheManager(Base):
                 self.debug(Localizer.get().log_read_cache_file_fail, e)
 
         path = f"{output_path}/cache/project.json"
-        with CacheManager.FILE_LOCK:
+        with __class__.LOCK:
             try:
                 if os.path.isfile(path):
                     with open(path, "r", encoding = "utf-8-sig") as reader:
@@ -119,7 +134,7 @@ class CacheManager(Base):
     # 从文件读取项目数据
     def load_project_from_file(self, output_path: str) -> None:
         path = f"{output_path}/cache/project.json"
-        with CacheManager.FILE_LOCK:
+        with __class__.LOCK:
             try:
                 if os.path.isfile(path):
                     with open(path, "r", encoding = "utf-8-sig") as reader:
@@ -228,7 +243,7 @@ class CacheManager(Base):
                 break
 
             # 候选数据以指定标点结尾时，添加到结果中
-            if src.endswith(CacheManager.END_LINE_PUNCTUATION):
+            if src.endswith(__class__.END_LINE_PUNCTUATION):
                 result.append(item)
             else:
                 break

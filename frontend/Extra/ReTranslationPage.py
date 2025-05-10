@@ -149,7 +149,7 @@ class ReTranslationPage(QWidget, Base):
             })
 
             # 写入缓存文件
-            CacheManager(tick = False).save_to_file(
+            CacheManager(service = False).save_to_file(
                 project = project,
                 items = items,
                 output_folder = config.output_folder,

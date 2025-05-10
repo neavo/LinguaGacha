@@ -31,7 +31,7 @@ class Translator(Base):
         super().__init__()
 
         # 初始化
-        self.cache_manager = CacheManager(tick = True)
+        self.cache_manager = CacheManager(service = True)
 
         # 线程锁
         self.data_lock = threading.Lock()
@@ -107,7 +107,7 @@ class Translator(Base):
 
         # 只有翻译状态为 无任务 时才执行检查逻辑，其他情况直接返回默认值
         if Base.WORK_STATUS == Base.TaskStatus.IDLE:
-            cache_manager = CacheManager(tick = False)
+            cache_manager = CacheManager(service = False)
             cache_manager.load_project_from_file(Config().load().output_folder)
             status = cache_manager.get_project().get_status()
 
@@ -261,7 +261,7 @@ class Translator(Base):
 
             # 开始执行翻译任务
             task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold)
-            with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers,thread_name_prefix = "translator") as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = "translator") as executor:
                 for task in tasks:
                     task_limiter.wait()
                     future = executor.submit(task.start, current_round)
@@ -274,8 +274,12 @@ class Translator(Base):
         if self.cache_manager.get_item_count_by_status(Base.TranslationStatus.UNTRANSLATED) == 0:
             self.cache_manager.get_project().set_status(Base.TranslationStatus.TRANSLATED)
 
-        # 等待可能存在的缓存文件写入请求处理完毕
-        time.sleep(CacheManager.SAVE_INTERVAL)
+        # 写入缓存
+        self.cache_manager.save_to_file(
+            project = self.cache_manager.get_project(),
+            items = self.cache_manager.get_items(),
+            output_folder = self.config.output_folder,
+        )
 
         # 检查结果并写入文件
         self.check_and_wirte_result(self.cache_manager.get_items())
