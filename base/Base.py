@@ -43,14 +43,6 @@ class Base():
         SUCCESS = "SUCCESS"
         WARNING = "WARNING"
 
-    # 任务状态
-    class TaskStatus(StrEnum):
-
-        IDLE = "IDLE"                                                       # 无任务
-        TESTING = "TESTING"                                                 # 运行中
-        TRANSLATING = "TRANSLATING"                                         # 运行中
-        STOPPING = "STOPPING"                                               # 停止中
-
     # 翻译状态
     class TranslationStatus(StrEnum):
 
@@ -60,9 +52,6 @@ class Base():
         TRANSLATED_IN_PAST = "TRANSLATED_IN_PAST"                           # 过去已翻译
         EXCLUDED = "EXCLUDED"                                               # 已排除
         DUPLICATED = "DUPLICATED"                                           # 重复条目
-
-    # 类变量
-    WORK_STATUS: TaskStatus = TaskStatus.IDLE
 
     # 构造函数
     def __init__(self) -> None:

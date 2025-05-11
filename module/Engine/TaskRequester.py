@@ -13,8 +13,7 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
 
-# 接口请求器
-class TranslatorRequester(Base):
+class TaskRequester(Base):
 
     # 类线程锁
     API_KEY_LOCK = threading.Lock()
@@ -100,62 +99,62 @@ class TranslatorRequester(Base):
 
     # 获取客户端
     def get_client(self, platform: dict, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
-        with TranslatorRequester.API_KEY_LOCK:
+        with TaskRequester.API_KEY_LOCK:
             # 初始化索引
-            if getattr(TranslatorRequester, "_api_key_index", None) is None:
-                TranslatorRequester._api_key_index = 0
+            if getattr(TaskRequester, "_api_key_index", None) is None:
+                TaskRequester._api_key_index = 0
 
             # 轮询获取密钥
             keys = platform.get("api_key", [])
             if len(keys) == 1:
                 api_key = keys[0]
-            elif TranslatorRequester._api_key_index >= len(keys) - 1:
-                TranslatorRequester._api_key_index = 0
+            elif TaskRequester._api_key_index >= len(keys) - 1:
+                TaskRequester._api_key_index = 0
                 api_key = keys[0]
             else:
-                TranslatorRequester._api_key_index = TranslatorRequester._api_key_index + 1
-                api_key = keys[TranslatorRequester._api_key_index]
+                TaskRequester._api_key_index = TaskRequester._api_key_index + 1
+                api_key = keys[TaskRequester._api_key_index]
 
             # 从缓存中获取客户端
             if platform.get("api_format") == Base.APIFormat.SAKURALLM:
-                if api_key not in TranslatorRequester.SAKURA_CLIENTS:
-                    TranslatorRequester.SAKURA_CLIENTS[api_key] = openai.OpenAI(
+                if api_key not in TaskRequester.SAKURA_CLIENTS:
+                    TaskRequester.SAKURA_CLIENTS[api_key] = openai.OpenAI(
                         base_url = platform.get("api_url"),
                         api_key = api_key,
                         timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
                         max_retries = 1,
                     )
-                return TranslatorRequester.SAKURA_CLIENTS.get(api_key)
+                return TaskRequester.SAKURA_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.GOOGLE:
                 # https://github.com/googleapis/python-genai
                 # https://ai.google.dev/gemini-api/docs/libraries
-                if api_key not in TranslatorRequester.GOOGLE_CLIENTS:
-                    TranslatorRequester.GOOGLE_CLIENTS[api_key] = genai.Client(
+                if api_key not in TaskRequester.GOOGLE_CLIENTS:
+                    TaskRequester.GOOGLE_CLIENTS[api_key] = genai.Client(
                         api_key = api_key,
                         http_options = types.HttpOptions(
                             timeout = timeout * 1000,
                             api_version = "v1alpha",
                         ),
                     )
-                return TranslatorRequester.GOOGLE_CLIENTS.get(api_key)
+                return TaskRequester.GOOGLE_CLIENTS.get(api_key)
             elif platform.get("api_format") == Base.APIFormat.ANTHROPIC:
-                if api_key not in TranslatorRequester.ANTHROPIC_CLIENTS:
-                    TranslatorRequester.ANTHROPIC_CLIENTS[api_key] = anthropic.Anthropic(
+                if api_key not in TaskRequester.ANTHROPIC_CLIENTS:
+                    TaskRequester.ANTHROPIC_CLIENTS[api_key] = anthropic.Anthropic(
                         base_url = platform.get("api_url"),
                         api_key = api_key,
                         timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
                         max_retries = 1,
                     )
-                return TranslatorRequester.ANTHROPIC_CLIENTS.get(api_key)
+                return TaskRequester.ANTHROPIC_CLIENTS.get(api_key)
             else:
-                if api_key not in TranslatorRequester.OPENAI_CLIENTS:
-                    TranslatorRequester.OPENAI_CLIENTS[api_key] = openai.OpenAI(
+                if api_key not in TaskRequester.OPENAI_CLIENTS:
+                    TaskRequester.OPENAI_CLIENTS[api_key] = openai.OpenAI(
                         base_url = platform.get("api_url"),
                         api_key = api_key,
                         timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
                         max_retries = 1,
                     )
-                return TranslatorRequester.OPENAI_CLIENTS.get(api_key)
+                return TaskRequester.OPENAI_CLIENTS.get(api_key)
 
     # 生成请求参数
     def generate_sakura_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
