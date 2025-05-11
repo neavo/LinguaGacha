@@ -21,12 +21,13 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Config import Config
+from module.Engine.Engine import Engine
+from module.Engine.TaskRequester import TaskRequester
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
-from module.TextPreserver import TextPreserver
 from module.Normalizer import Normalizer
-from module.Translator.TranslatorRequester import TranslatorRequester
+from module.TextPreserver import TextPreserver
 from module.PromptBuilder import PromptBuilder
 
 class TranslatorTask(Base):
@@ -105,7 +106,7 @@ class TranslatorTask(Base):
         start_time = time.time()
 
         # 检测是否需要停止任务
-        if Base.WORK_STATUS == Base.TaskStatus.STOPPING:
+        if Engine.get().get_status() == Engine.Status.STOPPING:
             return {}
 
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
@@ -119,7 +120,7 @@ class TranslatorTask(Base):
             self.messages, console_log = self.prompt_builder.generate_prompt_sakura(src_dict)
 
         # 发起请求
-        requester = TranslatorRequester(self.config, self.platform, current_round)
+        requester = TaskRequester(self.config, self.platform, current_round)
         skip, response_think, response_result, input_tokens, output_tokens = requester.request(self.messages)
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环

@@ -13,9 +13,8 @@ from qfluentwidgets import setTheme
 
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Platform.PlatformTester import PlatformTester
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Translator.Translator import Translator
 from module.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 
@@ -115,13 +114,10 @@ if __name__ == "__main__":
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
 
-    # 创建翻译器
-    translator = Translator()
+    # 启动任务引擎
+    Engine().get().run()
 
-    # 创建接口测试器
-    platform_test = PlatformTester()
-
-    # 创建应用更新其
+    # 创建版本管理器
     version_manager = VersionManager(version)
 
     # 创建全局窗口对象

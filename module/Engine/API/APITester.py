@@ -1,12 +1,12 @@
-import os
 import threading
 
 from base.Base import Base
 from module.Config import Config
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Translator.TranslatorRequester import TranslatorRequester
+from module.Engine.TaskRequester import TaskRequester
 
-class PlatformTester(Base):
+class APITester(Base):
 
     def __init__(self) -> None:
         super().__init__()
@@ -16,7 +16,7 @@ class PlatformTester(Base):
 
     # 接口测试开始事件
     def platform_test_start(self, event: str, data: dict) -> None:
-        if Base.WORK_STATUS != Base.TaskStatus.IDLE:
+        if Engine.get().get_status() != Engine.Status.IDLE:
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().platofrm_tester_running,
@@ -30,8 +30,9 @@ class PlatformTester(Base):
     # 接口测试开始
     def platform_test_start_target(self, event: str, data: dict) -> None:
         # 更新运行状态
-        Base.WORK_STATUS = Base.TaskStatus.TESTING
+        Engine.get().set_status(Engine.Status.TESTING)
 
+        # 加载配置
         config = Config().load()
         platform = config.get_platform(data.get("id"))
 
@@ -60,10 +61,10 @@ class PlatformTester(Base):
             ]
 
         # 重置请求器
-        TranslatorRequester.reset()
+        TaskRequester.reset()
 
         # 开始测试
-        requester = TranslatorRequester(config, platform, 0)
+        requester = TaskRequester(config, platform, 0)
         for key in platform.get("api_key"):
             self.print("")
             self.info(f"{Localizer.get().platofrm_tester_key} - {key}")
@@ -91,11 +92,11 @@ class PlatformTester(Base):
         self.print("")
         self.info(result_msg)
 
-        # 更新运行状态
-        Base.WORK_STATUS = Base.TaskStatus.IDLE
-
         # 发送完成事件
         self.emit(Base.Event.PLATFORM_TEST_DONE, {
             "result": len(failure) == 0,
             "result_msg": result_msg,
         })
+
+        # 更新运行状态
+        Engine.get().set_status(Engine.Status.IDLE)
