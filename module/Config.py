@@ -53,6 +53,7 @@ class Config(BaseData):
         self.target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
         self.input_folder: str = "./input"
         self.output_folder: str = "./output"
+        self.output_folder_open_on_finish: bool = False
         self.traditional_chinese_enable: bool = False
 
         # GlossaryPage

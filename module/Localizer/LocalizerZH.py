@@ -30,6 +30,8 @@ class LocalizerZH():
     disable: str = "禁用"
     auto: str = "自动"
     wiki: str = "功能说明"
+    open: str = "打开"
+    select: str = "选择"
     inject: str = "注入"
     filter: str = "过滤"
     generate: str = "生成"
@@ -211,15 +213,15 @@ class LocalizerZH():
 
     # 项目设置
     project_page_source_language_title: str = "原文语言"
-    project_page_source_language_content: str = "设置当前翻译项目所使用的原文文本的语言"
+    project_page_source_language_content: str = "设置当前项目中输入文本的语言"
     project_page_target_language_title: str = "译文语言"
-    project_page_target_language_content: str = "设置当前翻译项目所使用的译文文本的语言"
+    project_page_target_language_content: str = "设置当前项目中输出文本的语言"
     project_page_input_folder_title: str = "输入文件夹"
     project_page_input_folder_content: str = "当前输入文件夹为"
-    project_page_input_folder_btn: str = "选择文件夹"
     project_page_output_folder_title: str = "输出文件夹（不能与输入文件夹相同）"
     project_page_output_folder_content: str = "当前输出文件夹为"
-    project_page_output_folder_btn: str = "选择文件夹"
+    project_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
+    project_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
     project_page_traditional_chinese_title: str = "使用繁体输出中文"
     project_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
 
@@ -238,9 +240,8 @@ class LocalizerZH():
     translation_page_card_token: str = "累计消耗"
     translation_page_card_task: str = "实时任务数"
     translation_page_alert_pause: str = "停止的翻译任务可以随时继续翻译，是否确定停止任务 … ？"
-    translation_page_continue: str = "继续翻译"
-    translation_page_export: str = "导出翻译数据"
-    translation_page_export_toast: str = "已根据当前的翻译数据在输出文件夹下生成翻译文件 …"
+    translation_page_continue: str = "继续任务"
+    translation_page_export: str = "导出任务数据"
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 基础设置
@@ -264,7 +265,7 @@ class LocalizerZH():
     basic_settings_page_token_threshold_content: str = "每个任务所包含的文本的最大 Token 数量"
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
-        "翻译任务发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
+        "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
         ""
         ""
     )

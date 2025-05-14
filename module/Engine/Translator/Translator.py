@@ -1,9 +1,11 @@
+import os
 import re
 import time
 import shutil
 import threading
 import concurrent.futures
 from itertools import zip_longest
+import webbrowser
 
 import httpx
 from tqdm import tqdm
@@ -454,6 +456,10 @@ class Translator(Base):
         self.print("")
         self.info(Localizer.get().translator_write.replace("{PATH}", self.config.output_folder))
         self.print("")
+
+        # 打开输出文件夹
+        if self.config.output_folder_open_on_finish == True:
+            webbrowser.open(os.path.abspath(self.config.output_folder))
 
     # 翻译任务完成时
     def task_done_callback(self, future: concurrent.futures.Future) -> None:

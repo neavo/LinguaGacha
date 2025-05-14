@@ -30,6 +30,8 @@ class LocalizerEN(LocalizerZH):
     disable: str = "Disable"
     auto: str = "Auto"
     wiki: str = "Wiki"
+    open: str = "Open"
+    select: str = "Select"
     inject: str = "Inject"
     filter: str = "Filter"
     generate: str = "Generate"
@@ -211,17 +213,17 @@ class LocalizerEN(LocalizerZH):
 
     # 项目设置
     project_page_source_language_title: str = "Source Language"
-    project_page_source_language_content: str = "Set the language of the source text used in the current translation project"
+    project_page_source_language_content: str = "Set the language of the input text in the current project"
     project_page_target_language_title: str = "Target Language"
-    project_page_target_language_content: str = "Set the language of the translated text used in the current translation project"
+    project_page_target_language_content: str = "Set the language of the output text in the current project"
     project_page_input_folder_title: str = "Input Folder"
-    project_page_input_folder_content: str = "Current input folder is"
-    project_page_input_folder_btn: str = "Select Folder"
-    project_page_output_folder_title: str = "Output Folder (cannot be the same as input folder)"
-    project_page_output_folder_content: str = "Current output folder is"
-    project_page_output_folder_btn: str = "Select Folder"
+    project_page_input_folder_content: str = "The current input folder is"
+    project_page_output_folder_title: str = "Output Folder (Can not be same as input folder)"
+    project_page_output_folder_content: str = "The current output folder is"
+    project_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
+    project_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
     project_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
-    project_page_traditional_chinese_content: str = "When enabled, if the target language is set to Chinese, Chinese text will be output in Traditional Chinese characters"
+    project_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
 
     # 开始翻译
     translation_page_status_idle: str = "Idle"
@@ -238,9 +240,8 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_token: str = "Total Tokens"
     translation_page_card_task: str = "Real Time Tasks"
     translation_page_alert_pause: str = "Stopped translation tasks can be resumed at any time. Confirm to stop the task … ?"
-    translation_page_continue: str = "Continue Translation"
-    translation_page_export: str = "Export Translation Data"
-    translation_page_export_toast: str = "Translation files have been generated in the output folder based on the current translation data …"
+    translation_page_continue: str = "Continue Task"
+    translation_page_export: str = "Export Task Data"
     translation_page_timer: str = "Waiting time before delayed startup"
 
     # 基础设置
@@ -264,9 +265,9 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_token_threshold_content: str = "The maximum number of text tokens contained in each task"
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
-        "The maximum time (in seconds) to wait for a model response when initiating a translation task request"
+        "The maximum time (seconds) to wait for the model's response when making a request"
         "<br>"
-        "If no response is received after the timeout, the task will be considered failed"
+        "If no reply is received after the timeout, the task will be considered failed"
     )
     basic_settings_page_max_round_title: str = "Maximum Rounds"
     basic_settings_page_max_round_content: str = "After completing a round of tasks, failed tasks will be retried in a new round until all are completed or the round threshold is reached"
