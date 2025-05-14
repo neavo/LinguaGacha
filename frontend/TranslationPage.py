@@ -551,7 +551,7 @@ class TranslationPage(QWidget, Base):
             self.emit(Base.Event.TRANSLATION_MANUAL_EXPORT, {})
             self.emit(Base.Event.APP_TOAST_SHOW, {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().translation_page_export_toast,
+                "message": Localizer.get().task_success,
             })
 
         self.action_export = parent.add_action(

@@ -15,8 +15,8 @@ class PushButtonCard(CardWidget):
 
         # 设置容器
         self.setBorderRadius(4)
-        self.container = QHBoxLayout(self)
-        self.container.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root = QHBoxLayout(self)
+        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()
@@ -27,20 +27,29 @@ class PushButtonCard(CardWidget):
 
         self.vbox.addWidget(self.title_label)
         self.vbox.addWidget(self.description_label)
-        self.container.addLayout(self.vbox)
+        self.root.addLayout(self.vbox)
 
         # 填充
-        self.container.addStretch(1)
+        self.root.addStretch(1)
 
         # 添加控件
         self.push_button = PushButton("", self)
-        self.container.addWidget(self.push_button)
+        self.root.addWidget(self.push_button)
 
         if callable(init):
             init(self)
 
         if callable(clicked):
             self.push_button.clicked.connect(lambda _: clicked(self))
+
+    def add_widget(self, widget) -> None:
+        return self.root.addWidget(widget)
+
+    def add_spacing(self, spacing: int) -> None:
+        self.root.addSpacing(spacing)
+
+    def add_stretch(self, stretch: int) -> None:
+        self.root.addStretch(stretch)
 
     def get_title_label(self) -> StrongBodyLabel:
         return self.title_label

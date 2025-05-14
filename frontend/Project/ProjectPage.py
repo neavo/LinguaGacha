@@ -1,7 +1,11 @@
+import os
+import webbrowser
+
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QVBoxLayout
+from qfluentwidgets import PushButton
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 
@@ -38,6 +42,7 @@ class ProjectPage(QWidget, Base):
         self.add_widget_target_language(self.vbox, config, window)
         self.add_widget_input_folder(self.vbox, config, window)
         self.add_widget_output_folder(self.vbox, config, window)
+        self.add_widget_output_folder_open_on_finish(self.vbox, config, window)
         self.add_widget_traditional_chinese(self.vbox, config, window)
 
         # 填充
@@ -93,14 +98,22 @@ class ProjectPage(QWidget, Base):
     # 输入文件夹
     def add_widget_input_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
 
+        def open_btn_clicked(widget: PushButton) -> None:
+            webbrowser.open(os.path.abspath(Config().load().input_folder))
+
         def init(widget: PushButtonCard) -> None:
+            open_btn = PushButton(FluentIcon.FOLDER, Localizer.get().open, self)
+            open_btn.clicked.connect(open_btn_clicked)
+            widget.add_spacing(4)
+            widget.add_widget(open_btn)
+
             widget.get_description_label().setText(f"{Localizer.get().project_page_input_folder_content} {config.input_folder}")
-            widget.get_push_button().setText(Localizer.get().project_page_input_folder_btn)
-            widget.get_push_button().setIcon(FluentIcon.FOLDER_ADD)
+            widget.get_push_button().setText(Localizer.get().select)
+            widget.get_push_button().setIcon(FluentIcon.ADD_TO)
 
         def clicked(widget: PushButtonCard) -> None:
             # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_input_folder_btn, "")
+            path = QFileDialog.getExistingDirectory(None, Localizer.get().select, "")
             if path == None or path == "":
                 return
 
@@ -124,14 +137,22 @@ class ProjectPage(QWidget, Base):
     # 输出文件夹
     def add_widget_output_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
 
+        def open_btn_clicked(widget: PushButton) -> None:
+            webbrowser.open(os.path.abspath(Config().load().output_folder))
+
         def init(widget: PushButtonCard) -> None:
+            open_btn = PushButton(FluentIcon.FOLDER, Localizer.get().open, self)
+            open_btn.clicked.connect(open_btn_clicked)
+            widget.add_spacing(4)
+            widget.add_widget(open_btn)
+
             widget.get_description_label().setText(f"{Localizer.get().project_page_output_folder_content} {config.output_folder}")
-            widget.get_push_button().setText(Localizer.get().project_page_output_folder_btn)
-            widget.get_push_button().setIcon(FluentIcon.FOLDER_ADD)
+            widget.get_push_button().setText(Localizer.get().select)
+            widget.get_push_button().setIcon(FluentIcon.ADD_TO)
 
         def clicked(widget: PushButtonCard) -> None:
             # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().project_page_output_folder_btn, "")
+            path = QFileDialog.getExistingDirectory(None, Localizer.get().select, "")
             if path == None or path == "":
                 return
 
@@ -152,7 +173,30 @@ class ProjectPage(QWidget, Base):
             )
         )
 
-    # 输出文件夹
+    # 任务完成后自动打开输出文件夹
+    def add_widget_output_folder_open_on_finish(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(
+                config.output_folder_open_on_finish
+            )
+
+        def checked_changed(widget: SwitchButtonCard) -> None:
+            # 更新并保存配置
+            config = Config().load()
+            config.output_folder_open_on_finish = widget.get_switch_button().isChecked()
+            config.save()
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().project_page_output_folder_open_on_finish_title,
+                description = Localizer.get().project_page_output_folder_open_on_finish_content,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 繁体输出
     def add_widget_traditional_chinese(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
