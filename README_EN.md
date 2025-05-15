@@ -78,29 +78,15 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250515 v0.27.0
+  - NEW - Open output folder upon task completion
+  - OPT - Optimized some interaction details
+
 - 20250506 v0.26.0
   - NEW - Expert Mode, which enables a series of advanced features:
     - Expert Settings
     - Advanced Log Information
     - [Custom Text Preservation Rules](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)
-
-- 20250502 v0.25.11
-  - OPT - Added support for auto-saving table data in `Glossary` `Pre-translation Replace` `Post-translation Replace`
-  - FIX - File compatibility
-    - `SRT` Fixed an issue where the first entry could not be read from files encoded with `UTF-8-BOM`
-
-- 20250429 v0.25.10
-  - OPT - Added support for sorting table data by clicking headers
-  - OPT - Automatically convert input data to `UTF-8` encoding
-  - OPT - Added support for switching between `Thinking Mode` and `Normal Mode` for `Qwen3` series models
-  - Fixed - File compatibility
-    - `RPY` Text not requiring translation is now kept original in translated files
-
-- 20250427 v0.25.9
-  - OPT - Add UI setting for `Tasks per minute threshold`
-  - FIX - File compatibility
-    - `ALL` Fixed freezes during task generation caused by repeated full-width spaces
-    - `RPY` Fixed incorrect detection of translation status for text containing quotes
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

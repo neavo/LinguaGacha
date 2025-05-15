@@ -75,29 +75,15 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250515 v0.27.0
+  - 新增 - 任务完成时打开输出文件夹
+  - 调整 - 优化了一些交互细节
+
 - 20250506 v0.26.0
   - 新增 - 专家模式，启用将开启一系列高级功能：
     - 专家设置
     - 高级日志信息
     - [自定义文本保护规则](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)
-
-- 20250502 v0.25.11
-  - 调整 - 支持 `术语表` `译前替换` `译后替换` 表格数据自动保存
-  - 修正 - 文件兼容性
-    - `SRT` 编码为 `UTF-8-BOM` 时无法读取第一条数据的问题
-
-- 20250429 v0.25.10
-  - 调整 - 支持点击表头切换表格数据排序
-  - 调整 - 自动转换输入数据为 `UTF-8` 编码
-  - 调整 - 支持 `Qwen3` 系列模型切换 `思考模式` 与 `普通模式`
-  - 修正 - 文件兼容性
-    - `RPY` 无需翻译的文本在译文文件中保持原文
-
-- 20250427 v0.25.9
-  - 调整 - 为 `每分钟任务数量阈值` 提供设置界面
-  - 修正 - 文件兼容性
-    - `ALL` 重复全角空格导致生成任务时卡死的问题
-    - `RPY` 包含引号的文本翻译状态判断错误的问题
 
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
