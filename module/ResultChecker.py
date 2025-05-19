@@ -10,7 +10,7 @@ from module.Cache.CacheItem import CacheItem
 from module.Config import Config
 from module.Response.ResponseChecker import ResponseChecker
 from module.Localizer.Localizer import Localizer
-from module.TextPreserver import TextPreserver
+from module.TextProcessor import TextProcessor
 
 class ResultChecker(Base):
 
@@ -23,7 +23,7 @@ class ResultChecker(Base):
 
         # 初始化
         self.config: Config = config
-        self.text_preserver: TextPreserver = TextPreserver(config)
+        self.text_processor: TextProcessor = TextProcessor(config, None)
 
         # 筛选数据
         self.items_translated = [item for item in items if item.get_status() == Base.TranslationStatus.TRANSLATED]
@@ -131,7 +131,7 @@ class ResultChecker(Base):
         }
 
         for item in self.items_translated:
-            if self.text_preserver.check(item.get_src(), item.get_dst(), item.get_text_type()) == False:
+            if self.text_processor.check(item.get_src(), item.get_dst(), item.get_text_type()) == False:
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
 

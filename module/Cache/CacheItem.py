@@ -1,6 +1,7 @@
 import re
 import threading
 from enum import StrEnum
+from functools import lru_cache
 
 import tiktoken
 import tiktoken_ext
@@ -39,9 +40,6 @@ class CacheItem(BaseData):
         RENPY = "RENPY"                            # RENPY 游戏文本
         RPGMAKER = "RPGMAKER"                      # RPGMAKER 游戏文本
 
-    # 缓存 Token 数量
-    TOKEN_COUNT_CACHE: dict[str, int] = {}
-
     # WOLF
     REGEX_WOLF: tuple[re.Pattern] = (
         re.compile(r"@\d+", flags = re.IGNORECASE),                                             # 角色 ID
@@ -68,8 +66,8 @@ class CacheItem(BaseData):
         # 默认值
         self.src: str = ""                                                          # 原文
         self.dst: str = ""                                                          # 译文
-        self.name_src: str | tuple[str] = None                                      # 角色姓名原文
-        self.name_dst: str | tuple[str] = None                                      # 角色姓名译文
+        self.name_src: str | list[str] = None                                       # 角色姓名原文
+        self.name_dst: str | list[str] = None                                       # 角色姓名译文
         self.extra_field: str | dict = ""                                           # 额外字段原文
         self.tag: str = ""                                                          # 标签
         self.row: int = 0                                                           # 行号
@@ -78,7 +76,6 @@ class CacheItem(BaseData):
         self.text_type: __class__.TextType = __class__.TextType.NONE                # 文本的实际类型
         self.status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED   # 翻译状态
         self.retry_count: int = 0                                                   # 重试次数，当前只有单独重试的时候才增加此计数
-        self.skip_internal_filter: bool = False                                     # 跳过内置过滤器
 
         # 初始化
         for k, v in args.items():
@@ -125,22 +122,22 @@ class CacheItem(BaseData):
                 self.dst = str(dst)
 
     # 获取角色姓名原文
-    def get_name_src(self) -> str | tuple[str]:
+    def get_name_src(self) -> str | list[str]:
         with self.lock:
             return self.name_src
 
     # 设置角色姓名原文
-    def set_name_src(self, name_src: str | tuple[str]) -> None:
+    def set_name_src(self, name_src: str | list[str]) -> None:
         with self.lock:
             self.name_src = name_src
 
     # 获取角色姓名译文
-    def get_name_dst(self) -> str | tuple[str]:
+    def get_name_dst(self) -> str | list[str]:
         with self.lock:
             return self.name_dst
 
     # 设置角色姓名译文
-    def set_name_dst(self, name_dst: str | tuple[str]) -> None:
+    def set_name_dst(self, name_dst: str | list[str]) -> None:
         with self.lock:
             self.name_dst = name_dst
 
@@ -224,23 +221,15 @@ class CacheItem(BaseData):
         with self.lock:
             self.retry_count = retry_count
 
-    # 获取跳过内置过滤器
-    def get_skip_internal_filter(self) -> bool:
-        with self.lock:
-            return self.skip_internal_filter
-
-    # 设置跳过内置过滤器
-    def set_skip_internal_filter(self, skip_internal_filter: bool) -> None:
-        with self.lock:
-            self.skip_internal_filter = skip_internal_filter
+    # 获取 Token 数量
+    @classmethod
+    @lru_cache(maxsize = 128 * 1024)
+    def _get_token_count(cls, src: str) -> int:
+        return len(tiktoken.get_encoding("o200k_base").encode(src))
 
     # 获取 Token 数量
     def get_token_count(self) -> int:
-        with self.lock:
-            if self.src not in __class__.TOKEN_COUNT_CACHE:
-                __class__.TOKEN_COUNT_CACHE[self.src] = len(tiktoken.get_encoding("o200k_base").encode(self.src))
-
-            return __class__.TOKEN_COUNT_CACHE[self.src]
+        return __class__._get_token_count(self.get_src())
 
     # 获取第一个角色姓名原文
     def get_first_name_src(self) -> str:
@@ -261,34 +250,3 @@ class CacheItem(BaseData):
             self.set_name_dst(name)
         elif isinstance(name_src, list) and name_src != []:
             self.set_name_dst([name] + name_src[1:])
-
-    # 将原文切片
-    def split_sub_lines(self) -> list[str]:
-        with self.lock:
-            return [sub_line for sub_line in self.src.split("\n") if sub_line.strip() != ""]
-
-    # 从切片中合并译文
-    def merge_sub_lines(self, dst_list: list[str], check_list: list[str]) -> tuple[list[str], list[str]]:
-        from module.Response.ResponseChecker import ResponseChecker
-
-        dsts: list[str] = []
-        checks: list[str] = []
-        for src_line in self.src.split("\n"):
-            if src_line == "":
-                dsts.append("")
-            elif src_line.strip() == "":
-                dsts.append(src_line)
-            elif len(dst_list) > 0:
-                dsts.append(dst_list.pop(0))
-                checks.append(check_list.pop(0))
-            # 冗余步骤
-            # 当跳过行数检查步骤时，原文行数可能大于译文行数，此时需要填充多出来的行数
-            else:
-                checks.append(ResponseChecker.Error.NONE)
-                dsts.append("")
-
-        # 如果当前片段中有没通过检查的子句，则将返回结果置空，以示当前片段需要重新翻译
-        if any(v != ResponseChecker.Error.NONE for v in checks):
-            return None, None
-        else:
-            return dsts, checks

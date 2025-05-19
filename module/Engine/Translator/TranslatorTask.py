@@ -1,107 +1,55 @@
-import re
 import time
 import itertools
 import threading
+from functools import lru_cache
 
-import opencc
 from rich import box
 from rich import markup
 from rich.table import Table
 from rich.console import Console
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Text.TextHelper import TextHelper
 from module.Cache.CacheItem import CacheItem
-from module.Fixer.CodeFixer import CodeFixer
-from module.Fixer.KanaFixer import KanaFixer
-from module.Fixer.EscapeFixer import EscapeFixer
-from module.Fixer.NumberFixer import NumberFixer
-from module.Fixer.HangeulFixer import HangeulFixer
-from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Localizer.Localizer import Localizer
-from module.Normalizer import Normalizer
-from module.TextPreserver import TextPreserver
 from module.PromptBuilder import PromptBuilder
+from module.TextProcessor import TextProcessor
 
 class TranslatorTask(Base):
 
     # 类变量
     CONSOLE = Console(highlight = True, tab_size = 4)
-    OPENCCS2T = opencc.OpenCC("s2t")
-    OPENCCT2S = opencc.OpenCC("t2s")
 
-    # 自动术语表相关
+    # 自动术语表
+    GLOSSARY_SAVE_LOCK = threading.Lock()
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
-    # 正则规则
-    REGEX_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
-
-    # 类线程锁
-    LOCK = threading.Lock()
-
-    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[CacheItem], preceding_items: list[CacheItem]) -> None:
+    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[CacheItem], precedings: list[CacheItem]) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
-        self.preceding_items = preceding_items
+        self.precedings = precedings
+        self.processors = [TextProcessor(config, item) for item in items]
         self.config = config
         self.platform = platform
         self.local_flag = local_flag
-        self.code_saver = TextPreserver(config)
         self.prompt_builder = PromptBuilder(self.config)
         self.response_checker = ResponseChecker(self.config, items)
 
-        # 生成原文文本字典与文本类型字典
-        self.src_dict: dict[str, str] = {}
-        self.item_dict: dict[str, CacheItem] = {}
-        self.start_key_set: set[str] = set()
-        for item in items:
-            self.start_key_set.add(str(len(self.src_dict)))
-            for line in item.split_sub_lines():
-                self.src_dict[str(len(self.src_dict))] = line
-                self.item_dict[str(len(self.item_dict))] = item
-
-        # 正规化
-        self.src_dict = self.normalize(self.src_dict)
-
-        # 译前替换
-        self.src_dict = self.replace_before_translation(self.src_dict)
-
-        # 代码救星预处理
-        self.src_dict, self.samples = self.code_saver.pre_process(self.src_dict, self.item_dict)
-
-        # 注入姓名
-        self.name_key_set = self.inject_name(self.src_dict, self.item_dict, self.start_key_set)
-
-        # 初始化错误文本
-        if not hasattr(TranslatorTask, "ERROR_TEXT_DICT"):
-            TranslatorTask.ERROR_TEXT_DICT = {
-                ResponseChecker.Error.UNKNOWN: Localizer.get().response_checker_unknown,
-                ResponseChecker.Error.FAIL_DATA: Localizer.get().response_checker_fail_data,
-                ResponseChecker.Error.FAIL_LINE_COUNT: Localizer.get().response_checker_fail_line_count,
-                ResponseChecker.Error.LINE_ERROR_KANA: Localizer.get().response_checker_line_error_kana,
-                ResponseChecker.Error.LINE_ERROR_HANGEUL: Localizer.get().response_checker_line_error_hangeul,
-                ResponseChecker.Error.LINE_ERROR_FAKE_REPLY: Localizer.get().response_checker_line_error_fake_reply,
-                ResponseChecker.Error.LINE_ERROR_EMPTY_LINE: Localizer.get().response_checker_line_error_empty_line,
-                ResponseChecker.Error.LINE_ERROR_SIMILARITY: Localizer.get().response_checker_line_error_similarity,
-                ResponseChecker.Error.LINE_ERROR_DEGRADATION: Localizer.get().response_checker_line_error_degradation,
-            }
-
     # 启动任务
     def start(self, current_round: int) -> dict[str, str]:
-        return self.request(self.src_dict, self.item_dict, self.preceding_items, self.samples, self.local_flag, current_round)
+        return self.request(self.items, self.processors, self.precedings, self.local_flag, current_round)
 
     # 请求
-    def request(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], preceding_items: list[CacheItem], samples: list[str], local_flag: bool, current_round: int) -> dict[str, str]:
+    def request(self, items: list[CacheItem], processors: list[TextProcessor], precedings: list[CacheItem], local_flag: bool, current_round: int) -> dict[str, str]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -113,11 +61,32 @@ class TranslatorTask(Base):
         if time.time() - start_time >= self.config.request_timeout:
             return {}
 
+        # 文本预处理
+        srcs: list[str] = []
+        samples: list[str] = []
+        for processor in processors:
+            processor.pre_process()
+
+            # 获取预处理后的数据
+            srcs.extend(processor.srcs)
+            samples.extend(processor.samples)
+
+        # 如果没有任何有效原文文本，则直接完成当前任务
+        if len(srcs) == 0:
+            for item, processor in zip(items, processors):
+                item.set_status(Base.TranslationStatus.TRANSLATED)
+
+            return {
+                "row_count": len(items),
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
         # 生成请求提示词
         if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
-            self.messages, console_log = self.prompt_builder.generate_prompt(src_dict, preceding_items, samples, local_flag)
+            self.messages, console_log = self.prompt_builder.generate_prompt(srcs, samples, precedings, local_flag)
         else:
-            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(src_dict)
+            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
 
         # 发起请求
         requester = TaskRequester(self.config, self.platform, current_round)
@@ -132,16 +101,14 @@ class TranslatorTask(Base):
             }
 
         # 提取回复内容
-        dst_dict, glossary_list = ResponseDecoder().decode(response_result)
-
-        # 确保 kv 都为字符串
-        dst_dict = {str(k): str(v) for k, v in dst_dict.items()}
+        dsts, glossarys = ResponseDecoder().decode(response_result)
 
         # 检查回复内容
-        check_result = self.response_checker.check(src_dict, dst_dict, item_dict, self.config.source_language)
+        # TODO - 当前逻辑下任务不会跨文件，所以一个任务的 TextType 都是一样的，有效，但是十分的 UGLY
+        checks = self.response_checker.check(srcs, dsts, self.items[0].get_text_type())
 
         # 当任务失败且是单条目任务时，更新重试次数
-        if any(v != ResponseChecker.Error.NONE for v in check_result) != None and len(self.items) == 1:
+        if any(v != ResponseChecker.Error.NONE for v in checks) != None and len(self.items) == 1:
             self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         # 模型回复日志
@@ -156,47 +123,38 @@ class TranslatorTask(Base):
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
-        if any(v == ResponseChecker.Error.NONE for v in check_result):
-            # 提取姓名
-            name_list: list[str] = self.extract_name(src_dict, dst_dict)
-
-            # 自动修复
-            dst_dict = self.auto_fix(src_dict, dst_dict, item_dict)
-
-            # 代码救星后处理
-            dst_dict = self.code_saver.post_process(src_dict, dst_dict)
-
-            # 译后替换
-            dst_dict = self.replace_after_translation(dst_dict)
-
-            # 繁体输出
-            dst_dict = self.convert_chinese_character_form(dst_dict)
-
+        if any(v == ResponseChecker.Error.NONE for v in checks):
             # 更新术语表
-            with TranslatorTask.LOCK:
-                TranslatorTask.GLOSSARY_SAVE_TIME = self.merge_glossary(glossary_list, TranslatorTask.GLOSSARY_SAVE_TIME)
+            with __class__.GLOSSARY_SAVE_LOCK:
+                __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(glossarys, __class__.GLOSSARY_SAVE_TIME)
 
             # 更新缓存数据
-            dst_list = list(dst_dict.values())
-            check_list = check_result.copy()
-            for item, name in zip(self.items, name_list):
-                dsts, _ = item.merge_sub_lines(dst_list, check_list)
-                if isinstance(dsts, list):
-                    if name is not None:
-                        item.set_first_name_dst(name)
+            dsts_cp = dsts.copy()
+            checks_cp = checks.copy()
+            if len(srcs) > len(dsts_cp):
+                dsts_cp.extend([""] * (len(srcs) - len(dsts_cp)))
+            if len(srcs) > len(checks_cp):
+                checks_cp.extend([ResponseChecker.Error.NONE] * (len(srcs) - len(checks_cp)))
+            for item, processor in zip(items, processors):
+                length = len(processor.srcs)
+                dsts_ex = [dsts_cp.pop(0) for _ in range(length)]
+                checks_ex = [checks_cp.pop(0) for _ in range(length)]
 
-                    item.set_dst("\n".join(dsts))
+                if all(v == ResponseChecker.Error.NONE for v in checks_ex):
+                    name, dst = processor.post_process(dsts_ex)
+                    item.set_dst(dst)
+                    item.set_first_name_dst(name) if name is not None else None
                     item.set_status(Base.TranslationStatus.TRANSLATED)
                     updated_count = updated_count + 1
 
         # 打印任务结果
         self.print_log_table(
-            check_result,
+            checks,
             start_time,
             input_tokens,
             output_tokens,
-            [line.strip() for line in src_dict.values()],
-            [line.strip() for line in dst_dict.values()],
+            [line.strip() for line in srcs],
+            [line.strip() for line in dsts],
             file_log,
             console_log
         )
@@ -214,13 +172,6 @@ class TranslatorTask(Base):
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
-
-    # 正规化
-    def normalize(self, data: dict[str, str]) -> dict[str, str]:
-        for k in data.keys():
-            data[k] = Normalizer.normalize(data.get(k, ""))
-
-        return data
 
     # 合并术语表
     def merge_glossary(self, glossary_list: list[dict[str, str]], last_save_time: float) -> float:
@@ -280,146 +231,35 @@ class TranslatorTask(Base):
         # 返回原始值
         return last_save_time
 
-    # 译前替换
-    def replace_before_translation(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.pre_translation_replacement_enable == False:
-            return data
-
-        replace_dict: list[dict] = self.config.pre_translation_replacement_data
-        for k in data:
-            for v in replace_dict:
-                if v.get("regex", False) != True:
-                    data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
-                else:
-                    data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
-
-        return data
-
-    # 译后替换
-    def replace_after_translation(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.post_translation_replacement_enable == False:
-            return data
-
-        replace_dict: list[dict] = self.config.post_translation_replacement_data
-        for k in data:
-            for v in replace_dict:
-                if v.get("regex", False) != True:
-                    data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
-                else:
-                    data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
-
-        return data
-
-    # 中文字型转换
-    def convert_chinese_character_form(self, data: dict[str, str]) -> dict[str, str]:
-        if self.config.target_language != BaseLanguage.Enum.ZH:
-            return data
-
-        if self.config.traditional_chinese_enable == True:
-            return {k: TranslatorTask.OPENCCS2T.convert(v) for k, v in data.items()}
-        else:
-            return {k: TranslatorTask.OPENCCT2S.convert(v) for k, v in data.items()}
-
-    # 自动修复
-    def auto_fix(self, src_dict: dict[str, str], dst_dict: dict[str, str], item_dict: dict[str, CacheItem]) -> dict[str, str]:
-        source_language = self.config.source_language
-        target_language = self.config.target_language
-
-        for k in dst_dict:
-            # 有效性检查
-            if k not in src_dict:
-                continue
-
-            # 假名修复
-            if source_language == BaseLanguage.Enum.JA:
-                dst_dict[k] = KanaFixer.fix(dst_dict[k])
-            # 谚文修复
-            elif source_language == BaseLanguage.Enum.KO:
-                dst_dict[k] = HangeulFixer.fix(dst_dict[k])
-
-            # 代码修复
-            dst_dict[k] = CodeFixer.fix(src_dict[k], dst_dict[k], item_dict.get(k).get_text_type(), self.config)
-
-            # 转义修复
-            dst_dict[k] = EscapeFixer.fix(src_dict[k], dst_dict[k])
-
-            # 数字修复
-            dst_dict[k] = NumberFixer.fix(src_dict[k], dst_dict[k])
-
-            # 标点符号修复
-            dst_dict[k] = PunctuationFixer.fix(src_dict[k], dst_dict[k], source_language, target_language)
-
-        return dst_dict
-
-    # 注入姓名
-    def inject_name(self, src_dict: dict[str, str], item_dict: dict[str, CacheItem], start_key_set: set[str]) -> dict[str, str]:
-        name_key_set: set[str] = set()
-
-        for k in src_dict:
-            # 有效性检查
-            if k not in start_key_set:
-                continue
-
-            # 注入姓名
-            item = item_dict.get(k)
-            name: str = item.get_first_name_src()
-            if name is not None:
-                src_dict[k] = f"【{name}】{src_dict.get(k, "")}"
-                name_key_set.add(k)
-
-        return name_key_set
-
-    # 提取姓名
-    def extract_name(self, src_dict: dict[str, str], dst_dict: dict[str, str]) -> dict[str, str]:
-        name_dsts: list[str] = []
-
-        for k in dst_dict:
-            if k in self.start_key_set:
-                result: re.Match[str] = __class__.REGEX_NAME.search(dst_dict.get(k, ""))
-                if result is None:
-                    name_dsts.append(None)
-                elif k not in self.name_key_set:
-                    name_dsts.append(None)
-                elif result.group(1) is not None:
-                    name_dsts.append(result.group(1))
-                    dst_dict[k] = __class__.REGEX_NAME.sub("", dst_dict.get(k, ""))
-                    src_dict[k] = __class__.REGEX_NAME.sub("", src_dict.get(k, ""))
-                else:
-                    name_dsts.append(result.group(2))
-                    dst_dict[k] = __class__.REGEX_NAME.sub("", dst_dict.get(k, ""))
-                    src_dict[k] = __class__.REGEX_NAME.sub("", src_dict.get(k, ""))
-
-        return name_dsts
-
     # 打印日志表格
-    def print_log_table(self, result: list[str], start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
+    def print_log_table(self, checks: list[str], start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
         # 拼接错误原因文本
         reason: str = ""
-        if any(v != ResponseChecker.Error.NONE for v in result):
+        if any(v != ResponseChecker.Error.NONE for v in checks):
             reason = f"（{"、".join(
                 {
-                    TranslatorTask.ERROR_TEXT_DICT.get(v, "") for v in result
+                    __class__.get_error_text(v) for v in checks
                     if v != ResponseChecker.Error.NONE
                 }
             )}）"
 
-        if all(v == ResponseChecker.Error.UNKNOWN for v in result):
+        if all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} {reason}"
             log_func = self.error
-        elif all(v == ResponseChecker.Error.FAIL_DATA for v in result):
+        elif all(v == ResponseChecker.Error.FAIL_DATA for v in checks):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} {reason}"
             log_func = self.error
-        elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in result):
+        elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in checks):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} {reason}"
             log_func = self.error
-        elif all(v in ResponseChecker.Error.LINE_ERROR for v in result):
+        elif all(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail_all} {reason}"
             log_func = self.error
-        elif any(v in ResponseChecker.Error.LINE_ERROR for v in result):
+        elif any(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "yellow"
             message = f"{Localizer.get().translator_response_check_fail_part} {reason}"
             log_func = self.warning
@@ -449,7 +289,7 @@ class TranslatorTask(Base):
             )
         else:
             console_rows = self.generate_log_rows(srcs, dsts, console_log, console = True)
-            TranslatorTask.CONSOLE.print(self.generate_log_table(console_rows, style))
+            __class__.CONSOLE.print(self.generate_log_table(console_rows, style))
 
     # 生成日志行
     def generate_log_rows(self, srcs: list[str], dsts: list[str], extra: list[str], console: bool) -> tuple[list[str], str]:
@@ -493,3 +333,27 @@ class TranslatorTask(Base):
                 table.add_row(*row)
 
         return table
+
+    @classmethod
+    @lru_cache(maxsize = None)
+    def get_error_text(cls, error: ResponseChecker.Error) -> str:
+        if error == ResponseChecker.Error.UNKNOWN:
+            return Localizer.get().response_checker_unknown
+        elif error == ResponseChecker.Error.FAIL_DATA:
+            return Localizer.get().response_checker_fail_data
+        elif error == ResponseChecker.Error.FAIL_LINE_COUNT:
+            return Localizer.get().response_checker_fail_line_count
+        elif error == ResponseChecker.Error.LINE_ERROR_KANA:
+            return Localizer.get().response_checker_line_error_kana
+        elif error == ResponseChecker.Error.LINE_ERROR_HANGEUL:
+            return Localizer.get().response_checker_line_error_hangeul
+        elif error == ResponseChecker.Error.LINE_ERROR_FAKE_REPLY:
+            return Localizer.get().response_checker_line_error_fake_reply
+        elif error == ResponseChecker.Error.LINE_ERROR_EMPTY_LINE:
+            return Localizer.get().response_checker_line_error_empty_line
+        elif error == ResponseChecker.Error.LINE_ERROR_SIMILARITY:
+            return Localizer.get().response_checker_line_error_similarity
+        elif error == ResponseChecker.Error.LINE_ERROR_DEGRADATION:
+            return Localizer.get().response_checker_line_error_degradation
+        else:
+            return ""

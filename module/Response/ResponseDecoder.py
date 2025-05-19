@@ -8,9 +8,9 @@ class ResponseDecoder(Base):
         super().__init__()
 
     # 解析文本
-    def decode(self, response: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-        dst_dict: dict[str, str] = {}
-        glossary_list: list[dict[str, str]] = []
+    def decode(self, response: str) -> tuple[list[str], list[dict[str, str]]]:
+        dsts: list[str] = []
+        glossarys: list[dict[str, str]] = []
 
         # 按行解析失败时，尝试按照普通 JSON 字典进行解析
         for line in response.splitlines():
@@ -20,7 +20,7 @@ class ResponseDecoder(Base):
                 if len(json_data) == 1:
                     _, v = list(json_data.items())[0]
                     if isinstance(v, str):
-                        dst_dict[str(len(dst_dict))] = v if isinstance(v, str) else ""
+                        dsts.append(v if isinstance(v, str) else "")
 
                 # 术语表条目
                 if len(json_data) == 3:
@@ -28,7 +28,7 @@ class ResponseDecoder(Base):
                         src: str = json_data.get("src")
                         dst: str = json_data.get("dst")
                         gender: str = json_data.get("gender")
-                        glossary_list.append(
+                        glossarys.append(
                             {
                                 "src": src if isinstance(src, str) else "",
                                 "dst": dst if isinstance(dst, str) else "",
@@ -37,12 +37,12 @@ class ResponseDecoder(Base):
                         )
 
         # 按行解析失败时，尝试按照普通 JSON 字典进行解析
-        if len(dst_dict) == 0:
+        if len(dsts) == 0:
             json_data = repair.loads(response)
             if isinstance(json_data, dict):
                 for k, v in json_data.items():
                     if isinstance(v, str):
-                        dst_dict[str(len(dst_dict))] = v if isinstance(v, str) else ""
+                        dsts.append(v if isinstance(v, str) else "")
 
         # 返回默认值
-        return dst_dict, glossary_list
+        return dsts, glossarys

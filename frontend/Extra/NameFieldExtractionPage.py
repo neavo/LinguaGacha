@@ -147,7 +147,7 @@ class NameFieldExtractionPage(QWidget, Base):
                 "row": len(items) + 1,
                 "file_type": CacheItem.FileType.XLSX,
                 "file_path": Localizer.get().path_result_name_field_extraction,
-                "translation_status": Base.TranslationStatus.UNTRANSLATED,
+                "status": Base.TranslationStatus.UNTRANSLATED,
             }))
 
         # 有效性检查

@@ -28,11 +28,7 @@ class RuleFilter():
         re.compile(r"^\{#file_time\}", flags = re.IGNORECASE),                      # RenPy 存档时间
     )
 
-    def filter(src: str, skip_internal_filter: bool) -> bool:
-        # 如果跳过内部过滤为 True，则直接返回 False，即不需要过滤
-        if skip_internal_filter == True:
-            return False
-
+    def filter(src: str) -> bool:
         flags = []
         for line in src.splitlines():
             line = line.strip().lower()
@@ -76,4 +72,4 @@ class RuleFilter():
         if flags == []:
             return False
         else:
-            return all(flags)
+            return all(v == True for v in flags)
