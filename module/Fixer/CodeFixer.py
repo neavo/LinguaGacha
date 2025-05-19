@@ -4,7 +4,6 @@ from rich import print
 
 from module.Cache.CacheItem import CacheItem
 from module.Config import Config
-from module.TextPreserver import TextPreserver
 
 class CodeFixer():
 
@@ -14,10 +13,12 @@ class CodeFixer():
     # 检查并替换
     @classmethod
     def fix(cls, src: str, dst: str, text_type: str, config: Config) -> str:
+        from module.TextProcessor import TextProcessor
+
         src_codes: list[str] = []
         dst_codes: list[str] = []
-        rule: re.Pattern = TextPreserver(config).get_re_sample(
-            custom_enable = config.text_preserve_enable,
+        rule: re.Pattern = TextProcessor(config, None).get_re_sample(
+            custom = config.text_preserve_enable,
             text_type = text_type,
         )
         if rule is not None:

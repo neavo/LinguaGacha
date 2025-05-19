@@ -3,9 +3,9 @@ import re
 import time
 import shutil
 import threading
+import webbrowser
 import concurrent.futures
 from itertools import zip_longest
-import webbrowser
 
 import httpx
 from tqdm import tqdm
@@ -16,15 +16,15 @@ from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
+from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.Engine.TaskLimiter import TaskLimiter
+from module.Engine.TaskRequester import TaskRequester
 from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Localizer.Localizer import Localizer
-from module.TextPreserver import TextPreserver
-from module.Engine.TaskLimiter import TaskLimiter
-from module.Engine.Translator.TranslatorTask import TranslatorTask
-from module.Engine.TaskRequester import TaskRequester
 from module.PromptBuilder import PromptBuilder
 from module.ResultChecker import ResultChecker
+from module.TextProcessor import TextProcessor
 
 # 翻译器
 class Translator(Base):
@@ -131,10 +131,9 @@ class Translator(Base):
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()
 
-        # 重置文本保护器
-        TextPreserver.reset()
-
-        # 重置请求器
+        # 重置
+        PromptBuilder.reset()
+        TextProcessor.reset()
         TaskRequester.reset()
 
         # 生成缓存列表
@@ -342,7 +341,7 @@ class Translator(Base):
         # 筛选出无效条目并标记为已排除
         target = [
             v for v in items
-            if RuleFilter.filter(v.get_src(), v.get_skip_internal_filter()) == True
+            if RuleFilter.filter(v.get_src()) == True
         ]
         for item in target:
             item.set_status(Base.TranslationStatus.EXCLUDED)
