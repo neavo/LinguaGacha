@@ -40,7 +40,21 @@ class TableManager():
         self.set_updating(True)
 
         # 去重
-        self.data = list({v.get("src"): v for v in self.data}.values())
+        dels: set[int] = set()
+        for i in range(len(self.data)):
+            for k in range(i + 1, len(self.data)):
+                x = self.data[i]
+                y = self.data[k]
+                if x.get("src") == y.get("src"):
+                    if x.get("dst") != "" and y.get("dst") == "":
+                        dels.add(k)
+                    elif x.get("dst") == "" and y.get("dst") == "" and x.get("info") != "" and y.get("info") == "":
+                        dels.add(k)
+                    elif x.get("dst") == "" and y.get("dst") == "" and x.get("regex") != "" and y.get("regex") == "":
+                        dels.add(k)
+                    else:
+                        dels.add(i)
+        self.data = [v for i, v in enumerate(self.data) if i not in dels]
 
         # 填充表格
         self.table.setRowCount(max(12, len(self.data) + 3))
@@ -225,43 +239,37 @@ class TableManager():
         # 更新结束
         self.set_updating(False)
 
+    # 获取行数据
+    def get_entry_by_row(self, row: int) -> dict[str, str | bool]:
+        items: list[QTableWidgetItem] = [
+            self.table.item(row, col)
+            for col in range(self.table.columnCount())
+        ]
+
+        if self.type == __class__.Type.GLOSSARY:
+            return {
+                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
+                "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "info": items[2].text().strip() if isinstance(items[2], QTableWidgetItem) else "",
+            }
+        elif self.type == __class__.Type.REPLACEMENT:
+            return {
+                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
+                "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "regex": items[2].text().strip() == "✅" if isinstance(items[2], QTableWidgetItem) else False,
+            }
+        elif self.type == __class__.Type.TEXT_PRESERVE:
+            return {
+                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
+                "info": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+            }
+
     # 从表格加载数据
     def append_data_from_table(self) -> None:
         for row in range(self.table.rowCount()):
-            # 获取当前行所有条目
-            data: list[QTableWidgetItem] = [
-                self.table.item(row, col)
-                for col in range(self.table.columnCount())
-            ]
-
-            # 检查数据合法性
-            if not isinstance(data[0], QTableWidgetItem) or data[0].text().strip() == "":
-                continue
-
-            # 添加数据
-            if self.type == __class__.Type.GLOSSARY:
-                self.data.append(
-                    {
-                        "src": data[0].text().strip(),
-                        "dst": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
-                        "info": data[2].text().strip() if isinstance(data[2], QTableWidgetItem) else "",
-                    }
-                )
-            elif self.type == __class__.Type.REPLACEMENT:
-                self.data.append(
-                    {
-                        "src": data[0].text().strip(),
-                        "dst": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
-                        "regex": data[2].text().strip() == "✅" if isinstance(data[2], QTableWidgetItem) else False,
-                    }
-                )
-            elif self.type == __class__.Type.TEXT_PRESERVE:
-                self.data.append(
-                    {
-                        "src": data[0].text().strip(),
-                        "info": data[1].text().strip() if isinstance(data[1], QTableWidgetItem) else "",
-                    }
-                )
+            entry: dict[str, str | bool] = self.get_entry_by_row(row)
+            if entry.get("src") != "":
+                self.data.append(entry)
 
     # 从文件加载数据
     def append_data_from_file(self, path: str) -> None:

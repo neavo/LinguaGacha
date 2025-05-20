@@ -1,4 +1,5 @@
 import os
+import json
 from functools import partial
 
 from PyQt5.QtGui import QDesktopServices
@@ -84,23 +85,44 @@ class GlossaryPage(QWidget, Base):
 
         def item_changed(item: QTableWidgetItem) -> None:
             if self.table_manager.get_updating() == True:
-                pass
-            else:
-                # 清空数据，再从表格加载数据
-                self.table_manager.set_data([])
-                self.table_manager.append_data_from_table()
-                self.table_manager.sync()
+                return None
 
-                # 更新配置文件
-                config = Config().load()
-                setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-                config.save()
+            new_row = item.row()
+            new = self.table_manager.get_entry_by_row(new_row)
+            for old_row in range(self.table.rowCount()):
+                old = self.table_manager.get_entry_by_row(old_row)
 
-                # 弹出提示
-                self.emit(Base.Event.APP_TOAST_SHOW, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_save_toast,
-                })
+                if new_row == old_row:
+                    continue
+                if new.get("src").strip() == "" or old.get("src").strip() == "":
+                    continue
+
+                if new.get("src") == old.get("src"):
+                    self.emit(Base.Event.APP_TOAST_SHOW, {
+                        "type": Base.ToastType.WARNING,
+                        "duration": 5000,
+                        "message": (
+                            f"{Localizer.get().quality_merge_duplication}"
+                            "\n" + f"{json.dumps(new, indent = None, ensure_ascii = False)}"
+                            "\n" + f"{json.dumps(old, indent = None, ensure_ascii = False)}"
+                        ),
+                    })
+
+            # 清空数据，再从表格加载数据
+            self.table_manager.set_data([])
+            self.table_manager.append_data_from_table()
+            self.table_manager.sync()
+
+            # 更新配置文件
+            config = Config().load()
+            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
+            config.save()
+
+            # 弹出提示
+            self.emit(Base.Event.APP_TOAST_SHOW, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            })
 
         def custom_context_menu_requested(position: QPoint) -> None:
             menu = RoundMenu("", self.table)
