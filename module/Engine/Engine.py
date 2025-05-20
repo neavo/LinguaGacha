@@ -11,6 +11,8 @@ class Engine():
         TRANSLATING = "TRANSLATING"                                         # 运行中
         STOPPING = "STOPPING"                                               # 停止中
 
+    TASK_PREFIX: str = "ENGINE_"
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -41,3 +43,6 @@ class Engine():
     def set_status(self, status: Status) -> None:
         with self.lock:
             self.status = status
+
+    def get_running_task_count(self) -> int:
+        return sum(1 for t in threading.enumerate() if t.name.startswith(__class__.TASK_PREFIX))

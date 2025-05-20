@@ -13,7 +13,7 @@ class Base():
         PLATFORM_TEST_START = "PLATFORM_TEST_START"                        # API 测试开始
         TRANSLATION_START = "TRANSLATION_START"                            # 翻译开始
         TRANSLATION_STOP = "TRANSLATION_STOP"                              # 翻译停止
-        TRANSLATION_STOP_DONE = "TRANSLATION_STOP_DONE"                    # 翻译停止完成
+        TRANSLATION_DONE = "TRANSLATION_DONE"                              # 翻译完成
         TRANSLATION_UPDATE = "TRANSLATION_UPDATE"                          # 翻译状态更新
         TRANSLATION_MANUAL_EXPORT = "TRANSLATION_MANUAL_EXPORT"            # 翻译结果手动导出
         CACHE_FILE_AUTO_SAVE = "CACHE_FILE_AUTO_SAVE"                      # 缓存文件自动保存

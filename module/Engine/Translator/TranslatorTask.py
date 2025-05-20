@@ -53,10 +53,6 @@ class TranslatorTask(Base):
         # 任务开始的时间
         start_time = time.time()
 
-        # 检测是否需要停止任务
-        if Engine.get().get_status() == Engine.Status.STOPPING:
-            return {}
-
         # 检查是否超时，超时则直接跳过当前任务，以避免死循环
         if time.time() - start_time >= self.config.request_timeout:
             return {}
@@ -280,8 +276,7 @@ class TranslatorTask(Base):
         log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
 
         # 根据线程数判断是否需要打印表格
-        task_num = sum(1 for t in threading.enumerate() if "translator" in t.name)
-        if task_num > 32:
+        if Engine.get().get_running_task_count() > 32:
             log_func(
                 Localizer.get().translator_too_many_task + "\n" + message + "\n",
                 file = False,
