@@ -29,6 +29,7 @@ from qfluentwidgets import IndeterminateProgressRing
 from base.Base import Base
 from module.Config import Config
 from module.Engine.Engine import Engine
+from module.Engine.Translator.Translator import Translator
 from module.Localizer.Localizer import Localizer
 from widget.Separator import Separator
 from widget.WaveformWidget import WaveformWidget
@@ -155,7 +156,7 @@ class TranslationPage(QWidget, Base):
         self.subscribe(Base.Event.PLATFORM_TEST_START, self.update_button_status)
         self.subscribe(Base.Event.TRANSLATION_START, self.update_button_status)
         self.subscribe(Base.Event.TRANSLATION_STOP, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_STOP_DONE, self.translation_stop_done)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_stop_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.CACHE_FILE_AUTO_SAVE, self.cache_file_auto_save)
         self.subscribe(Base.Event.PROJECT_STATUS_CHECK_DONE, self.update_button_status)
@@ -280,7 +281,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新实时任务数
     def update_task(self, data: dict) -> None:
-        task = sum(1 for t in threading.enumerate() if "translator" in t.name)
+        task = Engine.get().get_running_task_count()
         if task < 1000:
             self.task.set_unit("Task")
             self.task.set_value(f"{task}")
