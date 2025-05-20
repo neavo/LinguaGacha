@@ -70,6 +70,7 @@ class TranslatorTask(Base):
         # 如果没有任何有效原文文本，则直接完成当前任务
         if len(srcs) == 0:
             for item, processor in zip(items, processors):
+                item.set_dst(item.get_src())
                 item.set_status(Base.TranslationStatus.TRANSLATED)
 
             return {
