@@ -152,7 +152,7 @@ class RENPY(Base):
         def repl(m: re.Match, i: list[int], repl: list[str]) -> str:
             if i[0] < len(repl) and repl[i[0]] is not None:
                 i[0] = i[0] + 1
-                return f"\"{repl[i[0] - 1]}\""
+                return f'\"{repl[i[0] - 1]}\"'
             else:
                 i[0] = i[0] + 1
                 return m.group(0)
@@ -205,11 +205,11 @@ class RENPY(Base):
                 if line.startswith("    # "):
                     if len(results) > 0:
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, dsts), line)
-                        result.append(f"    {line.removeprefix("    # ")}")
+                        result.append(f'    {line.removeprefix("    # ")}')
                 elif line.startswith("    old "):
                     if len(results) > 0:
                         line = RENPY.RE_RENPY.sub(lambda m: repl(m, i, dsts), line)
-                        result.append(f"    new {line.removeprefix("    old ")}")
+                        result.append(f'    new {line.removeprefix("    old ")}')
 
             with open(abs_path, "w", encoding = "utf-8") as writer:
                 writer.write("\n".join(result))

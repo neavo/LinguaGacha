@@ -26,7 +26,7 @@ def excepthook(exc_type, exc_value, exc_traceback) -> None:
         return
 
     # 使用LogHelper记录异常信息
-    LogManager.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
+    LogManager.error(f'{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}')
 
 if __name__ == "__main__":
     # 捕获全局异常
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     Localizer.set_app_language(config.app_language)
 
     # 打印日志
-    LogManager.info(f"LinguaGacha {version}")
+    LogManager.info(f'LinguaGacha {version}')
     LogManager.info(Localizer.get().log_expert_mode) if LogManager.is_expert_mode() else None
 
     # 网络代理

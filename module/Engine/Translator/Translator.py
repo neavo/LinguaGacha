@@ -143,12 +143,12 @@ class Translator(Base):
             if status == Base.TranslationStatus.TRANSLATING:
                 self.cache_manager.load_from_file(self.config.output_folder)
             else:
-                shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors = True)
+                shutil.rmtree(f'{self.config.output_folder}/cache', ignore_errors = True)
                 project, items = FileManager(self.config).read_from_path()
                 self.cache_manager.set_items(items)
                 self.cache_manager.set_project(project)
         except Exception as e:
-            self.error(f"{Localizer.get().log_read_file_fail}", e)
+            self.error(f'{Localizer.get().log_read_file_fail}', e)
             return None
 
         # 检查数据是否为空
@@ -248,12 +248,12 @@ class Translator(Base):
 
             # 输出开始翻译的日志
             self.print("")
-            self.info(f"{Localizer.get().translator_current_round} - {current_round + 1}")
-            self.info(f"{Localizer.get().translator_max_round} - {self.config.max_round}")
+            self.info(f'{Localizer.get().translator_current_round} - {current_round + 1}')
+            self.info(f'{Localizer.get().translator_max_round} - {self.config.max_round}')
             self.print("")
-            self.info(f"{Localizer.get().translator_name} - {self.platform.get("name")}")
-            self.info(f"{Localizer.get().translator_api_url} - {self.platform.get("api_url")}")
-            self.info(f"{Localizer.get().translator_model} - {self.platform.get("model")}")
+            self.info(f'{Localizer.get().translator_name} - {self.platform.get("name")}')
+            self.info(f'{Localizer.get().translator_api_url} - {self.platform.get("api_url")}')
+            self.info(f'{Localizer.get().translator_model} - {self.platform.get("model")}')
             self.print("")
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
@@ -494,4 +494,4 @@ class Translator(Base):
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
+            self.error(f'{Localizer.get().log_task_fail}', e)

@@ -177,7 +177,7 @@ class PromptBuilder(Base):
         else:
             prefix: str = "Control Characters Samples:"
 
-        return prefix + "\n" + f"{", ".join(samples)}"
+        return prefix + "\n" + f'{", ".join(samples)}'
 
     # 构建输入
     def build_inputs(self, src_dict: dict) -> str:

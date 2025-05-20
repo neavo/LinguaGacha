@@ -40,7 +40,7 @@ class TextPreserver(Base):
         if custom_enable == True:
             result = self.config.text_preserve_data
         else:
-            path: str = f"./resource/text_preserve_preset/{Localizer.get_app_language().lower()}/{text_type.lower()}.json"
+            path: str = f'./resource/text_preserve_preset/{Localizer.get_app_language().lower()}/{text_type.lower()}.json'
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     result: list[dict[str, str]] = json.load(reader)
@@ -57,7 +57,7 @@ class TextPreserver(Base):
             if len(data) == 0:
                 __class__.RE_CHECK[key] = None
             else:
-                __class__.RE_CHECK[key] = re.compile(rf"(?:{"|".join(self.get_data(custom_enable, text_type))})+", re.IGNORECASE)
+                __class__.RE_CHECK[key] = re.compile(rf'(?:{"|".join(self.get_data(custom_enable, text_type))})+', re.IGNORECASE)
 
         return __class__.RE_CHECK.get(key)
 
@@ -69,7 +69,7 @@ class TextPreserver(Base):
             if len(data) == 0:
                 __class__.RE_SAMPLE[key] = None
             else:
-                __class__.RE_SAMPLE[key] = re.compile(rf"{"|".join(self.get_data(custom_enable, text_type))}", re.IGNORECASE)
+                __class__.RE_SAMPLE[key] = re.compile(rf'{"|".join(self.get_data(custom_enable, text_type))}', re.IGNORECASE)
 
         return __class__.RE_SAMPLE.get(key)
 
@@ -81,7 +81,7 @@ class TextPreserver(Base):
             if len(data) == 0:
                 __class__.RE_PREFIX[key] = None
             else:
-                __class__.RE_PREFIX[key] = re.compile(rf"^(?:{"|".join(self.get_data(custom_enable, text_type))})+", re.IGNORECASE)
+                __class__.RE_PREFIX[key] = re.compile(rf'^(?:{"|".join(self.get_data(custom_enable, text_type))})+', re.IGNORECASE)
 
         return __class__.RE_PREFIX.get(key)
 
@@ -93,7 +93,7 @@ class TextPreserver(Base):
             if len(data) == 0:
                 __class__.RE_SUFFIX[key] = None
             else:
-                __class__.RE_SUFFIX[key] = re.compile(rf"(?:{"|".join(self.get_data(custom_enable, text_type))})+$", re.IGNORECASE)
+                __class__.RE_SUFFIX[key] = re.compile(rf'(?:{"|".join(self.get_data(custom_enable, text_type))})+$', re.IGNORECASE)
 
         return __class__.RE_SUFFIX.get(key)
 

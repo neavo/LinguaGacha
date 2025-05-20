@@ -30,7 +30,7 @@ class FileManager(Base):
     # 读
     def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
         project: CacheProject = CacheProject({
-            "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
+            "id": f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}',
         })
 
         items: list[CacheItem] = []
@@ -41,7 +41,7 @@ class FileManager(Base):
                 paths = [input_folder]
             elif os.path.isdir(input_folder):
                 for root, _, files in os.walk(input_folder):
-                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
+                    paths.extend([f'{root}/{file}'.replace("\\", "/") for file in files])
 
             items.extend(MD(self.config).read_from_path([path for path in paths if path.lower().endswith(".md")]))
             items.extend(TXT(self.config).read_from_path([path for path in paths if path.lower().endswith(".txt")]))
@@ -55,7 +55,7 @@ class FileManager(Base):
             items.extend(KVJSON(self.config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
             items.extend(MESSAGEJSON(self.config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
         except Exception as e:
-            self.error(f"{Localizer.get().log_read_file_fail}", e)
+            self.error(f'{Localizer.get().log_read_file_fail}', e)
 
         return project, items
 
@@ -74,4 +74,4 @@ class FileManager(Base):
             KVJSON(self.config).write_to_path(items)
             MESSAGEJSON(self.config).write_to_path(items)
         except Exception as e:
-            self.error(f"{Localizer.get().log_write_file_fail}", e)
+            self.error(f'{Localizer.get().log_write_file_fail}', e)

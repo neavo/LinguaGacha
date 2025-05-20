@@ -67,8 +67,8 @@ class APITester(Base):
         requester = TaskRequester(config, platform, 0)
         for key in platform.get("api_key"):
             self.print("")
-            self.info(f"{Localizer.get().platofrm_tester_key} - {key}")
-            self.info(f"{Localizer.get().platofrm_tester_messages}\n{messages}")
+            self.info(f'{Localizer.get().platofrm_tester_key} - {key}')
+            self.info(f'{Localizer.get().platofrm_tester_messages}\n{messages}')
             skip, response_think, response_result, _, _ = requester.request(messages)
 
             # 提取回复内容
@@ -77,17 +77,17 @@ class APITester(Base):
                 self.warning(Localizer.get().log_api_test_fail)
             elif response_think == "":
                 success.append(key)
-                self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
+                self.info(f'{Localizer.get().platofrm_tester_response_result}\n{response_result}')
             else:
                 success.append(key)
-                self.info(f"{Localizer.get().platofrm_tester_response_think}\n{response_think}")
-                self.info(f"{Localizer.get().platofrm_tester_response_result}\n{response_result}")
+                self.info(f'{Localizer.get().platofrm_tester_response_think}\n{response_think}')
+                self.info(f'{Localizer.get().platofrm_tester_response_result}\n{response_result}')
 
         # 测试结果
         result_msg = (
-            Localizer.get().platofrm_tester_result.replace("{COUNT}", f"{len(platform.get("api_key"))}")
-                                                  .replace("{SUCCESS}", f"{len(success)}")
-                                                  .replace("{FAILURE}", f"{len(failure)}")
+            Localizer.get().platofrm_tester_result.replace("{COUNT}", f'{len(platform.get("api_key"))}')
+                                                  .replace("{SUCCESS}", f'{len(success)}')
+                                                  .replace("{FAILURE}", f'{len(failure)}')
         )
         self.print("")
         self.info(result_msg)

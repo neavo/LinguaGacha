@@ -291,7 +291,7 @@ class TranslatorTask(Base):
                 if v.get("regex", False) != True:
                     data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
                 else:
-                    data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
+                    data[k] = re.sub(rf'{v.get("src")}", rf"{v.get("dst")}', data.get(k))
 
         return data
 
@@ -306,7 +306,7 @@ class TranslatorTask(Base):
                 if v.get("regex", False) != True:
                     data[k] = data.get(k).replace(v.get("src"), v.get("dst"))
                 else:
-                    data[k] = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", data.get(k))
+                    data[k] = re.sub(rf'{v.get("src")}", rf"{v.get("dst")}', data.get(k))
 
         return data
 
@@ -364,7 +364,7 @@ class TranslatorTask(Base):
             item = item_dict.get(k)
             name: str = item.get_first_name_src()
             if name is not None:
-                src_dict[k] = f"【{name}】{src_dict.get(k, "")}"
+                src_dict[k] = f'【{name}】{src_dict.get(k, "")}'
                 name_key_set.add(k)
 
         return name_key_set
@@ -396,39 +396,39 @@ class TranslatorTask(Base):
         # 拼接错误原因文本
         reason: str = ""
         if any(v != ResponseChecker.Error.NONE for v in result):
-            reason = f"（{"、".join(
+            reason = f'''（{"、".join(
                 {
                     TranslatorTask.ERROR_TEXT_DICT.get(v, "") for v in result
                     if v != ResponseChecker.Error.NONE
                 }
-            )}）"
+            )}）'''
 
         if all(v == ResponseChecker.Error.UNKNOWN for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = f'{Localizer.get().translator_response_check_fail} {reason}'
             log_func = self.error
         elif all(v == ResponseChecker.Error.FAIL_DATA for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = f'{Localizer.get().translator_response_check_fail} {reason}'
             log_func = self.error
         elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = f'{Localizer.get().translator_response_check_fail} {reason}'
             log_func = self.error
         elif all(v in ResponseChecker.Error.LINE_ERROR for v in result):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail_all} {reason}"
+            message = f'{Localizer.get().translator_response_check_fail_all} {reason}'
             log_func = self.error
         elif any(v in ResponseChecker.Error.LINE_ERROR for v in result):
             style = "yellow"
-            message = f"{Localizer.get().translator_response_check_fail_part} {reason}"
+            message = f'{Localizer.get().translator_response_check_fail_part} {reason}'
             log_func = self.warning
         else:
             style = "green"
-            message = Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
-            message = message.replace("{LINES}", f"{len(srcs)}")
-            message = message.replace("{PT}", f"{pt}")
-            message = message.replace("{CT}", f"{ct}")
+            message = Localizer.get().translator_task_success.replace("{TIME}", f'{(time.time() - start):.2f}')
+            message = message.replace("{LINES}", f'{len(srcs)}')
+            message = message.replace("{PT}", f'{pt}')
+            message = message.replace("{CT}", f'{ct}')
             log_func = self.info
 
         # 添加日志
@@ -463,9 +463,9 @@ class TranslatorTask(Base):
         pair = ""
         for src, dst in itertools.zip_longest(srcs, dsts, fillvalue = ""):
             if console == False:
-                pair = pair + "\n" + f"{src} --> {dst}"
+                pair = pair + "\n" + f'{src} --> {dst}'
             else:
-                pair = pair + "\n" + f"{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}"
+                pair = pair + "\n" + f'{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}'
         rows.append(pair.strip())
 
         return rows
