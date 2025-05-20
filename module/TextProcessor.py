@@ -14,8 +14,8 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.EscapeFixer import EscapeFixer
 from module.Fixer.HangeulFixer import HangeulFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
-from module.Localizer.Localizer import Localizer
 from module.Config import Config
+from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
 
 class TextProcessor(Base):
@@ -27,10 +27,10 @@ class TextProcessor(Base):
     # - 提取姓名
     # ---- 翻译 ----
     # - 注入姓名
+    # - 繁体输出
     # - 自动修复
     # - 文本保护
     # - 译后替换
-    # - 繁体输出
     # 注意预处理和后处理的顺序应该镜像颠倒
 
     class RuleType(StrEnum):
@@ -307,12 +307,14 @@ class TextProcessor(Base):
                 dst = ""
             elif src.strip() == "":
                 dst = src
+            elif i not in self.vaild_index:
+                dst = src
             else:
-                if i not in self.vaild_index:
-                    dst = ""
-                else:
-                    # 移除模型可能额外添加的头尾空白符
-                    dst = dsts.pop(0).strip()
+                # 移除模型可能额外添加的头尾空白符
+                dst = dsts.pop(0).strip()
+
+                # 繁体输出
+                dst = self.convert_chinese_character_form(dst)
 
                 # 自动修复
                 dst = self.auto_fix(src, dst)
@@ -324,9 +326,6 @@ class TextProcessor(Base):
 
                 # 译后替换
                 dst = self.replace_post_translation(dst)
-
-                # 繁体输出
-                dst = self.convert_chinese_character_form(dst)
 
             # 添加结果
             results.append(dst)
