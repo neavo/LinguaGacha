@@ -26,8 +26,14 @@ class ResultChecker(Base):
         self.text_processor: TextProcessor = TextProcessor(config, None)
 
         # 筛选数据
-        self.items_translated = [item for item in items if item.get_status() == Base.TranslationStatus.TRANSLATED]
+        self.items_translated: list[CacheItem] = []
         self.items_untranslated = [item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]
+        for item in items:
+            if item.get_status() == Base.TranslationStatus.TRANSLATED:
+                processors = TextProcessor(config, item)
+                processors.pre_process()
+                if len(processors.srcs) > 0:
+                    self.items_translated.append(item)
 
         # 获取译前替换后的原文
         self.src_repls: list[str] = []
@@ -130,8 +136,8 @@ class ResultChecker(Base):
             Localizer.get().file_checker_text_preserve_alert_key: Localizer.get().file_checker_text_preserve_alert_value,
         }
 
-        for item in self.items_translated:
-            if self.text_processor.check(item.get_src(), item.get_dst(), item.get_text_type()) == False:
+        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
+            if self.text_processor.check(src_repl, dst_repl, item.get_text_type()) == False:
                 count = count + 1
                 result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
 
@@ -155,9 +161,9 @@ class ResultChecker(Base):
             Localizer.get().file_checker_similarity_alert_key: Localizer.get().file_checker_similarity_alert_value,
         }
 
-        for item in self.items_translated:
-            src: str = item.get_src().strip()
-            dst: str = item.get_dst().strip()
+        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
+            src: str = src_repl.strip()
+            dst: str = dst_repl.strip()
 
             # 判断是否包含或相似
             if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80:
