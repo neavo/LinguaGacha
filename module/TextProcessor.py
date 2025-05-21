@@ -192,7 +192,9 @@ class TextProcessor(Base):
         name: str = None
         if item.get_first_name_src() is not None and len(srcs) > 0:
             result: re.Match[str] = __class__.RE_NAME.search(dsts[0])
-            if result.group(1) is not None:
+            if result is None:
+                pass
+            elif result.group(1) is not None:
                 name = result.group(1)
             elif result.group(2) is not None:
                 name = result.group(2)
@@ -239,6 +241,24 @@ class TextProcessor(Base):
         else:
             return __class__.OPENCCT2S.convert(dst)
 
+    # 处理前后缀代码段
+    def prefix_suffix_process(self, i: int, src: str, text_type: CacheItem.TextType) -> None:
+        rule: re.Pattern = self.get_re_prefix(
+            custom = self.config.text_preserve_enable,
+            text_type = text_type,
+        )
+        if rule is not None:
+            src, self.prefix_codes[i] = self.extract(rule, src)
+
+        rule: re.Pattern = self.get_re_suffix(
+            custom = self.config.text_preserve_enable,
+            text_type = text_type,
+        )
+        if rule is not None:
+            src, self.suffix_codes[i] = self.extract(rule, src)
+
+        return src
+
     # 预处理
     def pre_process(self) -> None:
         # 依次处理每行，顺序为：
@@ -255,21 +275,8 @@ class TextProcessor(Base):
                 # 译前替换
                 src = self.replace_pre_translation(src)
 
-                # 处理前缀代码段
-                rule: re.Pattern = self.get_re_prefix(
-                    custom = self.config.text_preserve_enable,
-                    text_type = text_type,
-                )
-                if rule is not None:
-                    src, self.prefix_codes[i] = self.extract(rule, src)
-
-                # 处理后缀代码段
-                rule: re.Pattern = self.get_re_suffix(
-                    custom = self.config.text_preserve_enable,
-                    text_type = text_type,
-                )
-                if rule is not None:
-                    src, self.suffix_codes[i] = self.extract(rule, src)
+                # 处理前后缀代码段
+                src = self.prefix_suffix_process(i, src, text_type)
 
                 # 如果处理后的文本为空
                 if src == "":
