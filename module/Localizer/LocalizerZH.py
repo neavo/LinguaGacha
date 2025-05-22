@@ -18,6 +18,8 @@ class LocalizerZH():
     add: str = "新增"
     edit: str = "修改"
     none: str = "无"
+    back: str = "返回"
+    next: str = "下一个"
     stop: str = "停止"
     start: str = "开始"
     timer: str = "定时器"
@@ -26,24 +28,22 @@ class LocalizerZH():
     warning: str = "警告"
     confirm: str = "确认"
     cancel: str = "取消"
-    enable: str = "启用"
-    disable: str = "禁用"
     auto: str = "自动"
     wiki: str = "功能说明"
     open: str = "打开"
     select: str = "选择"
     inject: str = "注入"
     filter: str = "过滤"
+    search: str = "搜索"
     generate: str = "生成"
+    placeholder: str = "请输入关键词 …"
     task_success: str = "任务执行成功 …"
-    task_failure: str = "任务执行失败 …"
     alert_no_data: str = "没有有效数据 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"
-    app_close_message_box_msg: str = "主窗口已关闭，稍后应用将自动退出 …"
     app_new_version: str = "点击下载更新版本！"
     app_new_version_toast: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
     app_new_version_update: str = "正在下载 {PERCENT} …"
@@ -315,7 +315,6 @@ class LocalizerZH():
     quality_select_file: str = "选择文件"
     quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     quality_delete_row: str = "删除行"
-    quality_insert_row: str = "插入行"
     quality_switch_regex: str = "切换正则模式"
 
     # 术语表
@@ -473,7 +472,6 @@ class LocalizerZH():
         ""
         ""
     )
-    re_translation_page_white_list_placeholder: str = "请输入关键字 …"
     re_translation_page_alert_not_equal: str = "原文与译文的行数不匹配 …"
 
     # 百宝箱 - 姓名字段提取

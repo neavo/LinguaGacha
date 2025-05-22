@@ -18,6 +18,8 @@ class LocalizerEN(LocalizerZH):
     add: str = "Add"
     edit: str = "Edit"
     none: str = "None"
+    back: str = "Back"
+    next: str = "Next"
     stop: str = "Stop"
     start: str = "Start"
     timer: str = "Timer"
@@ -26,24 +28,22 @@ class LocalizerEN(LocalizerZH):
     warning: str = "Warning"
     confirm: str = "Confirm"
     cancel: str = "Cancel"
-    enable: str = "Enable"
-    disable: str = "Disable"
     auto: str = "Auto"
     wiki: str = "Wiki"
     open: str = "Open"
     select: str = "Select"
     inject: str = "Inject"
     filter: str = "Filter"
+    search: str = "Search"
     generate: str = "Generate"
+    placeholder: str = "Please enter keywords …"
     task_success: str = "Task succeeded …"
-    task_failure: str = "Task failed …"
     alert_no_data: str = "No valid data …"
     alert_reset_timer: str = "Confirm to reset timer?"
     alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
-    app_close_message_box_msg: str = "The main window is closed, the application will automatically exit later …"
     app_new_version: str = "Download New Version!"
     app_new_version_toast: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
     app_new_version_update: str = "Downloading {PERCENT} …"
@@ -315,7 +315,6 @@ class LocalizerEN(LocalizerZH):
     quality_select_file: str = "Select File"
     quality_select_file_type: str = "Support Format (*.json *.xlsx)"
     quality_delete_row: str = "Delete Row"
-    quality_insert_row: str = "Insert Row"
     quality_switch_regex: str = "Regex Switch"
 
     # 术语表
@@ -473,7 +472,6 @@ class LocalizerEN(LocalizerZH):
         "\n"
         "Hitting one of them is enough to determine that the text needs to be retranslated"
     )
-    re_translation_page_white_list_placeholder: str = "Please enter keywords …"
     re_translation_page_alert_not_equal: str = "The number of lines in the original and translated texts does not match …"
 
     # 百宝箱 - 姓名字段提取

@@ -73,7 +73,7 @@ class ReTranslationPage(QWidget, Base):
 
         def init(widget: GroupCard) -> None:
             self.keyword_text_edit = PlainTextEdit(self)
-            self.keyword_text_edit.setPlaceholderText(Localizer.get().re_translation_page_white_list_placeholder)
+            self.keyword_text_edit.setPlaceholderText(Localizer.get().placeholder)
             widget.add_widget(self.keyword_text_edit)
 
         self.keyword_text_edit: PlainTextEdit = None
