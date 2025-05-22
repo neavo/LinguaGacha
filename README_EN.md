@@ -78,6 +78,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250522 v0.28.0
+  - OPT - Optimized logic for `Text Preserve` and `Result Check`
+  - OPT - Optimized speed for `Task Pause` and `Task Generation`
+  - OPT - Enhanced interaction details for `Glossary` `Text Preserve` `Text Replacement`:
+    - Optimized deduplication logic
+    - Tables now support in-app search
+
 - 20250515 v0.27.0
   - NEW - Open output folder upon task completion
   - OPT - Optimized some interaction details
