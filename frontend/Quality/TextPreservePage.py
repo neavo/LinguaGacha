@@ -1,24 +1,24 @@
-import os
 import json
+import os
 from functools import partial
 
-from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtCore import QPoint
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QTableWidgetItem
+from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import RoundMenu
-from qfluentwidgets import FluentIcon
-from qfluentwidgets import MessageBox
-from qfluentwidgets import TableWidget
-from qfluentwidgets import FluentWindow
 from qfluentwidgets import CommandButton
+from qfluentwidgets import FluentIcon
+from qfluentwidgets import FluentWindow
+from qfluentwidgets import MessageBox
+from qfluentwidgets import RoundMenu
+from qfluentwidgets import TableWidget
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
@@ -26,6 +26,7 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
+from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class TextPreservePage(QWidget, Base):
@@ -119,14 +120,6 @@ class TextPreservePage(QWidget, Base):
             menu = RoundMenu("", self.table)
             menu.addAction(
                 Action(
-                    FluentIcon.ADD,
-                    Localizer.get().quality_insert_row,
-                    triggered = self.table_manager.insert_row,
-                )
-            )
-            menu.addSeparator()
-            menu.addAction(
-                Action(
                     FluentIcon.DELETE,
                     Localizer.get().quality_delete_row,
                     triggered = self.table_manager.delete_row,
@@ -169,18 +162,41 @@ class TextPreservePage(QWidget, Base):
         self.table.itemChanged.connect(item_changed)
         self.table.customContextMenuRequested.connect(custom_context_menu_requested)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.horizontalHeader().setSortIndicatorShown(True)
-        self.table.horizontalHeader().sortIndicatorChanged.connect(self.table_manager.sort_indicator_changed)
 
     # 底部
     def add_widget_foot(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        # 创建搜索栏
+        self.search_card = SearchCard(self)
+        self.search_card.setVisible(False)
+        parent.addWidget(self.search_card)
+
+        def back_clicked(widget: SearchCard) -> None:
+            self.search_card.setVisible(False)
+            self.command_bar_card.setVisible(True)
+        self.search_card.on_back_clicked(back_clicked)
+
+        def next_clicked(widget: SearchCard) -> None:
+            keyword: str = widget.get_line_edit().text().strip()
+
+            row: int = self.table_manager.search(keyword, self.table.currentRow())
+            if row > -1:
+                self.table.setCurrentCell(row, 0)
+            else:
+                self.emit(Base.Event.APP_TOAST_SHOW, {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_no_data,
+                })
+        self.search_card.on_next_clicked(next_clicked)
+
+        # 创建命令栏
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
-        # 添加命令
         self.command_bar_card.set_minimum_width(640)
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_search(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
@@ -232,6 +248,17 @@ class TextPreservePage(QWidget, Base):
 
         parent.add_action(
             Action(FluentIcon.SHARE, Localizer.get().quality_export, parent, triggered = triggered),
+        )
+
+    # 搜索
+    def add_command_bar_action_search(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
+
+        def triggered() -> None:
+            self.search_card.setVisible(True)
+            self.command_bar_card.setVisible(False)
+
+        parent.add_action(
+            Action(FluentIcon.SEARCH, Localizer.get().search, parent, triggered = triggered),
         )
 
     # 预设
