@@ -118,12 +118,12 @@ class PromptBuilder(Base):
             return ""
         elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
-                "术语表："
+                "术语表 <术语原文> -> <术语译文> #<术语信息>:"
                 + "\n" + "\n".join(result)
             )
         else:
             return (
-                "Glossary:"
+                "Glossary <Original Term> -> <Translated Term> #<Term Information>:"
                 + "\n" + "\n".join(result)
             )
 
