@@ -4,7 +4,7 @@ from module.Localizer.LocalizerEN import LocalizerEN
 
 class Localizer():
 
-    APP_LANGUAGE = BaseLanguage.Enum.ZH
+    APP_LANGUAGE: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
     @classmethod
     def get(cls) -> LocalizerZH | LocalizerEN:
@@ -14,9 +14,9 @@ class Localizer():
             return LocalizerZH
 
     @classmethod
-    def get_app_language(cls) -> str:
+    def get_app_language(cls) -> BaseLanguage.Enum:
         return cls.APP_LANGUAGE
 
     @classmethod
-    def set_app_language(cls, app_language: BaseLanguage) -> None:
+    def set_app_language(cls, app_language: BaseLanguage.Enum) -> None:
         cls.APP_LANGUAGE = app_language

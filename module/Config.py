@@ -1,6 +1,7 @@
-import os
 import json
+import os
 import threading
+from enum import StrEnum
 from typing import Self
 
 from base.BaseData import BaseData
@@ -9,6 +10,11 @@ from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
 class Config(BaseData):
+
+    class Theme(StrEnum):
+
+        DARK = "DARK"
+        LIGHT = "LIGHT"
 
     # 路径
     CONFIG_PATH = "./resource/config.json"
@@ -20,7 +26,7 @@ class Config(BaseData):
         super().__init__()
 
         # Application
-        self.theme: str = "light"
+        self.theme: str = __class__.Theme.LIGHT
         self.app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
         # PlatformPage
