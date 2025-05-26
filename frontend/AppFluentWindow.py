@@ -2,54 +2,53 @@ import os
 import re
 import signal
 
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QUrl
 from PyQt5.QtCore import QEvent
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication
-from qfluentwidgets import Theme
-from qfluentwidgets import setTheme
-from qfluentwidgets import isDarkTheme
-from qfluentwidgets import setThemeColor
-from qfluentwidgets import InfoBar
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import MessageBox
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
-from qfluentwidgets import NavigationPushButton
-from qfluentwidgets import NavigationItemPosition
+from qfluentwidgets import MessageBox
 from qfluentwidgets import NavigationAvatarWidget
+from qfluentwidgets import NavigationItemPosition
+from qfluentwidgets import NavigationPushButton
+from qfluentwidgets import Theme
+from qfluentwidgets import isDarkTheme
+from qfluentwidgets import setTheme
+from qfluentwidgets import setThemeColor
 
 from base.Base import Base
-from frontend.EmptyPage import EmptyPage
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
+from frontend.AppSettingsPage import AppSettingsPage
+from frontend.EmptyPage import EmptyPage
+from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
+from frontend.Extra.LaboratoryPage import LaboratoryPage
+from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
+from frontend.Extra.ReTranslationPage import ReTranslationPage
+from frontend.Extra.ToolBoxPage import ToolBoxPage
+from frontend.Project.PlatformPage import PlatformPage
+from frontend.Project.ProjectPage import ProjectPage
+from frontend.Quality.CustomPromptPage import CustomPromptPage
+from frontend.Quality.GlossaryPage import GlossaryPage
+from frontend.Quality.TextPreservePage import TextPreservePage
+from frontend.Quality.TextReplacementPage import TextReplacementPage
+from frontend.Setting.BasicSettingsPage import BasicSettingsPage
+from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
+from frontend.TranslationPage import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
-from frontend.AppSettingsPage import AppSettingsPage
-from frontend.TranslationPage import TranslationPage
-from frontend.Project.ProjectPage import ProjectPage
-from frontend.Project.PlatformPage import PlatformPage
-from frontend.Setting.BasicSettingsPage import BasicSettingsPage
-from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.Quality.GlossaryPage import GlossaryPage
-from frontend.Quality.CustomPromptPage import CustomPromptPage
-from frontend.Quality.TextPreservePage import TextPreservePage
-from frontend.Quality.TextReplacementPage import TextReplacementPage
-from frontend.Extra.LaboratoryPage import LaboratoryPage
-from frontend.Extra.ToolBoxPage import ToolBoxPage
-from frontend.Extra.ReTranslationPage import ReTranslationPage
-from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
-from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 
 class AppFluentWindow(FluentWindow, Base):
 
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
-
-    THEME_COLOR: str = "#BCA483"
+    APP_THEME_COLOR: str = "#BCA483"
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,14 +56,8 @@ class AppFluentWindow(FluentWindow, Base):
         # 初始化
         self.new_version = False
 
-        # 默认配置
-        self.default = {
-            "theme": "light",
-            "app_language": BaseLanguage.Enum.ZH,
-        }
-
         # 设置主题颜色
-        setThemeColor(AppFluentWindow.THEME_COLOR)
+        setThemeColor(AppFluentWindow.APP_THEME_COLOR)
 
         # 设置窗口属性
         self.resize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
@@ -138,10 +131,10 @@ class AppFluentWindow(FluentWindow, Base):
         config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)
-            config.theme = "dark"
+            config.theme = Config.Theme.DARK
         else:
             setTheme(Theme.LIGHT)
-            config.theme = "light"
+            config.theme = Config.Theme.LIGHT
         config.save()
 
     # 切换语言

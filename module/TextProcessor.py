@@ -68,7 +68,7 @@ class TextProcessor(Base):
 
     @classmethod
     @lru_cache(maxsize = None)
-    def get_rule(cls, custom: bool, custom_data: tuple[dict[str, str]], rule_type: RuleType, text_type: CacheItem.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
+    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: CacheItem.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
         data: list[dict[str, str]] = []
         if custom == True:
             data = custom_data
@@ -76,11 +76,10 @@ class TextProcessor(Base):
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
-                    data = json.load(reader)
+                    data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
             except:
                 pass
 
-        data: list[str] = [v.get("src") for v in data if v.get("src") != ""]
         if len(data) == 0:
             return None
         elif rule_type == __class__.RuleType.CHECK:
@@ -95,7 +94,7 @@ class TextProcessor(Base):
     def get_re_check(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
         return __class__.get_rule(
             custom = custom,
-            custom_data = tuple(self.config.text_preserve_data) if custom == True else None,
+            custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
             rule_type = __class__.RuleType.CHECK,
             text_type = text_type,
             language = Localizer.get_app_language(),
@@ -104,7 +103,7 @@ class TextProcessor(Base):
     def get_re_sample(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
         return __class__.get_rule(
             custom = custom,
-            custom_data = tuple(self.config.text_preserve_data) if custom == True else None,
+            custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
             rule_type = __class__.RuleType.SAMPLE,
             text_type = text_type,
             language = Localizer.get_app_language(),
@@ -113,7 +112,7 @@ class TextProcessor(Base):
     def get_re_prefix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
         return __class__.get_rule(
             custom = custom,
-            custom_data = tuple(self.config.text_preserve_data) if custom == True else None,
+            custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
             rule_type = __class__.RuleType.PREFIX,
             text_type = text_type,
             language = Localizer.get_app_language(),
@@ -122,7 +121,7 @@ class TextProcessor(Base):
     def get_re_suffix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
         return __class__.get_rule(
             custom = custom,
-            custom_data = tuple(self.config.text_preserve_data) if custom == True else None,
+            custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
             rule_type = __class__.RuleType.SUFFIX,
             text_type = text_type,
             language = Localizer.get_app_language(),

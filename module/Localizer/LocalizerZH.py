@@ -4,9 +4,9 @@ class LocalizerZH():
 
     # 保留
     switch_language: str = (
-        "请选择应用语言，新的语言设置将在下次启动时生效！"
+        "请选择应用语言，新的语言设置将在下次启动时生效 …"
         "\n"
-        "Select application language, changes will take effect on restart!"
+        "Select application language, changes will take effect on restart …"
     )
     switch_language_toast: str = (
         "应用语言切换成功，请重启应用生效 …"

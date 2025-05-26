@@ -125,7 +125,7 @@ class AppSettingsPage(QWidget, Base):
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = Config().load()
-            config.scale_factor = widget.get_current_text()
+            config.scale_factor = widget.get_combo_box().text()
             config.save()
 
             message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)

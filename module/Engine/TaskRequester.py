@@ -16,8 +16,7 @@ from module.VersionManager import VersionManager
 
 class TaskRequester(Base):
 
-    # 类线程锁
-    API_KEY_LOCK: threading.Lock = threading.Lock()
+    # 密钥索引
     API_KEY_INDEX: int = 0
 
     # qwen3_instruct_8b_q6k
@@ -35,6 +34,9 @@ class TaskRequester(Base):
     # 正则
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
 
+    # 类线程锁
+    LOCK: threading.Lock = threading.Lock()
+
     def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
         super().__init__()
 
@@ -51,15 +53,14 @@ class TaskRequester(Base):
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
-        with cls.API_KEY_LOCK:
-            if len(keys) == 1:
-                return keys[0]
-            elif cls.API_KEY_INDEX >= len(keys) - 1:
-                cls.API_KEY_INDEX = 0
-                return keys[0]
-            else:
-                cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
-                return keys[cls.API_KEY_INDEX]
+        if len(keys) == 1:
+            return keys[0]
+        elif cls.API_KEY_INDEX >= len(keys) - 1:
+            cls.API_KEY_INDEX = 0
+            return keys[0]
+        else:
+            cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
+            return keys[cls.API_KEY_INDEX]
 
     # 获取客户端
     @classmethod
@@ -156,12 +157,13 @@ class TaskRequester(Base):
     def request_sakura(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
-            client: openai.OpenAI = __class__.get_client(
-                url = self.platform.get("api_url"),
-                key = __class__.get_key(self.platform.get("api_key")),
-                format = self.platform.get("api_format"),
-                timeout = self.config.request_timeout,
-            )
+            with __class__.LOCK:
+                client: openai.OpenAI = __class__.get_client(
+                    url = self.platform.get("api_url"),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
+                )
 
             # 发起请求
             response: openai.types.completion.Completion = client.chat.completions.create(
@@ -228,12 +230,13 @@ class TaskRequester(Base):
     def request_openai(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
-            client: openai.OpenAI = __class__.get_client(
-                url = self.platform.get("api_url"),
-                key = __class__.get_key(self.platform.get("api_key")),
-                format = self.platform.get("api_format"),
-                timeout = self.config.request_timeout,
-            )
+            with __class__.LOCK:
+                client: openai.OpenAI = __class__.get_client(
+                    url = self.platform.get("api_url"),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
+                )
 
             # 发起请求
             response: openai.types.completion.Completion = client.chat.completions.create(
@@ -317,12 +320,13 @@ class TaskRequester(Base):
     def request_google(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, int, int]:
         try:
             # 获取客户端
-            client: genai.Client = __class__.get_client(
-                url = self.platform.get("api_url"),
-                key = __class__.get_key(self.platform.get("api_key")),
-                format = self.platform.get("api_format"),
-                timeout = self.config.request_timeout,
-            )
+            with __class__.LOCK:
+                client: genai.Client = __class__.get_client(
+                    url = self.platform.get("api_url"),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
+                )
 
             # 发起请求
             response: types.GenerateContentResponse = client.models.generate_content(
@@ -391,12 +395,13 @@ class TaskRequester(Base):
     def request_anthropic(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 获取客户端
-            client: anthropic.Anthropic = __class__.get_client(
-                url = self.platform.get("api_url"),
-                key = __class__.get_key(self.platform.get("api_key")),
-                format = self.platform.get("api_format"),
-                timeout = self.config.request_timeout,
-            )
+            with __class__.LOCK:
+                client: anthropic.Anthropic = __class__.get_client(
+                    url = self.platform.get("api_url"),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
+                )
 
             # 发起请求
             response: anthropic.types.Message = client.messages.create(

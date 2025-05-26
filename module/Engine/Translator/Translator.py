@@ -135,9 +135,9 @@ class Translator(Base):
         max_workers, rpm_threshold = self.initialize_max_workers()
 
         # 重置
-        PromptBuilder.reset()
         TextProcessor.reset()
         TaskRequester.reset()
+        PromptBuilder.reset()
 
         # 生成缓存列表
         try:

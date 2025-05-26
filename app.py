@@ -1,22 +1,22 @@
+import ctypes
 import os
 import sys
-import ctypes
 import traceback
 
-from rich.console import Console
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
+from rich.console import Console
 
 from base.LogManager import LogManager
+from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
-from frontend.AppFluentWindow import AppFluentWindow
 
 # 捕获全局异常
 def excepthook(exc_type, exc_value, exc_traceback) -> None:
@@ -55,22 +55,21 @@ if __name__ == "__main__":
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # 设置工作目录
-    script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-    sys.path.append(script_dir)
+    sys.path.append(os.path.dirname(os.path.abspath(sys.argv[0])))
 
     # 创建文件夹
-    os.makedirs("./input", exist_ok=True)
-    os.makedirs("./output", exist_ok=True)
+    os.makedirs("./input", exist_ok = True)
+    os.makedirs("./output", exist_ok = True)
 
     # 载入并保存默认配置
     config = Config().load()
 
     # 加载版本号
-    with open("version.txt", "r", encoding="utf-8-sig") as reader:
+    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
-    setTheme(Theme.DARK if config.theme == "dark" else Theme.LIGHT)
+    setTheme(Theme.DARK if config.theme == Config.Theme.DARK else Theme.LIGHT)
 
     # 设置应用语言
     Localizer.set_app_language(config.app_language)
