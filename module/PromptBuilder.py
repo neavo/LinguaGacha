@@ -1,4 +1,5 @@
 import json
+import threading
 from functools import lru_cache
 
 from base.Base import Base
@@ -7,6 +8,9 @@ from module.Cache.CacheItem import CacheItem
 from module.Config import Config
 
 class PromptBuilder(Base):
+
+    # 类线程锁
+    LOCK: threading.Lock = threading.Lock()
 
     def __init__(self, config: Config) -> None:
         super().__init__()
@@ -57,22 +61,26 @@ class PromptBuilder(Base):
             source_language = BaseLanguage.get_name_en(self.config.source_language)
             target_language = BaseLanguage.get_name_en(self.config.target_language)
 
-        # 判断是否是否自定义提示词
-        if prompt_language == BaseLanguage.Enum.ZH and self.config.custom_prompt_zh_enable == True:
-            base = self.config.custom_prompt_zh_data
-        elif prompt_language == BaseLanguage.Enum.EN and self.config.custom_prompt_en_enable == True:
-            base = self.config.custom_prompt_en_data
-        else:
-            base = __class__.get_base(prompt_language)
+        with __class__.LOCK:
+            # 前缀
+            prefix = __class__.get_prefix(prompt_language)
 
-        # 判断是否启用自动术语表
-        if self.config.auto_glossary_enable == False:
-            suffix = __class__.get_suffix(prompt_language)
-        else:
-            suffix = __class__.get_suffix_glossary(prompt_language)
+            # 基本
+            if prompt_language == BaseLanguage.Enum.ZH and self.config.custom_prompt_zh_enable == True:
+                base = self.config.custom_prompt_zh_data
+            elif prompt_language == BaseLanguage.Enum.EN and self.config.custom_prompt_en_enable == True:
+                base = self.config.custom_prompt_en_data
+            else:
+                base = __class__.get_base(prompt_language)
+
+            # 后缀
+            if self.config.auto_glossary_enable == False:
+                suffix = __class__.get_suffix(prompt_language)
+            else:
+                suffix = __class__.get_suffix_glossary(prompt_language)
 
         # 组装提示词
-        full_prompt = __class__.get_prefix(prompt_language) + "\n" + base + "\n" + suffix
+        full_prompt = prefix + "\n" + base + "\n" + suffix
         full_prompt = full_prompt.replace("{source_language}", source_language)
         full_prompt = full_prompt.replace("{target_language}", target_language)
 

@@ -53,14 +53,20 @@ class TaskRequester(Base):
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
-        if len(keys) == 1:
-            return keys[0]
+        key: str = ""
+
+        if len(keys) == 0:
+            key = "no_key_required"
+        elif len(keys) == 1:
+            key = keys[0]
         elif cls.API_KEY_INDEX >= len(keys) - 1:
+            key = keys[0]
             cls.API_KEY_INDEX = 0
-            return keys[0]
         else:
+            key = keys[cls.API_KEY_INDEX]
             cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
-            return keys[cls.API_KEY_INDEX]
+
+        return key
 
     # 获取客户端
     @classmethod
@@ -75,12 +81,13 @@ class TaskRequester(Base):
             )
         elif format == Base.APIFormat.GOOGLE:
             # https://github.com/googleapis/python-genai
-            # https://ai.google.dev/gemini-api/docs/libraries
             return genai.Client(
                 api_key = key,
                 http_options = types.HttpOptions(
                     timeout = timeout * 1000,
-                    api_version = "v1alpha",
+                    headers = {
+                        "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)",
+                    },
                 ),
             )
         elif format == Base.APIFormat.ANTHROPIC:

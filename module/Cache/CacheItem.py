@@ -60,6 +60,9 @@ class CacheItem(BaseData):
         re.compile(r"[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE),            # /c[xy12] \bc[xy12] <\bc[xy12]>
     )
 
+    # 类线程锁
+    LOCK: threading.Lock = threading.Lock()
+
     def __init__(self, args: dict) -> None:
         super().__init__()
 
@@ -229,7 +232,8 @@ class CacheItem(BaseData):
 
     # 获取 Token 数量
     def get_token_count(self) -> int:
-        return __class__._get_token_count(self.get_src())
+        with __class__.LOCK:
+            return __class__._get_token_count(self.get_src())
 
     # 获取第一个角色姓名原文
     def get_first_name_src(self) -> str:
