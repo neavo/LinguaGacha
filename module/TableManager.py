@@ -132,12 +132,13 @@ class TableManager():
     # 搜索
     def search(self, keyword: str, start: int) -> int:
         result: int = -1
+        keyword = keyword.lower()
 
         # 从指定位置开始搜索
         for i, entry in enumerate(self.data):
             if i <= start:
                 continue
-            if any(keyword in v for v in entry.values() if isinstance(v, str)):
+            if any(keyword in v.lower() for v in entry.values() if isinstance(v, str)):
                 result = i
                 break
 
@@ -146,7 +147,7 @@ class TableManager():
             for i, entry in enumerate(self.data):
                 if i > start:
                     continue
-                if any(keyword in v for v in entry.values() if isinstance(v, str)):
+                if any(keyword in v.lower() for v in entry.values() if isinstance(v, str)):
                     result = i
                     break
 
