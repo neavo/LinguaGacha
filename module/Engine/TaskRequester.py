@@ -25,8 +25,12 @@ class TaskRequester(Base):
     # gemini-2.5-flash
     RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
 
-    # claude-3-7-sonnet
-    RE_CLAUDE_3_7_SONNET: re.Pattern = re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE)
+    # Claude
+    RE_CLAUDE: tuple[re.Pattern] = (
+        re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE),
+        re.compile(r"claude-opus-4-0", flags = re.IGNORECASE),
+        re.compile(r"claude-sonnet-4-0", flags = re.IGNORECASE),
+    )
 
     # o1 o3-mini o4-mini-20240406
     RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
@@ -386,8 +390,8 @@ class TaskRequester(Base):
         args.pop("presence_penalty", None)
         args.pop("frequency_penalty", None)
 
-        # 思考模式切换 - Claude 3.7 Sonnet
-        if __class__.RE_CLAUDE_3_7_SONNET.search(self.platform.get("model")) is not None:
+        # 思考模式切换
+        if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_CLAUDE):
             if thinking == True:
                 args["thinking"] = {
                     "type": "enabled",
