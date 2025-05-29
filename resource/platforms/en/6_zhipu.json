@@ -1,6 +1,6 @@
 {
-    "id": 7,
-    "name": "智谱清言",
+    "id": 6,
+    "name": "ZhiPu",
     "api_url": "https://open.bigmodel.cn/api/paas/v4",
     "api_key": [
         "no_key_required"

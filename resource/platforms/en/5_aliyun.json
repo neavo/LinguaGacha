@@ -1,12 +1,12 @@
 {
-    "id": 8,
-    "name": "Yi",
-    "api_url": "https://api.lingyiwanwu.com/v1",
+    "id": 5,
+    "name": "Aliyun",
+    "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "yi-lightning",
+    "model": "qwen-turbo",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.95,

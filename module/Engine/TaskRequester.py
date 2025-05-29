@@ -88,6 +88,7 @@ class TaskRequester(Base):
             return genai.Client(
                 api_key = key,
                 http_options = types.HttpOptions(
+                    base_url = url,
                     timeout = timeout * 1000,
                     headers = {
                         "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)",
