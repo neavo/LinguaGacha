@@ -277,8 +277,10 @@ class LocalizerZH():
     expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认 3 行"
     expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
     expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
-    expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中对重复行去重"
-    expert_settings_page_deduplication_in_bilingual_desc: str = "在双语输出文件中，原文与译文一致时是否去重，默认启用"
+    expert_settings_page_deduplication_in_trans: str = "T++ 项目文件中对重复文本去重"
+    expert_settings_page_deduplication_in_trans_desc: str = "在T++ 项目文件（即 <font color='darkgoldenrod'><b>.trans</b></font> 文件）中，如有重复文本是否去重，默认启用"
+    expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中原文与译文一致的文本只输出一次"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用"
     expert_settings_page_write_translated_name_fields_to_file: str = "将姓名字段译文写入输出文件"
     expert_settings_page_write_translated_name_fields_to_file_desc: str = (
         "部分 <font color='darkgoldenrod'><b>GalGame</b></font> 中，姓名字段数据与立绘、配音等资源文件绑定，翻译后会报错，此时可以关闭该功能，默认启用"

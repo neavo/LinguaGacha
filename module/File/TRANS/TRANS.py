@@ -91,14 +91,15 @@ class TRANS(Base):
                         )
 
             # 去重
-            translation: dict[str, str] = {}
-            for item in [v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED]:
-                src = item.get_src()
-                dst = item.get_dst()
-                if src not in translation:
-                    translation[src] = dst
-                else:
-                    item.set_status(Base.TranslationStatus.DUPLICATED)
+            if self.config.deduplication_in_trans == True:
+                translation: dict[str, str] = {}
+                for item in [v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED]:
+                    src = item.get_src()
+                    dst = item.get_dst()
+                    if src not in translation:
+                        translation[src] = dst
+                    else:
+                        item.set_status(Base.TranslationStatus.DUPLICATED)
 
         return items
 
@@ -141,17 +142,18 @@ class TRANS(Base):
                     processor.post_process()
 
                     # 去重
-                    translation: dict[str, str] = {}
-                    for item in [v for v in items if v.get_status() == Base.TranslationStatus.TRANSLATED]:
-                        src = item.get_src()
-                        dst = item.get_dst()
-                        if src not in translation:
-                            translation[src] = dst
-                    for item in [v for v in items if v.get_status() == Base.TranslationStatus.DUPLICATED]:
-                        src = item.get_src()
-                        dst = item.get_dst()
-                        if src in translation:
-                            item.set_dst(translation.get(src))
+                    if self.config.deduplication_in_trans == True:
+                        translation: dict[str, str] = {}
+                        for item in [v for v in items if v.get_status() == Base.TranslationStatus.TRANSLATED]:
+                            src = item.get_src()
+                            dst = item.get_dst()
+                            if src not in translation:
+                                translation[src] = dst
+                        for item in [v for v in items if v.get_status() == Base.TranslationStatus.DUPLICATED]:
+                            src = item.get_src()
+                            dst = item.get_dst()
+                            if src in translation:
+                                item.set_dst(translation.get(src))
 
                     # 处理数据
                     path: str = ""
@@ -211,7 +213,7 @@ class TRANS(Base):
             processor: NONE = WOLF(project)
         elif engine.lower() in ("renpy", ):
             processor: NONE = RENPY(project)
-        elif engine.lower() in ("2k", "rmjdb", "rmvx", "rmvxace", "rmmv", "rmmz"):
+        elif engine.lower() in ("2k", "2k3", "rmjdb", "rmxp", "rmvx", "rmvxace", "rmmv", "rmmz"):
             processor: NONE = RPGMAKER(project)
         else:
             processor: NONE = NONE(project)

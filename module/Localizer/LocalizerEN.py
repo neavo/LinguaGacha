@@ -277,8 +277,10 @@ class LocalizerEN(LocalizerZH):
     expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, 3 lines by default"
     expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
     expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
-    expert_settings_page_deduplication_in_bilingual: str = "Deduplicate Lines in Bilingual Output"
-    expert_settings_page_deduplication_in_bilingual_desc: str = "Whether to deduplicate when the source text and translated text are identical in bilingual output files, enabled by default"
+    expert_settings_page_deduplication_in_trans: str = "Deduplicate Repeated Text in T++ Project File"
+    expert_settings_page_deduplication_in_trans_desc: str = "In T++ project file (i.e., <font color='darkgoldenrod'><b>.trans</b></font> file), whether to deduplicate repeated text, enabled by default"
+    expert_settings_page_deduplication_in_bilingual: str = "Output Only Once if Source and Target are Identical in Bilingual Output Files"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "In subtitles or e-books, whether to output text only once if the source and target text are identical, enabled by default"
     expert_settings_page_write_translated_name_fields_to_file: str = "Write Translated Name Fields to the Output File"
     expert_settings_page_write_translated_name_fields_to_file_desc: str = (
         "In some <font color='darkgoldenrod'><b>GalGame</b></font>, name field data is bound to resource files such as image or voice files"

@@ -42,6 +42,7 @@ class ExpertSettingsPage(QWidget, Base):
         # 添加控件
         self.add_widget_preceding_lines_threshold(scroll_area_vbox, config, window)
         self.add_widget_preceding_disable_on_local(scroll_area_vbox, config, window)
+        self.add_widget_deduplication_in_trans(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_bilingual(scroll_area_vbox, config, window)
         self.add_widget_write_translated_name_fields_to_file(scroll_area_vbox, config, window)
         self.add_widget_result_checker_retry_count_threshold(scroll_area_vbox, config, window)
@@ -92,7 +93,29 @@ class ExpertSettingsPage(QWidget, Base):
             )
         )
 
-    # 双语输出文件中对重复行去重
+    # T++ 项目文件中对重复文本去重
+    def add_widget_deduplication_in_trans(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(
+                config.deduplication_in_trans
+            )
+
+        def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.deduplication_in_trans = widget.get_switch_button().isChecked()
+            config.save()
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().expert_settings_page_deduplication_in_trans,
+                description = Localizer.get().expert_settings_page_deduplication_in_trans_desc,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 双语输出文件中原文与译文一致的文本只输出一次
     def add_widget_deduplication_in_bilingual(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
