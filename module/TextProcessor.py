@@ -18,12 +18,14 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
+from module.RubyCleaner import RubyCleaner
 
 class TextProcessor(Base):
 
     # 对文本进行处理的流程为：
     # - 文本保护
     # - 正规化
+    # - 清理注音
     # - 译前替换
     # - 注入姓名
     # ---- 翻译 ----
@@ -150,6 +152,13 @@ class TextProcessor(Base):
     def normalize(self, src: str) -> str:
         return Normalizer.normalize(src)
 
+    # 清理注音
+    def clean_ruby(self, src: str) -> str:
+        if self.config.clean_ruby == False:
+            return src
+        else:
+            return RubyCleaner.clean(src)
+
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
         source_language = self.config.source_language
@@ -275,6 +284,9 @@ class TextProcessor(Base):
                 else:
                     # 正规化
                     src = self.normalize(src)
+
+                    # 清理注音
+                    src = self.clean_ruby(src)
 
                     # 译前替换
                     src = self.replace_pre_translation(src)

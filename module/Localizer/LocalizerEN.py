@@ -175,7 +175,7 @@ class LocalizerEN(LocalizerZH):
     platform_page_api_test: str = "Test API"
     platform_page_api_delete: str = "Delete API"
     platform_page_widget_add_title: str = "API List"
-    platform_page_widget_add_content: str = "Add and manage any LLM API compatible with OpenAI and Anthropic formats here"
+    platform_page_widget_add_content: str = "Add and manage any LLM API compatible with Google, OpenAI and Anthropic formats here"
 
     # 接口编辑
     platform_edit_page_name: str = "Please enter API name …"
@@ -277,6 +277,20 @@ class LocalizerEN(LocalizerZH):
     expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, 3 lines by default"
     expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
     expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
+    expert_settings_page_clean_ruby: str = "Clean Ruby Text"
+    expert_settings_page_clean_ruby_desc: str = (
+        "Removes the phonetic ruby characters from annotations, retaining only the main text, enabled by default"
+        "<br>"
+        "Ruby annotations in text are often not correctly understood by the model, cleaning them can improve translation quality"
+        "<br>"
+        "Supported ruby formats include, but are not limited to:"
+        "<br>"
+        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]"
+        "<br>"
+        "• \\r[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]"
+        "<br>"
+        "• [ruby text=かんじ] [ruby text = かんじ] [ruby text=\"かんじ\"] [ruby text = \"かんじ\"]"
+    )
     expert_settings_page_deduplication_in_trans: str = "Deduplicate Repeated Text in T++ Project File"
     expert_settings_page_deduplication_in_trans_desc: str = "In T++ project file (i.e., <font color='darkgoldenrod'><b>.trans</b></font> file), whether to deduplicate repeated text, enabled by default"
     expert_settings_page_deduplication_in_bilingual: str = "Output Only Once if Source and Target are Identical in Bilingual Output Files"
