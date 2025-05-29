@@ -1,12 +1,12 @@
 {
-    "id": 1,
-    "name": "自定义 Google 接口",
-    "api_url": "https://generativelanguage.googleapis.com",
+    "id": 6,
+    "name": "智谱清言",
+    "api_url": "https://open.bigmodel.cn/api/paas/v4",
     "api_key": [
         "no_key_required"
     ],
-    "api_format": "Google",
-    "model": "gemini-2.0-flash",
+    "api_format": "OpenAI",
+    "model": "glm-4-flash",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.95,

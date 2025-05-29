@@ -1,12 +1,12 @@
 {
-    "id": 11,
-    "name": "火山引擎",
-    "api_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "id": 8,
+    "name": "月之暗面",
+    "api_url": "https://api.moonshot.cn/v1",
     "api_key": [
         "no_key_required"
     ],
     "api_format": "OpenAI",
-    "model": "deepseek-v3-250324",
+    "model": "moonshot-v1-8k",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.95,

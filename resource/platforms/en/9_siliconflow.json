@@ -1,12 +1,12 @@
 {
-    "id": 5,
-    "name": "Anthropic",
-    "api_url": "https://api.anthropic.com",
+    "id": 9,
+    "name": "SiliconFlow",
+    "api_url": "https://api.siliconflow.cn/v1",
     "api_key": [
         "no_key_required"
     ],
-    "api_format": "Anthropic",
-    "model": "claude-3-5-haiku",
+    "api_format": "OpenAI",
+    "model": "deepseek-ai/DeepSeek-V3",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.95,

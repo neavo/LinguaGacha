@@ -1,12 +1,12 @@
 {
-    "id": 9,
-    "name": "MoonShot",
-    "api_url": "https://api.moonshot.cn/v1",
+    "id": 4,
+    "name": "Anthropic",
+    "api_url": "https://api.anthropic.com",
     "api_key": [
         "no_key_required"
     ],
-    "api_format": "OpenAI",
-    "model": "moonshot-v1-8k",
+    "api_format": "Anthropic",
+    "model": "claude-3-5-haiku",
     "thinking": false,
     "top_p": 0.95,
     "temperature": 0.95,
