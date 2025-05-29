@@ -50,6 +50,10 @@ class TranslatorTask(Base):
 
     # 请求
     def request(self, items: list[CacheItem], processors: list[TextProcessor], precedings: list[CacheItem], local_flag: bool, current_round: int) -> dict[str, str]:
+        # 检测是否需要停止任务
+        if Engine.get().get_status() == Engine.Status.STOPPING:
+            return {}
+
         # 任务开始的时间
         start_time = time.time()
 
