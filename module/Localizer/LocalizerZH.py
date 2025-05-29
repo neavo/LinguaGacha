@@ -175,7 +175,7 @@ class LocalizerZH():
     platform_page_api_test: str = "测试接口"
     platform_page_api_delete: str = "删除接口"
     platform_page_widget_add_title: str = "接口列表"
-    platform_page_widget_add_content: str = "在此添加和管理任何兼容 OpenAI、Anthropic 格式的 LLM 模型接口"
+    platform_page_widget_add_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型接口"
 
     # 接口编辑
     platform_edit_page_name: str = "请输入接口名称 …"
@@ -277,6 +277,20 @@ class LocalizerZH():
     expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认 3 行"
     expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
     expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
+    expert_settings_page_clean_ruby: str = "清理原文中的注音文本"
+    expert_settings_page_clean_ruby_desc: str = (
+        "移除注音上标中的注音部分，仅保留正文部分，默认启用"
+        "<br>"
+        "文本中的注音上标通常不能被模型正确理解，进行清理可以提升翻译质量，支持注音格式包括但是不限于："
+        "<br>"
+        "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]"
+        "<br>"
+        "• \\r[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]"
+        "<br>"
+        "• [ruby text=かんじ] [ruby text = かんじ] [ruby text=\"かんじ\"] [ruby text = \"かんじ\"]"
+        ""
+        ""
+    )
     expert_settings_page_deduplication_in_trans: str = "T++ 项目文件中对重复文本去重"
     expert_settings_page_deduplication_in_trans_desc: str = "在T++ 项目文件（即 <font color='darkgoldenrod'><b>.trans</b></font> 文件）中，如有重复文本是否去重，默认启用"
     expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中原文与译文一致的文本只输出一次"

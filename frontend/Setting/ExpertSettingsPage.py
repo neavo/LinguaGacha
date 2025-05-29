@@ -23,12 +23,12 @@ class ExpertSettingsPage(QWidget, Base):
         # 设置容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
-        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root.setContentsMargins(6, 24, 6, 24) # 左、上、右、下
 
         # 创建滚动区域的内容容器
         scroll_area_vbox_widget = QWidget()
         scroll_area_vbox = QVBoxLayout(scroll_area_vbox_widget)
-        scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
+        scroll_area_vbox.setContentsMargins(18, 0, 18, 0)
 
         # 创建滚动区域
         scroll_area = SingleDirectionScrollArea(orient = Qt.Orientation.Vertical)
@@ -42,6 +42,7 @@ class ExpertSettingsPage(QWidget, Base):
         # 添加控件
         self.add_widget_preceding_lines_threshold(scroll_area_vbox, config, window)
         self.add_widget_preceding_disable_on_local(scroll_area_vbox, config, window)
+        self.add_widget_clean_ruby(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_trans(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_bilingual(scroll_area_vbox, config, window)
         self.add_widget_write_translated_name_fields_to_file(scroll_area_vbox, config, window)
@@ -88,6 +89,28 @@ class ExpertSettingsPage(QWidget, Base):
             SwitchButtonCard(
                 title = Localizer.get().expert_settings_page_preceding_disable_on_local,
                 description = Localizer.get().expert_settings_page_preceding_disable_on_local_desc,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 清理原文中的注音文本
+    def add_widget_clean_ruby(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(
+                config.clean_ruby
+            )
+
+        def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.clean_ruby = widget.get_switch_button().isChecked()
+            config.save()
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().expert_settings_page_clean_ruby,
+                description = Localizer.get().expert_settings_page_clean_ruby_desc,
                 init = init,
                 checked_changed = checked_changed,
             )

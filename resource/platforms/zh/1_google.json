@@ -1,6 +1,6 @@
 {
     "id": 1,
-    "name": "自定义 Google 接口",
+    "name": "Google",
     "api_url": "https://generativelanguage.googleapis.com",
     "api_key": [
         "no_key_required"

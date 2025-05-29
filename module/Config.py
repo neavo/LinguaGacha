@@ -50,6 +50,7 @@ class Config(BaseData):
         # ExpertSettingsPage
         self.preceding_lines_threshold: int = 3
         self.enable_preceding_on_local: bool = False
+        self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True
         self.deduplication_in_bilingual: bool = True
         self.write_translated_name_fields_to_file: bool = True
@@ -122,6 +123,7 @@ class Config(BaseData):
         # ExpertSettingsPage
         self.preceding_lines_threshold: int = 3
         self.enable_preceding_on_local: bool = False
+        self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True
         self.deduplication_in_bilingual: bool = True
         self.write_translated_name_fields_to_file: bool = True
