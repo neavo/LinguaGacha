@@ -45,8 +45,8 @@ class TextProcessor(Base):
         SUFFIX = "SUFFIX"
 
     # 类变量
-    OPENCCS2TW = opencc.OpenCC("s2tw")
-    OPENCCWT2S = opencc.OpenCC("tw2s")
+    OPENCCT2S = opencc.OpenCC("t2s")
+    OPENCCS2T = opencc.OpenCC("s2tw")
 
     # 正则表达式
     RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
@@ -243,9 +243,9 @@ class TextProcessor(Base):
             return dst
 
         if self.config.traditional_chinese_enable == True:
-            return __class__.OPENCCS2TW.convert(dst)
+            return __class__.OPENCCS2T.convert(dst)
         else:
-            return __class__.OPENCCWT2S.convert(dst)
+            return __class__.OPENCCT2S.convert(dst)
 
     # 处理前后缀代码段
     def prefix_suffix_process(self, i: int, src: str, text_type: CacheItem.TextType) -> None:
