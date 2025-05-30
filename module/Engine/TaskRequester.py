@@ -76,11 +76,31 @@ class TaskRequester(Base):
     @classmethod
     @lru_cache(maxsize = None)
     def get_client(cls, url: str, key: str, format: Base.APIFormat, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
+        # connect (连接超时):
+        #   建议值: 5.0 到 10.0 秒。
+        #   解释: 建立到 LLM API 服务器的 TCP 连接。通常这个过程很快，但网络波动时可能需要更长时间。设置过短可能导致在网络轻微抖动时连接失败。
+        # read (读取超时):
+        #   建议值: 非常依赖具体场景。
+        #   对于快速响应的简单任务（如分类、简单问答）：10.0 到 30.0 秒。
+        #   对于中等复杂任务或中等长度输出：30.0 到 90.0 秒。
+        #   对于复杂任务或长文本生成（如 GPT-4 生成大段代码或文章）：60.0 到 180.0 秒，甚至更长。
+        #   解释: 这是从发送完请求到接收完整个响应体的最大时间。这是 LLM 请求中最容易超时的部分。你需要根据你的模型、提示和期望输出来估算一个合理的上限。强烈建议监控你的P95/P99响应时间来调整这个值。
+        # write (写入超时):
+        #   建议值: 5.0 到 10.0 秒。
+        #   解释: 发送请求体（包含你的 prompt）到服务器的时间。除非你的 prompt 非常巨大（例如，包含超长上下文），否则这个过程通常很快。
+        # pool (从连接池获取连接超时):
+        #   建议值: 5.0 到 10.0 秒 (如果并发量高，可以适当增加)。
+        #   解释: 如果你使用 httpx.Client 并且并发发起大量请求，可能会耗尽连接池中的连接。此参数定义了等待可用连接的最长时间。
         if format == Base.APIFormat.SAKURALLM:
             return openai.OpenAI(
                 base_url = url,
                 api_key = key,
-                timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
                 max_retries = 1,
             )
         elif format == Base.APIFormat.GOOGLE:
@@ -99,14 +119,24 @@ class TaskRequester(Base):
             return anthropic.Anthropic(
                 base_url = url,
                 api_key = key,
-                timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
                 max_retries = 1,
             )
         else:
             return openai.OpenAI(
                 base_url = url,
                 api_key = key,
-                timeout = httpx.Timeout(timeout = timeout, connect = 10.0),
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
                 max_retries = 1,
             )
 
