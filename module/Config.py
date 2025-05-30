@@ -48,7 +48,7 @@ class Config(BaseData):
         self.max_round: int = 16
 
         # ExpertSettingsPage
-        self.preceding_lines_threshold: int = 3
+        self.preceding_lines_threshold: int = 0
         self.enable_preceding_on_local: bool = False
         self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True
@@ -121,7 +121,7 @@ class Config(BaseData):
     # 重置专家模式
     def reset_expert_settings(self) -> None:
         # ExpertSettingsPage
-        self.preceding_lines_threshold: int = 3
+        self.preceding_lines_threshold: int = 0
         self.enable_preceding_on_local: bool = False
         self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True

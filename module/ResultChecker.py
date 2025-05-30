@@ -15,8 +15,8 @@ from module.TextProcessor import TextProcessor
 class ResultChecker(Base):
 
     # 类变量
-    OPENCCS2T = opencc.OpenCC("s2t")
     OPENCCT2S = opencc.OpenCC("t2s")
+    OPENCCS2T = opencc.OpenCC("s2tw")
 
     def __init__(self, config: Config, items: list[CacheItem]) -> None:
         super().__init__()

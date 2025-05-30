@@ -2,17 +2,17 @@
     {
         "src": "ダリヤ",
         "dst": "Daria",
-        "info": "Female name"
+        "info": "female"
     },
     {
         "src": "コリウス",
         "dst": "Kelvis",
-        "info": "Name"
+        "info": "name"
     },
     {
         "src": "エルギア",
         "dst": "Eerga",
-        "info": "Location"
+        "info": "location"
     },
     {
         "src": "",
