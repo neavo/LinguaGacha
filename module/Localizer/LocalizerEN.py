@@ -139,6 +139,7 @@ class LocalizerEN(LocalizerZH):
     platofrm_tester_response_think: str = "Model thinking:"
     platofrm_tester_response_result: str = "Model response:"
     platofrm_tester_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
+    platofrm_tester_result_failure: str = "Failed Keys:"
     platofrm_tester_running: str = "Task is running, please try again later …"
     response_checker_unknown: str = "Unknown"
     response_checker_fail_data: str = "Data Structure Error"

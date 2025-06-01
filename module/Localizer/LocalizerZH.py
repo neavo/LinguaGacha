@@ -139,6 +139,7 @@ class LocalizerZH():
     platofrm_tester_response_think: str = "模型思考内容："
     platofrm_tester_response_result: str = "模型返回结果："
     platofrm_tester_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
+    platofrm_tester_result_failure: str = "失败的密钥："
     platofrm_tester_running: str = "任务正在执行中，请稍后再试 …"
     response_checker_unknown: str = "未知"
     response_checker_fail_data: str = "数据结构错误"

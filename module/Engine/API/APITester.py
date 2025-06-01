@@ -92,6 +92,10 @@ class APITester(Base):
         self.print("")
         self.info(result_msg)
 
+        # 失败密钥
+        if len(failure) > 0:
+            self.warning(Localizer.get().platofrm_tester_result_failure + "\n" + "\n".join(failure))
+
         # 发送完成事件
         self.emit(Base.Event.PLATFORM_TEST_DONE, {
             "result": len(failure) == 0,
