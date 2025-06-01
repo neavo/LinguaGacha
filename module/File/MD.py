@@ -56,7 +56,7 @@ class MD(Base):
                     # 如果是图片行或在代码块内，设置状态为 EXCLUDED
                     if (MD.IMAGE_PATTERN.search(line) or in_code_block):
                         items.append(
-                            CacheItem({
+                            CacheItem.from_dict({
                                 "src": line,
                                 "dst": line,
                                 "row": len(items),
@@ -68,7 +68,7 @@ class MD(Base):
                         )
                     else:
                         items.append(
-                            CacheItem({
+                            CacheItem.from_dict({
                                 "src": line,
                                 "dst": line,
                                 "row": len(items),

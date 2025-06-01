@@ -50,7 +50,7 @@ class KVJSON(Base):
                         dst = v
                         if src == "":
                             items.append(
-                                CacheItem({
+                                CacheItem.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),
@@ -61,7 +61,7 @@ class KVJSON(Base):
                             )
                         elif dst != "" and src != dst:
                             items.append(
-                                CacheItem({
+                                CacheItem.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),
@@ -72,7 +72,7 @@ class KVJSON(Base):
                             )
                         else:
                             items.append(
-                                CacheItem({
+                                CacheItem.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),

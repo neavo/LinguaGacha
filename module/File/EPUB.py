@@ -64,7 +64,7 @@ class EPUB(Base):
                                     continue
 
                                 # 添加数据
-                                items.append(CacheItem({
+                                items.append(CacheItem.from_dict({
                                     "src": dom.get_text(),
                                     "dst": dom.get_text(),
                                     "tag": path,
@@ -80,7 +80,7 @@ class EPUB(Base):
                                 if dom.get_text().strip() == "":
                                     continue
 
-                                items.append(CacheItem({
+                                items.append(CacheItem.from_dict({
                                     "src": dom.get_text(),
                                     "dst": dom.get_text(),
                                     "tag": path,

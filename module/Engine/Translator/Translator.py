@@ -329,7 +329,7 @@ class Translator(Base):
                 response_json = response.json()
             except Exception as e:
                 self.print("")
-                self.debug(Localizer.get().log_load_llama_cpp_slots_num_fail, e)
+                self.debug("", e)
             if isinstance(response_json, list) and len(response_json) > 0:
                 max_workers = len(response_json)
 
@@ -448,7 +448,7 @@ class Translator(Base):
                 dst = item.get_dst()
                 if src.count("\n") > 0:
                     for src_line, dst_line in zip_longest(src.splitlines(), dst.splitlines(), fillvalue = ""):
-                        item_ex = CacheItem(item.get_vars())
+                        item_ex = CacheItem.from_dict(item.asdict())
                         item_ex.set_src(src_line.strip())
                         item_ex.set_dst(dst_line.strip())
                         item_ex.set_row(len(items_by_file_path))

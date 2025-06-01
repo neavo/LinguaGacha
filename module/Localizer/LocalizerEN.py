@@ -95,7 +95,6 @@ class LocalizerEN(LocalizerZH):
     log_write_file_fail: str = "File writing failed …"
     log_read_cache_file_fail: str = "Failed to read cached data from file …"
     log_write_cache_file_fail: str = "Failed to write cached data to file …"
-    log_load_llama_cpp_slots_num_fail: str = "Failed to get response data from [green]llama.cpp[/] …"
     log_crash: str = "A critical error has occurred, program will now exit. Error detail has been saved to the log file …"
     translator_max_round: str = "Max rounds"
     translator_current_round: str = "Current round"

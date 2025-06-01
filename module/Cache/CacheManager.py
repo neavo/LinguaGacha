@@ -89,7 +89,7 @@ class CacheManager(Base):
         with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps([item.get_vars() for item in items], indent = None, ensure_ascii = False))
+                    writer.write(json.dumps([item.asdict() for item in items], indent = None, ensure_ascii = False))
             except Exception as e:
                 self.debug(Localizer.get().log_write_cache_file_fail, e)
 
@@ -98,7 +98,7 @@ class CacheManager(Base):
         with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps(project.get_vars(), indent = None, ensure_ascii = False))
+                    writer.write(json.dumps(project.asdict(), indent = None, ensure_ascii = False))
             except Exception as e:
                 self.debug(Localizer.get().log_write_cache_file_fail, e)
 
@@ -164,7 +164,7 @@ class CacheManager(Base):
 
     # 复制缓存数据
     def copy_items(self) -> list[CacheItem]:
-        return [CacheItem(item.get_vars()) for item in self.items]
+        return [CacheItem.from_dict(item.asdict()) for item in self.items]
 
     # 获取缓存数据数量（根据翻译状态）
     def get_item_count_by_status(self, status: int) -> int:

@@ -94,7 +94,7 @@ class RENPY(Base):
                 # 添加数据
                 if src == "":
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": process(src),
                             "dst": dst,
                             "name_src": name,
@@ -109,7 +109,7 @@ class RENPY(Base):
                     )
                 elif dst != "" and src != dst:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": process(src),
                             "dst": dst,
                             "name_src": name,
@@ -130,7 +130,7 @@ class RENPY(Base):
                     # 而如果翻译后文件中 译文 为空，则实际游戏内文本显示也将为空
                     # 为了避免这种情况，应该在添加数据时直接设置 dst 为 src 以避免出现预期以外的空译文
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": process(src),
                             "dst": process(src),
                             "name_src": name,

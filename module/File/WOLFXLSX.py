@@ -82,7 +82,7 @@ class WOLFXLSX(Base):
                     or self.get_fg_color_index(sheet, row, 6) not in WOLFXLSX.FILL_COLOR_WHITELIST
                 ):
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
@@ -94,7 +94,7 @@ class WOLFXLSX(Base):
                     )
                 elif dst != "" and src != dst:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
@@ -106,7 +106,7 @@ class WOLFXLSX(Base):
                     )
                 else:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,

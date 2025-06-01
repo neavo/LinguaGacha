@@ -72,7 +72,7 @@ class TRANS(Base):
                         # 检查并添加数据
                         src, dst, tag, status, skip_internal_filter = processor.check(path, data, tag, context)
                         items.append(
-                            CacheItem({
+                            CacheItem.from_dict({
                                 "src": src,
                                 "dst": dst,
                                 "extra_field": {

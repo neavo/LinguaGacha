@@ -1,24 +1,18 @@
+import dataclasses
 import threading
+from typing import Any
 
 from base.Base import Base
-from base.BaseData import BaseData
 
-class CacheProject(BaseData):
+@dataclasses.dataclass
+class CacheProject():
 
-    def __init__(self, args: dict) -> None:
-        super().__init__()
+    id: str = ""                                                                        # 项目 ID
+    status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED                # 翻译状态
+    extras: dict = dataclasses.field(default_factory = dict)                            # 额外数据
 
-        # 默认值
-        self.id: str = ""                                                               # 项目 ID
-        self.status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED       # 翻译状态
-        self.extras: dict = {}                                                          # 额外数据
-
-        # 初始化
-        for k, v in args.items():
-            setattr(self, k, v)
-
-        # 线程锁
-        self.lock = threading.Lock()
+    # 线程锁
+    lock: threading.Lock = dataclasses.field(init = False, repr = False, compare = False, default_factory = threading.Lock)
 
     # 获取项目 ID
     def get_id(self) -> str:
@@ -49,3 +43,11 @@ class CacheProject(BaseData):
     def set_extras(self, extras: dict) -> None:
         with self.lock:
             self.extras = extras
+
+    def asdict(self) -> dict[str, Any]:
+        with self.lock:
+            return {
+                v.name: getattr(self, v.name)
+                for v in dataclasses.fields(self)
+                if v.init != False
+            }
