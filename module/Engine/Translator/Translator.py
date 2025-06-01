@@ -1,27 +1,31 @@
+import concurrent.futures
 import os
 import re
-import time
 import shutil
 import threading
+import time
 import webbrowser
-import concurrent.futures
 from itertools import zip_longest
 
 import httpx
-from tqdm import tqdm
+from rich import get_console
+from rich.progress import TaskID
+from rich.progress import Progress
 
 from base.Base import Base
-from module.Config import Config
-from module.Engine.Engine import Engine
-from module.File.FileManager import FileManager
+from base.LogManager import LogManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
-from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.Config import Config
+from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
-from module.Filter.RuleFilter import RuleFilter
+from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
+from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
+from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.ResultChecker import ResultChecker
 from module.TextProcessor import TextProcessor
@@ -85,7 +89,7 @@ class Translator(Base):
     def translation_start(self, event: str, data: dict) -> None:
         if Engine.get().get_status() == Engine.Status.IDLE:
             threading.Thread(
-                target = self.translation_start_target,
+                target = self.translation_start_task,
                 args = (event, data),
             ).start()
         else:
@@ -97,9 +101,10 @@ class Translator(Base):
     # 翻译结果手动导出事件
     def translation_manual_export(self, event: str, data: dict) -> None:
         if Engine.get().get_status() != Engine.Status.TRANSLATING:
-            return
+            return None
+
+        # 复制一份以避免影响原始数据
         def task(event: str, data: dict) -> None:
-            # 复制一份以避免影响原始数据
             items = self.cache_manager.copy_items()
             self.mtool_optimizer_postprocess(items)
             self.check_and_wirte_result(items)
@@ -122,7 +127,7 @@ class Translator(Base):
         threading.Thread(target = task, args = (event, data)).start()
 
     # 实际的翻译流程
-    def translation_start_target(self, event: str, data: dict) -> None:
+    def translation_start_task(self, event: str, data: dict) -> None:
         status: Base.TranslationStatus = data.get("status")
 
         # 更新运行状态
@@ -211,21 +216,19 @@ class Translator(Base):
                 precedings = [[] for _ in range(len(precedings))]
 
             # 生成翻译任务
+            self.print("")
             tasks: list[TranslatorTask] = []
-            self.print("")
-            for items, precedings in tqdm(zip(chunks, precedings), desc = Localizer.get().translator_generate_task, total = len(chunks)):
-                tasks.append(
-                    TranslatorTask(
-                        self.config,
-                        self.platform,
-                        local_flag,
-                        items,
-                        precedings,
-                    )
-                )
-            self.print("")
+            with ProgressBar(transient = False) as progress:
+                pid = progress.new()
+                for items, precedings in zip(chunks, precedings):
+                    progress.update(pid, advance = 1, total = len(chunks))
+                    tasks.append(TranslatorTask(self.config, self.platform, local_flag, items, precedings))
+
+            # 打印日志
+            self.info(Localizer.get().translator_task_generation_log.replace("{COUNT}", str(len(chunks))))
 
             # 输出开始翻译的日志
+            self.print("")
             self.print("")
             self.info(f"{Localizer.get().translator_current_round} - {current_round + 1}")
             self.info(f"{Localizer.get().translator_max_round} - {self.config.max_round}")
@@ -237,20 +240,20 @@ class Translator(Base):
             if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
                 self.print("")
-            self.info(Localizer.get().translator_begin.replace("{TASKS}", str(len(tasks))))
-            self.print("")
 
             # 开始执行翻译任务
             task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold)
-            with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = Engine.TASK_PREFIX) as executor:
-                for task in tasks:
-                    # 检测是否需要停止任务
-                    if Engine.get().get_status() == Engine.Status.STOPPING:
-                        return None
+            with ProgressBar(transient = True) as progress:
+                with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = Engine.TASK_PREFIX) as executor:
+                    pid = progress.new()
+                    for task in tasks:
+                        # 检测是否需要停止任务
+                        if Engine.get().get_status() == Engine.Status.STOPPING:
+                            return None
 
-                    task_limiter.wait()
-                    future = executor.submit(task.start, current_round)
-                    future.add_done_callback(self.task_done_callback)
+                        task_limiter.wait()
+                        future = executor.submit(task.start, current_round)
+                        future.add_done_callback(lambda future: self.task_done_callback(future, pid, progress))
 
             # 判断是否需要继续翻译
             if self.cache_manager.get_item_count_by_status(Base.TranslationStatus.UNTRANSLATED) == 0:
@@ -306,7 +309,7 @@ class Translator(Base):
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_DONE, {})
 
-    # 初始化本地接口标识
+    # 初始化本地标识
     def initialize_local_flag(self) -> bool:
         return re.search(
             r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
@@ -314,7 +317,7 @@ class Translator(Base):
             flags = re.IGNORECASE,
         ) is not None
 
-    # 初始化 速度控制
+    # 初始化速度控制器
     def initialize_max_workers(self) -> tuple[int, int]:
         max_workers: int = self.config.max_workers
         rpm_threshold: int = self.config.rpm_threshold
@@ -348,57 +351,54 @@ class Translator(Base):
         if len(items) == 0:
             return None
 
-        # 统计排除数量
+        # 筛选
         self.print("")
-        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
+        count: int = 0
+        with ProgressBar(transient = False) as progress:
+            pid = progress.new()
+            for item in items:
+                progress.update(pid, advance = 1, total = len(items))
+                if RuleFilter.filter(item.get_src()) == True:
+                    count = count + 1
+                    item.set_status(Base.TranslationStatus.EXCLUDED)
 
-        # 筛选出无效条目并标记为已排除
-        target = [
-            v for v in items
-            if RuleFilter.filter(v.get_src()) == True
-        ]
-        for item in target:
-            item.set_status(Base.TranslationStatus.EXCLUDED)
-
-        # 输出结果
-        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
-        self.print("")
-        self.info(Localizer.get().translator_rule_filter.replace("{COUNT}", str(count)))
+        # 打印日志
+        self.info(Localizer.get().translator_rule_filter_log.replace("{COUNT}", str(count)))
 
     # 语言过滤
     def language_filter(self, items: list[CacheItem]) -> None:
         if len(items) == 0:
             return None
 
-        # 统计排除数量
+        # 筛选
         self.print("")
-        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
+        count: int = 0
+        with ProgressBar(transient = False) as progress:
+            pid = progress.new()
+            for item in items:
+                progress.update(pid, advance = 1, total = len(items))
+                if LanguageFilter.filter(item.get_src(), self.config.source_language) == True:
+                    count = count + 1
+                    item.set_status(Base.TranslationStatus.EXCLUDED)
 
-        # 筛选出无效条目并标记为已排除
-        source_language = self.config.source_language
-        target = [
-            v for v in items
-            if LanguageFilter.filter(v.get_src(), source_language) == True
-        ]
-        for item in target:
-            item.set_status(Base.TranslationStatus.EXCLUDED)
-
-        # 输出结果
-        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
-        self.print("")
-        self.info(Localizer.get().translator_language_filter.replace("{COUNT}", str(count)))
+        # 打印日志
+        self.info(Localizer.get().translator_language_filter_log.replace("{COUNT}", str(count)))
 
     # MTool 优化器预处理
     def mtool_optimizer_preprocess(self, items: list[CacheItem]) -> None:
         if len(items) == 0 or self.config.mtool_optimizer_enable == False:
             return None
 
-        # 统计排除数量
-        self.print("")
-        count_excluded = len([v for v in tqdm(items) if v.get_status() == Base.TranslationStatus.EXCLUDED])
-
         # 筛选
-        items_kvjson = [item for item in items if item.get_file_type() == CacheItem.FileType.KVJSON]
+        self.print("")
+        count: int = 0
+        items_kvjson: list[CacheItem] = []
+        with ProgressBar(transient = False) as progress:
+            pid = progress.new()
+            for item in items:
+                progress.update(pid, advance = 1, total = len(items))
+                if item.get_file_type() == CacheItem.FileType.KVJSON:
+                    items_kvjson.append(item)
 
         # 按文件路径分组
         group_by_file_path: dict[str, list[CacheItem]] = {}
@@ -417,11 +417,11 @@ class Translator(Base):
             # 移除子句
             for item in items_by_file_path:
                 if item.get_src() in target:
+                    count = count + 1
                     item.set_status(Base.TranslationStatus.EXCLUDED)
 
-        count = len([v for v in items if v.get_status() == Base.TranslationStatus.EXCLUDED]) - count_excluded
-        self.print("")
-        self.info(Localizer.get().translator_mtool_filter.replace("{COUNT}", str(count)))
+        # 打印日志
+        self.info(Localizer.get().translator_mtool_optimizer_pre_log.replace("{COUNT}", str(count)))
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[CacheItem]) -> None:
@@ -429,7 +429,14 @@ class Translator(Base):
             return None
 
         # 筛选
-        items_kvjson = [item for item in items if item.get_file_type() == CacheItem.FileType.KVJSON]
+        self.print("")
+        items_kvjson: list[CacheItem] = []
+        with ProgressBar(transient = True) as progress:
+            pid = progress.new()
+            for item in items:
+                progress.update(pid, advance = 1, total = len(items))
+                if item.get_file_type() == CacheItem.FileType.KVJSON:
+                    items_kvjson.append(item)
 
         # 按文件路径分组
         group_by_file_path: dict[str, list[CacheItem]] = {}
@@ -448,6 +455,9 @@ class Translator(Base):
                         item_ex.set_dst(dst_line.strip())
                         item_ex.set_row(len(items_by_file_path))
                         items.append(item_ex)
+
+        # 打印日志
+        self.info(Localizer.get().translator_mtool_optimizer_post_log)
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[CacheItem]) -> None:
@@ -475,7 +485,7 @@ class Translator(Base):
             webbrowser.open(os.path.abspath(self.config.output_folder))
 
     # 翻译任务完成时
-    def task_done_callback(self, future: concurrent.futures.Future) -> None:
+    def task_done_callback(self, future: concurrent.futures.Future, pid: TaskID, progress: ProgressBar) -> None:
         try:
             # 获取结果
             result = future.result()
@@ -503,6 +513,13 @@ class Translator(Base):
 
             # 请求保存缓存文件
             self.cache_manager.require_save_to_file(self.config.output_folder)
+
+            # 日志
+            progress.update(
+                pid,
+                total = self.extras.get("total_line", 0),
+                completed = self.extras.get("line", 0),
+            )
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)

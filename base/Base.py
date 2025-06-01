@@ -59,23 +59,23 @@ class Base():
 
     # PRINT
     def print(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
-        LogManager.print(msg, e, file, console)
+        LogManager.get().print(msg, e, file, console)
 
     # DEBUG
     def debug(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
-        LogManager.debug(msg, e, file, console)
+        LogManager.get().debug(msg, e, file, console)
 
     # INFO
     def info(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
-        LogManager.info(msg, e, file, console)
+        LogManager.get().info(msg, e, file, console)
 
     # ERROR
     def error(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
-        LogManager.error(msg, e, file, console)
+        LogManager.get().error(msg, e, file, console)
 
     # WARNING
     def warning(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
-        LogManager.warning(msg, e, file, console)
+        LogManager.get().warning(msg, e, file, console)
 
     # 触发事件
     def emit(self, event: Event, data: dict) -> None:

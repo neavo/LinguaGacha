@@ -1,7 +1,6 @@
 import ctypes
 import os
 import sys
-import traceback
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -18,19 +17,9 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.VersionManager import VersionManager
 
-# 捕获全局异常
-def excepthook(exc_type, exc_value, exc_traceback) -> None:
-    if issubclass(exc_type, KeyboardInterrupt):
-        # 用户中断，不记录日志
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-        return
-
-    # 使用LogHelper记录异常信息
-    LogManager.error(f"{Localizer.get().log_crash}\n{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback)).strip()}")
-
 if __name__ == "__main__":
     # 捕获全局异常
-    sys.excepthook = excepthook
+    sys.excepthook = lambda exc_type, exc_value, exc_traceback: LogManager.get().error(Localizer.get().log_crash, exc_value)
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":
@@ -75,15 +64,15 @@ if __name__ == "__main__":
     Localizer.set_app_language(config.app_language)
 
     # 打印日志
-    LogManager.info(f"LinguaGacha {version}")
-    LogManager.info(Localizer.get().log_expert_mode) if LogManager.is_expert_mode() else None
+    LogManager.get().info(f"LinguaGacha {version}")
+    LogManager.get().info(Localizer.get().log_expert_mode) if LogManager.get().is_expert_mode() else None
 
     # 网络代理
     if config.proxy_enable == False or config.proxy_url == "":
         os.environ.pop("http_proxy", None)
         os.environ.pop("https_proxy", None)
     else:
-        LogManager.info(Localizer.get().log_proxy)
+        LogManager.get().info(Localizer.get().log_proxy)
         os.environ["http_proxy"] = config.proxy_url
         os.environ["https_proxy"] = config.proxy_url
 

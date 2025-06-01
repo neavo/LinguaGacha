@@ -344,7 +344,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 专家设置
-        if LogManager.is_expert_mode():
+        if LogManager.get().is_expert_mode():
             self.addSubInterface(
                 ExpertSettingsPage("expert_settings_page", self),
                 FluentIcon.EDUCATION,
@@ -369,7 +369,7 @@ class AppFluentWindow(FluentWindow, Base):
             icon = FluentIcon.VPN,
             text = Localizer.get().app_text_preserve_page,
             position = NavigationItemPosition.SCROLL,
-        ) if LogManager.is_expert_mode() else None
+        ) if LogManager.get().is_expert_mode() else None
 
         # 文本替换
         self.text_replacement_page = EmptyPage("replacement_page", self)
@@ -378,20 +378,20 @@ class AppFluentWindow(FluentWindow, Base):
             icon = FluentIcon.CLIPPING_TOOL,
             text = Localizer.get().app_text_replacement_page,
             position = NavigationItemPosition.SCROLL,
-        ) if LogManager.is_expert_mode() else None
+        ) if LogManager.get().is_expert_mode() else None
         self.addSubInterface(
             interface = TextReplacementPage("pre_translation_replacement_page", self, "pre_translation_replacement"),
             icon = FluentIcon.SEARCH,
             text = Localizer.get().app_pre_translation_replacement_page,
             position = NavigationItemPosition.SCROLL,
-            parent = self.text_replacement_page if LogManager.is_expert_mode() else None,
+            parent = self.text_replacement_page if LogManager.get().is_expert_mode() else None,
         )
         self.addSubInterface(
             interface = TextReplacementPage("post_translation_replacement_page", self, "post_translation_replacement"),
             icon = FluentIcon.SEARCH_MIRROR,
             text = Localizer.get().app_post_translation_replacement_page,
             position = NavigationItemPosition.SCROLL,
-            parent = self.text_replacement_page if LogManager.is_expert_mode() else None,
+            parent = self.text_replacement_page if LogManager.get().is_expert_mode() else None,
         )
 
         # 自定义提示词
