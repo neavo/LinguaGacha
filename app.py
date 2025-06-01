@@ -1,6 +1,10 @@
+import argparse
 import ctypes
 import os
+import signal
 import sys
+import time
+from types import TracebackType
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -10,20 +14,32 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
+from base.Base import Base
+from base.CLIManager import CLIManager
 from base.LogManager import LogManager
+from base.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.VersionManager import VersionManager
+
+def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: TracebackType) -> None:
+    LogManager.get().error(Localizer.get().log_crash, exc_value)
+
+    if not isinstance(exc_value, KeyboardInterrupt):
+        print("")
+        for i in range(3):
+            print(f"Exiting … {3 - i} …")
+            time.sleep(1)
+
+    os.kill(os.getpid(), signal.SIGTERM)
 
 if __name__ == "__main__":
     # 捕获全局异常
-    sys.excepthook = lambda exc_type, exc_value, exc_traceback: LogManager.get().error(Localizer.get().log_crash, exc_value)
+    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(exc_type, exc_value, exc_traceback)
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":
-        user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
 
         # 获取控制台句柄
@@ -37,7 +53,6 @@ if __name__ == "__main__":
             # 设置新的控制台模式
             kernel32.SetConsoleMode(hStdin, mode)
 
-    # 启用了高 DPI 缩放
     # 1. 全局缩放使能 (Enable High DPI Scaling)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
@@ -103,14 +118,15 @@ if __name__ == "__main__":
     app.setFont(font)
 
     # 启动任务引擎
-    Engine().get().run()
+    Engine.get().run()
 
     # 创建版本管理器
-    version_manager = VersionManager(version)
+    VersionManager.get().set_version(version)
 
-    # 创建全局窗口对象
-    app_fluent_window = AppFluentWindow()
-    app_fluent_window.show()
+    # 处理启动参数
+    if CLIManager.get().run() == False:
+        app_fluent_window = AppFluentWindow()
+        app_fluent_window.show()
 
     # 进入事件循环，等待用户操作
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

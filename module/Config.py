@@ -17,10 +17,10 @@ class Config(BaseData):
         LIGHT = "LIGHT"
 
     # 路径
-    CONFIG_PATH = "./resource/config.json"
+    CONFIG_PATH: str = "./resource/config.json"
 
     # 配置锁
-    CONFIG_LOCK = threading.Lock()
+    CONFIG_LOCK: threading.Lock = threading.Lock()
 
     def __init__(self) -> None:
         super().__init__()
@@ -92,12 +92,15 @@ class Config(BaseData):
         self.auto_glossary_enable: bool = False
         self.mtool_optimizer_enable: bool = False
 
-    def load(self) -> Self:
+    def load(self, path: str = None) -> Self:
+        if path is None:
+            path = __class__.CONFIG_PATH
+
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(__class__.CONFIG_PATH), exist_ok = True)
-                if os.path.isfile(__class__.CONFIG_PATH):
-                    with open(__class__.CONFIG_PATH, "r", encoding = "utf-8-sig") as reader:
+                os.makedirs(os.path.dirname(path), exist_ok = True)
+                if os.path.isfile(path):
+                    with open(path, "r", encoding = "utf-8-sig") as reader:
                         config: dict = json.load(reader)
                         for k, v in config.items():
                             if hasattr(self, k):
@@ -107,11 +110,14 @@ class Config(BaseData):
 
         return self
 
-    def save(self) -> Self:
+    def save(self, path: str = None) -> Self:
+        if path is None:
+            path = __class__.CONFIG_PATH
+
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(__class__.CONFIG_PATH), exist_ok = True)
-                with open(__class__.CONFIG_PATH, "w", encoding = "utf-8") as writer:
+                os.makedirs(os.path.dirname(path), exist_ok = True)
+                with open(path, "w", encoding = "utf-8") as writer:
                     json.dump(self.get_vars(), writer, indent = 4, ensure_ascii = False)
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
