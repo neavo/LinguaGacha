@@ -8,12 +8,9 @@ import webbrowser
 from itertools import zip_longest
 
 import httpx
-from rich import get_console
 from rich.progress import TaskID
-from rich.progress import Progress
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheManager import CacheManager
 from module.Config import Config
@@ -128,13 +125,14 @@ class Translator(Base):
 
     # 实际的翻译流程
     def translation_start_task(self, event: str, data: dict) -> None:
+        config: Base.TranslationStatus = data.get("config")
         status: Base.TranslationStatus = data.get("status")
 
         # 更新运行状态
         Engine.get().set_status(Engine.Status.TRANSLATING)
 
         # 初始化
-        self.config = Config().load()
+        self.config = config if isinstance(config, Config) else Config().load()
         self.platform = self.config.get_platform(self.config.activate_platform)
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()

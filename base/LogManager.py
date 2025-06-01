@@ -58,7 +58,7 @@ class LogManager():
         return cls.__instance__
 
     def is_expert_mode(self) -> bool:
-        if getattr(self, "expert_mode ", None) is None:
+        if getattr(self, "expert_mode", None) is None:
             from module.Config import Config
             self.expert_mode = Config().load().expert_mode
             self.console_logger.setLevel(logging.DEBUG if self.expert_mode else logging.INFO)

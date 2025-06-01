@@ -1,5 +1,4 @@
 import os
-import re
 import signal
 
 from PyQt5.QtCore import QEvent
@@ -24,6 +23,7 @@ from qfluentwidgets import setThemeColor
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
+from base.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
 from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
@@ -42,7 +42,6 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.TranslationPage import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.VersionManager import VersionManager
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -62,7 +61,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 设置窗口属性
         self.resize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
         self.setMinimumSize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
-        self.setWindowTitle(f"LinguaGacha {VersionManager.VERSION}")
+        self.setWindowTitle(f"LinguaGacha {VersionManager.get().get_version()}")
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
@@ -85,10 +84,12 @@ class AppFluentWindow(FluentWindow, Base):
         # 注册事件
         self.subscribe(Base.Event.APP_TOAST_SHOW, self.show_toast)
         self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_update_check_done)
+        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_DONE, self.app_update_download_done)
+        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, self.app_update_download_error)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update)
 
         # 检查更新
-        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK, {}))
+        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_START, {}))
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
@@ -163,87 +164,41 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 打开主页
     def open_project_page(self) -> None:
-        if VersionManager.STATUS == VersionManager.Status.NEW_VERSION:
-            # 更新状态
-            VersionManager.STATUS = VersionManager.Status.UPDATING
-
+        if VersionManager.get().get_status() == VersionManager.Status.NEW_VERSION:
             # 更新 UI
             self.home_page_widget.setName(
                 Localizer.get().app_new_version_update.replace("{PERCENT}", "")
             )
 
             # 触发下载事件
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD, {})
-        elif VersionManager.STATUS == VersionManager.Status.UPDATING:
+            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_START, {})
+        elif VersionManager.get().get_status() == VersionManager.Status.UPDATING:
             pass
-        elif VersionManager.STATUS == VersionManager.Status.DOWNLOADED:
+        elif VersionManager.get().get_status() == VersionManager.Status.DOWNLOADED:
             self.emit(Base.Event.APP_UPDATE_EXTRACT, {})
         else:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
-    # 检查应用更新完成事件
+    # 更新 - 检查完成
     def app_update_check_done(self, event: str, data: dict) -> None:
-        result: dict = data.get("result", {})
-        a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.VERSION)[-1]
-        x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", ""))[-1]
-
-        if (
-            int(a) < int(x)
-            or (int(a) == int(x) and int(b) < int(y))
-            or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
-        ):
-            # 更新状态
-            VersionManager.STATUS = VersionManager.Status.NEW_VERSION
-
-            # 更新 UI
+        if data.get("new_version", False) == True:
             self.home_page_widget.setName(Localizer.get().app_new_version)
 
-            # 显示提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
-                "duration": 60 * 1000,
-            })
+    # 更新 - 下载完成
+    def app_update_download_done(self, event: str, data: dict) -> None:
+        self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
 
-    # 下载应用更新事件
+    # 更新 - 下载报错
+    def app_update_download_error(self, event: str, data: dict) -> None:
+        self.home_page_widget.setName("⭐️ @ Github")
+
+    # 更新 - 下载更新
     def app_update_download_update(self, event: str, data: dict) -> None:
-        error: Exception = data.get("error")
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
-
-        if error is None:
-            # 更新进度
-            self.home_page_widget.setName(
-                Localizer.get().app_new_version_update.replace("{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%")
-            )
-
-            # 下载完成
-            if total_size == downloaded_size:
-                # 更新状态
-                VersionManager.STATUS = VersionManager.Status.DOWNLOADED
-
-                # 更新 UI
-                self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
-
-                # 显示提示
-                self.emit(Base.Event.APP_TOAST_SHOW, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().app_new_version_success,
-                    "duration": 60 * 1000,
-                })
-        else:
-            # 更新状态
-            VersionManager.STATUS = VersionManager.Status.NONE
-
-            # 更新 UI
-            self.home_page_widget.setName("⭐️ @ Github")
-
-            # 显示提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().app_new_version_failure + str(error),
-                "duration": 60 * 1000,
-            })
+        self.home_page_widget.setName(
+            Localizer.get().app_new_version_update.replace("{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%")
+        )
 
     # 开始添加页面
     def add_pages(self) -> None:

@@ -1,8 +1,8 @@
 from enum import StrEnum
 from typing import Callable
 
-from base.LogManager import LogManager
 from base.EventManager import EventManager
+from base.LogManager import LogManager
 
 class Base():
 
@@ -19,11 +19,13 @@ class Base():
         CACHE_FILE_AUTO_SAVE = "CACHE_FILE_AUTO_SAVE"                      # 缓存文件自动保存
         PROJECT_STATUS = "PROJECT_STATUS"                                  # 项目状态检查
         PROJECT_STATUS_CHECK_DONE = "PROJECT_STATUS_CHECK_DONE"            # 项目状态检查完成
-        APP_UPDATE_CHECK = "APP_UPDATE_CHECK"                              # 检查更新
-        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"                    # 检查更新 - 完成
-        APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"                        # 检查更新 - 下载
-        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"          # 检查更新 - 下载进度更新
-        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                          # 检查更新 - 解压
+        APP_UPDATE_CHECK_START = "APP_UPDATE_CHECK_START"                  # 更新 - 检查开始
+        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"                    # 更新 - 检查完成
+        APP_UPDATE_DOWNLOAD_START = "APP_UPDATE_DOWNLOAD_START"            # 更新 - 下载开始
+        APP_UPDATE_DOWNLOAD_DONE = "APP_UPDATE_DOWNLOAD_DONE"              # 更新 - 下载完成
+        APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"            # 更新 - 下载报错
+        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"          # 更新 - 下载更新
+        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                          # 更新 - 解压
         APP_TOAST_SHOW = "APP_TOAST_SHOW"                                  # 显示 Toast
         GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                              # 术语表刷新
 

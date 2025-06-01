@@ -1,18 +1,18 @@
-import re
 import json
+import re
 import threading
 from functools import lru_cache
 
+import anthropic
 import httpx
 import openai
-import anthropic
 from google import genai
 from google.genai import types
 
 from base.Base import Base
+from base.VersionManager import VersionManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.VersionManager import VersionManager
 
 class TaskRequester(Base):
 
@@ -111,7 +111,7 @@ class TaskRequester(Base):
                     base_url = url,
                     timeout = timeout * 1000,
                     headers = {
-                        "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)",
+                        "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
                     },
                 ),
             )
@@ -189,7 +189,7 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(512, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
@@ -246,7 +246,7 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
@@ -413,7 +413,7 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.VERSION} (https://github.com/neavo/LinguaGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
