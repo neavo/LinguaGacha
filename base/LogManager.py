@@ -1,114 +1,124 @@
-import os
 import logging
+import os
 import traceback
 from logging.handlers import TimedRotatingFileHandler
+from typing import Self
 
+from rich.console import Console
 from rich.logging import RichHandler
 
 class LogManager():
 
-    # 文件日志实例
-    os.makedirs("./log", exist_ok = True)
-    LOGGER_FILE = logging.getLogger("linguagacha_file")
-    LOGGER_FILE.propagate = False
-    LOGGER_FILE.setLevel(logging.DEBUG)
-    LOGGER_FILE.addHandler(
-        TimedRotatingFileHandler(
-            "./log/app.log",
-            when = "midnight",
-            interval = 1,
-            encoding = "utf-8",
-            backupCount = 3,
-        )
-    )
-    LOGGER_FILE.handlers[-1].setFormatter(
-        logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt = "%Y-%m-%d %H:%M:%S")
-    )
+    PATH: str = "./log"
 
-    # 控制台日志实例
-    LOGGER_CONSOLE = logging.getLogger("linguagacha_console")
-    LOGGER_CONSOLE.propagate = False
-    LOGGER_CONSOLE.setLevel(logging.INFO)
-    LOGGER_CONSOLE.addHandler(
-        RichHandler(
-            markup = True,
-            show_path = False,
-            rich_tracebacks = True,
-            log_time_format = "[%X]",
-            omit_repeated_times = False
-        )
-    )
+    def __init__(self) -> None:
+        super().__init__()
 
-    # 检查是否处于专家模式
+        # 控制台实例
+        self.console = Console()
+
+        # 文件日志实例
+        os.makedirs(__class__.PATH, exist_ok = True)
+        self.file_logger = logging.getLogger("linguagacha_file")
+        self.file_logger.propagate = False
+        self.file_logger.setLevel(logging.DEBUG)
+        self.file_logger.addHandler(
+            TimedRotatingFileHandler(
+                f"{__class__.PATH}/app.log",
+                when = "midnight",
+                interval = 1,
+                encoding = "utf-8",
+                backupCount = 3,
+            )
+        )
+        self.file_logger.handlers[-1].setFormatter(
+            logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt = "%Y-%m-%d %H:%M:%S")
+        )
+
+        # 控制台日志实例
+        self.console_logger = logging.getLogger("linguagacha_console")
+        self.console_logger.propagate = False
+        self.console_logger.setLevel(logging.INFO)
+        self.console_logger.addHandler(
+            RichHandler(
+                markup = True,
+                show_path = False,
+                rich_tracebacks = False,
+                tracebacks_extra_lines = 0,
+                log_time_format = "[%X]",
+                omit_repeated_times = False,
+            )
+        )
+
     @classmethod
-    def is_expert_mode(cls) -> bool:
-        if getattr(cls, "expert_mode", None) is None:
+    def get(cls) -> Self:
+        if getattr(cls, "__instance__", None) is None:
+            cls.__instance__ = cls()
+
+        return cls.__instance__
+
+    def is_expert_mode(self) -> bool:
+        if getattr(self, "expert_mode ", None) is None:
             from module.Config import Config
-            cls.expert_mode = Config().load().expert_mode
-            cls.LOGGER_CONSOLE.setLevel(logging.DEBUG if cls.expert_mode else logging.INFO)
+            self.expert_mode = Config().load().expert_mode
+            self.console_logger.setLevel(logging.DEBUG if self.expert_mode else logging.INFO)
 
-        return cls.expert_mode
+        return self.expert_mode
 
-    @classmethod
-    def print(cls, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
+    def print(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
         if e == None:
-            cls.LOGGER_FILE.info(f"{msg}") if file == True else None
-            print(f"{msg}") if console == True else None
-        elif cls.is_expert_mode() == False:
-            cls.LOGGER_FILE.info(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            print(f"{msg} {e}") if console == True else None
+            self.file_logger.info(f"{msg}") if file == True else None
+            self.console.print(f"{msg}") if console == True else None
+        elif self.is_expert_mode() == False:
+            self.file_logger.info(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console.print(f"{msg} {e}") if console == True else None
         else:
-            cls.LOGGER_FILE.info(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            print(f"{msg}\n{cls.get_trackback(e)}\n") if console == True else None
+            self.file_logger.info(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console.print(f"{msg} {e}\n{self.get_trackback(e)}\n") if console == True else None
 
-    @classmethod
-    def debug(cls, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
+    def debug(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
         if e == None:
-            cls.LOGGER_FILE.debug(f"{msg}") if file == True else None
-            cls.LOGGER_CONSOLE.debug(f"{msg}") if console == True else None
-        elif cls.is_expert_mode() == False:
-            cls.LOGGER_FILE.debug(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.debug(f"{msg} {e}") if console == True else None
+            self.file_logger.debug(f"{msg}") if file == True else None
+            self.console_logger.debug(f"{msg}") if console == True else None
+        elif self.is_expert_mode() == False:
+            self.file_logger.debug(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.debug(f"{msg} {e}") if console == True else None
         else:
-            cls.LOGGER_FILE.debug(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.debug(f"{msg}\n{cls.get_trackback(e)}\n") if console == True else None
+            self.file_logger.debug(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.debug(f"{msg} {e}\n{self.get_trackback(e)}\n") if console == True else None
 
-    @classmethod
-    def info(cls, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
+    def info(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
         if e == None:
-            cls.LOGGER_FILE.info(f"{msg}") if file == True else None
-            cls.LOGGER_CONSOLE.info(f"{msg}") if console == True else None
-        elif cls.is_expert_mode() == False:
-            cls.LOGGER_FILE.info(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.info(f"{msg} {e}") if console == True else None
+            self.file_logger.info(f"{msg}") if file == True else None
+            self.console_logger.info(f"{msg}") if console == True else None
+        elif self.is_expert_mode() == False:
+            self.file_logger.info(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.info(f"{msg} {e}") if console == True else None
         else:
-            cls.LOGGER_FILE.info(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.info(f"{msg}\n{cls.get_trackback(e)}\n") if console == True else None
+            self.file_logger.info(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.info(f"{msg} {e}\n{self.get_trackback(e)}\n") if console == True else None
 
-    @classmethod
-    def error(cls, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
+    def error(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
         if e == None:
-            cls.LOGGER_FILE.error(f"{msg}") if file == True else None
-            cls.LOGGER_CONSOLE.error(f"{msg}") if console == True else None
-        elif cls.is_expert_mode() == False:
-            cls.LOGGER_FILE.error(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.error(f"{msg} {e}") if console == True else None
+            self.file_logger.error(f"{msg}") if file == True else None
+            self.console_logger.error(f"{msg}") if console == True else None
+        elif self.is_expert_mode() == False:
+            self.file_logger.error(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.error(f"{msg} {e}") if console == True else None
         else:
-            cls.LOGGER_FILE.error(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.error(f"{msg}\n{cls.get_trackback(e)}\n") if console == True else None
+            self.file_logger.error(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.error(f"{msg} {e}\n{self.get_trackback(e)}\n") if console == True else None
 
-    @classmethod
-    def warning(cls, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
+    def warning(self, msg: str, e: Exception = None, file: bool = True, console: bool = True) -> None:
         if e == None:
-            cls.LOGGER_FILE.warning(f"{msg}") if file == True else None
-            cls.LOGGER_CONSOLE.warning(f"{msg}") if console == True else None
-        elif cls.is_expert_mode() == False:
-            cls.LOGGER_FILE.warning(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.warning(f"{msg} {e}") if console == True else None
+            self.file_logger.warning(f"{msg}") if file == True else None
+            self.console_logger.warning(f"{msg}") if console == True else None
+        elif self.is_expert_mode() == False:
+            self.file_logger.warning(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.warning(f"{msg} {e}") if console == True else None
         else:
-            cls.LOGGER_FILE.warning(f"{msg}\n{cls.get_trackback(e)}\n") if file == True else None
-            cls.LOGGER_CONSOLE.warning(f"{msg}\n{cls.get_trackback(e)}\n") if console == True else None
+            self.file_logger.warning(f"{msg} {e}\n{self.get_trackback(e)}\n") if file == True else None
+            self.console_logger.warning(f"{msg} {e}\n{self.get_trackback(e)}\n") if console == True else None
 
-    @classmethod
-    def get_trackback(cls, e: Exception) -> str:
-        return f"{e}\n{("".join(traceback.format_exception(None, e, e.__traceback__))).strip()}"
+    def get_trackback(self, e: Exception) -> str:
+        return f"{("".join(traceback.format_exception(e))).strip()}"

@@ -103,7 +103,7 @@ class Config(BaseData):
                             if hasattr(self, k):
                                 setattr(self, k, v)
             except Exception as e:
-                LogManager.error(f"{Localizer.get().log_read_file_fail}", e)
+                LogManager.get().error(f"{Localizer.get().log_read_file_fail}", e)
 
         return self
 
@@ -114,7 +114,7 @@ class Config(BaseData):
                 with open(__class__.CONFIG_PATH, "w", encoding = "utf-8") as writer:
                     json.dump(self.get_vars(), writer, indent = 4, ensure_ascii = False)
             except Exception as e:
-                LogManager.error(f"{Localizer.get().log_write_file_fail}", e)
+                LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 
         return self
 
