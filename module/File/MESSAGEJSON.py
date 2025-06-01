@@ -79,7 +79,7 @@ class MESSAGEJSON(Base):
 
                     # 添加数据
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": entry_message,
                             "dst": entry_message,
                             "name_src": name,

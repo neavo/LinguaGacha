@@ -43,7 +43,7 @@ class TXT(Base):
             with open(abs_path, "r", encoding = encoding) as reader:
                 for line in [line.removesuffix("\n") for line in reader.readlines()]:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": line,
                             "dst": line,
                             "row": len(items),

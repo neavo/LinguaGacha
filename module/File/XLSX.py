@@ -54,7 +54,7 @@ class XLSX(Base):
 
                 if src == "":
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
@@ -65,7 +65,7 @@ class XLSX(Base):
                     )
                 elif dst != "" and src != dst:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
@@ -76,7 +76,7 @@ class XLSX(Base):
                     )
                 else:
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,

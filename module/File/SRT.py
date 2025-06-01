@@ -72,7 +72,7 @@ class SRT(Base):
                     # 添加数据
                     if lines[-1] != "":
                         items.append(
-                            CacheItem({
+                            CacheItem.from_dict({
                                 "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
                                 "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
                                 "extra_field": lines[1],

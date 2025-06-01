@@ -78,7 +78,7 @@ class ASS(Base):
 
                     # 添加数据
                     items.append(
-                        CacheItem({
+                        CacheItem.from_dict({
                             "src": content.replace("\\N", "\n"),
                             "dst": content.replace("\\N", "\n"),
                             "extra_field": extra_field,

@@ -141,7 +141,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         items: list[CacheItem] = []
         for name, src in name_src_dict.items():
-            items.append(CacheItem({
+            items.append(CacheItem.from_dict({
                 "src": f"【{name}】\n{src}",
                 "dst": f"【{name}】\n{src}",
                 "row": len(items) + 1,
