@@ -3,7 +3,6 @@ from types import TracebackType
 from typing import Any
 from typing import Self
 
-from rich.console import Console
 from rich.progress import BarColumn
 from rich.progress import Progress
 from rich.progress import TaskID
@@ -67,9 +66,3 @@ class ProgressBar():
             pass
         else:
             __class__.progress.update(id, total = total, advance = advance, completed = completed)
-
-    def get_console(self) -> Console:
-        if __class__.progress is None:
-            return None
-        else:
-            return __class__.progress.console

@@ -3,11 +3,10 @@ import threading
 import time
 from functools import lru_cache
 
+import rich
 from rich import box
 from rich import markup
-from rich.console import Console
 from rich.table import Table
-from rich.progress import Progress
 
 from base.Base import Base
 from base.LogManager import LogManager
@@ -16,7 +15,6 @@ from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
-from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
@@ -25,11 +23,8 @@ from module.TextProcessor import TextProcessor
 
 class TranslatorTask(Base):
 
-    # 类变量
-    CONSOLE = Console(highlight = True, tab_size = 4)
-
     # 自动术语表
-    GLOSSARY_SAVE_LOCK = threading.Lock()
+    GLOSSARY_SAVE_LOCK: threading.Lock = threading.Lock()
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
@@ -283,15 +278,12 @@ class TranslatorTask(Base):
         log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
 
         # 根据线程数判断是否需要打印表格
-        console = ProgressBar(transient = False).get_console()
-        if console is None:
-            pass
-        elif Engine.get().get_running_task_count() > 32:
-            console.print(
+        if Engine.get().get_running_task_count() > 32:
+            rich.get_console().print(
                 Localizer.get().translator_too_many_task + "\n" + message + "\n"
             )
         else:
-            console.print(
+            rich.get_console().print(
                 self.generate_log_table(
                     self.generate_log_rows(srcs, dsts, console_log, console = True),
                     style,
