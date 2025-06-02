@@ -96,6 +96,8 @@ class LocalizerZH():
     log_read_cache_file_fail: str = "从文件读取缓存数据失败 …"
     log_write_cache_file_fail: str = "向文件写入缓存数据失败 …"
     log_crash: str = "出现严重错误，程序即将退出，错误信息已保存至日志文件 …"
+    cli_verify_folder: str = "参数发生错误：无效的路径 …"
+    cli_verify_language: str = "参数发生错误：无效的语言 …"
     translator_max_round: str = "最大轮次"
     translator_current_round: str = "当前轮次"
     translator_api_url: str = "接口地址"

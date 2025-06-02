@@ -29,7 +29,7 @@ def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_trac
     if not isinstance(exc_value, KeyboardInterrupt):
         print("")
         for i in range(3):
-            print(f"Exiting … {3 - i} …")
+            print(f"退出中 … Exiting … {3 - i} …")
             time.sleep(1)
 
     os.kill(os.getpid(), signal.SIGTERM)
