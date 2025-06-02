@@ -55,6 +55,7 @@
 - 视频教程
   - [How to Translate RPGMV with LinguaGacha and Translator++ (English)](https://www.youtube.com/watch?v=wtV_IODzi8I)
 - 功能说明
+  - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
   - [补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
   - [百宝箱 - 批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection)　　[百宝箱 - 部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
@@ -75,6 +76,11 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20250602 v0.29.0
+  - 新增 - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
+  - 调整 - 更准确的请求超时时间控制
+  - 调整 - 接口测试时打印失败的密钥
+
 - 20250530 v0.28.3
   - 调整 - 几处细节调整
 
