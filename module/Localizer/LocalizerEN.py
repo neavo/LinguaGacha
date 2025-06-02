@@ -96,6 +96,8 @@ class LocalizerEN(LocalizerZH):
     log_read_cache_file_fail: str = "Failed to read cached data from file …"
     log_write_cache_file_fail: str = "Failed to write cached data to file …"
     log_crash: str = "A critical error has occurred, program will now exit. Error detail has been saved to the log file …"
+    cli_verify_folder: str = "parameter error: invalid path …"
+    cli_verify_language: str = "parameter error: invalid language …"
     translator_max_round: str = "Max rounds"
     translator_current_round: str = "Current round"
     translator_api_url: str = "API URL"
