@@ -48,12 +48,10 @@ class AppFluentWindow(FluentWindow, Base):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
+    HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
 
     def __init__(self) -> None:
         super().__init__()
-
-        # 初始化
-        self.new_version = False
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.APP_THEME_COLOR)
@@ -190,7 +188,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 更新 - 下载报错
     def app_update_download_error(self, event: str, data: dict) -> None:
-        self.home_page_widget.setName("⭐️ @ Github")
+        self.home_page_widget.setName(__class__.HOMEPAGE)
 
     # 更新 - 下载更新
     def app_update_download_update(self, event: str, data: dict) -> None:
@@ -249,7 +247,7 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 项目主页按钮
         self.home_page_widget = NavigationAvatarWidget(
-            "⭐️ @ Github",
+            __class__.HOMEPAGE,
             "resource/icon_full.png",
         )
         self.navigationInterface.addWidget(

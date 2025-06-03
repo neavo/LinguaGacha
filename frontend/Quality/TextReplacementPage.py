@@ -7,7 +7,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
@@ -140,17 +139,14 @@ class TextReplacementPage(QWidget, Base):
         parent.addWidget(self.table)
 
         # 设置表格属性
-        self.table.setBorderRadius(4)
-        self.table.setBorderVisible(True)
-        self.table.setWordWrap(False)
         self.table.setColumnCount(3)
+        self.table.setBorderVisible(False)
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.setColumnWidth(2, 72)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.table.setColumnWidth(0, 420)
+        self.table.setColumnWidth(1, 420)
+        self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)

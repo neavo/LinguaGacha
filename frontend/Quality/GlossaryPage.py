@@ -140,16 +140,14 @@ class GlossaryPage(QWidget, Base):
         parent.addWidget(self.table)
 
         # 设置表格属性
-        self.table.setBorderRadius(4)
-        self.table.setBorderVisible(True)
-        self.table.setWordWrap(False)
         self.table.setColumnCount(3)
+        self.table.setBorderVisible(False)
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(0, 300)
+        self.table.setColumnWidth(1, 300)
+        self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -168,6 +166,7 @@ class GlossaryPage(QWidget, Base):
             table = self.table,
         )
         self.table_manager.sync()
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
         # 注册事件
         self.table.itemChanged.connect(item_changed)
