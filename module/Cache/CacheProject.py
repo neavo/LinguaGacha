@@ -1,6 +1,7 @@
 import dataclasses
 import threading
 from typing import Any
+from typing import Self
 
 from base.Base import Base
 
@@ -13,6 +14,12 @@ class CacheProject():
 
     # 线程锁
     lock: threading.Lock = dataclasses.field(init = False, repr = False, compare = False, default_factory = threading.Lock)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Self:
+        class_fields = {f.name for f in dataclasses.fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in class_fields}
+        return cls(**filtered_data)
 
     # 获取项目 ID
     def get_id(self) -> str:

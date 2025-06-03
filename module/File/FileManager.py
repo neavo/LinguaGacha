@@ -3,20 +3,20 @@ import random
 from datetime import datetime
 
 from base.Base import Base
-from module.File.MD import MD
-from module.File.ASS import ASS
-from module.File.SRT import SRT
-from module.File.TXT import TXT
-from module.File.EPUB import EPUB
-from module.File.XLSX import XLSX
-from module.File.WOLFXLSX import WOLFXLSX
-from module.File.RENPY import RENPY
-from module.File.TRANS.TRANS import TRANS
-from module.File.KVJSON import KVJSON
-from module.File.MESSAGEJSON import MESSAGEJSON
 from module.Cache.CacheItem import CacheItem
 from module.Cache.CacheProject import CacheProject
 from module.Config import Config
+from module.File.ASS import ASS
+from module.File.EPUB import EPUB
+from module.File.KVJSON import KVJSON
+from module.File.MD import MD
+from module.File.MESSAGEJSON import MESSAGEJSON
+from module.File.RENPY import RENPY
+from module.File.SRT import SRT
+from module.File.TRANS.TRANS import TRANS
+from module.File.TXT import TXT
+from module.File.WOLFXLSX import WOLFXLSX
+from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
 
 class FileManager(Base):
@@ -29,7 +29,7 @@ class FileManager(Base):
 
     # 读
     def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
-        project: CacheProject = CacheProject({
+        project: CacheProject = CacheProject.from_dict({
             "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
         })
 
