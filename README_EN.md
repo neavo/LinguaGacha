@@ -79,33 +79,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20250603 v0.29.1
+  - FIX - Continue task feature
+
 - 20250602 v0.29.0
   - NEW - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - OPT - More accurate request timeout control
   - OPT - Print failed API keys during interface testing
-
-- 20250530 v0.28.3
-  - OPT - Some detail adjustments
-
-- 20250530 v0.28.2
-  - NEW - Custom Google API
-  - NEW - Expert settings options
-    - Clean phonetic text from original text
-    - Deduplicate repeated text in T++ project files
-  - OPT - Table search is now case-insensitive
-  - OPT - Support for Claude 4 series models to switch thinking mode
-  - FIX - Attempted to fix the issue where pausing tasks was very slow
-  - FIX - Attempted to fix occasional character errors in Traditional Chinese output
-
-- 20250526 v0.28.1
-  - OPT - Compatibility optimization
-
-- 20250522 v0.28.0
-  - OPT - Optimized logic for `Text Preserve` and `Result Check`
-  - OPT - Optimized speed for `Task Pause` and `Task Generation`
-  - OPT - Enhanced interaction details for `Glossary` `Text Preserve` `Text Replacement`:
-    - Optimized deduplication logic
-    - Tables now support in-app search
 
 ## Support 😥
 - Runtime logs are stored in `log` folder
