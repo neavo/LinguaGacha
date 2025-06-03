@@ -57,7 +57,7 @@ class TableManager():
         self.data = [v for i, v in enumerate(self.data) if i not in dels]
 
         # 填充表格
-        self.table.setRowCount(max(12, len(self.data) + 8))
+        self.table.setRowCount(max(20, len(self.data) + 8))
         for row in range(self.table.rowCount()):
             for col in range(self.table.columnCount()):
                 item = self.table.item(row, col)
