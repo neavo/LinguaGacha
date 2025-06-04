@@ -9,8 +9,10 @@ class RubyCleaner():
         (re.compile(r'\[(.+)/.+\]', flags = re.IGNORECASE), r"\1"),
         # |漢字[かんじ]
         (re.compile(r'\|(.+?)\[.+?\]', flags = re.IGNORECASE), r"\1"),
-        # WOLF - \r[漢字,かんじ]
+        # \r[漢字,かんじ]
         (re.compile(r'\\r\[(.+?),.+?\]', flags = re.IGNORECASE), r"\1"),
+        # \rb[漢字,かんじ]
+        (re.compile(r'\\rb\[(.+?),.+?\]', flags = re.IGNORECASE), r"\1"),
         # [r_かんじ][ch_漢字]
         (re.compile(r'\[r_.+?\]\[ch_(.+?)\]', flags = re.IGNORECASE), r"\1"),
         # [ch_漢字]
