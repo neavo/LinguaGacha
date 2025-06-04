@@ -195,6 +195,11 @@ class Translator(Base):
 
         # 开始循环
         for current_round in range(self.config.max_round):
+            # 检测是否需要停止任务
+            # 目的是避免用户正好在两轮之间停止任务
+            if Engine.get().get_status() == Engine.Status.STOPPING:
+                return None
+
             # 第一轮且不是继续翻译时，记录任务的总行数
             if current_round == 0 and status == Base.TranslationStatus.UNTRANSLATED:
                 self.extras["total_line"] = self.cache_manager.get_item_count_by_status(Base.TranslationStatus.UNTRANSLATED)
@@ -246,6 +251,7 @@ class Translator(Base):
                     pid = progress.new()
                     for task in tasks:
                         # 检测是否需要停止任务
+                        # 目的是绕过限流器，快速结束所有剩余任务
                         if Engine.get().get_status() == Engine.Status.STOPPING:
                             return None
 

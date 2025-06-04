@@ -47,16 +47,8 @@ class TranslatorTask(Base):
 
     # 请求
     def request(self, items: list[CacheItem], processors: list[TextProcessor], precedings: list[CacheItem], local_flag: bool, current_round: int) -> dict[str, str]:
-        # 检测是否需要停止任务
-        if Engine.get().get_status() == Engine.Status.STOPPING:
-            return {}
-
         # 任务开始的时间
         start_time = time.time()
-
-        # 检查是否超时，超时则直接跳过当前任务，以避免死循环
-        if time.time() - start_time >= self.config.request_timeout:
-            return {}
 
         # 文本预处理
         srcs: list[str] = []
