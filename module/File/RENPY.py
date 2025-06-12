@@ -3,7 +3,7 @@ import re
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class RENPY(Base):
@@ -57,12 +57,12 @@ class RENPY(Base):
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
 
         def process(text: str) -> str:
             return text.replace("\\n", "\n").replace("\\\"", "\"")
 
-        items: list[CacheItem] = []
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -94,32 +94,32 @@ class RENPY(Base):
                 # 添加数据
                 if src == "":
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": process(src),
                             "dst": dst,
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
-                            "file_type": CacheItem.FileType.RENPY,
+                            "file_type": Item.FileType.RENPY,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.RENPY,
-                            "status": Base.TranslationStatus.EXCLUDED,
+                            "text_type": Item.TextType.RENPY,
+                            "status": Base.ProjectStatus.EXCLUDED,
                         })
                     )
                 elif dst != "" and src != dst:
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": process(src),
                             "dst": dst,
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
-                            "file_type": CacheItem.FileType.RENPY,
+                            "file_type": Item.FileType.RENPY,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.RENPY,
-                            "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
+                            "text_type": Item.TextType.RENPY,
+                            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
                         })
                     )
                 else:
@@ -130,24 +130,24 @@ class RENPY(Base):
                     # 而如果翻译后文件中 译文 为空，则实际游戏内文本显示也将为空
                     # 为了避免这种情况，应该在添加数据时直接设置 dst 为 src 以避免出现预期以外的空译文
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": process(src),
                             "dst": process(src),
                             "name_src": name,
                             "name_dst": name,
                             "extra_field": line,
                             "row": len(items),
-                            "file_type": CacheItem.FileType.RENPY,
+                            "file_type": Item.FileType.RENPY,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.RENPY,
-                            "status": Base.TranslationStatus.UNTRANSLATED,
+                            "text_type": Item.TextType.RENPY,
+                            "status": Base.ProjectStatus.NONE,
                         })
                     )
 
         return items
 
     # 写入数据
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
 
         def repl(m: re.Match, i: list[int], repl: list[str]) -> str:
             if i[0] < len(repl) and repl[i[0]] is not None:
@@ -163,7 +163,7 @@ class RENPY(Base):
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.RENPY
+            if item.get_file_type() == Item.FileType.RENPY
         ]
 
         # 统一或还原姓名字段
@@ -234,7 +234,7 @@ class RENPY(Base):
         return ""
 
     # 还原姓名字段
-    def revert_name(self, items: list[CacheItem]) -> list[CacheItem]:
+    def revert_name(self, items: list[Item]) -> list[Item]:
         for item in items:
             name_src = item.get_name_src()
             name_dst = item.get_name_dst()
@@ -249,7 +249,7 @@ class RENPY(Base):
                 item.set_name_dst(item.get_name_src())
 
     # 统一姓名字段
-    def uniform_name(self, items: list[CacheItem]) -> list[CacheItem]:
+    def uniform_name(self, items: list[Item]) -> list[Item]:
         # 统计
         result: dict[str, dict] = {}
         for item in items:

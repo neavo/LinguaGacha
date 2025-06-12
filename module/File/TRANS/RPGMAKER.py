@@ -1,11 +1,11 @@
 import re
 
 from module.File.TRANS.NONE import NONE
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 
 class RPGMAKER(NONE):
 
-    TEXT_TYPE: str = CacheItem.TextType.RPGMAKER
+    TEXT_TYPE: str = Item.TextType.RPGMAKER
 
     BLACKLIST_PATH: tuple[re.Pattern] = (
         re.compile(r"\.js$", flags = re.IGNORECASE),

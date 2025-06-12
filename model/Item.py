@@ -14,7 +14,7 @@ from base.Base import Base
 from module.Text.TextBase import TextBase
 
 @dataclasses.dataclass
-class CacheItem():
+class Item():
 
     # 必须显式的引用这两个库，否则打包后会报错
     tiktoken_ext
@@ -55,7 +55,7 @@ class CacheItem():
     file_type: FileType = FileType.NONE                                                         # 文件的类型
     file_path: str = ""                                                                         # 文件的相对路径
     text_type: TextType = TextType.NONE                                                         # 文本的实际类型
-    status: Base.TranslationStatus = Base.TranslationStatus.UNTRANSLATED                        # 翻译状态
+    status: Base.ProjectStatus = Base.ProjectStatus.NONE                                        # 翻译状态
     retry_count: int = 0                                                                        # 重试次数，当前只有单独重试的时候才增加此计数
 
     # 线程锁
@@ -86,6 +86,14 @@ class CacheItem():
         class_fields = {f.name for f in dataclasses.fields(cls)}
         filtered_data = {k: v for k, v in data.items() if k in class_fields}
         return cls(**filtered_data)
+
+    def to_dict(self) -> dict[str, Any]:
+        with self.lock:
+            return {
+                v.name: getattr(self, v.name)
+                for v in dataclasses.fields(self)
+                if v.init != False
+            }
 
     def __post_init__(self) -> None:
         # 如果文件类型是 XLSX、TRANS、KVJSON、MESSAGEJSON，且没有文本类型，则判断实际的文本类型
@@ -206,12 +214,12 @@ class CacheItem():
             self.text_type = type
 
     # 获取翻译状态
-    def get_status(self) -> Base.TranslationStatus:
+    def get_status(self) -> Base.ProjectStatus:
         with self.lock:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, status: Base.TranslationStatus) -> None:
+    def set_status(self, status: Base.ProjectStatus) -> None:
         with self.lock:
             self.status = status
 
@@ -224,14 +232,6 @@ class CacheItem():
     def set_retry_count(self, retry_count: int) -> None:
         with self.lock:
             self.retry_count = retry_count
-
-    def asdict(self) -> dict[str, Any]:
-        with self.lock:
-            return {
-                v.name: getattr(self, v.name)
-                for v in dataclasses.fields(self)
-                if v.init != False
-            }
 
     # 获取 Token 数量
     def get_token_count(self) -> int:

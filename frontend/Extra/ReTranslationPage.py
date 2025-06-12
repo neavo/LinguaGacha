@@ -17,9 +17,9 @@ from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
 from module.File.FileManager import FileManager
-from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheManager import CacheManager
-from module.Cache.CacheProject import CacheProject
+from model.Item import Item
+from module.CacheManager import CacheManager
+from model.Project import Project
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.EmptyCard import EmptyCard
@@ -112,14 +112,14 @@ class ReTranslationPage(QWidget, Base):
             # 生成翻译数据
             project, items_single, error_message = self.process_single()
             if error_message != "":
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.ERROR,
                     "message": error_message,
                 })
                 return None
             project, items_double, error_message = self.process_double()
             if error_message != "":
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.ERROR,
                     "message": error_message,
                 })
@@ -129,19 +129,19 @@ class ReTranslationPage(QWidget, Base):
             items = items_single + items_double
 
             # 有效性检查
-            items_lenght = len([v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+            items_lenght = len([v for v in items if v.get_status() == Base.ProjectStatus.NONE])
             if items_lenght == 0:
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().alert_no_data,
                 })
                 return None
 
             # 设置项目数据
-            project.set_status(Base.TranslationStatus.TRANSLATING)
+            project.set_status(Base.ProjectStatus.PROCESSING)
             project.set_extras({
                 "start_time": time.time(),
-                "total_line": len([item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
+                "total_line": len([item for item in items if item.get_status() == Base.ProjectStatus.NONE]),
                 "line": 0,
                 "total_tokens": 0,
                 "total_output_tokens": 0,
@@ -156,8 +156,8 @@ class ReTranslationPage(QWidget, Base):
             )
 
             window.switchTo(window.translation_page)
-            self.emit(Base.Event.TRANSLATION_START, {
-                "status": Base.TranslationStatus.TRANSLATING,
+            self.emit(Base.Event.TRANSLATION_RUN, {
+                "status": Base.ProjectStatus.PROCESSING,
             })
 
         parent.add_action(
@@ -176,7 +176,7 @@ class ReTranslationPage(QWidget, Base):
         parent.add_widget(push_button)
 
     # 处理单文件部分
-    def process_single(self) -> tuple[CacheProject, list[CacheItem], str]:
+    def process_single(self) -> tuple[Project, list[Item], str]:
         # 读取译文
         config = Config().load()
         config.input_folder = f"{config.input_folder}/dst"
@@ -184,11 +184,11 @@ class ReTranslationPage(QWidget, Base):
         items_dst = [
             v for v in items_dst
             if v.get_file_type() in (
-                CacheItem.FileType.XLSX,
-                CacheItem.FileType.WOLFXLSX,
-                CacheItem.FileType.RENPY,
-                CacheItem.FileType.TRANS,
-                CacheItem.FileType.KVJSON,
+                Item.FileType.XLSX,
+                Item.FileType.WOLFXLSX,
+                Item.FileType.RENPY,
+                Item.FileType.TRANS,
+                Item.FileType.KVJSON,
             )
         ]
         items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
@@ -202,17 +202,17 @@ class ReTranslationPage(QWidget, Base):
 
         # 生成翻译数据
         for item_dst in items_dst:
-            if item_dst.get_status() != Base.TranslationStatus.EXCLUDED and any(keyword in item_dst.get_src() for keyword in keywords):
-                item_dst.set_status(Base.TranslationStatus.UNTRANSLATED)
-            elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
-                item_dst.set_status(Base.TranslationStatus.TRANSLATED_IN_PAST)
+            if item_dst.get_status() != Base.ProjectStatus.EXCLUDED and any(keyword in item_dst.get_src() for keyword in keywords):
+                item_dst.set_status(Base.ProjectStatus.NONE)
+            elif item_dst.get_status() != Base.ProjectStatus.EXCLUDED:
+                item_dst.set_status(Base.ProjectStatus.PROCESSED_IN_PAST)
             else:
-                item_dst.set_status(Base.TranslationStatus.EXCLUDED)
+                item_dst.set_status(Base.ProjectStatus.EXCLUDED)
 
         return project, items_dst, ""
 
     # 处理双文件部分
-    def process_double(self) -> tuple[CacheProject, list[CacheItem], str]:
+    def process_double(self) -> tuple[Project, list[Item], str]:
         # 读取译文
         config = Config().load()
         config.input_folder = f"{config.input_folder}/dst"
@@ -220,12 +220,12 @@ class ReTranslationPage(QWidget, Base):
         items_dst = [
             v for v in items_dst
             if v.get_file_type() in (
-                CacheItem.FileType.MD,
-                CacheItem.FileType.TXT,
-                CacheItem.FileType.ASS,
-                CacheItem.FileType.SRT,
-                CacheItem.FileType.EPUB,
-                CacheItem.FileType.MESSAGEJSON,
+                Item.FileType.MD,
+                Item.FileType.TXT,
+                Item.FileType.ASS,
+                Item.FileType.SRT,
+                Item.FileType.EPUB,
+                Item.FileType.MESSAGEJSON,
             )
         ]
         items_dst.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
@@ -237,19 +237,19 @@ class ReTranslationPage(QWidget, Base):
         items_src = [
             v for v in items_src
             if v.get_file_type() in (
-                CacheItem.FileType.MD,
-                CacheItem.FileType.TXT,
-                CacheItem.FileType.ASS,
-                CacheItem.FileType.SRT,
-                CacheItem.FileType.EPUB,
-                CacheItem.FileType.MESSAGEJSON,
+                Item.FileType.MD,
+                Item.FileType.TXT,
+                Item.FileType.ASS,
+                Item.FileType.SRT,
+                Item.FileType.EPUB,
+                Item.FileType.MESSAGEJSON,
             )
         ]
         items_src.sort(key = lambda item: (item.get_file_path(), item.get_tag(), item.get_row()))
 
         # 有效性检查
-        items_src_length = len([v for v in items_src if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
-        items_dst_length = len([v for v in items_dst if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+        items_src_length = len([v for v in items_src if v.get_status() == Base.ProjectStatus.NONE])
+        items_dst_length = len([v for v in items_dst if v.get_status() == Base.ProjectStatus.NONE])
         if items_src_length != items_dst_length:
             return None, None, Localizer.get().re_translation_page_alert_not_equal
 
@@ -262,15 +262,15 @@ class ReTranslationPage(QWidget, Base):
 
         # 生成翻译数据
         for item_src, item_dst in zip(items_src, items_dst):
-            if item_src.get_status() != Base.TranslationStatus.EXCLUDED and any(keyword in item_src.get_src() for keyword in keywords):
-                item_src.set_status(Base.TranslationStatus.UNTRANSLATED)
-            elif item_dst.get_status() != Base.TranslationStatus.EXCLUDED:
+            if item_src.get_status() != Base.ProjectStatus.EXCLUDED and any(keyword in item_src.get_src() for keyword in keywords):
+                item_src.set_status(Base.ProjectStatus.NONE)
+            elif item_dst.get_status() != Base.ProjectStatus.EXCLUDED:
                 item_src.set_dst(item_dst.get_dst())
                 item_src.set_name_dst(item_dst.get_name_dst())
-                item_src.set_status(Base.TranslationStatus.TRANSLATED_IN_PAST)
+                item_src.set_status(Base.ProjectStatus.PROCESSED_IN_PAST)
             else:
                 item_src.set_dst(item_dst.get_dst())
                 item_src.set_name_dst(item_dst.get_name_dst())
-                item_src.set_status(Base.TranslationStatus.EXCLUDED)
+                item_src.set_status(Base.ProjectStatus.EXCLUDED)
 
         return project, items_src, ""

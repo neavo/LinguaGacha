@@ -44,7 +44,7 @@ class Config():
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
     enable_preceding_on_local: bool = False
-    clean_ruby: bool = True
+    clean_ruby: bool = False
     deduplication_in_trans: bool = True
     deduplication_in_bilingual: bool = True
     write_translated_name_fields_to_file: bool = True
@@ -60,19 +60,19 @@ class Config():
 
     # GlossaryPage
     glossary_enable: bool = True
-    glossary_data: list[Any] = dataclasses.field(default_factory = list)
+    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
 
     # TextPreservePage
     text_preserve_enable: bool = False
-    text_preserve_data: list[Any] = dataclasses.field(default_factory = list)
+    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
 
     # PreTranslationReplacementPage
     pre_translation_replacement_enable: bool = True
-    pre_translation_replacement_data: list[Any] = dataclasses.field(default_factory = list)
+    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
 
     # PostTranslationReplacementPage
     post_translation_replacement_enable: bool = True
-    post_translation_replacement_data: list[Any] = dataclasses.field(default_factory = list)
+    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
 
     # CustomPromptZHPage
     custom_prompt_zh_enable: bool = False

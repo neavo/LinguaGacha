@@ -1,51 +1,51 @@
+import json
 import os
 import re
-import json
 import shutil
 import threading
 
 import openpyxl
 import openpyxl.worksheet.worksheet
-from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import PushButton
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import TransparentPushButton
+from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from model.Item import Item
 from module.Config import Config
-from widget.EmptyCard import EmptyCard
-from widget.CommandBarCard import CommandBarCard
 from module.File.FileManager import FileManager
-from module.Cache.CacheItem import CacheItem
 from module.Localizer.Localizer import Localizer
 from module.Localizer.LocalizerEN import LocalizerEN
 from module.Localizer.LocalizerZH import LocalizerZH
 from module.TableManager import TableManager
+from widget.CommandBarCard import CommandBarCard
+from widget.EmptyCard import EmptyCard
 
 class BatchCorrectionPage(QWidget, Base):
 
-    SINGLE: tuple[CacheItem.FileType] = (
-        CacheItem.FileType.MD,
-        CacheItem.FileType.TXT,
-        CacheItem.FileType.ASS,
-        CacheItem.FileType.SRT,
-        CacheItem.FileType.EPUB,
-        CacheItem.FileType.MESSAGEJSON,
+    SINGLE: tuple[Item.FileType] = (
+        Item.FileType.MD,
+        Item.FileType.TXT,
+        Item.FileType.ASS,
+        Item.FileType.SRT,
+        Item.FileType.EPUB,
+        Item.FileType.MESSAGEJSON,
     )
 
-    DOUBLE: tuple[CacheItem.FileType] = (
-        CacheItem.FileType.XLSX,
-        CacheItem.FileType.WOLFXLSX,
-        CacheItem.FileType.RENPY,
-        CacheItem.FileType.TRANS,
-        CacheItem.FileType.KVJSON,
+    DOUBLE: tuple[Item.FileType] = (
+        Item.FileType.XLSX,
+        Item.FileType.WOLFXLSX,
+        Item.FileType.RENPY,
+        Item.FileType.TRANS,
+        Item.FileType.KVJSON,
     )
 
     FILE_NAME_WHITELIST: re.Pattern = re.compile(r"^(结果检查_|result_check_)([^\\/]+)\.json$", flags = re.IGNORECASE)
@@ -192,7 +192,7 @@ class BatchCorrectionPage(QWidget, Base):
 
         # 有效性检查
         if len(data_dict) == 0:
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().alert_no_data,
             })
@@ -237,7 +237,7 @@ class BatchCorrectionPage(QWidget, Base):
         book.save(abs_path)
 
         # 提示
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().task_success,
         })
@@ -293,7 +293,7 @@ class BatchCorrectionPage(QWidget, Base):
 
         # 有效性检查
         if len(data_dict) == 0 or len(items) == 0:
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().alert_no_data,
             })
@@ -325,12 +325,12 @@ class BatchCorrectionPage(QWidget, Base):
         ).start()
 
     # 写入文件
-    def write_to_path_task(self, config: Config, items: list[CacheItem]) -> None:
+    def write_to_path_task(self, config: Config, items: list[Item]) -> None:
         FileManager(config).write_to_path(items)
         shutil.rmtree(f"{config.output_folder}/{Localizer.get().path_bilingual}", ignore_errors = True)
 
         # 提示
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().task_success,
         })

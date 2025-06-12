@@ -1,9 +1,9 @@
 from base.Base import Base
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 
 class NONE():
 
-    TEXT_TYPE: str = CacheItem.TextType.NONE
+    TEXT_TYPE: str = Item.TextType.NONE
 
     BLACKLIST_EXT: tuple[str] = (
         ".mp3", ".wav", ".ogg", "mid",
@@ -34,15 +34,15 @@ class NONE():
 
         # 如果数据为空，则跳过
         if src == "":
-            status: str = Base.TranslationStatus.EXCLUDED
+            status: str = Base.ProjectStatus.EXCLUDED
             skip_internal_filter: bool = False
         # 如果包含 水蓝色 标签，则翻译
         elif any(v == "aqua" for v in tag):
-            status: str = Base.TranslationStatus.UNTRANSLATED
+            status: str = Base.ProjectStatus.NONE
             skip_internal_filter: bool = True
         # 如果 第一列、第二列 都有文本，则跳过
         elif dst != "" and src != dst:
-            status: str = Base.TranslationStatus.TRANSLATED_IN_PAST
+            status: str = Base.ProjectStatus.PROCESSED_IN_PAST
             skip_internal_filter: bool = False
         else:
             block = self.filter(src, path, tag, context)
@@ -57,9 +57,9 @@ class NONE():
 
             # 如果不需要过滤的数据，则翻译，否则排除
             if any(v == False for v in block):
-                status: str = Base.TranslationStatus.UNTRANSLATED
+                status: str = Base.ProjectStatus.NONE
             else:
-                status: str = Base.TranslationStatus.EXCLUDED
+                status: str = Base.ProjectStatus.EXCLUDED
 
         return src, dst, tag, status, skip_internal_filter
 

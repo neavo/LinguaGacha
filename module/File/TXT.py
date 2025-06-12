@@ -3,7 +3,7 @@ import os
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -30,8 +30,8 @@ class TXT(Base):
         return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -43,11 +43,11 @@ class TXT(Base):
             with open(abs_path, "r", encoding = encoding) as reader:
                 for line in [line.removesuffix("\n") for line in reader.readlines()]:
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": line,
                             "dst": line,
                             "row": len(items),
-                            "file_type": CacheItem.FileType.TXT,
+                            "file_type": Item.FileType.TXT,
                             "file_path": rel_path,
                         })
                     )
@@ -55,11 +55,11 @@ class TXT(Base):
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.TXT
+            if item.get_file_type() == Item.FileType.TXT
         ]
 
         # 按文件路径分组

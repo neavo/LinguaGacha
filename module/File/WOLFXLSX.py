@@ -8,7 +8,7 @@ import openpyxl.worksheet.worksheet
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.TableManager import TableManager
 
@@ -43,8 +43,8 @@ class WOLFXLSX(Base):
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -82,48 +82,48 @@ class WOLFXLSX(Base):
                     or self.get_fg_color_index(sheet, row, 6) not in WOLFXLSX.FILL_COLOR_WHITELIST
                 ):
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
-                            "file_type": CacheItem.FileType.WOLFXLSX,
+                            "file_type": Item.FileType.WOLFXLSX,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.WOLF,
-                            "status": Base.TranslationStatus.EXCLUDED,
+                            "text_type": Item.TextType.WOLF,
+                            "status": Base.ProjectStatus.EXCLUDED,
                         })
                     )
                 elif dst != "" and src != dst:
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
-                            "file_type": CacheItem.FileType.WOLFXLSX,
+                            "file_type": Item.FileType.WOLFXLSX,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.WOLF,
-                            "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
+                            "text_type": Item.TextType.WOLF,
+                            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
                         })
                     )
                 else:
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": src,
                             "dst": dst,
                             "row": row,
-                            "file_type": CacheItem.FileType.WOLFXLSX,
+                            "file_type": Item.FileType.WOLFXLSX,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.WOLF,
-                            "status": Base.TranslationStatus.UNTRANSLATED,
+                            "text_type": Item.TextType.WOLF,
+                            "status": Base.ProjectStatus.NONE,
                         })
                     )
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.WOLFXLSX
+            if item.get_file_type() == Item.FileType.WOLFXLSX
         ]
 
         # 按文件路径分组
