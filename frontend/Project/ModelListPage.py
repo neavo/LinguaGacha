@@ -1,17 +1,17 @@
 from functools import partial
 
-import openai
 import anthropic
+import openai
 from google import genai
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-from qfluentwidgets import PushButton
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
+from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
@@ -121,7 +121,7 @@ class ModelListPage(MessageBoxBase, Base):
                 return [model.id for model in client.models.list()]
         except Exception as e:
             self.debug(Localizer.get().model_list_page_fail, e)
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().model_list_page_fail,
             })

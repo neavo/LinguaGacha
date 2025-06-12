@@ -4,7 +4,7 @@ import json
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class MESSAGEJSON(Base):
@@ -45,8 +45,8 @@ class MESSAGEJSON(Base):
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items: list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -79,25 +79,25 @@ class MESSAGEJSON(Base):
 
                     # 添加数据
                     items.append(
-                        CacheItem.from_dict({
+                        Item.from_dict({
                             "src": entry_message,
                             "dst": entry_message,
                             "name_src": name,
                             "name_dst": name,
                             "row": len(items),
-                            "file_type": CacheItem.FileType.MESSAGEJSON,
+                            "file_type": Item.FileType.MESSAGEJSON,
                             "file_path": rel_path,
-                            "text_type": CacheItem.TextType.KAG,
+                            "text_type": Item.TextType.KAG,
                         })
                     )
 
         return items
 
     # 写入数据
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.MESSAGEJSON
+            if item.get_file_type() == Item.FileType.MESSAGEJSON
         ]
 
         # 统一或还原姓名字段
@@ -140,7 +140,7 @@ class MESSAGEJSON(Base):
                 writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
 
     # 还原姓名字段
-    def revert_name(self, items: list[CacheItem]) -> list[CacheItem]:
+    def revert_name(self, items: list[Item]) -> list[Item]:
         for item in items:
             name_src = item.get_name_src()
             name_dst = item.get_name_dst()
@@ -155,7 +155,7 @@ class MESSAGEJSON(Base):
                 item.set_name_dst(item.get_name_src())
 
     # 统一姓名字段
-    def uniform_name(self, items: list[CacheItem]) -> list[CacheItem]:
+    def uniform_name(self, items: list[Item]) -> list[Item]:
         # 统计
         result: dict[str, dict] = {}
         for item in items:

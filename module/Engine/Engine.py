@@ -1,15 +1,9 @@
 import threading
-from enum import StrEnum
 from typing import Self
 
+from base.Base import Base
+
 class Engine():
-
-    class Status(StrEnum):
-
-        IDLE = "IDLE"                                                       # 无任务
-        TESTING = "TESTING"                                                 # 测试中
-        TRANSLATING = "TRANSLATING"                                         # 运行中
-        STOPPING = "STOPPING"                                               # 停止中
 
     TASK_PREFIX: str = "ENGINE_"
 
@@ -17,7 +11,7 @@ class Engine():
         super().__init__()
 
         # 初始化
-        self.status: __class__.Status = __class__.Status.IDLE
+        self.status: Base.TaskStatus = Base.TaskStatus.IDLE
 
         # 线程锁
         self.lock = threading.Lock()
@@ -30,17 +24,17 @@ class Engine():
         return cls.__instance__
 
     def run(self) -> None:
-        from module.Engine.API.APITester import APITester
+        from module.Engine.APITester.APITester import APITester
         self.api_test = APITester()
 
         from module.Engine.Translator.Translator import Translator
         self.translator = Translator()
 
-    def get_status(self) -> Status:
+    def get_status(self) -> Base.TaskStatus:
         with self.lock:
             return self.status
 
-    def set_status(self, status: Status) -> None:
+    def set_status(self, status: Base.TaskStatus) -> None:
         with self.lock:
             self.status = status
 

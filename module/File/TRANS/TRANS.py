@@ -10,7 +10,7 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.WOLF import WOLF
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class TRANS(Base):
@@ -26,8 +26,8 @@ class TRANS(Base):
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items: list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -72,7 +72,7 @@ class TRANS(Base):
                         # 检查并添加数据
                         src, dst, tag, status, skip_internal_filter = processor.check(path, data, tag, context)
                         items.append(
-                            CacheItem.from_dict({
+                            Item.from_dict({
                                 "src": src,
                                 "dst": dst,
                                 "extra_field": {
@@ -82,7 +82,7 @@ class TRANS(Base):
                                 },
                                 "tag": path,
                                 "row": len(items),
-                                "file_type": CacheItem.FileType.TRANS,
+                                "file_type": Item.FileType.TRANS,
                                 "file_path": rel_path,
                                 "text_type": processor.TEXT_TYPE,
                                 "status": status,
@@ -93,22 +93,22 @@ class TRANS(Base):
             # 去重
             if self.config.deduplication_in_trans == True:
                 translation: dict[str, str] = {}
-                for item in [v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED]:
+                for item in [v for v in items if v.get_status() == Base.ProjectStatus.NONE]:
                     src = item.get_src()
                     dst = item.get_dst()
                     if src not in translation:
                         translation[src] = dst
                     else:
-                        item.set_status(Base.TranslationStatus.DUPLICATED)
+                        item.set_status(Base.ProjectStatus.DUPLICATED)
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.TRANS
+            if item.get_file_type() == Item.FileType.TRANS
         ]
 
         # 按文件路径分组
@@ -144,12 +144,12 @@ class TRANS(Base):
                     # 去重
                     if self.config.deduplication_in_trans == True:
                         translation: dict[str, str] = {}
-                        for item in [v for v in items if v.get_status() == Base.TranslationStatus.TRANSLATED]:
+                        for item in [v for v in items if v.get_status() == Base.ProjectStatus.PROCESSED]:
                             src = item.get_src()
                             dst = item.get_dst()
                             if src not in translation:
                                 translation[src] = dst
-                        for item in [v for v in items if v.get_status() == Base.TranslationStatus.DUPLICATED]:
+                        for item in [v for v in items if v.get_status() == Base.ProjectStatus.DUPLICATED]:
                             src = item.get_src()
                             dst = item.get_dst()
                             if src in translation:
@@ -170,7 +170,7 @@ class TRANS(Base):
                             context.append(extra_field.get("context", []))
 
                             # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
-                            if item.get_status() in (Base.TranslationStatus.EXCLUDED, Base.TranslationStatus.TRANSLATED_IN_PAST):
+                            if item.get_status() in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.PROCESSED_IN_PAST):
                                 parameters.append(extra_field.get("parameter", []))
                             # 否则，判断与计算分区翻译功能参数
                             else:

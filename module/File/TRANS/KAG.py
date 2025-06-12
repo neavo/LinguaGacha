@@ -1,6 +1,6 @@
 from module.File.TRANS.NONE import NONE
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 
 class KAG(NONE):
 
-    TEXT_TYPE: str = CacheItem.TextType.KAG
+    TEXT_TYPE: str = Item.TextType.KAG

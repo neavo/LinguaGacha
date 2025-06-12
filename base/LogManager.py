@@ -7,8 +7,6 @@ from typing import Self
 from rich.console import Console
 from rich.logging import RichHandler
 
-from module.ProgressBar import ProgressBar
-
 class LogManager():
 
     PATH: str = "./log"
@@ -29,7 +27,7 @@ class LogManager():
             backupCount = 3,
         )
         self.file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt = "%Y-%m-%d %H:%M:%S"))
-        self.file_logger = logging.getLogger("linguagacha_file")
+        self.file_logger = logging.getLogger("app_file")
         self.file_logger.propagate = False
         self.file_logger.setLevel(logging.DEBUG)
         self.file_logger.addHandler(self.file_handler)
@@ -43,7 +41,7 @@ class LogManager():
             log_time_format = "[%X]",
             omit_repeated_times = False,
         )
-        self.console_logger = logging.getLogger("linguagacha_console")
+        self.console_logger = logging.getLogger("app_console")
         self.console_logger.propagate = False
         self.console_logger.setLevel(logging.INFO)
         self.console_logger.addHandler(self.console_handler)

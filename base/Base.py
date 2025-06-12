@@ -9,25 +9,30 @@ class Base():
     # 事件
     class Event(StrEnum):
 
-        PLATFORM_TEST_DONE = "PLATFORM_TEST_DONE"                          # API 测试完成
-        PLATFORM_TEST_START = "PLATFORM_TEST_START"                        # API 测试开始
-        TRANSLATION_START = "TRANSLATION_START"                            # 翻译开始
-        TRANSLATION_STOP = "TRANSLATION_STOP"                              # 翻译停止
-        TRANSLATION_DONE = "TRANSLATION_DONE"                              # 翻译完成
-        TRANSLATION_UPDATE = "TRANSLATION_UPDATE"                          # 翻译状态更新
-        TRANSLATION_MANUAL_EXPORT = "TRANSLATION_MANUAL_EXPORT"            # 翻译结果手动导出
-        CACHE_FILE_AUTO_SAVE = "CACHE_FILE_AUTO_SAVE"                      # 缓存文件自动保存
-        PROJECT_STATUS = "PROJECT_STATUS"                                  # 项目状态检查
-        PROJECT_STATUS_CHECK_DONE = "PROJECT_STATUS_CHECK_DONE"            # 项目状态检查完成
-        APP_UPDATE_CHECK_START = "APP_UPDATE_CHECK_START"                  # 更新 - 检查开始
-        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"                    # 更新 - 检查完成
-        APP_UPDATE_DOWNLOAD_START = "APP_UPDATE_DOWNLOAD_START"            # 更新 - 下载开始
-        APP_UPDATE_DOWNLOAD_DONE = "APP_UPDATE_DOWNLOAD_DONE"              # 更新 - 下载完成
-        APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"            # 更新 - 下载报错
-        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"          # 更新 - 下载更新
-        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                          # 更新 - 解压
-        APP_TOAST_SHOW = "APP_TOAST_SHOW"                                  # 显示 Toast
-        GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                              # 术语表刷新
+        TOAST = "TOAST"                                                     # Toast
+        PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"                             # 项目 - 检查
+        PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"                           # 项目 - 检查完成
+        APITEST_RUN = "APITEST_RUN"                                         # 测试 - 开始
+        APITEST_DONE = "APITEST_DONE"                                       # 测试 - 完成
+        TRANSLATION_RUN = "TRANSLATION_RUN"                                 # 翻译 - 开始
+        TRANSLATION_DONE = "TRANSLATION_DONE"                               # 翻译 - 完成
+        TRANSLATION_UPDATE = "TRANSLATION_UPDATE"                           # 翻译 - 更新
+        TRANSLATION_EXPORT = "TRANSLATION_EXPORT"                           # 翻译 - 导出
+        TRANSLATION_REQUIRE_STOP = "TRANSLATION_REQUIRE_STOP"               # 翻译 - 请求停止
+        NER_ANALYZER_RUN = "NER_ANALYZER_RUN"                               # 分析 - 开始
+        NER_ANALYZER_DONE = "NER_ANALYZER_DONE"                             # 分析 - 完成
+        NER_ANALYZER_UPDATE = "NER_ANALYZER_UPDATE"                         # 分析 - 更新
+        NER_ANALYZER_EXPORT = "NER_ANALYZER_EXPORT"                         # 分析 - 导出
+        NER_ANALYZER_REQUIRE_STOP = "NER_ANALYZER_REQUIRE_STOP"             # 分析 - 请求停止
+        APP_UPDATE_CHECK_RUN = "APP_UPDATE_CHECK_RUN"                       # 更新 - 检查
+        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"                     # 更新 - 检查完成
+        APP_UPDATE_DOWNLOAD_RUN = "APP_UPDATE_DOWNLOAD_RUN"                 # 更新 - 下载
+        APP_UPDATE_DOWNLOAD_DONE = "APP_UPDATE_DOWNLOAD_DONE"               # 更新 - 下载完成
+        APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"             # 更新 - 下载报错
+        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"           # 更新 - 下载更新
+        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                           # 更新 - 解压
+        CACHE_SAVE = "CACHE_SAVE"                                           # 保存缓存
+        GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                               # 术语表刷新
 
     # 接口格式
     class APIFormat(StrEnum):
@@ -45,13 +50,29 @@ class Base():
         SUCCESS = "SUCCESS"
         WARNING = "WARNING"
 
-    # 翻译状态
-    class TranslationStatus(StrEnum):
+    # 任务类型
+    class TaskType(StrEnum):
 
-        UNTRANSLATED = "UNTRANSLATED"                                       # 待翻译
+        NER = "NER"
+        APITEST = "APITEST"
+        TRANSLATION = "TRANSLATION"
+
+    # 任务状态
+    class TaskStatus(StrEnum):
+
+        IDLE = "IDLE"                                                       # 无任务
+        NERING = "NERING"                                                   # 测试中
+        TESTING = "TESTING"                                                 # 测试中
         TRANSLATING = "TRANSLATING"                                         # 翻译中
-        TRANSLATED = "TRANSLATED"                                           # 已翻译
-        TRANSLATED_IN_PAST = "TRANSLATED_IN_PAST"                           # 过去已翻译
+        STOPPING = "STOPPING"                                               # 停止中
+
+    # 项目状态
+    class ProjectStatus(StrEnum):
+
+        NONE = "NONE"                                                       # 无
+        PROCESSING = "PROCESSING"                                           # 处理中
+        PROCESSED = "PROCESSED"                                             # 已处理
+        PROCESSED_IN_PAST = "PROCESSED_IN_PAST"                             # 过去已处理
         EXCLUDED = "EXCLUDED"                                               # 已排除
         DUPLICATED = "DUPLICATED"                                           # 重复条目
 

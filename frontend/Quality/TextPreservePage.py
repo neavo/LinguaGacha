@@ -1,6 +1,7 @@
 import json
 import os
 from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
@@ -89,7 +90,7 @@ class TextPreservePage(QWidget, Base):
                     continue
 
                 if new.get("src") == old.get("src"):
-                    self.emit(Base.Event.APP_TOAST_SHOW, {
+                    self.emit(Base.Event.TOAST, {
                         "type": Base.ToastType.WARNING,
                         "duration": 5000,
                         "message": (
@@ -110,7 +111,7 @@ class TextPreservePage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_save_toast,
             })
@@ -179,7 +180,7 @@ class TextPreservePage(QWidget, Base):
             if row > -1:
                 self.table.setCurrentCell(row, 0)
             else:
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.WARNING,
                     "message": Localizer.get().alert_no_data,
                 })
@@ -221,7 +222,7 @@ class TextPreservePage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })
@@ -234,11 +235,15 @@ class TextPreservePage(QWidget, Base):
     def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
+            path, _ = QFileDialog.getSaveFileName(window, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
+            if not isinstance(path, str) or path == "":
+                return None
+
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"path_{__class__.BASE}_export"))
+            self.table_manager.export(Path(path).stem)
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_export_toast,
             })
@@ -293,7 +298,7 @@ class TextPreservePage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_reset_toast,
             })
@@ -314,7 +319,7 @@ class TextPreservePage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })

@@ -1,6 +1,7 @@
 import json
 import os
 from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
@@ -54,7 +55,7 @@ class GlossaryPage(QWidget, Base):
         self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
 
     # 术语表刷新事件
-    def glossary_refresh(self, event: str, data: dict) -> None:
+    def glossary_refresh(self, event: Base.Event, data: dict) -> None:
         self.table_manager.reset()
         self.table_manager.set_data(getattr(Config().load(), f"{__class__.BASE}_data"))
         self.table_manager.sync()
@@ -99,7 +100,7 @@ class GlossaryPage(QWidget, Base):
                     continue
 
                 if new.get("src") == old.get("src"):
-                    self.emit(Base.Event.APP_TOAST_SHOW, {
+                    self.emit(Base.Event.TOAST, {
                         "type": Base.ToastType.WARNING,
                         "duration": 5000,
                         "message": (
@@ -120,7 +121,7 @@ class GlossaryPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_save_toast,
             })
@@ -192,7 +193,7 @@ class GlossaryPage(QWidget, Base):
             if row > -1:
                 self.table.setCurrentCell(row, 0)
             else:
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.WARNING,
                     "message": Localizer.get().alert_no_data,
                 })
@@ -235,7 +236,7 @@ class GlossaryPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })
@@ -248,11 +249,15 @@ class GlossaryPage(QWidget, Base):
     def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
+            path, _ = QFileDialog.getSaveFileName(window, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
+            if not isinstance(path, str) or path == "":
+                return None
+
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"path_{__class__.BASE}_export"))
+            self.table_manager.export(Path(path).stem)
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_export_toast,
             })
@@ -307,7 +312,7 @@ class GlossaryPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_reset_toast,
             })
@@ -328,7 +333,7 @@ class GlossaryPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })

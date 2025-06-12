@@ -8,7 +8,7 @@ import opencc
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Fixer.CodeFixer import CodeFixer
 from module.Fixer.EscapeFixer import EscapeFixer
@@ -23,9 +23,9 @@ from module.RubyCleaner import RubyCleaner
 class TextProcessor(Base):
 
     # 对文本进行处理的流程为：
-    # - 文本保护
     # - 正规化
     # - 清理注音
+    # - 文本保护
     # - 译前替换
     # - 注入姓名
     # ---- 翻译 ----
@@ -55,12 +55,12 @@ class TextProcessor(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, item: CacheItem) -> None:
+    def __init__(self, config: Config, item: Item) -> None:
         super().__init__()
 
         # 初始化
         self.config: Config = config
-        self.item: CacheItem = item
+        self.item: Item = item
 
         self.srcs: list[str] = []
         self.samples: list[str] = []
@@ -74,7 +74,7 @@ class TextProcessor(Base):
 
     @classmethod
     @lru_cache(maxsize = None)
-    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: CacheItem.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
+    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: Item.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
         data: list[dict[str, str]] = []
         if custom == True:
             data = custom_data
@@ -97,7 +97,7 @@ class TextProcessor(Base):
         elif rule_type == __class__.RuleType.SUFFIX:
             return re.compile(rf"(?:{"|".join(data)})+$", re.IGNORECASE)
 
-    def get_re_check(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -107,7 +107,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_sample(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_sample(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -117,7 +117,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_prefix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_prefix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -127,7 +127,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_suffix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_suffix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -186,7 +186,7 @@ class TextProcessor(Base):
         return dst
 
     # 注入姓名
-    def inject_name(self, srcs: list[str], item: CacheItem) -> list[str]:
+    def inject_name(self, srcs: list[str], item: Item) -> list[str]:
         name: str = item.get_first_name_src()
         if name is not None and len(srcs) > 0:
             srcs[0] = f"【{name}】{srcs[0]}"
@@ -194,7 +194,7 @@ class TextProcessor(Base):
         return srcs
 
     # 提取姓名
-    def extract_name(self, srcs: list[str], dsts: list[str], item: CacheItem) -> str:
+    def extract_name(self, srcs: list[str], dsts: list[str], item: Item) -> str:
         name: str = None
         if item.get_first_name_src() is not None and len(srcs) > 0:
             result: re.Match[str] = __class__.RE_NAME.search(dsts[0])
@@ -248,7 +248,7 @@ class TextProcessor(Base):
             return __class__.OPENCCT2S.convert(dst)
 
     # 处理前后缀代码段
-    def prefix_suffix_process(self, i: int, src: str, text_type: CacheItem.TextType) -> None:
+    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> None:
         rule: re.Pattern = self.get_re_prefix(
             custom = self.config.text_preserve_enable,
             text_type = text_type,
@@ -270,6 +270,12 @@ class TextProcessor(Base):
         # 依次处理每行，顺序为：
         text_type = self.item.get_text_type()
         for i, src in enumerate(self.item.get_src().split("\n")):
+            # 正规化
+            src = self.normalize(src)
+
+            # 清理注音
+            src = self.clean_ruby(src)
+
             if src == "":
                 pass
             elif src.strip() == "":
@@ -282,12 +288,6 @@ class TextProcessor(Base):
                 if src == "":
                     pass
                 else:
-                    # 正规化
-                    src = self.normalize(src)
-
-                    # 清理注音
-                    src = self.clean_ruby(src)
-
                     # 译前替换
                     src = self.replace_pre_translation(src)
 
@@ -300,7 +300,7 @@ class TextProcessor(Base):
                         self.samples.extend([v.group(0) for v in rule.finditer(src)])
 
                     # 补充
-                    if text_type == CacheItem.TextType.MD:
+                    if text_type == Item.TextType.MD:
                         self.samples.append("Markdown Code")
 
                     # 保存结果
@@ -349,7 +349,7 @@ class TextProcessor(Base):
         return name, "\n".join(results)
 
     # 检查代码段
-    def check(self, src: str, dst: str, text_type: CacheItem.TextType) -> bool:
+    def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern = self.get_re_check(

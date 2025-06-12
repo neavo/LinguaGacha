@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 
 from base.Base import Base

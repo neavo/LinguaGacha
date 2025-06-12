@@ -10,7 +10,7 @@ from rich.table import Table
 
 from base.Base import Base
 from base.LogManager import LogManager
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
@@ -28,7 +28,7 @@ class TranslatorTask(Base):
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
-    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[CacheItem], precedings: list[CacheItem]) -> None:
+    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[Item], precedings: list[Item]) -> None:
         super().__init__()
 
         # 初始化
@@ -42,11 +42,11 @@ class TranslatorTask(Base):
         self.response_checker = ResponseChecker(self.config, items)
 
     # 启动任务
-    def start(self, current_round: int) -> dict[str, str]:
-        return self.request(self.items, self.processors, self.precedings, self.local_flag, current_round)
+    def start(self) -> dict[str, str]:
+        return self.request(self.items, self.processors, self.precedings, self.local_flag)
 
     # 请求
-    def request(self, items: list[CacheItem], processors: list[TextProcessor], precedings: list[CacheItem], local_flag: bool, current_round: int) -> dict[str, str]:
+    def request(self, items: list[Item], processors: list[TextProcessor], precedings: list[Item], local_flag: bool) -> dict[str, str]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -64,7 +64,7 @@ class TranslatorTask(Base):
         if len(srcs) == 0:
             for item, processor in zip(items, processors):
                 item.set_dst(item.get_src())
-                item.set_status(Base.TranslationStatus.TRANSLATED)
+                item.set_status(Base.ProjectStatus.PROCESSED)
 
             return {
                 "row_count": len(items),
@@ -79,7 +79,7 @@ class TranslatorTask(Base):
             self.messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
 
         # 发起请求
-        requester = TaskRequester(self.config, self.platform, current_round)
+        requester = TaskRequester(self.config, self.platform)
         skip, response_think, response_result, input_tokens, output_tokens = requester.request(self.messages)
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
@@ -105,11 +105,11 @@ class TranslatorTask(Base):
         # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
         file_log = console_log.copy()
         if response_think != "":
-            file_log.append(Localizer.get().translator_task_response_think + response_think)
-            console_log.append(Localizer.get().translator_task_response_think + response_think)
+            file_log.append(Localizer.get().engine_response_think + "\n" + response_think)
+            console_log.append(Localizer.get().engine_response_think + "\n" + response_think)
         if response_result != "":
-            file_log.append(Localizer.get().translator_task_response_result + response_result)
-            console_log.append(Localizer.get().translator_task_response_result + response_result) if LogManager.get().is_expert_mode() else None
+            file_log.append(Localizer.get().engine_response_result + "\n" + response_result)
+            console_log.append(Localizer.get().engine_response_result + "\n" + response_result) if LogManager.get().is_expert_mode() else None
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
@@ -134,7 +134,7 @@ class TranslatorTask(Base):
                     name, dst = processor.post_process(dsts_ex)
                     item.set_dst(dst)
                     item.set_first_name_dst(name) if name is not None else None
-                    item.set_status(Base.TranslationStatus.TRANSLATED)
+                    item.set_status(Base.ProjectStatus.PROCESSED)
                     updated_count = updated_count + 1
 
         # 打印任务结果
@@ -255,7 +255,7 @@ class TranslatorTask(Base):
             log_func = self.warning
         else:
             style = "green"
-            message = Localizer.get().translator_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
+            message = Localizer.get().engine_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
             message = message.replace("{LINES}", f"{len(srcs)}")
             message = message.replace("{PT}", f"{pt}")
             message = message.replace("{CT}", f"{ct}")
@@ -272,7 +272,7 @@ class TranslatorTask(Base):
         # 根据线程数判断是否需要打印表格
         if Engine.get().get_running_task_count() > 32:
             rich.get_console().print(
-                Localizer.get().translator_too_many_task + "\n" + message + "\n"
+                Localizer.get().engine_task_too_many + "\n" + message + "\n"
             )
         else:
             rich.get_console().print(
@@ -336,8 +336,6 @@ class TranslatorTask(Base):
             return Localizer.get().response_checker_line_error_kana
         elif error == ResponseChecker.Error.LINE_ERROR_HANGEUL:
             return Localizer.get().response_checker_line_error_hangeul
-        elif error == ResponseChecker.Error.LINE_ERROR_FAKE_REPLY:
-            return Localizer.get().response_checker_line_error_fake_reply
         elif error == ResponseChecker.Error.LINE_ERROR_EMPTY_LINE:
             return Localizer.get().response_checker_line_error_empty_line
         elif error == ResponseChecker.Error.LINE_ERROR_SIMILARITY:
@@ -345,4 +343,4 @@ class TranslatorTask(Base):
         elif error == ResponseChecker.Error.LINE_ERROR_DEGRADATION:
             return Localizer.get().response_checker_line_error_degradation
         else:
-            return Localizer.get().response_checker_unknown
+            return ""

@@ -1,39 +1,36 @@
 import time
-import threading
 from typing import Callable
 
-from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTime
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLayout
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import TimeEdit
+from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FlowLayout
+from qfluentwidgets import FluentIcon
+from qfluentwidgets import FluentWindow
+from qfluentwidgets import IndeterminateProgressRing
+from qfluentwidgets import LargeTitleLabel
 from qfluentwidgets import MessageBox
 from qfluentwidgets import MessageBoxBase
-from qfluentwidgets import FluentWindow
 from qfluentwidgets import ProgressRing
-from qfluentwidgets import CaptionLabel
-from qfluentwidgets import SubtitleLabel
 from qfluentwidgets import StrongBodyLabel
-from qfluentwidgets import LargeTitleLabel
-from qfluentwidgets import IndeterminateProgressRing
+from qfluentwidgets import SubtitleLabel
+from qfluentwidgets import TimeEdit
 
 from base.Base import Base
 from module.Config import Config
 from module.Engine.Engine import Engine
-from module.Engine.Translator.Translator import Translator
 from module.Localizer.Localizer import Localizer
+from widget.CommandBarCard import CommandBarCard
 from widget.Separator import Separator
 from widget.WaveformWidget import WaveformWidget
-from widget.CommandBarCard import CommandBarCard
 
 class DashboardCard(CardWidget):
 
@@ -123,7 +120,7 @@ class TimerMessageBox(MessageBoxBase):
 
         return True
 
-class TranslationPage(QWidget, Base):
+class TaskPage(QWidget, Base):
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -131,12 +128,6 @@ class TranslationPage(QWidget, Base):
 
         # 初始化
         self.data = {}
-        self.status_text = {
-            Engine.Status.IDLE: Localizer.get().translation_page_status_idle,
-            Engine.Status.TESTING: Localizer.get().translation_page_status_testing,
-            Engine.Status.TRANSLATING: Localizer.get().translation_page_status_translating,
-            Engine.Status.STOPPING: Localizer.get().translation_page_status_stopping,
-        }
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -152,19 +143,19 @@ class TranslationPage(QWidget, Base):
         self.add_widget_foot(self.container, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.PLATFORM_TEST_DONE, self.update_button_status)
-        self.subscribe(Base.Event.PLATFORM_TEST_START, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_START, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_STOP, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_stop_done)
+        self.subscribe(Base.Event.CACHE_SAVE, self.cache_save)
+        self.subscribe(Base.Event.PROJECT_CHECK_DONE, self.update_button_status)
+        self.subscribe(Base.Event.APITEST_RUN, self.update_button_status)
+        self.subscribe(Base.Event.APITEST_DONE, self.update_button_status)
+        self.subscribe(Base.Event.TRANSLATION_RUN, self.update_button_status)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
-        self.subscribe(Base.Event.CACHE_FILE_AUTO_SAVE, self.cache_file_auto_save)
-        self.subscribe(Base.Event.PROJECT_STATUS_CHECK_DONE, self.update_button_status)
+        self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self.update_button_status)
 
         # 定时器
         self.ui_update_timer = QTimer(self)
         self.ui_update_timer.timeout.connect(self.update_ui_tick)
-        self.ui_update_timer.start(500)
+        self.ui_update_timer.start(250)
 
     # 页面显示事件
     def showEvent(self, event) -> None:
@@ -174,9 +165,8 @@ class TranslationPage(QWidget, Base):
         self.action_continue.setEnabled(False)
 
         # 触发事件
-        self.emit(Base.Event.PROJECT_STATUS, {})
+        self.emit(Base.Event.PROJECT_CHECK_RUN, {})
 
-    # 更新 frontend 定时器
     def update_ui_tick(self) -> None:
         self.update_time(self.data)
         self.update_line(self.data)
@@ -184,46 +174,47 @@ class TranslationPage(QWidget, Base):
         self.update_task(self.data)
         self.update_status(self.data)
 
-    # 更新按钮状态事件
-    def update_button_status(self, event: str, data: dict) -> None:
-        if Engine.get().get_status() == Engine.Status.IDLE:
+    def update_button_status(self, event: Base.Event, data: dict) -> None:
+        if Engine.get().get_status() == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Engine.get().get_status() == Engine.Status.TESTING:
+        elif Engine.get().get_status() == Base.TaskStatus.TESTING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Engine.get().get_status() == Engine.Status.TRANSLATING:
+        elif Engine.get().get_status() == Base.TaskStatus.TRANSLATING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_export.setEnabled(True)
-        elif Engine.get().get_status() == Engine.Status.STOPPING:
+        elif Engine.get().get_status() == Base.TaskStatus.STOPPING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
 
-        if Engine.get().get_status() == Engine.Status.IDLE and data.get("status") == Base.TranslationStatus.TRANSLATING:
+        if Engine.get().get_status() == Base.TaskStatus.IDLE and data.get("status") == Base.ProjectStatus.PROCESSING:
             self.action_continue.setEnabled(True)
         else:
             self.action_continue.setEnabled(False)
 
-    # 翻译更新事件
-    def translation_update(self, event: str, data: dict) -> None:
-        self.data = data
+    def cache_save(self, event: Base.Event, data: dict) -> None:
+        if self.indeterminate.isHidden():
+            self.indeterminate_show(Localizer.get().task_page_indeterminate_saving)
 
-    # 翻译停止完成事件
-    def translation_stop_done(self, event: str, data: dict) -> None:
-        # 更新按钮状态
+            # 延迟关闭
+            QTimer.singleShot(1500, lambda: self.indeterminate_hide())
+
+    def translation_done(self, event: Base.Event, data: dict) -> None:
         self.update_button_status(event, data)
+        self.emit(Base.Event.PROJECT_CHECK_RUN, {})
 
-        # 更新继续翻译按钮状态
-        self.emit(Base.Event.PROJECT_STATUS, {})
+    def translation_update(self, event: Base.Event, data: dict) -> None:
+        self.data = data
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        if Engine.get().get_status() not in (Engine.Status.STOPPING, Engine.Status.TRANSLATING):
+        if Engine.get().get_status() not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         if self.data.get("start_time", 0) == 0:
@@ -254,7 +245,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        if Engine.get().get_status() not in (Engine.Status.STOPPING, Engine.Status.TRANSLATING):
+        if Engine.get().get_status() not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         line = self.data.get("line", 0)
@@ -291,7 +282,7 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        if Engine.get().get_status() not in (Engine.Status.STOPPING, Engine.Status.TRANSLATING):
+        if Engine.get().get_status() not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
             return None
 
         token = self.data.get("total_tokens", 0)
@@ -316,25 +307,17 @@ class TranslationPage(QWidget, Base):
 
     # 更新进度环
     def update_status(self, data: dict) -> None:
-        if Engine.get().get_status() == Engine.Status.STOPPING:
+        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
-            self.ring.setFormat(f"{Localizer.get().translation_page_status_stopping}\n{percent * 100:.2f}%")
-        elif Engine.get().get_status() == Engine.Status.TRANSLATING:
+            self.ring.setFormat(f"{Localizer.get().task_page_status_stopping}\n{percent * 100:.2f}%")
+        elif Engine.get().get_status() == Base.TaskStatus.TRANSLATING:
             percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
             self.ring.setValue(int(percent * 10000))
-            self.ring.setFormat(f"{Localizer.get().translation_page_status_translating}\n{percent * 100:.2f}%")
+            self.ring.setFormat(f"{Localizer.get().task_page_status_translating}\n{percent * 100:.2f}%")
         else:
             self.ring.setValue(0)
-            self.ring.setFormat(Localizer.get().translation_page_status_idle)
-
-    # 缓存文件自动保存事件
-    def cache_file_auto_save(self, event: str, data: dict) -> None:
-        if self.indeterminate.isHidden():
-            self.indeterminate_show(Localizer.get().translation_page_indeterminate_saving)
-
-            # 延迟关闭
-            QTimer.singleShot(1500, lambda: self.indeterminate_hide())
+            self.ring.setFormat(Localizer.get().task_page_status_idle)
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
@@ -358,7 +341,7 @@ class TranslationPage(QWidget, Base):
         self.ring.setTextVisible(True)
         self.ring.setStrokeWidth(12)
         self.ring.setFixedSize(140, 140)
-        self.ring.setFormat(Localizer.get().translation_page_status_idle)
+        self.ring.setFormat(Localizer.get().task_page_status_idle)
 
         ring_vbox_container = QWidget()
         ring_vbox = QVBoxLayout(ring_vbox_container)
@@ -410,7 +393,7 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.setFixedSize(16, 16)
         self.indeterminate.setStrokeWidth(3)
         self.indeterminate.hide()
-        self.info_label = CaptionLabel(Localizer.get().translation_page_indeterminate_saving, self)
+        self.info_label = CaptionLabel(Localizer.get().task_page_indeterminate_saving, self)
         self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.info_label.hide()
 
@@ -423,7 +406,7 @@ class TranslationPage(QWidget, Base):
     def add_time_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.time = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_time,
+            title = Localizer.get().task_page_card_time,
             value = Localizer.get().none,
             unit = "",
         )
@@ -434,7 +417,7 @@ class TranslationPage(QWidget, Base):
     def add_remaining_time_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.remaining_time = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_remaining_time,
+            title = Localizer.get().task_page_card_remaining_time,
             value = Localizer.get().none,
             unit = "",
         )
@@ -445,7 +428,7 @@ class TranslationPage(QWidget, Base):
     def add_line_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.line_card = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_line,
+            title = Localizer.get().task_page_card_line,
             value = Localizer.get().none,
             unit = "",
         )
@@ -456,7 +439,7 @@ class TranslationPage(QWidget, Base):
     def add_remaining_line_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.remaining_line = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_remaining_line,
+            title = Localizer.get().task_page_card_remaining_line,
             value = Localizer.get().none,
             unit = "",
         )
@@ -467,7 +450,7 @@ class TranslationPage(QWidget, Base):
     def add_speed_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.speed = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_speed,
+            title = Localizer.get().task_page_card_speed,
             value = Localizer.get().none,
             unit = "",
         )
@@ -478,7 +461,7 @@ class TranslationPage(QWidget, Base):
     def add_token_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.token = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_token,
+            title = Localizer.get().task_page_card_token,
             value = Localizer.get().none,
             unit = "",
         )
@@ -489,7 +472,7 @@ class TranslationPage(QWidget, Base):
     def add_task_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         self.task = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_task,
+            title = Localizer.get().task_page_card_task,
             value = Localizer.get().none,
             unit = "",
         )
@@ -508,8 +491,8 @@ class TranslationPage(QWidget, Base):
                 if not message_box.exec():
                     return
 
-            self.emit(Base.Event.TRANSLATION_START, {
-                "status": Base.TranslationStatus.UNTRANSLATED,
+            self.emit(Base.Event.TRANSLATION_RUN, {
+                "status": Base.ProjectStatus.NONE,
             })
 
         self.action_start = parent.add_action(
@@ -519,14 +502,14 @@ class TranslationPage(QWidget, Base):
     # 停止
     def add_command_bar_action_stop(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().translation_page_alert_pause, window)
+            message_box = MessageBox(Localizer.get().alert, Localizer.get().task_page_alert_pause, window)
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
             # 确认则触发停止翻译事件
             if message_box.exec():
-                self.indeterminate_show(Localizer.get().translation_page_indeterminate_stoping)
-                self.emit(Base.Event.TRANSLATION_STOP, {})
+                self.indeterminate_show(Localizer.get().task_page_indeterminate_stoping)
+                self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
 
         self.action_stop = parent.add_action(
             Action(FluentIcon.CANCEL_MEDIUM, Localizer.get().stop, parent,  triggered = triggered),
@@ -537,26 +520,26 @@ class TranslationPage(QWidget, Base):
     def add_command_bar_action_continue(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
-            self.emit(Base.Event.TRANSLATION_START, {
-                "status": Base.TranslationStatus.TRANSLATING,
+            self.emit(Base.Event.TRANSLATION_RUN, {
+                "status": Base.ProjectStatus.PROCESSING,
             })
 
         self.action_continue = parent.add_action(
-            Action(FluentIcon.ROTATE, Localizer.get().translation_page_continue, parent, triggered = triggered),
+            Action(FluentIcon.ROTATE, Localizer.get().task_page_continue, parent, triggered = triggered),
         )
         self.action_continue.setEnabled(False)
 
     # 导出已完成的内容
     def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
-            self.emit(Base.Event.TRANSLATION_MANUAL_EXPORT, {})
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TRANSLATION_EXPORT, {})
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().task_success,
             })
 
         self.action_export = parent.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().translation_page_export, parent, triggered = triggered),
+            Action(FluentIcon.SHARE, Localizer.get().task_page_export, parent, triggered = triggered),
         )
         self.action_export.setEnabled(False)
 
@@ -584,8 +567,8 @@ class TranslationPage(QWidget, Base):
                 delay_time = delay_time - interval
                 self.action_timer.setText(format_time(delay_time))
             else:
-                self.emit(Base.Event.TRANSLATION_START, {
-                    "status": Base.TranslationStatus.UNTRANSLATED,
+                self.emit(Base.Event.TRANSLATION_RUN, {
+                    "status": Base.ProjectStatus.NONE,
                 })
 
                 delay_time = None
@@ -602,7 +585,7 @@ class TranslationPage(QWidget, Base):
             if not isinstance(delay_time, int):
                 TimerMessageBox(
                     parent = window,
-                    title = Localizer.get().translation_page_timer,
+                    title = Localizer.get().task_page_timer,
                     message_box_close = message_box_close,
                 ).exec()
             else:

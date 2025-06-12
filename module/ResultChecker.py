@@ -1,15 +1,15 @@
-import os
 import json
+import os
 
 import opencc
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
-from module.Response.ResponseChecker import ResponseChecker
 from module.Localizer.Localizer import Localizer
+from module.Response.ResponseChecker import ResponseChecker
+from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
 class ResultChecker(Base):
@@ -18,7 +18,7 @@ class ResultChecker(Base):
     OPENCCT2S = opencc.OpenCC("t2s")
     OPENCCS2T = opencc.OpenCC("s2tw")
 
-    def __init__(self, config: Config, items: list[CacheItem]) -> None:
+    def __init__(self, config: Config, items: list[Item]) -> None:
         super().__init__()
 
         # 初始化
@@ -26,10 +26,10 @@ class ResultChecker(Base):
         self.text_processor: TextProcessor = TextProcessor(config, None)
 
         # 筛选数据
-        self.items_translated: list[CacheItem] = []
-        self.items_untranslated = [item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]
+        self.items_translated: list[Item] = []
+        self.items_untranslated = [item for item in items if item.get_status() == Base.ProjectStatus.NONE]
         for item in items:
-            if item.get_status() == Base.TranslationStatus.TRANSLATED:
+            if item.get_status() == Base.ProjectStatus.PROCESSED:
                 processors = TextProcessor(config, item)
                 processors.pre_process()
                 if len(processors.srcs) > 0:

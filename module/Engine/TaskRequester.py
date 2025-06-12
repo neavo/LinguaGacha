@@ -41,13 +41,12 @@ class TaskRequester(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
+    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list]) -> None:
         super().__init__()
 
         # 初始化
         self.config = config
         self.platform = platform
-        self.current_round = current_round
 
     # 重置
     @classmethod
@@ -101,7 +100,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
         elif format == Base.APIFormat.GOOGLE:
             # https://github.com/googleapis/python-genai
@@ -125,7 +124,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
         else:
             return openai.OpenAI(
@@ -137,7 +136,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
 
     # 发起请求

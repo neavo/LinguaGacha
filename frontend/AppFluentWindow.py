@@ -39,7 +39,7 @@ from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.TranslationPage import TranslationPage
+from frontend.TaskPage import TaskPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -80,14 +80,14 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_pages()
 
         # 注册事件
-        self.subscribe(Base.Event.APP_TOAST_SHOW, self.show_toast)
+        self.subscribe(Base.Event.TOAST, self.toast)
         self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_update_check_done)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_DONE, self.app_update_download_done)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, self.app_update_download_error)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update)
 
         # 检查更新
-        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_START, {}))
+        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
@@ -101,7 +101,7 @@ class AppFluentWindow(FluentWindow, Base):
             os.kill(os.getpid(), signal.SIGTERM)
 
     # 响应显示 Toast 事件
-    def show_toast(self, event: str, data: dict) -> None:
+    def toast(self, event: Base.Event, data: dict) -> None:
         toast_type = data.get("type", Base.ToastType.INFO)
         toast_message = data.get("message", "")
         toast_duration = data.get("duration", 2500)
@@ -155,7 +155,7 @@ class AppFluentWindow(FluentWindow, Base):
             config.app_language = BaseLanguage.Enum.EN
             config.save()
 
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().switch_language_toast,
         })
@@ -169,7 +169,7 @@ class AppFluentWindow(FluentWindow, Base):
             )
 
             # 触发下载事件
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_START, {})
+            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
         elif VersionManager.get().get_status() == VersionManager.Status.UPDATING:
             pass
         elif VersionManager.get().get_status() == VersionManager.Status.DOWNLOADED:
@@ -178,20 +178,20 @@ class AppFluentWindow(FluentWindow, Base):
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 更新 - 检查完成
-    def app_update_check_done(self, event: str, data: dict) -> None:
+    def app_update_check_done(self, event: Base.Event, data: dict) -> None:
         if data.get("new_version", False) == True:
             self.home_page_widget.setName(Localizer.get().app_new_version)
 
     # 更新 - 下载完成
-    def app_update_download_done(self, event: str, data: dict) -> None:
+    def app_update_download_done(self, event: Base.Event, data: dict) -> None:
         self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
 
     # 更新 - 下载报错
-    def app_update_download_error(self, event: str, data: dict) -> None:
+    def app_update_download_error(self, event: Base.Event, data: dict) -> None:
         self.home_page_widget.setName(__class__.HOMEPAGE)
 
     # 更新 - 下载更新
-    def app_update_download_update(self, event: str, data: dict) -> None:
+    def app_update_download_update(self, event: Base.Event, data: dict) -> None:
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
         self.home_page_widget.setName(
@@ -211,7 +211,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_extra_pages()
 
         # 设置默认页面
-        self.switchTo(self.translation_page)
+        self.switchTo(self.task_page)
 
         # 主题切换按钮
         self.navigationInterface.addWidget(
@@ -277,12 +277,11 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
-        # 开始翻译
-        self.translation_page = TranslationPage("translation_page", self)
+        self.task_page = TaskPage("task_page", self)
         self.addSubInterface(
-            self.translation_page,
+            self.task_page,
             FluentIcon.PLAY,
-            Localizer.get().app_translation_page,
+            Localizer.get().app_task_page,
             NavigationItemPosition.SCROLL
         )
 

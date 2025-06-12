@@ -1,4 +1,3 @@
-import argparse
 import ctypes
 import os
 import signal
@@ -14,7 +13,6 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
-from base.Base import Base
 from base.CLIManager import CLIManager
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
