@@ -49,7 +49,7 @@ class TextProcessor(Base):
     OPENCCS2T = opencc.OpenCC("s2tw")
 
     # 正则表达式
-    RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
+    RE_NAME = re.compile(r"^[\[【](.*?)[\]】]\s*", flags = re.IGNORECASE)
     RE_BLANK: re.Pattern = re.compile(r"\s+", re.IGNORECASE)
 
     # 类线程锁
@@ -202,12 +202,11 @@ class TextProcessor(Base):
                 pass
             elif result.group(1) is not None:
                 name = result.group(1)
-            elif result.group(2) is not None:
-                name = result.group(2)
 
             # 清理一下
-            srcs[0] = __class__.RE_NAME.sub("", srcs[0])
-            dsts[0] = __class__.RE_NAME.sub("", dsts[0])
+            if name is not None:
+                srcs[0] = __class__.RE_NAME.sub("", srcs[0])
+                dsts[0] = __class__.RE_NAME.sub("", dsts[0])
 
         return name, srcs, dsts
 
