@@ -134,7 +134,7 @@ class ModelListPage(MessageBoxBase, Base):
             platform: dict = Config().load().get_platform(self.id)
             self.models = self.get_models(
                 platform.get("api_url"),
-                platform.get("api_key")[0],
+                platform.get("api_key")[0] if len(platform.get("api_key")) > 0 else "",
                 platform.get("api_format"),
             )
 
