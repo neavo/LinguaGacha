@@ -9,11 +9,18 @@ from module.Config import Config
 
 class PARATRANZJSON(Base):
 
+    # key格式不固定但是不需要翻译，original为原文，translation为译文，stage是从paratranz下载字典时自动添加的翻译状态标识符，本地不需要管
     # [
     #   {
-    #     "key": "KEY 键值",
-    #     "original": "source text 原文",
-    #     "translation": "translation text 译文"
+    #     "key": "1_2",
+    #     "original": "主人公の宿が存在する場所。交通の要所であり、交易都市として栄えているゼカリウスには東西南北から様々な品が流れてくる。アーマニアの海の幸や、肥沃な農牧地帯の産物により、住民の幸福度は高い。",
+    #     "translation": "主角的旅馆所在之处，交通要冲，以贸易都市繁荣著称的泽卡利乌斯从东西南北各方引进了各种各样的商品。阿玛尼亚海的海产与肥沃农牧地带的产物提高了居民的生活质量。"
+    #   }，
+    #   {
+    #     "key": "1_3",
+    #     "original": "水上都市ゼカリウス",
+    #     "translation": "",
+    #     "stage": 0
     #   }
     # ]
 
