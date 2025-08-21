@@ -1,6 +1,6 @@
 # System
 PyQt-Fluent-Widgets[full]
-openai
+openai >=1.100.2
 anthropic
 google-genai
 tiktoken

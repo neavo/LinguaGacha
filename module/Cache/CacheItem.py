@@ -34,6 +34,7 @@ class CacheItem():
         TRANS = "TRANS"                            # .trans Translator++
         KVJSON = "KVJSON"                          # .json MTool
         MESSAGEJSON = "MESSAGEJSON"                # .json SExtractor
+        PARATRANZJSON = "PARATRANZJSON"            # .json ParaTranz
 
     class TextType(StrEnum):
 
@@ -47,6 +48,7 @@ class CacheItem():
     # 默认值
     src: str = ""                                                                               # 原文
     dst: str = ""                                                                               # 译文
+    pzkey: str = ""                                                                             # ParaTranz key
     name_src: str | list[str] = None                                                            # 角色姓名原文
     name_dst: str | list[str] = None                                                            # 角色姓名译文
     extra_field: str | dict = ""                                                                # 额外字段原文
@@ -109,6 +111,16 @@ class CacheItem():
     def set_src(self, src: str) -> None:
         with self.lock:
             self.src = src
+
+    # 获取pzkey
+    def get_pzkey(self) -> str:
+        with self.lock:
+            return self.pzkey
+
+    # 设置pzkey
+    def set_pzkey(self, pzkey: str) -> None:
+        with self.lock:
+            self.pzkey = pzkey
 
     # 获取译文
     def get_dst(self) -> str:
