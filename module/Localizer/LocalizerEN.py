@@ -356,6 +356,8 @@ class LocalizerEN(LocalizerZH):
     )
     text_preserve_page_table_row_01: str = "Rule"
     text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
+    text_preserve_page_table_row_03: str = "Disable Direct Fix"
+    text_preserve_page_switch_fix: str = "Switch Direct Fix"
 
     # 译前替换
     pre_translation_replacement_page_head_title: str = "Pre-translation Replacement"

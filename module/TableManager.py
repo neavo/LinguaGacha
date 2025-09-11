@@ -95,6 +95,11 @@ class TableManager():
                         self.table.item(row, col).setText(v.get("src", ""))
                     elif col == 1:
                         self.table.item(row, col).setText(v.get("info", ""))
+                    elif col == 2:
+                        if v.get("regex", False) == True:
+                            self.table.item(row, col).setText("✅")
+                        else:
+                            self.table.item(row, col).setText("")
 
         # 更新结束
         self.set_updating(False)
@@ -241,6 +246,7 @@ class TableManager():
             return {
                 "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
                 "info": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "regex": items[2].text().strip() == "✅" if isinstance(items[2], QTableWidgetItem) else False,
             }
 
     # 从表格加载数据

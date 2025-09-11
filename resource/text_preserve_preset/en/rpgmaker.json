@@ -1,82 +1,147 @@
 [
     {
-        "src": "<.+?:.+?>",
-        "info": "Example - <sample:123>"
-    },
-    {
         "src": "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "Example - en(!s[123]) en(v[123] >= 1)"
+        "info": "Example - en(!s[123]) en(v[123] >= 1)",
+        "regex": false
     },
     {
         "src": "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "Example - if(!s[123]) if(v[123] >= 1)"
+        "info": "Example - if(!s[123]) if(v[123] >= 1)",
+        "regex": false
     },
     {
         "src": "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}",
-        "info": "Example - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】"
+        "info": "Example - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】",
+        "regex": true
     },
     {
         "src": "%\\d+",
-        "info": "Example - %1 %2"
+        "info": "Example - %1 %2",
+        "regex": true
     },
     {
         "src": "@\\d+",
-        "info": "WOLF Character ID"
+        "info": "WOLF Character ID",
+        "regex": false
     },
     {
         "src": "\\\\[cus]db\\[.+?:.+?:.+?\\]",
-        "info": "WOLF Database Variable"
+        "info": "WOLF Database Variable",
+        "regex": true
     },
     {
         "src": "\\\\f[rbi]",
-        "info": "Text - Reset, Bold, Italicize "
+        "info": "Text - Reset, Bold, Italicize",
+        "regex": true
     },
     {
         "src": "\\\\[\\{\\}]",
-        "info": "Font - Enlarge, Shrink"
+        "info": "Font - Enlarge, Shrink",
+        "regex": true
     },
     {
         "src": "\\\\\\$",
-        "info": "Open gold window"
+        "info": "Open gold window",
+        "regex": false
     },
     {
         "src": "\\\\\\.",
-        "info": "Wait 0.25 seconds"
+        "info": "Wait 0.25 seconds",
+        "regex": false
     },
     {
         "src": "\\\\\\|",
-        "info": "Wait 1 second"
+        "info": "Wait 1.00 seconds",
+        "regex": false
     },
     {
         "src": "\\\\!",
-        "info": "Wait for button press"
+        "info": "Wait for button press",
+        "regex": false
     },
     {
         "src": "\\\\>",
-        "info": "Display text on the same line"
+        "info": "Display text on the same line",
+        "regex": false
     },
     {
         "src": "\\\\<",
-        "info": "Cancel display of all text"
+        "info": "Cancel display of all text",
+        "regex": false
     },
     {
         "src": "\\\\\\^",
-        "info": "No wait after displaying text"
+        "info": "No wait after displaying text",
+        "regex": false
     },
     {
         "src": "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])",
-        "info": "Part before <> [] in /C<> \\FS<> /C[] \\FS[]"
+        "info": "Part before <> [] in /C<> \\FS<> /C[] \\FS[]",
+        "regex": true
     },
     {
         "src": "\\\\[a-z](?=[^a-z<>\\[\\]])",
-        "info": "Single letter escape character - \\n \\e \\I"
+        "info": "Single letter escape character - \\n \\e \\I",
+        "regex": true
     },
     {
         "src": "<br>",
-        "info": "Line break"
+        "info": "Line break",
+        "regex": false
     },
     {
         "src": "\\s",
-        "info": "Whitespace character"
+        "info": "Whitespace character",
+        "regex": true
+    },
+    {
+        "src": "<(?!desc|name[pP]op|.*?説明|図鑑特徴|Text|n).+?[: =].+?>",
+        "info": "Translate description plugin tag",
+        "regex": false
+    },
+    {
+        "src": "<name[pP]op[: ]+",
+        "info": "Protect prefix - namepop",
+        "regex": false
+    },
+    {
+        "src": "<desc\\d*[: ]+",
+        "info": "Protect prefix - desc",
+        "regex": false
+    },
+    {
+        "src": "<.*?説明\\d*[: =]+",
+        "info": "Protect prefix - 説明",
+        "regex": false
+    },
+    {
+        "src": "<図鑑特徴[: ]+",
+        "info": "Protect prefix - 図鑑特徴",
+        "regex": false
+    },
+    {
+        "src": "<Text[= ]+",
+        "info": "Protect prefix - Text",
+        "regex": false
+    },
+    {
+        "src": "<n[: ]+",
+        "info": "Protect prefix - n",
+        "regex": false
+    },
+    {
+        "src": "(?<!\\\\[Nn])<([^:\\s]+)>",
+        "info": "Protect case where <> doesn't contain delimiter",
+        "regex": false
+    },
+    {
+        "src": "event_text[: ]+",
+        "info": "A form of namePop",
+        "regex": false
+    },
+    {
+        "src": "選択肢ヘルプ",
+        "info": "Tag for the option text",
+        "regex": false
     }
 ]

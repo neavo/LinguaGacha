@@ -1,82 +1,147 @@
 [
     {
-        "src": "<.+?:.+?>",
-        "info": "示例 - <sample:123>"
-    },
-    {
         "src": "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "示例 - en(!s[123]) en(v[123] >= 1)"
+        "info": "示例 - en(!s[123]) en(v[123] >= 1)",
+        "regex": false
     },
     {
         "src": "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "示例 - if(!s[123]) if(v[123] >= 1)"
+        "info": "示例 - if(!s[123]) if(v[123] >= 1)",
+        "regex": false
     },
     {
         "src": "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}",
-        "info": "示例 - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】"
+        "info": "示例 - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】",
+        "regex": true
     },
     {
         "src": "%\\d+",
-        "info": "示例 - %1 %2"
+        "info": "示例 - %1 %2",
+        "regex": true
     },
     {
         "src": "@\\d+",
-        "info": "WOLF 角色 ID"
+        "info": "WOLF 角色 ID",
+        "regex": false
     },
     {
         "src": "\\\\[cus]db\\[.+?:.+?:.+?\\]",
-        "info": "WOLF 数据库变量"
+        "info": "WOLF 数据库变量",
+        "regex": true
     },
     {
         "src": "\\\\f[rbi]",
-        "info": "文本 - 重置、加粗、倾斜"
+        "info": "文本 - 重置、加粗、倾斜",
+        "regex": true
     },
     {
         "src": "\\\\[\\{\\}]",
-        "info": "字体 - 放大、缩小"
+        "info": "字体 - 放大、缩小",
+        "regex": true
     },
     {
         "src": "\\\\\\$",
-        "info": "打开金币框"
+        "info": "打开金币框",
+        "regex": false
     },
     {
         "src": "\\\\\\.",
-        "info": "等待 0.25 秒"
+        "info": "等待 0.25 秒",
+        "regex": false
     },
     {
         "src": "\\\\\\|",
-        "info": "等待 1.00 秒"
+        "info": "等待 1.00 秒",
+        "regex": false
     },
     {
         "src": "\\\\!",
-        "info": "等待按钮按下"
+        "info": "等待按钮按下",
+        "regex": false
     },
     {
         "src": "\\\\>",
-        "info": "在同一行显示文字"
+        "info": "在同一行显示文字",
+        "regex": false
     },
     {
         "src": "\\\\<",
-        "info": "取消显示所有文字"
+        "info": "取消显示所有文字",
+        "regex": false
     },
     {
         "src": "\\\\\\^",
-        "info": "显示文本后不需要等待"
+        "info": "显示文本后不需要等待",
+        "regex": false
     },
     {
         "src": "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])",
-        "info": "/C<> \\FS<> /C[] \\FS[] 中 <> [] 前的部分"
+        "info": "/C<> \\FS<> /C[] \\FS[] 中 <> [] 前的部分",
+        "regex": true
     },
     {
         "src": "\\\\[a-z](?=[^a-z<>\\[\\]])",
-        "info": "单字母转义符 - \\n \\e \\I"
+        "info": "单字母转义符 - \\n \\e \\I",
+        "regex": true
     },
     {
         "src": "<br>",
-        "info": "换行符"
+        "info": "换行符",
+        "regex": false
     },
     {
         "src": "\\s",
-        "info": "空白字符"
+        "info": "空白字符",
+        "regex": true
+    },
+    {
+        "src": "<(?!desc|name[pP]op|.*?説明|図鑑特徴|Text|n).+?[: =].+?>",
+        "info": "放行描述类插件标签",
+        "regex": false
+    },
+    {
+        "src": "<name[pP]op[: ]+",
+        "info": "保护放行部分的前缀 - namepop",
+        "regex": false
+    },
+    {
+        "src": "<desc\\d*[: ]+",
+        "info": "同上 - desc",
+        "regex": false
+    },
+    {
+        "src": "<.*?説明\\d*[: =]+",
+        "info": "同上 - 各种各样的説明",
+        "regex": false
+    },
+    {
+        "src": "<図鑑特徴[: ]+",
+        "info": "同上 - 図鑑特徴",
+        "regex": false
+    },
+    {
+        "src": "<Text[= ]+",
+        "info": "同上 - Text",
+        "regex": false
+    },
+    {
+        "src": "<n[: ]+",
+        "info": "同上 - n",
+        "regex": false
+    },
+    {
+        "src": "(?<!\\\\[Nn])<([^:\\s]+)>",
+        "info": "保护<>中不含分界符号的情况",
+        "regex": false
+    },
+    {
+        "src": "event_text[: ]+",
+        "info": "一种namePop的形式",
+        "regex": false
+    },
+    {
+        "src": "選択肢ヘルプ",
+        "info": "选项文本的提示代码",
+        "regex": false
     }
 ]

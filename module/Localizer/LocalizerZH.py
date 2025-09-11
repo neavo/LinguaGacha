@@ -356,6 +356,8 @@ class LocalizerZH():
     )
     text_preserve_page_table_row_01: str = "规则"
     text_preserve_page_table_row_02: str = "备注（仅作备忘，无实际作用）"
+    text_preserve_page_table_row_03: str = "禁用直接替换"
+    text_preserve_page_switch_fix: str = "切换直接替换"
 
     # 译前替换
     pre_translation_replacement_page_head_title: str = "译前替换"

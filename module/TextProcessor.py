@@ -82,7 +82,8 @@ class TextProcessor(Base):
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
-                    data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
+                    data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != "" and 
+                                       (v.get("regex", False) == False or rule_type == __class__.RuleType.CHECK or rule_type == __class__.RuleType.SAMPLE)]
             except:
                 pass
 
@@ -121,7 +122,7 @@ class TextProcessor(Base):
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
+                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != "" and v.get("regex", False) == False]) if custom == True else None,
                 rule_type = __class__.RuleType.PREFIX,
                 text_type = text_type,
                 language = Localizer.get_app_language(),
@@ -131,7 +132,7 @@ class TextProcessor(Base):
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
+                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != "" and v.get("regex", False) == False]) if custom == True else None,
                 rule_type = __class__.RuleType.SUFFIX,
                 text_type = text_type,
                 language = Localizer.get_app_language(),
