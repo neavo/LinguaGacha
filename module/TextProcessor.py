@@ -158,7 +158,7 @@ class TextProcessor(Base):
         if self.config.clean_ruby == False:
             return src
         else:
-            return RubyCleaner.clean(src)
+            return RubyCleaner.clean(src, self.item.get_text_type())
 
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
