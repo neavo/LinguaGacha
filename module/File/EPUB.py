@@ -128,6 +128,36 @@ class EPUB(Base):
                 # 将修改后的内容写回去
                 zip_writer.writestr(path, str(bs))
 
+        def fix_svg_attributes(bs: BeautifulSoup) -> None:
+            """修正 SVG 标签的大小写敏感属性"""
+            # 需要修正的属性映射(小写 -> 正确大小写)
+            attr_fixes = {
+                'viewbox': 'viewBox',
+                'preserveaspectratio': 'preserveAspectRatio',
+                'pathlength': 'pathLength',
+                'gradientunits': 'gradientUnits',
+                'gradienttransform': 'gradientTransform',
+                'spreadmethod': 'spreadMethod',
+                'maskcontentunits': 'maskContentUnits',
+                'maskunits': 'maskUnits',
+                'patterncontentunits': 'patternContentUnits',
+                'patternunits': 'patternUnits',
+                'patterntransform': 'patternTransform',
+            }
+            
+            # 遍历所有 SVG 标签
+            for svg in bs.find_all('svg'):
+                # 修正 SVG 标签本身的属性
+                for attr_lower, attr_correct in attr_fixes.items():
+                    if attr_lower in svg.attrs:
+                        svg.attrs[attr_correct] = svg.attrs.pop(attr_lower)
+                
+                # 修正 SVG 子元素的属性
+                for child in svg.find_all():
+                    for attr_lower, attr_correct in attr_fixes.items():
+                        if attr_lower in child.attrs:
+                            child.attrs[attr_correct] = child.attrs.pop(attr_lower)
+
         def process_html(zip_reader: zipfile.ZipFile, path: str, items: list[CacheItem], bilingual: bool) -> None:
             with zip_reader.open(path) as reader:
                 target = [item for item in items if item.get_tag() == path]
@@ -175,6 +205,9 @@ class EPUB(Base):
                         dom.string = item.get_dst()
                     else:
                         pass
+
+                # 修正 SVG 标签的属性大小写
+                fix_svg_attributes(bs)
 
                 # 将修改后的内容写回去
                 zip_writer.writestr(path, str(bs))
