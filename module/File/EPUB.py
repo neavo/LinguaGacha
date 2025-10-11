@@ -163,8 +163,11 @@ class EPUB(Base):
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
 
-                # 判断是否是导航页
-                is_nav_page = bs.find("nav", attrs = {"epub:type": "toc"}) != None
+                # 判断是否是导航页（包括目录和地标导航）
+                is_nav_page = (
+                    bs.find("nav", attrs = {"epub:type": "toc"}) != None or
+                    bs.find("nav", attrs = {"epub:type": "landmarks"}) != None
+                )
 
                 # 移除竖排样式
                 for dom in bs.find_all():
@@ -187,8 +190,8 @@ class EPUB(Base):
                     # 取数据
                     item = target.pop(0)
 
-                    # 输出双语
-                    if bilingual == True:
+                    # 输出双语（导航页除外，避免链接重复指向）
+                    if bilingual == True and is_nav_page == False:
                         if (
                             self.config.deduplication_in_bilingual != True
                             or (self.config.deduplication_in_bilingual == True and item.get_src() != item.get_dst())
