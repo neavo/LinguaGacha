@@ -84,3 +84,5 @@ jobs:
         asset_path: ./LinguaGacha_${{ steps.check_version.outputs.version }}.zip
         asset_name: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
         asset_content_type: application/zip
+
+        
