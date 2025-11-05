@@ -6,7 +6,9 @@
 
 import os
 import shutil
+import threading
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -60,21 +62,52 @@ class ResultFixer(Base):
             self.info("没有发现问题，无需修正")
             return FixReport(total=0, fixed=0, failed=0, backup_path=backup_path)
 
-        # 4. 统一重翻
-        self.info(f"开始修正 {len(problems)} 个问题...")
+        # 4. 并行修正
+        self.info(f"开始并行修正 {len(problems)} 个问题...")
         self.emit(Base.Event.RESULT_FIXER_START, {"total": len(problems)})
 
-        for i, problem in enumerate(problems):
-            self.info(f"修正进度：{i+1}/{len(problems)} - {problem.details}")
-            result = self._fix_single_problem(problem)
-            self.fix_results.append(result)
+        # 获取并发数配置（复用翻译引擎的配置）
+        max_workers = self.config.max_workers if self.config.max_workers > 0 else 10
+        self.info(f"使用 {max_workers} 个并发线程")
 
-            # 发送进度事件
-            self.emit(Base.Event.RESULT_FIXER_UPDATE, {
-                "current": i+1,
-                "total": len(problems),
-                "success": result.success
-            })
+        # 线程安全的计数器和锁
+        results_lock = threading.Lock()
+        completed_count = 0
+
+        # 使用线程池并发处理
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务到线程池
+            future_to_problem = {
+                executor.submit(self._fix_single_problem, problem): problem
+                for problem in problems
+            }
+
+            # 按完成顺序收集结果
+            for future in as_completed(future_to_problem):
+                try:
+                    result = future.result()
+
+                    # 线程安全地添加结果和更新计数
+                    with results_lock:
+                        self.fix_results.append(result)
+                        completed_count += 1
+                        current = completed_count
+
+                    # 发送进度事件
+                    self.emit(Base.Event.RESULT_FIXER_UPDATE, {
+                        "current": current,
+                        "total": len(problems),
+                        "success": result.success
+                    })
+
+                    # 优化后的日志：只显示计数，避免乱序
+                    status_text = "成功" if result.success else "失败"
+                    self.info(f"已完成 {current}/{len(problems)}（{status_text}）")
+
+                except Exception as e:
+                    self.error(f"修正任务执行失败", e)
+                    with results_lock:
+                        completed_count += 1
 
         # 5. 保存修正结果到缓存
         self.info("保存修正结果到缓存...")
