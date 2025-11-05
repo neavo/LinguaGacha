@@ -76,11 +76,17 @@ class ResultFixer(Base):
                 "success": result.success
             })
 
-        # 5. 保存修正结果
-        self.info("保存修正结果...")
+        # 5. 保存修正结果到缓存
+        self.info("保存修正结果到缓存...")
         self.cache_manager.save_to_file(cache_project, cache_items, self.config.output_folder)
 
-        # 6. 生成报告
+        # 6. 重新生成翻译文件（包括纯译文和双语对照）
+        self.info("重新生成翻译文件...")
+        from module.File.FileManager import FileManager
+        FileManager(self.config).write_to_path(cache_items)
+        self.info("翻译文件已更新")
+
+        # 7. 生成报告
         report = self._generate_report(backup_path)
         self.info(f"修正完成：成功 {report.fixed}/{report.total}")
 
