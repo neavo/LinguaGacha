@@ -23,8 +23,6 @@ from .FixReport import FixReport, FixResult
 class ResultFixer(Base):
     """结果修正器 - 主流程控制器"""
 
-    MAX_RETRIES = 3  # 最大重试次数
-
     def __init__(self, cache_manager: CacheManager):
         super().__init__()
         self.cache_manager = cache_manager
@@ -127,26 +125,85 @@ class ResultFixer(Base):
 
         return report
 
+    def _get_valid_platforms(self) -> list[tuple[dict, int, str]]:
+        """获取有效平台（已配置 API key）
+
+        过滤规则：
+            - 跳过 api_key = ["no_key_required"] 的平台
+            - 跳过 api_key 为空的平台
+
+        Returns:
+            list[tuple[dict, int, str]]: [(平台配置, 索引, 平台名称), ...]
+
+        策略：
+            - 优先添加当前激活平台（如果有效）
+            - 再按索引顺序添加其他有效平台
+        """
+        valid = []
+
+        # 先添加当前激活平台（如果有效）
+        current_index = self.config.activate_platform
+        current_platform = self.config.platforms[current_index]
+        api_key = current_platform.get("api_key", [""])
+
+        if api_key and api_key[0] != "no_key_required":
+            valid.append((
+                current_platform,
+                current_index,
+                current_platform.get("name", f"平台{current_index}")
+            ))
+
+        # 再添加其他有效平台
+        for i, platform in enumerate(self.config.platforms):
+            if i == current_index:
+                continue
+
+            api_key = platform.get("api_key", [""])
+            if api_key and api_key[0] != "no_key_required":
+                valid.append((
+                    platform,
+                    i,
+                    platform.get("name", f"平台{i}")
+                ))
+
+        return valid
+
     def _fix_single_problem(self, problem: FixProblem) -> FixResult:
-        """修正单个问题（最多重试3次）"""
+        """修正单个问题（只尝试有效平台）"""
 
         cache_item = problem.cache_item
         original_dst = cache_item.get_dst()
 
-        for attempt in range(self.MAX_RETRIES):
-            self.debug(f"第 {attempt+1}/{self.MAX_RETRIES} 次尝试修正")
+        # 获取有效平台列表（自动过滤无 API key 的平台）
+        valid_platforms = self._get_valid_platforms()
 
+        if not valid_platforms:
+            # 没有配置任何有效平台
+            self.error("未配置任何有效平台（请检查 API key）")
+            return FixResult(
+                problem=problem,
+                success=False,
+                attempts=0,
+                final_dst=original_dst,
+                error_message="未配置有效平台"
+            )
+
+        max_attempts = len(valid_platforms)
+        self.debug(f"发现 {max_attempts} 个有效平台")
+
+        for attempt, (platform, platform_index, platform_name) in enumerate(valid_platforms):
             try:
-                # 构建增强提示词和温度参数
-                enhanced_prompt, temperature = self._build_enhanced_prompt(problem, attempt)
-                self.debug(f"使用温度参数：{temperature}")
+                # 构建完整增强提示词
+                enhanced_prompt = self._build_enhanced_prompt(problem)
 
-                # 重新翻译
-                new_dst = self._retry_translation(cache_item, enhanced_prompt, temperature)
+                self.debug(f"第 {attempt+1}/{max_attempts} 次尝试，使用平台：{platform_name}")
+
+                # 重新翻译（使用平台默认温度）
+                new_dst = self._retry_translation(cache_item, enhanced_prompt, platform)
 
                 # 验证是否修复
                 if self._verify_fixed(new_dst, problem):
-                    self.info(f"✓ 修正成功（第 {attempt+1} 次尝试，温度={temperature}）")
+                    self.info(f"✓ 修正成功（第 {attempt+1} 次尝试，平台：{platform_name}）")
                     cache_item.set_dst(new_dst)
                     return FixResult(
                         problem=problem,
@@ -158,34 +215,30 @@ class ResultFixer(Base):
                     self.warning(f"✗ 第 {attempt+1} 次尝试仍有问题，继续重试...")
 
             except Exception as e:
-                self.error(f"翻译失败", e)
-                if attempt == self.MAX_RETRIES - 1:
-                    # 最后一次失败，恢复原译文
-                    cache_item.set_dst(original_dst)
-                    return FixResult(
-                        problem=problem,
-                        success=False,
-                        attempts=attempt+1,
-                        final_dst=original_dst,
-                        error_message=str(e)
-                    )
+                self.error(f"平台 {platform_name} 翻译失败", e)
+                # 继续尝试下一个平台
+                continue
 
-        # 3次都失败，恢复原译文
-        self.error(f"✗ 修正失败：尝试 {self.MAX_RETRIES} 次后仍有问题")
+        # 所有有效平台都失败，恢复原译文
+        self.error(f"✗ 修正失败：尝试 {max_attempts} 个有效平台后仍有问题")
         cache_item.set_dst(original_dst)
         return FixResult(
             problem=problem,
             success=False,
-            attempts=self.MAX_RETRIES,
+            attempts=max_attempts,
             final_dst=original_dst,
-            error_message="超过最大重试次数"
+            error_message="所有有效平台都失败"
         )
 
-    def _build_enhanced_prompt(self, problem: FixProblem, attempt: int) -> tuple[str, float]:
-        """构建增强提示词和温度参数
+    def _build_enhanced_prompt(self, problem: FixProblem) -> str:
+        """构建增强提示词
+
+        注意：
+            - 不再返回 temperature（使用平台默认值）
+            - 不再接受 attempt 参数（永远返回完整提示词）
 
         Returns:
-            tuple[str, float]: (增强提示词, 温度参数)
+            str: 完整增强提示词
         """
 
         # 获取基础信息
@@ -201,53 +254,45 @@ class ResultFixer(Base):
 
 翻译："""
 
-        # 添加增强规则，同时获取温度参数
-        enhanced_prompt, temperature = self.prompt_builder.build(
+        # 添加完整增强规则（不再传递 attempt）
+        enhanced_prompt = self.prompt_builder.build(
             base_prompt=base_prompt,
             problem_type=problem.problem_type,
-            attempt=attempt,
             glossary=self._build_glossary_dict(),
             src_language=self.config.source_language,
             dst_language=self.config.target_language
         )
 
-        return enhanced_prompt, temperature
+        return enhanced_prompt
 
-    def _retry_translation(self, cache_item: CacheItem, prompt: str, temperature: float) -> str:
+    def _retry_translation(self, cache_item: CacheItem, prompt: str, platform: dict) -> str:
         """重新翻译（调用 API）
 
         Args:
             cache_item: 缓存项
             prompt: 增强后的提示词
-            temperature: 温度参数
-        """
+            platform: 平台配置（包含所有必要参数）
 
-        # 获取当前激活的平台
-        platform = self.config.platforms[self.config.activate_platform]
+        注意：
+            - 不再接受 temperature 参数
+            - 使用 platform 中的默认 temperature（或用户自定义值）
+        """
 
         # 构建消息
         messages = [{"role": "user", "content": prompt}]
 
-        # 临时修改平台配置中的温度参数
-        original_temperature = platform.get("temperature", 1.0)
-        platform["temperature"] = temperature
+        # 调用 API（使用平台默认配置，不修改温度）
+        from module.Engine.TaskRequester import TaskRequester
+        requester = TaskRequester(self.config, platform, current_round=1)
+        skip, response_think, response_result, input_tokens, output_tokens = requester.request(messages)
 
-        try:
-            # 调用 API（复用 TaskRequester）
-            from module.Engine.TaskRequester import TaskRequester
-            requester = TaskRequester(self.config, platform, current_round=1)
-            skip, response_think, response_result, input_tokens, output_tokens = requester.request(messages)
+        if skip:
+            raise RuntimeError("API 请求被跳过")
 
-            if skip:
-                raise RuntimeError("API 请求被跳过")
+        if not response_result:
+            raise RuntimeError("API 返回空结果")
 
-            if not response_result:
-                raise RuntimeError("API 返回空结果")
-
-            return response_result
-        finally:
-            # 恢复原始温度参数
-            platform["temperature"] = original_temperature
+        return response_result
 
     def _verify_fixed(self, new_dst: str, problem: FixProblem) -> bool:
         """验证问题是否已修复"""
