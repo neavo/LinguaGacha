@@ -30,6 +30,7 @@ from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ReTranslationPage import ReTranslationPage
+from frontend.Extra.ResultFixerPage import ResultFixerPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
 from frontend.Project.PlatformPage import PlatformPage
 from frontend.Project.ProjectPage import ProjectPage
@@ -411,3 +412,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 百宝箱 - 姓名字段注入
         self.name_field_extraction_page = NameFieldExtractionPage("name_field_extraction_page", self)
         self.stackedWidget.addWidget(self.name_field_extraction_page)
+
+        # 百宝箱 - 结果修正
+        self.result_fixer_page = ResultFixerPage("result_fixer_page", self)
+        self.stackedWidget.addWidget(self.result_fixer_page)
