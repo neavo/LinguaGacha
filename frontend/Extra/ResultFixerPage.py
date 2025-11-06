@@ -119,7 +119,7 @@ class ResultFixerPage(QWidget, Base):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setPlaceholderText("点击'开始修正'后，修正日志将显示在这里...")
-        self.log_text.setMinimumHeight(300)
+        self.log_text.setMinimumHeight(500)
         card.add_widget(self.log_text)
 
         parent.addWidget(card)
@@ -146,33 +146,76 @@ class ResultFixerPage(QWidget, Base):
     def on_fix_start(self, event: str, data: dict):
         """修正开始"""
         total = data["total"]
+        valid_platforms = data.get("valid_platforms", [])
+
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
-        self.log_text.append(f"\n检测到 {total} 个问题，开始修正...\n")
+
+        # 显示有效平台信息
+        platform_info = "、".join(valid_platforms) if valid_platforms else "无"
+        self.log_text.append(f"发现有效平台 {len(valid_platforms)} 个：{platform_info}")
+        self.log_text.append(f"\n检测到 {total} 个问题，开始修正...")
+        self.log_text.append("━" * 60 + "\n")
 
     def on_fix_update(self, event: str, data: dict):
         """修正进度更新"""
         current = data["current"]
         total = data["total"]
         success = data["success"]
+        problem_type = data.get("problem_type", "")
+        problem_details = data.get("problem_details", "")
+        attempts = data.get("attempts", 0)
+        src_preview = data.get("src_preview", "")
+        platform_name = data.get("platform_name", "")
+        error_message = data.get("error_message", "")
 
         self.progress_bar.setValue(current)
-        status = "✓ 成功" if success else "✗ 失败"
-        self.log_text.append(f"[{current}/{total}] {status}")
+
+        # 问题类型中文化
+        problem_type_zh = {
+            "residue": "源语言残留",
+            "glossary_miss": "术语未生效"
+        }.get(problem_type, problem_type)
+
+        # 格式化显示
+        if success:
+            status_icon = "✓"
+            self.log_text.append(f"[{current}/{total}] {status_icon} 修正成功")
+            self.log_text.append(f"  • 问题类型：{problem_type_zh}")
+            self.log_text.append(f"  • 原文片段：「{src_preview}」")
+            self.log_text.append(f"  • 尝试次数：{attempts} 次（使用平台：{platform_name}）\n")
+        else:
+            status_icon = "✗"
+            self.log_text.append(f"[{current}/{total}] {status_icon} 修正失败")
+            self.log_text.append(f"  • 问题类型：{problem_type_zh}")
+            self.log_text.append(f"  • 原文片段：「{src_preview}」")
+            self.log_text.append(f"  • 尝试次数：{attempts} 次")
+            if error_message:
+                self.log_text.append(f"  • 失败原因：{error_message}\n")
+            else:
+                self.log_text.append("")
 
     def on_fix_done(self, event: str, data: dict):
         """修正完成"""
         report = data["report"]
-        self.log_text.append("\n" + "="*50)
-        self.log_text.append("修正完成！")
+        self.log_text.append("━" * 60)
+        self.log_text.append("修正完成！\n")
         self.log_text.append(f"总问题数：{report.total}")
-        self.log_text.append(f"修正成功：{report.fixed}")
-        self.log_text.append(f"修正失败：{report.failed}")
-        success_rate = f"{report.fixed/report.total*100:.1f}%" if report.total > 0 else "N/A"
-        self.log_text.append(f"成功率：{success_rate}")
+        self.log_text.append(f"修正成功：{report.fixed} ({report.fixed/report.total*100:.1f}%)" if report.total > 0 else "修正成功：0")
+        self.log_text.append(f"修正失败：{report.failed} ({report.failed/report.total*100:.1f}%)" if report.total > 0 else "修正失败：0")
         self.log_text.append(f"备份路径：{report.backup_path}")
-        self.log_text.append("="*50)
+        self.log_text.append("━" * 60)
+
+        # 添加提示信息
+        if report.failed > 0:
+            self.log_text.append("\n💡 温馨提示：")
+            self.log_text.append("• 如有失败项，可再次运行本功能继续修正")
+            self.log_text.append("• 如反复修正多次仍然失败，建议：")
+            self.log_text.append("  1. 增加更多模型配置（如添加 Anthropic、Google 等不同 API）")
+            self.log_text.append("  2. 或手动检查并修复这些失败问题")
+        else:
+            self.log_text.append("\n🎉 所有问题修正成功！")
 
         # 显示提示
         if report.failed == 0:

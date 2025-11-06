@@ -63,7 +63,14 @@ class ResultFixer(Base):
 
         # 4. 并行修正
         self.info(f"开始并行修正 {len(problems)} 个问题...")
-        self.emit(Base.Event.RESULT_FIXER_START, {"total": len(problems)})
+
+        # 获取有效平台信息并发送
+        valid_platforms = self._get_valid_platforms()
+        platform_names = [name for _, _, name in valid_platforms]
+        self.emit(Base.Event.RESULT_FIXER_START, {
+            "total": len(problems),
+            "valid_platforms": platform_names
+        })
 
         # 获取并发数配置（复用翻译引擎的配置）
         max_workers = self.config.max_workers if self.config.max_workers > 0 else 10
@@ -92,11 +99,21 @@ class ResultFixer(Base):
                         completed_count += 1
                         current = completed_count
 
-                    # 发送进度事件
+                    # 发送进度事件（包含详细信息）
+                    src_preview = result.problem.cache_item.get_src()[:50]
+                    if len(result.problem.cache_item.get_src()) > 50:
+                        src_preview += "..."
+
                     self.emit(Base.Event.RESULT_FIXER_UPDATE, {
                         "current": current,
                         "total": len(problems),
-                        "success": result.success
+                        "success": result.success,
+                        "problem_type": result.problem.problem_type,
+                        "problem_details": result.problem.details,
+                        "attempts": result.attempts,
+                        "src_preview": src_preview,
+                        "platform_name": result.platform_name,
+                        "error_message": result.error_message
                     })
 
                     # 优化后的日志：只显示计数，避免乱序
@@ -186,6 +203,7 @@ class ResultFixer(Base):
                 success=False,
                 attempts=0,
                 final_dst=original_dst,
+                platform_name="",
                 error_message="未配置有效平台"
             )
 
@@ -210,7 +228,8 @@ class ResultFixer(Base):
                         problem=problem,
                         success=True,
                         attempts=attempt+1,
-                        final_dst=new_dst
+                        final_dst=new_dst,
+                        platform_name=platform_name
                     )
                 else:
                     self.warning(f"✗ 第 {attempt+1} 次尝试仍有问题，继续重试...")
@@ -228,6 +247,7 @@ class ResultFixer(Base):
             success=False,
             attempts=max_attempts,
             final_dst=original_dst,
+            platform_name="",
             error_message="所有有效平台都失败"
         )
 

@@ -17,6 +17,7 @@ class FixResult:
     success: bool
     attempts: int  # 尝试次数
     final_dst: str  # 最终译文
+    platform_name: str = ""  # 使用的平台名称
     error_message: str = ""  # 如果失败，记录原因
 
 
