@@ -9,7 +9,7 @@
 import threading
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import QWidget, QLayout, QVBoxLayout, QTextEdit
-from qfluentwidgets import FluentIcon, PushButton, FluentWindow, ProgressBar, InfoBar, InfoBarPosition
+from qfluentwidgets import FluentIcon, PushButton, FluentWindow, ProgressBar, InfoBar, InfoBarPosition, SingleDirectionScrollArea
 
 from base.Base import Base
 from module.Config import Config
@@ -62,39 +62,57 @@ class ResultFixerPage(QWidget, Base):
         self.root.setSpacing(8)
         self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
-        # 添加控件
-        self.add_widget_head(self.root, config, window)
-        self.add_widget_body(self.root, config, window)
+        # 创建滚动区域的内容容器
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(8)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 添加控件到滚动区域
+        self.add_widget_head(scroll_layout, config, window)
+        self.add_widget_body(scroll_layout, config, window)
+
+        # 创建滚动区域
+        scroll_area = SingleDirectionScrollArea(orient=Qt.Orientation.Vertical)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(scroll_widget)
+        scroll_area.enableTransparentBackground()
+
+        # 将滚动区域添加到主布局
+        self.root.addWidget(scroll_area)
 
         # 绑定事件
         self.bind_events()
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        parent.addWidget(
-            EmptyCard(
-                title="智能结果修正",
-                description=(
-                    "【功能说明】\n"
-                    "自动检测并修正翻译结果中的常见问题：\n"
-                    "• 源语言残留 - 译文中遗留未翻译的源语言字符\n"
-                    "• 术语未生效 - 术语表中的专有名词未被正确应用\n\n"
+        head_card = EmptyCard(
+            title="智能结果修正",
+            description=(
+                "【功能说明】\n"
+                "自动检测并修正翻译结果中的常见问题：\n"
+                "• 源语言残留 - 译文中遗留未翻译的源语言字符\n"
+                "• 术语未生效 - 术语表中的专有名词未被正确应用\n\n"
 
-                    "【使用说明】\n"
-                    "• 至少配置 1 个有效平台（有效平台 = 已配置真实 API key 的平台，非 \"no_key_required\"）\n"
-                    "• 建议配置 2-3 个不同 API 平台（如 OpenAI + Anthropic）以提高修正成功率\n"
-                    "• 建议在翻译完成后运行，一次性修正所有问题\n"
-                    "• 如有失败项，可多次运行本功能，逐步修正至全部成功\n\n"
+                "【使用说明】\n"
+                "• 至少配置 1 个有效平台（有效平台 = 已配置真实 API key 的平台，非 \"no_key_required\"）\n"
+                "• 建议配置 2-3 个不同 API 平台（如 OpenAI + Anthropic）以提高修正成功率\n"
+                "• 建议在翻译完成后运行，一次性修正所有问题\n"
+                "• 如有失败项，可多次运行本功能，逐步修正至全部成功\n\n"
 
-                    "【核心特性】\n"
-                    "✅ 智能多平台轮换（支持 OpenAI、Anthropic、Google 等跨 API 切换）\n"
-                    "✅ 全自动并行处理（172个问题约40-50秒）\n"
-                    "✅ 支持反复执行，直到全部修正成功\n"
-                    "✅ 自动备份缓存，修正失败自动恢复"
-                ),
-                init=None,
-            )
+                "【核心特性】\n"
+                "✅ 智能多平台轮换（支持 OpenAI、Anthropic、Google 等跨 API 切换）\n"
+                "✅ 全自动并行处理（172个问题约40-50秒）\n"
+                "✅ 支持反复执行，直到全部修正成功\n"
+                "✅ 自动备份缓存，修正失败自动恢复"
+            ),
+            init=None,
         )
+
+        # 设置 description 自动换行
+        head_card.get_description_label().setWordWrap(True)
+
+        parent.addWidget(head_card)
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
@@ -131,11 +149,10 @@ class ResultFixerPage(QWidget, Base):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setPlaceholderText("点击'开始修正'后，修正日志将显示在这里...")
-        self.log_text.setMinimumHeight(500)
+        self.log_text.setMinimumHeight(300)
         log_layout.addWidget(self.log_text)
 
         parent.addWidget(log_card)
-        parent.addStretch(1)
 
     def bind_events(self):
         """绑定事件"""
