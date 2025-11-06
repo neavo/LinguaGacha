@@ -98,31 +98,43 @@ class ResultFixerPage(QWidget, Base):
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        # 创建卡片容器
-        card = EmptyCard(
+        # 创建控制卡片（只包含标题和按钮）
+        control_card = EmptyCard(
             title="开始修正",
             description="点击下方按钮开始检测和修正问题",
             init=None,
         )
 
-        # 添加开始按钮
+        # 添加开始按钮到控制卡片
         self.start_button = PushButton(FluentIcon.PLAY, "开始修正")
         self.start_button.clicked.connect(lambda: self.on_start_fix(window))
-        card.add_widget(self.start_button)
+        control_card.add_widget(self.start_button)
+
+        parent.addWidget(control_card)
+
+        # 创建独立的日志卡片（使用 CardWidget + VBoxLayout）
+        from qfluentwidgets import CardWidget
+        log_card = CardWidget(self)
+        log_card.setBorderRadius(4)
+
+        # 创建垂直布局
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(16, 16, 16, 16)
+        log_layout.setSpacing(8)
 
         # 添加进度条
         self.progress_bar = ProgressBar()
         self.progress_bar.setVisible(False)
-        card.add_widget(self.progress_bar)
+        log_layout.addWidget(self.progress_bar)
 
         # 添加日志显示
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setPlaceholderText("点击'开始修正'后，修正日志将显示在这里...")
         self.log_text.setMinimumHeight(500)
-        card.add_widget(self.log_text)
+        log_layout.addWidget(self.log_text)
 
-        parent.addWidget(card)
+        parent.addWidget(log_card)
         parent.addStretch(1)
 
     def bind_events(self):
@@ -196,10 +208,15 @@ class ResultFixerPage(QWidget, Base):
             else:
                 self.log_text.append("")
 
+        # 自动滚动到底部
+        self.log_text.verticalScrollBar().setValue(
+            self.log_text.verticalScrollBar().maximum()
+        )
+
     def on_fix_done(self, event: str, data: dict):
         """修正完成"""
         report = data["report"]
-        self.log_text.append("━" * 60)
+        self.log_text.append("\n" + "━" * 60)
         self.log_text.append("修正完成！\n")
         self.log_text.append(f"总问题数：{report.total}")
         self.log_text.append(f"修正成功：{report.fixed} ({report.fixed/report.total*100:.1f}%)" if report.total > 0 else "修正成功：0")
@@ -216,6 +233,11 @@ class ResultFixerPage(QWidget, Base):
             self.log_text.append("  2. 或手动检查并修复这些失败问题")
         else:
             self.log_text.append("\n🎉 所有问题修正成功！")
+
+        # 自动滚动到底部
+        self.log_text.verticalScrollBar().setValue(
+            self.log_text.verticalScrollBar().maximum()
+        )
 
         # 显示提示
         if report.failed == 0:
