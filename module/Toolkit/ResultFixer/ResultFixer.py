@@ -6,6 +6,7 @@
 
 import os
 import shutil
+import random
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -274,25 +275,39 @@ class ResultFixer(Base):
             platform: 平台配置（包含所有必要参数）
 
         注意：
-            - 不再接受 temperature 参数
-            - 使用 platform 中的默认 temperature（或用户自定义值）
+            - 使用 0.4-0.8 之间的随机温度值
+            - 临时修改 platform 的 temperature，调用后恢复
         """
 
-        # 构建消息
-        messages = [{"role": "user", "content": prompt}]
+        # 生成 0.4-0.8 之间的随机温度值
+        random_temperature = round(random.uniform(0.4, 0.8), 2)
 
-        # 调用 API（使用平台默认配置，不修改温度）
-        from module.Engine.TaskRequester import TaskRequester
-        requester = TaskRequester(self.config, platform, current_round=1)
-        skip, response_think, response_result, input_tokens, output_tokens = requester.request(messages)
+        # 保存原始温度
+        original_temperature = platform.get("temperature", 1.0)
 
-        if skip:
-            raise RuntimeError("API 请求被跳过")
+        # 临时设置随机温度
+        platform["temperature"] = random_temperature
+        self.debug(f"使用随机温度：{random_temperature}")
 
-        if not response_result:
-            raise RuntimeError("API 返回空结果")
+        try:
+            # 构建消息
+            messages = [{"role": "user", "content": prompt}]
 
-        return response_result
+            # 调用 API
+            from module.Engine.TaskRequester import TaskRequester
+            requester = TaskRequester(self.config, platform, current_round=1)
+            skip, response_think, response_result, input_tokens, output_tokens = requester.request(messages)
+
+            if skip:
+                raise RuntimeError("API 请求被跳过")
+
+            if not response_result:
+                raise RuntimeError("API 返回空结果")
+
+            return response_result
+        finally:
+            # 恢复原始温度
+            platform["temperature"] = original_temperature
 
     def _verify_fixed(self, new_dst: str, problem: FixProblem) -> bool:
         """验证问题是否已修复"""
