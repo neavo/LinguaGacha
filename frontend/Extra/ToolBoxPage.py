@@ -139,7 +139,7 @@ class ToolBoxPage(QWidget, Base):
 
         parent.addWidget(ItemCard(
             parent = self,
-            title = "结果修正",
+            title = "智能结果修正",
             description = "自动检测并修正翻译结果中的源语言残留和术语未生效问题",
             init = None,
             clicked = clicked,
