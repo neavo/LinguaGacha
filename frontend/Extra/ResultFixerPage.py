@@ -8,8 +8,8 @@
 
 import threading
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QLayout, QVBoxLayout, QTextEdit
-from qfluentwidgets import FluentIcon, PushButton, FluentWindow, ProgressBar, InfoBar, InfoBarPosition, SingleDirectionScrollArea
+from PyQt5.QtWidgets import QWidget, QLayout, QVBoxLayout, QTextEdit, QScrollArea
+from qfluentwidgets import FluentIcon, PushButton, FluentWindow, ProgressBar, InfoBar, InfoBarPosition
 
 from base.Base import Base
 from module.Config import Config
@@ -62,30 +62,16 @@ class ResultFixerPage(QWidget, Base):
         self.root.setSpacing(8)
         self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
-        # 创建滚动区域的内容容器
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
-        scroll_layout.setSpacing(8)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 添加控件到滚动区域
-        self.add_widget_head(scroll_layout, config, window)
-        self.add_widget_body(scroll_layout, config, window)
-
-        # 创建滚动区域
-        scroll_area = SingleDirectionScrollArea(orient=Qt.Orientation.Vertical)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.enableTransparentBackground()
-
-        # 将滚动区域添加到主布局
-        self.root.addWidget(scroll_area)
+        # 添加控件
+        self.add_widget_head(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
 
         # 绑定事件
         self.bind_events()
 
     # 头部
     def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        # 创建头部卡片
         head_card = EmptyCard(
             title="智能结果修正",
             description=(
@@ -112,7 +98,16 @@ class ResultFixerPage(QWidget, Base):
         # 设置 description 自动换行
         head_card.get_description_label().setWordWrap(True)
 
-        parent.addWidget(head_card)
+        # 创建滚动区域容器
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(head_card)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMaximumHeight(200)  # 限制最大高度
+        scroll_area.setFrameShape(QScrollArea.NoFrame)  # 去掉边框
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 禁用水平滚动条
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 需要时显示垂直滚动条
+
+        parent.addWidget(scroll_area)
 
     # 主体
     def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
@@ -153,6 +148,7 @@ class ResultFixerPage(QWidget, Base):
         log_layout.addWidget(self.log_text)
 
         parent.addWidget(log_card)
+        parent.addStretch(1)
 
     def bind_events(self):
         """绑定事件"""
