@@ -8,3 +8,9 @@
 /*.xlsx
 /resource/config.json
 /resource/expert_config.json
+
+# 开发文档和测试文件
+/docs/
+/test/
+/CLAUDE.md
+/.DS_Store

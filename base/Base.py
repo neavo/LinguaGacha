@@ -28,6 +28,9 @@ class Base():
         APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                          # 更新 - 解压
         APP_TOAST_SHOW = "APP_TOAST_SHOW"                                  # 显示 Toast
         GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                              # 术语表刷新
+        RESULT_FIXER_START = "RESULT_FIXER_START"                          # 结果修正 - 开始
+        RESULT_FIXER_UPDATE = "RESULT_FIXER_UPDATE"                        # 结果修正 - 进度更新
+        RESULT_FIXER_DONE = "RESULT_FIXER_DONE"                            # 结果修正 - 完成
 
     # 接口格式
     class APIFormat(StrEnum):

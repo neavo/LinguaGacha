@@ -87,6 +87,7 @@ class ToolBoxPage(QWidget, Base):
         self.add_batch_correction(self.flow_layout, config, window)
         self.add_re_translation(self.flow_layout, config, window)
         self.add_name_field_extraction(self.flow_layout, config, window)
+        self.add_result_fixer(self.flow_layout, config, window)
 
     # 批量修正
     def add_batch_correction(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
@@ -126,6 +127,20 @@ class ToolBoxPage(QWidget, Base):
             parent = self,
             title = Localizer.get().tool_box_page_name_field_extraction,
             description = Localizer.get().tool_box_page_name_field_extraction_desc,
+            init = None,
+            clicked = clicked,
+        ))
+
+    # 结果修正
+    def add_result_fixer(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def clicked(widget: ItemCard) -> None:
+            window.switchTo(window.result_fixer_page)
+
+        parent.addWidget(ItemCard(
+            parent = self,
+            title = "智能结果修正",
+            description = "自动检测并修正翻译结果中的源语言残留和术语未生效问题",
             init = None,
             clicked = clicked,
         ))
