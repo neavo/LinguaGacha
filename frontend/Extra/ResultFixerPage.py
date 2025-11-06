@@ -114,9 +114,19 @@ class ResultFixerPage(QWidget, Base):
         # 创建控制卡片（只包含标题和按钮）
         control_card = EmptyCard(
             title="开始修正",
-            description="点击下方按钮开始检测和修正问题",
+            description=(
+                "点击下方按钮开始检测和修正问题\n\n"
+                "💡 温馨提示：\n"
+                "• 如有失败项，可再次运行本功能继续修正\n"
+                "• 如反复修正多次仍然失败，建议：\n"
+                "  1. 增加更多模型配置（如添加 Anthropic、Google 等不同 API）\n"
+                "  2. 或手动检查并修复这些失败问题"
+            ),
             init=None,
         )
+
+        # 设置 description 自动换行
+        control_card.get_description_label().setWordWrap(True)
 
         # 添加开始按钮到控制卡片
         self.start_button = PushButton(FluentIcon.PLAY, "开始修正")
@@ -192,6 +202,7 @@ class ResultFixerPage(QWidget, Base):
         problem_details = data.get("problem_details", "")
         attempts = data.get("attempts", 0)
         src_preview = data.get("src_preview", "")
+        final_dst_preview = data.get("final_dst_preview", "")
         platform_name = data.get("platform_name", "")
         error_message = data.get("error_message", "")
 
@@ -207,14 +218,15 @@ class ResultFixerPage(QWidget, Base):
         if success:
             status_icon = "✓"
             self.log_text.append(f"[{current}/{total}] {status_icon} 修正成功")
-            self.log_text.append(f"  • 问题类型：{problem_type_zh}")
+            self.log_text.append(f"  • 问题类型：{problem_type_zh}（{problem_details}）")
             self.log_text.append(f"  • 原文片段：「{src_preview}」")
             self.log_text.append(f"  • 尝试次数：{attempts} 次（使用平台：{platform_name}）\n")
         else:
             status_icon = "✗"
             self.log_text.append(f"[{current}/{total}] {status_icon} 修正失败")
-            self.log_text.append(f"  • 问题类型：{problem_type_zh}")
+            self.log_text.append(f"  • 问题类型：{problem_type_zh}（{problem_details}）")
             self.log_text.append(f"  • 原文片段：「{src_preview}」")
+            self.log_text.append(f"  • 最终译文：「{final_dst_preview}」")
             self.log_text.append(f"  • 尝试次数：{attempts} 次")
             if error_message:
                 self.log_text.append(f"  • 失败原因：{error_message}\n")
@@ -237,15 +249,11 @@ class ResultFixerPage(QWidget, Base):
         self.log_text.append(f"备份路径：{report.backup_path}")
         self.log_text.append("━" * 60)
 
-        # 添加提示信息
-        if report.failed > 0:
-            self.log_text.append("\n💡 温馨提示：")
-            self.log_text.append("• 如有失败项，可再次运行本功能继续修正")
-            self.log_text.append("• 如反复修正多次仍然失败，建议：")
-            self.log_text.append("  1. 增加更多模型配置（如添加 Anthropic、Google 等不同 API）")
-            self.log_text.append("  2. 或手动检查并修复这些失败问题")
-        else:
+        # 添加简单的完成提示
+        if report.failed == 0:
             self.log_text.append("\n🎉 所有问题修正成功！")
+        else:
+            self.log_text.append(f"\n⚠️  仍有 {report.failed} 个问题未能修正")
 
         # 自动滚动到底部
         self.log_text.verticalScrollBar().setValue(

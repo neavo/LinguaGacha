@@ -5,6 +5,7 @@
 """
 
 import os
+import json
 import shutil
 import random
 import threading
@@ -104,6 +105,11 @@ class ResultFixer(Base):
                     if len(result.problem.cache_item.get_src()) > 50:
                         src_preview += "..."
 
+                    # 最终译文片段（用于失败时显示）
+                    final_dst_preview = result.final_dst[:50]
+                    if len(result.final_dst) > 50:
+                        final_dst_preview += "..."
+
                     self.emit(Base.Event.RESULT_FIXER_UPDATE, {
                         "current": current,
                         "total": len(problems),
@@ -112,6 +118,7 @@ class ResultFixer(Base):
                         "problem_details": result.problem.details,
                         "attempts": result.attempts,
                         "src_preview": src_preview,
+                        "final_dst_preview": final_dst_preview,
                         "platform_name": result.platform_name,
                         "error_message": result.error_message
                     })
@@ -138,6 +145,9 @@ class ResultFixer(Base):
         # 7. 生成报告
         report = self._generate_report(backup_path)
         self.info(f"修正完成：成功 {report.fixed}/{report.total}")
+
+        # 8. 保存失败条目到结果检查文件
+        self._save_failed_items_to_file(report)
 
         self.emit(Base.Event.RESULT_FIXER_DONE, {"report": report})
 
@@ -397,3 +407,60 @@ class ResultFixer(Base):
             backup_path=backup_path,
             details=self.fix_results
         )
+
+    def _save_failed_items_to_file(self, report: FixReport) -> None:
+        """保存失败条目到结果检查文件
+
+        规则：
+            - 如果全部成功（failed = 0），删除已存在的文件
+            - 如果有失败（failed > 0），生成/覆盖文件
+        """
+
+        # 定义文件路径
+        result_check_file = f"{self.config.output_folder}/结果检查_智能修正失败.json"
+
+        # 全部成功：删除文件（如果存在）
+        if report.failed == 0:
+            if os.path.exists(result_check_file):
+                os.remove(result_check_file)
+                self.info(f"所有问题修正成功，已删除结果检查文件")
+            return
+
+        # 有失败：生成文件
+        self.info(f"生成结果检查文件：{report.failed} 个失败条目")
+
+        # 问题类型中文化
+        problem_type_zh_map = {
+            "residue": "源语言残留",
+            "glossary_miss": "术语未生效"
+        }
+
+        # 构建 JSON 数据
+        result_data = {}
+
+        for fix_result in self.fix_results:
+            if not fix_result.success:  # 只保存失败的
+                # 获取基本信息
+                cache_item = fix_result.problem.cache_item
+                file_path = cache_item.get_file_path()
+                problem_type = fix_result.problem.problem_type
+                problem_details = fix_result.problem.details
+                src_text = cache_item.get_src()
+                final_dst = fix_result.final_dst
+
+                # 问题类型中文化
+                problem_type_zh = problem_type_zh_map.get(problem_type, problem_type)
+
+                # 构建 key：file_path | 问题类型（问题详情）
+                key = f"{file_path} | {problem_type_zh}（{problem_details}）"
+
+                # 构建 value：{"原文": "最终译文"}
+                if key not in result_data:
+                    result_data[key] = {}
+                result_data[key][src_text] = final_dst
+
+        # 保存到文件
+        with open(result_check_file, "w", encoding="utf-8") as f:
+            json.dump(result_data, f, ensure_ascii=False, indent=4)
+
+        self.info(f"结果检查文件已保存：{result_check_file}")
