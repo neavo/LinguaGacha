@@ -64,19 +64,12 @@ class TaskRequester(Base):
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
-        key: str = ""
-
         if len(keys) == 0:
-            key = "no_key_required"
-        elif len(keys) == 1:
-            key = keys[0]
-        elif cls.API_KEY_INDEX >= len(keys) - 1:
-            key = keys[0]
-            cls.API_KEY_INDEX = 0
-        else:
-            key = keys[cls.API_KEY_INDEX]
-            cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
-
+            return "no_key_required"
+        if len(keys) == 1:
+            return keys[0]
+        key = keys[cls.API_KEY_INDEX % len(keys)]
+        cls.API_KEY_INDEX = (cls.API_KEY_INDEX + 1) % len(keys)
         return key
 
     # 获取密钥
@@ -131,7 +124,7 @@ class TaskRequester(Base):
                     base_url = url,
                     timeout = timeout * 1000,
                     headers = {
-                        "User-Agent": f"KeywordGacha/{VersionManager.get().get_version()} (https://github.com/neavo/KeywordGacha)",
+                        "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
                     },
                 ),
             )
@@ -209,7 +202,7 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(512, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"KeywordGacha/{VersionManager.get().get_version()} (https://github.com/neavo/KeywordGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
@@ -266,14 +259,14 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"KeywordGacha/{VersionManager.get().get_version()} (https://github.com/neavo/KeywordGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
         if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_QWEN3):
             if thinking == False:
                 if "/no_think" not in messages[-1].get("content", ""):
-                    messages[-1]["content"] = messages[-1].get("content") + "\n" + "/no_think"
+                    messages[-1]["content"] = (messages[-1].get("content") or "") + "\n" + "/no_think"
         elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DOUBAO):
             if isinstance(args.get("extra_body"), dict) == False:
                 args["extra_body"] = {}
@@ -442,7 +435,7 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": max(4 * 1024, self.config.token_threshold),
             "extra_headers": {
-                "User-Agent": f"KeywordGacha/{VersionManager.get().get_version()} (https://github.com/neavo/KeywordGacha)"
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
