@@ -201,12 +201,12 @@ class Translator(Base):
 
             # 第二轮开始切分
             if current_round > 0:
-                self.config.token_threshold = max(1, int(self.config.token_threshold / 3))
+                self.config.input_token_threshold = max(1, int(self.config.input_token_threshold / 3))
 
             # 生成缓存数据条目片段
             chunks, precedings = self.cache_manager.generate_item_chunks(
-                self.config.token_threshold,
-                self.config.preceding_lines_threshold,
+                input_token_threshold = self.config.input_token_threshold,
+                preceding_lines_threshold = self.config.preceding_lines_threshold,
             )
 
             # 仅在第一轮启用参考上文功能
