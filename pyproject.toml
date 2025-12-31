@@ -1,0 +1,29 @@
+[project]
+name = "linguagacha"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # System
+    "PyQt-Fluent-Widgets[full]",
+    "openai",
+    "anthropic",
+    "google-genai",
+    "tiktoken",
+    "opencc",
+    "openpyxl",
+    "lxml",
+    "beautifulsoup4",
+
+    # Tools
+    "rich",
+    "httpx",
+    "json-repair",
+    "charset-normalizer",
+]
+
+[tool.uv]
+override-dependencies = [
+    "pyqt5-qt5==5.15.2"
+]
