@@ -35,7 +35,8 @@ class Config():
     scale_factor: str = ""
 
     # BasicSettingsPage
-    token_threshold: int = 384
+    input_token_threshold: int = 384
+    output_token_threshold: int = 4096
     max_workers: int = 0
     rpm_threshold: int = 0
     request_timeout: int = 120

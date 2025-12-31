@@ -213,7 +213,7 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(512, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
@@ -270,7 +270,7 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
@@ -286,7 +286,7 @@ class TaskRequester(Base):
             or any(v.search(self.platform.get("model")) is not None for v in __class__.RE_OPENAI)
         ):
             args.pop("max_tokens", None)
-            args["max_completion_tokens"] = max(4 * 1024, self.config.token_threshold)
+            args["max_completion_tokens"] = self.config.output_token_threshold
 
         # GLM
         if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_GLM):
@@ -366,7 +366,7 @@ class TaskRequester(Base):
     # 生成请求参数
     def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
         args: dict = args | {
-            "max_output_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_output_tokens": self.config.output_token_threshold,
             "safety_settings": (
                 types.SafetySetting(
                     category = "HARM_CATEGORY_HARASSMENT",
@@ -468,7 +468,7 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }

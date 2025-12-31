@@ -255,8 +255,10 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "Please refer to the API platform's documentation for settings, 0 = unlimited"
     )
-    basic_settings_page_token_threshold_title: str = "Task Length Threshold"
-    basic_settings_page_token_threshold_content: str = "The maximum number of text tokens contained in each task"
+    basic_settings_page_input_token_threshold_title: str = "Task Input Length Threshold"
+    basic_settings_page_input_token_threshold_content: str = "Maximum number of text tokens contained in each task input"
+    basic_settings_page_output_token_threshold_title: str = "Task Output Length Threshold"
+    basic_settings_page_output_token_threshold_content: str = "Maximum number of text tokens contained in each task output"
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
         "The maximum time (seconds) to wait for the model's response when making a request"
