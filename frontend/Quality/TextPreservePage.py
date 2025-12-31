@@ -125,18 +125,26 @@ class TextPreservePage(QWidget, Base):
                     triggered = self.table_manager.delete_row,
                 )
             )
+            menu.addAction(
+                Action(
+                    FluentIcon.IOT,
+                    Localizer.get().text_preserve_page_switch_fix,
+                    triggered = self.table_manager.switch_regex,
+                )
+            )
             menu.exec(self.table.viewport().mapToGlobal(position))
 
         self.table = TableWidget(self)
         parent.addWidget(self.table)
 
         # 设置表格属性
-        self.table.setColumnCount(2)
+        self.table.setColumnCount(3)
         self.table.setBorderVisible(False)
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.setColumnWidth(0, 470)
+        self.table.setColumnWidth(0, 400)
+        self.table.setColumnWidth(1, 400)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
@@ -145,6 +153,7 @@ class TextPreservePage(QWidget, Base):
             (
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_01"),
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_02"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
             )
         )
 
