@@ -101,7 +101,7 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setRange(0, 200)
             widget.get_slider().setValue(int(self.platform.get("top_p") * 100))
             widget.get_value_label().setText(f"{self.platform.get("top_p"):.2f}")
 
@@ -130,7 +130,7 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setRange(0, 200)
             widget.get_slider().setValue(int(self.platform.get("temperature") * 100))
             widget.get_value_label().setText(f"{self.platform.get("temperature"):.2f}")
 
@@ -159,7 +159,7 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setRange(0, 200)
             widget.get_slider().setValue(int(self.platform.get("presence_penalty") * 100))
             widget.get_value_label().setText(f"{self.platform.get("presence_penalty"):.2f}")
 
@@ -188,7 +188,7 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
-            widget.get_slider().setRange(0, 100)
+            widget.get_slider().setRange(0, 200)
             widget.get_slider().setValue(int(self.platform.get("frequency_penalty") * 100))
             widget.get_value_label().setText(f"{self.platform.get("frequency_penalty"):.2f}")
 
