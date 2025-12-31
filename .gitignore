@@ -1,3 +1,5 @@
+/.trae
+/.venv
 /uv.lock
 *__pycache__
 
