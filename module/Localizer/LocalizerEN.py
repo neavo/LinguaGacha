@@ -182,7 +182,7 @@ class LocalizerEN(LocalizerZH):
     platform_edit_page_api_key_title: str = "API Key"
     platform_edit_page_api_key_content: str = "Please enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line"
     platform_edit_page_thinking_title: str = "Use Thinking Mode First"
-    platform_edit_page_thinking_content: str = "For models both thinking mode and normal mode, prioritize using thinking mode"
+    platform_edit_page_thinking_content: str = "For models that support both thinking and normal modes, prioritize using thinking mode [→ Click to view the list of supported models ←](https://github.com/neavo/LinguaGacha/wiki/ModelsForThinkingModePriorityEN)"
     platform_edit_page_model: str = "Please enter Model Name …"
     platform_edit_page_model_title: str = "Model Name"
     platform_edit_page_model_content: str = "Current model in use: {MODEL}"
