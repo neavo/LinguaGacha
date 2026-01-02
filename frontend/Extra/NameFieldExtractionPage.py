@@ -176,7 +176,7 @@ class NameFieldExtractionPage(QWidget, Base):
             output_folder = config.output_folder,
         )
 
-        window.switchTo(window.translation_page)
+        window.switchTo(window.task_page)
         self.emit(Base.Event.TRANSLATION_RUN, {
             "status": Base.ProjectStatus.PROCESSING,
         })
