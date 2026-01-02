@@ -25,9 +25,6 @@ jobs:
       with:
         python-version: 3.12
 
-    - name: Install uv
-      run: pip install uv
-
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -39,7 +36,10 @@ jobs:
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Generate requirements.txt
-      run: uv export --format requirements-txt > requirements.txt
+      shell: cmd
+      run: |
+        python -m pip install tomli
+        python .\buildtools\generate_deps.py
 
     - name: Install Requirements
       shell: cmd
@@ -53,40 +53,26 @@ jobs:
     - name: Build EXE
       shell: cmd
       run: |
-        python .\resource\pyinstaller.py
+        python .\buildtools\build_exe.py
 
     - name: Copy Files
       shell: cmd
       run: |
         xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
         xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
-        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
-
-        del /Q /F ".\dist\LinguaGacha\resource\7za.exe"
-        del /Q /F ".\dist\LinguaGacha\resource\pyinstaller.py"
 
     - name: Compress Archive
-      shell: cmd
+      shell: pwsh
       run: |
-        .\resource\7za.exe a -y -bt -mx5 LinguaGacha_${{ steps.check_version.outputs.version }}.zip .\dist\*
+        Compress-Archive -Path .\dist\* -DestinationPath "LinguaGacha_${{ steps.check_version.outputs.version }}.zip" -CompressionLevel Optimal -Force
 
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: MANUAL_BUILD_${{ steps.check_version.outputs.version }}
-        release_name: LinguaGacha_${{ steps.check_version.outputs.version }}
+        name: LinguaGacha_${{ steps.check_version.outputs.version }}
         draft: true
         prerelease: false
-
-    - name: Upload Release
-      uses: actions/upload-release-asset@v1
+        files: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./LinguaGacha_${{ steps.check_version.outputs.version }}.zip
-        asset_name: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
-        asset_content_type: application/zip
