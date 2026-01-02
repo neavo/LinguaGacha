@@ -76,17 +76,15 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20250604 v0.29.2
-  - 调整 - 注音清理规则更新
-  - 修正 - 特定情况下不能正常停止任务的问题
+- 20260102 v0.29.4
+  - 修正 - 部分百宝箱功能使用时会崩溃的问题
 
-- 20250603 v0.29.1
-  - 修正 - 继续任务功能
-
-- 20250602 v0.29.0
-  - 新增 - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
-  - 调整 - 更准确的请求超时时间控制
-  - 调整 - 接口测试时打印失败的密钥
+- 20251231 v0.29.3
+  - 新增 - 设置选项：任务输入长度阈值、任务输出长度阈值
+  - 调整 - 使用思考模型功能支持更多模型 [→ 支持优先使用思考模式的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)
+  - 修正 - 最后一个密钥不会被使用的问题
+  - 修正 - 密钥为空时获取模型列表会崩溃的问题
+  - 兼容性优化
 
 ## 常见问题 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系

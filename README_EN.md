@@ -79,17 +79,15 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20250604 v0.29.2
-  - OPT - Updated phonetic notation cleanup rules
-  - FIX - An issue where tasks could not be stopped properly under specific circumstances
+- 20260102 v0.29.4
+  - Fixed - Issue where some Treasure Chest features would crash during use
 
-- 20250603 v0.29.1
-  - FIX - Continue task feature
-
-- 20250602 v0.29.0
-  - NEW - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
-  - OPT - More accurate request timeout control
-  - OPT - Print failed API keys during interface testing
+- 20251231 v0.29.3
+  - ADD - Setting options: Task Input Length Threshold, Task Output Length Threshold
+  - ADJ - Thinking Mode feature now supports more models [→ ModelListForThinkingModePriority ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)
+  - FIX - Issue where the last API key was not being used
+  - FIX - Crash when fetching model list if the key is empty
+  - Compatibility optimizations
 
 ## Support 😥
 - Runtime logs are stored in `log` folder
