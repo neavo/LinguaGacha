@@ -25,6 +25,9 @@ jobs:
       with:
         python-version: 3.12
 
+    - name: Install uv
+      run: pip install uv
+
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -34,6 +37,9 @@ jobs:
       run: |
         $version = Get-Content -Path version.txt
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Generate requirements.txt
+      run: uv export --format requirements-txt > requirements.txt
 
     - name: Install Requirements
       shell: cmd
