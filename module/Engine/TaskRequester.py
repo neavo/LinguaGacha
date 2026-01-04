@@ -37,9 +37,6 @@ class TaskRequester(Base):
         re.compile(r"glm-4\.6", flags = re.IGNORECASE),
         re.compile(r"glm-4\.7", flags = re.IGNORECASE),
     )
-    RE_QWEN: tuple[re.Pattern] = (
-        re.compile(r"qwen3", flags = re.IGNORECASE),
-    )
     RE_DOUBAO: tuple[re.Pattern] = (
         re.compile(r"doubao-seed-1-6", flags = re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags = re.IGNORECASE),
@@ -294,11 +291,6 @@ class TaskRequester(Base):
                 args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
             else:
                 args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
-        # Qwen
-        elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_QWEN):
-            if thinking == False:
-                if "/no_think" not in messages[-1].get("content", ""):
-                    messages[-1]["content"] = (messages[-1].get("content") or "") + "\n" + "/no_think"
         # Doubao
         elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DOUBAO):
             if thinking == True:
