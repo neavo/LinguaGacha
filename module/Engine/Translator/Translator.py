@@ -525,5 +525,8 @@ class Translator(Base):
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
+        except concurrent.futures.CancelledError:
+            # 任务取消是正常流程，无需记录错误
+            pass
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
