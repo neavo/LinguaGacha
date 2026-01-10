@@ -162,10 +162,12 @@ class Translator(Base):
             self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
             return None
 
-        # 从头翻译时加载默认数据
+        # 加载进度数据
         if status == Base.ProjectStatus.PROCESSING:
             self.extras = self.cache_manager.get_project().get_extras()
             self.extras["start_time"] = time.time() - self.extras.get("time", 0)
+            # 根据实际的 Item 状态重新计算 line，避免因 items.json 和 project.json 保存时间差导致的不一致
+            self.extras["line"] = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.PROCESSED)
         else:
             self.extras = {
                 "start_time": time.time(),
@@ -195,9 +197,12 @@ class Translator(Base):
             if Engine.get().get_status() == Base.TaskStatus.STOPPING:
                 return None
 
-            # 第一轮且不是继续翻译时，记录任务的总行数
-            if current_round == 0 and status == Base.ProjectStatus.NONE:
-                self.extras["total_line"] = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
+            # 第一轮时更新任务的总行数
+            # 从头翻译时：total_line = 0 + 待翻译行数
+            # 继续翻译时：total_line = 已完成行数 + 待翻译行数（保持整体进度，避免负数）
+            if current_round == 0:
+                remaining_count = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
+                self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
             # 第二轮开始切分
             if current_round > 0:
