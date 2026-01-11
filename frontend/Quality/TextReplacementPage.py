@@ -126,14 +126,6 @@ class TextReplacementPage(QWidget, Base):
                     triggered = self.table_manager.delete_row,
                 )
             )
-            menu.addSeparator()
-            menu.addAction(
-                Action(
-                    FluentIcon.IOT,
-                    Localizer.get().quality_switch_regex,
-                    triggered = self.table_manager.switch_regex,
-                )
-            )
             menu.exec(self.table.viewport().mapToGlobal(position))
 
         self.table = TableWidget(self)

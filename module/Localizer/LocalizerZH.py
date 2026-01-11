@@ -329,12 +329,22 @@ class LocalizerZH():
     quality_delete_row: str = "删除行"
     quality_switch_regex: str = "切换正则模式"
 
+    # 规则列
+    rule_column_name: str = "规则"
+    rule_regex: str = "正则表达式"
+    rule_regex_on: str = "当前状态：已启用"
+    rule_regex_off: str = "当前状态：未启用"
+    rule_case_sensitive: str = "大小写敏感"
+    rule_case_sensitive_on: str = "当前状态：已启用"
+    rule_case_sensitive_off: str = "当前状态：未启用"
+
     # 术语表
     glossary_page_head_title: str = "术语表"
     glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_01: str = "原文"
     glossary_page_table_row_02: str = "译文"
-    glossary_page_table_row_03: str = "描述"
+    glossary_page_table_row_03: str = "规则"
+    glossary_page_table_row_04: str = "描述"
     glossary_page_kg: str = "一键制作工具"
 
     # 文本保护
@@ -364,14 +374,14 @@ class LocalizerZH():
     )
     pre_translation_replacement_page_table_row_01: str = "原文"
     pre_translation_replacement_page_table_row_02: str = "替换"
-    pre_translation_replacement_page_table_row_03: str = "正则"
+    pre_translation_replacement_page_table_row_03: str = "规则"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     post_translation_replacement_page_table_row_01: str = "原文"
     post_translation_replacement_page_table_row_02: str = "替换"
-    post_translation_replacement_page_table_row_03: str = "正则"
+    post_translation_replacement_page_table_row_03: str = "规则"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "自定义中文提示词（不支持 SakuraLLM 模型）"

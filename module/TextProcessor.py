@@ -216,10 +216,25 @@ class TextProcessor(Base):
             return src
 
         for v in self.config.pre_translation_replacement_data:
-            if v.get("regex", False) != True:
-                src = src.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                src = re.sub(pattern, replacement, src, flags=flags)
             else:
-                src = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", src)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    src = src.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    src = re.sub(pattern_escaped, replacement, src, flags=re.IGNORECASE)
 
         return src
 
@@ -229,10 +244,25 @@ class TextProcessor(Base):
             return dst
 
         for v in self.config.post_translation_replacement_data:
-            if v.get("regex", False) != True:
-                dst = dst.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                dst = re.sub(pattern, replacement, dst, flags=flags)
             else:
-                dst = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", dst)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    dst = dst.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    dst = re.sub(pattern_escaped, replacement, dst, flags=re.IGNORECASE)
 
         return dst
 

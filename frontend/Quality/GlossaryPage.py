@@ -141,13 +141,14 @@ class GlossaryPage(QWidget, Base):
         parent.addWidget(self.table)
 
         # 设置表格属性
-        self.table.setColumnCount(3)
+        self.table.setColumnCount(4)
         self.table.setBorderVisible(False)
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
         self.table.setColumnWidth(0, 300)
         self.table.setColumnWidth(1, 300)
+        self.table.setColumnWidth(2, 200)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
@@ -157,6 +158,7 @@ class GlossaryPage(QWidget, Base):
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_01"),
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_02"),
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_04"),
             )
         )
 
