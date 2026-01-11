@@ -368,7 +368,7 @@ class TableManager():
                         continue
 
                     src: str = k.strip()
-                    dst: str = v.strip() if v is not None else ""
+                    dst: str = str(v).strip() if v is not None else ""
                     if src != "":
                         result.append(
                             {
@@ -421,12 +421,12 @@ class TableManager():
     # 设置单元格值
     @classmethod
     def get_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int) -> str:
-        result: str = ""
-
         value = sheet.cell(row = row, column = column).value
-        if isinstance(value, str):
-            result = value
-        elif isinstance(value, (int, float)):
+
+        # 强制转换为字符串
+        if value is None:
+            result = ""
+        else:
             result = str(value)
 
         return result.strip()
