@@ -1,5 +1,6 @@
 import json
 from enum import StrEnum
+from functools import partial
 from typing import Any
 
 import openpyxl
@@ -9,6 +10,8 @@ from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import TableWidget
+
+from widget.RuleWidget import RuleWidget
 
 class TableManager():
 
@@ -69,8 +72,6 @@ class TableManager():
 
         # 遍历表格
         if self.type == __class__.Type.GLOSSARY:
-            from widget.RuleWidget import RuleWidget
-
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
                     if col == 0:
@@ -80,26 +81,14 @@ class TableManager():
                     elif col == 2:
                         self.table.item(row, col).setText(v.get("info", ""))
                     elif col == 3:
-                        # 规则列：仅显示大小写敏感按钮
-                        def make_callback(r, data_ref):
-                            # 创建闭包以捕获当前行号和数据引用
-                            def callback(regex, case):
-                                # 立即更新数据源，确保状态在表格重绘之前已保存
-                                data_ref["case_sensitive"] = case
-                                # 然后触发 itemChanged 信号以保存配置
-                                self.table.itemChanged.emit(self.table.item(r, 0))
-                            return callback
-
                         rule_widget = RuleWidget(
                             show_regex=False,
                             show_case_sensitive=True,
                             case_sensitive_enabled=v.get("case_sensitive", False),
-                            on_changed=make_callback(row, v),
+                            on_changed=partial(self._on_rule_changed, row, v),
                         )
                         self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.REPLACEMENT:
-            from widget.RuleWidget import RuleWidget
-
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
                     if col == 0:
@@ -107,23 +96,12 @@ class TableManager():
                     elif col == 1:
                         self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
-                        # 规则列：显示正则和大小写敏感两个按钮
-                        def make_callback(r, data_ref):
-                            # 创建闭包以捕获当前行号和数据引用
-                            def callback(regex, case):
-                                # 立即更新数据源，确保状态在表格重绘之前已保存
-                                data_ref["regex"] = regex
-                                data_ref["case_sensitive"] = case
-                                # 然后触发 itemChanged 信号以保存配置
-                                self.table.itemChanged.emit(self.table.item(r, 0))
-                            return callback
-
                         rule_widget = RuleWidget(
                             show_regex=True,
                             show_case_sensitive=True,
                             regex_enabled=v.get("regex", False),
                             case_sensitive_enabled=v.get("case_sensitive", False),
-                            on_changed=make_callback(row, v),
+                            on_changed=partial(self._on_rule_changed, row, v),
                         )
                         self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.TEXT_PRESERVE:
@@ -210,6 +188,16 @@ class TableManager():
     def set_updating(self, updating: bool) -> None:
         self.updating = updating
 
+    # 规则变更回调
+    def _on_rule_changed(self, row: int, data_ref: dict[str, str | bool], regex: bool, case_sensitive: bool) -> None:
+        if self.type == __class__.Type.REPLACEMENT:
+            data_ref["regex"] = regex
+
+        data_ref["case_sensitive"] = case_sensitive
+
+        # 触发信号
+        self.table.itemChanged.emit(self.table.item(row, 0))
+
     # 生成新的条目
     def generate_item(self, col: int) -> QTableWidgetItem:
         item = QTableWidgetItem("")
@@ -270,8 +258,6 @@ class TableManager():
         ]
 
         if self.type == __class__.Type.GLOSSARY:
-            from widget.RuleWidget import RuleWidget
-
             # 从规则列的 RuleWidget 获取 case_sensitive 状态
             rule_widget = self.table.cellWidget(row, 3)
             case_sensitive = rule_widget.get_case_sensitive_enabled() if isinstance(rule_widget, RuleWidget) else False
@@ -283,8 +269,6 @@ class TableManager():
                 "info": items[2].text().strip() if isinstance(items[2], QTableWidgetItem) else "",
             }
         elif self.type == __class__.Type.REPLACEMENT:
-            from widget.RuleWidget import RuleWidget
-
             # 从规则列的 RuleWidget 获取 regex 和 case_sensitive 状态
             rule_widget = self.table.cellWidget(row, 2)
             regex = rule_widget.get_regex_enabled() if isinstance(rule_widget, RuleWidget) else False

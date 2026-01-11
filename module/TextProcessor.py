@@ -83,8 +83,8 @@ class TextProcessor(Base):
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
-            except:
-                pass
+            except Exception as e:
+                print(f"Error reading rule file '{path}': {e}")
 
         if len(data) == 0:
             return None

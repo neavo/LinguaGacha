@@ -149,7 +149,9 @@ class GlossaryPage(QWidget, Base):
         self.table.setColumnWidth(0, 300)
         self.table.setColumnWidth(1, 300)
         self.table.setColumnWidth(2, 200)
+        # self.table.setColumnWidth(3, 48)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
         # 设置水平表头并隐藏垂直表头
         self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -157,8 +159,8 @@ class GlossaryPage(QWidget, Base):
             (
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_01"),
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_02"),
-                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
                 getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_04"),
+                getattr(Localizer.get(), f"{__class__.BASE}_page_table_row_03"),
             )
         )
 
@@ -290,8 +292,8 @@ class GlossaryPage(QWidget, Base):
             try:
                 for _, _, filenames in os.walk(f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"):
                     filenames = [v.lower().removesuffix(".json") for v in filenames if v.lower().endswith(".json")]
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error loading preset: {e}")
 
             return filenames
 
