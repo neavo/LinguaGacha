@@ -245,21 +245,21 @@ class Translator(Base):
                 self.print("")
 
             # 开始执行翻译任务
-            task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold)
+            task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold, max_concurrency = max_workers)
             with ProgressBar(transient = True) as progress:
                 with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = Engine.TASK_PREFIX) as executor:
-                    pid = progress.new()
                     futures = []
+                    pid = progress.new()
                     for task in tasks:
-                        # 检测是否需要停止任务
-                        # 目的是绕过限流器，快速结束所有剩余任务
-                        # 具体包括两种情况：1、不再继续提交新任务 2、手动取消所有已进入线程池的任务（包括尚未开始执行的）
-                        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                            [future.cancel() for future in futures]
+                        # 限制队列大小，避免堆积过多任务导致停止缓慢
+                        if not task_limiter.acquire(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
                             return None
 
-                        task_limiter.wait()
+                        if not task_limiter.wait(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
+                            return None
+
                         future = executor.submit(task.start)
+                        future.add_done_callback(task_limiter.release)
                         future.add_done_callback(lambda future: self.task_done_callback(future, pid, progress))
                         futures.append(future)
 
