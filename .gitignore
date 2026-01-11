@@ -1,6 +1,4 @@
 /.venv
-/.trae
-/.agent
 /uv.lock
 __pycache__
 
