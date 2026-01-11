@@ -343,7 +343,7 @@ class LocalizerEN(LocalizerZH):
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_01: str = "Original"
     glossary_page_table_row_02: str = "Translated"
-    glossary_page_table_row_03: str = "Rule"
+    glossary_page_table_row_03: str = "Advanced Rule"
     glossary_page_table_row_04: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 
@@ -374,14 +374,14 @@ class LocalizerEN(LocalizerZH):
     )
     pre_translation_replacement_page_table_row_01: str = "Original"
     pre_translation_replacement_page_table_row_02: str = "Replacement"
-    pre_translation_replacement_page_table_row_03: str = "Rule"
+    pre_translation_replacement_page_table_row_03: str = "Advanced Rule"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
     post_translation_replacement_page_table_row_01: str = "Original"
     post_translation_replacement_page_table_row_02: str = "Replacement"
-    post_translation_replacement_page_table_row_03: str = "Rule"
+    post_translation_replacement_page_table_row_03: str = "Advanced Rule"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"

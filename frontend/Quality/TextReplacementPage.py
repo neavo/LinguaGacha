@@ -137,8 +137,8 @@ class TextReplacementPage(QWidget, Base):
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.setColumnWidth(0, 420)
-        self.table.setColumnWidth(1, 420)
+        self.table.setColumnWidth(0, 400)
+        self.table.setColumnWidth(1, 400)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头

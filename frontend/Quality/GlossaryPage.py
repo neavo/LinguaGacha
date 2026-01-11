@@ -149,7 +149,6 @@ class GlossaryPage(QWidget, Base):
         self.table.setColumnWidth(0, 300)
         self.table.setColumnWidth(1, 300)
         self.table.setColumnWidth(2, 200)
-        # self.table.setColumnWidth(3, 48)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
