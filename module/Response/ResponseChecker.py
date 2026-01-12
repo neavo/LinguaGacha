@@ -114,7 +114,7 @@ class ResponseChecker(Base):
                 continue
 
             # 判断是否包含或相似
-            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80 == True:
+            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80:
                 # 日翻中时，只有译文至少包含一个平假名或片假名字符时，才判断为 相似
                 if self.config.source_language == BaseLanguage.Enum.JA and self.config.target_language == BaseLanguage.Enum.ZH:
                     if TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst):
