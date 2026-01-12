@@ -28,6 +28,9 @@ override-dependencies = [
     "pyqt5-qt5==5.15.2"
 ]
 
+[tool.ruff.format]
+quote-style = "double"
+
 [tool.ruff.lint.isort]
 lines-after-imports = 1
 force-single-line = true
