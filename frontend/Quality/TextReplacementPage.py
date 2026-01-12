@@ -126,14 +126,6 @@ class TextReplacementPage(QWidget, Base):
                     triggered = self.table_manager.delete_row,
                 )
             )
-            menu.addSeparator()
-            menu.addAction(
-                Action(
-                    FluentIcon.IOT,
-                    Localizer.get().quality_switch_regex,
-                    triggered = self.table_manager.switch_regex,
-                )
-            )
             menu.exec(self.table.viewport().mapToGlobal(position))
 
         self.table = TableWidget(self)
@@ -145,8 +137,8 @@ class TextReplacementPage(QWidget, Base):
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.setColumnWidth(0, 420)
-        self.table.setColumnWidth(1, 420)
+        self.table.setColumnWidth(0, 400)
+        self.table.setColumnWidth(1, 400)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
@@ -252,7 +244,7 @@ class TextReplacementPage(QWidget, Base):
                 return None
 
             # 导出文件
-            self.table_manager.export(Path(path).stem)
+            self.table_manager.export(str(Path(path).with_suffix("")))
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {

@@ -4,12 +4,12 @@ import PyInstaller.__main__
 
 cmd = [
     "./app.py",
-    "--clean", # Clean PyInstaller cache and remove temporary files before building
-    # "--onedir", # Create a one-folder bundle containing an executable (default)
-    "--onefile", # Create a one-file bundled executable
-    "--noconfirm", # Replace output directory (default: SPECPATH/dist/SPECNAME) without asking for confirmation
-    "--distpath=./dist/LinguaGacha", # Where to put the bundled app (default: ./dist)
-    "--distpath=./dist/LinguaGacha",
+    "--icon=./resource/icon.ico",  # Set application icon
+    "--clean",  # Clean PyInstaller cache and remove temporary files before building
+    # "--onedir",  # Create a one-folder bundle containing an executable (default)
+    "--onefile",  # Create a one-file bundled executable
+    "--noconfirm",  # Replace output directory (default: SPECPATH/dist/SPECNAME) without asking for confirmation
+    "--distpath=./dist/LinguaGacha",  # Where to put the bundled app (default: ./dist)
 ]
 
 if os.path.exists("./requirements.txt"):

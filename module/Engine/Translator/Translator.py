@@ -162,10 +162,12 @@ class Translator(Base):
             self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
             return None
 
-        # 从头翻译时加载默认数据
+        # 加载进度数据
         if status == Base.ProjectStatus.PROCESSING:
             self.extras = self.cache_manager.get_project().get_extras()
             self.extras["start_time"] = time.time() - self.extras.get("time", 0)
+            # 根据实际的 Item 状态重新计算 line，避免因 items.json 和 project.json 保存时间差导致的不一致
+            self.extras["line"] = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.PROCESSED)
         else:
             self.extras = {
                 "start_time": time.time(),
@@ -195,9 +197,12 @@ class Translator(Base):
             if Engine.get().get_status() == Base.TaskStatus.STOPPING:
                 return None
 
-            # 第一轮且不是继续翻译时，记录任务的总行数
-            if current_round == 0 and status == Base.ProjectStatus.NONE:
-                self.extras["total_line"] = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
+            # 第一轮时更新任务的总行数
+            # 从头翻译时：total_line = 0 + 待翻译行数
+            # 继续翻译时：total_line = 已完成行数 + 待翻译行数（保持整体进度，避免负数）
+            if current_round == 0:
+                remaining_count = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
+                self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
             # 第二轮开始切分
             if current_round > 0:
@@ -240,19 +245,23 @@ class Translator(Base):
                 self.print("")
 
             # 开始执行翻译任务
-            task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold)
+            task_limiter = TaskLimiter(rps = max_workers, rpm = rpm_threshold, max_concurrency = max_workers)
             with ProgressBar(transient = True) as progress:
                 with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = Engine.TASK_PREFIX) as executor:
+                    futures = []
                     pid = progress.new()
                     for task in tasks:
-                        # 检测是否需要停止任务
-                        # 目的是绕过限流器，快速结束所有剩余任务
-                        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                        # 限制队列大小，避免堆积过多任务导致停止缓慢
+                        if not task_limiter.acquire(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
                             return None
 
-                        task_limiter.wait()
+                        if not task_limiter.wait(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
+                            return None
+
                         future = executor.submit(task.start)
+                        future.add_done_callback(task_limiter.release)
                         future.add_done_callback(lambda future: self.task_done_callback(future, pid, progress))
+                        futures.append(future)
 
             # 判断是否需要继续翻译
             if self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -521,5 +530,8 @@ class Translator(Base):
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
+        except concurrent.futures.CancelledError:
+            # 任务取消是正常流程，无需记录错误
+            pass
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)

@@ -1,7 +1,6 @@
-/.trae
 /.venv
 /uv.lock
-*__pycache__
+__pycache__
 
 /*log*
 /*debug*

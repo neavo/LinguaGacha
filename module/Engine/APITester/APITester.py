@@ -3,8 +3,8 @@ import threading
 from base.Base import Base
 from module.Config import Config
 from module.Engine.Engine import Engine
-from module.Localizer.Localizer import Localizer
 from module.Engine.TaskRequester import TaskRequester
+from module.Localizer.Localizer import Localizer
 
 class APITester(Base):
 
@@ -60,12 +60,20 @@ class APITester(Base):
                 },
             ]
 
-        # 重置请求器
-        TaskRequester.reset()
+        # 复制配置用于测试
+        platform_test = platform.copy()
 
         # 开始测试
-        requester = TaskRequester(config, platform)
         for key in platform.get("api_key"):
+            # 重置请求器，清除缓存和索引，避免不同key之间相互影响
+            TaskRequester.reset()
+
+            # 设置当前要测试的key
+            platform_test["api_key"] = [key]
+
+            # 为每个key创建新的requester实例
+            requester = TaskRequester(config, platform_test)
+
             self.print("")
             self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
             self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
