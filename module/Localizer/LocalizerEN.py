@@ -303,13 +303,21 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
     )
-    expert_settings_page_result_checker_retry_count_threshold: str = "Result Checker - Retry Count Reached Threshold"
+    expert_settings_page_result_checker_retry_count_threshold: str = "List entries in the check report that reached the retry threshold"
     expert_settings_page_result_checker_retry_count_threshold_desc: str = (
         "Include a list of items that <font color='darkgoldenrod'><b>reached the retry threshold</b></font> in the result check report, disabled by default"
         "<br>"
         "• During translation result checks, if an item still fails after reaching the retry threshold, the last result is used"
         "<br>"
         "• This feature allows you to individually verify if the final result taken is actually correct"
+    )
+    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "Auto Process Prefix/Suffix Preserved Text"
+    expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
+        "Whether to auto-process text segments at the start/end that match preserve rules, enabled by default"
+        "<br>"
+        "• Enabled: Removes segments matching preserve rules and restores them after translation"
+        "<br>"
+        "• Disabled: Sends the full text for better context, but may reduce preserve effectiveness"
     )
 
     # 质量类通用

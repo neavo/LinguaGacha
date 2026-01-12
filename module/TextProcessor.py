@@ -277,7 +277,11 @@ class TextProcessor(Base):
             return __class__.OPENCCT2S.convert(dst)
 
     # 处理前后缀代码段
-    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> None:
+    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> str:
+        # 如果未启用自动移除前后缀代码段，直接返回原始文本
+        if self.config.auto_process_prefix_suffix_preserved_text == False:
+            return src
+
         rule: re.Pattern = self.get_re_prefix(
             custom = self.config.text_preserve_enable,
             text_type = text_type,

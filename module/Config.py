@@ -50,6 +50,7 @@ class Config():
     deduplication_in_bilingual: bool = True
     write_translated_name_fields_to_file: bool = True
     result_checker_retry_count_threshold: bool = False
+    auto_process_prefix_suffix_preserved_text: bool = True
 
     # ProjectPage
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
@@ -133,6 +134,7 @@ class Config():
         self.deduplication_in_bilingual: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.result_checker_retry_count_threshold: bool = False
+        self.auto_process_prefix_suffix_preserved_text: bool = True
 
         # TextPreservePage
         self.text_preserve_enable: bool = False
