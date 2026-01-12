@@ -79,6 +79,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260112 v0.30.0
+  - ADD - Replace and Glossary now support `Case Sensitive` #291
+  - ADD - Auto-process prefix/suffix text segments for preservation (Expert Settings) #259
+  - ADJ - Optimized compatibility for Ruby Clean
+  - FIX - Resolved user feedback issues #251 #289 #290
+
 - 20260111 v0.29.6
   - FIX - Issue with missing application icons
   - FIX - Occasional issue with incorrect line number display
