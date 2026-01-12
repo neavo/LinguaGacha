@@ -104,10 +104,23 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        glossary: list[dict[str, str]] = [
-            v
-            for v in self.config.glossary_data if v.get("src") in full
-        ]
+        full_lower = full.lower()  # 用于不区分大小写的匹配
+
+        # 筛选匹配的术语
+        glossary: list[dict[str, str]] = []
+        for v in self.config.glossary_data:
+            src = v.get("src", "")
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            # 根据 case_sensitive 决定匹配方式
+            if is_case_sensitive:
+                # 大小写敏感：直接使用 in
+                if src in full:
+                    glossary.append(v)
+            else:
+                # 大小写不敏感：转换为小写后匹配
+                if src.lower() in full_lower:
+                    glossary.append(v)
 
         # 构建文本
         result = []
@@ -138,10 +151,23 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary_sakura(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        glossary: list[dict[str, str]] = [
-            v
-            for v in self.config.glossary_data if v.get("src") in full
-        ]
+        full_lower = full.lower()  # 用于不区分大小写的匹配
+
+        # 筛选匹配的术语
+        glossary: list[dict[str, str]] = []
+        for v in self.config.glossary_data:
+            src = v.get("src", "")
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            # 根据 case_sensitive 决定匹配方式
+            if is_case_sensitive:
+                # 大小写敏感：直接使用 in
+                if src in full:
+                    glossary.append(v)
+            else:
+                # 大小写不敏感：转换为小写后匹配
+                if src.lower() in full_lower:
+                    glossary.append(v)
 
         # 构建文本
         result = []
