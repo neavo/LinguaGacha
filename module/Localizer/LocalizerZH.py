@@ -303,13 +303,21 @@ class LocalizerZH():
         ""
         ""
     )
-    expert_settings_page_result_checker_retry_count_threshold: str = "结果检查 - 重试次数达到阈值"
+    expert_settings_page_result_checker_retry_count_threshold: str = "在结果检查报告中输出重试次数达到阈值的条目"
     expert_settings_page_result_checker_retry_count_threshold_desc: str = (
-        "是否在结果检查报告里面输出 <font color='darkgoldenrod'><b>重试次数达到阈值</b></font> 的条目列表"
+        "是否在结果检查报告里面输出 <font color='darkgoldenrod'><b>重试次数达到阈值</b></font> 的条目列表，默认禁用"
         "<br>"
         "• 在进行翻译结果检查时，如果重试达阈值依然未通过检查，就会取最后一次的结果"
         "<br>"
         "• 通过此功能，就可以逐一确认最后的取值实际上是否正确的"
+    )
+    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "自动处理前后缀的保护文本段"
+    expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
+        "是否自动处理每个文本条目头尾命中保护规则的文本段，默认启用"
+        "<br>"
+        "• 启用后，头尾命中保护规则的文本段将被移除，翻译完成后再拼接回去"
+        "<br>"
+        "• 禁用后，会将完整的文本条目发送给模型翻译，可能会获得更完整的语义，但会降低文本保护效果"
     )
 
     # 质量类通用
@@ -329,12 +337,22 @@ class LocalizerZH():
     quality_delete_row: str = "删除行"
     quality_switch_regex: str = "切换正则模式"
 
+    # 规则列
+    rule_column_name: str = "规则"
+    rule_regex: str = "正则表达式"
+    rule_regex_on: str = "当前状态：已启用"
+    rule_regex_off: str = "当前状态：未启用"
+    rule_case_sensitive: str = "大小写敏感"
+    rule_case_sensitive_on: str = "当前状态：已启用"
+    rule_case_sensitive_off: str = "当前状态：未启用"
+
     # 术语表
     glossary_page_head_title: str = "术语表"
     glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_01: str = "原文"
     glossary_page_table_row_02: str = "译文"
-    glossary_page_table_row_03: str = "描述"
+    glossary_page_table_row_03: str = "高级规则"
+    glossary_page_table_row_04: str = "描述"
     glossary_page_kg: str = "一键制作工具"
 
     # 文本保护
@@ -364,14 +382,14 @@ class LocalizerZH():
     )
     pre_translation_replacement_page_table_row_01: str = "原文"
     pre_translation_replacement_page_table_row_02: str = "替换"
-    pre_translation_replacement_page_table_row_03: str = "正则"
+    pre_translation_replacement_page_table_row_03: str = "高级规则"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     post_translation_replacement_page_table_row_01: str = "原文"
     post_translation_replacement_page_table_row_02: str = "替换"
-    post_translation_replacement_page_table_row_03: str = "正则"
+    post_translation_replacement_page_table_row_03: str = "高级规则"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "自定义中文提示词（不支持 SakuraLLM 模型）"

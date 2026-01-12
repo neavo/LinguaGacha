@@ -1,6 +1,6 @@
 [project]
 name = "linguagacha"
-version = "0.29.6"
+version = "0.30.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -31,6 +31,9 @@ required-environments = [
   "sys_platform == 'darwin' and platform_machine == 'arm64'",
   "sys_platform == 'win32'",
 ]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 1

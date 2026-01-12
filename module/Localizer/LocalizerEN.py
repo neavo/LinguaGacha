@@ -303,13 +303,21 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
     )
-    expert_settings_page_result_checker_retry_count_threshold: str = "Result Checker - Retry Count Reached Threshold"
+    expert_settings_page_result_checker_retry_count_threshold: str = "List entries in the check report that reached the retry threshold"
     expert_settings_page_result_checker_retry_count_threshold_desc: str = (
         "Include a list of items that <font color='darkgoldenrod'><b>reached the retry threshold</b></font> in the result check report, disabled by default"
         "<br>"
         "• During translation result checks, if an item still fails after reaching the retry threshold, the last result is used"
         "<br>"
         "• This feature allows you to individually verify if the final result taken is actually correct"
+    )
+    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "Auto Process Prefix/Suffix Preserved Text"
+    expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
+        "Whether to auto-process text segments at the start/end that match preserve rules, enabled by default"
+        "<br>"
+        "• Enabled: Removes segments matching preserve rules and restores them after translation"
+        "<br>"
+        "• Disabled: Sends the full text for better context, but may reduce preserve effectiveness"
     )
 
     # 质量类通用
@@ -329,12 +337,22 @@ class LocalizerEN(LocalizerZH):
     quality_delete_row: str = "Delete Row"
     quality_switch_regex: str = "Regex Switch"
 
+    # 规则列
+    rule_column_name: str = "Rule"
+    rule_regex: str = "Regular Expression"
+    rule_regex_on: str = "Current Status: Enabled"
+    rule_regex_off: str = "Current Status: Disabled"
+    rule_case_sensitive: str = "Case Sensitive"
+    rule_case_sensitive_on: str = "Current Status: Enabled"
+    rule_case_sensitive_off: str = "Current Status: Disabled"
+
     # 术语表
     glossary_page_head_title: str = "Glossary"
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_01: str = "Original"
     glossary_page_table_row_02: str = "Translated"
-    glossary_page_table_row_03: str = "Description"
+    glossary_page_table_row_03: str = "Advanced Rule"
+    glossary_page_table_row_04: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 
     # 文本保护
@@ -364,14 +382,14 @@ class LocalizerEN(LocalizerZH):
     )
     pre_translation_replacement_page_table_row_01: str = "Original"
     pre_translation_replacement_page_table_row_02: str = "Replacement"
-    pre_translation_replacement_page_table_row_03: str = "Regex"
+    pre_translation_replacement_page_table_row_03: str = "Advanced Rule"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
     post_translation_replacement_page_table_row_01: str = "Original"
     post_translation_replacement_page_table_row_02: str = "Replacement"
-    post_translation_replacement_page_table_row_03: str = "Regex"
+    post_translation_replacement_page_table_row_03: str = "Advanced Rule"
 
     # 自定义提示词 - 中文
     custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"

@@ -240,7 +240,7 @@ class TextPreservePage(QWidget, Base):
                 return None
 
             # 导出文件
-            self.table_manager.export(Path(path).stem)
+            self.table_manager.export(str(Path(path).with_suffix("")))
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {

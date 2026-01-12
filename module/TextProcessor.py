@@ -83,8 +83,8 @@ class TextProcessor(Base):
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
-            except:
-                pass
+            except Exception as e:
+                print(f"Error reading rule file '{path}': {e}")
 
         if len(data) == 0:
             return None
@@ -157,7 +157,7 @@ class TextProcessor(Base):
         if self.config.clean_ruby == False:
             return src
         else:
-            return RubyCleaner.clean(src)
+            return RubyCleaner.clean(src, self.item.get_text_type())
 
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
@@ -216,10 +216,25 @@ class TextProcessor(Base):
             return src
 
         for v in self.config.pre_translation_replacement_data:
-            if v.get("regex", False) != True:
-                src = src.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                src = re.sub(pattern, replacement, src, flags=flags)
             else:
-                src = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", src)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    src = src.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    src = re.sub(pattern_escaped, replacement, src, flags=re.IGNORECASE)
 
         return src
 
@@ -229,10 +244,25 @@ class TextProcessor(Base):
             return dst
 
         for v in self.config.post_translation_replacement_data:
-            if v.get("regex", False) != True:
-                dst = dst.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                dst = re.sub(pattern, replacement, dst, flags=flags)
             else:
-                dst = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", dst)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    dst = dst.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    dst = re.sub(pattern_escaped, replacement, dst, flags=re.IGNORECASE)
 
         return dst
 
@@ -247,7 +277,11 @@ class TextProcessor(Base):
             return __class__.OPENCCT2S.convert(dst)
 
     # 处理前后缀代码段
-    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> None:
+    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> str:
+        # 如果未启用自动移除前后缀代码段，直接返回原始文本
+        if self.config.auto_process_prefix_suffix_preserved_text == False:
+            return src
+
         rule: re.Pattern = self.get_re_prefix(
             custom = self.config.text_preserve_enable,
             text_type = text_type,
