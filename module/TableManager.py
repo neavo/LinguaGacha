@@ -265,8 +265,8 @@ class TableManager():
             return {
                 "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
                 "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
-                "case_sensitive": case_sensitive,
                 "info": items[2].text().strip() if isinstance(items[2], QTableWidgetItem) else "",
+                "case_sensitive": case_sensitive,
             }
         elif self.type == __class__.Type.REPLACEMENT:
             # 从规则列的 RuleWidget 获取 regex 和 case_sensitive 状态
@@ -277,6 +277,7 @@ class TableManager():
             return {
                 "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
                 "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "info": "",
                 "regex": regex,
                 "case_sensitive": case_sensitive,
             }
