@@ -102,6 +102,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 响应显示 Toast 事件
     def toast(self, event: Base.Event, data: dict) -> None:
+        # 窗口最小化时不显示 toast，避免 InfoBar 动画错误
+        if self.isMinimized():
+            return
+
         toast_type = data.get("type", Base.ToastType.INFO)
         toast_message = data.get("message", "")
         toast_duration = data.get("duration", 2500)

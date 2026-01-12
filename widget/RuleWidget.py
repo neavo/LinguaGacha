@@ -79,16 +79,15 @@ class RuleWidget(QWidget):
         self.regex_button = None
         self.case_button = None
 
-        # EventFilter 引用（避免重复添加）
-        self.regex_tooltip_filter = None
-        self.case_tooltip_filter = None
-
         # 创建正则按钮
         if show_regex:
             self.regex_button = ToolButton(self)
             self.regex_button.setFixedSize(28, 28)
             self.regex_button.clicked.connect(self._on_regex_clicked)
             self.layout.addWidget(self.regex_button)
+            # 只在初始化时安装一次 ToolTipFilter，避免频繁重建导致 tooltip 残留
+            self.regex_tooltip_filter = ToolTipFilter(self.regex_button, 300, ToolTipPosition.TOP)
+            self.regex_button.installEventFilter(self.regex_tooltip_filter)
 
         # 创建大小写敏感按钮
         if show_case_sensitive:
@@ -96,6 +95,9 @@ class RuleWidget(QWidget):
             self.case_button.setFixedSize(28, 28)
             self.case_button.clicked.connect(self._on_case_clicked)
             self.layout.addWidget(self.case_button)
+            # 只在初始化时安装一次 ToolTipFilter，避免频繁重建导致 tooltip 残留
+            self.case_tooltip_filter = ToolTipFilter(self.case_button, 300, ToolTipPosition.TOP)
+            self.case_button.installEventFilter(self.case_tooltip_filter)
 
         # 初始化样式
         self._update_all_styles()
@@ -153,7 +155,7 @@ class RuleWidget(QWidget):
                     self.COLOR_ACTIVE_DARK_BORDER,
                     self.COLOR_ACTIVE_DARK_HOVER,
                     self.COLOR_ACTIVE_DARK_PRESSED,
-                    QColor(255, 255, 255),  # 激活状态始终保持白色图标
+                    QColor(0, 0, 0),  # 暗色主题激活状态使用黑色图标
                 )
             else:
                 return (
@@ -161,7 +163,7 @@ class RuleWidget(QWidget):
                     self.COLOR_ACTIVE_LIGHT_BORDER,
                     self.COLOR_ACTIVE_LIGHT_HOVER,
                     self.COLOR_ACTIVE_LIGHT_PRESSED,
-                    QColor(255, 255, 255),
+                    QColor(255, 255, 255),  # 亮色主题激活状态使用白色图标
                 )
 
         # 非激活状态
@@ -194,8 +196,9 @@ class RuleWidget(QWidget):
     ) -> None:
         """应用按钮样式（图标、背景、边框等）"""
         # 如果指定了 icon_color 则使用，否则使用 FluentIcon 默认行为（自动适应主题）
-        if icon_color:
-            button.setIcon(icon.icon(icon_color))
+        # 注意：FluentIcon.icon(theme, color) 第一个参数是 theme，必须用命名参数传颜色
+        if icon_color is not None:
+            button.setIcon(icon.icon(color=icon_color))
         else:
             button.setIcon(icon.icon())
 
@@ -226,19 +229,13 @@ class RuleWidget(QWidget):
             self.regex_button, FluentIcon.IOT, bg_color, border_color, hover_color, pressed_color, icon_color
         )
 
-        # 设置 tooltip
+        # 设置 tooltip（ToolTipFilter 已在初始化时安装，这里只更新文本）
         tooltip_text = (
             f"{Localizer.get().rule_regex}\n{Localizer.get().rule_regex_on}"
             if self.regex_enabled
             else f"{Localizer.get().rule_regex}\n{Localizer.get().rule_regex_off}"
         )
         self.regex_button.setToolTip(tooltip_text)
-
-        # 移除旧的 EventFilter 并添加新的
-        if self.regex_tooltip_filter is not None:
-            self.regex_button.removeEventFilter(self.regex_tooltip_filter)
-        self.regex_tooltip_filter = ToolTipFilter(self.regex_button, 300, ToolTipPosition.TOP)
-        self.regex_button.installEventFilter(self.regex_tooltip_filter)
 
     def _update_case_style(self) -> None:
         """更新大小写敏感按钮样式和tooltip"""
@@ -252,19 +249,13 @@ class RuleWidget(QWidget):
             self.case_button, FluentIcon.FONT, bg_color, border_color, hover_color, pressed_color, icon_color
         )
 
-        # 设置 tooltip
+        # 设置 tooltip（ToolTipFilter 已在初始化时安装，这里只更新文本）
         tooltip_text = (
             f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_on}"
             if self.case_sensitive_enabled
             else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_off}"
         )
         self.case_button.setToolTip(tooltip_text)
-
-        # 移除旧的 EventFilter 并添加新的
-        if self.case_tooltip_filter is not None:
-            self.case_button.removeEventFilter(self.case_tooltip_filter)
-        self.case_tooltip_filter = ToolTipFilter(self.case_button, 300, ToolTipPosition.TOP)
-        self.case_button.installEventFilter(self.case_tooltip_filter)
 
     def _trigger_callback(self) -> None:
         """触发状态改变回调"""
