@@ -1,7 +1,7 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import SingleDirectionScrollArea
 
@@ -47,6 +47,7 @@ class ExpertSettingsPage(QWidget, Base):
         self.add_widget_deduplication_in_bilingual(scroll_area_vbox, config, window)
         self.add_widget_write_translated_name_fields_to_file(scroll_area_vbox, config, window)
         self.add_widget_result_checker_retry_count_threshold(scroll_area_vbox, config, window)
+        self.add_widget_auto_process_prefix_suffix_preserved_text(scroll_area_vbox, config, window)
 
         # 填充
         scroll_area_vbox.addStretch(1)
@@ -199,6 +200,28 @@ class ExpertSettingsPage(QWidget, Base):
             SwitchButtonCard(
                 title = Localizer.get().expert_settings_page_result_checker_retry_count_threshold,
                 description = Localizer.get().expert_settings_page_result_checker_retry_count_threshold_desc,
+                init = init,
+                checked_changed = checked_changed,
+            )
+        )
+
+    # 自动移除前后缀代码段
+    def add_widget_auto_process_prefix_suffix_preserved_text(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(
+                config.auto_process_prefix_suffix_preserved_text
+            )
+
+        def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.auto_process_prefix_suffix_preserved_text = widget.get_switch_button().isChecked()
+            config.save()
+
+        parent.addWidget(
+            SwitchButtonCard(
+                title = Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text,
+                description = Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text_desc,
                 init = init,
                 checked_changed = checked_changed,
             )
