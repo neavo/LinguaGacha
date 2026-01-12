@@ -25,7 +25,8 @@ dependencies = [
 
 [tool.uv]
 override-dependencies = [
-    "pyqt5-qt5==5.15.2"
+    "pyqt5-qt5==5.15.18; sys_platform != 'win32'",
+    "pyqt5-qt5==5.15.2; sys_platform == 'win32'",
 ]
 
 [tool.ruff.format]
