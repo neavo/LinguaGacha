@@ -1,11 +1,11 @@
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QGridLayout
 from PyQt5.QtWidgets import QScrollArea
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import CardWidget
 from qfluentwidgets import CheckBox
 from qfluentwidgets import MessageBoxBase
-from qfluentwidgets import StrongBodyLabel
+from qfluentwidgets import SubtitleLabel
 
 from base.Base import Base
 from model.Item import Item
@@ -14,6 +14,8 @@ from module.ResultChecker import ErrorType
 
 class FilterDialog(MessageBoxBase):
     """筛选对话框"""
+
+    NO_ERROR_TAG = "NO_ERROR"
 
     def __init__(self, items: list[Item], parent: QWidget) -> None:
         super().__init__(parent)
@@ -24,19 +26,21 @@ class FilterDialog(MessageBoxBase):
     def _init_ui(self) -> None:
         """初始化 UI"""
         # 设置宽度
-        self.widget.setMinimumWidth(480)
+        self.widget.setMinimumWidth(540)  # 稍微加宽以容纳卡片 padding
+        self.viewLayout.setSpacing(16)    # 卡片之间的间距
 
         # ========== 错误类型分组 ==========
-        self._add_section_label(Localizer.get().proofreading_page_filter_error_type)
+        self.error_checkboxes: dict = {}
+        error_card = self._create_section_card(Localizer.get().proofreading_page_filter_error_type)
 
-        self.error_checkboxes: dict[ErrorType, CheckBox] = {}
-        error_widget = QWidget()
-        error_grid = QGridLayout(error_widget)
-        error_grid.setContentsMargins(0, 8, 0, 16)
+        # 网格布局
+        error_grid = QGridLayout()
+        error_grid.setContentsMargins(0, 0, 0, 0)
         error_grid.setSpacing(12)
 
         # 移除了 UNTRANSLATED，只保留真正的错误类型
         error_types = [
+            (self.NO_ERROR_TAG, "无错误"),
             (ErrorType.KANA, Localizer.get().proofreading_page_error_kana),
             (ErrorType.HANGEUL, Localizer.get().proofreading_page_error_hangeul),
             (ErrorType.TEXT_PRESERVE, Localizer.get().proofreading_page_error_text_preserve),
@@ -51,15 +55,16 @@ class FilterDialog(MessageBoxBase):
             self.error_checkboxes[error_type] = checkbox
             error_grid.addWidget(checkbox, i // 2, i % 2)
 
-        self.viewLayout.addWidget(error_widget)
+        # 将网格添加到卡片布局中（标题之后）
+        error_card.layout().addLayout(error_grid)
+        self.viewLayout.addWidget(error_card)
 
-        # ========== 翻译状态分组（完整的 5 种状态） ==========
-        self._add_section_label(Localizer.get().proofreading_page_filter_status)
-
+        # ========== 翻译状态分组 ==========
         self.status_checkboxes: dict[Base.ProjectStatus, CheckBox] = {}
-        status_widget = QWidget()
-        status_layout = QGridLayout(status_widget)
-        status_layout.setContentsMargins(0, 8, 0, 16)
+        status_card = self._create_section_card(Localizer.get().proofreading_page_filter_status)
+
+        status_layout = QGridLayout()
+        status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(12)
 
         status_types = [
@@ -77,15 +82,14 @@ class FilterDialog(MessageBoxBase):
             self.status_checkboxes[status] = checkbox
             status_layout.addWidget(checkbox, i // 2, i % 2)
 
-        self.viewLayout.addWidget(status_widget)
+        status_card.layout().addLayout(status_layout)
+        self.viewLayout.addWidget(status_card)
 
-        # ========== 所属文件分组（可滚动） ==========
-        self._add_section_label(Localizer.get().proofreading_page_filter_file)
-
-        # 收集所有文件路径
-        file_paths = sorted(set(item.get_file_path() for item in self.items))
-
+        # ========== 所属文件分组 ==========
         self.file_checkboxes: dict[str, CheckBox] = {}
+        file_card = self._create_section_card(Localizer.get().proofreading_page_filter_file)
+
+        file_paths = sorted(set(item.get_file_path() for item in self.items))
 
         # 创建滚动区域
         scroll_area = QScrollArea()
@@ -96,7 +100,7 @@ class FilterDialog(MessageBoxBase):
         # 文件列表容器
         file_container = QWidget()
         file_layout = QVBoxLayout(file_container)
-        file_layout.setContentsMargins(0, 8, 0, 8)
+        file_layout.setContentsMargins(0, 0, 0, 0)
         file_layout.setSpacing(8)
 
         for path in file_paths:
@@ -109,16 +113,27 @@ class FilterDialog(MessageBoxBase):
 
         file_layout.addStretch()
         scroll_area.setWidget(file_container)
-        self.viewLayout.addWidget(scroll_area)
+
+        file_card.layout().addWidget(scroll_area)
+        self.viewLayout.addWidget(file_card)
 
         # 设置按钮文本
         self.yesButton.setText(Localizer.get().confirm)
         self.cancelButton.setText(Localizer.get().cancel)
 
-    def _add_section_label(self, text: str) -> None:
-        """添加分组标题"""
-        label = StrongBodyLabel(text)
-        self.viewLayout.addWidget(label)
+    def _create_section_card(self, title_text: str) -> CardWidget:
+        """创建带标题的分组卡片"""
+        card = CardWidget()
+        card.setBorderRadius(8)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        title = SubtitleLabel(title_text)
+        layout.addWidget(title)
+
+        return card
 
     def get_filter_options(self) -> dict:
         """获取当前筛选选项"""
@@ -127,7 +142,7 @@ class FilterDialog(MessageBoxBase):
         selected_files = {f for f, cb in self.file_checkboxes.items() if cb.isChecked()}
 
         return {
-            "error_types": selected_errors if selected_errors != set(self.error_checkboxes.keys()) else None,
+            "error_types": selected_errors,  # 即使全选也不返回 None，确保全选时过滤掉无错误的条目；全不选时为空集合，被视为不筛选
             "statuses": selected_statuses if selected_statuses != set(self.status_checkboxes.keys()) else None,
             "file_paths": selected_files if selected_files != set(self.file_checkboxes.keys()) else None,
         }

@@ -145,29 +145,13 @@ class ProofreadingPage(QWidget, Base):
 
         self.command_bar_card.add_separator()
 
+        # 弹性空间（将分页控件顶到最右侧）
+        self.command_bar_card.add_stretch(1)
+
         # 分页控件
         self.pagination_bar = PaginationBar()
         self.pagination_bar.page_changed.connect(self._on_page_changed)
         self.command_bar_card.add_widget(self.pagination_bar)
-
-        # 弹性空间
-        self.command_bar_card.add_stretch(1)
-
-        # 统计信息标签
-        self.stats_label = CaptionLabel()
-        self._update_stats_label()
-        self.command_bar_card.add_widget(self.stats_label)
-
-    # ========== 统计信息 ==========
-    def _update_stats_label(self) -> None:
-        """更新统计信息"""
-        total = len(self.items)
-        error_count = len([i for i in self.items if id(i) in self.error_map])
-
-        stats_text = Localizer.get().proofreading_page_stats
-        stats_text = stats_text.replace("{TOTAL}", str(total))
-        stats_text = stats_text.replace("{ERROR}", str(error_count))
-        self.stats_label.setText(stats_text)
 
     # ========== 加载功能 ==========
     def _on_load_clicked(self) -> None:
@@ -185,6 +169,8 @@ class ProofreadingPage(QWidget, Base):
                 cache_manager = CacheManager(service=False)
                 cache_manager.load_items_from_file(self.config.output_folder)
                 items = cache_manager.get_items()
+                # 过滤掉原文为空的条目
+                items = [i for i in items if i.get_src().strip()]
 
                 if not items:
                     self.emit(Base.Event.TOAST, {
@@ -252,8 +238,14 @@ class ProofreadingPage(QWidget, Base):
             # 错误类型筛选
             if error_types is not None:
                 item_errors = self.error_map.get(id(item), [])
-                if not item_errors or not any(e in error_types for e in item_errors):
-                    if error_types:
+
+                if item_errors:
+                    # 条目有错误：检查其错误是否在选中的错误类型中
+                    if not any(e in error_types for e in item_errors):
+                        continue
+                else:
+                    # 条目无错误：检查是否勾选了“无错误”
+                    if FilterDialog.NO_ERROR_TAG not in error_types:
                         continue
 
             # 翻译状态筛选
@@ -279,7 +271,6 @@ class ProofreadingPage(QWidget, Base):
         self.pagination_bar.set_total(len(filtered))
         self.pagination_bar.set_page(1)
         self._render_page(1)
-        self._update_stats_label()
 
     # ========== 搜索功能 ==========
     def _on_search_clicked(self) -> None:
@@ -319,7 +310,6 @@ class ProofreadingPage(QWidget, Base):
 
         self.modified_set.add(id(item))
         self._recheck_item(item)
-        self._update_stats_label()
 
     def _recheck_item(self, item: Item) -> None:
         """重新检查单个条目"""
@@ -400,7 +390,6 @@ class ProofreadingPage(QWidget, Base):
             self.table_widget.update_row_dst(row, item.get_dst())
             self.modified_set.add(id(item))
             self._recheck_item(item)
-            self._update_stats_label()
 
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
@@ -434,7 +423,6 @@ class ProofreadingPage(QWidget, Base):
             )
 
             self.modified_set.clear()
-            self._update_stats_label()
 
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
