@@ -84,23 +84,9 @@ class ToolBoxPage(QWidget, Base):
         self.vbox.addWidget(self.flow_container)
 
         # 添加控件
-        self.add_batch_correction(self.flow_layout, config, window)
         self.add_re_translation(self.flow_layout, config, window)
         self.add_name_field_extraction(self.flow_layout, config, window)
 
-    # 批量修正
-    def add_batch_correction(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
-        def clicked(widget: ItemCard) -> None:
-            window.switchTo(window.batch_correction_page)
-
-        parent.addWidget(ItemCard(
-            parent = self,
-            title = Localizer.get().tool_box_page_batch_correction,
-            description = Localizer.get().tool_box_page_batch_correction_desc,
-            init = None,
-            clicked = clicked,
-        ))
 
     # 部分重翻
     def add_re_translation(self, parent: QLayout, config: Config, window: FluentWindow) -> None:

@@ -478,8 +478,6 @@ class Translator(Base):
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
 
-        # 检查结果
-        ResultChecker(self.config, items).check()
 
         # 写入文件
         FileManager(self.config).write_to_path(items)

@@ -1,14 +1,18 @@
 import threading
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
+from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MessageBox
 
 from base.Base import Base
@@ -135,17 +139,33 @@ class ProofreadingPage(QWidget, Base):
 
         self.command_bar_card.add_separator()
 
-        # 弹性空间（将分页控件顶到最右侧）
-        self.command_bar_card.add_stretch(1)
-
-        # 分页控件
+        # 分页控件（放在左侧，添加到 CommandBar 内部以紧贴分隔符）
         self.pagination_bar = PaginationBar()
         self.pagination_bar.page_changed.connect(self._on_page_changed)
-        self.command_bar_card.add_widget(self.pagination_bar)
+        self.command_bar_card.add_widget_to_command_bar(self.pagination_bar)
+
+        # 弹性空间（将右侧的 loading 指示器顶到最右侧）
+        self.command_bar_card.add_stretch(1)
+
+        # Loading 指示器（右下角）
+        self.info_label = CaptionLabel("", self)
+        self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
+        self.info_label.hide()
+
+        self.indeterminate = IndeterminateProgressRing()
+        self.indeterminate.setFixedSize(16, 16)
+        self.indeterminate.setStrokeWidth(3)
+        self.indeterminate.hide()
+
+        self.command_bar_card.add_widget(self.info_label)
+        self.command_bar_card.add_spacing(4)
+        self.command_bar_card.add_widget(self.indeterminate)
 
     # ========== 加载功能 ==========
     def _on_load_clicked(self) -> None:
         """加载按钮点击"""
+        # 显示 loading 指示器
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
         self.load_data()
 
     def load_data(self) -> None:
@@ -189,6 +209,9 @@ class ProofreadingPage(QWidget, Base):
 
     def _on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
+        # 隐藏 loading 指示器
+        self.indeterminate_hide()
+
         if items:
             self._apply_filter()
         else:
@@ -409,7 +432,11 @@ class ProofreadingPage(QWidget, Base):
     # ========== 保存功能 ==========
     def _on_save_clicked(self) -> None:
         """保存按钮点击"""
+        # 显示 loading 指示器
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
         self.save_data()
+        # 延迟隐藏，让用户看到保存提示
+        QTimer.singleShot(1000, self.indeterminate_hide)
 
     def save_data(self) -> bool:
         """保存数据到缓存文件"""
@@ -443,7 +470,11 @@ class ProofreadingPage(QWidget, Base):
     # ========== 导出功能 ==========
     def _on_export_clicked(self) -> None:
         """导出按钮点击"""
+        # 显示 loading 指示器
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_exporting)
         self.export_data()
+        # 延迟隐藏，让用户看到导出提示
+        QTimer.singleShot(1000, self.indeterminate_hide)
 
     def export_data(self) -> None:
         """导出数据"""
@@ -502,3 +533,16 @@ class ProofreadingPage(QWidget, Base):
         """页面显示事件"""
         super().showEvent(event)
         self._check_engine_status()
+
+    # ========== Loading 指示器 ==========
+    def indeterminate_show(self, msg: str) -> None:
+        """显示 loading 指示器"""
+        self.indeterminate.show()
+        self.info_label.show()
+        self.info_label.setText(msg)
+
+    def indeterminate_hide(self) -> None:
+        """隐藏 loading 指示器"""
+        self.indeterminate.hide()
+        self.info_label.hide()
+        self.info_label.setText("")

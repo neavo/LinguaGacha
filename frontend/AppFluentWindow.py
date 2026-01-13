@@ -26,7 +26,6 @@ from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
-from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ReTranslationPage import ReTranslationPage
@@ -413,9 +412,6 @@ class AppFluentWindow(FluentWindow, Base):
             position = NavigationItemPosition.SCROLL,
         )
 
-        # 百宝箱 - 批量修正
-        self.batch_correction_page = BatchCorrectionPage("batch_correction_page", self)
-        self.stackedWidget.addWidget(self.batch_correction_page)
 
         # 百宝箱 - 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)

@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import ToolButton
+from qfluentwidgets import TransparentToolButton
 
 from module.Localizer.Localizer import Localizer
 
@@ -32,24 +32,31 @@ class PaginationBar(QWidget):
         """初始化 UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(4)  # 减小间距，使控件更紧凑
+        layout.setAlignment(Qt.AlignLeft)  # 左对齐而非居中
 
-        # 上一页按钮
-        self.btn_prev = ToolButton(FluentIcon.CARE_LEFT_SOLID, self)
-        self.btn_prev.setIconSize(QSize(12, 12))
+        # 上一页按钮（使用扁平透明按钮）
+        self.btn_prev = TransparentToolButton(FluentIcon.CARE_LEFT_SOLID, self)
+        self.btn_prev.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
         self.btn_prev.clicked.connect(self._on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
         # 页码信息标签
         self.page_info_label = CaptionLabel()
+        # 设置最小宽度以适应较长的页码文本（如"第 999 / 999 页"）
+        self.page_info_label.setMinimumWidth(96)
+        self.page_info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.page_info_label)
 
-        # 下一页按钮
-        self.btn_next = ToolButton(FluentIcon.CARE_RIGHT_SOLID, self)
-        self.btn_next.setIconSize(QSize(12, 12))
+        # 下一页按钮（使用扁平透明按钮）
+        self.btn_next = TransparentToolButton(FluentIcon.CARE_RIGHT_SOLID, self)
+        self.btn_next.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
         self.btn_next.clicked.connect(self._on_next_clicked)
         layout.addWidget(self.btn_next)
+
+        # 设置尺寸策略，确保控件不占用额外空间
+        from PyQt5.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
 
         # 更新显示
         self._update_display()

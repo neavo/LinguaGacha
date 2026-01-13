@@ -74,14 +74,6 @@ class LocalizerZH():
 
     # 路径
     path_bilingual: str = "双语对照"
-    path_result_check_kana: str = "结果检查_假名残留.json"
-    path_result_check_hangeul: str = "结果检查_谚文残留.json"
-    path_result_check_text_preserve: str = "结果检查_文本保护.json"
-    path_result_check_similarity: str = "结果检查_相似度较高.json"
-    path_result_check_glossary: str = "结果检查_术语表未生效.json"
-    path_result_check_untranslated: str = "结果检查_未翻译的条目.json"
-    path_result_check_retry_count_threshold: str = "结果检查_重试次数达到阈值.json"
-    path_result_batch_correction: str = "批量修正.xlsx"
     path_result_name_field_extraction: str = "姓名字段提取.xlsx"
 
     # 日志
@@ -101,7 +93,6 @@ class LocalizerZH():
     engine_task_done: str = "所有数据均已处理，任务已结束 …"
     engine_task_fail: str = "已到最大任务轮次，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
-    engine_task_save: str = "正在生成输出文件，等稍候 …"
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
     engine_task_generation: str = "任务生成已完成，共生成 {COUNT} 个任务 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
@@ -125,20 +116,6 @@ class LocalizerZH():
     translator_response_check_fail: str = "译文文本未通过检查，将在下一轮次的翻译中自动重试"
     translator_response_check_fail_all: str = "全部译文文本未通过检查，将在下一轮次的翻译中自动重试"
     translator_response_check_fail_part: str = "部分译文文本未通过检查，将在下一轮次的翻译中自动重试"
-    file_checker_kana: str = "已完成假名残留检查，未发现异常条目 …"
-    file_checker_kana_full: str = "已完成假名残留检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] …"
-    file_checker_hangeul: str = "已完成谚文残留检查，未发现异常条目 …"
-    file_checker_hangeul_full: str = "已完成谚文残留检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] …"
-    file_checker_text_preserve: str = "已完成文本保护检查，未发现异常条目 …"
-    file_checker_text_preserve_full: str = "已完成文本保护检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] …"
-    file_checker_text_preserve_alert_key: str = "____提醒____"
-    file_checker_text_preserve_alert_value: str = "本文件内列出的是文本保护 **可能** 未生效的条目，请结合上下文语境进行实际判断！"
-    file_checker_similarity: str = "已完成相似度异常检查，未发现异常条目 …"
-    file_checker_similarity_full: str = "已完成相似度异常检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] …"
-    file_checker_similarity_alert_key: str = "____提醒____"
-    file_checker_similarity_alert_value: str = "本文件内列出的是 **可能** 存在相似度较高情况的条目，请结合上下文语境进行实际判断！"
-    file_checker_glossary: str = "已完成未生效术语检查，未发现异常条目 …"
-    file_checker_glossary_full: str = "已完成未生效术语检查，发现 {COUNT} 个异常条目，占比为 {PERCENT} %，结果已写入 [green]{TARGET}[/] …"
     response_checker_fail_data: str = "数据结构错误"
     response_checker_fail_line_count: str = "行数不一致"
     response_checker_line_error_kana: str = "假名残留"
@@ -283,6 +260,9 @@ class LocalizerZH():
     proofreading_page_filter_select_all: str = "全选"
     proofreading_page_filter_no_warning: str = "无警告"
     proofreading_page_filter_clear: str = "清除"
+    proofreading_page_indeterminate_loading: str = "加载数据中 …"
+    proofreading_page_indeterminate_saving: str = "保存数据中 …"
+    proofreading_page_indeterminate_exporting: str = "导出数据中 …"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "并发任务阈值"
@@ -348,14 +328,6 @@ class LocalizerZH():
         "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
         ""
         ""
-    )
-    expert_settings_page_result_checker_retry_count_threshold: str = "在结果检查报告中输出重试次数达到阈值的条目"
-    expert_settings_page_result_checker_retry_count_threshold_desc: str = (
-        "是否在结果检查报告里面输出 <font color='darkgoldenrod'><b>重试次数达到阈值</b></font> 的条目列表，默认禁用"
-        "<br>"
-        "• 在进行翻译结果检查时，如果重试达阈值依然未通过检查，就会取最后一次的结果"
-        "<br>"
-        "• 通过此功能，就可以逐一确认最后的取值实际上是否正确的"
     )
     expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "自动处理前后缀的保护文本段"
     expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
@@ -484,8 +456,6 @@ class LocalizerZH():
     )
 
     # 百宝箱
-    tool_box_page_batch_correction: str = "批量修正"
-    tool_box_page_batch_correction_desc: str = "根据翻译完成时生成的结果检查文件中的数据，对可能存在的翻译错误进行批量修正，实现快速修正译文结果的目的"
     tool_box_page_re_translation: str = "部分重翻"
     tool_box_page_re_translation_desc: str = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正"
     tool_box_page_name_field_extraction: str = "姓名字段提取"
@@ -494,40 +464,6 @@ class LocalizerZH():
         "自动生成对应的术语表数据，方便后续进行翻译"
     )
 
-    # 百宝箱 - 批量修正
-    batch_correction_page: str = "批量修正"
-    batch_correction_page_desc: str = (
-        "根据翻译完成时生成的结果检查文件中的数据，对可能存在的翻译错误进行批量修正，然后生成修正后的译文文件"
-        "<br>"
-        "工作流程："
-        "<br>"
-        "• 从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 的翻译结果检查文件中提取可能需要修正的数据"
-        "<br>"
-        "• 检查提取出的数据，并根据实际情况对需要修正的条目进行修正"
-        "<br>"
-        "• 将修正后的数据注入 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的译文文件，然后在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 生成修正后的译文文件"
-    )
-    batch_correction_page_step_01: str = "第一步 - 生成修正数据"
-    batch_correction_page_step_01_desc: str = (
-        "从结果检查文件中提取可能包含翻译错误的数据"
-        "<br>"
-        f"然后自动在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成用于编辑的数据文件 <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font>"
-    )
-    batch_correction_page_step_02: str = "第二步 - 注入修正数据"
-    batch_correction_page_step_02_desc: str = (
-        "检查数据文件中的内容，确认无误后 <font color='darkgoldenrod'><b>关闭</b></font> 文件，开始注入"
-        "<br>"
-        "请注意："
-        "<br>"
-        "• 除 <font color='darkgoldenrod'><b>修正列</b></font> 以外，不要修改数据文件内的其他数据"
-        "<br>"
-        "• 部分格式的译文文件名中会包含类似 <font color='darkgoldenrod'><b>.zh</b></font> 的语言后缀，在注入前请从文件名中移除语言后缀以正确匹配数据"
-    )
-    batch_correction_page_title_01: str = "文件名"
-    batch_correction_page_title_02: str = "错误类型"
-    batch_correction_page_title_03: str = "原文（勿修改此列）"
-    batch_correction_page_title_04: str = "译文（勿修改此列）"
-    batch_correction_page_title_05: str = "修正（请修改此列）"
 
     # 百宝箱 - 部分重翻
     re_translation_page: str = "部分重翻"

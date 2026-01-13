@@ -74,14 +74,6 @@ class LocalizerEN(LocalizerZH):
 
     # 路径
     path_bilingual: str = "bilingual"
-    path_result_check_kana: str = "result_check_residual_kana.json"
-    path_result_check_hangeul: str = "result_check_residual_hangeul.json"
-    path_result_check_text_preserve: str = "result_check_text_preserve.json"
-    path_result_check_similarity: str = "result_check_high_similarity.json"
-    path_result_check_glossary: str = "result_check_incorrect_glossary.json"
-    path_result_check_untranslated: str = "result_check_untranslated_entries.json"
-    path_result_check_retry_count_threshold: str = "result_check_retry_count_reach_threshold.json"
-    path_result_batch_correction: str = "batch_correction.xlsx"
     path_result_name_field_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
@@ -101,7 +93,6 @@ class LocalizerEN(LocalizerZH):
     engine_task_done: str = "All data has been processed, task finished …"
     engine_task_fail: str = "Reached the maximum task rounds, but some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
-    engine_task_save: str = "Generating output file, please wait …"
     engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
     engine_task_generation: str = "Task generation completed, {COUNT} tasks generated in total …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
@@ -125,20 +116,6 @@ class LocalizerEN(LocalizerZH):
     translator_response_check_fail: str = "Translated text failed check, will automatically retry in the next round of translation"
     translator_response_check_fail_all: str = "All translated text failed check, will automatically retry in the next round of translation"
     translator_response_check_fail_part: str = "Partial translated text failed check, will automatically retry in the next round of translation"
-    file_checker_kana: str = "Kana residue check complete, no issues found …"
-    file_checker_kana_full: str = "Kana residue check complete, {COUNT} issues found, {PERCENT}%, results written to [green]{TARGET}[/] …"
-    file_checker_hangeul: str = "Hangeul residue check complete, no issues found …"
-    file_checker_hangeul_full: str = "Hangeul residue check complete, {COUNT} issues found, {PERCENT}%, results written to [green]{TARGET}[/] …"
-    file_checker_text_preserve: str = "Text preservation check completed, no issues found …."
-    file_checker_text_preserve_full: str = "Text preservation check completed, found {COUNT} potential issues ({PERCENT}%), results written to [green]{TARGET}[/] …."
-    file_checker_text_preserve_alert_key: str = "____ALERT____"
-    file_checker_text_preserve_alert_value: str = "This file lists entries where text preservation **might** not have worked correctly. Please verify in context!!"
-    file_checker_similarity: str = "Similarity check complete, no issues found …"
-    file_checker_similarity_full: str = "Similarity check complete, {COUNT} potential issues found, {PERCENT}%, results written to [green]{TARGET}[/] …"
-    file_checker_similarity_alert_key: str = "____ALERT____"
-    file_checker_similarity_alert_value: str = "This file lists entries with *potentially* high similarity. Please verify in context!"
-    file_checker_glossary: str = "Glossary check complete, no issues found …"
-    file_checker_glossary_full: str = "Glossary check complete, {COUNT} issues found, {PERCENT}%, results written to [green]{TARGET}[/] …"
     response_checker_fail_data: str = "Data Structure Error"
     response_checker_fail_line_count: str = "Line Count Mismatch"
     response_checker_line_error_kana: str = "Kana Residue"
@@ -283,6 +260,9 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_filter_select_all: str = "Select All"
     proofreading_page_filter_no_warning: str = "No Warning"
     proofreading_page_filter_clear: str = "Clear"
+    proofreading_page_indeterminate_loading: str = "Loading data …"
+    proofreading_page_indeterminate_saving: str = "Saving data …"
+    proofreading_page_indeterminate_exporting: str = "Exporting data …"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"
@@ -348,14 +328,6 @@ class LocalizerEN(LocalizerZH):
         "• RenPy exported game text (.rpy)"
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
-    )
-    expert_settings_page_result_checker_retry_count_threshold: str = "List entries in the check report that reached the retry threshold"
-    expert_settings_page_result_checker_retry_count_threshold_desc: str = (
-        "Include a list of items that <font color='darkgoldenrod'><b>reached the retry threshold</b></font> in the result check report, disabled by default"
-        "<br>"
-        "• During translation result checks, if an item still fails after reaching the retry threshold, the last result is used"
-        "<br>"
-        "• This feature allows you to individually verify if the final result taken is actually correct"
     )
     expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "Auto Process Prefix/Suffix Preserved Text"
     expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
@@ -484,8 +456,6 @@ class LocalizerEN(LocalizerZH):
     )
 
     # 百宝箱
-    tool_box_page_batch_correction: str = "Batch Correction"
-    tool_box_page_batch_correction_desc: str = "Checks the translated file against the generated translation results and performs batch correction on potential errors, enabling quick refinement of translation outputs"
     tool_box_page_re_translation: str = "Partial Re-Translation"
     tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
     tool_box_page_name_field_extraction: str = "Name-Field Extraction"
@@ -494,40 +464,6 @@ class LocalizerEN(LocalizerZH):
         "and automatically generate corresponding glossary data to facilitate subsequent translation"
     )
 
-    # 百宝箱 - 批量修正
-    batch_correction_page: str = "Batch Correction"
-    batch_correction_page_desc: str = (
-        "Inspects data in files from translation results to batch correct potential errors, then generates corrected translation files"
-        "<br>"
-        "Workflow:"
-        "<br>"
-        "• Extracts data that may need correction from the translation result inspection file in the <font color='darkgoldenrod'><b>input folder</b></font>"
-        "<br>"
-        "• Checks the extracted data and corrects the entries that need correction according to the actual situation"
-        "<br>"
-        "• Inject the corrected data into the translated files within the <font color='darkgoldenrod'><b>Input folder</b></font>, and then generate the corrected translated files in the <font color='darkgoldenrod'><b>Output folder</b></font>"
-    )
-    batch_correction_page_step_01: str = "Step 1 - Generate Correction Data"
-    batch_correction_page_step_01_desc: str = (
-        "Extract data that may contain translation errors from the result check file"
-        "<br>"
-        f"Then automatically generate a data file for editing named <font color='darkgoldenrod'><b>{path_result_batch_correction}</b></font> in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-    )
-    batch_correction_page_step_02: str = "Step 2 - Inject Correction Data"
-    batch_correction_page_step_02_desc: str = (
-        "Check the content in the data file, and after confirming everything is correct, <font color='darkgoldenrod'><b>close</b></font> the file to start injection"
-        "<br>"
-        "Please note:"
-        "<br>"
-        "• Except for the <font color='darkgoldenrod'><b>correction column</b></font>, do not modify other data within the data file"
-        "<br>"
-        "• Filenames of some formats may contain language suffix like <font color='darkgoldenrod'><b>.zh</b></font>, remove it before injection for correct data matching"
-    )
-    batch_correction_page_title_01: str = "File Name"
-    batch_correction_page_title_02: str = "Error Type"
-    batch_correction_page_title_03: str = "Original Text (Do not modify this column)"
-    batch_correction_page_title_04: str = "Translated Text (Do not modify this column)"
-    batch_correction_page_title_05: str = "Correction (Please modify this column)"
 
     # 百宝箱 - 部分重翻
     re_translation_page: str = "Partial Re-Translation"

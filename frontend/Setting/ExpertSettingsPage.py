@@ -46,7 +46,6 @@ class ExpertSettingsPage(QWidget, Base):
         self.add_widget_deduplication_in_trans(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_bilingual(scroll_area_vbox, config, window)
         self.add_widget_write_translated_name_fields_to_file(scroll_area_vbox, config, window)
-        self.add_widget_result_checker_retry_count_threshold(scroll_area_vbox, config, window)
         self.add_widget_auto_process_prefix_suffix_preserved_text(scroll_area_vbox, config, window)
 
         # 填充
@@ -183,27 +182,6 @@ class ExpertSettingsPage(QWidget, Base):
             )
         )
 
-    # 结果检查 - 重试次数达到阈值
-    def add_widget_result_checker_retry_count_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.result_checker_retry_count_threshold
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            config = Config().load()
-            config.result_checker_retry_count_threshold = widget.get_switch_button().isChecked()
-            config.save()
-
-        parent.addWidget(
-            SwitchButtonCard(
-                title = Localizer.get().expert_settings_page_result_checker_retry_count_threshold,
-                description = Localizer.get().expert_settings_page_result_checker_retry_count_threshold_desc,
-                init = init,
-                checked_changed = checked_changed,
-            )
-        )
 
     # 自动移除前后缀代码段
     def add_widget_auto_process_prefix_suffix_preserved_text(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
