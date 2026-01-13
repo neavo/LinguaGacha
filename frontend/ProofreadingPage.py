@@ -492,13 +492,6 @@ class ProofreadingPage(QWidget, Base):
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
 
-            if is_busy:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().proofreading_page_readonly_mode,
-                })
-
-
     def showEvent(self, event) -> None:
         """页面显示事件"""
         super().showEvent(event)

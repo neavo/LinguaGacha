@@ -39,7 +39,7 @@ from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.TaskPage import TaskPage
+from frontend.TranslationPage import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -215,7 +215,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_extra_pages()
 
         # 设置默认页面
-        self.switchTo(self.task_page)
+        self.switchTo(self.translation_page)
 
         # 主题切换按钮
         self.navigationInterface.addWidget(
@@ -281,11 +281,11 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
-        self.task_page = TaskPage("task_page", self)
+        self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
-            self.task_page,
+            self.translation_page,
             FluentIcon.PLAY,
-            Localizer.get().app_task_page,
+            Localizer.get().app_translation_page,
             NavigationItemPosition.SCROLL
         )
 
