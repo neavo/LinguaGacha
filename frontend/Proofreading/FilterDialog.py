@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QListWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CheckBox
 from qfluentwidgets import FlowLayout
@@ -57,8 +56,7 @@ class FilterDialog(MessageBoxBase):
         ]
 
         self.error_card, error_layout, _ = self._create_section_card(
-            Localizer.get().proofreading_page_filter_error_type,
-            Localizer.get().proofreading_page_filter_error_desc
+            Localizer.get().proofreading_page_filter_error_type
         )
 
         for error_type, label in error_types:
@@ -83,8 +81,7 @@ class FilterDialog(MessageBoxBase):
         ]
 
         self.status_card, status_layout, _ = self._create_section_card(
-            Localizer.get().proofreading_page_filter_status,
-            Localizer.get().proofreading_page_filter_status_desc
+            Localizer.get().proofreading_page_filter_status
         )
 
         for status, label in status_types:
@@ -98,7 +95,7 @@ class FilterDialog(MessageBoxBase):
 
         # ========== 3. 所属文件模块 ==========
         self.file_list = ListWidget()
-        self.file_list.setFixedHeight(140)
+        self.file_list.setFixedHeight(280)
         # 禁用默认选中模式，自己处理点击
         self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
         self.file_list.setFocusPolicy(Qt.NoFocus)
@@ -148,7 +145,6 @@ class FilterDialog(MessageBoxBase):
 
         self.file_card, file_layout, file_head_layout = self._create_section_card(
             Localizer.get().proofreading_page_filter_file,
-            Localizer.get().proofreading_page_filter_file_desc,
             is_flow=False
         )
 
@@ -156,10 +152,6 @@ class FilterDialog(MessageBoxBase):
         btn_select_all = PushButton(Localizer.get().proofreading_page_filter_select_all)
         btn_deselect_all = PushButton(Localizer.get().proofreading_page_filter_clear)
         for btn in (btn_select_all, btn_deselect_all):
-            btn.setFixedWidth(64)
-            btn.setFixedHeight(28)
-            # 这里的 height: 28px 实际上是重复的 fixHeight，但为了 font-size 保留
-            btn.setStyleSheet("PushButton { font-size: 12px; }")
             file_head_layout.addWidget(btn)
 
         btn_select_all.clicked.connect(self._select_all_files)
@@ -174,7 +166,7 @@ class FilterDialog(MessageBoxBase):
         self.yesButton.setText(Localizer.get().confirm)
         self.cancelButton.setText(Localizer.get().cancel)
 
-    def _create_section_card(self, title: str, description: str, is_flow: bool = True) -> tuple[CardWidget, QLayout, QHBoxLayout]:
+    def _create_section_card(self, title: str, is_flow: bool = True) -> tuple[CardWidget, QLayout, QHBoxLayout]:
         """创建统一样式的卡片"""
         card = CardWidget(self.widget)
         card.setBorderRadius(4)
@@ -195,10 +187,6 @@ class FilterDialog(MessageBoxBase):
 
         title_label = StrongBodyLabel(title, card)
         text_layout.addWidget(title_label)
-
-        desc_label = CaptionLabel(description, card)
-        desc_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        text_layout.addWidget(desc_label)
 
         head_layout.addWidget(text_container)
         head_layout.addStretch(1) # 左侧文本，右侧留空放按钮

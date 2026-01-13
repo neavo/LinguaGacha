@@ -281,10 +281,7 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_error_glossary: str = "Glossary Mismatch"
     proofreading_page_error_retry: str = "Retry Threshold Reached"
     proofreading_page_filter_select_all: str = "Select All"
-    proofreading_page_filter_error_desc: str = "Filter based on exception types detected by ResultChecker"
     proofreading_page_filter_no_error: str = "No Error"
-    proofreading_page_filter_status_desc: str = "Filter translation progress and status tags of the current project"
-    proofreading_page_filter_file_desc: str = "Toggle text display from different source files"
     proofreading_page_filter_clear: str = "Clear"
 
     # 基础设置

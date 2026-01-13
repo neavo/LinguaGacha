@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MessageBox
 
 from base.Base import Base
@@ -67,14 +66,6 @@ class ProofreadingPage(QWidget, Base):
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
         """添加主体控件"""
-        # 加载动画容器
-        self.loading_widget = QWidget()
-        loading_layout = QVBoxLayout(self.loading_widget)
-        loading_layout.setAlignment(Qt.AlignCenter)
-        self.loading_ring = IndeterminateProgressRing()
-        loading_layout.addWidget(self.loading_ring, alignment=Qt.AlignCenter)
-        self.loading_widget.hide()
-
         # 表格
         self.table_widget = ProofreadingTableWidget()
         self.table_widget.cell_edited.connect(self._on_cell_edited)
@@ -85,7 +76,6 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget.set_items([], {})
 
         parent.addWidget(self.table_widget, 1)
-        parent.addWidget(self.loading_widget, 1)
 
     # ========== 底部：命令栏 ==========
     def add_widget_foot(self, parent: QLayout, window: FluentWindow) -> None:
@@ -157,7 +147,6 @@ class ProofreadingPage(QWidget, Base):
 
     def load_data(self) -> None:
         """加载缓存数据"""
-        self.loading_widget.show()
 
         def task() -> None:
             try:
@@ -197,7 +186,6 @@ class ProofreadingPage(QWidget, Base):
 
     def _on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
-        self.loading_widget.hide()
 
         has_items = bool(items)
         self.btn_save.setEnabled(has_items)
@@ -487,6 +475,13 @@ class ProofreadingPage(QWidget, Base):
         """检查并更新只读模式"""
         engine_status = Engine.get().get_status()
         is_busy = engine_status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
+
+        # 翻译进行中 (或正在停止) 禁止 保存/导出
+        has_items = bool(self.items)
+        can_operate = not is_busy and has_items
+
+        self.btn_save.setEnabled(can_operate)
+        self.btn_export.setEnabled(can_operate)
 
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy
