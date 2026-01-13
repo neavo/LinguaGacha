@@ -44,6 +44,7 @@ class LocalizerEN(LocalizerZH):
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
+    app_exit_countdown: str = "Exiting … {SECONDS} …"
     app_new_version: str = "Download New Version!"
     app_new_version_toast: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
     app_new_version_update: str = "Downloading {PERCENT} …"
@@ -581,3 +582,10 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_error_similarity: str = "High Similarity"
     proofreading_page_error_glossary: str = "Glossary Mismatch"
     proofreading_page_error_retry: str = "Retry Threshold Reached"
+    proofreading_page_filter_select_all: str = "Select All"
+    proofreading_page_filter_deselect_all: str = "Deselect All"
+    proofreading_page_filter_error_desc: str = "Filter based on exception types detected by ResultChecker"
+    proofreading_page_filter_no_error: str = "No Error"
+    proofreading_page_filter_status_desc: str = "Filter translation progress and status tags of the current project"
+    proofreading_page_filter_file_desc: str = "Toggle text display from different source files"
+    proofreading_page_filter_clear: str = "Clear"

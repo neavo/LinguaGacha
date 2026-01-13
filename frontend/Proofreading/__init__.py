@@ -2,3 +2,4 @@
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
+from frontend.Proofreading.TextEditDialog import TextEditDialog

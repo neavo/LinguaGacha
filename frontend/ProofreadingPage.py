@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
@@ -44,7 +43,6 @@ class ProofreadingPage(QWidget, Base):
         self.items: list[Item] = []                         # 全量数据
         self.filtered_items: list[Item] = []                # 筛选后数据
         self.error_map: dict[int, list[ErrorType]] = {}     # 错误映射表
-        self.modified_set: set[int] = set()                 # 已修改条目 ID 集合
         self.is_readonly: bool = False                      # 只读模式标志
         self.config: Config | None = None                   # 配置
         self.filter_options: dict = {}                      # 当前筛选选项
@@ -83,6 +81,8 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
         self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
+        # 初始化显示空行
+        self.table_widget.set_items([], {})
 
         parent.addWidget(self.table_widget, 1)
         parent.addWidget(self.loading_widget, 1)
@@ -96,18 +96,11 @@ class ProofreadingPage(QWidget, Base):
         parent.addWidget(self.search_card)
 
         def back_clicked(widget: SearchCard) -> None:
-            self.search_keyword = ""
-            self.search_card.setVisible(False)
-            self.command_bar_card.setVisible(True)
-            self._apply_filter()
+            self._on_search_back_clicked()
         self.search_card.on_back_clicked(back_clicked)
 
         def next_clicked(widget: SearchCard) -> None:
-            keyword = widget.get_line_edit().text().strip()
-            if not keyword:
-                return
-            self.search_keyword = keyword
-            self._apply_filter()
+            self._on_search_next_clicked(widget.get_line_edit().text().strip())
         self.search_card.on_next_clicked(next_clicked)
 
         # 命令栏
@@ -117,31 +110,35 @@ class ProofreadingPage(QWidget, Base):
         self.command_bar_card.set_minimum_width(640)
 
         # 加载按钮
-        self.command_bar_card.add_action(
+        self.btn_load = self.command_bar_card.add_action(
             Action(FluentIcon.SYNC, Localizer.get().proofreading_page_load, triggered=self._on_load_clicked)
         )
 
         # 保存按钮
-        self.command_bar_card.add_action(
+        self.btn_save = self.command_bar_card.add_action(
             Action(FluentIcon.SAVE, Localizer.get().proofreading_page_save, triggered=self._on_save_clicked)
         )
+        self.btn_save.setEnabled(False)
 
         # 导出按钮
-        self.command_bar_card.add_action(
+        self.btn_export = self.command_bar_card.add_action(
             Action(FluentIcon.SHARE, Localizer.get().proofreading_page_export, triggered=self._on_export_clicked)
         )
+        self.btn_export.setEnabled(False)
 
         self.command_bar_card.add_separator()
 
         # 搜索按钮
-        self.command_bar_card.add_action(
+        self.btn_search = self.command_bar_card.add_action(
             Action(FluentIcon.SEARCH, Localizer.get().proofreading_page_search, triggered=self._on_search_clicked)
         )
+        self.btn_search.setEnabled(False)
 
         # 筛选按钮
-        self.command_bar_card.add_action(
+        self.btn_filter = self.command_bar_card.add_action(
             Action(FluentIcon.FILTER, Localizer.get().proofreading_page_filter, triggered=self._on_filter_clicked)
         )
+        self.btn_filter.setEnabled(False)
 
         self.command_bar_card.add_separator()
 
@@ -160,7 +157,6 @@ class ProofreadingPage(QWidget, Base):
 
     def load_data(self) -> None:
         """加载缓存数据"""
-        self.table_widget.hide()
         self.loading_widget.show()
 
         def task() -> None:
@@ -185,7 +181,6 @@ class ProofreadingPage(QWidget, Base):
 
                 self.items = items
                 self.error_map = error_map
-                self.modified_set.clear()
                 self.filter_options = {}
 
                 self.items_loaded.emit(items)
@@ -203,11 +198,23 @@ class ProofreadingPage(QWidget, Base):
     def _on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
         self.loading_widget.hide()
-        self.table_widget.show()
+
+        has_items = bool(items)
+        self.btn_save.setEnabled(has_items)
+        self.btn_export.setEnabled(has_items)
+        self.btn_search.setEnabled(has_items)
+        self.btn_filter.setEnabled(has_items)
 
         if items:
             self._apply_filter()
             self._check_engine_status()
+        else:
+            # 清空数据并显示占位符
+            self.items = []
+            self.filtered_items = []
+            self.error_map = {}
+            self.table_widget.set_items([], {})
+            self.pagination_bar.reset()
 
     # ========== 筛选功能 ==========
     def _on_filter_clicked(self) -> None:
@@ -228,9 +235,9 @@ class ProofreadingPage(QWidget, Base):
 
     def _apply_filter(self) -> None:
         """应用筛选条件"""
-        error_types = self.filter_options.get("error_types")
-        statuses = self.filter_options.get("statuses")
-        file_paths = self.filter_options.get("file_paths")
+        error_types = self.filter_options.get(FilterDialog.KEY_ERROR_TYPES)
+        statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
+        file_paths = self.filter_options.get(FilterDialog.KEY_FILE_PATHS)
         search_text = self.search_keyword.lower()
 
         filtered = []
@@ -278,6 +285,20 @@ class ProofreadingPage(QWidget, Base):
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
 
+    def _on_search_back_clicked(self) -> None:
+        """搜索栏返回点击"""
+        self.search_keyword = ""
+        self.search_card.setVisible(False)
+        self.command_bar_card.setVisible(True)
+        self._apply_filter()
+
+    def _on_search_next_clicked(self, keyword: str) -> None:
+        """搜索栏确认/下一个点击"""
+        if not keyword:
+            return
+        self.search_keyword = keyword
+        self._apply_filter()
+
     # ========== 分页渲染 ==========
     def _on_page_changed(self, page: int) -> None:
         """页码变化"""
@@ -308,7 +329,6 @@ class ProofreadingPage(QWidget, Base):
         if new_dst and item.get_status() not in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.PROCESSED_IN_PAST):
             item.set_status(Base.ProjectStatus.PROCESSED)
 
-        self.modified_set.add(id(item))
         self._recheck_item(item)
 
     def _recheck_item(self, item: Item) -> None:
@@ -388,7 +408,6 @@ class ProofreadingPage(QWidget, Base):
 
         if success:
             self.table_widget.update_row_dst(row, item.get_dst())
-            self.modified_set.add(id(item))
             self._recheck_item(item)
 
             self.emit(Base.Event.TOAST, {
@@ -421,8 +440,6 @@ class ProofreadingPage(QWidget, Base):
                 items=self.items,
                 output_folder=self.config.output_folder
             )
-
-            self.modified_set.clear()
 
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
@@ -481,25 +498,6 @@ class ProofreadingPage(QWidget, Base):
                     "message": Localizer.get().proofreading_page_readonly_mode,
                 })
 
-    # ========== 未保存修改检查 ==========
-    def check_unsaved_changes(self) -> bool:
-        """检查是否有未保存的修改，返回是否可以继续"""
-        if not self.modified_set:
-            return True
-
-        message_box = MessageBox(
-            Localizer.get().warning,
-            Localizer.get().proofreading_page_unsaved_alert,
-            self.window
-        )
-        message_box.yesButton.setText(Localizer.get().proofreading_page_save_and_continue)
-        message_box.cancelButton.setText(Localizer.get().proofreading_page_discard)
-
-        if message_box.exec():
-            return self.save_data()
-        else:
-            self.modified_set.clear()
-            return True
 
     def showEvent(self, event) -> None:
         """页面显示事件"""

@@ -44,6 +44,7 @@ class LocalizerZH():
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"
+    app_exit_countdown: str = "退出中 … {SECONDS} …"
     app_new_version: str = "点击下载更新版本！"
     app_new_version_toast: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
     app_new_version_update: str = "正在下载 {PERCENT} …"
@@ -581,3 +582,10 @@ class LocalizerZH():
     proofreading_page_error_similarity: str = "相似度过高"
     proofreading_page_error_glossary: str = "术语表未生效"
     proofreading_page_error_retry: str = "重试次数达阈值"
+    proofreading_page_filter_select_all: str = "全选"
+    proofreading_page_filter_deselect_all: str = "全不选"
+    proofreading_page_filter_error_desc: str = "根据 ResultChecker 检测出的异常类型进行过滤"
+    proofreading_page_filter_no_error: str = "无错误"
+    proofreading_page_filter_status_desc: str = "过滤当前项目的翻译进度与状态标签"
+    proofreading_page_filter_file_desc: str = "切换不同源文件中的文本显示"
+    proofreading_page_filter_clear: str = "清除"
