@@ -246,7 +246,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_col_src: str = "Source"
     proofreading_page_col_dst: str = "Translation"
     proofreading_page_col_status: str = "Status"
-    proofreading_page_col_action: str = "Action"
     proofreading_page_no_cache: str = "No cache file found, please run translation task first"
     proofreading_page_load_failed: str = "Failed to read cache file"
     proofreading_page_save_failed: str = "Save failed"

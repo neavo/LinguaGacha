@@ -246,7 +246,6 @@ class LocalizerZH():
     proofreading_page_col_src: str = "原文"
     proofreading_page_col_dst: str = "译文"
     proofreading_page_col_status: str = "状态"
-    proofreading_page_col_action: str = "操作"
     proofreading_page_no_cache: str = "未找到缓存文件，请先执行翻译任务"
     proofreading_page_load_failed: str = "缓存文件读取失败"
     proofreading_page_save_failed: str = "保存失败"

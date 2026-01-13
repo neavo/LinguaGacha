@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
-from qfluentwidgets import PushButton
+from qfluentwidgets import PillToolButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
@@ -38,7 +38,7 @@ class ProofreadingTableWidget(TableWidget):
 
     # 布局常量
     COL_WIDTH_STATUS = 60
-    COL_WIDTH_ACTION = 100
+    COL_WIDTH_ACTION = 60
     SYMBOL_NEWLINE = " ↵ "
 
     # Item 数据存储的角色
@@ -241,8 +241,8 @@ class ProofreadingTableWidget(TableWidget):
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignCenter)
 
-        btn_action = PushButton(Localizer.get().proofreading_page_col_action)
-        btn_action.setFixedHeight(28)
+        btn_action = PillToolButton(FluentIcon.MORE, widget)
+        btn_action.setCheckable(False)  # 禁用点亮切换效果
         btn_action.setEnabled(not self._readonly and row not in self._loading_rows)
 
         def show_menu() -> None:
@@ -298,7 +298,7 @@ class ProofreadingTableWidget(TableWidget):
 
         widget = self.cellWidget(row, self.COL_ACTION)
         if widget:
-            for btn in widget.findChildren(PushButton):
+            for btn in widget.findChildren(PillToolButton):
                 btn.setEnabled(not loading and not self._readonly)
 
     def set_readonly(self, readonly: bool) -> None:
@@ -317,7 +317,7 @@ class ProofreadingTableWidget(TableWidget):
 
             widget = self.cellWidget(row, self.COL_ACTION)
             if widget:
-                for btn in widget.findChildren(PushButton):
+                for btn in widget.findChildren(PillToolButton):
                     btn.setEnabled(not readonly and row not in self._loading_rows)
 
     def _on_cell_changed(self, row: int, column: int) -> None:
