@@ -194,8 +194,12 @@ class ResultChecker(Base):
         """
         errors: list[ErrorType] = []
 
-        # 仅对已翻译的条目进行检查
-        if item.get_status() != Base.ProjectStatus.PROCESSED:
+        # 跳过未翻译的条目
+        if item.get_status() == Base.ProjectStatus.NONE:
+            return errors
+
+        # 跳过空译文
+        if not item.get_dst():
             return errors
 
         # 获取替换后的文本

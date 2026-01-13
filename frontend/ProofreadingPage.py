@@ -309,12 +309,17 @@ class ProofreadingPage(QWidget, Base):
         if self.is_readonly:
             return
 
-        old_dst = item.get_dst()
-        if new_dst != old_dst:
-            item.set_dst(new_dst)
-            self.modified_set.add(id(item))
-            self._recheck_item(item)
-            self._update_stats_label()
+        # 始终更新和检查，确保状态一致
+        item.set_dst(new_dst)
+
+        # 如果译文不为空，且当前状态不是已处理状态，则强制更新为 PROCESSED
+        # 这确保了手工修改的 排重/已排除 条目在导出时被视为有效翻译
+        if new_dst and item.get_status() not in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.PROCESSED_IN_PAST):
+            item.set_status(Base.ProjectStatus.PROCESSED)
+
+        self.modified_set.add(id(item))
+        self._recheck_item(item)
+        self._update_stats_label()
 
     def _recheck_item(self, item: Item) -> None:
         """重新检查单个条目"""
