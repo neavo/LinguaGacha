@@ -289,6 +289,16 @@ class AppFluentWindow(FluentWindow, Base):
             NavigationItemPosition.SCROLL
         )
 
+        # 校对任务
+        from frontend.ProofreadingPage import ProofreadingPage
+        self.proofreading_page = ProofreadingPage("proofreading_page", self)
+        self.addSubInterface(
+            self.proofreading_page,
+            FluentIcon.CHECKBOX,
+            Localizer.get().app_proofreading_page,
+            NavigationItemPosition.SCROLL
+        )
+
     # 添加设置类页面
     def add_setting_pages(self) -> None:
         # 基础设置
