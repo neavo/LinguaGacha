@@ -1,6 +1,5 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
@@ -38,18 +37,15 @@ class ProofreadingTableWidget(TableWidget):
     # Item 数据存储的角色
     ITEM_ROLE = Qt.UserRole + 1
 
-    # 状态配置：(背景色, 图标, 前景色) - 使用低饱和度柔和配色
-    STATUS_CONFIG = {
-        Base.ProjectStatus.NONE: ("#E5E7EB", FluentIcon.REMOVE, "#6B7280"),           # 浅灰
-        Base.ProjectStatus.PROCESSING: ("#DBEAFE", FluentIcon.SYNC, "#3B82F6"),       # 浅蓝
-        Base.ProjectStatus.PROCESSED: ("#D1FAE5", FluentIcon.ACCEPT, "#10B981"),      # 浅绿
-        Base.ProjectStatus.PROCESSED_IN_PAST: ("#CCFBF1", FluentIcon.HISTORY, "#14B8A6"), # 浅青
-        Base.ProjectStatus.EXCLUDED: ("#FEF3C7", FluentIcon.REMOVE, "#D97706"),       # 浅橙
-        Base.ProjectStatus.DUPLICATED: ("#EDE9FE", FluentIcon.COPY, "#7C3AED"),       # 浅紫
+    # 翻译状态图标（未翻译不显示）
+    STATUS_ICONS = {
+        # Base.ProjectStatus.NONE: 不显示
+        Base.ProjectStatus.PROCESSING: FluentIcon.SYNC,
+        Base.ProjectStatus.PROCESSED: FluentIcon.ACCEPT,
+        Base.ProjectStatus.PROCESSED_IN_PAST: FluentIcon.HISTORY,
+        Base.ProjectStatus.EXCLUDED: FluentIcon.REMOVE,
+        Base.ProjectStatus.DUPLICATED: FluentIcon.COPY,
     }
-
-    # 错误配置
-    ERROR_CONFIG = ("#FEE2E2", FluentIcon.INFO, "#DC2626")  # 浅红
 
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
@@ -80,7 +76,7 @@ class ProofreadingTableWidget(TableWidget):
         header.setSectionResizeMode(self.COL_DST, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.Fixed)
         header.setSectionResizeMode(self.COL_ACTION, QHeaderView.Fixed)
-        self.setColumnWidth(self.COL_STATUS, 70)
+        self.setColumnWidth(self.COL_STATUS, 60)
         self.setColumnWidth(self.COL_ACTION, 80)
 
         # 只读模式标志
@@ -145,23 +141,20 @@ class ProofreadingTableWidget(TableWidget):
         layout.setSpacing(4)
         layout.setAlignment(Qt.AlignCenter)
 
-        # 翻译状态图标
         status = item.get_status()
-        bg_color, icon, fg_color = self.STATUS_CONFIG.get(
-            status, ("#E5E7EB", FluentIcon.QUESTION, "#6B7280")
-        )
 
-        status_icon = IconWidget(icon)
-        status_icon.setFixedSize(20, 20)
-        status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
-        status_icon.setToolTip(self._get_status_text(status))
-        layout.addWidget(status_icon)
+        # 翻译状态图标（未翻译不显示）
+        if status in self.STATUS_ICONS:
+            status_icon = IconWidget(self.STATUS_ICONS[status])
+            status_icon.setFixedSize(16, 16)
+            status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
+            status_icon.setToolTip(self._get_status_text(status))
+            layout.addWidget(status_icon)
 
-        # 错误状态图标（如果有错误）
+        # 错误图标（有错误才显示，统一使用警告图标）
         if errors:
-            err_bg, err_icon, err_fg = self.ERROR_CONFIG
-            error_icon = IconWidget(err_icon)
-            error_icon.setFixedSize(20, 20)
+            error_icon = IconWidget(FluentIcon.INFO)  # 使用 INFO 图标表示有问题需要关注
+            error_icon.setFixedSize(16, 16)
             error_texts = [self._get_error_text(e) for e in errors]
             error_icon.installEventFilter(ToolTipFilter(error_icon, 300, ToolTipPosition.TOP))
             error_icon.setToolTip("\n".join(error_texts))
@@ -211,21 +204,21 @@ class ProofreadingTableWidget(TableWidget):
             menu.addAction(Action(
                 FluentIcon.SYNC,
                 Localizer.get().proofreading_page_retranslate,
-                triggered=lambda: self.retranslate_clicked.emit(item)
+                triggered=lambda checked: self.retranslate_clicked.emit(item)
             ))
 
             # 复制原文到译文
             menu.addAction(Action(
                 FluentIcon.PASTE,
                 Localizer.get().proofreading_page_copy_src,
-                triggered=lambda: self.copy_src_clicked.emit(item)
+                triggered=lambda checked: self.copy_src_clicked.emit(item)
             ))
 
             # 复制译文到剪贴板
             menu.addAction(Action(
                 FluentIcon.COPY,
                 Localizer.get().proofreading_page_copy_dst,
-                triggered=lambda: self.copy_dst_clicked.emit(item)
+                triggered=lambda checked: self.copy_dst_clicked.emit(item)
             ))
 
             menu.exec(btn_action.mapToGlobal(btn_action.rect().bottomLeft()))

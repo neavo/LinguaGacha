@@ -334,26 +334,13 @@ class ProofreadingPage(QWidget, Base):
             self.table_widget.update_row_status(row, errors)
 
     def _on_copy_src_clicked(self, item: Item) -> None:
-        """复制原文到译文"""
-        if self.is_readonly:
-            return
-
-        # 将原文复制到译文
-        item.set_dst(item.get_src())
-        self.modified_set.add(id(item))
-
-        # 更新表格显示
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            self.table_widget.update_row_dst(row, item.get_dst())
-
-        # 重新检查
-        self._recheck_item(item)
-        self._update_stats_label()
+        """复制原文到剪贴板"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(item.get_src())
 
         self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().proofreading_page_copy_src + " ✓",
+            "message": Localizer.get().proofreading_page_copy_src_done,
         })
 
     def _on_copy_dst_clicked(self, item: Item) -> None:
@@ -363,7 +350,7 @@ class ProofreadingPage(QWidget, Base):
 
         self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().proofreading_page_copy_dst + " ✓",
+            "message": Localizer.get().proofreading_page_copy_dst_done,
         })
 
     # ========== 重新翻译功能 ==========
