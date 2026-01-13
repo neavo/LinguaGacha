@@ -1,12 +1,16 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
+from qfluentwidgets import IconWidget
 from qfluentwidgets import PushButton
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
@@ -21,8 +25,9 @@ class ProofreadingTableWidget(TableWidget):
 
     # 信号定义
     cell_edited = pyqtSignal(object, str)       # (item, new_dst) 单元格编辑完成
-    retranslate_clicked = pyqtSignal(object)    # (item) 重新翻译按钮点击
-    recheck_clicked = pyqtSignal(object)        # (item) 重新检查按钮点击
+    retranslate_clicked = pyqtSignal(object)    # (item) 重新翻译
+    copy_src_clicked = pyqtSignal(object)       # (item) 复制原文到译文
+    copy_dst_clicked = pyqtSignal(object)       # (item) 复制译文到剪贴板
 
     # 列索引常量
     COL_SRC = 0
@@ -32,7 +37,19 @@ class ProofreadingTableWidget(TableWidget):
 
     # Item 数据存储的角色
     ITEM_ROLE = Qt.UserRole + 1
-    ROW_INDEX_ROLE = Qt.UserRole + 2
+
+    # 状态配置：(背景色, 图标, 前景色) - 使用低饱和度柔和配色
+    STATUS_CONFIG = {
+        Base.ProjectStatus.NONE: ("#E5E7EB", FluentIcon.REMOVE, "#6B7280"),           # 浅灰
+        Base.ProjectStatus.PROCESSING: ("#DBEAFE", FluentIcon.SYNC, "#3B82F6"),       # 浅蓝
+        Base.ProjectStatus.PROCESSED: ("#D1FAE5", FluentIcon.ACCEPT, "#10B981"),      # 浅绿
+        Base.ProjectStatus.PROCESSED_IN_PAST: ("#CCFBF1", FluentIcon.HISTORY, "#14B8A6"), # 浅青
+        Base.ProjectStatus.EXCLUDED: ("#FEF3C7", FluentIcon.REMOVE, "#D97706"),       # 浅橙
+        Base.ProjectStatus.DUPLICATED: ("#EDE9FE", FluentIcon.COPY, "#7C3AED"),       # 浅紫
+    }
+
+    # 错误配置
+    ERROR_CONFIG = ("#FEE2E2", FluentIcon.INFO, "#DC2626")  # 浅红
 
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
@@ -51,7 +68,11 @@ class ProofreadingTableWidget(TableWidget):
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setEditTriggers(QAbstractItemView.DoubleClicked)
         self.verticalHeader().setVisible(False)
+        self.setBorderVisible(False)
+
+        # 多行文本支持
         self.setWordWrap(True)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
         # 设置列宽
         header = self.horizontalHeader()
@@ -59,8 +80,8 @@ class ProofreadingTableWidget(TableWidget):
         header.setSectionResizeMode(self.COL_DST, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.Fixed)
         header.setSectionResizeMode(self.COL_ACTION, QHeaderView.Fixed)
-        self.setColumnWidth(self.COL_STATUS, 80)
-        self.setColumnWidth(self.COL_ACTION, 160)
+        self.setColumnWidth(self.COL_STATUS, 70)
+        self.setColumnWidth(self.COL_ACTION, 80)
 
         # 只读模式标志
         self._readonly = False
@@ -76,8 +97,7 @@ class ProofreadingTableWidget(TableWidget):
         items: list[Item],
         error_map: dict[int, list[ErrorType]]
     ) -> None:
-        """填充表格数据，每行持有 Item 强引用"""
-        # 阻止信号以提高性能
+        """填充表格数据"""
         self.blockSignals(True)
         self.setUpdatesEnabled(False)
 
@@ -97,52 +117,69 @@ class ProofreadingTableWidget(TableWidget):
         errors: list[ErrorType]
     ) -> None:
         """设置单行数据"""
-        # 原文列（只读）
+        # 原文列
         src_item = QTableWidgetItem(item.get_src())
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
-        src_item.setData(self.ROW_INDEX_ROLE, row)
+        src_item.setTextAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.setItem(row, self.COL_SRC, src_item)
 
-        # 译文列（可编辑）
+        # 译文列
         dst_item = QTableWidgetItem(item.get_dst())
+        dst_item.setTextAlignment(Qt.AlignTop | Qt.AlignLeft)
         if self._readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
         self.setItem(row, self.COL_DST, dst_item)
 
         # 状态列
-        status_item = QTableWidgetItem()
-        status_item.setFlags(status_item.flags() & ~Qt.ItemIsEditable)
-        self._update_status_cell(status_item, item, errors)
-        self.setItem(row, self.COL_STATUS, status_item)
+        self._create_status_widget(row, item, errors)
 
         # 操作列
         self._create_action_widget(row, item)
 
-    def _update_status_cell(
-        self,
-        cell: QTableWidgetItem,
-        item: Item,
-        errors: list[ErrorType]
-    ) -> None:
-        """更新状态单元格"""
-        # 构建状态文本和提示
-        if item.get_status() == Base.ProjectStatus.PROCESSED:
-            if errors:
-                # 有错误
-                error_texts = [self._get_error_text(e) for e in errors]
-                cell.setText("⚠️")
-                cell.setToolTip("\n".join(error_texts))
-            else:
-                # 正常完成
-                cell.setText("✓")
-                cell.setToolTip(Localizer.get().proofreading_page_status_processed)
-        else:
-            # 未翻译
-            cell.setText("○")
-            cell.setToolTip(Localizer.get().proofreading_page_status_none)
+    def _create_status_widget(self, row: int, item: Item, errors: list[ErrorType]) -> None:
+        """创建状态显示组件"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignCenter)
 
-        cell.setTextAlignment(Qt.AlignCenter)
+        # 翻译状态图标
+        status = item.get_status()
+        bg_color, icon, fg_color = self.STATUS_CONFIG.get(
+            status, ("#E5E7EB", FluentIcon.QUESTION, "#6B7280")
+        )
+
+        status_icon = IconWidget(icon)
+        status_icon.setFixedSize(20, 20)
+        status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
+        status_icon.setToolTip(self._get_status_text(status))
+        layout.addWidget(status_icon)
+
+        # 错误状态图标（如果有错误）
+        if errors:
+            err_bg, err_icon, err_fg = self.ERROR_CONFIG
+            error_icon = IconWidget(err_icon)
+            error_icon.setFixedSize(20, 20)
+            error_texts = [self._get_error_text(e) for e in errors]
+            error_icon.installEventFilter(ToolTipFilter(error_icon, 300, ToolTipPosition.TOP))
+            error_icon.setToolTip("\n".join(error_texts))
+            layout.addWidget(error_icon)
+
+        self.setCellWidget(row, self.COL_STATUS, widget)
+
+    def _get_status_text(self, status: Base.ProjectStatus) -> str:
+        """获取翻译状态的本地化文本"""
+        status_texts = {
+            Base.ProjectStatus.NONE: Localizer.get().proofreading_page_status_none,
+            Base.ProjectStatus.PROCESSING: Localizer.get().proofreading_page_status_processing,
+            Base.ProjectStatus.PROCESSED: Localizer.get().proofreading_page_status_processed,
+            Base.ProjectStatus.PROCESSED_IN_PAST: Localizer.get().proofreading_page_status_processed_in_past,
+            Base.ProjectStatus.EXCLUDED: Localizer.get().proofreading_page_status_excluded,
+            Base.ProjectStatus.DUPLICATED: Localizer.get().proofreading_page_status_duplicated,
+        }
+        return status_texts.get(status, str(status))
 
     def _get_error_text(self, error: ErrorType) -> str:
         """获取错误类型的本地化文本"""
@@ -152,24 +189,49 @@ class ProofreadingTableWidget(TableWidget):
             ErrorType.TEXT_PRESERVE: Localizer.get().proofreading_page_error_text_preserve,
             ErrorType.SIMILARITY: Localizer.get().proofreading_page_error_similarity,
             ErrorType.GLOSSARY: Localizer.get().proofreading_page_error_glossary,
-            ErrorType.UNTRANSLATED: Localizer.get().proofreading_page_error_untranslated,
             ErrorType.RETRY_THRESHOLD: Localizer.get().proofreading_page_error_retry,
         }
         return error_texts.get(error, str(error))
 
     def _create_action_widget(self, row: int, item: Item) -> None:
-        """创建操作按钮区域"""
+        """创建操作按钮"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setSpacing(0)
 
-        # 重新翻译按钮
-        btn_retranslate = PushButton(Localizer.get().proofreading_page_retranslate)
-        btn_retranslate.setFixedHeight(28)
-        btn_retranslate.setEnabled(not self._readonly and row not in self._loading_rows)
-        btn_retranslate.clicked.connect(lambda checked, i=item: self.retranslate_clicked.emit(i))
-        layout.addWidget(btn_retranslate)
+        btn_action = PushButton(Localizer.get().proofreading_page_col_action)
+        btn_action.setFixedHeight(28)
+        btn_action.setEnabled(not self._readonly and row not in self._loading_rows)
+
+        def show_menu() -> None:
+            menu = RoundMenu(parent=btn_action)
+
+            # 重新翻译
+            menu.addAction(Action(
+                FluentIcon.SYNC,
+                Localizer.get().proofreading_page_retranslate,
+                triggered=lambda: self.retranslate_clicked.emit(item)
+            ))
+
+            # 复制原文到译文
+            menu.addAction(Action(
+                FluentIcon.PASTE,
+                Localizer.get().proofreading_page_copy_src,
+                triggered=lambda: self.copy_src_clicked.emit(item)
+            ))
+
+            # 复制译文到剪贴板
+            menu.addAction(Action(
+                FluentIcon.COPY,
+                Localizer.get().proofreading_page_copy_dst,
+                triggered=lambda: self.copy_dst_clicked.emit(item)
+            ))
+
+            menu.exec(btn_action.mapToGlobal(btn_action.rect().bottomLeft()))
+
+        btn_action.clicked.connect(show_menu)
+        layout.addWidget(btn_action)
 
         self.setCellWidget(row, self.COL_ACTION, widget)
 
@@ -181,14 +243,10 @@ class ProofreadingTableWidget(TableWidget):
         return None
 
     def update_row_status(self, row: int, errors: list[ErrorType]) -> None:
-        """更新指定行的状态图标和 Tooltip"""
+        """更新指定行的状态"""
         item = self.get_item_at_row(row)
-        if not item:
-            return
-
-        status_cell = self.item(row, self.COL_STATUS)
-        if status_cell:
-            self._update_status_cell(status_cell, item, errors)
+        if item:
+            self._create_status_widget(row, item, errors)
 
     def set_row_loading(self, row: int, loading: bool) -> None:
         """设置指定行为加载中状态"""
@@ -197,29 +255,15 @@ class ProofreadingTableWidget(TableWidget):
         else:
             self._loading_rows.discard(row)
 
-        # 更新操作按钮状态
         widget = self.cellWidget(row, self.COL_ACTION)
         if widget:
             for btn in widget.findChildren(PushButton):
                 btn.setEnabled(not loading and not self._readonly)
 
-        # 更新状态单元格
-        status_cell = self.item(row, self.COL_STATUS)
-        if status_cell:
-            if loading:
-                status_cell.setText("⏳")
-                status_cell.setToolTip("翻译中...")
-            else:
-                # 恢复正常状态
-                item = self.get_item_at_row(row)
-                if item:
-                    self._update_status_cell(status_cell, item, [])
-
     def set_readonly(self, readonly: bool) -> None:
         """设置表格只读模式"""
         self._readonly = readonly
 
-        # 更新所有行的编辑状态
         for row in range(self.rowCount()):
             dst_cell = self.item(row, self.COL_DST)
             if dst_cell:
@@ -230,7 +274,6 @@ class ProofreadingTableWidget(TableWidget):
                     flags = flags | Qt.ItemIsEditable
                 dst_cell.setFlags(flags)
 
-            # 更新操作按钮
             widget = self.cellWidget(row, self.COL_ACTION)
             if widget:
                 for btn in widget.findChildren(PushButton):

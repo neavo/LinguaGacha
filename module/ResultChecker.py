@@ -20,7 +20,6 @@ class ErrorType(StrEnum):
     TEXT_PRESERVE = "TEXT_PRESERVE"         # 文本保护失效
     SIMILARITY = "SIMILARITY"               # 相似度过高
     GLOSSARY = "GLOSSARY"                   # 术语表未生效
-    UNTRANSLATED = "UNTRANSLATED"           # 未翻译
     RETRY_THRESHOLD = "RETRY_THRESHOLD"     # 重试次数达阈值
 
 
@@ -194,11 +193,6 @@ class ResultChecker(Base):
             该条目存在的错误类型列表
         """
         errors: list[ErrorType] = []
-
-        # 未翻译检查
-        if self._has_untranslated_error(item):
-            errors.append(ErrorType.UNTRANSLATED)
-            return errors  # 未翻译的条目无需进行其他检查
 
         # 仅对已翻译的条目进行检查
         if item.get_status() != Base.ProjectStatus.PROCESSED:

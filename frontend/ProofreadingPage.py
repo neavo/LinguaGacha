@@ -1,23 +1,20 @@
-import os
 import threading
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
-from qfluentwidgets import LineEdit
 from qfluentwidgets import MessageBox
-from qfluentwidgets import PushButton
-from qfluentwidgets import SubtitleLabel
-from qfluentwidgets import TitleLabel
 
 from base.Base import Base
-from frontend.Proofreading.FilterMenu import FilterMenu
+from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
@@ -28,18 +25,19 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ErrorType
 from module.ResultChecker import ResultChecker
+from widget.CommandBarCard import CommandBarCard
+from widget.SearchCard import SearchCard
 
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
 
     # 信号定义
     items_loaded = pyqtSignal(list)             # 数据加载完成信号
-    item_modified = pyqtSignal(object)          # 条目被修改信号
     translate_done = pyqtSignal(object, bool)   # 翻译完成信号
 
     def __init__(self, text: str, window: FluentWindow) -> None:
-        super().__init__()
-        self.setObjectName(text)
+        super().__init__(window)
+        self.setObjectName(text.replace(" ", "-"))
 
         # 成员变量
         self.window = window
@@ -49,79 +47,28 @@ class ProofreadingPage(QWidget, Base):
         self.modified_set: set[int] = set()                 # 已修改条目 ID 集合
         self.is_readonly: bool = False                      # 只读模式标志
         self.config: Config | None = None                   # 配置
+        self.filter_options: dict = {}                      # 当前筛选选项
+        self.search_keyword: str = ""                       # 当前搜索关键词
 
-        # 初始化 UI
-        self._init_ui()
+        # 设置主容器
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24)
 
-        # 连接信号
-        self._connect_signals()
+        # 添加控件
+        self.add_widget_body(self.root, window)
+        self.add_widget_foot(self.root, window)
 
         # 注册事件
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self._on_engine_status_changed)
 
-    def _init_ui(self) -> None:
-        """初始化 UI"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(16)
+        # 连接信号
+        self.items_loaded.connect(self._on_items_loaded_ui)
+        self.translate_done.connect(self._on_translate_done_ui)
 
-        # ========== 顶部：标题区 ==========
-        header_layout = QVBoxLayout()
-        header_layout.setSpacing(8)
-
-        # 标题
-        self.title_label = TitleLabel(Localizer.get().app_proofreading_page)
-        header_layout.addWidget(self.title_label)
-
-        # 描述
-        self.desc_label = CaptionLabel(Localizer.get().proofreading_page_desc)
-        header_layout.addWidget(self.desc_label)
-
-        # 统计信息
-        self.stats_label = SubtitleLabel()
-        self._update_stats_label()
-        header_layout.addWidget(self.stats_label)
-
-        main_layout.addLayout(header_layout)
-
-        # ========== 中部：工具栏 ==========
-        toolbar_layout = QHBoxLayout()
-        toolbar_layout.setSpacing(8)
-
-        # 加载按钮
-        self.btn_load = PushButton(FluentIcon.SYNC, Localizer.get().proofreading_page_load)
-        self.btn_load.setFixedWidth(100)
-        toolbar_layout.addWidget(self.btn_load)
-
-        # 保存按钮
-        self.btn_save = PushButton(FluentIcon.SAVE, Localizer.get().proofreading_page_save)
-        self.btn_save.setFixedWidth(100)
-        toolbar_layout.addWidget(self.btn_save)
-
-        # 导出按钮
-        self.btn_export = PushButton(FluentIcon.SHARE, Localizer.get().proofreading_page_export)
-        self.btn_export.setFixedWidth(100)
-        toolbar_layout.addWidget(self.btn_export)
-
-        toolbar_layout.addStretch()
-
-        # 搜索框
-        self.search_edit = LineEdit()
-        self.search_edit.setPlaceholderText(Localizer.get().proofreading_page_search)
-        self.search_edit.setFixedWidth(200)
-        toolbar_layout.addWidget(self.search_edit)
-
-        # 筛选按钮
-        self.btn_filter = PushButton(FluentIcon.FILTER, Localizer.get().proofreading_page_filter)
-        self.btn_filter.setFixedWidth(100)
-        toolbar_layout.addWidget(self.btn_filter)
-
-        # 筛选菜单
-        self.filter_menu = FilterMenu(self)
-
-        main_layout.addLayout(toolbar_layout)
-
-        # ========== 中部：表格区 ==========
+    # ========== 主体：表格 ==========
+    def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
+        """添加主体控件"""
         # 加载动画容器
         self.loading_widget = QWidget()
         loading_layout = QVBoxLayout(self.loading_widget)
@@ -132,75 +79,114 @@ class ProofreadingPage(QWidget, Base):
 
         # 表格
         self.table_widget = ProofreadingTableWidget()
-        main_layout.addWidget(self.table_widget, 1)
-        main_layout.addWidget(self.loading_widget, 1)
-
-        # ========== 底部：分页栏 ==========
-        self.pagination_bar = PaginationBar()
-        main_layout.addWidget(self.pagination_bar)
-
-    def _connect_signals(self) -> None:
-        """连接信号"""
-        # 按钮信号
-        self.btn_load.clicked.connect(self._on_load_clicked)
-        self.btn_save.clicked.connect(self._on_save_clicked)
-        self.btn_export.clicked.connect(self._on_export_clicked)
-        self.btn_filter.clicked.connect(self._on_filter_clicked)
-
-        # 搜索框
-        self.search_edit.textChanged.connect(self._on_search_changed)
-
-        # 筛选菜单
-        self.filter_menu.filter_changed.connect(self._on_filter_changed)
-
-        # 分页
-        self.pagination_bar.page_changed.connect(self._on_page_changed)
-
-        # 表格
         self.table_widget.cell_edited.connect(self._on_cell_edited)
         self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
+        self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
+        self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
 
-        # 自定义信号
-        self.items_loaded.connect(self._on_items_loaded_ui)
-        self.translate_done.connect(self._on_translate_done_ui)
+        parent.addWidget(self.table_widget, 1)
+        parent.addWidget(self.loading_widget, 1)
 
+    # ========== 底部：命令栏 ==========
+    def add_widget_foot(self, parent: QLayout, window: FluentWindow) -> None:
+        """添加底部控件"""
+        # 搜索栏（默认隐藏）
+        self.search_card = SearchCard(self)
+        self.search_card.setVisible(False)
+        parent.addWidget(self.search_card)
+
+        def back_clicked(widget: SearchCard) -> None:
+            self.search_keyword = ""
+            self.search_card.setVisible(False)
+            self.command_bar_card.setVisible(True)
+            self._apply_filter()
+        self.search_card.on_back_clicked(back_clicked)
+
+        def next_clicked(widget: SearchCard) -> None:
+            keyword = widget.get_line_edit().text().strip()
+            if not keyword:
+                return
+            self.search_keyword = keyword
+            self._apply_filter()
+        self.search_card.on_next_clicked(next_clicked)
+
+        # 命令栏
+        self.command_bar_card = CommandBarCard()
+        parent.addWidget(self.command_bar_card)
+
+        self.command_bar_card.set_minimum_width(640)
+
+        # 加载按钮
+        self.command_bar_card.add_action(
+            Action(FluentIcon.SYNC, Localizer.get().proofreading_page_load, triggered=self._on_load_clicked)
+        )
+
+        # 保存按钮
+        self.command_bar_card.add_action(
+            Action(FluentIcon.SAVE, Localizer.get().proofreading_page_save, triggered=self._on_save_clicked)
+        )
+
+        # 导出按钮
+        self.command_bar_card.add_action(
+            Action(FluentIcon.SHARE, Localizer.get().proofreading_page_export, triggered=self._on_export_clicked)
+        )
+
+        self.command_bar_card.add_separator()
+
+        # 搜索按钮
+        self.command_bar_card.add_action(
+            Action(FluentIcon.SEARCH, Localizer.get().proofreading_page_search, triggered=self._on_search_clicked)
+        )
+
+        # 筛选按钮
+        self.command_bar_card.add_action(
+            Action(FluentIcon.FILTER, Localizer.get().proofreading_page_filter, triggered=self._on_filter_clicked)
+        )
+
+        self.command_bar_card.add_separator()
+
+        # 分页控件
+        self.pagination_bar = PaginationBar()
+        self.pagination_bar.page_changed.connect(self._on_page_changed)
+        self.command_bar_card.add_widget(self.pagination_bar)
+
+        # 弹性空间
+        self.command_bar_card.add_stretch(1)
+
+        # 统计信息标签
+        self.stats_label = CaptionLabel()
+        self._update_stats_label()
+        self.command_bar_card.add_widget(self.stats_label)
+
+    # ========== 统计信息 ==========
     def _update_stats_label(self) -> None:
         """更新统计信息"""
         total = len(self.items)
         error_count = len([i for i in self.items if id(i) in self.error_map])
-        modified_count = len(self.modified_set)
 
         stats_text = Localizer.get().proofreading_page_stats
         stats_text = stats_text.replace("{TOTAL}", str(total))
         stats_text = stats_text.replace("{ERROR}", str(error_count))
-        stats_text = stats_text.replace("{MODIFIED}", str(modified_count))
         self.stats_label.setText(stats_text)
 
     # ========== 加载功能 ==========
-
     def _on_load_clicked(self) -> None:
         """加载按钮点击"""
         self.load_data()
 
     def load_data(self) -> None:
         """加载缓存数据"""
-        # 显示加载动画
         self.table_widget.hide()
         self.loading_widget.show()
-        self.btn_load.setEnabled(False)
 
         def task() -> None:
             try:
-                # 加载配置
                 self.config = Config().load()
-
-                # 实例化 CacheManager
                 cache_manager = CacheManager(service=False)
                 cache_manager.load_items_from_file(self.config.output_folder)
                 items = cache_manager.get_items()
 
                 if not items:
-                    # 没有数据
                     self.emit(Base.Event.TOAST, {
                         "type": Base.ToastType.WARNING,
                         "message": Localizer.get().proofreading_page_no_cache,
@@ -208,16 +194,14 @@ class ProofreadingPage(QWidget, Base):
                     self.items_loaded.emit([])
                     return
 
-                # 创建 ResultChecker 并执行检查
                 checker = ResultChecker(self.config, items)
                 error_map = checker.get_check_results(items)
 
-                # 存储结果
                 self.items = items
                 self.error_map = error_map
                 self.modified_set.clear()
+                self.filter_options = {}
 
-                # 发送信号通知 UI 更新
                 self.items_loaded.emit(items)
 
             except Exception as e:
@@ -228,47 +212,58 @@ class ProofreadingPage(QWidget, Base):
                 })
                 self.items_loaded.emit([])
 
-        # 后台执行
         threading.Thread(target=task, daemon=True).start()
 
     def _on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
-        # 隐藏加载动画
         self.loading_widget.hide()
         self.table_widget.show()
-        self.btn_load.setEnabled(True)
 
         if items:
-            # 更新筛选菜单
-            self.filter_menu.update_file_options(items)
-
-            # 应用筛选
             self._apply_filter()
-
-            # 检查 Engine 状态
             self._check_engine_status()
+
+    # ========== 筛选功能 ==========
+    def _on_filter_clicked(self) -> None:
+        """筛选按钮点击"""
+        if not self.items:
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().proofreading_page_no_cache,
+            })
+            return
+
+        dialog = FilterDialog(self.items, self.window)
+        dialog.set_filter_options(self.filter_options)
+
+        if dialog.exec():
+            self.filter_options = dialog.get_filter_options()
+            self._apply_filter()
 
     def _apply_filter(self) -> None:
         """应用筛选条件"""
-        filter_options = self.filter_menu.get_filter_options()
-        search_text = self.search_edit.text().strip().lower()
+        error_types = self.filter_options.get("error_types")
+        statuses = self.filter_options.get("statuses")
+        file_paths = self.filter_options.get("file_paths")
+        search_text = self.search_keyword.lower()
 
         filtered = []
         for item in self.items:
             # 错误类型筛选
-            if filter_options["error_type"] is not None:
+            if error_types is not None:
                 item_errors = self.error_map.get(id(item), [])
-                if filter_options["error_type"] not in item_errors:
-                    continue
+                if not item_errors or not any(e in error_types for e in item_errors):
+                    if error_types:
+                        continue
 
             # 翻译状态筛选
-            if filter_options["status"] is not None:
-                if item.get_status() != filter_options["status"]:
+            if statuses is not None:
+                if item.get_status() not in statuses:
                     continue
 
             # 文件筛选
-            if filter_options["file_path"] is not None:
-                if item.get_file_path() != filter_options["file_path"]:
+            if file_paths is not None:
+                if item.get_file_path() not in file_paths:
                     continue
 
             # 搜索过滤
@@ -281,16 +276,21 @@ class ProofreadingPage(QWidget, Base):
             filtered.append(item)
 
         self.filtered_items = filtered
-
-        # 更新分页
         self.pagination_bar.set_total(len(filtered))
         self.pagination_bar.set_page(1)
-
-        # 渲染页面
         self._render_page(1)
-
-        # 更新统计信息
         self._update_stats_label()
+
+    # ========== 搜索功能 ==========
+    def _on_search_clicked(self) -> None:
+        """搜索按钮点击"""
+        self.search_card.setVisible(True)
+        self.command_bar_card.setVisible(False)
+
+    # ========== 分页渲染 ==========
+    def _on_page_changed(self, page: int) -> None:
+        """页码变化"""
+        self._render_page(page)
 
     def _render_page(self, page_num: int) -> None:
         """渲染指定页的数据"""
@@ -298,53 +298,22 @@ class ProofreadingPage(QWidget, Base):
         start_idx = (page_num - 1) * page_size
         end_idx = start_idx + page_size
 
-        # 截取当前页数据
         page_items = self.filtered_items[start_idx:end_idx]
-
-        # 构建当前页的 error_map
         page_error_map = {id(item): self.error_map.get(id(item), []) for item in page_items}
 
-        # 渲染表格
         self.table_widget.set_items(page_items, page_error_map)
 
-    # ========== 分页功能 ==========
-
-    def _on_page_changed(self, page: int) -> None:
-        """页码变化"""
-        self._render_page(page)
-
-    # ========== 搜索和筛选功能 ==========
-
-    def _on_search_changed(self, text: str) -> None:
-        """搜索文本变化"""
-        self._apply_filter()
-
-    def _on_filter_clicked(self) -> None:
-        """筛选按钮点击"""
-        # 显示筛选菜单
-        self.filter_menu.exec_(self.btn_filter.mapToGlobal(self.btn_filter.rect().bottomLeft()))
-
-    def _on_filter_changed(self, filter_options: dict) -> None:
-        """筛选条件变化"""
-        self._apply_filter()
-
     # ========== 编辑功能 ==========
-
     def _on_cell_edited(self, item: Item, new_dst: str) -> None:
         """单元格编辑完成"""
         if self.is_readonly:
             return
 
-        # 更新 Item
         old_dst = item.get_dst()
         if new_dst != old_dst:
             item.set_dst(new_dst)
             self.modified_set.add(id(item))
-
-            # 重新检查该条目
             self._recheck_item(item)
-
-            # 更新统计
             self._update_stats_label()
 
     def _recheck_item(self, item: Item) -> None:
@@ -352,29 +321,57 @@ class ProofreadingPage(QWidget, Base):
         if not self.config:
             return
 
-        # 创建 ResultChecker
         checker = ResultChecker(self.config, [item])
         errors = checker.check_single_item(item)
 
-        # 更新 error_map
         if errors:
             self.error_map[id(item)] = errors
         else:
             self.error_map.pop(id(item), None)
 
-        # 更新表格行状态
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             self.table_widget.update_row_status(row, errors)
 
-    # ========== 重新翻译功能 ==========
+    def _on_copy_src_clicked(self, item: Item) -> None:
+        """复制原文到译文"""
+        if self.is_readonly:
+            return
 
+        # 将原文复制到译文
+        item.set_dst(item.get_src())
+        self.modified_set.add(id(item))
+
+        # 更新表格显示
+        row = self.table_widget.find_row_by_item(item)
+        if row >= 0:
+            self.table_widget.update_row_dst(row, item.get_dst())
+
+        # 重新检查
+        self._recheck_item(item)
+        self._update_stats_label()
+
+        self.emit(Base.Event.TOAST, {
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().proofreading_page_copy_src + " ✓",
+        })
+
+    def _on_copy_dst_clicked(self, item: Item) -> None:
+        """复制译文到剪贴板"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(item.get_dst())
+
+        self.emit(Base.Event.TOAST, {
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().proofreading_page_copy_dst + " ✓",
+        })
+
+    # ========== 重新翻译功能 ==========
     def _on_retranslate_clicked(self, item: Item) -> None:
         """重新翻译按钮点击"""
         if self.is_readonly or not self.config:
             return
 
-        # 二次确认
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_retranslate_confirm,
@@ -386,16 +383,13 @@ class ProofreadingPage(QWidget, Base):
         if not message_box.exec():
             return
 
-        # 找到行号并设置加载状态
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             self.table_widget.set_row_loading(row, True)
 
-        # 重置 Item 状态
         item.set_status(Base.ProjectStatus.NONE)
         item.set_retry_count(0)
 
-        # 调用翻译接口
         Engine.get().translate_single_item(
             item=item,
             config=self.config,
@@ -408,39 +402,26 @@ class ProofreadingPage(QWidget, Base):
         if row < 0:
             return
 
-        # 取消加载状态
         self.table_widget.set_row_loading(row, False)
 
         if success:
-            # 更新译文显示
             self.table_widget.update_row_dst(row, item.get_dst())
-
-            # 标记为已修改
             self.modified_set.add(id(item))
-
-            # 重新检查
             self._recheck_item(item)
-
-            # 更新统计
             self._update_stats_label()
 
-            # Toast
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_retranslate_success,
             })
         else:
-            # 恢复状态
             item.set_status(Base.ProjectStatus.PROCESSED)
-
-            # Toast
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().proofreading_page_retranslate_failed,
             })
 
     # ========== 保存功能 ==========
-
     def _on_save_clicked(self) -> None:
         """保存按钮点击"""
         self.save_data()
@@ -453,22 +434,16 @@ class ProofreadingPage(QWidget, Base):
         try:
             cache_manager = CacheManager(service=False)
             cache_manager.set_items(self.items)
-
-            # 加载项目信息
             cache_manager.load_project_from_file(self.config.output_folder)
-
-            # 保存
             cache_manager.save_to_file(
                 project=cache_manager.get_project(),
                 items=self.items,
                 output_folder=self.config.output_folder
             )
 
-            # 清除修改标记
             self.modified_set.clear()
             self._update_stats_label()
 
-            # Toast
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_save_success,
@@ -484,7 +459,6 @@ class ProofreadingPage(QWidget, Base):
             return False
 
     # ========== 导出功能 ==========
-
     def _on_export_clicked(self) -> None:
         """导出按钮点击"""
         self.export_data()
@@ -496,22 +470,18 @@ class ProofreadingPage(QWidget, Base):
 
         try:
             FileManager(self.config).write_to_path(self.items)
-
-            # Toast
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_export_success,
             })
-
         except Exception as e:
-            self.error(f"Export failed", e)
+            self.error("Export failed", e)
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": str(e),
             })
 
     # ========== 只读模式控制 ==========
-
     def _on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
         """Engine 状态变更事件"""
         self._check_engine_status()
@@ -524,7 +494,6 @@ class ProofreadingPage(QWidget, Base):
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
-            self.btn_save.setEnabled(not is_busy)
 
             if is_busy:
                 self.emit(Base.Event.TOAST, {
@@ -533,13 +502,11 @@ class ProofreadingPage(QWidget, Base):
                 })
 
     # ========== 未保存修改检查 ==========
-
     def check_unsaved_changes(self) -> bool:
         """检查是否有未保存的修改，返回是否可以继续"""
         if not self.modified_set:
             return True
 
-        # 弹出提醒对话框
         message_box = MessageBox(
             Localizer.get().warning,
             Localizer.get().proofreading_page_unsaved_alert,
@@ -549,10 +516,8 @@ class ProofreadingPage(QWidget, Base):
         message_box.cancelButton.setText(Localizer.get().proofreading_page_discard)
 
         if message_box.exec():
-            # 保存并继续
             return self.save_data()
         else:
-            # 不保存
             self.modified_set.clear()
             return True
 
@@ -560,7 +525,3 @@ class ProofreadingPage(QWidget, Base):
         """页面显示事件"""
         super().showEvent(event)
         self._check_engine_status()
-
-    def hideEvent(self, event) -> None:
-        """页面隐藏事件"""
-        super().hideEvent(event)
