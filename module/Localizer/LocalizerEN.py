@@ -232,6 +232,7 @@ class LocalizerEN(LocalizerZH):
     # Proofreading Task
     proofreading_page_load: str = "Load"
     proofreading_page_save: str = "Save"
+    proofreading_page_save_tooltip: str = "Shortcut Ctrl + S"
     proofreading_page_export: str = "Export"
     proofreading_page_search: str = "Search"
     proofreading_page_filter: str = "Filter"

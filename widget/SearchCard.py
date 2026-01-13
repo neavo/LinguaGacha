@@ -35,8 +35,8 @@ class SearchCard(CardWidget):
         self.regex_btn = PillPushButton(Localizer.get().search_regex_btn, self)
         self.regex_btn.setCheckable(True)
         self.regex_btn.clicked.connect(self._on_regex_toggle)
-        # 启用 ToolTip 显示，延时 500ms 触发
-        self.regex_btn.installEventFilter(ToolTipFilter(self.regex_btn, 500, ToolTipPosition.TOP))
+        # 启用 ToolTip 显示，延时 300ms 触发
+        self.regex_btn.installEventFilter(ToolTipFilter(self.regex_btn, 300, ToolTipPosition.TOP))
         self._update_regex_tooltip()
         self.root.addWidget(self.regex_btn)
 
@@ -71,13 +71,13 @@ class SearchCard(CardWidget):
         self.prev = TransparentToolButton(self)
         self.prev.setIcon(FluentIcon.UP)
         self.prev.setToolTip(Localizer.get().search_prev_match)
-        self.prev.installEventFilter(ToolTipFilter(self.prev, 500, ToolTipPosition.TOP))
+        self.prev.installEventFilter(ToolTipFilter(self.prev, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.prev)
 
         self.next = TransparentToolButton(self)
         self.next.setIcon(FluentIcon.DOWN)
         self.next.setToolTip(Localizer.get().search_next_match)
-        self.next.installEventFilter(ToolTipFilter(self.next, 500, ToolTipPosition.TOP))
+        self.next.installEventFilter(ToolTipFilter(self.next, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.next)
 
         self.root.addWidget(VerticalSeparator())

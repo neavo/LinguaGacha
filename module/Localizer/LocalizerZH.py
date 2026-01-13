@@ -232,6 +232,7 @@ class LocalizerZH():
     # 校对任务
     proofreading_page_load: str = "载入"
     proofreading_page_save: str = "保存"
+    proofreading_page_save_tooltip: str = "快捷键 Ctrl + S"
     proofreading_page_export: str = "导出"
     proofreading_page_search: str = "搜索"
     proofreading_page_filter: str = "筛选"

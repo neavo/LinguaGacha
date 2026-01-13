@@ -5,6 +5,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -15,6 +16,8 @@ from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MessageBox
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
 from frontend.Proofreading.FilterDialog import FilterDialog
@@ -60,7 +63,7 @@ class ProofreadingPage(QWidget, Base):
         self.root.setSpacing(8)
         self.root.setContentsMargins(24, 24, 24, 24)
 
-        # 添加控件
+        # 初始化 UI 布局
         self.add_widget_body(self.root, window)
         self.add_widget_foot(self.root, window)
 
@@ -77,13 +80,11 @@ class ProofreadingPage(QWidget, Base):
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
         """添加主体控件"""
-        # 表格
         self.table_widget = ProofreadingTableWidget()
         self.table_widget.cell_edited.connect(self._on_cell_edited)
         self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
         self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
-        # 初始化显示空行
         self.table_widget.set_items([], {})
 
         parent.addWidget(self.table_widget, 1)
@@ -114,26 +115,26 @@ class ProofreadingPage(QWidget, Base):
         )
 
         # 保存按钮
-        self.btn_save = self.command_bar_card.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().proofreading_page_save, triggered=self._on_save_clicked)
-        )
+        action_save = Action(FluentIcon.SAVE, Localizer.get().proofreading_page_save, triggered=self._on_save_clicked)
+        action_save.setShortcut("Ctrl+S")
+        self.btn_save = self.command_bar_card.add_action(action_save)
+        self.btn_save.installEventFilter(ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP))
+        self.btn_save.setToolTip(Localizer.get().proofreading_page_save_tooltip)
         self.btn_save.setEnabled(False)
 
-        # 导出按钮
+        # 分隔符与功能按钮组
+        self.command_bar_card.add_separator()
         self.btn_export = self.command_bar_card.add_action(
             Action(FluentIcon.SHARE, Localizer.get().proofreading_page_export, triggered=self._on_export_clicked)
         )
         self.btn_export.setEnabled(False)
 
         self.command_bar_card.add_separator()
-
-        # 搜索按钮
         self.btn_search = self.command_bar_card.add_action(
             Action(FluentIcon.SEARCH, Localizer.get().proofreading_page_search, triggered=self._on_search_clicked)
         )
         self.btn_search.setEnabled(False)
 
-        # 筛选按钮
         self.btn_filter = self.command_bar_card.add_action(
             Action(FluentIcon.FILTER, Localizer.get().proofreading_page_filter, triggered=self._on_filter_clicked)
         )
@@ -141,15 +142,12 @@ class ProofreadingPage(QWidget, Base):
 
         self.command_bar_card.add_separator()
 
-        # 分页控件（放在左侧，添加到 CommandBar 内部以紧贴分隔符）
+        # 分页与状态指示器
         self.pagination_bar = PaginationBar()
         self.pagination_bar.page_changed.connect(self._on_page_changed)
         self.command_bar_card.add_widget_to_command_bar(self.pagination_bar)
-
-        # 弹性空间（将右侧的 loading 指示器顶到最右侧）
         self.command_bar_card.add_stretch(1)
 
-        # Loading 指示器（右下角）
         self.info_label = CaptionLabel("", self)
         self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.info_label.hide()
@@ -174,6 +172,7 @@ class ProofreadingPage(QWidget, Base):
         """加载缓存数据"""
 
         def task() -> None:
+            # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
                 self.config = Config().load()
                 cache_manager = CacheManager(service=False)
@@ -248,31 +247,25 @@ class ProofreadingPage(QWidget, Base):
 
         filtered = []
         for item in self.items:
-            # 排除掉 已排除 和 重复条目
+            # 排除掉 已排除 和 重复条目（通常无需校对）
             if item.get_status() in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED):
                 continue
-            # 警告类型筛选
+
+            # 警告类型筛选：如果开启了筛选，则过滤不吻合的项
             if warning_types is not None:
                 item_warnings = self.warning_map.get(id(item), [])
-
-                if item_warnings:
-                    # 条目有警告：检查其警告是否在选中的警告类型中
-                    if not any(e in warning_types for e in item_warnings):
-                        continue
-                else:
-                    # 条目无警告：检查是否勾选了“无警告”
-                    if FilterDialog.NO_WARNING_TAG not in warning_types:
-                        continue
-
-            # 翻译状态筛选
-            if statuses is not None:
-                if item.get_status() not in statuses:
+                # 逻辑展平：分别处理有警告和无警告的显示条件
+                if item_warnings and not any(e in warning_types for e in item_warnings):
+                    continue
+                if not item_warnings and FilterDialog.NO_WARNING_TAG not in warning_types:
                     continue
 
-            # 文件筛选
-            if file_paths is not None:
-                if item.get_file_path() not in file_paths:
-                    continue
+            # 翻译状态和路径筛选：使用合并判断减少嵌套
+            if statuses is not None and item.get_status() not in statuses:
+                continue
+
+            if file_paths is not None and item.get_file_path() not in file_paths:
+                continue
 
             filtered.append(item)
 
@@ -621,6 +614,7 @@ class ProofreadingPage(QWidget, Base):
 
     def _check_engine_status(self) -> None:
         """检查并更新只读模式"""
+        # 获取全局引擎状态，确保 UI 状态与后台任务一致
         engine_status = Engine.get().get_status()
         is_busy = engine_status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
 
@@ -649,8 +643,8 @@ class ProofreadingPage(QWidget, Base):
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
 
-    def showEvent(self, event) -> None:
-        """页面显示事件"""
+    def showEvent(self, event: QShowEvent) -> None:
+        """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(event)
         self._check_engine_status()
 
