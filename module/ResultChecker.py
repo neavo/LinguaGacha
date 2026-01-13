@@ -13,8 +13,8 @@ from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
-class ErrorType(StrEnum):
-    """检查错误类型枚举"""
+class WarningType(StrEnum):
+    """检查警告类型枚举"""
     KANA = "KANA"                           # 假名残留
     HANGEUL = "HANGEUL"                     # 谚文残留
     TEXT_PRESERVE = "TEXT_PRESERVE"         # 文本保护失效
@@ -162,74 +162,74 @@ class ResultChecker(Base):
     # 公共接口方法
     # =========================================
 
-    def get_check_results(self, items: list[Item]) -> dict[int, list[ErrorType]]:
+    def get_check_results(self, items: list[Item]) -> dict[int, list[WarningType]]:
         """
-        对全量数据进行内存检查，返回错误映射表。
+        对全量数据进行内存检查，返回警告映射表。
 
         Args:
             items: 待检查的 Item 列表
 
         Returns:
-            以 id(item) 为 Key，错误类型列表为 Value 的字典
-            示例: { 140234567890: [ErrorType.KANA, ErrorType.SIMILARITY], ... }
+            以 id(item) 为 Key，警告类型列表为 Value 的字典
+            示例: { 140234567890: [WarningType.KANA, WarningType.SIMILARITY], ... }
         """
-        error_map: dict[int, list[ErrorType]] = {}
+        warning_map: dict[int, list[WarningType]] = {}
 
         for item in items:
-            errors = self.check_single_item(item)
-            if errors:
-                error_map[id(item)] = errors
+            warnings = self.check_single_item(item)
+            if warnings:
+                warning_map[id(item)] = warnings
 
-        return error_map
+        return warning_map
 
-    def check_single_item(self, item: Item) -> list[ErrorType]:
+    def check_single_item(self, item: Item) -> list[WarningType]:
         """
         对单个条目进行纯内存检查。
 
         Args:
-            item: 待检查的 Item 对象
+            item: 待检查 of Item 对象
 
         Returns:
-            该条目存在的错误类型列表
+            该条目存在的警告类型列表
         """
-        errors: list[ErrorType] = []
+        warnings: list[WarningType] = []
 
         # 跳过未翻译的条目
         if item.get_status() == Base.ProjectStatus.NONE:
-            return errors
+            return warnings
 
         # 跳过空译文
         if not item.get_dst():
-            return errors
+            return warnings
 
         # 获取替换后的文本
         src_repl, dst_repl = self._get_repl_texts(item)
 
         # 假名残留检查
         if self._has_kana_error(item):
-            errors.append(ErrorType.KANA)
+            warnings.append(WarningType.KANA)
 
         # 谚文残留检查
         if self._has_hangeul_error(item):
-            errors.append(ErrorType.HANGEUL)
+            warnings.append(WarningType.HANGEUL)
 
         # 文本保护检查
         if self._has_text_preserve_error(item, src_repl, dst_repl):
-            errors.append(ErrorType.TEXT_PRESERVE)
+            warnings.append(WarningType.TEXT_PRESERVE)
 
         # 相似度检查
         if self._has_similarity_error(src_repl, dst_repl):
-            errors.append(ErrorType.SIMILARITY)
+            warnings.append(WarningType.SIMILARITY)
 
         # 术语表检查
         if self._has_glossary_error(src_repl, dst_repl):
-            errors.append(ErrorType.GLOSSARY)
+            warnings.append(WarningType.GLOSSARY)
 
         # 重试次数阈值检查
         if self._has_retry_threshold_error(item):
-            errors.append(ErrorType.RETRY_THRESHOLD)
+            warnings.append(WarningType.RETRY_THRESHOLD)
 
-        return errors
+        return warnings
 
     # =========================================
     # 原有批量检查方法（保持兼容）

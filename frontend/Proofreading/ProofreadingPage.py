@@ -21,8 +21,8 @@ from module.Config import Config
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ErrorType
 from module.ResultChecker import ResultChecker
+from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -41,7 +41,7 @@ class ProofreadingPage(QWidget, Base):
         self.window = window
         self.items: list[Item] = []                         # 全量数据
         self.filtered_items: list[Item] = []                # 筛选后数据
-        self.error_map: dict[int, list[ErrorType]] = {}     # 错误映射表
+        self.warning_map: dict[int, list[WarningType]] = {} # 警告映射表
         self.is_readonly: bool = False                      # 只读模式标志
         self.config: Config | None = None                   # 配置
         self.filter_options: dict = {}                      # 当前筛选选项
@@ -57,7 +57,10 @@ class ProofreadingPage(QWidget, Base):
         self.add_widget_foot(self.root, window)
 
         # 注册事件
+        self.subscribe(Base.Event.TRANSLATION_RUN, self._on_engine_status_changed)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self._on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self._on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed)
 
         # 连接信号
         self.items_loaded.connect(self._on_items_loaded_ui)
@@ -101,7 +104,7 @@ class ProofreadingPage(QWidget, Base):
 
         # 加载按钮
         self.btn_load = self.command_bar_card.add_action(
-            Action(FluentIcon.SYNC, Localizer.get().proofreading_page_load, triggered=self._on_load_clicked)
+            Action(FluentIcon.DOWNLOAD, Localizer.get().proofreading_page_load, triggered=self._on_load_clicked)
         )
 
         # 保存按钮
@@ -166,10 +169,10 @@ class ProofreadingPage(QWidget, Base):
                     return
 
                 checker = ResultChecker(self.config, items)
-                error_map = checker.get_check_results(items)
+                warning_map = checker.get_check_results(items)
 
                 self.items = items
-                self.error_map = error_map
+                self.warning_map = warning_map
                 self.filter_options = {}
 
                 self.items_loaded.emit(items)
@@ -186,23 +189,14 @@ class ProofreadingPage(QWidget, Base):
 
     def _on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
-
-        has_items = bool(items)
-        self.btn_save.setEnabled(has_items)
-        self.btn_export.setEnabled(has_items)
-        self.btn_search.setEnabled(has_items)
-        self.btn_filter.setEnabled(has_items)
-
         if items:
             self._apply_filter()
-            self._check_engine_status()
         else:
             # 清空数据并显示占位符
-            self.items = []
-            self.filtered_items = []
-            self.error_map = {}
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
+
+        self._check_engine_status()
 
     # ========== 筛选功能 ==========
     def _on_filter_clicked(self) -> None:
@@ -223,24 +217,27 @@ class ProofreadingPage(QWidget, Base):
 
     def _apply_filter(self) -> None:
         """应用筛选条件"""
-        error_types = self.filter_options.get(FilterDialog.KEY_ERROR_TYPES)
+        warning_types = self.filter_options.get(FilterDialog.KEY_WARNING_TYPES)
         statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
         file_paths = self.filter_options.get(FilterDialog.KEY_FILE_PATHS)
         search_text = self.search_keyword.lower()
 
         filtered = []
         for item in self.items:
-            # 错误类型筛选
-            if error_types is not None:
-                item_errors = self.error_map.get(id(item), [])
+            # 排除掉 已排除 和 重复条目
+            if item.get_status() in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED):
+                continue
+            # 警告类型筛选
+            if warning_types is not None:
+                item_warnings = self.warning_map.get(id(item), [])
 
-                if item_errors:
-                    # 条目有错误：检查其错误是否在选中的错误类型中
-                    if not any(e in error_types for e in item_errors):
+                if item_warnings:
+                    # 条目有警告：检查其警告是否在选中的警告类型中
+                    if not any(e in warning_types for e in item_warnings):
                         continue
                 else:
-                    # 条目无错误：检查是否勾选了“无错误”
-                    if FilterDialog.NO_ERROR_TAG not in error_types:
+                    # 条目无警告：检查是否勾选了“无警告”
+                    if FilterDialog.NO_WARNING_TAG not in warning_types:
                         continue
 
             # 翻译状态筛选
@@ -299,9 +296,9 @@ class ProofreadingPage(QWidget, Base):
         end_idx = start_idx + page_size
 
         page_items = self.filtered_items[start_idx:end_idx]
-        page_error_map = {id(item): self.error_map.get(id(item), []) for item in page_items}
+        page_warning_map = {id(item): self.warning_map.get(id(item), []) for item in page_items}
 
-        self.table_widget.set_items(page_items, page_error_map)
+        self.table_widget.set_items(page_items, page_warning_map)
 
     # ========== 编辑功能 ==========
     def _on_cell_edited(self, item: Item, new_dst: str) -> None:
@@ -325,16 +322,16 @@ class ProofreadingPage(QWidget, Base):
             return
 
         checker = ResultChecker(self.config, [item])
-        errors = checker.check_single_item(item)
+        warnings = checker.check_single_item(item)
 
-        if errors:
-            self.error_map[id(item)] = errors
+        if warnings:
+            self.warning_map[id(item)] = warnings
         else:
-            self.error_map.pop(id(item), None)
+            self.warning_map.pop(id(item), None)
 
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
-            self.table_widget.update_row_status(row, errors)
+            self.table_widget.update_row_status(row, warnings)
 
     def _on_copy_src_clicked(self, item: Item) -> None:
         """复制原文到剪贴板"""
@@ -476,12 +473,26 @@ class ProofreadingPage(QWidget, Base):
         engine_status = Engine.get().get_status()
         is_busy = engine_status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
 
-        # 翻译进行中 (或正在停止) 禁止 保存/导出
-        has_items = bool(self.items)
-        can_operate = not is_busy and has_items
+        # 1. 如果处于翻译中/停止中，清空页面数据
+        if is_busy and self.items:
+            self.items = []
+            self.filtered_items = []
+            self.warning_map = {}
+            self.table_widget.set_items([], {})
+            self.pagination_bar.reset()
 
+        # 2. 更新按钮状态
+        has_items = bool(self.items)
+
+        # 加载按钮在繁忙时禁用
+        self.btn_load.setEnabled(not is_busy)
+
+        # 其他按钮只有在不繁忙且有数据时启用
+        can_operate = not is_busy and has_items
         self.btn_save.setEnabled(can_operate)
         self.btn_export.setEnabled(can_operate)
+        self.btn_search.setEnabled(can_operate)
+        self.btn_filter.setEnabled(can_operate)
 
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy

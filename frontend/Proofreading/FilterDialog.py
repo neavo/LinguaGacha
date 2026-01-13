@@ -18,22 +18,23 @@ from qfluentwidgets import StrongBodyLabel
 from base.Base import Base
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ErrorType
+from module.ResultChecker import WarningType
 from widget.Separator import Separator
 
 class FilterDialog(MessageBoxBase):
     """高度定制化的筛选对话框，模仿接口列表样式"""
 
-    NO_ERROR_TAG = "NO_ERROR"
+    NO_WARNING_TAG = "NO_WARNING"
 
     # 筛选选项字典 Key 定义
-    KEY_ERROR_TYPES = "error_types"
+    KEY_WARNING_TYPES = "warning_types"
     KEY_STATUSES = "statuses"
     KEY_FILE_PATHS = "file_paths"
 
     def __init__(self, items: list[Item], parent: QWidget) -> None:
         super().__init__(parent)
-        self.items = items
+        # 仅针对可见状态进行筛选
+        self.items = [i for i in items if i.get_status() not in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED)]
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -43,41 +44,38 @@ class FilterDialog(MessageBoxBase):
         self.viewLayout.setSpacing(16)
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
 
-        # ========== 1. 错误类型模块 ==========
-        self.error_checkboxes = {}
-        error_types = [
-            (self.NO_ERROR_TAG, Localizer.get().proofreading_page_filter_no_error),
-            (ErrorType.KANA, Localizer.get().proofreading_page_error_kana),
-            (ErrorType.HANGEUL, Localizer.get().proofreading_page_error_hangeul),
-            (ErrorType.TEXT_PRESERVE, Localizer.get().proofreading_page_error_text_preserve),
-            (ErrorType.SIMILARITY, Localizer.get().proofreading_page_error_similarity),
-            (ErrorType.GLOSSARY, Localizer.get().proofreading_page_error_glossary),
-            (ErrorType.RETRY_THRESHOLD, Localizer.get().proofreading_page_error_retry),
+        # ========== 1. 警告类型模块 ==========
+        self.warning_checkboxes = {}
+        warning_types = [
+            (self.NO_WARNING_TAG, Localizer.get().proofreading_page_filter_no_warning),
+            (WarningType.KANA, Localizer.get().proofreading_page_warning_kana),
+            (WarningType.HANGEUL, Localizer.get().proofreading_page_warning_hangeul),
+            (WarningType.TEXT_PRESERVE, Localizer.get().proofreading_page_warning_text_preserve),
+            (WarningType.SIMILARITY, Localizer.get().proofreading_page_warning_similarity),
+            (WarningType.GLOSSARY, Localizer.get().proofreading_page_warning_glossary),
+            (WarningType.RETRY_THRESHOLD, Localizer.get().proofreading_page_warning_retry),
         ]
 
-        self.error_card, error_layout, _ = self._create_section_card(
-            Localizer.get().proofreading_page_filter_error_type
+        self.warning_card, warning_layout, _ = self._create_section_card(
+            Localizer.get().proofreading_page_filter_warning_type
         )
 
-        for error_type, label in error_types:
+        for warning_type, label in warning_types:
             cb = CheckBox(label)
             cb.setChecked(True)
             # 固定宽度以在 FlowLayout 中保持整齐
             cb.setFixedWidth(160)
-            self.error_checkboxes[error_type] = cb
-            error_layout.addWidget(cb)
+            self.warning_checkboxes[warning_type] = cb
+            warning_layout.addWidget(cb)
 
-        self.viewLayout.addWidget(self.error_card)
+        self.viewLayout.addWidget(self.warning_card)
 
         # ========== 2. 翻译状态模块 ==========
         self.status_checkboxes = {}
         status_types = [
             (Base.ProjectStatus.NONE, Localizer.get().proofreading_page_status_none),
-            (Base.ProjectStatus.PROCESSING, Localizer.get().proofreading_page_status_processing),
             (Base.ProjectStatus.PROCESSED, Localizer.get().proofreading_page_status_processed),
             (Base.ProjectStatus.PROCESSED_IN_PAST, Localizer.get().proofreading_page_status_processed_in_past),
-            (Base.ProjectStatus.EXCLUDED, Localizer.get().proofreading_page_status_excluded),
-            (Base.ProjectStatus.DUPLICATED, Localizer.get().proofreading_page_status_duplicated),
         ]
 
         self.status_card, status_layout, _ = self._create_section_card(
@@ -226,7 +224,7 @@ class FilterDialog(MessageBoxBase):
             cb.setChecked(False)
 
     def get_filter_options(self) -> dict:
-        selected_errors = {e for e, cb in self.error_checkboxes.items() if cb.isChecked()}
+        selected_warnings = {e for e, cb in self.warning_checkboxes.items() if cb.isChecked()}
         selected_statuses = {s for s, cb in self.status_checkboxes.items() if cb.isChecked()}
 
         selected_files = set()
@@ -237,15 +235,15 @@ class FilterDialog(MessageBoxBase):
 
         # 如果选中的数量少于总数，则返回选中集合；否则返回 None 表示全选（无筛选）
         return {
-            self.KEY_ERROR_TYPES: selected_errors,
+            self.KEY_WARNING_TYPES: selected_warnings,
             self.KEY_STATUSES: selected_statuses if len(selected_statuses) < len(self.status_checkboxes) else None,
             self.KEY_FILE_PATHS: selected_files if len(selected_files) < len(all_files) else None,
         }
 
     def set_filter_options(self, options: dict) -> None:
-        error_types = options.get(self.KEY_ERROR_TYPES)
-        for error_type, cb in self.error_checkboxes.items():
-            cb.setChecked(error_types is None or error_type in error_types)
+        warning_types = options.get(self.KEY_WARNING_TYPES)
+        for warning_type, cb in self.warning_checkboxes.items():
+            cb.setChecked(warning_types is None or warning_type in warning_types)
 
         statuses = options.get(self.KEY_STATUSES)
         for status, cb in self.status_checkboxes.items():

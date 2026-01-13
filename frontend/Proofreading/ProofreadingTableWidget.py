@@ -18,7 +18,7 @@ from base.Base import Base
 from frontend.Proofreading.TextEditDialog import TextEditDialog
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ErrorType
+from module.ResultChecker import WarningType
 
 class ProofreadingTableWidget(TableWidget):
     """校对任务专用表格组件"""
@@ -45,12 +45,8 @@ class ProofreadingTableWidget(TableWidget):
 
     # 翻译状态图标（未翻译不显示）
     STATUS_ICONS = {
-        # Base.ProjectStatus.NONE: 不显示
-        Base.ProjectStatus.PROCESSING: FluentIcon.SYNC,
-        Base.ProjectStatus.PROCESSED: FluentIcon.ACCEPT,
+        Base.ProjectStatus.PROCESSED: FluentIcon.COMPLETED,
         Base.ProjectStatus.PROCESSED_IN_PAST: FluentIcon.HISTORY,
-        Base.ProjectStatus.EXCLUDED: FluentIcon.REMOVE,
-        Base.ProjectStatus.DUPLICATED: FluentIcon.COPY,
     }
 
     def __init__(self, parent: QWidget = None) -> None:
@@ -104,7 +100,7 @@ class ProofreadingTableWidget(TableWidget):
     def set_items(
         self,
         items: list[Item],
-        error_map: dict[int, list[ErrorType]]
+        warning_map: dict[int, list[WarningType]]
     ) -> None:
         """填充表格数据"""
         self.blockSignals(True)
@@ -126,7 +122,7 @@ class ProofreadingTableWidget(TableWidget):
         else:
             self.setRowCount(len(items))
             for row, item in enumerate(items):
-                self._set_row_data(row, item, error_map.get(id(item), []))
+                self._set_row_data(row, item, warning_map.get(id(item), []))
 
         self.setUpdatesEnabled(True)
         self.blockSignals(False)
@@ -146,7 +142,7 @@ class ProofreadingTableWidget(TableWidget):
         self,
         row: int,
         item: Item,
-        errors: list[ErrorType]
+        warnings: list[WarningType]
     ) -> None:
         """设置单行数据"""
         src_text = item.get_src()
@@ -172,16 +168,16 @@ class ProofreadingTableWidget(TableWidget):
         self.setItem(row, self.COL_DST, dst_item)
 
         # 状态列
-        self._create_status_widget(row, item, errors)
+        self._create_status_widget(row, item, warnings)
 
         # 操作列
         self._create_action_widget(row, item)
 
-    def _create_status_widget(self, row: int, item: Item, errors: list[ErrorType]) -> None:
+    def _create_status_widget(self, row: int, item: Item, warnings: list[WarningType]) -> None:
         """创建状态显示组件"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         layout.setAlignment(Qt.AlignCenter)
 
@@ -192,22 +188,22 @@ class ProofreadingTableWidget(TableWidget):
             status_icon = IconWidget(self.STATUS_ICONS[status])
             status_icon.setFixedSize(16, 16)
             status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
-            # Tooltip 添加标题，便于用户理解
-            status_tooltip = f"【{Localizer.get().proofreading_page_col_status}】\n{self._get_status_text(status)}"
+            # 修改为：翻译状态 - xxx
+            status_tooltip = f"{Localizer.get().proofreading_page_filter_status} - {self._get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
-        # 错误图标（有错误才显示）
-        if errors:
-            # 使用 FEEDBACK 图标（感叹号三角），更有警示/错误意味
-            error_icon = IconWidget(FluentIcon.FEEDBACK)
-            error_icon.setFixedSize(16, 16)
-            error_texts = [self._get_error_text(e) for e in errors]
-            error_icon.installEventFilter(ToolTipFilter(error_icon, 300, ToolTipPosition.TOP))
-            # Tooltip 添加标题，列出所有错误类型
-            error_tooltip = f"【{Localizer.get().proofreading_page_filter_error_type}】\n" + "\n".join(error_texts)
-            error_icon.setToolTip(error_tooltip)
-            layout.addWidget(error_icon)
+        # 警告图标（有警告才显示）
+        if warnings:
+            # 使用 FEEDBACK 图标（感叹号三角），更有警示意图
+            warning_icon = IconWidget(FluentIcon.VPN)
+            warning_icon.setFixedSize(16, 16)
+            warning_texts = [self._get_warning_text(e) for e in warnings]
+            warning_icon.installEventFilter(ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP))
+            # 修改为：结果检查警告 - xxx | xxx | xxx
+            warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title} - {' | '.join(warning_texts)}"
+            warning_icon.setToolTip(warning_tooltip)
+            layout.addWidget(warning_icon)
 
         self.setCellWidget(row, self.COL_STATUS, widget)
 
@@ -215,25 +211,22 @@ class ProofreadingTableWidget(TableWidget):
         """获取翻译状态的本地化文本"""
         status_texts = {
             Base.ProjectStatus.NONE: Localizer.get().proofreading_page_status_none,
-            Base.ProjectStatus.PROCESSING: Localizer.get().proofreading_page_status_processing,
             Base.ProjectStatus.PROCESSED: Localizer.get().proofreading_page_status_processed,
             Base.ProjectStatus.PROCESSED_IN_PAST: Localizer.get().proofreading_page_status_processed_in_past,
-            Base.ProjectStatus.EXCLUDED: Localizer.get().proofreading_page_status_excluded,
-            Base.ProjectStatus.DUPLICATED: Localizer.get().proofreading_page_status_duplicated,
         }
         return status_texts.get(status, str(status))
 
-    def _get_error_text(self, error: ErrorType) -> str:
-        """获取错误类型的本地化文本"""
-        error_texts = {
-            ErrorType.KANA: Localizer.get().proofreading_page_error_kana,
-            ErrorType.HANGEUL: Localizer.get().proofreading_page_error_hangeul,
-            ErrorType.TEXT_PRESERVE: Localizer.get().proofreading_page_error_text_preserve,
-            ErrorType.SIMILARITY: Localizer.get().proofreading_page_error_similarity,
-            ErrorType.GLOSSARY: Localizer.get().proofreading_page_error_glossary,
-            ErrorType.RETRY_THRESHOLD: Localizer.get().proofreading_page_error_retry,
+    def _get_warning_text(self, error: WarningType) -> str:
+        """获取警告类型的本地化文本"""
+        warning_texts = {
+            WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
+            WarningType.HANGEUL: Localizer.get().proofreading_page_warning_hangeul,
+            WarningType.TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
+            WarningType.SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
+            WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
+            WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
         }
-        return error_texts.get(error, str(error))
+        return warning_texts.get(error, str(error))
 
     def _create_action_widget(self, row: int, item: Item) -> None:
         """创建操作按钮"""
@@ -286,11 +279,11 @@ class ProofreadingTableWidget(TableWidget):
             return src_cell.data(self.ITEM_ROLE)
         return None
 
-    def update_row_status(self, row: int, errors: list[ErrorType]) -> None:
+    def update_row_status(self, row: int, warnings: list[WarningType]) -> None:
         """更新指定行的状态"""
         item = self.get_item_at_row(row)
         if item:
-            self._create_status_widget(row, item, errors)
+            self._create_status_widget(row, item, warnings)
 
     def set_row_loading(self, row: int, loading: bool) -> None:
         """设置指定行为加载中状态"""

@@ -1,8 +1,11 @@
+from PyQt5.QtCore import QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
-from qfluentwidgets import PushButton
+from qfluentwidgets import FluentIcon
+from qfluentwidgets import ToolButton
 
 from module.Localizer.Localizer import Localizer
 
@@ -30,10 +33,11 @@ class PaginationBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignCenter)
 
         # 上一页按钮
-        self.btn_prev = PushButton("◀")
-        self.btn_prev.setFixedWidth(36)
+        self.btn_prev = ToolButton(FluentIcon.CARE_LEFT_SOLID, self)
+        self.btn_prev.setIconSize(QSize(12, 12))
         self.btn_prev.clicked.connect(self._on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
@@ -42,8 +46,8 @@ class PaginationBar(QWidget):
         layout.addWidget(self.page_info_label)
 
         # 下一页按钮
-        self.btn_next = PushButton("▶")
-        self.btn_next.setFixedWidth(36)
+        self.btn_next = ToolButton(FluentIcon.CARE_RIGHT_SOLID, self)
+        self.btn_next.setIconSize(QSize(12, 12))
         self.btn_next.clicked.connect(self._on_next_clicked)
         layout.addWidget(self.btn_next)
 

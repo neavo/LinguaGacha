@@ -39,7 +39,7 @@ from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.TranslationPage import TranslationPage
+from frontend.Translation import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -290,7 +290,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 校对任务
-        from frontend.ProofreadingPage import ProofreadingPage
+        from frontend.Proofreading import ProofreadingPage
         self.proofreading_page = ProofreadingPage("proofreading_page", self)
         self.addSubInterface(
             self.proofreading_page,
