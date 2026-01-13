@@ -41,6 +41,13 @@ class LocalizerEN(LocalizerZH):
     alert_no_data: str = "No valid data …"
     alert_reset_timer: str = "Confirm to reset timer?"
     alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
+    search_prev: str = "Previous"
+    search_next: str = "Next"
+    search_regex_on: str = "Regex Mode: Enabled"
+    search_regex_off: str = "Regex Mode: Disabled"
+    search_regex_invalid: str = "Invalid regular expression"
+    search_no_match: str = "No matches found"
+
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
@@ -105,6 +112,8 @@ class LocalizerEN(LocalizerZH):
     engine_response_think: str = "Model Thinking:"
     engine_response_result: str = "Model Response:"
     engine_task_success: str = "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}"
+    engine_single_translate_success: str = "Single translation completed in {TIME} seconds"
+    engine_single_translate_fail: str = "Single translation failed"
     engine_task_too_many: str = "Too many real-time tasks, details hidden for performance …"
     api_tester_key: str = "Testing Key:"
     api_tester_messages: str = "Task Prompts:"

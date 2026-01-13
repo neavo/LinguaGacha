@@ -41,6 +41,13 @@ class LocalizerZH():
     alert_no_data: str = "没有有效数据 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
+    search_prev: str = "上一个"
+    search_next: str = "下一个"
+    search_regex_on: str = "正则模式：已启用"
+    search_regex_off: str = "正则模式：未启用"
+    search_regex_invalid: str = "正则表达式无效"
+    search_no_match: str = "未找到匹配项"
+
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"
@@ -105,6 +112,8 @@ class LocalizerZH():
     engine_response_think: str = "模型思考内容："
     engine_response_result: str = "模型回复内容："
     engine_task_success: str = "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens"
+    engine_single_translate_success: str = "单条翻译完成，耗时 {TIME} 秒"
+    engine_single_translate_fail: str = "单条翻译失败"
     engine_task_too_many: str = "实时任务较多，暂时停止显示详细结果以提升性能 …"
     api_tester_key: str = "正在测试密钥："
     api_tester_messages: str = "任务提示词："

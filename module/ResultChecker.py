@@ -118,8 +118,6 @@ class ResultChecker(Base):
 
     def _has_retry_threshold_error(self, item: Item) -> bool:
         """检查重试次数是否达到阈值"""
-        if not self.config.result_checker_retry_count_threshold:
-            return False
         return item.get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD
 
     # =========================================

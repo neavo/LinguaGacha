@@ -130,6 +130,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 切换主题
     def switch_theme(self) -> None:
+        # 处理待处理事件，确保 deleteLater() 触发的 widget 销毁已完成
+        # 避免 qfluentwidgets styleSheetManager 遍历时字典大小变化
+        QApplication.processEvents()
+
         config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)

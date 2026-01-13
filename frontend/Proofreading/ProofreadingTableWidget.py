@@ -1,4 +1,5 @@
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
@@ -176,9 +177,12 @@ class ProofreadingTableWidget(TableWidget):
     def _create_status_widget(self, row: int, item: Item, warnings: list[WarningType]) -> None:
         """创建状态显示组件"""
         widget = QWidget()
+        # 固定高度与行高一致，确保 layout 能正确计算居中位置
+        widget.setFixedHeight(40)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        # 使用 AlignCenter 统一控制水平和垂直居中
         layout.setAlignment(Qt.AlignCenter)
 
         status = item.get_status()
@@ -372,3 +376,10 @@ class ProofreadingTableWidget(TableWidget):
             dst_cell.setToolTip(new_dst)
         self.blockSignals(False)
 
+    def select_row(self, row: int) -> None:
+        """选中指定行并滚动到可见区域"""
+        if row < 0 or row >= self.rowCount():
+            return
+        self.selectRow(row)
+        # 延迟滚动，确保 cell widget 布局先完成更新
+        QTimer.singleShot(0, lambda: self.scrollToItem(self.item(row, self.COL_SRC), QAbstractItemView.PositionAtCenter))

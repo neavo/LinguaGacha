@@ -1,10 +1,17 @@
 import threading
+import time
 from typing import Callable
 from typing import Self
+
+import rich
+from rich import box
+from rich import markup
+from rich.table import Table
 
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Localizer.Localizer import Localizer
 
 class Engine():
 
@@ -65,7 +72,12 @@ class Engine():
             from module.Response.ResponseDecoder import ResponseDecoder
             from module.TextProcessor import TextProcessor
 
+            # 任务开始时间
+            start_time = time.time()
+
             success = False
+            src_text = item.get_src()
+            dst_text = ""
             try:
                 # 获取激活的平台配置
                 platform = config.get_platform(config.activate_platform)
@@ -80,6 +92,7 @@ class Engine():
                 if len(processor.srcs) == 0:
                     item.set_dst(item.get_src())
                     item.set_status(Base.ProjectStatus.PROCESSED)
+                    dst_text = item.get_src()
                     success = True
                     return
 
@@ -116,11 +129,19 @@ class Engine():
                 if name is not None:
                     item.set_first_name_dst(name)
                 item.set_status(Base.ProjectStatus.PROCESSED)
+                dst_text = dst
                 success = True
-
             except Exception:
                 success = False
             finally:
+                # 打印日志
+                self._print_single_translate_log(
+                    src_text,
+                    dst_text,
+                    success,
+                    start_time,
+                )
+
                 # 回调通知（在当前线程直接调用，UI 层需自行处理线程切换）
                 if callback:
                     callback(item, success)
@@ -131,3 +152,44 @@ class Engine():
             name=f"{Engine.TASK_PREFIX}SINGLE"
         )
         thread.start()
+
+    def _print_single_translate_log(
+        self,
+        src: str,
+        dst: str,
+        success: bool,
+        start_time: float,
+    ) -> None:
+        """打印单条翻译的日志表格"""
+        elapsed = time.time() - start_time
+
+        if success:
+            style = "green"
+            message = Localizer.get().engine_single_translate_success.replace("{TIME}", f"{elapsed:.2f}")
+        else:
+            style = "red"
+            message = Localizer.get().engine_single_translate_fail
+
+        # 生成表格行
+        rows = [markup.escape(message)]
+        pair = f"{markup.escape(src.strip())} [bright_blue]-->[/] {markup.escape(dst.strip())}"
+        rows.append(pair)
+
+        # 生成并打印表格
+        table = Table(
+            box=box.ASCII2,
+            expand=True,
+            title=" ",
+            caption=" ",
+            highlight=True,
+            show_lines=True,
+            show_header=False,
+            show_footer=False,
+            collapse_padding=True,
+            border_style=style,
+        )
+        table.add_column("", style="white", ratio=1, overflow="fold")
+        for row in rows:
+            table.add_row(row)
+
+        rich.get_console().print(table)

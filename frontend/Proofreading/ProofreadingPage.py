@@ -1,3 +1,4 @@
+import re
 import threading
 
 from PyQt5.QtCore import Qt
@@ -50,6 +51,9 @@ class ProofreadingPage(QWidget, Base):
         self.config: Config | None = None                   # 配置
         self.filter_options: dict = {}                      # 当前筛选选项
         self.search_keyword: str = ""                       # 当前搜索关键词
+        self.search_is_regex: bool = False                  # 是否正则搜索
+        self.search_match_indices: list[int] = []           # 匹配项在 filtered_items 中的索引
+        self.search_current_match: int = -1                 # 当前匹配项索引（在 search_match_indices 中的位置）
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -92,13 +96,11 @@ class ProofreadingPage(QWidget, Base):
         self.search_card.setVisible(False)
         parent.addWidget(self.search_card)
 
-        def back_clicked(widget: SearchCard) -> None:
-            self._on_search_back_clicked()
-        self.search_card.on_back_clicked(back_clicked)
-
-        def next_clicked(widget: SearchCard) -> None:
-            self._on_search_next_clicked(widget.get_line_edit().text().strip())
-        self.search_card.on_next_clicked(next_clicked)
+        # 绑定搜索回调
+        self.search_card.on_back_clicked(lambda w: self._on_search_back_clicked())
+        self.search_card.on_prev_clicked(lambda w: self._on_search_prev_clicked())
+        self.search_card.on_next_clicked(lambda w: self._on_search_next_clicked())
+        self.search_card.on_search_triggered(lambda w: self._do_search())
 
         # 命令栏
         self.command_bar_card = CommandBarCard()
@@ -243,7 +245,6 @@ class ProofreadingPage(QWidget, Base):
         warning_types = self.filter_options.get(FilterDialog.KEY_WARNING_TYPES)
         statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
         file_paths = self.filter_options.get(FilterDialog.KEY_FILE_PATHS)
-        search_text = self.search_keyword.lower()
 
         filtered = []
         for item in self.items:
@@ -273,13 +274,6 @@ class ProofreadingPage(QWidget, Base):
                 if item.get_file_path() not in file_paths:
                     continue
 
-            # 搜索过滤
-            if search_text:
-                src_match = search_text in item.get_src().lower()
-                dst_match = search_text in item.get_dst().lower()
-                if not (src_match or dst_match):
-                    continue
-
             filtered.append(item)
 
         self.filtered_items = filtered
@@ -287,25 +281,151 @@ class ProofreadingPage(QWidget, Base):
         self.pagination_bar.set_page(1)
         self._render_page(1)
 
+        # 筛选后清空搜索状态，因为 filtered_items 已变化
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
+
+
     # ========== 搜索功能 ==========
     def _on_search_clicked(self) -> None:
         """搜索按钮点击"""
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
+        # 聚焦到输入框
+        self.search_card.get_line_edit().setFocus()
 
     def _on_search_back_clicked(self) -> None:
-        """搜索栏返回点击"""
+        """搜索栏返回点击，清除搜索状态"""
         self.search_keyword = ""
+        self.search_is_regex = False
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
         self.search_card.setVisible(False)
         self.command_bar_card.setVisible(True)
-        self._apply_filter()
 
-    def _on_search_next_clicked(self, keyword: str) -> None:
-        """搜索栏确认/下一个点击"""
+    def _do_search(self) -> None:
+        """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
+        keyword = self.search_card.get_keyword()
         if not keyword:
+            self.search_match_indices = []
+            self.search_current_match = -1
+            self.search_card.clear_match_info()
             return
+
+        is_regex = self.search_card.is_regex_mode()
+
+        # 验证正则表达式
+        if is_regex:
+            is_valid, error_msg = self.search_card.validate_regex()
+            if not is_valid:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.ERROR,
+                    "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                })
+                return
+
         self.search_keyword = keyword
-        self._apply_filter()
+        self.search_is_regex = is_regex
+
+        # 构建匹配索引列表
+        self._build_match_indices()
+
+        if not self.search_match_indices:
+            self.search_card.set_match_info(0, 0)
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().search_no_match,
+            })
+            return
+
+        # 跳转到第一个匹配项
+        self.search_current_match = 0
+        self._jump_to_match()
+
+    def _build_match_indices(self) -> None:
+        """构建匹配项索引列表"""
+        self.search_match_indices = []
+
+        if not self.search_keyword:
+            return
+
+        keyword = self.search_keyword
+        is_regex = self.search_is_regex
+
+        # 编译正则（忽略大小写）
+        if is_regex:
+            try:
+                pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                return
+        else:
+            keyword_lower = keyword.lower()
+
+        for idx, item in enumerate(self.filtered_items):
+            src = item.get_src()
+            dst = item.get_dst()
+
+            if is_regex:
+                if pattern.search(src) or pattern.search(dst):
+                    self.search_match_indices.append(idx)
+            else:
+                # 普通搜索（忽略大小写）
+                if keyword_lower in src.lower() or keyword_lower in dst.lower():
+                    self.search_match_indices.append(idx)
+
+    def _on_search_prev_clicked(self) -> None:
+        """上一个匹配项"""
+        if not self.search_match_indices:
+            # 如果没有匹配结果，先执行搜索
+            self._do_search()
+            return
+
+        # 循环跳转到上一个
+        self.search_current_match -= 1
+        if self.search_current_match < 0:
+            self.search_current_match = len(self.search_match_indices) - 1
+        self._jump_to_match()
+
+    def _on_search_next_clicked(self) -> None:
+        """下一个匹配项"""
+        if not self.search_match_indices:
+            # 如果没有匹配结果，先执行搜索
+            self._do_search()
+            return
+
+        # 循环跳转到下一个
+        self.search_current_match += 1
+        if self.search_current_match >= len(self.search_match_indices):
+            self.search_current_match = 0
+        self._jump_to_match()
+
+    def _jump_to_match(self) -> None:
+        """跳转到当前匹配项"""
+        if not self.search_match_indices or self.search_current_match < 0:
+            return
+
+        # 更新匹配信息显示
+        total = len(self.search_match_indices)
+        current = self.search_current_match + 1  # 显示时从 1 开始
+        self.search_card.set_match_info(current, total)
+
+        # 计算匹配项所在页码
+        item_index = self.search_match_indices[self.search_current_match]
+        page_size = self.pagination_bar.get_page_size()
+        target_page = (item_index // page_size) + 1
+
+        # 如果需要翻页
+        current_page = self.pagination_bar.get_page()
+        if target_page != current_page:
+            self.pagination_bar.set_page(target_page)
+            self._render_page(target_page)
+
+        # 在表格中选中该行
+        row_in_page = item_index % page_size
+        self.table_widget.select_row(row_in_page)
+
 
     # ========== 分页渲染 ==========
     def _on_page_changed(self, page: int) -> None:
