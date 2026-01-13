@@ -43,11 +43,15 @@ class LocalizerZH():
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
     search_prev: str = "上一个"
     search_next: str = "下一个"
+    search_prev_match: str = "上一个匹配项"
+    search_next_match: str = "下一个匹配项"
     search_regex_on: str = "正则模式：已启用"
     search_regex_off: str = "正则模式：未启用"
     search_regex_invalid: str = "正则表达式无效"
     search_no_match: str = "未找到匹配项"
-
+    search_regex_btn: str = "正则"
+    search_match_info: str = "第 {current} 项，共 {total} 项"
+    search_no_result: str = "无结果"
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"

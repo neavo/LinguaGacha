@@ -43,11 +43,15 @@ class LocalizerEN(LocalizerZH):
     alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
     search_prev: str = "Previous"
     search_next: str = "Next"
+    search_prev_match: str = "Previous match"
+    search_next_match: str = "Next match"
     search_regex_on: str = "Regex Mode: Enabled"
     search_regex_off: str = "Regex Mode: Disabled"
     search_regex_invalid: str = "Invalid regular expression"
     search_no_match: str = "No matches found"
-
+    search_regex_btn: str = "Regex"
+    search_match_info: str = "Item {current} of {total}"
+    search_no_result: str = "No results"
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
