@@ -1,6 +1,6 @@
 [project]
 name = "linguagacha"
-version = "0.30.0"
+version = "0.40.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.12.*"
