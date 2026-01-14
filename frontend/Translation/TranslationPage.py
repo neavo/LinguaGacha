@@ -1,5 +1,5 @@
 import time
-from typing import Callable
+from enum import StrEnum
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTime
@@ -30,6 +30,11 @@ from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
 
 class TranslationPage(QWidget, Base):
+
+    # Token 显示模式
+    class TokenDisplayMode(StrEnum):
+        INPUT = "INPUT"
+        OUTPUT = "OUTPUT"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -191,10 +196,16 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        if Engine.get().get_status() not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
-            return None
+        # 根据显示模式选择要展示的 Token 数量
+        display_mode = getattr(self, "token_display_mode", self.TokenDisplayMode.OUTPUT)
+        if display_mode == self.TokenDisplayMode.OUTPUT:
+            token = self.data.get("total_output_tokens", 0)
+        else:
+            # 兼容旧缓存：若无 total_input_tokens 字段，用 total_tokens - total_output_tokens 计算
+            token = self.data.get("total_input_tokens", 0)
+            if token == 0:
+                token = self.data.get("total_tokens", 0) - self.data.get("total_output_tokens", 0)
 
-        token = self.data.get("total_tokens", 0)
         if token < 1000:
             self.token.set_unit("Token")
             self.token.set_value(f"{token}")
@@ -204,6 +215,10 @@ class TranslationPage(QWidget, Base):
         else:
             self.token.set_unit("MToken")
             self.token.set_value(f"{(token / 1000 / 1000):.2f}")
+
+        # 速度计算仅在翻译/停止状态下更新，避免空闲时干扰波形图
+        if Engine.get().get_status() not in (Base.TaskStatus.STOPPING, Base.TaskStatus.TRANSLATING):
+            return None
 
         speed = self.data.get("total_output_tokens", 0) / max(1, time.time() - self.data.get("start_time", 0))
         self.waveform.add_value(speed)
@@ -368,14 +383,93 @@ class TranslationPage(QWidget, Base):
 
     # 累计消耗
     def add_token_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        # 默认显示输出 Token
+        self.token_display_mode = self.TokenDisplayMode.OUTPUT
+
+        def on_token_card_clicked(card: DashboardCard) -> None:
+            # 切换显示模式
+            if self.token_display_mode == self.TokenDisplayMode.OUTPUT:
+                self.token_display_mode = self.TokenDisplayMode.INPUT
+                card.title_label.setText(Localizer.get().translation_page_card_token_input)
+            else:
+                self.token_display_mode = self.TokenDisplayMode.OUTPUT
+                card.title_label.setText(Localizer.get().translation_page_card_token_output)
+
+            # 应用淡入淡出动效
+            self._animate_token_card_switch()
+
         self.token = DashboardCard(
             parent = self,
-            title = Localizer.get().translation_page_card_token,
+            title = Localizer.get().translation_page_card_token_output,
             value = Localizer.get().none,
             unit = "",
+            clicked = on_token_card_clicked,
         )
         self.token.setFixedSize(204, 204)
+        self.token.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.token.installEventFilter(ToolTipFilter(self.token, 300, ToolTipPosition.TOP))
+        self.token.setToolTip(Localizer.get().translation_page_card_token_tooltip)
         parent.addWidget(self.token)
+
+    def _animate_token_card_switch(self) -> None:
+        """为累计消耗卡片的数值标签执行淡入淡出动效"""
+        from PyQt5.QtCore import QEasingCurve
+        from PyQt5.QtCore import QPropertyAnimation
+        from PyQt5.QtWidgets import QGraphicsOpacityEffect
+
+        value_label = self.token.value_label
+        unit_label = self.token.unit_label
+
+        # 为标签添加透明度效果（如果还没有的话）
+        if not hasattr(self, "_token_value_opacity_effect") or self._token_value_opacity_effect is None:
+            self._token_value_opacity_effect = QGraphicsOpacityEffect(value_label)
+            value_label.setGraphicsEffect(self._token_value_opacity_effect)
+
+        if not hasattr(self, "_token_unit_opacity_effect") or self._token_unit_opacity_effect is None:
+            self._token_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
+            unit_label.setGraphicsEffect(self._token_unit_opacity_effect)
+
+        # 创建淡出动画
+        fade_out = QPropertyAnimation(self._token_value_opacity_effect, b"opacity")
+        fade_out.setDuration(100)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.3)
+        fade_out.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        fade_out_unit = QPropertyAnimation(self._token_unit_opacity_effect, b"opacity")
+        fade_out_unit.setDuration(100)
+        fade_out_unit.setStartValue(1.0)
+        fade_out_unit.setEndValue(0.3)
+        fade_out_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        # 创建淡入动画
+        fade_in = QPropertyAnimation(self._token_value_opacity_effect, b"opacity")
+        fade_in.setDuration(100)
+        fade_in.setStartValue(0.3)
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        fade_in_unit = QPropertyAnimation(self._token_unit_opacity_effect, b"opacity")
+        fade_in_unit.setDuration(100)
+        fade_in_unit.setStartValue(0.3)
+        fade_in_unit.setEndValue(1.0)
+        fade_in_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        # 淡出完成后更新数据并开始淡入
+        def on_fade_out_finished() -> None:
+            self.update_token(self.data)
+            fade_in.start()
+            fade_in_unit.start()
+
+        fade_out.finished.connect(on_fade_out_finished)
+        fade_out.start()
+        fade_out_unit.start()
+
+        # 保持动画引用避免被垃圾回收
+        self._token_fade_out_anim = fade_out
+        self._token_fade_out_unit_anim = fade_out_unit
+        self._token_fade_in_anim = fade_in
+        self._token_fade_in_unit_anim = fade_in_unit
 
     # 并行任务
     def add_task_card(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
