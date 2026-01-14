@@ -190,8 +190,10 @@ class ProofreadingTableWidget(TableWidget):
             status_icon = IconWidget(self.STATUS_ICONS[status])
             status_icon.setFixedSize(16, 16)
             status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
-            # 修改为：翻译状态 - xxx
-            status_tooltip = f"{Localizer.get().proofreading_page_filter_status} - {self._get_status_text(status)}"
+            # 格式修改为：
+            # 翻译状态
+            # 当前状态：xxx
+            status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self._get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
@@ -202,8 +204,10 @@ class ProofreadingTableWidget(TableWidget):
             warning_icon.setFixedSize(16, 16)
             warning_texts = [self._get_warning_text(e) for e in warnings]
             warning_icon.installEventFilter(ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP))
-            # 修改为：结果检查警告 - xxx | xxx | xxx
-            warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title} - {' | '.join(warning_texts)}"
+            # 格式修改为：
+            # 结果检查
+            # 当前状态：xxx | xxx | xxx
+            warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
 

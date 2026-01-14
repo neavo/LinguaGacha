@@ -52,6 +52,7 @@ class LocalizerEN(LocalizerZH):
     search_regex_btn: str = "Regex"
     search_match_info: str = "Item {current} of {total}"
     search_no_result: str = "No results"
+    current_status: str = "Current Status: "
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application … ?"
