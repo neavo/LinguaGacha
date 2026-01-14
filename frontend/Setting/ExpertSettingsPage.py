@@ -182,7 +182,6 @@ class ExpertSettingsPage(QWidget, Base):
             )
         )
 
-
     # 自动移除前后缀代码段
     def add_widget_auto_process_prefix_suffix_preserved_text(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 

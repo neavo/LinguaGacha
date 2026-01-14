@@ -477,7 +477,6 @@ class LocalizerEN(LocalizerZH):
         "and automatically generate corresponding glossary data to facilitate subsequent translation"
     )
 
-
     # 百宝箱 - 部分重翻
     re_translation_page: str = "Partial Re-Translation"
     re_translation_page_desc: str = (
@@ -524,4 +523,3 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "Then generate the corresponding glossary data, check if the generated glossary data is correct"
     )
-

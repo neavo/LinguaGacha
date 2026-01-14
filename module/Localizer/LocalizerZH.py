@@ -477,7 +477,6 @@ class LocalizerZH():
         "自动生成对应的术语表数据，方便后续进行翻译"
     )
 
-
     # 百宝箱 - 部分重翻
     re_translation_page: str = "部分重翻"
     re_translation_page_desc: str = (
@@ -524,5 +523,3 @@ class LocalizerZH():
         "<br>"
         "然后生成对应的术语表数据，请注意检查生成的术语表数据是否正确"
     )
-
-

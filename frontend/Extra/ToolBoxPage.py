@@ -87,7 +87,6 @@ class ToolBoxPage(QWidget, Base):
         self.add_re_translation(self.flow_layout, config, window)
         self.add_name_field_extraction(self.flow_layout, config, window)
 
-
     # 部分重翻
     def add_re_translation(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 

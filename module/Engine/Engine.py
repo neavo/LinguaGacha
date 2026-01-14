@@ -9,6 +9,7 @@ from rich import markup
 from rich.table import Table
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
@@ -131,7 +132,9 @@ class Engine():
                 item.set_status(Base.ProjectStatus.PROCESSED)
                 dst_text = dst
                 success = True
-            except Exception:
+            except Exception as e:
+                # 记录异常日志便于调试
+                LogManager.get().error("Single item translate failed", e)
                 success = False
             finally:
                 # 打印日志

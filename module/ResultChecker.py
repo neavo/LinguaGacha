@@ -29,13 +29,11 @@ class ResultChecker(Base):
     OPENCCT2S = opencc.OpenCC("t2s")
     OPENCCS2T = opencc.OpenCC("s2tw")
 
-    def __init__(self, config: Config, items: list[Item]) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
-        # 初始化
         self.config: Config = config
         self.text_processor: TextProcessor = TextProcessor(config, None)
-
         # 预处理术语表数据（用于单条检查时复用）
         self._prepared_glossary_data: list[dict] = self._prepare_glossary_data()
 
@@ -192,4 +190,3 @@ class ResultChecker(Base):
             warnings.append(WarningType.RETRY_THRESHOLD)
 
         return warnings
-

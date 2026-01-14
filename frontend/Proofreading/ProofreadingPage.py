@@ -40,6 +40,7 @@ class ProofreadingPage(QWidget, Base):
     # 信号定义
     items_loaded = pyqtSignal(list)             # 数据加载完成信号
     translate_done = pyqtSignal(object, bool)   # 翻译完成信号
+    save_done = pyqtSignal(bool)                # 保存完成信号
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -76,6 +77,7 @@ class ProofreadingPage(QWidget, Base):
         # 连接信号
         self.items_loaded.connect(self._on_items_loaded_ui)
         self.translate_done.connect(self._on_translate_done_ui)
+        self.save_done.connect(self._on_save_done_ui)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
@@ -189,7 +191,7 @@ class ProofreadingPage(QWidget, Base):
                     self.items_loaded.emit([])
                     return
 
-                checker = ResultChecker(self.config, items)
+                checker = ResultChecker(self.config)
                 warning_map = checker.get_check_results(items)
 
                 self.items = items
@@ -278,7 +280,6 @@ class ProofreadingPage(QWidget, Base):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
-
 
     # ========== 搜索功能 ==========
     def _on_search_clicked(self) -> None:
@@ -457,7 +458,7 @@ class ProofreadingPage(QWidget, Base):
         if not self.config:
             return
 
-        checker = ResultChecker(self.config, [item])
+        checker = ResultChecker(self.config)
         warnings = checker.check_single_item(item)
 
         if warnings:
@@ -545,40 +546,49 @@ class ProofreadingPage(QWidget, Base):
     # ========== 保存功能 ==========
     def _on_save_clicked(self) -> None:
         """保存按钮点击"""
-        # 显示 loading 指示器
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
         self.save_data()
-        # 延迟隐藏，让用户看到保存提示
-        QTimer.singleShot(1000, self.indeterminate_hide)
 
-    def save_data(self) -> bool:
-        """保存数据到缓存文件"""
+    def save_data(self) -> None:
+        """保存数据到缓存文件（异步执行）"""
         if self.is_readonly or not self.config or not self.items:
-            return False
+            self.indeterminate_hide()
+            return
 
-        try:
-            cache_manager = CacheManager(service=False)
-            cache_manager.set_items(self.items)
-            cache_manager.load_project_from_file(self.config.output_folder)
-            cache_manager.save_to_file(
-                project=cache_manager.get_project(),
-                items=self.items,
-                output_folder=self.config.output_folder
-            )
+        # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
+        config = self.config
+        items = self.items
 
+        def task() -> None:
+            try:
+                cache_manager = CacheManager(service=False)
+                cache_manager.set_items(items)
+                cache_manager.load_project_from_file(config.output_folder)
+                cache_manager.save_to_file(
+                    project=cache_manager.get_project(),
+                    items=items,
+                    output_folder=config.output_folder
+                )
+                self.save_done.emit(True)
+            except Exception as e:
+                self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
+                self.save_done.emit(False)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_save_done_ui(self, success: bool) -> None:
+        """保存完成的 UI 更新（主线程）"""
+        self.indeterminate_hide()
+        if success:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_save_success,
             })
-            return True
-
-        except Exception as e:
-            self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
+        else:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().proofreading_page_save_failed,
             })
-            return False
 
     # ========== 导出功能 ==========
     def _on_export_clicked(self) -> None:

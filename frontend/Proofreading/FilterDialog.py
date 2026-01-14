@@ -226,18 +226,13 @@ class FilterDialog(MessageBoxBase):
     def get_filter_options(self) -> dict:
         selected_warnings = {e for e, cb in self.warning_checkboxes.items() if cb.isChecked()}
         selected_statuses = {s for s, cb in self.status_checkboxes.items() if cb.isChecked()}
+        selected_files = {path for path, cb in self.file_checkboxes.items() if cb.isChecked()}
 
-        selected_files = set()
-        all_files = set(self.file_checkboxes.keys())
-        for path, cb in self.file_checkboxes.items():
-            if cb.isChecked():
-                selected_files.add(path)
-
-        # 如果选中的数量少于总数，则返回选中集合；否则返回 None 表示全选（无筛选）
+        # 统一风格：全选时返回 None 表示无筛选，否则返回选中集合
         return {
-            self.KEY_WARNING_TYPES: selected_warnings,
+            self.KEY_WARNING_TYPES: selected_warnings if len(selected_warnings) < len(self.warning_checkboxes) else None,
             self.KEY_STATUSES: selected_statuses if len(selected_statuses) < len(self.status_checkboxes) else None,
-            self.KEY_FILE_PATHS: selected_files if len(selected_files) < len(all_files) else None,
+            self.KEY_FILE_PATHS: selected_files if len(selected_files) < len(self.file_checkboxes) else None,
         }
 
     def set_filter_options(self, options: dict) -> None:

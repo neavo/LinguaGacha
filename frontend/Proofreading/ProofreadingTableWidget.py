@@ -93,8 +93,6 @@ class ProofreadingTableWidget(TableWidget):
         # 加载中的行集合
         self._loading_rows: set[int] = set()
 
-        # 连接信号
-        self.cellChanged.connect(self._on_cell_changed)
         # 双击弹出编辑对话框
         self.cellDoubleClicked.connect(self._on_cell_double_clicked)
 
@@ -319,20 +317,6 @@ class ProofreadingTableWidget(TableWidget):
             if widget:
                 for btn in widget.findChildren(PillToolButton):
                     btn.setEnabled(not readonly and row not in self._loading_rows)
-
-    def _on_cell_changed(self, row: int, column: int) -> None:
-        """单元格内容变化处理"""
-        if column != self.COL_DST:
-            return
-
-        item = self.get_item_at_row(row)
-        if not item:
-            return
-
-        dst_cell = self.item(row, self.COL_DST)
-        if dst_cell:
-            new_dst = dst_cell.text()
-            self.cell_edited.emit(item, new_dst)
 
     def _on_cell_double_clicked(self, row: int, column: int) -> None:
         """双击弹出编辑对话框"""
