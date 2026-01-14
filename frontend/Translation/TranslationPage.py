@@ -42,6 +42,7 @@ class TranslationPage(QWidget, Base):
 
         # 初始化
         self.data = {}
+        self._timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -89,25 +90,32 @@ class TranslationPage(QWidget, Base):
         self.update_status(self.data)
 
     def update_button_status(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() == Base.TaskStatus.IDLE:
+        status = Engine.get().get_status()
+
+        if status == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Engine.get().get_status() == Base.TaskStatus.TESTING:
+            self.action_timer.setEnabled(True)
+        elif status == Base.TaskStatus.TESTING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
-        elif Engine.get().get_status() == Base.TaskStatus.TRANSLATING:
+            self.action_timer.setEnabled(False)
+        elif status == Base.TaskStatus.TRANSLATING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_export.setEnabled(True)
-        elif Engine.get().get_status() == Base.TaskStatus.STOPPING:
+            self.action_timer.setEnabled(False)
+            self._reset_timer()  # 翻译开始后自动取消定时器
+        elif status == Base.TaskStatus.STOPPING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_export.setEnabled(False)
+            self.action_timer.setEnabled(False)
 
-        if Engine.get().get_status() == Base.TaskStatus.IDLE and data.get("status") == Base.ProjectStatus.PROCESSING:
+        if status == Base.TaskStatus.IDLE and data.get("status") == Base.ProjectStatus.PROCESSING:
             self.action_continue.setEnabled(True)
         else:
             self.action_continue.setEnabled(False)
@@ -568,11 +576,17 @@ class TranslationPage(QWidget, Base):
             "message": Localizer.get().task_success,
         })
 
+    # 重置定时器状态
+    def _reset_timer(self) -> None:
+        """清除定时器倒计时状态"""
+        if self._timer_delay_time is not None:
+            self._timer_delay_time = None
+            self.action_timer.setText(Localizer.get().timer)
+
     # 定时器
     def add_command_bar_action_timer(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         interval = 1
-        delay_time = None
 
         def format_time(full: int) -> str:
             hours = int(full / 3600)
@@ -582,32 +596,23 @@ class TranslationPage(QWidget, Base):
             return f"{hours:02}:{minutes:02}:{seconds:02}"
 
         def timer_interval() -> None:
-            nonlocal interval
-            nonlocal delay_time
-
-            if not isinstance(delay_time, int):
+            if self._timer_delay_time is None:
                 return None
 
-            if delay_time > 0:
-                delay_time = delay_time - interval
-                self.action_timer.setText(format_time(delay_time))
+            if self._timer_delay_time > 0:
+                self._timer_delay_time = self._timer_delay_time - interval
+                self.action_timer.setText(format_time(self._timer_delay_time))
             else:
                 self.emit(Base.Event.TRANSLATION_RUN, {
                     "status": Base.ProjectStatus.NONE,
                 })
-
-                delay_time = None
-                self.action_timer.setText(Localizer.get().timer)
+                self._reset_timer()
 
         def message_box_close(widget: TimerMessageBox, input_time: QTime) -> None:
-            nonlocal delay_time
-
-            delay_time = input_time.hour() * 3600 + input_time.minute() * 60 + input_time.second()
+            self._timer_delay_time = input_time.hour() * 3600 + input_time.minute() * 60 + input_time.second()
 
         def triggered() -> None:
-            nonlocal delay_time
-
-            if not isinstance(delay_time, int):
+            if self._timer_delay_time is None:
                 TimerMessageBox(
                     parent = window,
                     title = Localizer.get().translation_page_timer,
@@ -618,12 +623,11 @@ class TranslationPage(QWidget, Base):
                 message_box.yesButton.setText(Localizer.get().confirm)
                 message_box.cancelButton.setText(Localizer.get().cancel)
 
-                # 点击取消，则不触发开始翻译事件
+                # 点击确认则取消定时器
                 if not message_box.exec():
                     return
 
-                delay_time = None
-                self.action_timer.setText(Localizer.get().timer)
+                self._reset_timer()
 
         self.action_timer = parent.add_action(
             Action(FluentIcon.HISTORY, Localizer.get().timer, parent, triggered = triggered)
