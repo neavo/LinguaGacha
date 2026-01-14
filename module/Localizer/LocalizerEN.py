@@ -207,7 +207,7 @@ class LocalizerEN(LocalizerZH):
     project_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
     project_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
 
-    # Translation Task
+    # 翻译任务
     translation_page_status_idle: str = "Idle"
     translation_page_status_translating: str = "Translating"
     translation_page_status_stopping: str = "Stopping"
@@ -221,11 +221,13 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_token: str = "Total Tokens"
     translation_page_card_task: str = "Real Time Tasks"
     translation_page_alert_pause: str = "Stopped tasks can be resumed at any time. Confirm to stop the task … ?"
-    translation_page_continue: str = "Continue Task"
-    translation_page_export: str = "Export Task Data"
+    translation_page_continue: str = "Continue"
+    translation_page_export: str = "Export"
+    translation_page_export_confirm: str = "Confirm to export the translation file?"
+    translation_page_export_tooltip: str = "Export translation file"
     translation_page_timer: str = "Waiting time before delayed startup"
 
-    # Proofreading Task
+    # 校对任务
     proofreading_page_load: str = "Load"
     proofreading_page_save: str = "Save"
     proofreading_page_save_tooltip: str = "Shortcut Ctrl + S"
@@ -240,15 +242,15 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_save_success: str = "Data saved"
     proofreading_page_export_success: str = "Export completed"
     proofreading_page_export_failed: str = "Export failed"
-    proofreading_page_export_confirm: str = "Are you sure you want to export the translated files?"
-    proofreading_page_export_tooltip: str = "Export Translated Files\nData will be saved before generating translated files"
+    proofreading_page_export_confirm: str = "Confirm to export the translation file?"
+    proofreading_page_export_tooltip: str = "Export translation file\nSave the data first, then generate the translation file"
     proofreading_page_col_src: str = "Source"
     proofreading_page_col_dst: str = "Translation"
     proofreading_page_col_status: str = "Status"
     proofreading_page_no_cache: str = "No cache file found, please run translation task first"
     proofreading_page_load_failed: str = "Failed to read cache file"
     proofreading_page_save_failed: str = "Save failed"
-    proofreading_page_retranslate_confirm: str = "Are you sure you want to retranslate this entry?"
+    proofreading_page_retranslate_confirm: str = "Confirm to retranslate this entry?"
     proofreading_page_retranslate_failed: str = "Translation failed, please retry"
     proofreading_page_retranslate_success: str = "Translation completed"
     proofreading_page_warning_tooltip_title: str = "Result Check"
@@ -479,7 +481,7 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• Load the original and translated texts from the <font color='darkgoldenrod'><b>src</b></font> and <font color='darkgoldenrod'><b>dst</b></font> subdirectories of the <font color='darkgoldenrod'><b>Input Folder</b></font>"
         "<br>"
-        "• The filenames and file contents of the original and translated files must correspond strictly one-to-one"
+        "• The filenames and file contents of the original and translation files must correspond strictly one-to-one"
         "<br>"
         "• Filter out the text that needs to be retranslated according to the settings on this page, translate it according to the normal process"
     )

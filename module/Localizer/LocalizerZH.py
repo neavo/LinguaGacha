@@ -221,8 +221,10 @@ class LocalizerZH():
     translation_page_card_token: str = "累计消耗"
     translation_page_card_task: str = "实时任务数"
     translation_page_alert_pause: str = "停止的任务可以随时继续执行，是否确定停止任务 … ？"
-    translation_page_continue: str = "继续任务"
-    translation_page_export: str = "导出任务数据"
+    translation_page_continue: str = "继续"
+    translation_page_export: str = "导出"
+    translation_page_export_confirm: str = "确定要导出译文文件吗？"
+    translation_page_export_tooltip: str = "导出译文文件"
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 校对任务
@@ -241,7 +243,7 @@ class LocalizerZH():
     proofreading_page_export_success: str = "导出完成"
     proofreading_page_export_failed: str = "导出失败"
     proofreading_page_export_confirm: str = "确定要导出译文文件吗？"
-    proofreading_page_export_tooltip: str = "导出译文文件\n将先保存数据再生成译文文件"
+    proofreading_page_export_tooltip: str = "导出译文文件\n先保存数据，然后生成译文文件"
     proofreading_page_col_src: str = "原文"
     proofreading_page_col_dst: str = "译文"
     proofreading_page_col_status: str = "状态"
