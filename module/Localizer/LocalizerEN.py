@@ -239,6 +239,7 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_copy_dst_done: str = "Translation copied to clipboard"
     proofreading_page_save_success: str = "Data saved"
     proofreading_page_export_success: str = "Export completed"
+    proofreading_page_export_failed: str = "Export failed"
     proofreading_page_export_confirm: str = "Are you sure you want to export the translated files?"
     proofreading_page_export_tooltip: str = "Export Translated Files\nData will be saved before generating translated files"
     proofreading_page_col_src: str = "Source"

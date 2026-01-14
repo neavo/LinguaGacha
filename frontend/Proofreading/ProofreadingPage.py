@@ -1,5 +1,6 @@
 import re
 import threading
+import time
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
@@ -41,6 +42,7 @@ class ProofreadingPage(QWidget, Base):
     items_loaded = pyqtSignal(list)             # 数据加载完成信号
     translate_done = pyqtSignal(object, bool)   # 翻译完成信号
     save_done = pyqtSignal(bool)                # 保存完成信号
+    export_done = pyqtSignal(bool, str)         # 导出完成信号 (success, error_msg)
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -78,6 +80,11 @@ class ProofreadingPage(QWidget, Base):
         self.items_loaded.connect(self._on_items_loaded_ui)
         self.translate_done.connect(self._on_translate_done_ui)
         self.save_done.connect(self._on_save_done_ui)
+        self.export_done.connect(self._on_export_done_ui)
+
+        # Loading 指示器状态追踪
+        self._indeterminate_start_time: float = 0.0      # 开始显示的时间戳
+        self._indeterminate_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
@@ -622,9 +629,7 @@ class ProofreadingPage(QWidget, Base):
             # 导出流程中的保存
             if success:
                 self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_exporting)
-                self.export_data()
-                # 延迟隐藏，让用户看到导出提示
-                QTimer.singleShot(1000, self.indeterminate_hide)
+                self.export_data()  # 异步执行，完成后由 export_done 信号触发隐藏
             else:
                 self.indeterminate_hide()
                 self.emit(Base.Event.TOAST, {
@@ -646,21 +651,37 @@ class ProofreadingPage(QWidget, Base):
                 })
 
     def export_data(self) -> None:
-        """导出数据"""
+        """导出数据（异步执行）"""
         if not self.config or not self.items:
+            self.export_done.emit(False, "")
             return
 
-        try:
-            FileManager(self.config).write_to_path(self.items)
+        # 捕获当前状态的引用，避免子线程中访问 self 时产生竞态
+        config = self.config
+        items = self.items
+
+        def task() -> None:
+            try:
+                FileManager(config).write_to_path(items)
+                self.export_done.emit(True, "")
+            except Exception as e:
+                self.error("Export failed", e)
+                self.export_done.emit(False, str(e))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_export_done_ui(self, success: bool, error_msg: str) -> None:
+        """导出完成的 UI 更新（主线程）"""
+        self.indeterminate_hide()
+        if success:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_export_success,
             })
-        except Exception as e:
-            self.error("Export failed", e)
+        else:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
-                "message": str(e),
+                "message": error_msg or Localizer.get().proofreading_page_export_failed,
             })
 
     # ========== 只读模式控制 ==========
@@ -706,13 +727,41 @@ class ProofreadingPage(QWidget, Base):
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
-        """显示 loading 指示器"""
+        """显示 loading 指示器，如果已在显示则立即更新文字"""
+        # 如果有待执行的隐藏 timer，取消它（因为有新任务了）
+        if self._indeterminate_hide_timer is not None:
+            self._indeterminate_hide_timer.stop()
+            self._indeterminate_hide_timer = None
+
+        # 记录开始时间（如果是首次显示）
+        if not self.indeterminate.isVisible():
+            self._indeterminate_start_time = time.time()
+
         self.indeterminate.show()
         self.info_label.show()
         self.info_label.setText(msg)
 
     def indeterminate_hide(self) -> None:
-        """隐藏 loading 指示器"""
+        """隐藏 loading 指示器，确保至少显示 1500ms"""
+        if not self.indeterminate.isVisible():
+            return
+
+        min_display_ms = 1500
+        elapsed_ms = (time.time() - self._indeterminate_start_time) * 1000
+        remaining_ms = min_display_ms - elapsed_ms
+
+        if remaining_ms > 0:
+            # 延迟隐藏，保证最小显示时长
+            self._indeterminate_hide_timer = QTimer()
+            self._indeterminate_hide_timer.setSingleShot(True)
+            self._indeterminate_hide_timer.timeout.connect(self._do_indeterminate_hide)
+            self._indeterminate_hide_timer.start(int(remaining_ms))
+        else:
+            self._do_indeterminate_hide()
+
+    def _do_indeterminate_hide(self) -> None:
+        """实际执行隐藏操作"""
+        self._indeterminate_hide_timer = None
         self.indeterminate.hide()
         self.info_label.hide()
         self.info_label.setText("")
