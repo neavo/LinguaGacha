@@ -45,8 +45,8 @@ class LocalizerZH():
     search_next: str = "下一个"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
-    search_regex_on: str = "正则模式：已启用"
-    search_regex_off: str = "正则模式：未启用"
+    search_regex_on: str = "正则模式\n当前状态：已启用"
+    search_regex_off: str = "正则模式\n当前状态：未启用"
     search_regex_invalid: str = "正则表达式无效"
     search_no_match: str = "未找到匹配项"
     search_regex_btn: str = "正则"
@@ -137,10 +137,6 @@ class LocalizerZH():
     response_checker_line_error_empty_line: str = "存在空行"
     response_checker_line_error_similarity: str = "较高相似度"
     response_checker_line_error_degradation: str = "发生退化现象"
-    response_decoder_glossary_by_json: str = "术语数据 -> 反序列化，共 {COUNT} 条"
-    response_decoder_glossary_by_rule: str = "术语数据 -> 拆分后规则解析，共 {COUNT} 条"
-    response_decoder_translation_by_json: str = "翻译数据 -> 反序列化，共 {COUNT} 条"
-    response_decoder_translation_by_rule: str = "翻译数据 -> 拆分后规则解析，共 {COUNT} 条"
 
     # 应用设置
     app_settings_page_expert_title: str = "专家模式"
@@ -155,7 +151,6 @@ class LocalizerZH():
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
     # 接口管理
-    platform_page_api_test_result: str = "接口测试结果：成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
     platform_page_api_activate: str = "激活接口"
     platform_page_api_edit: str = "编辑接口"
     platform_page_api_args: str = "编辑参数"
@@ -242,7 +237,6 @@ class LocalizerZH():
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst: str = "复制译文"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
-    proofreading_page_unsaved_alert: str = "当前有未保存的修改，由您决定是否保存？"
     proofreading_page_save_success: str = "数据已保存"
     proofreading_page_export_success: str = "导出完成"
     proofreading_page_col_src: str = "原文"
@@ -258,12 +252,9 @@ class LocalizerZH():
     proofreading_page_filter_warning_type: str = "结果检查"
     proofreading_page_filter_status: str = "翻译状态"
     proofreading_page_filter_file: str = "所属文件"
-    proofreading_page_filter_all: str = "全部"
     proofreading_page_status_none: str = "未翻译"
     proofreading_page_status_processed: str = "已完成"
     proofreading_page_status_processed_in_past: str = "历史完成"
-    proofreading_page_status_excluded: str = "已排除"
-    proofreading_page_status_duplicated: str = "重复条目"
     proofreading_page_page_info: str = "第 {CURRENT} / {TOTAL} 页"
     proofreading_page_warning_kana: str = "假名残留"
     proofreading_page_warning_hangeul: str = "谚文残留"
@@ -367,10 +358,8 @@ class LocalizerZH():
     quality_select_file: str = "选择文件"
     quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     quality_delete_row: str = "删除行"
-    quality_switch_regex: str = "切换正则模式"
 
     # 规则列
-    rule_column_name: str = "规则"
     rule_regex: str = "正则表达式"
     rule_regex_on: str = "当前状态：已启用"
     rule_regex_off: str = "当前状态：未启用"
