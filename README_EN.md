@@ -61,7 +61,7 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [Treasure Chest - Partial ReTranslation](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
@@ -79,6 +79,14 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260114 v0.40.0
+  - ADD - `Proofreading Task` feature
+    - Removed functions that are no longer needed, such as `Batch Correction`
+  - ADJ - Visual and interaction improvements
+  - ADJ - Separate statistics for input/output tokens
+  - ADJ - Search function refactoring, now supports regex search
+  - FIX - Issue where similarity judgment could not take effect correctly
+
 - 20260112 v0.30.0
   - ADD - Replace and Glossary now support `Case Sensitive` #291
   - ADD - Auto-process prefix/suffix text segments for preservation (Expert Settings) #259
@@ -91,15 +99,11 @@
   - FIX - Issue where translation could not be stopped normally (CONTINUED)
   - ADJ - Qwen3 series models no longer support `Priority Use of Thinking Mode`
 
-- 20260102 v0.29.4
-  - FIX - Issue where some Treasure Chest features would crash during use
-
-- 20251231 v0.29.3
-  - ADD - Setting options: Task Input Length Threshold, Task Output Length Threshold
-  - ADJ - Thinking Mode feature now supports more models [→ ModelListForThinkingModePriority ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)
-  - FIX - Issue where the last API key was not being used
-  - FIX - Crash when fetching model list if the key is empty
-  - Compatibility optimizations
+### Development Guide 🛠️
+- This project is managed using [**uv**](https://github.com/astral-sh/uv)
+- Install dependencies `uv sync -U`
+- Run application `uv run app.py`
+- For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

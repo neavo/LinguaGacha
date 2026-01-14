@@ -58,7 +58,7 @@
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
   - [补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
-  - [百宝箱 - 批量修正](https://github.com/neavo/LinguaGacha/wiki/BatchCorrection)　　[百宝箱 - 部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
+  - [百宝箱 - 部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -76,6 +76,14 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260114 v0.40.0
+  - 新增 - `校对任务` 功能
+    - 移除了不再需要的 `批量修正` 等功能
+  - 调整 - 视觉与交互改进
+  - 调整 - 分别统计输入/输出令牌
+  - 调整 - 搜索功能重构，现在可以支持正则搜索了
+  - 修正 - 相似度判断不能正确生效的问题
+
 - 20260112 v0.30.0
   - 新增 - 替换与术语表功能支持 `大小写敏感` #291
   - 新增 - 自动处理前后缀的保护文本段（专家设置） #259
@@ -88,28 +96,11 @@
   - 修正 - 修正不能正常停止翻译的问题（继续）
   - 调整 - Qwen3 系列模型不再支持 `优先使用思考模式`
 
-- 20260102 v0.29.4
-  - 修正 - 部分百宝箱功能使用时会崩溃的问题
-
-- 20251231 v0.29.3
-  - 新增 - 设置选项：任务输入长度阈值、任务输出长度阈值
-  - 调整 - 使用思考模型功能支持更多模型 [→ 支持优先使用思考模式的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)
-  - 修正 - 最后一个密钥不会被使用的问题
-  - 修正 - 密钥为空时获取模型列表会崩溃的问题
-  - 兼容性优化
-
-## 常见问题 📥
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) 与 [AiNiee](https://github.com/NEKOparapa/AiNiee) 的关系
-  - `LinguaGacha` 的作者是 `AiNiee v5` 的主要开发与维护者之一
-  - `AiNiee v5` 及延用至 `AiNiee v6` 的 UI 框架也是由作者主要负责设计和开发的
-  - 这也是两者 UI 相似的原因，因为作者已经没有灵感再重新设计一套了，求放过 🤣
-  - 不过 `LinguaGacha` 并不是 `AiNiee` 的分支版本，而是在其经验上开发的全新翻译器应用
-  - 相对作者主力开发的 `AiNiee v5`，`LinguaGacha` 有一些独有的优势，包括但是不限于：
-    - 零设置，全默认设置下即可实现最佳的翻译质量与翻译速度
-    - 更好的性能优化，即使 512+ 并发任务时电脑也不会卡顿，实际翻译速度也更快
-    - 原生支持 `.rpy` `.trans`，大部分 `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` 游戏即翻即玩
-    - 对文件格式的支持更好，例如 `.md` `.ass` `.epub` 格式几乎可以保留所有原有样式
-    - 更完善的预处理、后处理和结果检查功能，让制作高品质翻译的校对工作量显著减少
+### 开发指南 🛠️
+- 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理
+- 安装依赖 `uv sync -U`
+- 运行应用 `uv run app.py`
+- 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 
 ## 问题反馈 😥
 - 运行时的日志保存在应用根目录下的 `log` 等文件夹

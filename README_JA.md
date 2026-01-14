@@ -6,7 +6,7 @@
 &ensp;
 
 ## README 🌍
-- [ [中文](./README.md) ] | [ [English](/README_EN.md) ] | [ [日本語](/README_JA.md) ]
+- [ [中文](./README.md) ] | [ [English](./README_EN.md) ] | [ [日本語](./README_JA.md) ]
 
 ## 概要 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/)、AIを活用した次世代のテキスト翻訳ツールです
@@ -60,7 +60,7 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [Treasure Chest - Partial ReTranslation](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
@@ -76,6 +76,12 @@
   - [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート (.xlsx)
   - [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート（.xlsx）
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
+
+### 開発ガイド 🛠️
+- 本プロジェクトは [**uv**](https://github.com/astral-sh/uv) で管理されています
+- 依存関係のインストール: `uv sync -U`
+- アプリの実行: `uv run app.py`
+- 非開発者の方は [リリースページ](https://github.com/neavo/LinguaGacha/releases) からビルド済みバージョンをダウンロードすることをお勧めします
 
 ## FAQ 📥
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) と [AiNiee](https://github.com/NEKOparapa/AiNiee) の関係
