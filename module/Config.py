@@ -11,11 +11,26 @@ from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
+
+def _get_config_path() -> str:
+    """Get config file path based on environment."""
+    data_dir = os.environ.get("LINGUAGACHA_DATA_DIR")
+    app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
+    # In portable environments (AppImage, macOS .app), use data_dir/config.json
+    if data_dir and app_dir and data_dir != app_dir:
+        return os.path.join(data_dir, "config.json")
+    # Default: use resource/config.json in app directory
+    return "./resource/config.json"
+
+
+def _get_data_dir() -> str:
+    """Get user data directory."""
+    return os.environ.get("LINGUAGACHA_DATA_DIR", ".")
+
+
 @dataclasses.dataclass
-class Config():
-
+class Config:
     class Theme(StrEnum):
-
         DARK = "DARK"
         LIGHT = "LIGHT"
 
@@ -61,19 +76,23 @@ class Config():
 
     # GlossaryPage
     glossary_enable: bool = True
-    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
 
     # TextPreservePage
     text_preserve_enable: bool = False
-    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
 
     # PreTranslationReplacementPage
     pre_translation_replacement_enable: bool = True
-    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
+        default_factory=list
+    )
 
     # PostTranslationReplacementPage
     post_translation_replacement_enable: bool = True
-    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
+        default_factory=list
+    )
 
     # CustomPromptZHPage
     custom_prompt_zh_enable: bool = False
@@ -93,13 +112,13 @@ class Config():
 
     def load(self, path: str = None) -> Self:
         if path is None:
-            path = __class__.CONFIG_PATH
+            path = _get_config_path()
 
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(path), exist_ok = True)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 if os.path.isfile(path):
-                    with open(path, "r", encoding = "utf-8-sig") as reader:
+                    with open(path, "r", encoding="utf-8-sig") as reader:
                         config: dict = json.load(reader)
                         for k, v in config.items():
                             if hasattr(self, k):
@@ -107,17 +126,29 @@ class Config():
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_read_file_fail}", e)
 
+        # Adjust default paths for portable environments
+        data_dir = _get_data_dir()
+        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
+        if data_dir != app_dir:
+            # In portable environment, resolve default relative paths to data_dir
+            if self.input_folder == "./input":
+                self.input_folder = os.path.join(data_dir, "input")
+            if self.output_folder == "./output":
+                self.output_folder = os.path.join(data_dir, "output")
+
         return self
 
     def save(self, path: str = None) -> Self:
         if path is None:
-            path = __class__.CONFIG_PATH
+            path = _get_config_path()
 
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(path), exist_ok = True)
-                with open(path, "w", encoding = "utf-8") as writer:
-                    json.dump(dataclasses.asdict(self), writer, indent = 4, ensure_ascii = False)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as writer:
+                    json.dump(
+                        dataclasses.asdict(self), writer, indent=4, ensure_ascii=False
+                    )
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 
