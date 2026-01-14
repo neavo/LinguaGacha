@@ -26,7 +26,6 @@ from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
-from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ReTranslationPage import ReTranslationPage
@@ -39,7 +38,7 @@ from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.TaskPage import TaskPage
+from frontend.Translation import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -131,6 +130,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 切换主题
     def switch_theme(self) -> None:
+        # 处理待处理事件，确保 deleteLater() 触发的 widget 销毁已完成
+        # 避免 qfluentwidgets styleSheetManager 遍历时字典大小变化
+        QApplication.processEvents()
+
         config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)
@@ -215,7 +218,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_extra_pages()
 
         # 设置默认页面
-        self.switchTo(self.task_page)
+        self.switchTo(self.translation_page)
 
         # 主题切换按钮
         self.navigationInterface.addWidget(
@@ -281,11 +284,21 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
-        self.task_page = TaskPage("task_page", self)
+        self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
-            self.task_page,
+            self.translation_page,
             FluentIcon.PLAY,
-            Localizer.get().app_task_page,
+            Localizer.get().app_translation_page,
+            NavigationItemPosition.SCROLL
+        )
+
+        # 校对任务
+        from frontend.Proofreading import ProofreadingPage
+        self.proofreading_page = ProofreadingPage("proofreading_page", self)
+        self.addSubInterface(
+            self.proofreading_page,
+            FluentIcon.CHECKBOX,
+            Localizer.get().app_proofreading_page,
             NavigationItemPosition.SCROLL
         )
 
@@ -403,9 +416,6 @@ class AppFluentWindow(FluentWindow, Base):
             position = NavigationItemPosition.SCROLL,
         )
 
-        # 百宝箱 - 批量修正
-        self.batch_correction_page = BatchCorrectionPage("batch_correction_page", self)
-        self.stackedWidget.addWidget(self.batch_correction_page)
 
         # 百宝箱 - 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)
