@@ -239,6 +239,8 @@ class LocalizerZH():
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
     proofreading_page_save_success: str = "数据已保存"
     proofreading_page_export_success: str = "导出完成"
+    proofreading_page_export_confirm: str = "确定要导出译文文件吗？"
+    proofreading_page_export_tooltip: str = "导出译文文件\n将先保存数据再生成译文文件"
     proofreading_page_col_src: str = "原文"
     proofreading_page_col_dst: str = "译文"
     proofreading_page_col_status: str = "状态"

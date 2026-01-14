@@ -129,6 +129,8 @@ class ProofreadingPage(QWidget, Base):
         self.btn_export = self.command_bar_card.add_action(
             Action(FluentIcon.SHARE, Localizer.get().proofreading_page_export, triggered=self._on_export_clicked)
         )
+        self.btn_export.installEventFilter(ToolTipFilter(self.btn_export, 300, ToolTipPosition.TOP))
+        self.btn_export.setToolTip(Localizer.get().proofreading_page_export_tooltip)
         self.btn_export.setEnabled(False)
 
         self.command_bar_card.add_separator()
@@ -593,11 +595,55 @@ class ProofreadingPage(QWidget, Base):
     # ========== 导出功能 ==========
     def _on_export_clicked(self) -> None:
         """导出按钮点击"""
-        # 显示 loading 指示器
-        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_exporting)
-        self.export_data()
-        # 延迟隐藏，让用户看到导出提示
-        QTimer.singleShot(1000, self.indeterminate_hide)
+        # 弹框让用户确认
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_export_confirm,
+            self.window
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+
+        if not message_box.exec():
+            return
+
+        # 先保存数据再导出，保证译文文件与缓存数据一致
+        self._pending_export = True
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
+        self.save_data()
+
+    def _on_save_done_ui(self, success: bool) -> None:
+        """保存完成的 UI 更新（主线程）"""
+        # 检查是否有待处理的导出操作
+        pending_export = getattr(self, "_pending_export", False)
+        self._pending_export = False
+
+        if pending_export:
+            # 导出流程中的保存
+            if success:
+                self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_exporting)
+                self.export_data()
+                # 延迟隐藏，让用户看到导出提示
+                QTimer.singleShot(1000, self.indeterminate_hide)
+            else:
+                self.indeterminate_hide()
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().proofreading_page_save_failed,
+                })
+        else:
+            # 普通保存流程
+            self.indeterminate_hide()
+            if success:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().proofreading_page_save_success,
+                })
+            else:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().proofreading_page_save_failed,
+                })
 
     def export_data(self) -> None:
         """导出数据"""
