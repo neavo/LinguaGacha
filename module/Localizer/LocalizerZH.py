@@ -45,13 +45,14 @@ class LocalizerZH():
     search_next: str = "下一个"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
-    search_regex_on: str = "正则模式：已启用"
-    search_regex_off: str = "正则模式：未启用"
+    search_regex_on: str = "正则模式\n当前状态：已启用"
+    search_regex_off: str = "正则模式\n当前状态：未启用"
     search_regex_invalid: str = "正则表达式无效"
     search_no_match: str = "未找到匹配项"
     search_regex_btn: str = "正则"
     search_match_info: str = "第 {current} 项，共 {total} 项"
     search_no_result: str = "无结果"
+    current_status: str = "当前状态："
 
     # 主页面
     app_close_message_box: str = "确定是否退出程序 … ？"
@@ -136,10 +137,6 @@ class LocalizerZH():
     response_checker_line_error_empty_line: str = "存在空行"
     response_checker_line_error_similarity: str = "较高相似度"
     response_checker_line_error_degradation: str = "发生退化现象"
-    response_decoder_glossary_by_json: str = "术语数据 -> 反序列化，共 {COUNT} 条"
-    response_decoder_glossary_by_rule: str = "术语数据 -> 拆分后规则解析，共 {COUNT} 条"
-    response_decoder_translation_by_json: str = "翻译数据 -> 反序列化，共 {COUNT} 条"
-    response_decoder_translation_by_rule: str = "翻译数据 -> 拆分后规则解析，共 {COUNT} 条"
 
     # 应用设置
     app_settings_page_expert_title: str = "专家模式"
@@ -154,7 +151,6 @@ class LocalizerZH():
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
     # 接口管理
-    platform_page_api_test_result: str = "接口测试结果：成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
     platform_page_api_activate: str = "激活接口"
     platform_page_api_edit: str = "编辑接口"
     platform_page_api_args: str = "编辑参数"
@@ -225,8 +221,10 @@ class LocalizerZH():
     translation_page_card_token: str = "累计消耗"
     translation_page_card_task: str = "实时任务数"
     translation_page_alert_pause: str = "停止的任务可以随时继续执行，是否确定停止任务 … ？"
-    translation_page_continue: str = "继续任务"
-    translation_page_export: str = "导出任务数据"
+    translation_page_continue: str = "继续"
+    translation_page_export: str = "导出"
+    translation_page_export_confirm: str = "确定要导出译文文件吗？"
+    translation_page_export_tooltip: str = "导出译文文件"
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 校对任务
@@ -241,9 +239,11 @@ class LocalizerZH():
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst: str = "复制译文"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
-    proofreading_page_unsaved_alert: str = "当前有未保存的修改，由您决定是否保存？"
     proofreading_page_save_success: str = "数据已保存"
     proofreading_page_export_success: str = "导出完成"
+    proofreading_page_export_failed: str = "导出失败"
+    proofreading_page_export_confirm: str = "确定要导出译文文件吗？"
+    proofreading_page_export_tooltip: str = "导出译文文件\n先保存数据，然后生成译文文件"
     proofreading_page_col_src: str = "原文"
     proofreading_page_col_dst: str = "译文"
     proofreading_page_col_status: str = "状态"
@@ -257,12 +257,9 @@ class LocalizerZH():
     proofreading_page_filter_warning_type: str = "结果检查"
     proofreading_page_filter_status: str = "翻译状态"
     proofreading_page_filter_file: str = "所属文件"
-    proofreading_page_filter_all: str = "全部"
     proofreading_page_status_none: str = "未翻译"
     proofreading_page_status_processed: str = "已完成"
     proofreading_page_status_processed_in_past: str = "历史完成"
-    proofreading_page_status_excluded: str = "已排除"
-    proofreading_page_status_duplicated: str = "重复条目"
     proofreading_page_page_info: str = "第 {CURRENT} / {TOTAL} 页"
     proofreading_page_warning_kana: str = "假名残留"
     proofreading_page_warning_hangeul: str = "谚文残留"
@@ -366,10 +363,8 @@ class LocalizerZH():
     quality_select_file: str = "选择文件"
     quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     quality_delete_row: str = "删除行"
-    quality_switch_regex: str = "切换正则模式"
 
     # 规则列
-    rule_column_name: str = "规则"
     rule_regex: str = "正则表达式"
     rule_regex_on: str = "当前状态：已启用"
     rule_regex_off: str = "当前状态：未启用"

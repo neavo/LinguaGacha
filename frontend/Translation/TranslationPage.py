@@ -17,6 +17,8 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MessageBox
 from qfluentwidgets import ProgressRing
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
 from frontend.Translation.DashboardCard import DashboardCard
@@ -439,16 +441,38 @@ class TranslationPage(QWidget, Base):
     # 导出已完成的内容
     def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
         def triggered() -> None:
-            self.emit(Base.Event.TRANSLATION_EXPORT, {})
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().task_success,
-            })
+            # 弹框让用户确认
+            message_box = MessageBox(
+                Localizer.get().confirm,
+                Localizer.get().translation_page_export_confirm,
+                window
+            )
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
+
+            if not message_box.exec():
+                return
+
+            # 如果缓存正在保存，等待其完成后再导出
+            if self.indeterminate.isVisible():
+                self._pending_export = True
+            else:
+                self._do_export()
 
         self.action_export = parent.add_action(
             Action(FluentIcon.SHARE, Localizer.get().translation_page_export, parent, triggered = triggered),
         )
+        self.action_export.installEventFilter(ToolTipFilter(self.action_export, 300, ToolTipPosition.TOP))
+        self.action_export.setToolTip(Localizer.get().translation_page_export_tooltip)
         self.action_export.setEnabled(False)
+
+    def _do_export(self) -> None:
+        """执行导出操作"""
+        self.emit(Base.Event.TRANSLATION_EXPORT, {})
+        self.emit(Base.Event.TOAST, {
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().task_success,
+        })
 
     # 定时器
     def add_command_bar_action_timer(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
@@ -528,3 +552,8 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.hide()
         self.info_label.hide()
         self.info_label.setText("")
+
+        # 检查是否有待处理的导出操作，若有则触发导出
+        if getattr(self, "_pending_export", False):
+            self._pending_export = False
+            self._do_export()

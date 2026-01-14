@@ -44,7 +44,28 @@ class FilterDialog(MessageBoxBase):
         self.viewLayout.setSpacing(16)
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
 
-        # ========== 1. 警告类型模块 ==========
+        # ========== 1. 翻译任务模块 ==========
+        self.status_checkboxes = {}
+        status_types = [
+            (Base.ProjectStatus.NONE, Localizer.get().proofreading_page_status_none),
+            (Base.ProjectStatus.PROCESSED, Localizer.get().proofreading_page_status_processed),
+            (Base.ProjectStatus.PROCESSED_IN_PAST, Localizer.get().proofreading_page_status_processed_in_past),
+        ]
+
+        self.status_card, status_layout, _ = self._create_section_card(
+            Localizer.get().proofreading_page_filter_status
+        )
+
+        for status, label in status_types:
+            cb = CheckBox(label)
+            cb.setChecked(True)
+            cb.setFixedWidth(160)
+            self.status_checkboxes[status] = cb
+            status_layout.addWidget(cb)
+
+        self.viewLayout.addWidget(self.status_card)
+
+        # ========== 2. 结果检查模块 ==========
         self.warning_checkboxes = {}
         warning_types = [
             (self.NO_WARNING_TAG, Localizer.get().proofreading_page_filter_no_warning),
@@ -70,26 +91,6 @@ class FilterDialog(MessageBoxBase):
 
         self.viewLayout.addWidget(self.warning_card)
 
-        # ========== 2. 翻译状态模块 ==========
-        self.status_checkboxes = {}
-        status_types = [
-            (Base.ProjectStatus.NONE, Localizer.get().proofreading_page_status_none),
-            (Base.ProjectStatus.PROCESSED, Localizer.get().proofreading_page_status_processed),
-            (Base.ProjectStatus.PROCESSED_IN_PAST, Localizer.get().proofreading_page_status_processed_in_past),
-        ]
-
-        self.status_card, status_layout, _ = self._create_section_card(
-            Localizer.get().proofreading_page_filter_status
-        )
-
-        for status, label in status_types:
-            cb = CheckBox(label)
-            cb.setChecked(True)
-            cb.setFixedWidth(160)
-            self.status_checkboxes[status] = cb
-            status_layout.addWidget(cb)
-
-        self.viewLayout.addWidget(self.status_card)
 
         # ========== 3. 所属文件模块 ==========
         self.file_list = ListWidget()
