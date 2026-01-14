@@ -174,6 +174,7 @@ class Translator(Base):
                 "total_line": 0,
                 "line": 0,
                 "total_tokens": 0,
+                "total_input_tokens": 0,
                 "total_output_tokens": 0,
                 "time": 0,
             }
@@ -506,6 +507,7 @@ class Translator(Base):
                 new["total_line"] = self.extras.get("total_line", 0)
                 new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
                 new["total_tokens"] = self.extras.get("total_tokens", 0) + result.get("input_tokens", 0) + result.get("output_tokens", 0)
+                new["total_input_tokens"] = self.extras.get("total_input_tokens", 0) + result.get("input_tokens", 0)
                 new["total_output_tokens"] = self.extras.get("total_output_tokens", 0) + result.get("output_tokens", 0)
                 new["time"] = time.time() - self.extras.get("start_time", 0)
                 self.extras = new
