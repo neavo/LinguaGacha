@@ -76,7 +76,7 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260114 v0.40.0
+- 20260114 v0.40.1
   - 新增 - `校对任务` 功能
     - 移除了不再需要的 `批量修正` 等功能
   - 调整 - 视觉与交互改进
