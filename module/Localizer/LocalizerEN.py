@@ -105,6 +105,7 @@ class LocalizerEN(LocalizerZH):
     engine_task_done: str = "All data has been processed, task finished …"
     engine_task_fail: str = "Reached the maximum task rounds, but some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
+    engine_task_save: str = "Saving task results …"
     engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
     engine_task_generation: str = "Task generation completed, {COUNT} tasks generated in total …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"

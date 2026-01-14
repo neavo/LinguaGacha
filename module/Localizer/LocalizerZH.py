@@ -105,6 +105,7 @@ class LocalizerZH():
     engine_task_done: str = "所有数据均已处理，任务已结束 …"
     engine_task_fail: str = "已到最大任务轮次，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
+    engine_task_save: str = "正在保存任务结果 …"
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
     engine_task_generation: str = "任务生成已完成，共生成 {COUNT} 个任务 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
