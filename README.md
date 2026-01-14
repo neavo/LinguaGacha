@@ -34,6 +34,10 @@
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
+  - Windows: 下载 `.zip` 文件，解压后双击 `app.exe` 启动
+  - macOS: 下载 `.dmg` 文件（Intel 选择 `x86_64`，Apple Silicon 选择 `arm64`），拖拽到应用程序文件夹
+    - 首次运行可能提示"无法验证开发者"，请右键点击应用选择"打开"，或执行 `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: 下载 `.AppImage` 文件，添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
   - [ [火山引擎](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ]，需付费但便宜，速度快，质量高，无显卡要求　`👈👈 推荐`
@@ -41,7 +45,7 @@
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
   - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
-- 双击 `app.exe` 启动应用
+- 启动应用
   - 在 `项目设置` 中设置原文语言、译文语言等必要信息
   - 将要翻译的文本文件复制到输入文件夹（默认为 `input` 文件夹），在 `开始翻译` 中点击开始翻译
 
