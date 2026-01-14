@@ -37,6 +37,10 @@
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
+  - Windows: `.zip` ファイルをダウンロードし、解凍して `app.exe` を実行
+  - macOS: `.dmg` ファイルをダウンロード（Intel は `x86_64`、Apple Silicon は `arm64`）し、アプリケーションフォルダにドラッグ
+    - 初回起動時に「開発元を確認できない」という警告が表示される場合があります。アプリを右クリックして「開く」を選択するか、`xattr -cr /Applications/LinguaGacha.app` を実行してください
+  - Linux: `.AppImage` ファイルをダウンロードし、実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
   - [ [Gemini API](https://aistudio.google.com/) ] (有料、費用対効果が高い、高速、比較的高品質、GPU不要)　`👈👈 推奨`
@@ -44,7 +48,7 @@
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
-- `app.exe` を実行してアプリケーションを起動：
+- アプリケーションを起動：
   - `プロジェクト設定` で必要な設定（ソース/ターゲット言語）を行う
   - 入力フォルダ（デフォルト：`input`）にファイルをコピーし、`翻訳開始` で翻訳を開始
 
