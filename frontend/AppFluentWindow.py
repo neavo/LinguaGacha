@@ -287,7 +287,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
             self.translation_page,
-            FluentIcon.PLAY,
+            FluentIcon.TRANSPARENT,
             Localizer.get().app_translation_page,
             NavigationItemPosition.SCROLL
         )
