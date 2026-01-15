@@ -11,63 +11,44 @@ from enum import StrEnum
 from typing import Self
 
 import httpx
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QMetaObject
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
 
-
-class _UrlOpener(QObject):
-    """Helper class to open URLs on the main thread via Qt signals."""
-
-    _instance: "_UrlOpener | None" = None
-    _lock = threading.Lock()
-    _open_signal = pyqtSignal(str)
-
-    def __init__(self) -> None:
-        super().__init__()
-        # Move to main thread to ensure slot executes there
-        app = QApplication.instance()
-        if app is not None:
-            self.moveToThread(app.thread())
-        # Use QueuedConnection to ensure cross-thread signal delivery
-        self._open_signal.connect(self._do_open, Qt.QueuedConnection)
-
-    def _do_open(self, url: str) -> None:
-        QDesktopServices.openUrl(QUrl(url))
-
-    @classmethod
-    def open_url(cls, url: str) -> None:
-        """Open URL on main thread. Safe to call from any thread."""
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = cls()
-        cls._instance._open_signal.emit(url)
-
-
 def _open_url_on_main_thread(url: str) -> None:
-    """Open URL on main thread to avoid Qt threading issues."""
-    _UrlOpener.open_url(url)
+    """在主线程中打开 URL，避免 Qt 线程安全问题。"""
+    app = QApplication.instance()
+    if app is None:
+        return
 
+    # 使用 QMetaObject.invokeMethod 在主线程执行，无需预先实例化 QObject
+    QMetaObject.invokeMethod(
+        app,
+        lambda: QDesktopServices.openUrl(QUrl(url)),
+        Qt.QueuedConnection,
+    )
 
 def get_platform_info() -> tuple[str, str]:
-    """Get current platform and architecture info."""
-    if sys.platform == "darwin":
-        arch = platform.machine()  # arm64 or x86_64
+    """获取当前平台和架构信息。"""
+    # 使用中间变量避免 Pyrefly 根据当前开发环境进行类型缩窄
+    current_platform: str = sys.platform
+    if current_platform == "darwin":
+        arch = platform.machine()  # arm64 或 x86_64
         return ("macos", arch)
-    elif sys.platform == "linux":
-        arch = platform.machine()  # x86_64 or aarch64
+    elif current_platform == "linux":
+        arch = platform.machine()  # x86_64 或 aarch64
         return ("linux", arch)
     return ("windows", "x86_64")
 
-
 class VersionManager(Base):
+
     class Status(StrEnum):
+
         NONE = "NONE"
         NEW_VERSION = "NEW_VERSION"
         UPDATING = "UPDATING"
@@ -108,45 +89,42 @@ class VersionManager(Base):
         with self.lock:
             if self.extracting == False:
                 threading.Thread(
-                    target=self.app_update_extract_task,
-                    args=(event, data),
+                    target = self.app_update_extract_task,
+                    args = (event, data),
                 ).start()
 
     # 检查
     def app_update_check_run(self, event: Base.Event, data: dict) -> None:
         threading.Thread(
-            target=self.app_update_check_start_task,
-            args=(event, data),
+            target = self.app_update_check_start_task,
+            args = (event, data),
         ).start()
 
     # 下载
     def app_update_download_run(self, event: Base.Event, data: dict) -> None:
         threading.Thread(
-            target=self.app_update_download_start_task,
-            args=(event, data),
+            target = self.app_update_download_start_task,
+            args = (event, data),
         ).start()
 
     # 解压
     def app_update_extract_task(self, event: Base.Event, data: dict) -> None:
         plat, _ = get_platform_info()
 
-        # macOS/Linux uses DMG/tar.gz, skip extraction and open release page
+        # macOS/Linux 使用 DMG/AppImage，跳过解压直接打开发布页面
         if plat in ("macos", "linux"):
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().app_new_version_waiting_restart,
-                    "duration": 60 * 1000,
-                },
-            )
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().app_new_version_waiting_restart,
+                "duration": 60 * 1000,
+            })
             time.sleep(1)
             _open_url_on_main_thread(__class__.RELEASE_URL)
             with self.lock:
                 self.extracting = False
             return
 
-        # Windows extraction logic
+        # Windows 解压逻辑
         with self.lock:
             self.extracting = True
 
@@ -177,8 +155,8 @@ class VersionManager(Base):
                 zip_file.extractall("./")
 
             # 先复制再删除的方式实现覆盖同名文件
-            shutil.copytree("./LinguaGacha/", "./", dirs_exist_ok=True)
-            shutil.rmtree("./LinguaGacha/", ignore_errors=True)
+            shutil.copytree("./LinguaGacha/", "./", dirs_exist_ok = True)
+            shutil.rmtree("./LinguaGacha/", ignore_errors = True)
         except Exception as e:
             error = e
             self.error("", e)
@@ -209,14 +187,11 @@ class VersionManager(Base):
             pass
 
         # 显示提示
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().app_new_version_waiting_restart,
-                "duration": 60 * 1000,
-            },
-        )
+        self.emit(Base.Event.TOAST, {
+            "type": Base.ToastType.SUCCESS,
+            "message": Localizer.get().app_new_version_waiting_restart,
+            "duration": 60 * 1000,
+        })
 
         # 延迟3秒后关闭应用并打开更新日志
         time.sleep(3)
@@ -227,39 +202,24 @@ class VersionManager(Base):
     def app_update_check_start_task(self, event: Base.Event, data: dict) -> None:
         try:
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout=60)
+            response = httpx.get(__class__.API_URL, timeout = 60)
             response.raise_for_status()
 
             result: dict = response.json()
-            a, b, c = re.findall(
-                r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version()
-            )[-1]
-            x, y, z = re.findall(
-                r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0")
-            )[-1]
+            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version())[-1]
+            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0"))[-1]
 
-            if (
-                int(a) < int(x)
-                or (int(a) == int(x) and int(b) < int(y))
-                or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
-            ):
+            # 使用元组比较简化版本号判断
+            if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
                 self.set_status(VersionManager.Status.NEW_VERSION)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_toast.replace(
-                            "{VERSION}", f"v{x}.{y}.{z}"
-                        ),
-                        "duration": 60 * 1000,
-                    },
-                )
-                self.emit(
-                    Base.Event.APP_UPDATE_CHECK_DONE,
-                    {
-                        "new_version": True,
-                    },
-                )
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
+                    "duration": 60 * 1000,
+                })
+                self.emit(Base.Event.APP_UPDATE_CHECK_DONE, {
+                    "new_version": True,
+                })
         except Exception:
             pass
 
@@ -271,31 +231,28 @@ class VersionManager(Base):
 
             plat, _ = get_platform_info()
 
-            # macOS/Linux: skip download, open release page directly
+            # macOS/Linux：跳过下载，直接打开发布页面
             if plat in ("macos", "linux"):
                 self.set_status(VersionManager.Status.DOWNLOADED)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_success,
-                        "duration": 60 * 1000,
-                    },
-                )
-                # Open release page directly for manual download
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().app_new_version_success,
+                    "duration": 60 * 1000,
+                })
+                # 直接打开发布页面供手动下载
                 _open_url_on_main_thread(__class__.RELEASE_URL)
                 self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
                 return
 
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout=60)
+            response = httpx.get(__class__.API_URL, timeout = 60)
             response.raise_for_status()
 
-            # Select correct asset based on platform
+            # 根据平台选择正确的资源文件
             assets = response.json().get("assets", [])
             browser_download_url = ""
 
-            # Windows: find .zip file
+            # Windows：查找 .zip 文件
             for asset in assets:
                 name = asset.get("name", "")
                 if name.endswith(".zip"):
@@ -303,11 +260,9 @@ class VersionManager(Base):
                     break
 
             if not browser_download_url:
-                raise Exception(f"No suitable asset found for {plat}")
+                raise Exception(f"未找到适用于 {plat} 的资源文件")
 
-            with httpx.stream(
-                "GET", browser_download_url, timeout=60, follow_redirects=True
-            ) as response:
+            with httpx.stream("GET", browser_download_url, timeout = 60, follow_redirects = True) as response:
                 response.raise_for_status()
 
                 # 获取文件总大小
@@ -319,44 +274,33 @@ class VersionManager(Base):
                     raise Exception("Content-Length is 0 ...")
 
                 # 写入文件并更新进度
-                os.remove(__class__.TEMP_PATH) if os.path.isfile(
-                    __class__.TEMP_PATH
-                ) else None
-                os.makedirs(os.path.dirname(__class__.TEMP_PATH), exist_ok=True)
+                os.remove(__class__.TEMP_PATH) if os.path.isfile(__class__.TEMP_PATH) else None
+                os.makedirs(os.path.dirname(__class__.TEMP_PATH), exist_ok = True)
                 with open(__class__.TEMP_PATH, "wb") as writer:
-                    for chunk in response.iter_bytes(chunk_size=1024 * 1024):
+                    for chunk in response.iter_bytes(chunk_size = 1024 * 1024):
                         if chunk is not None:
                             writer.write(chunk)
                             downloaded_size = downloaded_size + len(chunk)
                             if total_size > downloaded_size:
-                                self.emit(
-                                    Base.Event.APP_UPDATE_DOWNLOAD_UPDATE,
-                                    {
-                                        "total_size": total_size,
-                                        "downloaded_size": downloaded_size,
-                                    },
-                                )
+                                self.emit(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, {
+                                    "total_size": total_size,
+                                    "downloaded_size": downloaded_size,
+                                })
                             else:
                                 self.set_status(VersionManager.Status.DOWNLOADED)
-                                self.emit(
-                                    Base.Event.TOAST,
-                                    {
-                                        "type": Base.ToastType.SUCCESS,
-                                        "message": Localizer.get().app_new_version_success,
-                                        "duration": 60 * 1000,
-                                    },
-                                )
+                                self.emit(Base.Event.TOAST, {
+                                    "type": Base.ToastType.SUCCESS,
+                                    "message": Localizer.get().app_new_version_success,
+                                    "duration": 60 * 1000,
+                                })
                                 self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
         except Exception as e:
             self.set_status(VersionManager.Status.NONE)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().app_new_version_failure + str(e),
-                    "duration": 60 * 1000,
-                },
-            )
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.ERROR,
+                "message": Localizer.get().app_new_version_failure + str(e),
+                "duration": 60 * 1000,
+            })
             self.emit(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, {})
 
     def get_status(self) -> Status:

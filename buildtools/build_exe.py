@@ -3,26 +3,26 @@ import sys
 
 import PyInstaller.__main__
 
-# Detect platform
+# 检测平台
 is_macos = sys.platform == "darwin"
 is_linux = sys.platform == "linux"
 is_windows = sys.platform == "win32" or os.name == "nt"
 
 if is_macos:
-    # macOS: Create .app bundle
+    # macOS：创建 .app 应用包
     cmd = [
         "./app.py",
         "--name=LinguaGacha",
         "--icon=./resource/icon.icns",
         "--clean",
-        "--onedir",  # macOS apps are directory bundles
-        "--windowed",  # Creates .app bundle without console window
+        "--onedir",  # macOS 应用为目录包格式
+        "--windowed",  # 创建无控制台窗口的 .app 包
         "--noconfirm",
         "--distpath=./dist",
         "--osx-bundle-identifier=me.neavo.linguagacha",
     ]
 elif is_linux:
-    # Linux: Create directory bundle for AppImage
+    # Linux：创建用于 AppImage 的目录包
     cmd = [
         "./app.py",
         "--name=LinguaGacha",
@@ -32,7 +32,7 @@ elif is_linux:
         "--distpath=./dist",
     ]
 else:
-    # Windows: Create single executable
+    # Windows：创建单文件可执行程序
     cmd = [
         "./app.py",
         "--icon=./resource/icon.ico",
@@ -42,7 +42,7 @@ else:
         "--distpath=./dist/LinguaGacha",
     ]
 
-# Add hidden imports from requirements.txt
+# 从 requirements.txt 添加隐式依赖
 if os.path.exists("./requirements.txt"):
     with open("./requirements.txt", "r", encoding="utf-8") as reader:
         for line in reader:

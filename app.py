@@ -21,12 +21,7 @@ from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 
-
-def excepthook(
-    exc_type: type[BaseException],
-    exc_value: BaseException,
-    exc_traceback: TracebackType,
-) -> None:
+def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: TracebackType) -> None:
     LogManager.get().error(Localizer.get().log_crash, exc_value)
 
     if not isinstance(exc_value, KeyboardInterrupt):
@@ -37,12 +32,9 @@ def excepthook(
 
     os.kill(os.getpid(), signal.SIGTERM)
 
-
 if __name__ == "__main__":
     # 捕获全局异常
-    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(
-        exc_type, exc_value, exc_traceback
-    )
+    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(exc_type, exc_value, exc_traceback)
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":
@@ -62,41 +54,39 @@ if __name__ == "__main__":
     # 1. 全局缩放使能 (Enable High DPI Scaling)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # 设置工作目录
     app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
     sys.path.append(app_dir)
 
-    # Detect read-only environments (AppImage, macOS .app bundle)
+    # 检测只读环境（AppImage, macOS .app bundle）
     is_appimage = os.environ.get("APPIMAGE") is not None
     is_macos_app = sys.platform == "darwin" and ".app/Contents/MacOS" in app_dir
 
     if is_appimage or is_macos_app:
-        # Use user home directory for user data in portable environments
+        # 便携式环境使用用户主目录存储数据
         data_dir = os.path.join(os.path.expanduser("~"), "LinguaGacha")
     else:
-        # Use app directory for Windows and direct execution
+        # Windows 和直接执行时使用应用目录
         data_dir = app_dir
 
-    # Set environment variables for other modules
+    # 设置环境变量供其他模块使用
     os.environ["LINGUAGACHA_APP_DIR"] = app_dir
     os.environ["LINGUAGACHA_DATA_DIR"] = data_dir
 
-    # CWD stays at app_dir for resource access (version.txt, resource/, etc.)
+    # 工作目录保持在 app_dir 以便访问资源文件（version.txt, resource/ 等）
     os.chdir(app_dir)
 
     # 创建文件夹
-    os.makedirs(os.path.join(data_dir, "input"), exist_ok=True)
-    os.makedirs(os.path.join(data_dir, "output"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "input"), exist_ok = True)
+    os.makedirs(os.path.join(data_dir, "output"), exist_ok = True)
 
     # 载入并保存默认配置
     config = Config().load()
 
     # 加载版本号
-    with open("version.txt", "r", encoding="utf-8-sig") as reader:
+    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
@@ -107,9 +97,7 @@ if __name__ == "__main__":
 
     # 打印日志
     LogManager.get().info(f"LinguaGacha {version}")
-    LogManager.get().info(
-        Localizer.get().log_expert_mode
-    ) if LogManager.get().is_expert_mode() else None
+    LogManager.get().info(Localizer.get().log_expert_mode) if LogManager.get().is_expert_mode() else None
 
     # 网络代理
     if config.proxy_enable == False or config.proxy_url == "":
