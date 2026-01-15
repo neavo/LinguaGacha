@@ -1,49 +1,19 @@
 import os
-import platform
 import re
 import shutil
 import signal
 import sys
 import threading
 import time
+import webbrowser
 import zipfile
 from enum import StrEnum
 from typing import Self
 
 import httpx
-from PyQt5.QtCore import QMetaObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QApplication
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
-
-def _open_url_on_main_thread(url: str) -> None:
-    """在主线程中打开 URL，避免 Qt 线程安全问题。"""
-    app = QApplication.instance()
-    if app is None:
-        return
-
-    # 使用 QMetaObject.invokeMethod 在主线程执行，无需预先实例化 QObject
-    QMetaObject.invokeMethod(
-        app,
-        lambda: QDesktopServices.openUrl(QUrl(url)),
-        Qt.QueuedConnection,
-    )
-
-def get_platform_info() -> tuple[str, str]:
-    """获取当前平台和架构信息。"""
-    # 使用中间变量避免 Pyrefly 根据当前开发环境进行类型缩窄
-    current_platform: str = sys.platform
-    if current_platform == "darwin":
-        arch = platform.machine()  # arm64 或 x86_64
-        return ("macos", arch)
-    elif current_platform == "linux":
-        arch = platform.machine()  # x86_64 或 aarch64
-        return ("linux", arch)
-    return ("windows", "x86_64")
 
 class VersionManager(Base):
 
@@ -84,10 +54,14 @@ class VersionManager(Base):
 
         return cls.__instance__
 
-    # 解压
+    # 解压（仅 Windows）
     def app_update_extract(self, event: Base.Event, data: dict) -> None:
+        # 非 Windows 平台无需解压，直接返回
+        if sys.platform != "win32":
+            return
+
         with self.lock:
-            if self.extracting == False:
+            if not self.extracting:
                 threading.Thread(
                     target = self.app_update_extract_task,
                     args = (event, data),
@@ -107,24 +81,8 @@ class VersionManager(Base):
             args = (event, data),
         ).start()
 
-    # 解压
+    # 解压（仅 Windows 会调用此方法）
     def app_update_extract_task(self, event: Base.Event, data: dict) -> None:
-        plat, _ = get_platform_info()
-
-        # macOS/Linux 使用 DMG/AppImage，跳过解压直接打开发布页面
-        if plat in ("macos", "linux"):
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().app_new_version_waiting_restart,
-                "duration": 60 * 1000,
-            })
-            time.sleep(1)
-            _open_url_on_main_thread(__class__.RELEASE_URL)
-            with self.lock:
-                self.extracting = False
-            return
-
-        # Windows 解压逻辑
         with self.lock:
             self.extracting = True
 
@@ -193,9 +151,12 @@ class VersionManager(Base):
             "duration": 60 * 1000,
         })
 
-        # 延迟3秒后关闭应用并打开更新日志
-        time.sleep(3)
-        _open_url_on_main_thread(__class__.RELEASE_URL)
+        # 倒计时后关闭应用并打开更新日志
+        print("")
+        for i in range(3):
+            print(Localizer.get().app_exit_countdown.format(SECONDS=3 - i))
+            time.sleep(1)
+        webbrowser.open(__class__.RELEASE_URL)
         os.kill(os.getpid(), signal.SIGTERM)
 
     # 检查
@@ -229,10 +190,8 @@ class VersionManager(Base):
             # 更新状态
             self.set_status(VersionManager.Status.UPDATING)
 
-            plat, _ = get_platform_info()
-
             # macOS/Linux：跳过下载，直接打开发布页面
-            if plat in ("macos", "linux"):
+            if sys.platform in ("darwin", "linux"):
                 self.set_status(VersionManager.Status.DOWNLOADED)
                 self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.SUCCESS,
@@ -240,7 +199,7 @@ class VersionManager(Base):
                     "duration": 60 * 1000,
                 })
                 # 直接打开发布页面供手动下载
-                _open_url_on_main_thread(__class__.RELEASE_URL)
+                webbrowser.open(__class__.RELEASE_URL)
                 self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
                 return
 
