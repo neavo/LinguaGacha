@@ -226,7 +226,7 @@ class ProofreadingPage(QWidget, Base):
             })
             return
 
-        dialog = FilterDialog(self.items, self.window)
+        dialog = FilterDialog(self.items, self.warning_map, self.window)
         dialog.set_filter_options(self.filter_options)
 
         if dialog.exec():
