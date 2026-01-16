@@ -151,9 +151,7 @@ class LocalizerEN(LocalizerZH):
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
-    model_page_add_google: str = "Custom Google Model"
-    model_page_add_openai: str = "Custom OpenAI Model"
-    model_page_add_anthropic: str = "Custom Anthropic Model"
+
     model_page_category_preset_title: str = "Preset Models"
     model_page_category_preset_desc: str = "Built-in preset models of the application"
     model_page_category_google_title: str = "Custom Google Models"
@@ -236,7 +234,6 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_line: str = "Processed Lines"
     translation_page_card_remaining_line: str = "Remaining Lines"
     translation_page_card_speed: str = "Average Speed"
-    translation_page_card_token: str = "Total Tokens"
     translation_page_card_token_input: str = "Input Tokens"
     translation_page_card_token_output: str = "Output Tokens"
     translation_page_card_token_tooltip: str = "Click to toggle Input/Output"
@@ -308,26 +305,7 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
     basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
     basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
-    basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"
-    basic_settings_page_max_workers_content: str = (
-        "Maximum number of tasks executing simultaneously"
-        "<br>"
-        "Proper configuration can significantly speed up task completion"
-        "<br>"
-        "Please refer to the API platform's documentation for settings, 0 = Automatic"
-    )
-    basic_settings_page_rpm_threshold_title: str = "Requests Per Minute Threshold"
-    basic_settings_page_rpm_threshold_content: str = (
-        "Maximum total number of tasks executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> threshold"
-        "<br>"
-        "Some platforms may limit the request rate"
-        "<br>"
-        "Please refer to the API platform's documentation for settings, 0 = unlimited"
-    )
-    basic_settings_page_input_token_threshold_title: str = "Task Input Length Threshold"
-    basic_settings_page_input_token_threshold_content: str = "Maximum number of text tokens contained in each task input"
-    basic_settings_page_output_token_threshold_title: str = "Task Output Length Threshold"
-    basic_settings_page_output_token_threshold_content: str = "Maximum number of text tokens contained in each task output"
+
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
         "The maximum time (seconds) to wait for the model's response when making a request"

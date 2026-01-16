@@ -139,7 +139,8 @@ class TaskRequester(Base):
 
     @classmethod
     @lru_cache(maxsize=None)
-    def get_client(cls, url: str, key: str, api_format: str, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
+    def get_client(cls, url: str, key: str, api_format: str, timeout: int, extra_headers_tuple: tuple = ()) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
+        # extra_headers_tuple 用于 Google API，格式为 ((k1, v1), (k2, v2), ...)，可作为缓存 key
         if api_format == Base.APIFormat.SAKURALLM:
             return openai.OpenAI(
                 base_url=url,
@@ -148,14 +149,17 @@ class TaskRequester(Base):
                 max_retries=0,
             )
         elif api_format == Base.APIFormat.GOOGLE:
+            # 合并默认 headers 和自定义 headers
+            headers = {
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
+            }
+            headers.update(dict(extra_headers_tuple))
             return genai.Client(
                 api_key=key,
                 http_options=types.HttpOptions(
                     base_url=url,
                     timeout=timeout * 1000,
-                    headers={
-                        "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
-                    },
+                    headers=headers,
                 ),
             )
         elif api_format == Base.APIFormat.ANTHROPIC:
@@ -439,12 +443,15 @@ class TaskRequester(Base):
 
     def request_google(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
+            # 将 custom_headers 转换为 tuple 以支持 lru_cache
+            extra_headers_tuple = tuple(sorted(self.custom_headers.items())) if self.custom_headers else ()
             with __class__.LOCK:
                 client: genai.Client = __class__.get_client(
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
                     timeout=self.config.request_timeout,
+                    extra_headers_tuple=extra_headers_tuple,
                 )
 
             response: types.GenerateContentResponse = client.models.generate_content(

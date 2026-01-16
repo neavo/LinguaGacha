@@ -171,8 +171,6 @@ class Config():
         self.text_preserve_enable: bool = False
         self.text_preserve_data: list[Any] = []
 
-
-
     # 初始化模型管理器
     def initialize_models(self) -> int:
         """初始化模型列表，如果没有则从预设复制。返回已被迁移的失效预设模型数量。"""

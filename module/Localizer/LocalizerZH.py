@@ -151,9 +151,7 @@ class LocalizerZH():
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
-    model_page_add_google: str = "自定义 Google 模型"
-    model_page_add_openai: str = "自定义 OpenAI 模型"
-    model_page_add_anthropic: str = "自定义 Anthropic 模型"
+
     model_page_category_preset_title: str = "预设模型"
     model_page_category_preset_desc: str = "应用内置的预设模型"
     model_page_category_google_title: str = "自定义 Google 模型"
@@ -236,7 +234,6 @@ class LocalizerZH():
     translation_page_card_line: str = "处理行数"
     translation_page_card_remaining_line: str = "剩余行数"
     translation_page_card_speed: str = "平均速度"
-    translation_page_card_token: str = "累计消耗"
     translation_page_card_token_input: str = "输入令牌"
     translation_page_card_token_output: str = "输出令牌"
     translation_page_card_token_tooltip: str = "点击切换输入/输出"
@@ -308,26 +305,7 @@ class LocalizerZH():
     basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
     basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
     basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
-    basic_settings_page_max_workers_title: str = "并发任务阈值"
-    basic_settings_page_max_workers_content: str = (
-        "同时执行的任务数量的最大值"
-        "<br>"
-        "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
-        ""
-        ""
-    )
-    basic_settings_page_rpm_threshold_title: str = "每分钟任务数量阈值"
-    basic_settings_page_rpm_threshold_content: str = (
-        "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 阈值"
-        "<br>"
-        "部分平台会对网络请求的速率进行限制，请参考 API 平台的文档进行设置，0 = 无限制"
-        ""
-        ""
-    )
-    basic_settings_page_input_token_threshold_title: str = "任务输入长度阈值"
-    basic_settings_page_input_token_threshold_content: str = "每个任务输入文本的最大 Token 数量"
-    basic_settings_page_output_token_threshold_title: str = "任务输出长度阈值"
-    basic_settings_page_output_token_threshold_content: str = "每个任务输出文本的最大 Token 数量"
+
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"

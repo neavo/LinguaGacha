@@ -1,3 +1,4 @@
+import copy
 import threading
 
 from base.Base import Base
@@ -97,9 +98,9 @@ class APITester(Base):
             # 重置请求器，清除缓存和索引
             TaskRequester.reset()
 
-            # 复制模型配置并设置当前要测试的 key
-            model_test = model.copy()
-            model_test["api_key"] = key  # 单个 key 字符串
+            # 深拷贝模型配置，避免嵌套字典引用问题
+            model_test = copy.deepcopy(model)
+            model_test["api_key"] = key
 
             # 创建请求器
             requester = TaskRequester(config, model_test)
