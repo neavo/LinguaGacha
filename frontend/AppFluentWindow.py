@@ -1,5 +1,6 @@
 import os
 import signal
+import time
 
 from PyQt5.QtCore import QEvent
 from PyQt5.QtCore import Qt
@@ -41,6 +42,7 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.ProgressToast import ProgressToast
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -84,6 +86,14 @@ class AppFluentWindow(FluentWindow, Base):
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_DONE, self.app_update_download_done)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, self.app_update_download_error)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update)
+        self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
+        self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
+        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide_handler)
+
+        # 创建进度 Toast 组件（应用级别，挂载到主窗口）
+        self.progress_toast = ProgressToast(self)
+        self._progress_start_time: float = 0.0       # 开始显示的时间戳
+        self._progress_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
 
         # 检查更新
         QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
@@ -127,6 +137,71 @@ class AppFluentWindow(FluentWindow, Base):
             position = InfoBarPosition.TOP,
             isClosable = True,
         )
+
+    # 响应显示进度 Toast 事件
+    def progress_toast_show(self, event: Base.Event, data: dict) -> None:
+        # 窗口最小化时不显示，避免动画错误
+        if self.isMinimized():
+            return
+
+        # 取消延迟隐藏（如果有新任务）
+        if self._progress_hide_timer is not None:
+            self._progress_hide_timer.stop()
+            self._progress_hide_timer = None
+
+        # 记录开始时间（如果是首次显示）
+        if self._progress_start_time == 0.0:
+            self._progress_start_time = time.time()
+
+        message = data.get("message", "")
+        is_indeterminate = data.get("indeterminate", True)
+        current = data.get("current", 0)
+        total = data.get("total", 0)
+
+        if is_indeterminate:
+            self.progress_toast.show_indeterminate(message)
+        else:
+            self.progress_toast.show_progress(message, current, total)
+
+    # 响应更新进度 Toast 事件
+    def progress_toast_update(self, event: Base.Event, data: dict) -> None:
+        message = data.get("message", "")
+        current = data.get("current", 0)
+        total = data.get("total", 0)
+
+        self.progress_toast.set_content(message)
+        self.progress_toast.set_progress(current, total)
+
+    # 响应隐藏进度 Toast 事件
+    def progress_toast_hide_handler(self, event: Base.Event, data: dict) -> None:
+        # 未显示时直接返回
+        if self._progress_start_time == 0.0:
+            return
+
+        min_display_ms = 1500
+        elapsed_ms = (time.time() - self._progress_start_time) * 1000
+        remaining_ms = min_display_ms - elapsed_ms
+
+        if remaining_ms > 0:
+            # 延迟隐藏，保证最小显示时长
+            self._progress_hide_timer = QTimer()
+            self._progress_hide_timer.setSingleShot(True)
+            self._progress_hide_timer.timeout.connect(self._do_progress_toast_hide)
+            self._progress_hide_timer.start(int(remaining_ms))
+        else:
+            self._do_progress_toast_hide()
+
+    def _do_progress_toast_hide(self) -> None:
+        """实际执行隐藏操作"""
+        self._progress_hide_timer = None
+        self._progress_start_time = 0.0
+        self.progress_toast.hide_toast()
+
+    # 重写窗口大小变化事件，更新进度 Toast 位置
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.progress_toast.isVisible():
+            self.progress_toast._update_position()
 
     # 切换主题
     def switch_theme(self) -> None:
