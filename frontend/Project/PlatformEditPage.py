@@ -1,3 +1,5 @@
+import re
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QWidget
@@ -19,12 +21,16 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
+from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
 from widget.LineEditMessageBox import LineEditMessageBox
 from frontend.Project.ModelListPage import ModelListPage
 
 class PlatformEditPage(MessageBoxBase, Base):
+
+    # Gemini 3 系列模型检测
+    RE_GEMINI_3: re.Pattern = re.compile(r"gemini-3", flags = re.IGNORECASE)
 
     def __init__(self, id: int, window: FluentWindow) -> None:
         super().__init__(window)
@@ -73,12 +79,29 @@ class PlatformEditPage(MessageBoxBase, Base):
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
             self.add_widget_model(self.vbox, config, window)
 
-        # 思考模式
+        # 思考模式/思考等级
+        self.thinking_widget = None
+        self.thinking_widget_index = self.vbox.count()
         if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
-            self.add_widget_thinking(self.vbox, config, window)
+            self.update_thinking_widget(config, window)
 
         # 填充
         self.vbox.addStretch(1)
+
+    # 更新思考模式控件
+    def update_thinking_widget(self, config: Config, window: FluentWindow) -> None:
+        # 移除旧控件
+        if self.thinking_widget is not None:
+            self.vbox.removeWidget(self.thinking_widget)
+            self.thinking_widget.deleteLater()
+            self.thinking_widget = None
+
+        # 根据模型类型添加新控件
+        if __class__.RE_GEMINI_3.search(self.platform.get("model", "")) is not None:
+            self.thinking_widget = self.create_thinking_level_widget(config, window)
+        else:
+            self.thinking_widget = self.create_thinking_widget(config, window)
+        self.vbox.insertWidget(self.thinking_widget_index, self.thinking_widget)
 
     # 接口名称
     def add_widget_name(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
@@ -169,6 +192,10 @@ class PlatformEditPage(MessageBoxBase, Base):
                 Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
 
+            # 更新思考模式控件
+            if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+                self.update_thinking_widget(config, window)
+
         def triggered_edit() -> None:
             message_box = LineEditMessageBox(
                 window,
@@ -187,6 +214,10 @@ class PlatformEditPage(MessageBoxBase, Base):
             empty_card.get_description_label().setText(
                 Localizer.get().platform_edit_page_model_content.replace("{MODEL}", self.platform.get("model"))
             )
+
+            # 更新思考模式控件
+            if self.platform.get("api_format") in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+                self.update_thinking_widget(Config().load(), window)
 
         empty_card = EmptyCard(
             Localizer.get().platform_edit_page_model_title,
@@ -218,8 +249,8 @@ class PlatformEditPage(MessageBoxBase, Base):
         )
         drop_down_push_button.setMenu(menu)
 
-    # 思考模式
-    def add_widget_thinking(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    # 创建思考模式控件
+    def create_thinking_widget(self, config: Config, window: FluentWindow) -> SwitchButtonCard:
 
         def init(widget: SwitchButtonCard) -> None:
             widget.get_switch_button().setChecked(
@@ -232,11 +263,32 @@ class PlatformEditPage(MessageBoxBase, Base):
             config.set_platform(self.platform)
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title = Localizer.get().platform_edit_page_thinking_title,
-                description = Localizer.get().platform_edit_page_thinking_content,
-                init = init,
-                checked_changed = checked_changed,
-            )
+        return SwitchButtonCard(
+            title = Localizer.get().platform_edit_page_thinking_title,
+            description = Localizer.get().platform_edit_page_thinking_content,
+            init = init,
+            checked_changed = checked_changed,
+        )
+
+    # 创建思考等级控件 (Gemini 3)
+    def create_thinking_level_widget(self, config: Config, window: FluentWindow) -> ComboBoxCard:
+        thinking_levels = ["minimal", "low", "medium", "high"]
+
+        def init(widget: ComboBoxCard) -> None:
+            current_level = self.platform.get("thinking_level", "low")
+            if current_level in thinking_levels:
+                widget.get_combo_box().setCurrentIndex(thinking_levels.index(current_level))
+
+        def current_changed(widget: ComboBoxCard) -> None:
+            config = Config().load()
+            self.platform["thinking_level"] = thinking_levels[widget.get_combo_box().currentIndex()]
+            config.set_platform(self.platform)
+            config.save()
+
+        return ComboBoxCard(
+            title = Localizer.get().platform_edit_page_thinking_level_title,
+            description = Localizer.get().platform_edit_page_thinking_level_content,
+            items = thinking_levels,
+            init = init,
+            current_changed = current_changed,
         )

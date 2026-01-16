@@ -172,6 +172,8 @@ class LocalizerEN(LocalizerZH):
     platform_edit_page_api_key_content: str = "Please enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line"
     platform_edit_page_thinking_title: str = "Thinking Mode Priority"
     platform_edit_page_thinking_content: str = "For models that support both thinking and normal modes, prioritize using thinking mode [→ Click to view the list of supported models ←](https://github.com/neavo/LinguaGacha/wiki/ModelsForThinkingModePriorityEN)"
+    platform_edit_page_thinking_level_title: str = "Thinking Level"
+    platform_edit_page_thinking_level_content: str = "Set the thinking level for Gemini 3 series models: minimal, low, medium, or high (Gemini 3 Pro currently only supports low and high)"
     platform_edit_page_model: str = "Please enter Model Name …"
     platform_edit_page_model_title: str = "Model Name"
     platform_edit_page_model_content: str = "Current model in use: {MODEL}"

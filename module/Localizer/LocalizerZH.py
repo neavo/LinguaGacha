@@ -172,6 +172,8 @@ class LocalizerZH():
     platform_edit_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
     platform_edit_page_thinking_title: str = "优先使用思考模式"
     platform_edit_page_thinking_content: str = "对于同时支持思考模式和普通模式的模型，优先使用思考模式 [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelsForThinkingModePriority)"
+    platform_edit_page_thinking_level_title: str = "思考等级"
+    platform_edit_page_thinking_level_content: str = "设置 Gemini 3 系列模型的思考等级，可选 minimal、low、medium、high（Gemini 3 Pro 目前只支持 low 和 high）"
     platform_edit_page_model: str = "请输入模型名称 …"
     platform_edit_page_model_title: str = "模型名称"
     platform_edit_page_model_content: str = "当前使用的模型为 {MODEL}"

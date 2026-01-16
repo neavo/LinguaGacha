@@ -21,7 +21,7 @@ class TaskRequester(Base):
 
     # Gemini
     RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
-    RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags = re.IGNORECASE)
+    RE_GEMINI_3: re.Pattern = re.compile(r"gemini-3", flags = re.IGNORECASE)
 
     # Claude
     RE_CLAUDE: tuple[re.Pattern] = (
@@ -391,15 +391,11 @@ class TaskRequester(Base):
                     thinking_budget = 0,
                     include_thoughts = False,
                 )
-        if __class__.RE_GEMINI_3_FLASH.search(self.platform.get("model")) is not None:
-            if thinking == True:
-                args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level = "low",
-                )
-            else:
-                args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level = "minimal",
-                )
+        if __class__.RE_GEMINI_3.search(self.platform.get("model")) is not None:
+            thinking_level = self.platform.get("thinking_level", "low")
+            args["thinking_config"] = types.ThinkingConfig(
+                thinking_level = thinking_level,
+            )
 
         return {
             "model": self.platform.get("model"),
