@@ -25,7 +25,9 @@ class TaskRequester(Base):
     API_KEY_INDEX: int = 0
 
     # Gemini
+    RE_GEMINI_2_5_PRO: re.Pattern = re.compile(r"gemini-2\.5-pro", flags=re.IGNORECASE)
     RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags=re.IGNORECASE)
+    RE_GEMINI_3_PRO: re.Pattern = re.compile(r"gemini-3-pro", flags=re.IGNORECASE)
     RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
 
     # Claude
@@ -47,10 +49,7 @@ class TaskRequester(Base):
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
     )
     RE_DEEPSEEK: tuple[re.Pattern] = (
-        re.compile(r"deepseek-v3-1", flags=re.IGNORECASE),
-        re.compile(r"deepseek-v3-2", flags=re.IGNORECASE),
-        re.compile(r"deepseek-v3\.1", flags=re.IGNORECASE),
-        re.compile(r"deepseek-v3\.2", flags=re.IGNORECASE),
+        re.compile(r"deepseek", flags=re.IGNORECASE),
     )
     RE_OPENAI: tuple[re.Pattern] = (
         re.compile(r"gpt-\d", flags=re.IGNORECASE),
@@ -284,34 +283,26 @@ class TaskRequester(Base):
             result.pop("max_tokens", None)
             result["max_completion_tokens"] = self.output_token_limit
 
-        # 思考挡位映射
-        thinking_enabled = self.thinking_level != ThinkingLevel.OFF
-
         # GLM
         if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
-            if thinking_enabled:
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
-            else:
+            if self.thinking_level == ThinkingLevel.OFF:
                 result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+            else:
+                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
         # Doubao
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
-            if thinking_enabled:
-                effort_mapping = {
-                    ThinkingLevel.LOW: "low",
-                    ThinkingLevel.MEDIUM: "medium",
-                    ThinkingLevel.HIGH: "high",
-                }
-                result["extra_body"]["reasoning_effort"] = effort_mapping.get(self.thinking_level, "low")
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
-            else:
+            if self.thinking_level == ThinkingLevel.OFF:
                 result["extra_body"]["reasoning_effort"] = "minimal"
                 result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+            else:
+                result["extra_body"]["reasoning_effort"] = self.thinking_level.lower()
+                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
         # DeepSeek
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DEEPSEEK):
-            if thinking_enabled:
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
-            else:
+            if self.thinking_level == ThinkingLevel.OFF:
                 result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+            else:
+                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
 
         return result
 
@@ -371,41 +362,74 @@ class TaskRequester(Base):
             ),
         }
 
-        # 思考挡位映射
-        thinking_enabled = self.thinking_level != ThinkingLevel.OFF
-
-        # Gemini 2.5 Flash - 使用 budget 模式
-        if __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
-            if thinking_enabled:
-                budget_mapping = {
-                    ThinkingLevel.LOW: 1024,
-                    ThinkingLevel.MEDIUM: 1536,
-                    ThinkingLevel.HIGH: 2048,
-                }
+        # Gemini 3 Pro
+        if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
+            if self.thinking_level in (ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM):
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=budget_mapping.get(self.thinking_level, 1024),
+                        thinking_level="low",
+                        include_thoughts=True,
+                    )
+            else:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level="high",
+                    include_thoughts=True,
+            )
+        # Gemini 3 Flash
+        elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level="minimal",
                     include_thoughts=True,
                 )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=0,
-                    include_thoughts=False,
+                    thinking_level=self.thinking_level.lower(),
+                    include_thoughts=True,
                 )
-        # Gemini 3 Flash - 使用 level 模式
-        elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
-            if thinking_enabled:
-                level_mapping = {
-                    ThinkingLevel.LOW: "low",
-                    ThinkingLevel.MEDIUM: "medium",
-                    ThinkingLevel.HIGH: "high",
-                }
+        # Gemini 2.5 Pro
+        elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level=level_mapping.get(self.thinking_level, "low"),
+                    thinkingBudget=128,
+                    include_thoughts=True,
                 )
-            else:
+            elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="minimal",
+                    thinkingBudget=1024,
+                    include_thoughts=True,
                 )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=1536,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=2048,
+                    include_thoughts=True,
+                )
+        # Gemini 2.5 Flash
+        elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=0,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=1024,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=1536,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinkingBudget=2048,
+                    include_thoughts=True,
+            )
 
         return {
             "model": self.model_id,
@@ -471,21 +495,33 @@ class TaskRequester(Base):
         result.pop("presence_penalty", None)
         result.pop("frequency_penalty", None)
 
-        # 思考挡位映射
-        thinking_enabled = self.thinking_level != ThinkingLevel.OFF
-
-        # Claude-3.7 Claude-4.0
+        # Claude Sonnet 3.4 / Claude Haiku 4.x / Claude Sonnet 4.x / Claude Opus 4.x
         if any(v.search(self.model_id) is not None for v in __class__.RE_CLAUDE):
-            if thinking_enabled:
-                budget_mapping = {
-                    ThinkingLevel.LOW: 1024,
-                    ThinkingLevel.MEDIUM: 1536,
-                    ThinkingLevel.HIGH: 2048,
+            if self.thinking_level == ThinkingLevel.OFF:
+                result["thinking"] = {
+                    "type": "disabled",
                 }
+            elif self.thinking_level == ThinkingLevel.LOW:
                 result["thinking"] = {
                     "type": "enabled",
-                    "budget_tokens": budget_mapping.get(self.thinking_level, 1024),
+                    "budget_tokens": 1024,
                 }
+                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("temperature", None)     # 思考模式下不支持调整
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                result["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 1536,
+                }
+                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("temperature", None)     # 思考模式下不支持调整
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                result["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 2048,
+                }
+                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("temperature", None)     # 思考模式下不支持调整
 
         return result
 

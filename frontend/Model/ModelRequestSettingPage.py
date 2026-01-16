@@ -238,7 +238,7 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
     def add_widget_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         api_format = self.model.get("api_format", "")
         if api_format == Base.APIFormat.GOOGLE:
-            url = "https://ai.google.dev/api/generate-content"
+            url = "https://ai.google.dev/gemini-api/docs/thinking"
         elif api_format == Base.APIFormat.ANTHROPIC:
             url = "https://docs.anthropic.com/en/api/getting-started"
         elif api_format == Base.APIFormat.SAKURALLM:
