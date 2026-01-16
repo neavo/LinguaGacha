@@ -16,10 +16,10 @@ class ModelManager:
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
     # 资源文件路径
-    PRESET_MODELS_PATH: str = "resource/preset_models.json"
-    PRESET_GOOGLE_TEMPLATE_PATH: str = "resource/preset_google_template.json"
-    PRESET_OPENAI_TEMPLATE_PATH: str = "resource/preset_openai_template.json"
-    PRESET_ANTHROPIC_TEMPLATE_PATH: str = "resource/preset_anthropic_template.json"
+    PRESET_MODELS_PATH: str = "resource/preset/models/preset_models.json"
+    PRESET_GOOGLE_TEMPLATE_PATH: str = "resource/preset/models/preset_google_template.json"
+    PRESET_OPENAI_TEMPLATE_PATH: str = "resource/preset/models/preset_openai_template.json"
+    PRESET_ANTHROPIC_TEMPLATE_PATH: str = "resource/preset/models/preset_anthropic_template.json"
 
     def __init__(self) -> None:
         self.models: list[Model] = []
@@ -73,10 +73,19 @@ class ModelManager:
         """
         初始化模型列表
         - 如果 existing_models 为空，从 preset_models.json 复制所有预设模型
-        - 否则返回现有模型列表
+        - 否则合并：添加预设列表中存在但用户列表中不存在的模型
         """
+        preset_models = self.load_preset_models()
+
         if not existing_models:
-            return self.load_preset_models()
+            return preset_models
+
+        # 检查并添加缺失的预设模型
+        existing_ids = {model.get("id") for model in existing_models}
+        for preset in preset_models:
+            if preset.get("id") not in existing_ids:
+                existing_models.append(preset)
+
         return existing_models
 
     def get_models(self) -> list[Model]:

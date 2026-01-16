@@ -186,6 +186,16 @@ class LocalizerEN(LocalizerZH):
     model_page_add_openai: str = "Custom OpenAI Model"
     model_page_add_anthropic: str = "Custom Anthropic Model"
 
+    # Model category cards
+    model_page_category_preset_title: str = "Preset Models"
+    model_page_category_preset_desc: str = "Built-in model configurations, editable but not deletable, can be reset to initial state"
+    model_page_category_google_title: str = "Custom Google Models"
+    model_page_category_google_desc: str = "Custom models compatible with Google Gemini API format"
+    model_page_category_openai_title: str = "Custom OpenAI Models"
+    model_page_category_openai_desc: str = "Custom models compatible with OpenAI API format"
+    model_page_category_anthropic_title: str = "Custom Anthropic Models"
+    model_page_category_anthropic_desc: str = "Custom models compatible with Anthropic Claude API format"
+
     # Model Edit - New
     model_edit_page_name: str = "Please enter model name …"
     model_edit_page_name_title: str = "Model Name"

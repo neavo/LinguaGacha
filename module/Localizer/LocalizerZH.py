@@ -186,6 +186,16 @@ class LocalizerZH():
     model_page_add_openai: str = "自定义 OpenAI 模型"
     model_page_add_anthropic: str = "自定义 Anthropic 模型"
 
+    # 模型分类卡片
+    model_page_category_preset_title: str = "预设模型"
+    model_page_category_preset_desc: str = "内置模型配置，可编辑但不可删除，支持重置为初始状态"
+    model_page_category_google_title: str = "自定义 Google 模型"
+    model_page_category_google_desc: str = "兼容 Google Gemini API 格式的自定义模型"
+    model_page_category_openai_title: str = "自定义 OpenAI 模型"
+    model_page_category_openai_desc: str = "兼容 OpenAI API 格式的自定义模型"
+    model_page_category_anthropic_title: str = "自定义 Anthropic 模型"
+    model_page_category_anthropic_desc: str = "兼容 Anthropic Claude API 格式的自定义模型"
+
     # 模型编辑 - 新
     model_edit_page_name: str = "请输入模型名称 …"
     model_edit_page_name_title: str = "模型名称"
