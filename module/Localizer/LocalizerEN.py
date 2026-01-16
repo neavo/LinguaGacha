@@ -229,6 +229,7 @@ class LocalizerEN(LocalizerZH):
     model_list_page_title: str = "Available Model List"
     model_list_page_content: str = "Click to select the model to use"
     model_list_page_fail: str = "Failed to get model list, please check API configuration …"
+    model_list_page_loading: str = "Loading model list …"
 
     # 翻译任务
     translation_page_status_idle: str = "Idle"

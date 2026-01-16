@@ -229,6 +229,7 @@ class LocalizerZH():
     model_list_page_title: str = "可用的模型列表"
     model_list_page_content: str = "点击选择要使用的模型"
     model_list_page_fail: str = "获取模型列表失败，请检查接口配置 …"
+    model_list_page_loading: str = "正在获取模型列表 …"
 
     # 翻译任务
     translation_page_status_idle: str = "无任务"
