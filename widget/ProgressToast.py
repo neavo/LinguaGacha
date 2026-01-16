@@ -55,10 +55,18 @@ class ProgressToast:
             ring_widget = self._progress_ring
             self._indeterminate_ring = None
 
-        # 插入到 hBoxLayout 的最前面，两边加对称间距
-        info_bar.hBoxLayout.insertSpacing(0, 4)
-        info_bar.hBoxLayout.insertWidget(1, ring_widget)
-        info_bar.hBoxLayout.insertSpacing(2, 8)
+        # 隐藏原始 iconWidget 并移除其布局占位
+        info_bar.iconWidget.hide()
+        info_bar.hBoxLayout.removeWidget(info_bar.iconWidget)
+
+        # 调整 textLayout 对齐方式和边距，使其垂直居中
+        info_bar.textLayout.setAlignment(Qt.AlignVCenter)
+        info_bar.textLayout.setContentsMargins(0, 0, 0, 0)
+
+        # 插入到 hBoxLayout 的最前面，圆环垂直居中对齐
+        info_bar.hBoxLayout.insertSpacing(0, 8)
+        info_bar.hBoxLayout.insertWidget(1, ring_widget, 0, Qt.AlignVCenter)
+        info_bar.hBoxLayout.insertSpacing(2, 16)
 
         return info_bar
 

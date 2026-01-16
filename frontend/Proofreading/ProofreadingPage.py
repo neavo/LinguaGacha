@@ -3,7 +3,6 @@ import threading
 import time
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
@@ -30,7 +29,6 @@ from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
-from widget.ProgressToast import ProgressToast
 from widget.SearchCard import SearchCard
 
 class ProofreadingPage(QWidget, Base):
@@ -83,14 +81,6 @@ class ProofreadingPage(QWidget, Base):
         self.export_done.connect(self._on_export_done_ui)
         self.progress_updated.connect(self._on_progress_updated_ui)
         self.progress_finished.connect(self._on_progress_finished_ui)
-
-        # Loading 指示器状态追踪
-        self._indeterminate_start_time: float = 0.0      # 开始显示的时间戳
-        self._indeterminate_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
-
-        # 创建悬浮式进度提示组件
-        self.progress_toast = ProgressToast(self)
-        self.progress_toast.set_bottom_offset(80)  # 在 action bar 上方
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
@@ -538,10 +528,10 @@ class ProofreadingPage(QWidget, Base):
         # 使用最新配置，而非缓存的 self.config
         config = Config().load()
 
-        # 显示进度 Toast
+        # 显示进度 Toast（初始显示"正在处理第 1 个"）
         self.progress_show(
             Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "1").replace("{TOTAL}", str(count)),
-            0, count
+            1, count
         )
 
         def batch_translate_task() -> None:
@@ -550,6 +540,13 @@ class ProofreadingPage(QWidget, Base):
             total = len(items)
 
             for idx, item in enumerate(items):
+                # 更新进度（在任务开始前显示"正在处理第 N 个"）
+                current = idx + 1
+                self.progress_updated.emit(
+                    Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", str(current)).replace("{TOTAL}", str(total)),
+                    current, total
+                )
+
                 # 重置状态
                 item.set_status(Base.ProjectStatus.NONE)
                 item.set_retry_count(0)
@@ -576,13 +573,6 @@ class ProofreadingPage(QWidget, Base):
                 else:
                     fail_count += 1
                     item.set_status(Base.ProjectStatus.PROCESSED)
-
-                # 更新进度（通过信号在主线程执行）
-                current = idx + 1
-                self.progress_updated.emit(
-                    Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", str(current)).replace("{TOTAL}", str(total)),
-                    current, total
-                )
 
             # 完成后隐藏 Toast（通过信号在主线程执行）
             self.progress_finished.emit()
@@ -796,61 +786,29 @@ class ProofreadingPage(QWidget, Base):
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
-        """显示 loading 指示器"""
-        # 如果有待执行的隐藏 timer，取消它（因为有新任务了）
-        if self._indeterminate_hide_timer is not None:
-            self._indeterminate_hide_timer.stop()
-            self._indeterminate_hide_timer = None
-
-        # 记录开始时间（如果是首次显示）
-        if self._indeterminate_start_time == 0.0:
-            self._indeterminate_start_time = time.time()
-
-        # 显示 ProgressToast
-        self.progress_toast.show_indeterminate(msg)
+        """显示 loading 指示器（不定进度）"""
+        self.emit(Base.Event.PROGRESS_TOAST_SHOW, {
+            "message": msg,
+            "indeterminate": True,
+        })
 
     def progress_show(self, msg: str, current: int = 0, total: int = 0) -> None:
         """显示确定进度指示器"""
-        if self._indeterminate_hide_timer is not None:
-            self._indeterminate_hide_timer.stop()
-            self._indeterminate_hide_timer = None
-
-        if self._indeterminate_start_time == 0.0:
-            self._indeterminate_start_time = time.time()
-
-        self.progress_toast.show_progress(msg, current, total)
+        self.emit(Base.Event.PROGRESS_TOAST_SHOW, {
+            "message": msg,
+            "indeterminate": False,
+            "current": current,
+            "total": total,
+        })
 
     def progress_update(self, msg: str, current: int, total: int) -> None:
         """更新进度"""
-        self.progress_toast.set_content(msg)
-        self.progress_toast.set_progress(current, total)
+        self.emit(Base.Event.PROGRESS_TOAST_UPDATE, {
+            "message": msg,
+            "current": current,
+            "total": total,
+        })
 
     def indeterminate_hide(self) -> None:
-        """隐藏 loading 指示器，确保至少显示 1500ms"""
-        if self._indeterminate_start_time == 0.0:
-            return
-
-        min_display_ms = 1500
-        elapsed_ms = (time.time() - self._indeterminate_start_time) * 1000
-        remaining_ms = min_display_ms - elapsed_ms
-
-        if remaining_ms > 0:
-            # 延迟隐藏，保证最小显示时长
-            self._indeterminate_hide_timer = QTimer()
-            self._indeterminate_hide_timer.setSingleShot(True)
-            self._indeterminate_hide_timer.timeout.connect(self._do_indeterminate_hide)
-            self._indeterminate_hide_timer.start(int(remaining_ms))
-        else:
-            self._do_indeterminate_hide()
-
-    def _do_indeterminate_hide(self) -> None:
-        """实际执行隐藏操作"""
-        self._indeterminate_hide_timer = None
-        self._indeterminate_start_time = 0.0
-        self.progress_toast.hide_toast()
-
-    def resizeEvent(self, event) -> None:
-        """窗口大小变化时更新 ProgressToast 位置"""
-        super().resizeEvent(event)
-        if self.progress_toast.isVisible():
-            self.progress_toast._update_position()
+        """隐藏 loading 指示器"""
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
