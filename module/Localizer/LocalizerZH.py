@@ -114,8 +114,6 @@ class LocalizerZH():
     engine_response_think: str = "模型思考内容："
     engine_response_result: str = "模型回复内容："
     engine_task_success: str = "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens"
-    engine_single_translate_success: str = "单条翻译完成，耗时 {TIME} 秒"
-    engine_single_translate_fail: str = "单条翻译失败"
     engine_task_too_many: str = "实时任务较多，暂时停止显示详细结果以提升性能 …"
     api_tester_key: str = "正在测试密钥："
     api_tester_messages: str = "任务提示词："
@@ -239,8 +237,6 @@ class LocalizerZH():
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst: str = "复制译文"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
-    proofreading_page_save_success: str = "数据已保存"
-    proofreading_page_export_success: str = "导出完成"
     proofreading_page_export_failed: str = "导出失败"
     proofreading_page_export_confirm: str = "确定要导出译文文件吗？"
     proofreading_page_export_tooltip: str = "导出译文文件\n先保存数据，然后生成译文文件"
@@ -274,7 +270,7 @@ class LocalizerZH():
     proofreading_page_batch_retranslate: str = "重新翻译已选条目"
     proofreading_page_batch_retranslate_confirm: str = "确定要重新翻译全部 {COUNT} 个已选条目吗？"
     proofreading_page_batch_retranslate_progress: str = "正在重新翻译，第 {CURRENT} 项，共 {TOTAL} 项 …"
-    proofreading_page_batch_retranslate_success: str = "批量翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条"
+    proofreading_page_batch_retranslate_success: str = "重新翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条 …"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "并发任务阈值"

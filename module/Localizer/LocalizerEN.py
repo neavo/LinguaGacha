@@ -114,8 +114,6 @@ class LocalizerEN(LocalizerZH):
     engine_response_think: str = "Model Thinking:"
     engine_response_result: str = "Model Response:"
     engine_task_success: str = "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}"
-    engine_single_translate_success: str = "Single translation completed in {TIME} seconds"
-    engine_single_translate_fail: str = "Single translation failed"
     engine_task_too_many: str = "Too many real-time tasks, details hidden for performance …"
     api_tester_key: str = "Testing Key:"
     api_tester_messages: str = "Task Prompts:"
@@ -239,8 +237,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_copy_src_done: str = "Source copied to clipboard"
     proofreading_page_copy_dst: str = "Copy Translation"
     proofreading_page_copy_dst_done: str = "Translation copied to clipboard"
-    proofreading_page_save_success: str = "Data saved"
-    proofreading_page_export_success: str = "Export completed"
     proofreading_page_export_failed: str = "Export failed"
     proofreading_page_export_confirm: str = "Confirm to export the translation file?"
     proofreading_page_export_tooltip: str = "Export translation file\nSave the data first, then generate the translation file"
@@ -274,7 +270,7 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_batch_retranslate: str = "Retranslate selected"
     proofreading_page_batch_retranslate_confirm: str = "Confirm to re-translate all {COUNT} selected items?"
     proofreading_page_batch_retranslate_progress: str = "Re-translating, item {CURRENT} of {TOTAL} …"
-    proofreading_page_batch_retranslate_success: str = "Batch translation completed, {SUCCESS} successful, {FAILED} failed"
+    proofreading_page_batch_retranslate_success: str = "Re-translation completed, {SUCCESS} successful, {FAILED} failed …"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"

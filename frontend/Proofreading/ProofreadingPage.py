@@ -644,20 +644,6 @@ class ProofreadingPage(QWidget, Base):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _on_save_done_ui(self, success: bool) -> None:
-        """保存完成的 UI 更新（主线程）"""
-        self.indeterminate_hide()
-        if success:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_save_success,
-            })
-        else:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().proofreading_page_save_failed,
-            })
-
     # ========== 导出功能 ==========
     def _on_export_clicked(self) -> None:
         """导出按钮点击"""
@@ -696,14 +682,9 @@ class ProofreadingPage(QWidget, Base):
                     "message": Localizer.get().proofreading_page_save_failed,
                 })
         else:
-            # 普通保存流程
+            # 普通保存流程：成功时直接隐藏进度条，失败时弹出错误提示
             self.indeterminate_hide()
-            if success:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().proofreading_page_save_success,
-                })
-            else:
+            if not success:
                 self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().proofreading_page_save_failed,
@@ -731,13 +712,9 @@ class ProofreadingPage(QWidget, Base):
 
     def _on_export_done_ui(self, success: bool, error_msg: str) -> None:
         """导出完成的 UI 更新（主线程）"""
+        # 成功时直接隐藏进度条，失败时弹出错误提示
         self.indeterminate_hide()
-        if success:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_export_success,
-            })
-        else:
+        if not success:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": error_msg or Localizer.get().proofreading_page_export_failed,
