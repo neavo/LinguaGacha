@@ -88,12 +88,22 @@ class Config():
     mtool_optimizer_enable: bool = False
 
     # 类属性
-    CONFIG_PATH: ClassVar[str] = "./resource/config.json"
     CONFIG_LOCK: ClassVar[threading.Lock] = threading.Lock()
+
+    @staticmethod
+    def get_config_path() -> str:
+        """根据环境获取配置文件路径。"""
+        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR")
+        app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
+        # 便携式环境（AppImage, macOS .app）使用 data_dir/config.json
+        if data_dir and app_dir and data_dir != app_dir:
+            return os.path.join(data_dir, "config.json")
+        # 默认：使用应用目录下的 resource/config.json
+        return os.path.join(app_dir or ".", "resource", "config.json")
 
     def load(self, path: str = None) -> Self:
         if path is None:
-            path = __class__.CONFIG_PATH
+            path = __class__.get_config_path()
 
         with __class__.CONFIG_LOCK:
             try:
@@ -107,11 +117,21 @@ class Config():
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_read_file_fail}", e)
 
+        # 便携式环境下调整默认路径
+        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
+        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR", ".")
+        if data_dir != app_dir:
+            # 便携式环境中，将默认相对路径解析到 data_dir
+            if self.input_folder == "./input":
+                self.input_folder = os.path.join(data_dir, "input")
+            if self.output_folder == "./output":
+                self.output_folder = os.path.join(data_dir, "output")
+
         return self
 
     def save(self, path: str = None) -> Self:
         if path is None:
-            path = __class__.CONFIG_PATH
+            path = __class__.get_config_path()
 
         with __class__.CONFIG_LOCK:
             try:

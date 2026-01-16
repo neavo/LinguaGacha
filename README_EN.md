@@ -38,6 +38,10 @@
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
+  - Windows: Download `.zip` file, extract and run `app.exe`
+  - macOS: Download `.dmg` file (`x86_64` for Intel, `arm64` for Apple Silicon), drag to Applications folder
+    - On first launch, you may see "unidentified developer" warning. Right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: Download `.AppImage` file, make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
   - [ [Gemini API](https://aistudio.google.com/) ] (Paid, cost-effective, fast, relatively-high-quality, no GPU required)　`👈👈 Recommended`
@@ -45,7 +49,7 @@
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
-- Launch application via `app.exe`:
+- Launch the application:
   - Configure essential settings (source/target languages) in `Project Settings`
   - Copy files to input folder (default: `input`), start translation in `Begin Translation`
 

@@ -2,15 +2,15 @@ import os
 import re
 import shutil
 import signal
+import sys
 import threading
 import time
+import webbrowser
 import zipfile
 from enum import StrEnum
 from typing import Self
 
 import httpx
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QDesktopServices
 
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
@@ -54,10 +54,14 @@ class VersionManager(Base):
 
         return cls.__instance__
 
-    # 解压
+    # 解压（仅 Windows）
     def app_update_extract(self, event: Base.Event, data: dict) -> None:
+        # 非 Windows 平台无需解压，直接返回
+        if sys.platform != "win32":
+            return
+
         with self.lock:
-            if self.extracting == False:
+            if not self.extracting:
                 threading.Thread(
                     target = self.app_update_extract_task,
                     args = (event, data),
@@ -77,9 +81,8 @@ class VersionManager(Base):
             args = (event, data),
         ).start()
 
-    # 解压
+    # 解压（仅 Windows 会调用此方法）
     def app_update_extract_task(self, event: Base.Event, data: dict) -> None:
-        # 更新状态
         with self.lock:
             self.extracting = True
 
@@ -142,15 +145,18 @@ class VersionManager(Base):
             pass
 
         # 显示提示
-        self.emit(Base.Event.TOAST,{
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().app_new_version_waiting_restart,
             "duration": 60 * 1000,
         })
 
-        # 延迟3秒后关闭应用并打开更新日志
-        time.sleep(3)
-        QDesktopServices.openUrl(QUrl(__class__.RELEASE_URL))
+        # 倒计时后关闭应用并打开更新日志
+        print("")
+        for i in range(3):
+            print(Localizer.get().app_exit_countdown.format(SECONDS=3 - i))
+            time.sleep(1)
+        webbrowser.open(__class__.RELEASE_URL)
         os.kill(os.getpid(), signal.SIGTERM)
 
     # 检查
@@ -164,11 +170,8 @@ class VersionManager(Base):
             a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version())[-1]
             x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0"))[-1]
 
-            if (
-                int(a) < int(x)
-                or (int(a) == int(x) and int(b) < int(y))
-                or (int(a) == int(x) and int(b) == int(y) and int(c) < int(z))
-            ):
+            # 使用元组比较简化版本号判断
+            if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
                 self.set_status(VersionManager.Status.NEW_VERSION)
                 self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.SUCCESS,
@@ -187,12 +190,37 @@ class VersionManager(Base):
             # 更新状态
             self.set_status(VersionManager.Status.UPDATING)
 
+            # macOS/Linux：跳过下载，直接打开发布页面
+            if sys.platform in ("darwin", "linux"):
+                self.set_status(VersionManager.Status.DOWNLOADED)
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().app_new_version_success,
+                    "duration": 60 * 1000,
+                })
+                # 直接打开发布页面供手动下载
+                webbrowser.open(__class__.RELEASE_URL)
+                self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
+                return
+
             # 获取更新信息
             response = httpx.get(__class__.API_URL, timeout = 60)
             response.raise_for_status()
 
-            # 开始下载
-            browser_download_url = response.json().get("assets", [])[0].get("browser_download_url", "")
+            # 根据平台选择正确的资源文件
+            assets = response.json().get("assets", [])
+            browser_download_url = ""
+
+            # Windows：查找 .zip 文件
+            for asset in assets:
+                name = asset.get("name", "")
+                if name.endswith(".zip"):
+                    browser_download_url = asset.get("browser_download_url", "")
+                    break
+
+            if not browser_download_url:
+                raise Exception(f"未找到适用于 {plat} 的资源文件")
+
             with httpx.stream("GET", browser_download_url, timeout = 60, follow_redirects = True) as response:
                 response.raise_for_status()
 
@@ -239,7 +267,7 @@ class VersionManager(Base):
             return self.status
 
     def set_status(self, status: Status) -> None:
-         with self.lock:
+        with self.lock:
             self.status = status
 
     def get_version(self) -> str:

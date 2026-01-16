@@ -4,75 +4,269 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     permissions:
-      actions: write
-      checks: write
       contents: write
-      deployments: write
-      issues: write
-      packages: write
-      pages: write
-      pull-requests: write
-      repository-projects: write
-      security-events: write
-      statuses: write
+
+    outputs:
+      version: ${{ steps.check_version.outputs.version }}
 
     steps:
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Check Version
-      id: check_version
-      shell: pwsh
-      run: |
-        $version = Get-Content -Path version.txt
-        echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Check Version
+        id: check_version
+        shell: pwsh
+        run: |
+          $version = Get-Content -Path version.txt
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Generate requirements.txt
-      shell: cmd
-      run: |
-        python -m pip install tomli
-        python .\buildtools\generate_deps.py
+      - name: Generate requirements.txt
+        shell: cmd
+        run: |
+          python -m pip install tomli
+          python .\buildtools\generate_deps.py
 
-    - name: Install Requirements
-      shell: cmd
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install --upgrade setuptools
-        python -m pip install pyinstaller
-        python -m pip install -U -r requirements.txt
-        python -m pip cache purge
+      - name: Install Requirements
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
 
-    - name: Build EXE
-      shell: cmd
-      run: |
-        python .\buildtools\build_exe.py
+      - name: Build EXE
+        shell: cmd
+        run: |
+          python .\buildtools\build_exe.py
 
-    - name: Copy Files
-      shell: cmd
-      run: |
-        xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
-        xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
+      - name: Copy Files
+        shell: cmd
+        run: |
+          xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
+          xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
 
-    - name: Compress Archive
-      shell: pwsh
-      run: |
-        Compress-Archive -Path .\dist\* -DestinationPath "LinguaGacha_${{ steps.check_version.outputs.version }}.zip" -CompressionLevel Optimal -Force
+      - name: Compress Archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\dist\* -DestinationPath "LinguaGacha_${{ steps.check_version.outputs.version }}.zip" -CompressionLevel Optimal -Force
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: MANUAL_BUILD_${{ steps.check_version.outputs.version }}
-        name: LinguaGacha_${{ steps.check_version.outputs.version }}
-        draft: true
-        prerelease: false
-        files: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaGacha_${{ steps.check_version.outputs.version }}_Windows
+          path: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
+
+  build-macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Version
+        id: check_version
+        run: |
+          version=$(cat version.txt)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Generate requirements.txt
+        run: |
+          python -m pip install tomli
+          python ./buildtools/generate_deps.py
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build App Bundle
+        run: |
+          python ./buildtools/build_exe.py
+
+      - name: Copy Resources
+        run: |
+          cp version.txt ./dist/LinguaGacha.app/Contents/MacOS/
+          cp -r resource ./dist/LinguaGacha.app/Contents/MacOS/
+
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "LinguaGacha" \
+            --volicon "./resource/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "LinguaGacha.app" 150 190 \
+            --hide-extension "LinguaGacha.app" \
+            --app-drop-link 450 185 \
+            "LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}.dmg" \
+            "./dist/LinguaGacha.app" || true
+          # create-dmg returns non-zero even on success, verify DMG was created
+          DMG_FILE="LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}.dmg"
+          if [ ! -f "$DMG_FILE" ]; then
+            echo "ERROR: DMG file not created: $DMG_FILE"
+            exit 1
+          fi
+          ls -la "$DMG_FILE"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}
+          path: "*.dmg"
+
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check Version
+        id: check_version
+        run: |
+          version=$(cat version.txt)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0
+
+      - name: Generate requirements.txt
+        run: |
+          python -m pip install tomli
+          python ./buildtools/generate_deps.py
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build Executable
+        run: |
+          python ./buildtools/build_exe.py
+
+      - name: Copy Resources
+        run: |
+          cp version.txt ./dist/LinguaGacha/
+          cp -r resource ./dist/LinguaGacha/
+
+      - name: Create AppImage
+        env:
+          VERSION: ${{ steps.check_version.outputs.version }}
+        run: |
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # Copy application
+          cp -r ./dist/LinguaGacha/* AppDir/usr/bin/
+
+          # Create desktop file
+          cat > AppDir/usr/share/applications/linguagacha.desktop << 'EOF'
+          [Desktop Entry]
+          Name=LinguaGacha
+          Exec=LinguaGacha
+          Icon=linguagacha
+          Type=Application
+          Categories=Utility;
+          EOF
+          cp AppDir/usr/share/applications/linguagacha.desktop AppDir/
+
+          # Copy icon
+          cp ./resource/icon_full.png AppDir/usr/share/icons/hicolor/256x256/apps/linguagacha.png
+          cp ./resource/icon_full.png AppDir/linguagacha.png
+
+          # Create AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/bin:${LD_LIBRARY_PATH}"
+          cd "${HERE}/usr/bin"
+          exec "${HERE}/usr/bin/LinguaGacha" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+          # Download and run appimagetool (use --appimage-extract-and-run for environments without FUSE)
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run AppDir "LinguaGacha_${VERSION}_Linux_x86_64.AppImage"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaGacha_${{ steps.check_version.outputs.version }}_Linux_x86_64
+          path: "LinguaGacha_*.AppImage"
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: List Artifacts
+        run: |
+          find artifacts -type f
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: MANUAL_BUILD_${{ needs.build-windows.outputs.version }}
+          name: LinguaGacha_${{ needs.build-windows.outputs.version }}
+          draft: true
+          prerelease: false
+          files: |
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Linux_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_Linux_x86_64.AppImage
