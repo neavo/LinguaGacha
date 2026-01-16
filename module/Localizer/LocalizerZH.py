@@ -63,8 +63,7 @@ class LocalizerZH():
     app_theme_btn: str = "变换自如"
     app_language_btn: str = "字字珠玑"
     app_settings_page: str = "应用设置"
-    app_platform_page: str = "接口管理"
-    app_project_page: str = "项目设置"
+    app_model_page: str = "模型管理"
     app_translation_page: str = "翻译任务"
     app_proofreading_page: str = "校对任务"
     app_basic_settings_page: str = "基础设置"
@@ -145,48 +144,18 @@ class LocalizerZH():
     app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求（将在应用重启后生效）"
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
-    # 接口管理 - 已废弃，保留向后兼容
-    platform_page_api_activate: str = "激活接口"
-    platform_page_api_edit: str = "编辑接口"
-    platform_page_api_args: str = "编辑参数"
-    platform_page_api_test: str = "测试接口"
-    platform_page_api_delete: str = "删除接口"
-    platform_page_widget_add_title: str = "接口列表"
-    platform_page_widget_add_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型接口"
-
-    # 接口编辑 - 已废弃，保留向后兼容
-    platform_edit_page_name: str = "请输入接口名称 …"
-    platform_edit_page_name_title: str = "接口名称"
-    platform_edit_page_name_content: str = "请输入接口名称，仅用于应用内显示，无实际作用"
-    platform_edit_page_api_url: str = "请输入接口地址 …"
-    platform_edit_page_api_url_title: str = "接口地址"
-    platform_edit_page_api_url_content: str = "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
-    platform_edit_page_api_key: str = "请输入接口密钥 …"
-    platform_edit_page_api_key_title: str = "接口密钥"
-    platform_edit_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
-    platform_edit_page_thinking_title: str = "优先使用思考模式"
-    platform_edit_page_thinking_content: str = "对于同时支持思考模式和普通模式的模型，优先使用思考模式 [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
-    platform_edit_page_model: str = "请输入模型名称 …"
-    platform_edit_page_model_title: str = "模型名称"
-    platform_edit_page_model_content: str = "当前使用的模型为 {MODEL}"
-    platform_edit_page_model_edit: str = "手动输入"
-    platform_edit_page_model_sync: str = "在线获取"
-
-    # 模型管理 - 新
-    app_model_page: str = "模型管理"
+    # 模型管理
     model_page_widget_title: str = "模型列表"
     model_page_widget_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型"
     model_page_activate: str = "激活模型"
-    model_page_edit: str = "编辑模型"
-    model_page_args: str = "编辑参数"
+    model_page_edit: str = "基本参数"
+    model_page_args: str = "请求参数"
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
     model_page_add_google: str = "自定义 Google 模型"
     model_page_add_openai: str = "自定义 OpenAI 模型"
     model_page_add_anthropic: str = "自定义 Anthropic 模型"
-
-    # 模型分类卡片
     model_page_category_preset_title: str = "预设模型"
     model_page_category_preset_desc: str = "内置模型配置，可编辑但不可删除，支持重置为初始状态"
     model_page_category_google_title: str = "自定义 Google 模型"
@@ -196,7 +165,7 @@ class LocalizerZH():
     model_page_category_anthropic_title: str = "自定义 Anthropic 模型"
     model_page_category_anthropic_desc: str = "兼容 Anthropic Claude API 格式的自定义模型"
 
-    # 模型编辑 - 新
+    # 模型编辑
     model_edit_page_name: str = "请输入模型名称 …"
     model_edit_page_name_title: str = "模型名称"
     model_edit_page_name_content: str = "请输入模型名称，仅用于应用内显示，无实际作用"
@@ -233,34 +202,20 @@ class LocalizerZH():
     model_edit_page_body_placeholder: str = '例如：{"stream": false}'
 
     # 参数编辑
-    args_edit_page_top_p_title: str = "top_p"
-    args_edit_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    args_edit_page_temperature_title: str = "temperature"
-    args_edit_page_temperature_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    args_edit_page_presence_penalty_title: str = "presence_penalty"
-    args_edit_page_presence_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    args_edit_page_frequency_penalty_title: str = "frequency_penalty"
-    args_edit_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    args_edit_page_document_link: str = "点击查看文档"
+    model_request_setting_page_top_p_title: str = "top_p"
+    model_request_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_request_setting_page_temperature_title: str = "temperature"
+    model_request_setting_page_temperature_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_request_setting_page_presence_penalty_title: str = "presence_penalty"
+    model_request_setting_page_presence_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_request_setting_page_frequency_penalty_title: str = "frequency_penalty"
+    model_request_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_request_setting_page_document_link: str = "点击查看文档"
 
     # 模型列表
     model_list_page_title: str = "可用的模型列表"
     model_list_page_content: str = "点击选择要使用的模型"
     model_list_page_fail: str = "获取模型列表失败，请检查接口配置 …"
-
-    # 项目设置
-    project_page_source_language_title: str = "原文语言"
-    project_page_source_language_content: str = "设置当前项目中输入文本的语言"
-    project_page_target_language_title: str = "译文语言"
-    project_page_target_language_content: str = "设置当前项目中输出文本的语言"
-    project_page_input_folder_title: str = "输入文件夹"
-    project_page_input_folder_content: str = "当前输入文件夹为"
-    project_page_output_folder_title: str = "输出文件夹（不能与输入文件夹相同）"
-    project_page_output_folder_content: str = "当前输出文件夹为"
-    project_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
-    project_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
-    project_page_traditional_chinese_title: str = "使用繁体输出中文"
-    project_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
 
     # 翻译任务
     translation_page_status_idle: str = "无任务"
@@ -333,6 +288,19 @@ class LocalizerZH():
     proofreading_page_batch_retranslate_success: str = "重新翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条 …"
 
     # 基础设置
+    basic_settings_page_source_language_title: str = "原文语言"
+    basic_settings_page_source_language_content: str = "设置当前项目中输入文本的语言"
+    basic_settings_page_target_language_title: str = "译文语言"
+    basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
+    basic_settings_page_input_folder_title: str = "输入文件夹"
+    basic_settings_page_input_folder_content: str = "当前输入文件夹为"
+    basic_settings_page_output_folder_title: str = "输出文件夹（不能与输入文件夹相同）"
+    basic_settings_page_output_folder_content: str = "当前输出文件夹为"
+    basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
+    basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
+    basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
+    basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
+
     basic_settings_page_max_workers_title: str = "并发任务阈值"
     basic_settings_page_max_workers_content: str = (
         "同时执行的任务数量的最大值"

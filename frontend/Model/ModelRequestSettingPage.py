@@ -14,7 +14,7 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.SliderCard import SliderCard
 
-class ArgsEditPage(MessageBoxBase, Base):
+class ModelRequestSettingPage(MessageBoxBase, Base):
 
     TOP_P_DEFAULT: float = 0.95
     TEMPERATURE_DEFAULT: float = 0.95
@@ -134,8 +134,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().args_edit_page_top_p_title,
-                description=Localizer.get().args_edit_page_top_p_content,
+                title=Localizer.get().model_request_setting_page_top_p_title,
+                description=Localizer.get().model_request_setting_page_top_p_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "top_p"),
             )
@@ -165,8 +165,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().args_edit_page_temperature_title,
-                description=Localizer.get().args_edit_page_temperature_content,
+                title=Localizer.get().model_request_setting_page_temperature_title,
+                description=Localizer.get().model_request_setting_page_temperature_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "temperature"),
             )
@@ -196,8 +196,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().args_edit_page_presence_penalty_title,
-                description=Localizer.get().args_edit_page_presence_penalty_content,
+                title=Localizer.get().model_request_setting_page_presence_penalty_title,
+                description=Localizer.get().model_request_setting_page_presence_penalty_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "presence_penalty"),
             )
@@ -227,8 +227,8 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().args_edit_page_frequency_penalty_title,
-                description=Localizer.get().args_edit_page_frequency_penalty_content,
+                title=Localizer.get().model_request_setting_page_frequency_penalty_title,
+                description=Localizer.get().model_request_setting_page_frequency_penalty_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "frequency_penalty"),
             )
@@ -246,7 +246,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
 
-        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().args_edit_page_document_link)
+        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().model_request_setting_page_document_link)
         hyper_link_label.setUnderlineVisible(True)
 
         parent.addSpacing(16)

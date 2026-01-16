@@ -14,8 +14,8 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from frontend.Project.ArgsEditPage import ArgsEditPage
-from frontend.Project.ModelEditPage import ModelEditPage
+from frontend.Model.ModelEditPage import ModelEditPage
+from frontend.Model.ModelRequestSettingPage import ModelRequestSettingPage
 from model.Model import ModelType
 from model.ModelManager import ModelManager
 from module.Config import Config
@@ -328,7 +328,7 @@ class ModelPage(QWidget, Base):
 
     def show_args_edit_page(self, model_id: str) -> None:
         """显示编辑参数对话框"""
-        ArgsEditPage(model_id, self.window).exec()
+        ModelRequestSettingPage(model_id, self.window).exec()
 
     def reset_preset_model(self, model_id: str) -> None:
         """重置预设模型"""

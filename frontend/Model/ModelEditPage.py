@@ -13,7 +13,7 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from frontend.Project.ModelListPage import ModelListPage
+from frontend.Model.ModelListPage import ModelListPage
 from model.Model import ModelType
 from model.Model import ThinkingLevel
 from module.Config import Config

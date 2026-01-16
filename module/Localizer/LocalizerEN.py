@@ -63,8 +63,7 @@ class LocalizerEN(LocalizerZH):
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
     app_settings_page: str = "App Settings"
-    app_platform_page: str = "API"
-    app_project_page: str = "Project Settings"
+    app_model_page: str = "Models"
     app_translation_page: str = "Translation"
     app_proofreading_page: str = "Proofreading"
     app_basic_settings_page: str = "Basic Settings"
@@ -145,48 +144,18 @@ class LocalizerEN(LocalizerZH):
     app_settings_page_proxy_url_content: str = "Enabling this feature will use the set proxy address to send network requests  (takes effect after app restart)"
     app_settings_page_close: str = "The application will close, please confirm …"
 
-    # 接口管理 - Deprecated, kept for backward compatibility
-    platform_page_api_activate: str = "Activate API"
-    platform_page_api_edit: str = "Edit API"
-    platform_page_api_args: str = "Edit Arguments"
-    platform_page_api_test: str = "Test API"
-    platform_page_api_delete: str = "Delete API"
-    platform_page_widget_add_title: str = "API List"
-    platform_page_widget_add_content: str = "Add and manage any LLM API compatible with Google, OpenAI and Anthropic formats here"
-
-    # 接口编辑 - Deprecated, kept for backward compatibility
-    platform_edit_page_name: str = "Please enter API name …"
-    platform_edit_page_name_title: str = "API Name"
-    platform_edit_page_name_content: str = "Please enter API name, only for display within the app, no practical effect"
-    platform_edit_page_api_url: str = "Please enter API URL …"
-    platform_edit_page_api_url_title: str = "API URL"
-    platform_edit_page_api_url_content: str = "Please enter API URL, pay attention to whether /v1 needs to be added at the end"
-    platform_edit_page_api_key: str = "Please enter API Key …"
-    platform_edit_page_api_key_title: str = "API Key"
-    platform_edit_page_api_key_content: str = "Please enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line"
-    platform_edit_page_thinking_title: str = "Thinking Mode Priority"
-    platform_edit_page_thinking_content: str = "For models that support both thinking and normal modes, prioritize using thinking mode [→ Click to view the list of supported models ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)"
-    platform_edit_page_model: str = "Please enter Model Name …"
-    platform_edit_page_model_title: str = "Model Name"
-    platform_edit_page_model_content: str = "Current model in use: {MODEL}"
-    platform_edit_page_model_edit: str = "Manual Input"
-    platform_edit_page_model_sync: str = "Fetch Online"
-
-    # Model Management - New
-    app_model_page: str = "Models"
+    # Model Management
     model_page_widget_title: str = "Model List"
     model_page_widget_content: str = "Add and manage any LLM model compatible with Google, OpenAI and Anthropic formats here"
     model_page_activate: str = "Activate Model"
-    model_page_edit: str = "Edit Model"
-    model_page_args: str = "Edit Arguments"
+    model_page_edit: str = "Basic Parameters"
+    model_page_args: str = "Request Parameters"
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
     model_page_add_google: str = "Custom Google Model"
     model_page_add_openai: str = "Custom OpenAI Model"
     model_page_add_anthropic: str = "Custom Anthropic Model"
-
-    # Model category cards
     model_page_category_preset_title: str = "Preset Models"
     model_page_category_preset_desc: str = "Built-in model configurations, editable but not deletable, can be reset to initial state"
     model_page_category_google_title: str = "Custom Google Models"
@@ -196,7 +165,7 @@ class LocalizerEN(LocalizerZH):
     model_page_category_anthropic_title: str = "Custom Anthropic Models"
     model_page_category_anthropic_desc: str = "Custom models compatible with Anthropic Claude API format"
 
-    # Model Edit - New
+    # Model Edit
     model_edit_page_name: str = "Please enter model name …"
     model_edit_page_name_title: str = "Model Name"
     model_edit_page_name_content: str = "Please enter model name, only for display within the app, no practical effect"
@@ -233,34 +202,20 @@ class LocalizerEN(LocalizerZH):
     model_edit_page_body_placeholder: str = 'Example: {"stream": false}'
 
     # 参数编辑
-    args_edit_page_top_p_title: str = "top_p"
-    args_edit_page_top_p_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    args_edit_page_temperature_title: str = "temperature"
-    args_edit_page_temperature_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    args_edit_page_presence_penalty_title: str = "presence_penalty"
-    args_edit_page_presence_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    args_edit_page_frequency_penalty_title: str = "frequency_penalty"
-    args_edit_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    args_edit_page_document_link: str = "Click to view documentation"
+    model_request_setting_page_top_p_title: str = "top_p"
+    model_request_setting_page_top_p_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_request_setting_page_temperature_title: str = "temperature"
+    model_request_setting_page_temperature_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_request_setting_page_presence_penalty_title: str = "presence_penalty"
+    model_request_setting_page_presence_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_request_setting_page_frequency_penalty_title: str = "frequency_penalty"
+    model_request_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_request_setting_page_document_link: str = "Click to view documentation"
 
     # 模型列表
     model_list_page_title: str = "Available Model List"
     model_list_page_content: str = "Click to select the model to use"
     model_list_page_fail: str = "Failed to get model list, please check API configuration …"
-
-    # 项目设置
-    project_page_source_language_title: str = "Source Language"
-    project_page_source_language_content: str = "Set the language of the input text in the current project"
-    project_page_target_language_title: str = "Target Language"
-    project_page_target_language_content: str = "Set the language of the output text in the current project"
-    project_page_input_folder_title: str = "Input Folder"
-    project_page_input_folder_content: str = "The current input folder is"
-    project_page_output_folder_title: str = "Output Folder (Can not be same as input folder)"
-    project_page_output_folder_content: str = "The current output folder is"
-    project_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
-    project_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
-    project_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
-    project_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
 
     # 翻译任务
     translation_page_status_idle: str = "Idle"
@@ -333,6 +288,19 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_batch_retranslate_success: str = "Re-translation completed, {SUCCESS} successful, {FAILED} failed …"
 
     # 基础设置
+    basic_settings_page_source_language_title: str = "Source Language"
+    basic_settings_page_source_language_content: str = "Set the language of the input text in the current project"
+    basic_settings_page_target_language_title: str = "Target Language"
+    basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
+    basic_settings_page_input_folder_title: str = "Input Folder"
+    basic_settings_page_input_folder_content: str = "The current input folder is"
+    basic_settings_page_output_folder_title: str = "Output Folder (Can not be same as input folder)"
+    basic_settings_page_output_folder_content: str = "The current output folder is"
+    basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
+    basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
+    basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
+    basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
+
     basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"
     basic_settings_page_max_workers_content: str = (
         "Maximum number of tasks executing simultaneously"

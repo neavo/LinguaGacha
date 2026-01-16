@@ -29,10 +29,6 @@ class Config():
     activate_model_id: str = ""
     models: list[dict[str, Any]] = None
 
-    # PlatformPage - 已废弃，保留以便加载旧配置时不报错
-    activate_platform: int = 0
-    platforms: list[dict[str, Any]] = None
-
     # AppSettingsPage
     expert_mode: bool = False
     proxy_url: str = ""
@@ -40,15 +36,9 @@ class Config():
     font_hinting: bool = True
     scale_factor: str = ""
 
-    # BasicSettingsPage
+
     request_timeout: int = 120
     max_round: int = 16
-
-    # 已废弃 - 这些全局阈值字段已迁移到模型内部，保留以便加载旧配置时不报错
-    input_token_threshold: int = 384
-    output_token_threshold: int = 4096
-    max_workers: int = 0
-    rpm_threshold: int = 0
 
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
@@ -59,13 +49,16 @@ class Config():
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
 
-    # ProjectPage
+
+    # BasicSettingsPage
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
     input_folder: str = "./input"
     output_folder: str = "./output"
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
+
+
 
     # GlossaryPage
     glossary_enable: bool = True
@@ -166,15 +159,7 @@ class Config():
         self.text_preserve_enable: bool = False
         self.text_preserve_data: list[Any] = []
 
-    # 获取平台配置 - 已废弃
-    def get_platform(self, id: int) -> dict[str, Any]:
-        """[DEPRECATED] 已废弃，请使用 get_model()"""
-        return None
 
-    # 更新平台配置 - 已废弃
-    def set_platform(self, platform: dict[str, Any]) -> None:
-        """[DEPRECATED] 已废弃，请使用 set_model()"""
-        pass
 
     # 初始化模型管理器
     def initialize_models(self) -> None:
