@@ -146,6 +146,7 @@ class Translator(Base):
 
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()
+        input_token_threshold = self.model.get("thresholds", {}).get("input_token_limit", 512)
 
         # 重置
         TextProcessor.reset()
@@ -211,11 +212,11 @@ class Translator(Base):
 
             # 第二轮开始切分
             if current_round > 0:
-                self.config.input_token_threshold = max(1, int(self.config.input_token_threshold / 3))
+                input_token_threshold = max(1, int(input_token_threshold / 3))
 
             # 生成缓存数据条目片段
             chunks, precedings = self.cache_manager.generate_item_chunks(
-                input_token_threshold=self.config.input_token_threshold,
+                input_token_threshold=input_token_threshold,
                 preceding_lines_threshold=self.config.preceding_lines_threshold,
             )
 

@@ -90,8 +90,7 @@ class TaskRequester(Base):
             self.api_keys = []
 
         # 提取阈值配置
-        thresholds = model.get("thresholds", {})
-        self.output_token_limit: int = thresholds.get("output_token_limit", self.config.output_token_threshold)
+        self.output_token_limit: int = model.get("thresholds", {}).get("output_token_limit", 4096)
 
         # 提取网络配置
         network_config = model.get("network_config", {})
