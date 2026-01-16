@@ -1,7 +1,9 @@
 import itertools
+import re
 import threading
 import time
 from functools import lru_cache
+from typing import Callable
 
 import rich
 from rich import box
@@ -28,7 +30,7 @@ class TranslatorTask(Base):
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
-    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[Item], precedings: list[Item]) -> None:
+    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[Item], precedings: list[Item], skip_glossary_merge: bool = False, skip_response_check: bool = False) -> None:
         super().__init__()
 
         # 初始化
@@ -38,8 +40,11 @@ class TranslatorTask(Base):
         self.config = config
         self.platform = platform
         self.local_flag = local_flag
+        self.skip_glossary_merge = skip_glossary_merge
+        self.skip_response_check = skip_response_check
         self.prompt_builder = PromptBuilder(self.config)
-        self.response_checker = ResponseChecker(self.config, items)
+        # 跳过响应校验时不需要初始化 ResponseChecker
+        self.response_checker = None if skip_response_check else ResponseChecker(self.config, items)
 
     # 启动任务
     def start(self) -> dict[str, str]:
@@ -93,13 +98,16 @@ class TranslatorTask(Base):
         # 提取回复内容
         dsts, glossarys = ResponseDecoder().decode(response_result)
 
-        # 检查回复内容
-        # TODO - 当前逻辑下任务不会跨文件，所以一个任务的 TextType 都是一样的，有效，但是十分的 UGLY
-        checks = self.response_checker.check(srcs, dsts, self.items[0].get_text_type())
+        # 检查回复内容（跳过响应校验时，直接将所有结果视为有效）
+        if self.skip_response_check:
+            checks = [ResponseChecker.Error.NONE] * len(dsts)
+        else:
+            # TODO - 当前逻辑下任务不会跨文件，所以一个任务的 TextType 都是一样的，有效，但是十分的 UGLY
+            checks = self.response_checker.check(srcs, dsts, self.items[0].get_text_type())
 
-        # 当任务失败且是单条目任务时，更新重试次数
-        if any(v != ResponseChecker.Error.NONE for v in checks) != None and len(self.items) == 1:
-            self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
+            # 当任务失败且是单条目任务时，更新重试次数
+            if any(v != ResponseChecker.Error.NONE for v in checks) != None and len(self.items) == 1:
+                self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         # 模型回复日志
         # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
@@ -114,9 +122,10 @@ class TranslatorTask(Base):
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in checks):
-            # 更新术语表
-            with __class__.GLOSSARY_SAVE_LOCK:
-                __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(glossarys, __class__.GLOSSARY_SAVE_TIME)
+            # 更新术语表（单条翻译场景跳过此步骤）
+            if not self.skip_glossary_merge:
+                with __class__.GLOSSARY_SAVE_LOCK:
+                    __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(glossarys, __class__.GLOSSARY_SAVE_TIME)
 
             # 更新缓存数据
             dsts_cp = dsts.copy()
@@ -344,3 +353,60 @@ class TranslatorTask(Base):
             return Localizer.get().response_checker_line_error_degradation
         else:
             return ""
+
+    @staticmethod
+    def translate_single(
+        item: Item,
+        config: Config,
+        callback: Callable[[Item, bool], None]
+    ) -> None:
+        """
+        单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
+
+        Args:
+            item: 待翻译的 Item 对象
+            config: 翻译配置
+            callback: 翻译完成后的回调函数，签名为 (item, success) -> None
+        """
+        def task() -> None:
+            success = False
+            try:
+                # 获取激活的平台配置
+                platform = config.get_platform(config.activate_platform)
+                if not platform:
+                    return
+
+                # 判断是否为本地模型
+                local_flag = re.search(
+                    r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
+                    platform.get("api_url", ""),
+                    flags=re.IGNORECASE,
+                ) is not None
+
+                # 创建翻译任务（跳过术语表合并和响应校验）
+                translator_task = TranslatorTask(
+                    config=config,
+                    platform=platform,
+                    local_flag=local_flag,
+                    items=[item],
+                    precedings=[],
+                    skip_glossary_merge=True,
+                    skip_response_check=True,
+                )
+
+                # 执行翻译
+                result = translator_task.start()
+                success = result.get("row_count", 0) > 0
+            except Exception:
+                success = False
+            finally:
+                # 回调通知（在当前线程直接调用，UI 层需自行处理线程切换）
+                if callback:
+                    callback(item, success)
+
+        # 启动后台线程
+        thread = threading.Thread(
+            target=task,
+            name=f"{Engine.TASK_PREFIX}SINGLE"
+        )
+        thread.start()

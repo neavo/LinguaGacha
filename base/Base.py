@@ -10,6 +10,9 @@ class Base():
     class Event(StrEnum):
 
         TOAST = "TOAST"                                                     # Toast
+        PROGRESS_TOAST_SHOW = "PROGRESS_TOAST_SHOW"                         # 显示进度 Toast
+        PROGRESS_TOAST_UPDATE = "PROGRESS_TOAST_UPDATE"                     # 更新进度 Toast
+        PROGRESS_TOAST_HIDE = "PROGRESS_TOAST_HIDE"                         # 隐藏进度 Toast
         PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"                             # 项目 - 检查
         PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"                           # 项目 - 检查完成
         APITEST_RUN = "APITEST_RUN"                                         # 测试 - 开始

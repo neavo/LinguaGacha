@@ -1,6 +1,7 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QContextMenuEvent
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
@@ -27,6 +28,7 @@ class ProofreadingTableWidget(TableWidget):
     # 信号定义
     cell_edited = pyqtSignal(object, str)       # (item, new_dst) 单元格编辑完成
     retranslate_clicked = pyqtSignal(object)    # (item) 重新翻译
+    batch_retranslate_clicked = pyqtSignal(list) # (items) 批量重新翻译
     copy_src_clicked = pyqtSignal(object)       # (item) 复制原文到译文
     copy_dst_clicked = pyqtSignal(object)       # (item) 复制译文到剪贴板
 
@@ -64,7 +66,8 @@ class ProofreadingTableWidget(TableWidget):
 
         # 设置表格属性
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        # 支持 Ctrl/Shift 多选和拖拽选择
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         # 禁用默认的双击编辑，改为双击弹出对话框
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
@@ -153,15 +156,12 @@ class ProofreadingTableWidget(TableWidget):
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
         src_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        # 设置 Tooltip 显示完整内容
-        src_item.setToolTip(src_text)
         self.setItem(row, self.COL_SRC, src_item)
 
         # 译文列：显示换行符，超宽自动省略
         dst_display = dst_text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
         dst_item = QTableWidgetItem(dst_display)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        dst_item.setToolTip(dst_text)
         if self._readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
         self.setItem(row, self.COL_DST, dst_item)
@@ -190,23 +190,16 @@ class ProofreadingTableWidget(TableWidget):
             status_icon = IconWidget(self.STATUS_ICONS[status])
             status_icon.setFixedSize(16, 16)
             status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
-            # 格式修改为：
-            # 翻译状态
-            # 当前状态：xxx
             status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self._get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
         # 警告图标（有警告才显示）
         if warnings:
-            # 使用 FEEDBACK 图标（感叹号三角），更有警示意图
             warning_icon = IconWidget(FluentIcon.VPN)
             warning_icon.setFixedSize(16, 16)
             warning_texts = [self._get_warning_text(e) for e in warnings]
             warning_icon.installEventFilter(ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP))
-            # 格式修改为：
-            # 结果检查
-            # 当前状态：xxx | xxx | xxx
             warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
@@ -337,7 +330,7 @@ class ProofreadingTableWidget(TableWidget):
             return
 
         # 弹出编辑对话框
-        dialog = TextEditDialog(item.get_src(), item.get_dst(), self.window())
+        dialog = TextEditDialog(item.get_src(), item.get_dst(), item.get_file_path(), self.window())
         if dialog.exec():
             new_dst = dialog.get_dst_text()
             # 只在内容变化时发出信号
@@ -360,8 +353,7 @@ class ProofreadingTableWidget(TableWidget):
             # 显示换行符，超宽自动省略
             dst_display = new_dst.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
             dst_cell.setText(dst_display)
-            # Tooltip 显示完整内容
-            dst_cell.setToolTip(new_dst)
+
         self.blockSignals(False)
 
     def select_row(self, row: int) -> None:
@@ -371,3 +363,32 @@ class ProofreadingTableWidget(TableWidget):
         self.selectRow(row)
         # 延迟滚动，确保 cell widget 布局先完成更新
         QTimer.singleShot(0, lambda: self.scrollToItem(self.item(row, self.COL_SRC), QAbstractItemView.PositionAtCenter))
+
+    def get_selected_items(self) -> list[Item]:
+        """获取所有选中行对应的 Item 对象"""
+        items = []
+        for row in sorted(set(index.row() for index in self.selectedIndexes())):
+            item = self.get_item_at_row(row)
+            if item:
+                items.append(item)
+        return items
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """右键菜单事件"""
+        if self._readonly:
+            return
+
+        selected_items = self.get_selected_items()
+        if not selected_items:
+            return
+
+        menu = RoundMenu(parent=self)
+
+        # 统一使用批量重翻逻辑，无论单选还是多选
+        menu.addAction(Action(
+            FluentIcon.SYNC,
+            Localizer.get().proofreading_page_batch_retranslate,
+            triggered=lambda checked: self.batch_retranslate_clicked.emit(selected_items)
+        ))
+
+        menu.exec(event.globalPos())
