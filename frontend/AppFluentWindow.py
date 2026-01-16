@@ -1,5 +1,6 @@
 import os
 import signal
+import time
 
 from PyQt5.QtCore import QEvent
 from PyQt5.QtCore import Qt
@@ -26,7 +27,6 @@ from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
-from frontend.Extra.BatchCorrectionPage import BatchCorrectionPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ReTranslationPage import ReTranslationPage
@@ -39,9 +39,10 @@ from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.TranslationPage import TranslationPage
+from frontend.Translation import TranslationPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.ProgressToast import ProgressToast
 
 class AppFluentWindow(FluentWindow, Base):
 
@@ -80,14 +81,22 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_pages()
 
         # 注册事件
-        self.subscribe(Base.Event.APP_TOAST_SHOW, self.show_toast)
+        self.subscribe(Base.Event.TOAST, self.toast)
         self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_update_check_done)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_DONE, self.app_update_download_done)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, self.app_update_download_error)
         self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update)
+        self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
+        self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
+        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide_handler)
+
+        # 创建进度 Toast 组件（应用级别，挂载到主窗口）
+        self.progress_toast = ProgressToast(self)
+        self._progress_start_time: float = 0.0       # 开始显示的时间戳
+        self._progress_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
 
         # 检查更新
-        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_START, {}))
+        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
 
     # 重写窗口关闭函数
     def closeEvent(self, event: QEvent) -> None:
@@ -101,7 +110,11 @@ class AppFluentWindow(FluentWindow, Base):
             os.kill(os.getpid(), signal.SIGTERM)
 
     # 响应显示 Toast 事件
-    def show_toast(self, event: str, data: dict) -> None:
+    def toast(self, event: Base.Event, data: dict) -> None:
+        # 窗口最小化时不显示 toast，避免 InfoBar 动画错误
+        if self.isMinimized():
+            return
+
         toast_type = data.get("type", Base.ToastType.INFO)
         toast_message = data.get("message", "")
         toast_duration = data.get("duration", 2500)
@@ -125,8 +138,77 @@ class AppFluentWindow(FluentWindow, Base):
             isClosable = True,
         )
 
+    # 响应显示进度 Toast 事件
+    def progress_toast_show(self, event: Base.Event, data: dict) -> None:
+        # 窗口最小化时不显示，避免动画错误
+        if self.isMinimized():
+            return
+
+        # 取消延迟隐藏（如果有新任务）
+        if self._progress_hide_timer is not None:
+            self._progress_hide_timer.stop()
+            self._progress_hide_timer = None
+
+        # 记录开始时间（如果是首次显示）
+        if self._progress_start_time == 0.0:
+            self._progress_start_time = time.time()
+
+        message = data.get("message", "")
+        is_indeterminate = data.get("indeterminate", True)
+        current = data.get("current", 0)
+        total = data.get("total", 0)
+
+        if is_indeterminate:
+            self.progress_toast.show_indeterminate(message)
+        else:
+            self.progress_toast.show_progress(message, current, total)
+
+    # 响应更新进度 Toast 事件
+    def progress_toast_update(self, event: Base.Event, data: dict) -> None:
+        message = data.get("message", "")
+        current = data.get("current", 0)
+        total = data.get("total", 0)
+
+        self.progress_toast.set_content(message)
+        self.progress_toast.set_progress(current, total)
+
+    # 响应隐藏进度 Toast 事件
+    def progress_toast_hide_handler(self, event: Base.Event, data: dict) -> None:
+        # 未显示时直接返回
+        if self._progress_start_time == 0.0:
+            return
+
+        min_display_ms = 1500
+        elapsed_ms = (time.time() - self._progress_start_time) * 1000
+        remaining_ms = min_display_ms - elapsed_ms
+
+        if remaining_ms > 0:
+            # 延迟隐藏，保证最小显示时长
+            self._progress_hide_timer = QTimer()
+            self._progress_hide_timer.setSingleShot(True)
+            self._progress_hide_timer.timeout.connect(self._do_progress_toast_hide)
+            self._progress_hide_timer.start(int(remaining_ms))
+        else:
+            self._do_progress_toast_hide()
+
+    def _do_progress_toast_hide(self) -> None:
+        """实际执行隐藏操作"""
+        self._progress_hide_timer = None
+        self._progress_start_time = 0.0
+        self.progress_toast.hide_toast()
+
+    # 重写窗口大小变化事件，更新进度 Toast 位置
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.progress_toast.isVisible():
+            self.progress_toast._update_position()
+
     # 切换主题
     def switch_theme(self) -> None:
+        # 处理待处理事件，确保 deleteLater() 触发的 widget 销毁已完成
+        # 避免 qfluentwidgets styleSheetManager 遍历时字典大小变化
+        QApplication.processEvents()
+
         config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)
@@ -155,7 +237,7 @@ class AppFluentWindow(FluentWindow, Base):
             config.app_language = BaseLanguage.Enum.EN
             config.save()
 
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().switch_language_toast,
         })
@@ -169,7 +251,7 @@ class AppFluentWindow(FluentWindow, Base):
             )
 
             # 触发下载事件
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_START, {})
+            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
         elif VersionManager.get().get_status() == VersionManager.Status.UPDATING:
             pass
         elif VersionManager.get().get_status() == VersionManager.Status.DOWNLOADED:
@@ -178,20 +260,20 @@ class AppFluentWindow(FluentWindow, Base):
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 更新 - 检查完成
-    def app_update_check_done(self, event: str, data: dict) -> None:
+    def app_update_check_done(self, event: Base.Event, data: dict) -> None:
         if data.get("new_version", False) == True:
             self.home_page_widget.setName(Localizer.get().app_new_version)
 
     # 更新 - 下载完成
-    def app_update_download_done(self, event: str, data: dict) -> None:
+    def app_update_download_done(self, event: Base.Event, data: dict) -> None:
         self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
 
     # 更新 - 下载报错
-    def app_update_download_error(self, event: str, data: dict) -> None:
+    def app_update_download_error(self, event: Base.Event, data: dict) -> None:
         self.home_page_widget.setName(__class__.HOMEPAGE)
 
     # 更新 - 下载更新
-    def app_update_download_update(self, event: str, data: dict) -> None:
+    def app_update_download_update(self, event: Base.Event, data: dict) -> None:
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
         self.home_page_widget.setName(
@@ -277,12 +359,21 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
-        # 开始翻译
         self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
             self.translation_page,
-            FluentIcon.PLAY,
+            FluentIcon.TRANSPARENT,
             Localizer.get().app_translation_page,
+            NavigationItemPosition.SCROLL
+        )
+
+        # 校对任务
+        from frontend.Proofreading import ProofreadingPage
+        self.proofreading_page = ProofreadingPage("proofreading_page", self)
+        self.addSubInterface(
+            self.proofreading_page,
+            FluentIcon.CHECKBOX,
+            Localizer.get().app_proofreading_page,
             NavigationItemPosition.SCROLL
         )
 
@@ -400,9 +491,6 @@ class AppFluentWindow(FluentWindow, Base):
             position = NavigationItemPosition.SCROLL,
         )
 
-        # 百宝箱 - 批量修正
-        self.batch_correction_page = BatchCorrectionPage("batch_correction_page", self)
-        self.stackedWidget.addWidget(self.batch_correction_page)
 
         # 百宝箱 - 部分重翻
         self.re_translation_page = ReTranslationPage("re_translation_page", self)

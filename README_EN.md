@@ -38,6 +38,10 @@
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
+  - Windows: Download `.zip` file, extract and run `app.exe`
+  - macOS: Download `.dmg` file (`x86_64` for Intel, `arm64` for Apple Silicon), drag to Applications folder
+    - On first launch, you may see "unidentified developer" warning. Right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: Download `.AppImage` file, make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
   - [ [Gemini API](https://aistudio.google.com/) ] (Paid, cost-effective, fast, relatively-high-quality, no GPU required)　`👈👈 Recommended`
@@ -45,7 +49,7 @@
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
-- Launch application via `app.exe`:
+- Launch the application:
   - Configure essential settings (source/target languages) in `Project Settings`
   - Copy files to input folder (default: `input`), start translation in `Begin Translation`
 
@@ -61,7 +65,7 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [Treasure Chest - Partial ReTranslation](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
@@ -79,17 +83,31 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20250604 v0.29.2
-  - OPT - Updated phonetic notation cleanup rules
-  - FIX - An issue where tasks could not be stopped properly under specific circumstances
+- 20260114 v0.40.1
+  - ADD - `Proofreading Task` feature
+    - Removed functions that are no longer needed, such as `Batch Correction`
+  - ADJ - Visual and interaction improvements
+  - ADJ - Separate statistics for input/output tokens
+  - ADJ - Search function refactoring, now supports regex search
+  - FIX - Issue where similarity judgment could not take effect correctly
 
-- 20250603 v0.29.1
-  - FIX - Continue task feature
+- 20260112 v0.30.0
+  - ADD - Replace and Glossary now support `Case Sensitive` #291
+  - ADD - Auto-process prefix/suffix text segments for preservation (Expert Settings) #259
+  - ADJ - Optimized compatibility for Ruby Clean
+  - FIX - Resolved user feedback issues #251 #289 #290
 
-- 20250602 v0.29.0
-  - NEW - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
-  - OPT - More accurate request timeout control
-  - OPT - Print failed API keys during interface testing
+- 20260111 v0.29.6
+  - FIX - Issue with missing application icons
+  - FIX - Occasional issue with incorrect line number display
+  - FIX - Issue where translation could not be stopped normally (CONTINUED)
+  - ADJ - Qwen3 series models no longer support `Priority Use of Thinking Mode`
+
+### Development Guide 🛠️
+- This project is managed using [**uv**](https://github.com/astral-sh/uv)
+- Install dependencies `uv sync -U`
+- Run application `uv run app.py`
+- For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

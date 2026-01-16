@@ -8,7 +8,7 @@ import opencc
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Fixer.CodeFixer import CodeFixer
 from module.Fixer.EscapeFixer import EscapeFixer
@@ -23,9 +23,9 @@ from module.RubyCleaner import RubyCleaner
 class TextProcessor(Base):
 
     # 对文本进行处理的流程为：
-    # - 文本保护
     # - 正规化
     # - 清理注音
+    # - 文本保护
     # - 译前替换
     # - 注入姓名
     # ---- 翻译 ----
@@ -49,18 +49,18 @@ class TextProcessor(Base):
     OPENCCS2T = opencc.OpenCC("s2tw")
 
     # 正则表达式
-    RE_NAME = re.compile(r"^【(.*?)】\s*|\[(.*?)\]\s*", flags = re.IGNORECASE)
+    RE_NAME = re.compile(r"^[\[【](.*?)[\]】]\s*", flags = re.IGNORECASE)
     RE_BLANK: re.Pattern = re.compile(r"\s+", re.IGNORECASE)
 
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, item: CacheItem) -> None:
+    def __init__(self, config: Config, item: Item) -> None:
         super().__init__()
 
         # 初始化
         self.config: Config = config
-        self.item: CacheItem = item
+        self.item: Item = item
 
         self.srcs: list[str] = []
         self.samples: list[str] = []
@@ -74,7 +74,7 @@ class TextProcessor(Base):
 
     @classmethod
     @lru_cache(maxsize = None)
-    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: CacheItem.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
+    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: Item.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
         data: list[dict[str, str]] = []
         if custom == True:
             data = custom_data
@@ -83,8 +83,8 @@ class TextProcessor(Base):
             try:
                 with open(path, "r", encoding = "utf-8-sig") as reader:
                     data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
-            except:
-                pass
+            except Exception as e:
+                print(f"Error reading rule file '{path}': {e}")
 
         if len(data) == 0:
             return None
@@ -97,7 +97,7 @@ class TextProcessor(Base):
         elif rule_type == __class__.RuleType.SUFFIX:
             return re.compile(rf"(?:{"|".join(data)})+$", re.IGNORECASE)
 
-    def get_re_check(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -107,7 +107,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_sample(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_sample(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -117,7 +117,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_prefix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_prefix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -127,7 +127,7 @@ class TextProcessor(Base):
                 language = Localizer.get_app_language(),
             )
 
-    def get_re_suffix(self, custom: bool, text_type: CacheItem.TextType) -> re.Pattern:
+    def get_re_suffix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
                 custom = custom,
@@ -157,7 +157,7 @@ class TextProcessor(Base):
         if self.config.clean_ruby == False:
             return src
         else:
-            return RubyCleaner.clean(src)
+            return RubyCleaner.clean(src, self.item.get_text_type())
 
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
@@ -186,7 +186,7 @@ class TextProcessor(Base):
         return dst
 
     # 注入姓名
-    def inject_name(self, srcs: list[str], item: CacheItem) -> list[str]:
+    def inject_name(self, srcs: list[str], item: Item) -> list[str]:
         name: str = item.get_first_name_src()
         if name is not None and len(srcs) > 0:
             srcs[0] = f"【{name}】{srcs[0]}"
@@ -194,7 +194,7 @@ class TextProcessor(Base):
         return srcs
 
     # 提取姓名
-    def extract_name(self, srcs: list[str], dsts: list[str], item: CacheItem) -> str:
+    def extract_name(self, srcs: list[str], dsts: list[str], item: Item) -> str:
         name: str = None
         if item.get_first_name_src() is not None and len(srcs) > 0:
             result: re.Match[str] = __class__.RE_NAME.search(dsts[0])
@@ -202,12 +202,11 @@ class TextProcessor(Base):
                 pass
             elif result.group(1) is not None:
                 name = result.group(1)
-            elif result.group(2) is not None:
-                name = result.group(2)
 
             # 清理一下
-            srcs[0] = __class__.RE_NAME.sub("", srcs[0])
-            dsts[0] = __class__.RE_NAME.sub("", dsts[0])
+            if name is not None:
+                srcs[0] = __class__.RE_NAME.sub("", srcs[0])
+                dsts[0] = __class__.RE_NAME.sub("", dsts[0])
 
         return name, srcs, dsts
 
@@ -217,10 +216,25 @@ class TextProcessor(Base):
             return src
 
         for v in self.config.pre_translation_replacement_data:
-            if v.get("regex", False) != True:
-                src = src.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                src = re.sub(pattern, replacement, src, flags=flags)
             else:
-                src = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", src)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    src = src.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    src = re.sub(pattern_escaped, replacement, src, flags=re.IGNORECASE)
 
         return src
 
@@ -230,10 +244,25 @@ class TextProcessor(Base):
             return dst
 
         for v in self.config.post_translation_replacement_data:
-            if v.get("regex", False) != True:
-                dst = dst.replace(v.get("src"), v.get("dst"))
+            pattern = v.get("src")
+            replacement = v.get("dst")
+            is_regex = v.get("regex", False)
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            if is_regex:
+                # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
+                flags = 0 if is_case_sensitive else re.IGNORECASE
+                dst = re.sub(pattern, replacement, dst, flags=flags)
             else:
-                dst = re.sub(rf"{v.get("src")}", rf"{v.get("dst")}", dst)
+                # 普通替换模式
+                if is_case_sensitive:
+                    # 大小写敏感：使用普通 replace
+                    dst = dst.replace(pattern, replacement)
+                else:
+                    # 大小写不敏感：使用正则模式 + IGNORECASE
+                    # 需要转义特殊字符以确保按字面意义匹配
+                    pattern_escaped = re.escape(pattern)
+                    dst = re.sub(pattern_escaped, replacement, dst, flags=re.IGNORECASE)
 
         return dst
 
@@ -248,7 +277,11 @@ class TextProcessor(Base):
             return __class__.OPENCCT2S.convert(dst)
 
     # 处理前后缀代码段
-    def prefix_suffix_process(self, i: int, src: str, text_type: CacheItem.TextType) -> None:
+    def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> str:
+        # 如果未启用自动移除前后缀代码段，直接返回原始文本
+        if self.config.auto_process_prefix_suffix_preserved_text == False:
+            return src
+
         rule: re.Pattern = self.get_re_prefix(
             custom = self.config.text_preserve_enable,
             text_type = text_type,
@@ -270,6 +303,12 @@ class TextProcessor(Base):
         # 依次处理每行，顺序为：
         text_type = self.item.get_text_type()
         for i, src in enumerate(self.item.get_src().split("\n")):
+            # 正规化
+            src = self.normalize(src)
+
+            # 清理注音
+            src = self.clean_ruby(src)
+
             if src == "":
                 pass
             elif src.strip() == "":
@@ -282,12 +321,6 @@ class TextProcessor(Base):
                 if src == "":
                     pass
                 else:
-                    # 正规化
-                    src = self.normalize(src)
-
-                    # 清理注音
-                    src = self.clean_ruby(src)
-
                     # 译前替换
                     src = self.replace_pre_translation(src)
 
@@ -300,7 +333,7 @@ class TextProcessor(Base):
                         self.samples.extend([v.group(0) for v in rule.finditer(src)])
 
                     # 补充
-                    if text_type == CacheItem.TextType.MD:
+                    if text_type == Item.TextType.MD:
                         self.samples.append("Markdown Code")
 
                     # 保存结果
@@ -349,7 +382,7 @@ class TextProcessor(Base):
         return name, "\n".join(results)
 
     # 检查代码段
-    def check(self, src: str, dst: str, text_type: CacheItem.TextType) -> bool:
+    def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern = self.get_re_check(

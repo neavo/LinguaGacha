@@ -10,7 +10,7 @@ class ResponseDecoder(Base):
     # 解析文本
     def decode(self, response: str) -> tuple[list[str], list[dict[str, str]]]:
         dsts: list[str] = []
-        glossarys: list[dict[str, str]] = []
+        glossary: list[dict[str, str]] = []
 
         # 按行解析失败时，尝试按照普通 JSON 字典进行解析
         for line in response.splitlines():
@@ -21,14 +21,13 @@ class ResponseDecoder(Base):
                     _, v = list(json_data.items())[0]
                     if isinstance(v, str):
                         dsts.append(v if isinstance(v, str) else "")
-
                 # 术语表条目
-                if len(json_data) == 3:
-                    if any(v in json_data for v in ("src", "dst", "gender")):
+                elif len(json_data) == 3:
+                    if all(v in json_data for v in ("src", "dst", "gender")):
                         src: str = json_data.get("src")
                         dst: str = json_data.get("dst")
                         gender: str = json_data.get("gender")
-                        glossarys.append(
+                        glossary.append(
                             {
                                 "src": src if isinstance(src, str) else "",
                                 "dst": dst if isinstance(dst, str) else "",
@@ -45,4 +44,4 @@ class ResponseDecoder(Base):
                         dsts.append(v if isinstance(v, str) else "")
 
         # 返回默认值
-        return dsts, glossarys
+        return dsts, glossary

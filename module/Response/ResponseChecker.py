@@ -3,11 +3,11 @@ from enum import StrEnum
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
-from module.Filter.RuleFilter import RuleFilter
 from module.Filter.LanguageFilter import LanguageFilter
+from module.Filter.RuleFilter import RuleFilter
+from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
 class ResponseChecker(Base):
@@ -20,7 +20,6 @@ class ResponseChecker(Base):
         FAIL_LINE_COUNT = "FAIL_LINE_COUNT"
         LINE_ERROR_KANA = "LINE_ERROR_KANA"
         LINE_ERROR_HANGEUL = "LINE_ERROR_HANGEUL"
-        LINE_ERROR_FAKE_REPLY = "LINE_ERROR_FAKE_REPLY"
         LINE_ERROR_EMPTY_LINE = "LINE_ERROR_EMPTY_LINE"
         LINE_ERROR_SIMILARITY = "LINE_ERROR_SIMILARITY"
         LINE_ERROR_DEGRADATION = "LINE_ERROR_DEGRADATION"
@@ -28,7 +27,6 @@ class ResponseChecker(Base):
     LINE_ERROR: tuple[StrEnum] = (
         Error.LINE_ERROR_KANA,
         Error.LINE_ERROR_HANGEUL,
-        Error.LINE_ERROR_FAKE_REPLY,
         Error.LINE_ERROR_EMPTY_LINE,
         Error.LINE_ERROR_SIMILARITY,
         Error.LINE_ERROR_DEGRADATION,
@@ -40,7 +38,7 @@ class ResponseChecker(Base):
     # 退化检测规则
     RE_DEGRADATION = re.compile(r"(.{1,3})\1{16,}", flags = re.IGNORECASE)
 
-    def __init__(self, config: Config, items: list[CacheItem]) -> None:
+    def __init__(self, config: Config, items: list[Item]) -> None:
         super().__init__()
 
         # 初始化
@@ -48,7 +46,7 @@ class ResponseChecker(Base):
         self.config = config
 
     # 检查
-    def check(self, srcs: list[str], dsts: list[str], text_type: CacheItem.TextType) -> list[str]:
+    def check(self, srcs: list[str], dsts: list[str], text_type: Item.TextType) -> list[str]:
         # 数据解析失败
         if len(dsts) == 0 or all(v == "" or v == None for v in dsts):
             return [__class__.Error.FAIL_DATA] * len(srcs)
@@ -70,7 +68,7 @@ class ResponseChecker(Base):
         return [__class__.Error.NONE] * len(srcs)
 
     # 逐行检查错误
-    def check_lines(self, srcs: list[str], dsts: list[str], text_type: CacheItem.TextType) -> list[Error]:
+    def check_lines(self, srcs: list[str], dsts: list[str], text_type: Item.TextType) -> list[Error]:
         checks: list[__class__.Error] = []
         for src, dst in zip(srcs, dsts):
             src = src.strip()
@@ -116,7 +114,7 @@ class ResponseChecker(Base):
                 continue
 
             # 判断是否包含或相似
-            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80 == True:
+            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80:
                 # 日翻中时，只有译文至少包含一个平假名或片假名字符时，才判断为 相似
                 if self.config.source_language == BaseLanguage.Enum.JA and self.config.target_language == BaseLanguage.Enum.ZH:
                     if TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst):

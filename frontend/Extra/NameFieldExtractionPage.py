@@ -1,27 +1,26 @@
 import time
 
-from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
-from qfluentwidgets import PushButton
-from qfluentwidgets import MessageBox
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import TransparentPushButton
+from qfluentwidgets import MessageBox
+from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
-from module.File.FileManager import FileManager
-from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheManager import CacheManager
+from model.Item import Item
+from module.CacheManager import CacheManager
 from module.Config import Config
+from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from widget.EmptyCard import EmptyCard
 from widget.CommandBarCard import CommandBarCard
+from widget.EmptyCard import EmptyCard
 
 class NameFieldExtractionPage(QWidget, Base):
 
@@ -130,7 +129,7 @@ class NameFieldExtractionPage(QWidget, Base):
         # 读取文件
         config = Config().load()
         project, items = FileManager(config).read_from_path()
-        items = [v for v in items if v.get_file_type() in (CacheItem.FileType.MESSAGEJSON, CacheItem.FileType.RENPY)]
+        items = [v for v in items if v.get_file_type() in (Item.FileType.MESSAGEJSON, Item.FileType.RENPY)]
 
         # 构建姓名字典
         name_src_dict: dict[str, str] = {}
@@ -139,31 +138,31 @@ class NameFieldExtractionPage(QWidget, Base):
             if isinstance(name, str) and name != "" and len(name_src_dict.get(name, "")) < len(item.get_src()):
                 name_src_dict[name] = item.get_src()
 
-        items: list[CacheItem] = []
+        items: list[Item] = []
         for name, src in name_src_dict.items():
-            items.append(CacheItem.from_dict({
+            items.append(Item.from_dict({
                 "src": f"【{name}】\n{src}",
                 "dst": f"【{name}】\n{src}",
                 "row": len(items) + 1,
-                "file_type": CacheItem.FileType.XLSX,
+                "file_type": Item.FileType.XLSX,
                 "file_path": Localizer.get().path_result_name_field_extraction,
-                "status": Base.TranslationStatus.UNTRANSLATED,
+                "status": Base.ProjectStatus.NONE,
             }))
 
         # 有效性检查
-        items_lenght = len([v for v in items if v.get_status() == Base.TranslationStatus.UNTRANSLATED])
+        items_lenght = len([v for v in items if v.get_status() == Base.ProjectStatus.NONE])
         if items_lenght == 0:
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().alert_no_data,
             })
             return None
 
         # 设置项目数据
-        project.set_status(Base.TranslationStatus.TRANSLATING)
+        project.set_status(Base.ProjectStatus.PROCESSING)
         project.set_extras({
             "start_time": time.time(),
-            "total_line": len([item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]),
+            "total_line": len([item for item in items if item.get_status() == Base.ProjectStatus.NONE]),
             "line": 0,
             "total_tokens": 0,
             "total_output_tokens": 0,
@@ -177,9 +176,9 @@ class NameFieldExtractionPage(QWidget, Base):
             output_folder = config.output_folder,
         )
 
-        window.switchTo(window.translation_page)
-        self.emit(Base.Event.TRANSLATION_START, {
-            "status": Base.TranslationStatus.TRANSLATING,
+        window.switchTo(window.task_page)
+        self.emit(Base.Event.TRANSLATION_RUN, {
+            "status": Base.ProjectStatus.PROCESSING,
         })
 
     # 第二步点击事件
@@ -218,7 +217,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         # 有效性检查
         if len(names) == 0 or len(items) == 0:
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.ERROR,
                 "message": Localizer.get().alert_no_data,
             })
@@ -244,7 +243,7 @@ class NameFieldExtractionPage(QWidget, Base):
         window.switchTo(window.glossary_page)
 
         # 提示
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS,
             "message": Localizer.get().task_success,
         })

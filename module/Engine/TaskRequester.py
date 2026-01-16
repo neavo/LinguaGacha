@@ -19,21 +19,38 @@ class TaskRequester(Base):
     # 密钥索引
     API_KEY_INDEX: int = 0
 
-    # qwen3_instruct_8b_q6k
-    RE_QWEN3: re.Pattern = re.compile(r"qwen3", flags = re.IGNORECASE)
-
-    # gemini-2.5-flash
+    # Gemini
     RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
+    RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags = re.IGNORECASE)
 
     # Claude
     RE_CLAUDE: tuple[re.Pattern] = (
         re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE),
-        re.compile(r"claude-opus-4-0", flags = re.IGNORECASE),
-        re.compile(r"claude-sonnet-4-0", flags = re.IGNORECASE),
+        re.compile(r"claude-opus-4-\d", flags = re.IGNORECASE),
+        re.compile(r"claude-haiku-4-\d", flags = re.IGNORECASE),
+        re.compile(r"claude-sonnet-4-\d", flags = re.IGNORECASE),
     )
 
-    # o1 o3-mini o4-mini-20240406
-    RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
+    # OpenAI Compatible
+    RE_GLM: tuple[re.Pattern] = (
+        re.compile(r"glm-4\.5", flags = re.IGNORECASE),
+        re.compile(r"glm-4\.6", flags = re.IGNORECASE),
+        re.compile(r"glm-4\.7", flags = re.IGNORECASE),
+    )
+    RE_DOUBAO: tuple[re.Pattern] = (
+        re.compile(r"doubao-seed-1-6", flags = re.IGNORECASE),
+        re.compile(r"doubao-seed-1-8", flags = re.IGNORECASE),
+    )
+    RE_DEEPSEEK: tuple[re.Pattern] = (
+        re.compile(r"deepseek-v3-1", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3-2", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3\.1", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3\.2", flags = re.IGNORECASE),
+    )
+    RE_OPENAI: tuple[re.Pattern] = (
+        re.compile(r"gpt-\d", flags = re.IGNORECASE),
+        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags = re.IGNORECASE),
+    )
 
     # 正则
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
@@ -41,36 +58,42 @@ class TaskRequester(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
+    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list]) -> None:
         super().__init__()
 
         # 初始化
         self.config = config
         self.platform = platform
-        self.current_round = current_round
 
     # 重置
     @classmethod
     def reset(cls) -> None:
         cls.API_KEY_INDEX: int = 0
+        cls.get_url.cache_clear()
         cls.get_client.cache_clear()
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
-        key: str = ""
-
         if len(keys) == 0:
-            key = "no_key_required"
-        elif len(keys) == 1:
-            key = keys[0]
-        elif cls.API_KEY_INDEX >= len(keys) - 1:
-            key = keys[0]
-            cls.API_KEY_INDEX = 0
-        else:
-            key = keys[cls.API_KEY_INDEX]
-            cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
-
+            return "no_key_required"
+        if len(keys) == 1:
+            return keys[0]
+        key = keys[cls.API_KEY_INDEX % len(keys)]
+        cls.API_KEY_INDEX = (cls.API_KEY_INDEX + 1) % len(keys)
         return key
+
+    # 获取密钥
+    @classmethod
+    @lru_cache(maxsize = None)
+    def get_url(cls, url: str, format: str) -> str:
+        if format == Base.APIFormat.SAKURALLM:
+            return url.removesuffix("/").removesuffix("/chat/completions")
+        elif format == Base.APIFormat.GOOGLE:
+            return url.removesuffix("/")
+        elif format == Base.APIFormat.ANTHROPIC:
+            return url.removesuffix("/")
+        else:
+            return url.removesuffix("/").removesuffix("/chat/completions")
 
     # 获取客户端
     @classmethod
@@ -101,7 +124,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
         elif format == Base.APIFormat.GOOGLE:
             # https://github.com/googleapis/python-genai
@@ -125,7 +148,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
         else:
             return openai.OpenAI(
@@ -137,7 +160,7 @@ class TaskRequester(Base):
                     write = 8.00,
                     connect = 8.00,
                 ),
-                max_retries = 1,
+                max_retries = 0,
             )
 
     # 发起请求
@@ -187,7 +210,7 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(512, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
@@ -201,7 +224,7 @@ class TaskRequester(Base):
             # 获取客户端
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
-                    url = self.platform.get("api_url"),
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
                     key = __class__.get_key(self.platform.get("api_key")),
                     format = self.platform.get("api_format"),
                     timeout = self.config.request_timeout,
@@ -244,27 +267,44 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
-        # OpenAI O-Series 模型兼容性处理
+        # 初始化 extra_body
+        if isinstance(args.get("extra_body"), dict) == False:
+            args["extra_body"] = {}
+
+        # 为 OpenAI 平台设置 max_completion_tokens
         if (
-            self.platform.get("api_url").startswith("https://api.openai.com") or
-            __class__.RE_O_SERIES.search(self.platform.get("model")) is not None
+            self.platform.get("api_url").startswith("https://api.openai.com")
+            or any(v.search(self.platform.get("model")) is not None for v in __class__.RE_OPENAI)
         ):
             args.pop("max_tokens", None)
-            args["max_completion_tokens"] = max(4 * 1024, self.config.token_threshold)
+            args["max_completion_tokens"] = self.config.output_token_threshold
 
-        # 思考模式切换 - QWEN3
-        if __class__.RE_QWEN3.search(self.platform.get("model")) is not None:
+        # GLM
+        if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_GLM):
             if thinking == True:
-                pass
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
             else:
-                if "/no_think" not in messages[-1].get("content", ""):
-                    messages[-1]["content"] = messages[-1].get("content") + "\n" + "/no_think"
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+        # Doubao
+        elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DOUBAO):
+            if thinking == True:
+                args["extra_body"]["reasoning_effort"] = "low"
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            else:
+                args["extra_body"]["reasoning_effort"] = "minimal"
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+        # DeepSeek
+        elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DEEPSEEK):
+            if thinking == True:
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            else:
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
 
         return args
 
@@ -274,7 +314,7 @@ class TaskRequester(Base):
             # 获取客户端
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
-                    url = self.platform.get("api_url"),
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
                     key = __class__.get_key(self.platform.get("api_key")),
                     format = self.platform.get("api_format"),
                     timeout = self.config.request_timeout,
@@ -318,7 +358,7 @@ class TaskRequester(Base):
     # 生成请求参数
     def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
         args: dict = args | {
-            "max_output_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_output_tokens": self.config.output_token_threshold,
             "safety_settings": (
                 types.SafetySetting(
                     category = "HARM_CATEGORY_HARASSMENT",
@@ -339,7 +379,7 @@ class TaskRequester(Base):
             ),
         }
 
-        # 思考模式切换 - Gemini 2.5 Flash
+        # Gemini 2.5 Pro
         if __class__.RE_GEMINI_2_5_FLASH.search(self.platform.get("model")) is not None:
             if thinking == True:
                 args["thinking_config"] = types.ThinkingConfig(
@@ -350,6 +390,15 @@ class TaskRequester(Base):
                 args["thinking_config"] = types.ThinkingConfig(
                     thinking_budget = 0,
                     include_thoughts = False,
+                )
+        if __class__.RE_GEMINI_3_FLASH.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level = "low",
+                )
+            else:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level = "minimal",
                 )
 
         return {
@@ -364,7 +413,7 @@ class TaskRequester(Base):
             # 获取客户端
             with __class__.LOCK:
                 client: genai.Client = __class__.get_client(
-                    url = self.platform.get("api_url"),
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
                     key = __class__.get_key(self.platform.get("api_key")),
                     format = self.platform.get("api_format"),
                     timeout = self.config.request_timeout,
@@ -411,25 +460,23 @@ class TaskRequester(Base):
         args: dict = args | {
             "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
+            "max_tokens": self.config.output_token_threshold,
             "extra_headers": {
                 "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
             }
         }
 
-        # 移除 Anthropic 模型不支持的参数
+        # 移除不支持的参数
         args.pop("presence_penalty", None)
         args.pop("frequency_penalty", None)
 
-        # 思考模式切换
+        # # Claude-3.7 Claude-4.0
         if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_CLAUDE):
             if thinking == True:
                 args["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 1024,
                 }
-            else:
-                pass
 
         return args
 
@@ -439,7 +486,7 @@ class TaskRequester(Base):
             # 获取客户端
             with __class__.LOCK:
                 client: anthropic.Anthropic = __class__.get_client(
-                    url = self.platform.get("api_url"),
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
                     key = __class__.get_key(self.platform.get("api_key")),
                     format = self.platform.get("api_format"),
                     timeout = self.config.request_timeout,

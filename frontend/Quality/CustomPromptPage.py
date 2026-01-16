@@ -109,7 +109,7 @@ class CustomPromptPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_save_toast,
             })
@@ -153,7 +153,7 @@ class CustomPromptPage(QWidget, Base):
             )
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_reset_toast,
             })
@@ -179,7 +179,7 @@ class CustomPromptPage(QWidget, Base):
             )
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })

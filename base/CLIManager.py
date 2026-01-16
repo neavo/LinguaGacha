@@ -21,7 +21,7 @@ class CLIManager(Base):
 
         return cls.__instance__
 
-    def translation_stop_done(self, event: str, data: dict) -> None:
+    def translation_done(self, event: Base.Event, data: dict) -> None:
         self.exit()
 
     def exit(self) -> None:
@@ -92,10 +92,10 @@ class CLIManager(Base):
             self.error(f"--target_language {Localizer.get().cli_verify_language}")
             self.exit()
 
-        self.emit(Base.Event.TRANSLATION_START, {
+        self.emit(Base.Event.TRANSLATION_RUN, {
             "config": config,
-            "status": Base.TranslationStatus.UNTRANSLATED,
+            "status": Base.ProjectStatus.NONE,
         })
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_stop_done)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
 
         return True

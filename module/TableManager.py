@@ -1,5 +1,7 @@
 import json
 from enum import StrEnum
+from functools import partial
+from typing import Any
 
 import openpyxl
 import openpyxl.styles
@@ -8,6 +10,8 @@ from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import TableWidget
+
+from widget.RuleWidget import RuleWidget
 
 class TableManager():
 
@@ -76,6 +80,14 @@ class TableManager():
                         self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
                         self.table.item(row, col).setText(v.get("info", ""))
+                    elif col == 3:
+                        rule_widget = RuleWidget(
+                            show_regex=False,
+                            show_case_sensitive=True,
+                            case_sensitive_enabled=v.get("case_sensitive", False),
+                            on_changed=partial(self._on_rule_changed, row, v),
+                        )
+                        self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.REPLACEMENT:
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
@@ -84,10 +96,14 @@ class TableManager():
                     elif col == 1:
                         self.table.item(row, col).setText(v.get("dst", ""))
                     elif col == 2:
-                        if v.get("regex", False) == True:
-                            self.table.item(row, col).setText("✅")
-                        else:
-                            self.table.item(row, col).setText("")
+                        rule_widget = RuleWidget(
+                            show_regex=True,
+                            show_case_sensitive=True,
+                            regex_enabled=v.get("regex", False),
+                            case_sensitive_enabled=v.get("case_sensitive", False),
+                            on_changed=partial(self._on_rule_changed, row, v),
+                        )
+                        self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.TEXT_PRESERVE:
             for row, v in enumerate(self.data):
                 for col in range(self.table.columnCount()):
@@ -106,14 +122,16 @@ class TableManager():
         sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
 
         # 设置表头
-        sheet.column_dimensions["A"].width = 32
-        sheet.column_dimensions["B"].width = 32
-        sheet.column_dimensions["C"].width = 32
-        sheet.column_dimensions["D"].width = 32
+        sheet.column_dimensions["A"].width = 24
+        sheet.column_dimensions["B"].width = 24
+        sheet.column_dimensions["C"].width = 24
+        sheet.column_dimensions["D"].width = 24
+        sheet.column_dimensions["E"].width = 24
         TableManager.set_cell_value(sheet, 1, 1, "src", 10)
         TableManager.set_cell_value(sheet, 1, 2, "dst", 10)
         TableManager.set_cell_value(sheet, 1, 3, "info", 10)
         TableManager.set_cell_value(sheet, 1, 4, "regex", 10)
+        TableManager.set_cell_value(sheet, 1, 5, "case_sensitive", 10)
 
         # 将数据写入工作表
         for row, item in enumerate(self.data):
@@ -121,6 +139,7 @@ class TableManager():
             TableManager.set_cell_value(sheet, row + 2, 2, item.get("dst", ""), 10)
             TableManager.set_cell_value(sheet, row + 2, 3, item.get("info", ""), 10)
             TableManager.set_cell_value(sheet, row + 2, 4, item.get("regex", ""), 10)
+            TableManager.set_cell_value(sheet, row + 2, 5, item.get("case_sensitive", ""), 10)
 
         # 保存工作簿
         book.save(f"{path}.xlsx")
@@ -169,14 +188,27 @@ class TableManager():
     def set_updating(self, updating: bool) -> None:
         self.updating = updating
 
+    # 规则变更回调
+    def _on_rule_changed(self, row: int, data_ref: dict[str, str | bool], regex: bool, case_sensitive: bool) -> None:
+        if self.type == __class__.Type.REPLACEMENT:
+            data_ref["regex"] = regex
+
+        data_ref["case_sensitive"] = case_sensitive
+
+        # 触发信号
+        self.table.itemChanged.emit(self.table.item(row, 0))
+
     # 生成新的条目
     def generate_item(self, col: int) -> QTableWidgetItem:
         item = QTableWidgetItem("")
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
         if self.type == __class__.Type.GLOSSARY:
-            pass
+            # 规则列不可编辑
+            if col == 3:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         elif self.type == __class__.Type.REPLACEMENT:
+            # 规则列不可编辑
             if col == 2:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         elif self.type == __class__.Type.TEXT_PRESERVE:
@@ -226,16 +258,28 @@ class TableManager():
         ]
 
         if self.type == __class__.Type.GLOSSARY:
+            # 从规则列的 RuleWidget 获取 case_sensitive 状态
+            rule_widget = self.table.cellWidget(row, 3)
+            case_sensitive = rule_widget.get_case_sensitive_enabled() if isinstance(rule_widget, RuleWidget) else False
+
             return {
                 "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
                 "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
                 "info": items[2].text().strip() if isinstance(items[2], QTableWidgetItem) else "",
+                "case_sensitive": case_sensitive,
             }
         elif self.type == __class__.Type.REPLACEMENT:
+            # 从规则列的 RuleWidget 获取 regex 和 case_sensitive 状态
+            rule_widget = self.table.cellWidget(row, 2)
+            regex = rule_widget.get_regex_enabled() if isinstance(rule_widget, RuleWidget) else False
+            case_sensitive = rule_widget.get_case_sensitive_enabled() if isinstance(rule_widget, RuleWidget) else False
+
             return {
                 "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
                 "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
-                "regex": items[2].text().strip() == "✅" if isinstance(items[2], QTableWidgetItem) else False,
+                "info": "",
+                "regex": regex,
+                "case_sensitive": case_sensitive,
             }
         elif self.type == __class__.Type.TEXT_PRESERVE:
             return {
@@ -296,6 +340,7 @@ class TableManager():
                                 "dst": entry.get("dst", "").strip(),
                                 "info": entry.get("info", "").strip(),
                                 "regex": entry.get("regex", False),
+                                "case_sensitive": entry.get("case_sensitive", False),
                             }
                         )
 
@@ -328,6 +373,7 @@ class TableManager():
                                 "dst": name,
                                 "info": "",
                                 "regex": False,
+                                "case_sensitive": False,
                             }
                         )
                         result.append(
@@ -336,6 +382,7 @@ class TableManager():
                                 "dst": name,
                                 "info": "",
                                 "regex": False,
+                                "case_sensitive": False,
                             }
                         )
                     if nickname != "":
@@ -345,6 +392,7 @@ class TableManager():
                                 "dst": name,
                                 "info": "",
                                 "regex": False,
+                                "case_sensitive": False,
                             }
                         )
                         result.append(
@@ -353,6 +401,7 @@ class TableManager():
                                 "dst": name,
                                 "info": "",
                                 "regex": False,
+                                "case_sensitive": False,
                             }
                         )
 
@@ -367,7 +416,7 @@ class TableManager():
                         continue
 
                     src: str = k.strip()
-                    dst: str = v.strip() if v is not None else ""
+                    dst: str = str(v).strip() if v is not None else ""
                     if src != "":
                         result.append(
                             {
@@ -375,6 +424,7 @@ class TableManager():
                                 "dst": dst,
                                 "info": "",
                                 "regex": False,
+                                "case_sensitive": False,
                             }
                         )
 
@@ -388,18 +438,19 @@ class TableManager():
         for row in range(1, sheet.max_row + 1):
             # 读取每一行的数据
             data: list[str] = [
-                sheet.cell(row = row, column = col).value
-                for col in range(1, 5)
+                __class__.get_cell_value(sheet, row, col)
+                for col in range(1, 6)
             ]
 
             # 格式校验
-            if not isinstance(data[0], str):
+            if len(data) == 0 or data[0] is None:
                 continue
 
-            src: str = data[0].strip()
-            dst: str = data[1].strip() if data[1] is not None else ""
-            info: str = data[2].strip() if data[2] is not None else ""
-            regex: str = data[3].strip().lower() == "true" if data[3] is not None else False
+            src: str = data[0]
+            dst: str = data[1]
+            info: str = data[2]
+            regex: bool = data[3].lower() == "true" if len(data) > 3 else False
+            case_sensitive: bool = data[4].lower() == "true" if len(data) > 4 else False
 
             if src == "src" and dst == "dst":
                 continue
@@ -412,6 +463,7 @@ class TableManager():
                         "dst": dst,
                         "info": info,
                         "regex": regex,
+                        "case_sensitive": case_sensitive,
                     }
                 )
 
@@ -419,13 +471,24 @@ class TableManager():
 
     # 设置单元格值
     @classmethod
-    def set_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int, value: str, font_size: int = 9) -> None:
+    def get_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int) -> str:
+        value = sheet.cell(row = row, column = column).value
+
+        # 强制转换为字符串
+        if value is None:
+            result = ""
+        else:
+            result = str(value)
+
+        return result.strip()
+
+    # 设置单元格值
+    @classmethod
+    def set_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int, value: Any, font_size: int = 9) -> None:
         if value is None:
             value = ""
-        elif isinstance(value, str) == False:
-            value = str(value)
         # 如果单元格内容以单引号 ' 开头，Excel 会将其视为普通文本而不是公式
-        elif value.startswith("=") == True:
+        elif isinstance(value, str) and value.startswith("=") == True:
             value = "'" + value
 
         sheet.cell(row = row, column = column).value = value

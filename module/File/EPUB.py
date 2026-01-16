@@ -9,7 +9,7 @@ from lxml import etree
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -42,8 +42,8 @@ class EPUB(Base):
         return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -64,12 +64,12 @@ class EPUB(Base):
                                     continue
 
                                 # 添加数据
-                                items.append(CacheItem.from_dict({
+                                items.append(Item.from_dict({
                                     "src": dom.get_text(),
                                     "dst": dom.get_text(),
                                     "tag": path,
                                     "row": len(items),
-                                    "file_type": CacheItem.FileType.EPUB,
+                                    "file_type": Item.FileType.EPUB,
                                     "file_path": rel_path,
                                 }))
                     elif path.lower().endswith(".ncx"):
@@ -80,19 +80,19 @@ class EPUB(Base):
                                 if dom.get_text().strip() == "":
                                     continue
 
-                                items.append(CacheItem.from_dict({
+                                items.append(Item.from_dict({
                                     "src": dom.get_text(),
                                     "dst": dom.get_text(),
                                     "tag": path,
                                     "row": len(items),
-                                    "file_type": CacheItem.FileType.EPUB,
+                                    "file_type": Item.FileType.EPUB,
                                     "file_path": rel_path,
                                 }))
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
 
         def process_opf(zip_reader: zipfile.ZipFile, path: str) -> None:
             with zip_reader.open(path) as reader:
@@ -108,7 +108,7 @@ class EPUB(Base):
                     re.sub(r"[^;\s]*writing-mode\s*:\s*vertical-rl;*", "", reader.read().decode("utf-8-sig")),
                 )
 
-        def process_ncx(zip_reader: zipfile.ZipFile, path: str, items: list[CacheItem]) -> None:
+        def process_ncx(zip_reader: zipfile.ZipFile, path: str, items: list[Item]) -> None:
             with zip_reader.open(path) as reader:
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "lxml-xml")
@@ -157,8 +157,8 @@ class EPUB(Base):
                     for attr_lower, attr_correct in attr_fixes.items():
                         if attr_lower in child.attrs:
                             child.attrs[attr_correct] = child.attrs.pop(attr_lower)
-
-        def process_html(zip_reader: zipfile.ZipFile, path: str, items: list[CacheItem], bilingual: bool) -> None:
+                            
+        def process_html(zip_reader: zipfile.ZipFile, path: str, items: list[Item], bilingual: bool) -> None:
             with zip_reader.open(path) as reader:
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
@@ -218,7 +218,7 @@ class EPUB(Base):
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.EPUB
+            if item.get_file_type() == Item.FileType.EPUB
         ]
 
         # 按文件路径分组

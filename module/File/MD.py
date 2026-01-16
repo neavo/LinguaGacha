@@ -4,7 +4,7 @@ import re
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class MD(Base):
@@ -33,8 +33,8 @@ class MD(Base):
         return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
 
         for abs_path in abs_paths:
             # 获取相对路径
@@ -56,36 +56,36 @@ class MD(Base):
                     # 如果是图片行或在代码块内，设置状态为 EXCLUDED
                     if (MD.IMAGE_PATTERN.search(line) or in_code_block):
                         items.append(
-                            CacheItem.from_dict({
+                            Item.from_dict({
                                 "src": line,
                                 "dst": line,
                                 "row": len(items),
-                                "file_type": CacheItem.FileType.MD,
+                                "file_type": Item.FileType.MD,
                                 "file_path": rel_path,
-                                "text_type": CacheItem.TextType.MD,
-                                "status": Base.TranslationStatus.EXCLUDED,
+                                "text_type": Item.TextType.MD,
+                                "status": Base.ProjectStatus.EXCLUDED,
                             })
                         )
                     else:
                         items.append(
-                            CacheItem.from_dict({
+                            Item.from_dict({
                                 "src": line,
                                 "dst": line,
                                 "row": len(items),
-                                "file_type": CacheItem.FileType.MD,
+                                "file_type": Item.FileType.MD,
                                 "file_path": rel_path,
-                                "text_type": CacheItem.TextType.MD,
+                                "text_type": Item.TextType.MD,
                             })
                         )
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.MD
+            if item.get_file_type() == Item.FileType.MD
         ]
 
         # 按文件路径分组

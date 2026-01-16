@@ -1,11 +1,11 @@
-import os
-import time
 import json
+import os
 import threading
+import time
 
 from base.Base import Base
-from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheProject import CacheProject
+from model.Project import Project
+from model.Item import Item
 from module.Localizer.Localizer import Localizer
 
 class CacheManager(Base):
@@ -37,8 +37,8 @@ class CacheManager(Base):
         super().__init__()
 
         # 默认值
-        self.project: CacheProject = CacheProject()
-        self.items: list[CacheItem] = []
+        self.project: Project = Project()
+        self.items: list[Item] = []
 
         # 初始化
         self.require_flag: bool = False
@@ -47,9 +47,7 @@ class CacheManager(Base):
 
         # 启动定时任务
         if service == True:
-            threading.Thread(
-                target = self.task,
-            ).start()
+            threading.Thread(target = self.task).start()
 
     # 保存缓存到文件的定时任务
     def task(self) -> None:
@@ -73,14 +71,14 @@ class CacheManager(Base):
                 )
 
                 # 触发事件
-                self.emit(Base.Event.CACHE_FILE_AUTO_SAVE, {})
+                self.emit(Base.Event.CACHE_SAVE, {})
 
                 # 重置标志
                 self.require_flag = False
                 self.last_require_time = time.time()
 
     # 保存缓存到文件
-    def save_to_file(self, project: CacheProject, items: list[CacheItem], output_folder: str) -> None:
+    def save_to_file(self, project: Project, items: list[Item], output_folder: str) -> None:
         # 创建上级文件夹
         os.makedirs(f"{output_folder}/cache", exist_ok = True)
 
@@ -89,18 +87,18 @@ class CacheManager(Base):
         with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps([item.asdict() for item in items], indent = None, ensure_ascii = False))
+                    writer.write(json.dumps([item.to_dict() for item in items], indent = None, ensure_ascii = False))
             except Exception as e:
-                self.debug(Localizer.get().log_write_cache_file_fail, e)
+                self.debug(Localizer.get().log_write_file_fail, e)
 
         # 保存项目数据到文件
         path = f"{output_folder}/cache/project.json"
         with __class__.LOCK:
             try:
                 with open(path, "w", encoding = "utf-8") as writer:
-                    writer.write(json.dumps(project.asdict(), indent = None, ensure_ascii = False))
+                    writer.write(json.dumps(project.to_dict(), indent = None, ensure_ascii = False))
             except Exception as e:
-                self.debug(Localizer.get().log_write_cache_file_fail, e)
+                self.debug(Localizer.get().log_write_file_fail, e)
 
         # 重置标志
         self.require_flag = False
@@ -123,9 +121,9 @@ class CacheManager(Base):
             try:
                 if os.path.isfile(path):
                     with open(path, "r", encoding = "utf-8-sig") as reader:
-                        self.items = [CacheItem.from_dict(item) for item in json.load(reader)]
+                        self.items = [Item.from_dict(item) for item in json.load(reader)]
             except Exception as e:
-                self.debug(Localizer.get().log_read_cache_file_fail, e)
+                self.debug(Localizer.get().log_read_file_fail, e)
 
     # 从文件读取项目数据
     def load_project_from_file(self, output_path: str) -> None:
@@ -134,24 +132,24 @@ class CacheManager(Base):
             try:
                 if os.path.isfile(path):
                     with open(path, "r", encoding = "utf-8-sig") as reader:
-                        self.project = CacheProject.from_dict(json.load(reader))
+                        self.project = Project.from_dict(json.load(reader))
             except Exception as e:
-                self.debug(Localizer.get().log_read_cache_file_fail, e)
+                self.debug(Localizer.get().log_read_file_fail, e)
 
     # 设置缓存数据
-    def set_items(self, items: list[CacheItem]) -> None:
+    def set_items(self, items: list[Item]) -> None:
         self.items = items
 
     # 获取缓存数据
-    def get_items(self) -> list[CacheItem]:
+    def get_items(self) -> list[Item]:
         return self.items
 
     # 设置项目数据
-    def set_project(self, project: CacheProject) -> None:
+    def set_project(self, project: Project) -> None:
         self.project = project
 
     # 获取项目数据
-    def get_project(self) -> CacheProject:
+    def get_project(self) -> Project:
         return self.project
 
     # 获取缓存数据数量
@@ -159,27 +157,27 @@ class CacheManager(Base):
         return len(self.items)
 
     # 复制缓存数据
-    def copy_items(self) -> list[CacheItem]:
-        return [CacheItem.from_dict(item.asdict()) for item in self.items]
+    def copy_items(self) -> list[Item]:
+        return [Item.from_dict(item.to_dict()) for item in self.items]
 
     # 获取缓存数据数量（根据翻译状态）
     def get_item_count_by_status(self, status: int) -> int:
         return len([item for item in self.items if item.get_status() == status])
 
     # 生成缓存数据条目片段
-    def generate_item_chunks(self, token_threshold: int, preceding_lines_threshold: int) -> list[list[CacheItem]]:
+    def generate_item_chunks(self, input_token_threshold: int, preceding_lines_threshold: int) -> list[list[Item]]:
         # 根据 Token 阈值计算行数阈值，避免大量短句导致行数太多
-        line_limit = max(8, int(token_threshold / 16))
+        line_limit = max(8, int(input_token_threshold / 16))
 
         skip: int = 0
         line_length: int = 0
         token_length: int = 0
-        chunk: list[CacheItem] = []
-        chunks: list[list[CacheItem]] = []
-        preceding_chunks: list[list[CacheItem]] = []
+        chunk: list[Item] = []
+        chunks: list[list[Item]] = []
+        preceding_chunks: list[list[Item]] = []
         for i, item in enumerate(self.items):
             # 跳过状态不是 未翻译 的数据
-            if item.get_status() != Base.TranslationStatus.UNTRANSLATED:
+            if item.get_status() != Base.ProjectStatus.NONE:
                 skip = skip + 1
                 continue
 
@@ -191,7 +189,7 @@ class CacheManager(Base):
             # 如果 行数超限、Token 超限、数据来源跨文件，则结束此片段
             elif (
                 line_length + current_line_length > line_limit
-                or token_length + current_token_length > token_threshold
+                or token_length + current_token_length > input_token_threshold
                 or item.get_file_path() != chunk[-1].get_file_path()
             ):
                 chunks.append(chunk)
@@ -215,14 +213,14 @@ class CacheManager(Base):
         return chunks, preceding_chunks
 
     # 生成参考上文数据条目片段
-    def generate_preceding_chunks(self, chunk: list[CacheItem], start: int, skip: int, preceding_lines_threshold: int) -> list[list[CacheItem]]:
-        result: list[CacheItem] = []
+    def generate_preceding_chunks(self, chunk: list[Item], start: int, skip: int, preceding_lines_threshold: int) -> list[list[Item]]:
+        result: list[Item] = []
 
         for i in range(start - skip - len(chunk) - 1, -1, -1):
             item = self.items[i]
 
             # 跳过 已排除 的数据
-            if item.get_status() == Base.TranslationStatus.EXCLUDED:
+            if item.get_status() == Base.ProjectStatus.EXCLUDED:
                 continue
 
             # 跳过空数据

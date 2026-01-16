@@ -4,7 +4,7 @@ import re
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
@@ -43,8 +43,8 @@ class SRT(Base):
         return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -72,12 +72,12 @@ class SRT(Base):
                     # 添加数据
                     if lines[-1] != "":
                         items.append(
-                            CacheItem.from_dict({
+                            Item.from_dict({
                                 "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
                                 "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
                                 "extra_field": lines[1],
                                 "row": str(lines[0]),
-                                "file_type": CacheItem.FileType.SRT,
+                                "file_type": Item.FileType.SRT,
                                 "file_path": rel_path,
                             })
                         )
@@ -85,11 +85,11 @@ class SRT(Base):
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         # 筛选
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.SRT
+            if item.get_file_type() == Item.FileType.SRT
         ]
 
         # 按文件路径分组

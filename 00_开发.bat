@@ -8,4 +8,4 @@ cd /d %~dp0
 @REM set PATH=%~dp0\resource;%PATH%
 
 @REM 启动应用
-call python app.py
+call uv run app.py

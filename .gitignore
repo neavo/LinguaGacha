@@ -1,4 +1,6 @@
-*__pycache__
+/.venv
+/uv.lock
+__pycache__
 
 /*log*
 /*debug*

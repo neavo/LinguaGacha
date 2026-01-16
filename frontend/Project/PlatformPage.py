@@ -1,23 +1,23 @@
-import os
 import json
+import os
 from functools import partial
 
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import RoundMenu
+from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import PrimaryDropDownPushButton
+from qfluentwidgets import RoundMenu
 
 from base.Base import Base
+from frontend.Project.ArgsEditPage import ArgsEditPage
+from frontend.Project.PlatformEditPage import PlatformEditPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.FlowCard import FlowCard
-from frontend.Project.PlatformEditPage import PlatformEditPage
-from frontend.Project.ArgsEditPage import ArgsEditPage
 
 class PlatformPage(QWidget, Base):
 
@@ -43,17 +43,17 @@ class PlatformPage(QWidget, Base):
         self.vbox.addStretch(1)
 
         # 完成事件
-        self.subscribe(Base.Event.PLATFORM_TEST_DONE, self.platform_test_done)
+        self.subscribe(Base.Event.APITEST_DONE, self.platform_test_done)
 
     # 执行接口测试
     def platform_test_start(self, id: int, widget: FlowCard, window: FluentWindow) -> None:
-        self.emit(Base.Event.PLATFORM_TEST_START, {
+        self.emit(Base.Event.APITEST_RUN, {
             "id": id,
         })
 
     # 接口测试完成
-    def platform_test_done(self, event: str, data: dict) -> None:
-        self.emit(Base.Event.APP_TOAST_SHOW, {
+    def platform_test_done(self, event: Base.Event, data: dict) -> None:
+        self.emit(Base.Event.TOAST, {
             "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
             "message": data.get("result_msg", "")
         })

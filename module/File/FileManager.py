@@ -3,8 +3,8 @@ import random
 from datetime import datetime
 
 from base.Base import Base
-from module.Cache.CacheItem import CacheItem
-from module.Cache.CacheProject import CacheProject
+from model.Item import Item
+from model.Project import Project
 from module.Config import Config
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
@@ -28,12 +28,12 @@ class FileManager(Base):
         self.config = config
 
     # 读
-    def read_from_path(self) -> tuple[CacheProject, list[CacheItem]]:
-        project: CacheProject = CacheProject.from_dict({
+    def read_from_path(self) -> tuple[Project, list[Item]]:
+        project: Project = Project.from_dict({
             "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
         })
 
-        items: list[CacheItem] = []
+        items: list[Item] = []
         try:
             paths: list[str] = []
             input_folder: str = self.config.input_folder
@@ -60,7 +60,7 @@ class FileManager(Base):
         return project, items
 
     # 写
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         try:
             MD(self.config).write_to_path(items)
             TXT(self.config).write_to_path(items)

@@ -1,6 +1,7 @@
 import json
 import os
 from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
@@ -90,7 +91,7 @@ class TextReplacementPage(QWidget, Base):
                     continue
 
                 if new.get("src") == old.get("src"):
-                    self.emit(Base.Event.APP_TOAST_SHOW, {
+                    self.emit(Base.Event.TOAST, {
                         "type": Base.ToastType.WARNING,
                         "duration": 5000,
                         "message": (
@@ -111,7 +112,7 @@ class TextReplacementPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_save_toast,
             })
@@ -125,14 +126,6 @@ class TextReplacementPage(QWidget, Base):
                     triggered = self.table_manager.delete_row,
                 )
             )
-            menu.addSeparator()
-            menu.addAction(
-                Action(
-                    FluentIcon.IOT,
-                    Localizer.get().quality_switch_regex,
-                    triggered = self.table_manager.switch_regex,
-                )
-            )
             menu.exec(self.table.viewport().mapToGlobal(position))
 
         self.table = TableWidget(self)
@@ -144,8 +137,8 @@ class TextReplacementPage(QWidget, Base):
         self.table.setSelectRightClickedRow(True)
 
         # 设置表格列宽
-        self.table.setColumnWidth(0, 420)
-        self.table.setColumnWidth(1, 420)
+        self.table.setColumnWidth(0, 400)
+        self.table.setColumnWidth(1, 400)
         self.table.horizontalHeader().setStretchLastSection(True)
 
         # 设置水平表头并隐藏垂直表头
@@ -190,7 +183,7 @@ class TextReplacementPage(QWidget, Base):
             if row > -1:
                 self.table.setCurrentCell(row, 0)
             else:
-                self.emit(Base.Event.APP_TOAST_SHOW, {
+                self.emit(Base.Event.TOAST, {
                     "type": Base.ToastType.WARNING,
                     "message": Localizer.get().alert_no_data,
                 })
@@ -233,7 +226,7 @@ class TextReplacementPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })
@@ -246,11 +239,15 @@ class TextReplacementPage(QWidget, Base):
     def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
         def triggered() -> None:
+            path, _ = QFileDialog.getSaveFileName(window, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
+            if not isinstance(path, str) or path == "":
+                return None
+
             # 导出文件
-            self.table_manager.export(getattr(Localizer.get(), f"path_{self.base_key}_export"))
+            self.table_manager.export(str(Path(path).with_suffix("")))
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_export_toast,
             })
@@ -305,7 +302,7 @@ class TextReplacementPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_reset_toast,
             })
@@ -326,7 +323,7 @@ class TextReplacementPage(QWidget, Base):
             config.save()
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+            self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().quality_import_toast,
             })

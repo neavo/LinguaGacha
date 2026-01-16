@@ -1,4 +1,3 @@
-import argparse
 import ctypes
 import os
 import signal
@@ -14,7 +13,6 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
-from base.Base import Base
 from base.CLIManager import CLIManager
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
@@ -29,7 +27,7 @@ def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_trac
     if not isinstance(exc_value, KeyboardInterrupt):
         print("")
         for i in range(3):
-            print(f"退出中 … Exiting … {3 - i} …")
+            print(Localizer.get().app_exit_countdown.format(SECONDS=3 - i))
             time.sleep(1)
 
     os.kill(os.getpid(), signal.SIGTERM)
@@ -59,11 +57,30 @@ if __name__ == "__main__":
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # 设置工作目录
-    sys.path.append(os.path.dirname(os.path.abspath(sys.argv[0])))
+    app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    sys.path.append(app_dir)
+
+    # 检测只读环境（AppImage, macOS .app bundle）
+    is_appimage = os.environ.get("APPIMAGE") is not None
+    is_macos_app = sys.platform == "darwin" and ".app/Contents/MacOS" in app_dir
+
+    if is_appimage or is_macos_app:
+        # 便携式环境使用用户主目录存储数据
+        data_dir = os.path.join(os.path.expanduser("~"), "LinguaGacha")
+    else:
+        # Windows 和直接执行时使用应用目录
+        data_dir = app_dir
+
+    # 设置环境变量供其他模块使用
+    os.environ["LINGUAGACHA_APP_DIR"] = app_dir
+    os.environ["LINGUAGACHA_DATA_DIR"] = data_dir
+
+    # 工作目录保持在 app_dir 以便访问资源文件（version.txt, resource/ 等）
+    os.chdir(app_dir)
 
     # 创建文件夹
-    os.makedirs("./input", exist_ok = True)
-    os.makedirs("./output", exist_ok = True)
+    os.makedirs(os.path.join(data_dir, "input"), exist_ok = True)
+    os.makedirs(os.path.join(data_dir, "output"), exist_ok = True)
 
     # 载入并保存默认配置
     config = Config().load()

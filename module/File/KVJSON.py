@@ -4,7 +4,7 @@ import json
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class KVJSON(Base):
@@ -26,8 +26,8 @@ class KVJSON(Base):
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+        items:list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
@@ -50,45 +50,45 @@ class KVJSON(Base):
                         dst = v
                         if src == "":
                             items.append(
-                                CacheItem.from_dict({
+                                Item.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_type": Item.FileType.KVJSON,
                                     "file_path": rel_path,
-                                    "status": Base.TranslationStatus.EXCLUDED,
+                                    "status": Base.ProjectStatus.EXCLUDED,
                                 })
                             )
                         elif dst != "" and src != dst:
                             items.append(
-                                CacheItem.from_dict({
+                                Item.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_type": Item.FileType.KVJSON,
                                     "file_path": rel_path,
-                                    "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
+                                    "status": Base.ProjectStatus.PROCESSED_IN_PAST,
                                 })
                             )
                         else:
                             items.append(
-                                CacheItem.from_dict({
+                                Item.from_dict({
                                     "src": src,
                                     "dst": dst,
                                     "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
+                                    "file_type": Item.FileType.KVJSON,
                                     "file_path": rel_path,
-                                    "status": Base.TranslationStatus.UNTRANSLATED,
+                                    "status": Base.ProjectStatus.NONE,
                                 })
                             )
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
         target = [
             item for item in items
-            if item.get_file_type() == CacheItem.FileType.KVJSON
+            if item.get_file_type() == Item.FileType.KVJSON
         ]
 
         group: dict[str, list[str]] = {}

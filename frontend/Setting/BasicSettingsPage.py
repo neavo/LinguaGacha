@@ -41,7 +41,8 @@ class BasicSettingsPage(QWidget, Base):
         # 添加控件
         self.add_widget_max_workers(scroll_area_vbox, config, window)
         self.add_widget_rpm_threshold(scroll_area_vbox, config, window)
-        self.add_widget_token_threshold(scroll_area_vbox, config, window)
+        self.add_widget_input_token_threshold(scroll_area_vbox, config, window)
+        self.add_widget_output_token_threshold(scroll_area_vbox, config, window)
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
         self.add_widget_max_round(scroll_area_vbox, config, window)
 
@@ -90,22 +91,43 @@ class BasicSettingsPage(QWidget, Base):
             )
         )
 
-    # 翻译任务长度阈值
-    def add_widget_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
+    # 输入令牌长度阈值
+    def add_widget_input_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
         def init(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(config.token_threshold)
+            widget.get_spin_box().setValue(config.input_token_threshold)
 
         def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.token_threshold = widget.get_spin_box().value()
+            config.input_token_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
             SpinCard(
-                title = Localizer.get().basic_settings_page_token_threshold_title,
-                description = Localizer.get().basic_settings_page_token_threshold_content,
+                title = Localizer.get().basic_settings_page_input_token_threshold_title,
+                description = Localizer.get().basic_settings_page_input_token_threshold_content,
+                init = init,
+                value_changed = value_changed,
+            )
+        )
+
+    # 输出令牌长度阈值
+    def add_widget_output_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
+
+        def init(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.output_token_threshold)
+
+        def value_changed(widget: SpinCard) -> None:
+            config = Config().load()
+            config.output_token_threshold = widget.get_spin_box().value()
+            config.save()
+
+        parent.addWidget(
+            SpinCard(
+                title = Localizer.get().basic_settings_page_output_token_threshold_title,
+                description = Localizer.get().basic_settings_page_output_token_threshold_content,
                 init = init,
                 value_changed = value_changed,
             )

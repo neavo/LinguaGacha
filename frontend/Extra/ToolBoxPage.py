@@ -1,16 +1,16 @@
 from typing import Callable
 
-from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLayout
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-from qfluentwidgets import FlowLayout
+from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
+from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import SubtitleLabel
 from qfluentwidgets import TransparentToolButton
 
@@ -84,23 +84,8 @@ class ToolBoxPage(QWidget, Base):
         self.vbox.addWidget(self.flow_container)
 
         # 添加控件
-        self.add_batch_correction(self.flow_layout, config, window)
         self.add_re_translation(self.flow_layout, config, window)
         self.add_name_field_extraction(self.flow_layout, config, window)
-
-    # 批量修正
-    def add_batch_correction(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
-        def clicked(widget: ItemCard) -> None:
-            window.switchTo(window.batch_correction_page)
-
-        parent.addWidget(ItemCard(
-            parent = self,
-            title = Localizer.get().tool_box_page_batch_correction,
-            description = Localizer.get().tool_box_page_batch_correction_desc,
-            init = None,
-            clicked = clicked,
-        ))
 
     # 部分重翻
     def add_re_translation(self, parent: QLayout, config: Config, window: FluentWindow) -> None:

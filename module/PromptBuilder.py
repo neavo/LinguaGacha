@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
 
 class PromptBuilder(Base):
@@ -87,7 +87,7 @@ class PromptBuilder(Base):
         return full_prompt
 
     # 构造参考上文
-    def build_preceding(self, precedings: list[CacheItem]) -> str:
+    def build_preceding(self, precedings: list[Item]) -> str:
         if len(precedings) == 0:
             return ""
         elif self.config.target_language == BaseLanguage.Enum.ZH:
@@ -104,10 +104,23 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        glossary: list[dict[str, str]] = [
-            v
-            for v in self.config.glossary_data if v.get("src") in full
-        ]
+        full_lower = full.lower()  # 用于不区分大小写的匹配
+
+        # 筛选匹配的术语
+        glossary: list[dict[str, str]] = []
+        for v in self.config.glossary_data:
+            src = v.get("src", "")
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            # 根据 case_sensitive 决定匹配方式
+            if is_case_sensitive:
+                # 大小写敏感：直接使用 in
+                if src in full:
+                    glossary.append(v)
+            else:
+                # 大小写不敏感：转换为小写后匹配
+                if src.lower() in full_lower:
+                    glossary.append(v)
 
         # 构建文本
         result = []
@@ -138,10 +151,23 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary_sakura(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        glossary: list[dict[str, str]] = [
-            v
-            for v in self.config.glossary_data if v.get("src") in full
-        ]
+        full_lower = full.lower()  # 用于不区分大小写的匹配
+
+        # 筛选匹配的术语
+        glossary: list[dict[str, str]] = []
+        for v in self.config.glossary_data:
+            src = v.get("src", "")
+            is_case_sensitive = v.get("case_sensitive", False)
+
+            # 根据 case_sensitive 决定匹配方式
+            if is_case_sensitive:
+                # 大小写敏感：直接使用 in
+                if src in full:
+                    glossary.append(v)
+            else:
+                # 大小写不敏感：转换为小写后匹配
+                if src.lower() in full_lower:
+                    glossary.append(v)
 
         # 构建文本
         result = []
@@ -205,10 +231,10 @@ class PromptBuilder(Base):
             )
 
     # 生成提示词
-    def generate_prompt(self, srcs: list[str], samples: list[str], precedings: list[CacheItem], local_flag: bool) -> tuple[list[dict], list[str]]:
+    def generate_prompt(self, srcs: list[str], samples: list[str], precedings: list[Item], local_flag: bool) -> tuple[list[dict], list[str]]:
         # 初始化
         messages: list[dict[str, str]] = []
-        extra_log: list[str] = []
+        console_log: list[str] = []
 
         # 基础提示词
         content = self.build_main()
@@ -218,20 +244,20 @@ class PromptBuilder(Base):
             result = self.build_preceding(precedings)
             if result != "":
                 content = content + "\n" + result
-                extra_log.append(result)
+                console_log.append(result)
 
         # 术语表
         if self.config.glossary_enable == True:
             result = self.build_glossary(srcs)
             if result != "":
                 content = content + "\n" + result
-                extra_log.append(result)
+                console_log.append(result)
 
         # 控制字符示例
         result = self.build_control_characters_samples(content, samples)
         if result != "":
             content = content + "\n" + result
-            extra_log.append(result)
+            console_log.append(result)
 
         # 输入
         result = self.build_inputs(srcs)
@@ -244,13 +270,13 @@ class PromptBuilder(Base):
             "content": content,
         })
 
-        return messages, extra_log
+        return messages, console_log
 
     # 生成提示词 - Sakura
     def generate_prompt_sakura(self, srcs: list[str]) -> tuple[list[dict], list[str]]:
         # 初始化
         messages: list[dict[str, str]] = []
-        extra_log: list[str] = []
+        console_log: list[str] = []
 
         # 构建系统提示词
         messages.append({
@@ -267,7 +293,7 @@ class PromptBuilder(Base):
                     "根据以下术语表（可以为空）：\n" + result
                     + "\n" + "将下面的日文文本根据对应关系和备注翻译成中文：\n" + "\n".join(srcs)
                 )
-                extra_log.append(result)
+                console_log.append(result)
 
         # 构建提示词列表
         messages.append({
@@ -275,4 +301,4 @@ class PromptBuilder(Base):
             "content": content,
         })
 
-        return messages, extra_log
+        return messages, console_log

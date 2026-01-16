@@ -7,11 +7,7 @@ from typing import Self
 from rich.console import Console
 from rich.logging import RichHandler
 
-from module.ProgressBar import ProgressBar
-
 class LogManager():
-
-    PATH: str = "./log"
 
     def __init__(self) -> None:
         super().__init__()
@@ -19,17 +15,25 @@ class LogManager():
         # 控制台实例
         self.console = Console()
 
+        # 便携式环境（AppImage, macOS .app）使用 data_dir/log，否则使用应用目录下的 ./log
+        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
+        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR", ".")
+        if data_dir and app_dir and data_dir != app_dir:
+            log_path = os.path.join(data_dir, "log")
+        else:
+            log_path = os.path.join(app_dir or ".", "log")
+
         # 文件日志实例
-        os.makedirs(__class__.PATH, exist_ok = True)
+        os.makedirs(log_path, exist_ok = True)
         self.file_handler = TimedRotatingFileHandler(
-            f"{__class__.PATH}/app.log",
+            f"{log_path}/app.log",
             when = "midnight",
             interval = 1,
             encoding = "utf-8",
             backupCount = 3,
         )
         self.file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt = "%Y-%m-%d %H:%M:%S"))
-        self.file_logger = logging.getLogger("linguagacha_file")
+        self.file_logger = logging.getLogger("app_file")
         self.file_logger.propagate = False
         self.file_logger.setLevel(logging.DEBUG)
         self.file_logger.addHandler(self.file_handler)
@@ -43,7 +47,7 @@ class LogManager():
             log_time_format = "[%X]",
             omit_repeated_times = False,
         )
-        self.console_logger = logging.getLogger("linguagacha_console")
+        self.console_logger = logging.getLogger("app_console")
         self.console_logger.propagate = False
         self.console_logger.setLevel(logging.INFO)
         self.console_logger.addHandler(self.console_handler)
@@ -124,4 +128,4 @@ class LogManager():
             self.console_logger.warning(f"{msg_e}\n{self.get_trackback(e)}\n") if console == True else None
 
     def get_trackback(self, e: Exception) -> str:
-        return f"{("".join(traceback.format_exception(e))).strip()}"
+        return f"{(''.join(traceback.format_exception(e))).strip()}"
