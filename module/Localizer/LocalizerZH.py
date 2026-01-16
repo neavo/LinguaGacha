@@ -164,6 +164,8 @@ class LocalizerZH():
     model_page_category_openai_desc: str = "兼容 OpenAI API 格式的自定义模型"
     model_page_category_anthropic_title: str = "自定义 Anthropic 模型"
     model_page_category_anthropic_desc: str = "兼容 Anthropic Claude API 格式的自定义模型"
+    model_page_migrated_toast: str = "检测到 {COUNT} 个预设模型已失效，已自动迁移至自定义模型分类 …"
+    model_page_delete_last_one_toast: str = "每个分类至少需要保留一个模型，无法删除 …"
 
     # 模型编辑
     model_edit_page_name: str = "请输入模型名称 …"

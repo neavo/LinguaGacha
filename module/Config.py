@@ -162,15 +162,16 @@ class Config():
 
 
     # 初始化模型管理器
-    def initialize_models(self) -> None:
-        """初始化模型列表，如果没有则从预设复制"""
+    def initialize_models(self) -> int:
+        """初始化模型列表，如果没有则从预设复制。返回已被迁移的失效预设模型数量。"""
         manager = ModelManager.get()
-        self.models = manager.initialize_models(self.models or [])
+        self.models, migrated_count = manager.initialize_models(self.models or [])
         manager.set_models(self.models)
         # 如果没有激活模型，设置为第一个
         if not self.activate_model_id and self.models:
             self.activate_model_id = self.models[0].get("id", "")
         manager.set_active_model_id(self.activate_model_id)
+        return migrated_count
 
     # 获取模型配置
     def get_model(self, model_id: str) -> dict[str, Any] | None:

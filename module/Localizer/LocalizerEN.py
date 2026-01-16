@@ -164,6 +164,8 @@ class LocalizerEN(LocalizerZH):
     model_page_category_openai_desc: str = "Custom models compatible with OpenAI API format"
     model_page_category_anthropic_title: str = "Custom Anthropic Models"
     model_page_category_anthropic_desc: str = "Custom models compatible with Anthropic Claude API format"
+    model_page_migrated_toast: str = "Detected {COUNT} deprecated preset models, automatically migrated to custom model categories …"
+    model_page_delete_last_one_toast: str = "At least one model must be kept in each category, cannot delete …"
 
     # Model Edit
     model_edit_page_name: str = "Please enter model name …"

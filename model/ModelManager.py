@@ -69,16 +69,37 @@ class ModelManager:
         except Exception:
             return {}
 
-    def initialize_models(self, existing_models: list[dict]) -> list[dict]:
+    def initialize_models(self, existing_models: list[dict]) -> tuple[list[dict], int]:
         """
         初始化模型列表
-        - 如果 existing_models 为空，从 preset_models.json 复制所有预设模型
-        - 否则合并：添加预设列表中存在但用户列表中不存在的模型
+        1. 检查现有模型：如果某个 PRESET 模型的 ID 在预设文件中不存在，将其迁移为自定义模型
+        2. 补充缺失的预设模型
+        返回：(更新后的模型列表, 迁移的模型数量)
         """
         preset_models = self.load_preset_models()
+        preset_ids = {preset.get("id") for preset in preset_models}
+        migrated_count = 0
 
+        # 1. 迁移旧预设模型
+        if existing_models:
+            for model in existing_models:
+                # 仅处理标记为 PRESET 但 ID 已不在最新预设列表中的模型
+                if model.get("type") == ModelType.PRESET and model.get("id") not in preset_ids:
+                    api_format = model.get("api_format", "")
+
+                    if api_format == "Google":
+                        model["type"] = ModelType.CUSTOM_GOOGLE.value
+                    elif api_format == "Anthropic":
+                        model["type"] = ModelType.CUSTOM_ANTHROPIC.value
+                    else:
+                        # 默认为 OpenAI (包括 OpenAI, SakuraLLM, DeepSeek 等等)
+                        model["type"] = ModelType.CUSTOM_OPENAI.value
+
+                    migrated_count += 1
+
+        # 2. 初始预设加载 / 补充
         if not existing_models:
-            return preset_models
+            existing_models = []
 
         # 检查并添加缺失的预设模型
         existing_ids = {model.get("id") for model in existing_models}
@@ -86,7 +107,25 @@ class ModelManager:
             if preset.get("id") not in existing_ids:
                 existing_models.append(preset)
 
-        return existing_models
+        # 3. 检查自定义分类，如果为空则生成默认条目
+        custom_types = [ModelType.CUSTOM_GOOGLE, ModelType.CUSTOM_OPENAI, ModelType.CUSTOM_ANTHROPIC]
+
+        for model_type in custom_types:
+            # 检查列表中是否已存在该类型的模型
+            has_type = False
+            for model in existing_models:
+                if model.get("type") == model_type.value:
+                    has_type = True
+                    break
+
+            if not has_type:
+                # 生成默认模型
+                template = self.load_template(model_type)
+                template["id"] = Model.generate_id()
+                template["type"] = model_type.value
+                existing_models.append(template)
+
+        return existing_models, migrated_count
 
     def get_models(self) -> list[Model]:
         """获取所有模型"""
@@ -141,17 +180,52 @@ class ModelManager:
         删除模型（仅允许删除自定义模型）
         返回是否删除成功
         """
+        target_model = None
+        target_index = -1
+
+        # 1. 查找要删除的模型
         for i, model in enumerate(self.models):
             if model.id == model_id:
-                # 预设模型不允许删除
-                if model.is_preset():
-                    return False
-                del self.models[i]
-                # 如果删除的是激活模型，重置为第一个
-                if self.activate_model_id == model_id:
-                    self.activate_model_id = self.models[0].id if self.models else ""
-                return True
-        return False
+                target_model = model
+                target_index = i
+                break
+
+        if target_model is None:
+            return False
+
+        # 预设模型不允许删除
+        if target_model.is_preset():
+            return False
+
+        # 2. 从列表中移除
+        del self.models[target_index]
+
+        # 3. 如果删除的是激活模型，重新选择激活模型
+        if self.activate_model_id == model_id:
+            new_active_model = None
+
+            # 策略：优先回退到同类型的其他模型
+            for model in self.models:
+                if model.type == target_model.type:
+                    new_active_model = model
+                    # 如果找到了，停止搜索
+                    break
+
+            # 如果没有同类型，回退到预设分类的第一个
+            if new_active_model is None:
+                for model in self.models:
+                    if model.is_preset():
+                        new_active_model = model
+                        break
+
+            # 如果连预设都没有（防御性），回退到列表第一个
+            if new_active_model is None and self.models:
+                new_active_model = self.models[0]
+
+            # 更新 ID，如果没有模型则为空字符串
+            self.activate_model_id = new_active_model.id if new_active_model else ""
+
+        return True
 
     def update_model(self, model: Model) -> bool:
         """更新模型配置"""

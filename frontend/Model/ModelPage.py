@@ -43,8 +43,14 @@ class ModelPage(QWidget, Base):
 
         # 载入配置并初始化模型
         config = Config().load()
-        config.initialize_models()
+        migrated_count = config.initialize_models()
         config.save()
+
+        if migrated_count > 0:
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.INFO,
+                "message": Localizer.get().model_page_migrated_toast.replace("{COUNT}", str(migrated_count)),
+            })
 
         # 设置滚动区域
         self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
@@ -290,6 +296,19 @@ class ModelPage(QWidget, Base):
         config = Config().load()
         manager = ModelManager.get()
         manager.set_models(config.models or [])
+
+        # 检查是否为最后一个该类型的模型
+        target_model_data = config.get_model(model_id)
+        if target_model_data:
+            model_type = target_model_data.get("type", "")
+            # 统计同类型模型数量
+            same_type_count = sum(1 for m in (config.models or []) if m.get("type") == model_type)
+            if same_type_count <= 1:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().model_page_delete_last_one_toast,
+                })
+                return
 
         # 删除模型
         if manager.delete_model(model_id):

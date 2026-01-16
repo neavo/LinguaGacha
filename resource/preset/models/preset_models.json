@@ -1,6 +1,6 @@
 [
     {
-        "id": "preset-sakura-001",
+        "id": "preset-sakura",
         "type": "PRESET",
         "name": "SakuraLLM",
         "api_format": "SakuraLLM",
@@ -32,7 +32,7 @@
         }
     },
     {
-        "id": "preset-google-001",
+        "id": "preset-google",
         "type": "PRESET",
         "name": "Google",
         "api_format": "Google",
@@ -64,7 +64,7 @@
         }
     },
     {
-        "id": "preset-openai-001",
+        "id": "preset-openai",
         "type": "PRESET",
         "name": "OpenAI",
         "api_format": "OpenAI",
@@ -96,7 +96,7 @@
         }
     },
     {
-        "id": "preset-deepseek-001",
+        "id": "preset-deepseek",
         "type": "PRESET",
         "name": "DeepSeek",
         "api_format": "OpenAI",
@@ -128,7 +128,7 @@
         }
     },
     {
-        "id": "preset-anthropic-001",
+        "id": "preset-anthropic",
         "type": "PRESET",
         "name": "Anthropic",
         "api_format": "Anthropic",
@@ -160,7 +160,7 @@
         }
     },
     {
-        "id": "preset-aliyun-001",
+        "id": "preset-aliyun",
         "type": "PRESET",
         "name": "阿里云",
         "api_format": "OpenAI",
@@ -192,7 +192,7 @@
         }
     },
     {
-        "id": "preset-zhipu-001",
+        "id": "preset-zhipu",
         "type": "PRESET",
         "name": "智谱清言",
         "api_format": "OpenAI",
@@ -224,7 +224,7 @@
         }
     },
     {
-        "id": "preset-yi-001",
+        "id": "preset-yi",
         "type": "PRESET",
         "name": "零一万物",
         "api_format": "OpenAI",
@@ -256,7 +256,7 @@
         }
     },
     {
-        "id": "preset-moonshot-001",
+        "id": "preset-moonshot",
         "type": "PRESET",
         "name": "月之暗面",
         "api_format": "OpenAI",
@@ -288,7 +288,7 @@
         }
     },
     {
-        "id": "preset-siliconflow-001",
+        "id": "preset-siliconflow",
         "type": "PRESET",
         "name": "硅基流动",
         "api_format": "OpenAI",
@@ -320,109 +320,13 @@
         }
     },
     {
-        "id": "preset-volcengine-001",
+        "id": "preset-volcengine",
         "type": "PRESET",
         "name": "火山引擎",
         "api_format": "OpenAI",
         "api_url": "https://ark.cn-beijing.volces.com/api/v3",
         "api_key": "no_key_required",
         "model_id": "deepseek-v3-250324",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
-        },
-        "thresholds": {
-            "input_token_limit": 512,
-            "output_token_limit": 4096,
-            "rpm_limit": 0,
-            "concurrency_limit": 0
-        },
-        "thinking": {
-            "level": "OFF"
-        },
-        "generation": {
-            "temperature": 0.95,
-            "temperature_custom_enable": false,
-            "top_p": 0.95,
-            "top_p_custom_enable": false,
-            "presence_penalty": 0.0,
-            "presence_penalty_custom_enable": false,
-            "frequency_penalty": 0.0,
-            "frequency_penalty_custom_enable": false
-        }
-    },
-    {
-        "id": "custom-google-default-001",
-        "type": "CUSTOM_GOOGLE",
-        "name": "自定义 Google 模型",
-        "api_format": "Google",
-        "api_url": "https://generativelanguage.googleapis.com",
-        "api_key": "no_key_required",
-        "model_id": "gemini-2.0-flash",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
-        },
-        "thresholds": {
-            "input_token_limit": 512,
-            "output_token_limit": 4096,
-            "rpm_limit": 0,
-            "concurrency_limit": 0
-        },
-        "thinking": {
-            "level": "OFF"
-        },
-        "generation": {
-            "temperature": 0.95,
-            "temperature_custom_enable": false,
-            "top_p": 0.95,
-            "top_p_custom_enable": false,
-            "presence_penalty": 0.0,
-            "presence_penalty_custom_enable": false,
-            "frequency_penalty": 0.0,
-            "frequency_penalty_custom_enable": false
-        }
-    },
-    {
-        "id": "custom-openai-default-001",
-        "type": "CUSTOM_OPENAI",
-        "name": "自定义 OpenAI 模型",
-        "api_format": "OpenAI",
-        "api_url": "https://api.openai.com/v1",
-        "api_key": "no_key_required",
-        "model_id": "gpt-4.1-mini",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
-        },
-        "thresholds": {
-            "input_token_limit": 512,
-            "output_token_limit": 4096,
-            "rpm_limit": 0,
-            "concurrency_limit": 0
-        },
-        "thinking": {
-            "level": "OFF"
-        },
-        "generation": {
-            "temperature": 0.95,
-            "temperature_custom_enable": false,
-            "top_p": 0.95,
-            "top_p_custom_enable": false,
-            "presence_penalty": 0.0,
-            "presence_penalty_custom_enable": false,
-            "frequency_penalty": 0.0,
-            "frequency_penalty_custom_enable": false
-        }
-    },
-    {
-        "id": "custom-anthropic-default-001",
-        "type": "CUSTOM_ANTHROPIC",
-        "name": "自定义 Anthropic 模型",
-        "api_format": "Anthropic",
-        "api_url": "https://api.anthropic.com",
-        "api_key": "no_key_required",
-        "model_id": "claude-3-5-haiku",
         "network_config": {
             "custom_headers": {},
             "custom_body": {}
