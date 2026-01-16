@@ -12,7 +12,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 384,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -44,7 +44,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -76,7 +76,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -108,7 +108,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -140,7 +140,39 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
+            "output_token_limit": 4096,
+            "rpm_limit": 0,
+            "concurrency_limit": 0
+        },
+        "thinking": {
+            "level": "OFF"
+        },
+        "generation": {
+            "temperature": 0.95,
+            "temperature_custom_enable": false,
+            "top_p": 0.95,
+            "top_p_custom_enable": false,
+            "presence_penalty": 0.0,
+            "presence_penalty_custom_enable": false,
+            "frequency_penalty": 0.0,
+            "frequency_penalty_custom_enable": false
+        }
+    },
+    {
+        "id": "preset-zhipu",
+        "type": "PRESET",
+        "name": "智谱",
+        "api_format": "OpenAI",
+        "api_url": "https://open.bigmodel.cn/api/paas/v4",
+        "api_key": "no_key_required",
+        "model_id": "glm-4-flash",
+        "network_config": {
+            "custom_headers": {},
+            "custom_body": {}
+        },
+        "thresholds": {
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -172,71 +204,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
-            "output_token_limit": 4096,
-            "rpm_limit": 0,
-            "concurrency_limit": 0
-        },
-        "thinking": {
-            "level": "OFF"
-        },
-        "generation": {
-            "temperature": 0.95,
-            "temperature_custom_enable": false,
-            "top_p": 0.95,
-            "top_p_custom_enable": false,
-            "presence_penalty": 0.0,
-            "presence_penalty_custom_enable": false,
-            "frequency_penalty": 0.0,
-            "frequency_penalty_custom_enable": false
-        }
-    },
-    {
-        "id": "preset-zhipu",
-        "type": "PRESET",
-        "name": "智谱清言",
-        "api_format": "OpenAI",
-        "api_url": "https://open.bigmodel.cn/api/paas/v4",
-        "api_key": "no_key_required",
-        "model_id": "glm-4-flash",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
-        },
-        "thresholds": {
-            "input_token_limit": 512,
-            "output_token_limit": 4096,
-            "rpm_limit": 0,
-            "concurrency_limit": 0
-        },
-        "thinking": {
-            "level": "OFF"
-        },
-        "generation": {
-            "temperature": 0.95,
-            "temperature_custom_enable": false,
-            "top_p": 0.95,
-            "top_p_custom_enable": false,
-            "presence_penalty": 0.0,
-            "presence_penalty_custom_enable": false,
-            "frequency_penalty": 0.0,
-            "frequency_penalty_custom_enable": false
-        }
-    },
-    {
-        "id": "preset-yi",
-        "type": "PRESET",
-        "name": "零一万物",
-        "api_format": "OpenAI",
-        "api_url": "https://api.lingyiwanwu.com/v1",
-        "api_key": "no_key_required",
-        "model_id": "yi-lightning",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
-        },
-        "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -268,7 +236,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -300,7 +268,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -332,7 +300,7 @@
             "custom_body": {}
         },
         "thresholds": {
-            "input_token_limit": 512,
+            "input_token_limit": 768,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0

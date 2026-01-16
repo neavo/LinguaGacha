@@ -134,6 +134,22 @@ class Config():
         if path is None:
             path = __class__.get_config_path()
 
+        # 按分类排序: 预设 - Google - OpenAI - Claude
+        if self.models:
+            def get_sort_key(model: dict[str, Any]) -> int:
+                type_str = model.get("type", "")
+                if type_str == "PRESET":
+                    return 0
+                elif type_str == "CUSTOM_GOOGLE":
+                    return 1
+                elif type_str == "CUSTOM_OPENAI":
+                    return 2
+                elif type_str == "CUSTOM_ANTHROPIC":
+                    return 3
+                return 99
+
+            self.models.sort(key=get_sort_key)
+
         with __class__.CONFIG_LOCK:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok = True)
