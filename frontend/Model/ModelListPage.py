@@ -13,6 +13,7 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SmoothMode
 
 from base.Base import Base
 from module.Config import Config
@@ -45,6 +46,7 @@ class ModelListPage(MessageBoxBase, Base):
         self.scroller = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
         self.scroller.setWidgetResizable(True)
         self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroller.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
         self.viewLayout.addWidget(self.scroller)
 
         # 设置滚动控件
