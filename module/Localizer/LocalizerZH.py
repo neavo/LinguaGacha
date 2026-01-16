@@ -369,6 +369,7 @@ class LocalizerZH():
     quality_select_file: str = "选择文件"
     quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     quality_delete_row: str = "删除行"
+    quality_insert_row: str = "插入行"
 
     # 规则列
     rule_regex: str = "正则表达式"

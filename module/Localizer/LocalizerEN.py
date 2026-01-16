@@ -369,6 +369,7 @@ class LocalizerEN(LocalizerZH):
     quality_select_file: str = "Select File"
     quality_select_file_type: str = "Supported Formats (*.json *.xlsx)"
     quality_delete_row: str = "Delete Row"
+    quality_insert_row: str = "Insert Row"
 
     # 规则列
     rule_regex: str = "Regular Expression"

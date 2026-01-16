@@ -231,6 +231,25 @@ class TableManager():
         # 删除行不会触发 itemChanged 事件，所以手动触发一下
         self.table.itemChanged.emit(QTableWidgetItem())
 
+    # 插入行事件
+    def insert_row(self) -> None:
+        selected_index = self.table.selectedIndexes()
+
+        # 有效性检验
+        if selected_index == None or len(selected_index) == 0:
+            return
+
+        # 设置更新标志，防止触发 itemChanged 事件
+        self.set_updating(True)
+
+        current_row = selected_index[0].row()
+        self.table.insertRow(current_row + 1)
+
+        for col in range(self.table.columnCount()):
+            self.table.setItem(current_row + 1, col, self.generate_item(col))
+
+        self.set_updating(False)
+
     # 切换正则事件
     def switch_regex(self) -> None:
         selected_index: list[QModelIndex] = self.table.selectedIndexes()

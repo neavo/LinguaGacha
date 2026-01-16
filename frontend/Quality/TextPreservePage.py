@@ -120,6 +120,13 @@ class TextPreservePage(QWidget, Base):
             menu = RoundMenu("", self.table)
             menu.addAction(
                 Action(
+                    FluentIcon.ADD,
+                    Localizer.get().quality_insert_row,
+                    triggered = self.table_manager.insert_row,
+                )
+            )
+            menu.addAction(
+                Action(
                     FluentIcon.DELETE,
                     Localizer.get().quality_delete_row,
                     triggered = self.table_manager.delete_row,
