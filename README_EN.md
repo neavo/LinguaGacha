@@ -83,6 +83,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260116 v0.40.2
+  - Adjustment - Visual and interaction improvements
+  - Adjustment - EPUB compatibility optimization
+  - From now on, `macOS`, `Linux` and `Windows` platforms will be released simultaneously
+
 - 20260114 v0.40.1
   - ADD - `Proofreading Task` feature
     - Removed functions that are no longer needed, such as `Batch Correction`
@@ -96,12 +101,6 @@
   - ADD - Auto-process prefix/suffix text segments for preservation (Expert Settings) #259
   - ADJ - Optimized compatibility for Ruby Clean
   - FIX - Resolved user feedback issues #251 #289 #290
-
-- 20260111 v0.29.6
-  - FIX - Issue with missing application icons
-  - FIX - Occasional issue with incorrect line number display
-  - FIX - Issue where translation could not be stopped normally (CONTINUED)
-  - ADJ - Qwen3 series models no longer support `Priority Use of Thinking Mode`
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
