@@ -551,12 +551,15 @@ class ProofreadingPage(QWidget, Base):
                 item.set_status(Base.ProjectStatus.NONE)
                 item.set_retry_count(0)
 
-                # 同步翻译（使用 Event 等待完成）
-                result = {"done": False, "success": False}
+                # 同步翻译（使用 Event 等待完成，兼容 No-GIL）
+                complete_event = threading.Event()
+                result_container = {"success": False}
 
                 def callback(i: Item, s: bool) -> None:
-                    result["success"] = s
-                    result["done"] = True
+                    result_container["success"] = s
+                    # 发射信号通知 UI 逐条刷新
+                    self.translate_done.emit(i, s)
+                    complete_event.set()
 
                 Engine.get().translate_single_item(
                     item=item,
@@ -564,11 +567,10 @@ class ProofreadingPage(QWidget, Base):
                     callback=callback
                 )
 
-                # 等待翻译完成
-                while not result["done"]:
-                    time.sleep(0.1)
+                # 阻塞等待翻译完成，避免忙轮询
+                complete_event.wait()
 
-                if result["success"]:
+                if result_container["success"]:
                     success_count += 1
                 else:
                     fail_count += 1
@@ -586,20 +588,19 @@ class ProofreadingPage(QWidget, Base):
         threading.Thread(target=batch_translate_task, daemon=True).start()
 
     def _on_translate_done_ui(self, item: Item, success: bool) -> None:
-        """翻译完成的 UI 更新（主线程）- 仅刷新 UI，不显示 Toast（批量流程统一显示）"""
-        row = self.table_widget.find_row_by_item(item)
-        if row < 0:
-            # 批量翻译时刷新当前页
-            self._render_page(self.pagination_bar.get_page())
-            return
-
-        self.table_widget.set_row_loading(row, False)
-
+        """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
+        # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
         if success:
-            self.table_widget.update_row_dst(row, item.get_dst())
             self._recheck_item(item)
-        else:
-            item.set_status(Base.ProjectStatus.PROCESSED)
+
+        # 2. 如果条目在当前页可见，更新 UI 显示
+        row = self.table_widget.find_row_by_item(item)
+        if row >= 0:
+            self.table_widget.set_row_loading(row, False)
+            if success:
+                self.table_widget.update_row_dst(row, item.get_dst())
+            else:
+                item.set_status(Base.ProjectStatus.PROCESSED)
 
     def _on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
         """进度更新的 UI 处理（主线程）"""
@@ -608,8 +609,7 @@ class ProofreadingPage(QWidget, Base):
     def _on_progress_finished_ui(self) -> None:
         """进度完成的 UI 处理（主线程）"""
         self.indeterminate_hide()
-        # 刷新当前页表格数据
-        self._render_page(self.pagination_bar.get_page())
+        # 逐条刷新已在 _on_translate_done_ui 中完成，无需再次刷新
 
     # ========== 保存功能 ==========
     def _on_save_clicked(self) -> None:
