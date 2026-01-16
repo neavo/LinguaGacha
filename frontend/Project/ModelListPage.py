@@ -22,13 +22,13 @@ from widget.LineEditMessageBox import LineEditMessageBox
 
 class ModelListPage(MessageBoxBase, Base):
 
-    def __init__(self, id: int, window: FluentWindow) -> None:
+    def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
         # 初始化
-        self.id: int = id
+        self.model_id: str = model_id
         self.filter: str = ""
-        self.models: list[str] = None
+        self.available_models: list[str] = None
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -42,7 +42,7 @@ class ModelListPage(MessageBoxBase, Base):
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
 
         # 设置滚动器
-        self.scroller = SingleDirectionScrollArea(self, orient = Qt.Orientation.Vertical)
+        self.scroller = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
         self.scroller.setWidgetResizable(True)
         self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self.viewLayout.addWidget(self.scroller)
@@ -52,7 +52,7 @@ class ModelListPage(MessageBoxBase, Base):
         self.vbox_parent.setStyleSheet("QWidget { background: transparent; }")
         self.vbox = QVBoxLayout(self.vbox_parent)
         self.vbox.setSpacing(8)
-        self.vbox.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.vbox.setContentsMargins(24, 24, 24, 24)
         self.scroller.setWidget(self.vbox_parent)
 
         # 添加控件
@@ -64,9 +64,9 @@ class ModelListPage(MessageBoxBase, Base):
     # 点击事件
     def clicked(self, widget: PillPushButton) -> None:
         config = Config().load()
-        platform = config.get_platform(self.id)
-        platform["model"] = widget.text().strip()
-        config.set_platform(platform)
+        model = config.get_model(self.model_id)
+        model["model_id"] = widget.text().strip()
+        config.set_model(model)
         config.save()
 
         # 关闭窗口
@@ -83,8 +83,8 @@ class ModelListPage(MessageBoxBase, Base):
         else:
             message_box = LineEditMessageBox(
                 window,
-                Localizer.get().platform_edit_page_model,
-                message_box_close = self.filter_message_box_close
+                Localizer.get().model_edit_page_model_id,
+                message_box_close=self.filter_message_box_close
             )
             message_box.get_line_edit().setText(self.filter)
             message_box.exec()
@@ -98,25 +98,25 @@ class ModelListPage(MessageBoxBase, Base):
         self.update_sub_widgets(self.flow_card)
 
     # 获取模型
-    def get_models(self, api_url: str, api_key: str, api_format: Base.APIFormat) -> list[str]:
+    def get_models(self, api_url: str, api_key: str, api_format: str) -> list[str]:
         result = []
 
         try:
             if api_format == Base.APIFormat.GOOGLE:
                 client = genai.Client(
-                    api_key = api_key,
+                    api_key=api_key,
                 )
                 return [model.name for model in client.models.list()]
             elif api_format == Base.APIFormat.ANTHROPIC:
                 client = anthropic.Anthropic(
-                    api_key = api_key,
-                    base_url = api_url,
+                    api_key=api_key,
+                    base_url=api_url,
                 )
                 return [model.id for model in client.models.list()]
             else:
                 client = openai.OpenAI(
-                    base_url = api_url,
-                    api_key = api_key,
+                    base_url=api_url,
+                    api_key=api_key,
                 )
                 return [model.id for model in client.models.list()]
         except Exception as e:
@@ -130,16 +130,24 @@ class ModelListPage(MessageBoxBase, Base):
 
     # 更新子控件
     def update_sub_widgets(self, widget: FlowCard) -> None:
-        if self.models is None:
-            platform: dict = Config().load().get_platform(self.id)
-            self.models = self.get_models(
-                platform.get("api_url"),
-                platform.get("api_key")[0] if len(platform.get("api_key")) > 0 else "",
-                platform.get("api_format"),
+        if self.available_models is None:
+            model_data: dict = Config().load().get_model(self.model_id)
+            api_key = model_data.get("api_key", "")
+            # 兼容旧格式（列表）
+            if isinstance(api_key, list):
+                api_key = api_key[0] if api_key else ""
+            # 新格式可能是换行分隔的多个key，取第一个
+            elif isinstance(api_key, str) and "\n" in api_key:
+                api_key = api_key.split("\n")[0].strip()
+
+            self.available_models = self.get_models(
+                model_data.get("api_url", ""),
+                api_key,
+                model_data.get("api_format", ""),
             )
 
         widget.take_all_widgets()
-        for model in [v for v in self.models if self.filter.lower() in v.lower()]:
+        for model in [v for v in self.available_models if self.filter.lower() in v.lower()]:
             pilled_button = PillPushButton(model)
             pilled_button.setFixedWidth(432)
             pilled_button.clicked.connect(partial(self.clicked, pilled_button))
@@ -161,9 +169,9 @@ class ModelListPage(MessageBoxBase, Base):
             self.update_sub_widgets(widget)
 
         self.flow_card = FlowCard(
-            parent = self,
-            title = Localizer.get().model_list_page_title,
-            description = Localizer.get().model_list_page_content,
-            init = init,
+            parent=self,
+            title=Localizer.get().model_list_page_title,
+            description=Localizer.get().model_list_page_content,
+            init=init,
         )
         parent.addWidget(self.flow_card)

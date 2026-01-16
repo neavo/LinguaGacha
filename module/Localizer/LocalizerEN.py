@@ -145,7 +145,7 @@ class LocalizerEN(LocalizerZH):
     app_settings_page_proxy_url_content: str = "Enabling this feature will use the set proxy address to send network requests  (takes effect after app restart)"
     app_settings_page_close: str = "The application will close, please confirm …"
 
-    # 接口管理
+    # 接口管理 - Deprecated, kept for backward compatibility
     platform_page_api_activate: str = "Activate API"
     platform_page_api_edit: str = "Edit API"
     platform_page_api_args: str = "Edit Arguments"
@@ -154,7 +154,7 @@ class LocalizerEN(LocalizerZH):
     platform_page_widget_add_title: str = "API List"
     platform_page_widget_add_content: str = "Add and manage any LLM API compatible with Google, OpenAI and Anthropic formats here"
 
-    # 接口编辑
+    # 接口编辑 - Deprecated, kept for backward compatibility
     platform_edit_page_name: str = "Please enter API name …"
     platform_edit_page_name_title: str = "API Name"
     platform_edit_page_name_content: str = "Please enter API name, only for display within the app, no practical effect"
@@ -171,6 +171,56 @@ class LocalizerEN(LocalizerZH):
     platform_edit_page_model_content: str = "Current model in use: {MODEL}"
     platform_edit_page_model_edit: str = "Manual Input"
     platform_edit_page_model_sync: str = "Fetch Online"
+
+    # Model Management - New
+    app_model_page: str = "Models"
+    model_page_widget_title: str = "Model List"
+    model_page_widget_content: str = "Add and manage any LLM model compatible with Google, OpenAI and Anthropic formats here"
+    model_page_activate: str = "Activate Model"
+    model_page_edit: str = "Edit Model"
+    model_page_args: str = "Edit Arguments"
+    model_page_test: str = "Test Model"
+    model_page_delete: str = "Delete Model"
+    model_page_reset: str = "Reset Model"
+    model_page_add_google: str = "Custom Google Model"
+    model_page_add_openai: str = "Custom OpenAI Model"
+    model_page_add_anthropic: str = "Custom Anthropic Model"
+
+    # Model Edit - New
+    model_edit_page_name: str = "Please enter model name …"
+    model_edit_page_name_title: str = "Model Name"
+    model_edit_page_name_content: str = "Please enter model name, only for display within the app, no practical effect"
+    model_edit_page_api_url: str = "Please enter API URL …"
+    model_edit_page_api_url_title: str = "API URL"
+    model_edit_page_api_url_content: str = "Please enter API URL, pay attention to whether /v1 needs to be added at the end"
+    model_edit_page_api_key: str = "Please enter API Key …"
+    model_edit_page_api_key_title: str = "API Key"
+    model_edit_page_api_key_content: str = "Please enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line"
+    model_edit_page_model_id: str = "Please enter model identifier …"
+    model_edit_page_model_id_title: str = "Model Identifier"
+    model_edit_page_model_id_content: str = "Current model identifier: {MODEL}"
+    model_edit_page_model_id_edit: str = "Manual Input"
+    model_edit_page_model_id_sync: str = "Fetch Online"
+    model_edit_page_thinking_title: str = "Thinking Level"
+    model_edit_page_thinking_content: str = "Set the thinking mode level, different levels correspond to different thinking budgets or switch states [→ Click to view the list of supported models ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)"
+    model_edit_page_thinking_off: str = "Off"
+    model_edit_page_thinking_low: str = "Low"
+    model_edit_page_thinking_medium: str = "Medium"
+    model_edit_page_thinking_high: str = "High"
+    model_edit_page_input_token_title: str = "Input Token Limit"
+    model_edit_page_input_token_content: str = "Maximum number of tokens for each task input"
+    model_edit_page_output_token_title: str = "Output Token Limit"
+    model_edit_page_output_token_content: str = "Maximum number of tokens for each task output"
+    model_edit_page_rpm_title: str = "Requests Per Minute Limit (RPM)"
+    model_edit_page_rpm_content: str = "Maximum total number of tasks executed per minute, 0 = unlimited"
+    model_edit_page_concurrency_title: str = "Concurrent Task Limit"
+    model_edit_page_concurrency_content: str = "Maximum number of tasks executing simultaneously, 0 = automatic"
+    model_edit_page_headers_title: str = "Custom HTTP Headers"
+    model_edit_page_headers_content: str = "Custom HTTP Headers (JSON format), will be merged into the request"
+    model_edit_page_headers_placeholder: str = 'Example: {"Authorization": "Bearer xxx"}'
+    model_edit_page_body_title: str = "Custom Request Body"
+    model_edit_page_body_content: str = "Custom request body parameters (JSON format), will be merged into the request"
+    model_edit_page_body_placeholder: str = 'Example: {"stream": false}'
 
     # 参数编辑
     args_edit_page_top_p_title: str = "top_p"

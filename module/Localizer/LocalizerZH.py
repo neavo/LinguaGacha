@@ -145,7 +145,7 @@ class LocalizerZH():
     app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求（将在应用重启后生效）"
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
-    # 接口管理
+    # 接口管理 - 已废弃，保留向后兼容
     platform_page_api_activate: str = "激活接口"
     platform_page_api_edit: str = "编辑接口"
     platform_page_api_args: str = "编辑参数"
@@ -154,7 +154,7 @@ class LocalizerZH():
     platform_page_widget_add_title: str = "接口列表"
     platform_page_widget_add_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型接口"
 
-    # 接口编辑
+    # 接口编辑 - 已废弃，保留向后兼容
     platform_edit_page_name: str = "请输入接口名称 …"
     platform_edit_page_name_title: str = "接口名称"
     platform_edit_page_name_content: str = "请输入接口名称，仅用于应用内显示，无实际作用"
@@ -171,6 +171,56 @@ class LocalizerZH():
     platform_edit_page_model_content: str = "当前使用的模型为 {MODEL}"
     platform_edit_page_model_edit: str = "手动输入"
     platform_edit_page_model_sync: str = "在线获取"
+
+    # 模型管理 - 新
+    app_model_page: str = "模型管理"
+    model_page_widget_title: str = "模型列表"
+    model_page_widget_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型"
+    model_page_activate: str = "激活模型"
+    model_page_edit: str = "编辑模型"
+    model_page_args: str = "编辑参数"
+    model_page_test: str = "测试模型"
+    model_page_delete: str = "删除模型"
+    model_page_reset: str = "重置模型"
+    model_page_add_google: str = "自定义 Google 模型"
+    model_page_add_openai: str = "自定义 OpenAI 模型"
+    model_page_add_anthropic: str = "自定义 Anthropic 模型"
+
+    # 模型编辑 - 新
+    model_edit_page_name: str = "请输入模型名称 …"
+    model_edit_page_name_title: str = "模型名称"
+    model_edit_page_name_content: str = "请输入模型名称，仅用于应用内显示，无实际作用"
+    model_edit_page_api_url: str = "请输入接口地址 …"
+    model_edit_page_api_url_title: str = "接口地址"
+    model_edit_page_api_url_content: str = "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
+    model_edit_page_api_key: str = "请输入接口密钥 …"
+    model_edit_page_api_key_title: str = "接口密钥"
+    model_edit_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
+    model_edit_page_model_id: str = "请输入模型标识 …"
+    model_edit_page_model_id_title: str = "模型标识"
+    model_edit_page_model_id_content: str = "当前使用的模型标识为 {MODEL}"
+    model_edit_page_model_id_edit: str = "手动输入"
+    model_edit_page_model_id_sync: str = "在线获取"
+    model_edit_page_thinking_title: str = "思考挡位"
+    model_edit_page_thinking_content: str = "设置思考模式的级别，不同级别对应不同的思考预算或开关状态 [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
+    model_edit_page_thinking_off: str = "无"
+    model_edit_page_thinking_low: str = "低"
+    model_edit_page_thinking_medium: str = "中"
+    model_edit_page_thinking_high: str = "高"
+    model_edit_page_input_token_title: str = "输入 Token 限制"
+    model_edit_page_input_token_content: str = "每个任务输入文本的最大 Token 数量"
+    model_edit_page_output_token_title: str = "输出 Token 限制"
+    model_edit_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
+    model_edit_page_rpm_title: str = "每分钟请求数限制 (RPM)"
+    model_edit_page_rpm_content: str = "每分钟执行的任务总数量的最大值，0 = 无限制"
+    model_edit_page_concurrency_title: str = "并发任务数限制"
+    model_edit_page_concurrency_content: str = "同时执行的任务数量的最大值，0 = 自动"
+    model_edit_page_headers_title: str = "自定义 HTTP Headers"
+    model_edit_page_headers_content: str = "自定义 HTTP Headers（JSON 格式），将合并到请求中"
+    model_edit_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
+    model_edit_page_body_title: str = "自定义请求 Body"
+    model_edit_page_body_content: str = "自定义请求 Body 参数（JSON 格式），将合并到请求中"
+    model_edit_page_body_placeholder: str = '例如：{"stream": false}'
 
     # 参数编辑
     args_edit_page_top_p_title: str = "top_p"

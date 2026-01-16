@@ -1,7 +1,7 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import SingleDirectionScrollArea
 
@@ -39,10 +39,7 @@ class BasicSettingsPage(QWidget, Base):
         self.root.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_max_workers(scroll_area_vbox, config, window)
-        self.add_widget_rpm_threshold(scroll_area_vbox, config, window)
-        self.add_widget_input_token_threshold(scroll_area_vbox, config, window)
-        self.add_widget_output_token_threshold(scroll_area_vbox, config, window)
+        # 注意：max_workers, rpm_threshold, input_token_threshold, output_token_threshold 已迁移到模型内部
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
         self.add_widget_max_round(scroll_area_vbox, config, window)
 

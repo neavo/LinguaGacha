@@ -133,7 +133,17 @@ class Translator(Base):
 
         # 初始化
         self.config = config if isinstance(config, Config) else Config().load()
-        self.platform = self.config.get_platform(self.config.activate_platform)
+
+        # 从新模型系统获取激活模型
+        self.model = self.config.get_active_model()
+        if self.model is None:
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.WARNING,
+                "message": "未找到激活的模型配置",
+            })
+            self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
+            return None
+
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()
 
@@ -146,19 +156,17 @@ class Translator(Base):
         if status == Base.ProjectStatus.PROCESSING:
             self.cache_manager.load_from_file(self.config.output_folder)
         else:
-            shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors = True)
+            shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors=True)
             project, items = FileManager(self.config).read_from_path()
             self.cache_manager.set_items(items)
             self.cache_manager.set_project(project)
 
         # 检查数据是否为空
         if self.cache_manager.get_item_count() == 0:
-            # 通知
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().engine_no_items,
             })
-
             self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
             return None
 
@@ -166,7 +174,6 @@ class Translator(Base):
         if status == Base.ProjectStatus.PROCESSING:
             self.extras = self.cache_manager.get_project().get_extras()
             self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-            # 根据实际的 Item 状态重新计算 line，避免因 items.json 和 project.json 保存时间差导致的不一致
             self.extras["line"] = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.PROCESSED)
         else:
             self.extras = {
@@ -194,13 +201,10 @@ class Translator(Base):
         # 开始循环
         for current_round in range(self.config.max_round):
             # 检测是否需要停止任务
-            # 目的是避免用户正好在两轮之间停止任务
             if Engine.get().get_status() == Base.TaskStatus.STOPPING:
                 return None
 
             # 第一轮时更新任务的总行数
-            # 从头翻译时：total_line = 0 + 待翻译行数
-            # 继续翻译时：total_line = 已完成行数 + 待翻译行数（保持整体进度，避免负数）
             if current_round == 0:
                 remaining_count = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
                 self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
@@ -211,8 +215,8 @@ class Translator(Base):
 
             # 生成缓存数据条目片段
             chunks, precedings = self.cache_manager.generate_item_chunks(
-                input_token_threshold = self.config.input_token_threshold,
-                preceding_lines_threshold = self.config.preceding_lines_threshold,
+                input_token_threshold=self.config.input_token_threshold,
+                preceding_lines_threshold=self.config.preceding_lines_threshold,
             )
 
             # 仅在第一轮启用参考上文功能
@@ -222,11 +226,11 @@ class Translator(Base):
             # 生成翻译任务
             self.print("")
             tasks: list[TranslatorTask] = []
-            with ProgressBar(transient = False) as progress:
+            with ProgressBar(transient=False) as progress:
                 pid = progress.new()
                 for items, precedings in zip(chunks, precedings):
-                    progress.update(pid, advance = 1, total = len(chunks))
-                    tasks.append(TranslatorTask(self.config, self.platform, local_flag, items, precedings))
+                    progress.update(pid, advance=1, total=len(chunks))
+                    tasks.append(TranslatorTask(self.config, self.model, local_flag, items, precedings))
 
             # 打印日志
             self.info(Localizer.get().engine_task_generation.replace("{COUNT}", str(len(chunks))))
@@ -237,11 +241,11 @@ class Translator(Base):
             self.info(f"{Localizer.get().engine_current_round} - {current_round + 1}")
             self.info(f"{Localizer.get().engine_max_round} - {self.config.max_round}")
             self.print("")
-            self.info(f"{Localizer.get().engine_api_name} - {self.platform.get("name")}")
-            self.info(f"{Localizer.get().engine_api_url} - {self.platform.get("api_url")}")
-            self.info(f"{Localizer.get().engine_api_model} - {self.platform.get("model")}")
+            self.info(f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}")
+            self.info(f"{Localizer.get().engine_api_url} - {self.model.get('api_url', '')}")
+            self.info(f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}")
             self.print("")
-            if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
+            if self.model.get("api_format") != Base.APIFormat.SAKURALLM:
                 self.info(PromptBuilder(self.config).build_main())
                 self.print("")
 
@@ -320,28 +324,31 @@ class Translator(Base):
 
     # 初始化本地标识
     def initialize_local_flag(self) -> bool:
+        api_url = self.model.get("api_url", "")
         return re.search(
             r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-            self.platform.get("api_url"),
-            flags = re.IGNORECASE,
+            api_url,
+            flags=re.IGNORECASE,
         ) is not None
 
     # 初始化速度控制器
     def initialize_max_workers(self) -> tuple[int, int]:
-        max_workers: int = self.config.max_workers
-        rpm_threshold: int = self.config.rpm_threshold
+        # 从模型的 thresholds 读取
+        thresholds = self.model.get("thresholds", {})
+        max_workers: int = thresholds.get("concurrency_limit", 0)
+        rpm_threshold: int = thresholds.get("rpm_limit", 0)
 
         # 当 max_workers = 0 时，尝试获取 llama.cpp 槽数
         if max_workers == 0:
             try:
-                response_json = None
-                response = httpx.get(re.sub(r"/v1$", "", self.platform.get("api_url")) + "/slots")
+                api_url = self.model.get("api_url", "")
+                response = httpx.get(re.sub(r"/v1$", "", api_url) + "/slots")
                 response.raise_for_status()
                 response_json = response.json()
+                if isinstance(response_json, list) and len(response_json) > 0:
+                    max_workers = len(response_json)
             except Exception:
                 pass
-            if isinstance(response_json, list) and len(response_json) > 0:
-                max_workers = len(response_json)
 
         if max_workers == 0 and rpm_threshold == 0:
             max_workers = 8
@@ -350,7 +357,6 @@ class Translator(Base):
             pass
         elif max_workers == 0 and rpm_threshold > 0:
             max_workers = 8192
-            rpm_threshold = rpm_threshold
 
         return max_workers, rpm_threshold
 

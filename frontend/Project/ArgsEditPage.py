@@ -1,14 +1,13 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import SwitchButton
 from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from module.Config import Config
@@ -22,7 +21,7 @@ class ArgsEditPage(MessageBoxBase, Base):
     PRESENCE_PENALTY_DEFAULT: float = 0.00
     FREQUENCY_PENALTY_DEFAULT: float = 0.00
 
-    def __init__(self, id: int, window: FluentWindow) -> None:
+    def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
         # 载入并保存默认配置
@@ -33,8 +32,12 @@ class ArgsEditPage(MessageBoxBase, Base):
         self.yesButton.setText(Localizer.get().close)
         self.cancelButton.hide()
 
-        # 获取平台配置
-        self.platform = config.get_platform(id)
+        # 获取模型配置
+        self.model_id = model_id
+        self.model = config.get_model(model_id)
+
+        # 从 generation 中读取参数（兼容新数据结构）
+        self.generation = self.model.get("generation", {})
 
         # 设置主布局
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
@@ -45,7 +48,7 @@ class ArgsEditPage(MessageBoxBase, Base):
         scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
 
         # 创建滚动区域
-        scroll_area = SingleDirectionScrollArea(orient = Qt.Orientation.Vertical)
+        scroll_area = SingleDirectionScrollArea(orient=Qt.Orientation.Vertical)
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.enableTransparentBackground()
@@ -63,6 +66,14 @@ class ArgsEditPage(MessageBoxBase, Base):
         # 填充
         scroll_area_vbox.addStretch(1)
 
+    # 获取生成参数值
+    def get_generation_value(self, key: str, default: float = 0.0) -> float:
+        return self.generation.get(key, default)
+
+    # 获取生成参数启用状态
+    def get_generation_enable(self, key: str) -> bool:
+        return self.generation.get(f"{key}_custom_enable", False)
+
     # 滑动条释放事件
     def slider_released(self, widget: SliderCard, arg: str) -> None:
         value = widget.get_slider().value()
@@ -70,26 +81,33 @@ class ArgsEditPage(MessageBoxBase, Base):
 
         # 更新配置文件
         config = Config().load()
-        self.platform[arg] = value / 100
-        config.set_platform(self.platform)
+        self.model = config.get_model(self.model_id)
+        if "generation" not in self.model:
+            self.model["generation"] = {}
+        self.model["generation"][arg] = value / 100
+        config.set_model(self.model)
         config.save()
 
     # 开关状态变化事件
     def checked_changed(self, widget: SliderCard, checked: bool, arg: str) -> None:
-        if checked == True:
+        if checked:
             widget.set_slider_visible(True)
         else:
             widget.set_slider_visible(False)
 
         # 重置为默认值
-        self.platform[arg] = getattr(__class__, f"{arg.upper()}_DEFAULT")
-        widget.get_value_label().setText(f"{getattr(__class__, f"{arg.upper()}_DEFAULT"):.2f}")
-        widget.get_slider().setValue(int(getattr(__class__, f"{arg.upper()}_DEFAULT") * 100))
+        default_value = getattr(__class__, f"{arg.upper()}_DEFAULT")
+        widget.get_value_label().setText(f"{default_value:.2f}")
+        widget.get_slider().setValue(int(default_value * 100))
 
         # 更新配置文件
         config = Config().load()
-        self.platform[f"{arg}_custom_enable"] = checked
-        config.set_platform(self.platform)
+        self.model = config.get_model(self.model_id)
+        if "generation" not in self.model:
+            self.model["generation"] = {}
+        self.model["generation"][arg] = default_value
+        self.model["generation"][f"{arg}_custom_enable"] = checked
+        config.set_model(self.model)
         config.save()
 
     # top_p
@@ -101,23 +119,25 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
+            value = self.get_generation_value("top_p", 0.95)
             widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(self.platform.get("top_p") * 100))
-            widget.get_value_label().setText(f"{self.platform.get("top_p"):.2f}")
+            widget.get_slider().setValue(int(value * 100))
+            widget.get_value_label().setText(f"{value:.2f}")
 
             # 设置可见性
-            widget.set_slider_visible(self.platform.get("top_p_custom_enable") == True)
-            switch_button.setChecked(self.platform.get("top_p_custom_enable") == True)
+            is_enabled = self.get_generation_enable("top_p")
+            widget.set_slider_visible(is_enabled)
+            switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
             switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "top_p"))
 
         parent.addWidget(
             SliderCard(
-                title = Localizer.get().args_edit_page_top_p_title,
-                description = Localizer.get().args_edit_page_top_p_content,
-                init = init,
-                slider_released = lambda widget: self.slider_released(widget, "top_p"),
+                title=Localizer.get().args_edit_page_top_p_title,
+                description=Localizer.get().args_edit_page_top_p_content,
+                init=init,
+                slider_released=lambda widget: self.slider_released(widget, "top_p"),
             )
         )
 
@@ -130,23 +150,25 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
+            value = self.get_generation_value("temperature", 0.95)
             widget.get_slider().setRange(0, 200)
-            widget.get_slider().setValue(int(self.platform.get("temperature") * 100))
-            widget.get_value_label().setText(f"{self.platform.get("temperature"):.2f}")
+            widget.get_slider().setValue(int(value * 100))
+            widget.get_value_label().setText(f"{value:.2f}")
 
             # 设置可见性
-            widget.set_slider_visible(self.platform.get("temperature_custom_enable") == True)
-            switch_button.setChecked(self.platform.get("temperature_custom_enable") == True)
+            is_enabled = self.get_generation_enable("temperature")
+            widget.set_slider_visible(is_enabled)
+            switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
             switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "temperature"))
 
         parent.addWidget(
             SliderCard(
-                title = Localizer.get().args_edit_page_temperature_title,
-                description = Localizer.get().args_edit_page_temperature_content,
-                init = init,
-                slider_released = lambda widget: self.slider_released(widget, "temperature"),
+                title=Localizer.get().args_edit_page_temperature_title,
+                description=Localizer.get().args_edit_page_temperature_content,
+                init=init,
+                slider_released=lambda widget: self.slider_released(widget, "temperature"),
             )
         )
 
@@ -159,23 +181,25 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
+            value = self.get_generation_value("presence_penalty", 0.0)
             widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(self.platform.get("presence_penalty") * 100))
-            widget.get_value_label().setText(f"{self.platform.get("presence_penalty"):.2f}")
+            widget.get_slider().setValue(int(value * 100))
+            widget.get_value_label().setText(f"{value:.2f}")
 
             # 设置可见性
-            widget.set_slider_visible(self.platform.get("presence_penalty_custom_enable") == True)
-            switch_button.setChecked(self.platform.get("presence_penalty_custom_enable") == True)
+            is_enabled = self.get_generation_enable("presence_penalty")
+            widget.set_slider_visible(is_enabled)
+            switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
             switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "presence_penalty"))
 
         parent.addWidget(
             SliderCard(
-                title = Localizer.get().args_edit_page_presence_penalty_title,
-                description = Localizer.get().args_edit_page_presence_penalty_content,
-                init = init,
-                slider_released = lambda widget: self.slider_released(widget, "presence_penalty"),
+                title=Localizer.get().args_edit_page_presence_penalty_title,
+                description=Localizer.get().args_edit_page_presence_penalty_content,
+                init=init,
+                slider_released=lambda widget: self.slider_released(widget, "presence_penalty"),
             )
         )
 
@@ -188,33 +212,36 @@ class ArgsEditPage(MessageBoxBase, Base):
             switch_button.setOffText("")
             widget.add_widget(switch_button)
 
+            value = self.get_generation_value("frequency_penalty", 0.0)
             widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(self.platform.get("frequency_penalty") * 100))
-            widget.get_value_label().setText(f"{self.platform.get("frequency_penalty"):.2f}")
+            widget.get_slider().setValue(int(value * 100))
+            widget.get_value_label().setText(f"{value:.2f}")
 
             # 设置可见性
-            widget.set_slider_visible(self.platform.get("frequency_penalty_custom_enable") == True)
-            switch_button.setChecked(self.platform.get("frequency_penalty_custom_enable") == True)
+            is_enabled = self.get_generation_enable("frequency_penalty")
+            widget.set_slider_visible(is_enabled)
+            switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
             switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "frequency_penalty"))
 
         parent.addWidget(
             SliderCard(
-                title = Localizer.get().args_edit_page_frequency_penalty_title,
-                description = Localizer.get().args_edit_page_frequency_penalty_content,
-                init = init,
-                slider_released = lambda widget: self.slider_released(widget, "frequency_penalty"),
+                title=Localizer.get().args_edit_page_frequency_penalty_title,
+                description=Localizer.get().args_edit_page_frequency_penalty_content,
+                init=init,
+                slider_released=lambda widget: self.slider_released(widget, "frequency_penalty"),
             )
         )
 
     # 添加链接
     def add_widget_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        if self.platform.get("api_format") == Base.APIFormat.GOOGLE:
+        api_format = self.model.get("api_format", "")
+        if api_format == Base.APIFormat.GOOGLE:
             url = "https://ai.google.dev/api/generate-content"
-        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
+        elif api_format == Base.APIFormat.ANTHROPIC:
             url = "https://docs.anthropic.com/en/api/getting-started"
-        elif self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
+        elif api_format == Base.APIFormat.SAKURALLM:
             url = "https://github.com/SakuraLLM/SakuraLLM#%E6%8E%A8%E7%90%86"
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
@@ -223,4 +250,4 @@ class ArgsEditPage(MessageBoxBase, Base):
         hyper_link_label.setUnderlineVisible(True)
 
         parent.addSpacing(16)
-        parent.addWidget(hyper_link_label, alignment = Qt.AlignmentFlag.AlignHCenter)
+        parent.addWidget(hyper_link_label, alignment=Qt.AlignmentFlag.AlignHCenter)

@@ -9,6 +9,8 @@ from typing import Self
 
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
+from model.Model import Model
+from model.ModelManager import ModelManager
 from module.Localizer.Localizer import Localizer
 
 @dataclasses.dataclass
@@ -23,7 +25,11 @@ class Config():
     theme: str = Theme.LIGHT
     app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
-    # PlatformPage
+    # ModelPage - 模型管理系统
+    activate_model_id: str = ""
+    models: list[dict[str, Any]] = None
+
+    # PlatformPage - 已废弃，保留以便加载旧配置时不报错
     activate_platform: int = 0
     platforms: list[dict[str, Any]] = None
 
@@ -35,12 +41,14 @@ class Config():
     scale_factor: str = ""
 
     # BasicSettingsPage
+    request_timeout: int = 120
+    max_round: int = 16
+
+    # 已废弃 - 这些全局阈值字段已迁移到模型内部，保留以便加载旧配置时不报错
     input_token_threshold: int = 384
     output_token_threshold: int = 4096
     max_workers: int = 0
     rpm_threshold: int = 0
-    request_timeout: int = 120
-    max_round: int = 16
 
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
@@ -158,16 +166,74 @@ class Config():
         self.text_preserve_enable: bool = False
         self.text_preserve_data: list[Any] = []
 
-    # 获取平台配置
+    # 获取平台配置 - 已废弃
     def get_platform(self, id: int) -> dict[str, Any]:
-        item: dict[str, str | bool | int | float | list[str]] = None
-        for item in self.platforms:
-            if item.get("id", 0) == id:
-                return item
+        """[DEPRECATED] 已废弃，请使用 get_model()"""
+        return None
 
-    # 更新平台配置
+    # 更新平台配置 - 已废弃
     def set_platform(self, platform: dict[str, Any]) -> None:
-        for i, item in enumerate(self.platforms):
-            if item.get("id", 0) == platform.get("id", 0):
-                self.platforms[i] = platform
+        """[DEPRECATED] 已废弃，请使用 set_model()"""
+        pass
+
+    # 初始化模型管理器
+    def initialize_models(self) -> None:
+        """初始化模型列表，如果没有则从预设复制"""
+        manager = ModelManager.get()
+        self.models = manager.initialize_models(self.models or [])
+        manager.set_models(self.models)
+        # 如果没有激活模型，设置为第一个
+        if not self.activate_model_id and self.models:
+            self.activate_model_id = self.models[0].get("id", "")
+        manager.set_active_model_id(self.activate_model_id)
+
+    # 获取模型配置
+    def get_model(self, model_id: str) -> dict[str, Any] | None:
+        """根据 ID 获取模型配置字典"""
+        for model in self.models or []:
+            if model.get("id") == model_id:
+                return model
+        return None
+
+    # 更新模型配置
+    def set_model(self, model_data: dict[str, Any]) -> None:
+        """更新模型配置"""
+        model_id = model_data.get("id")
+        for i, model in enumerate(self.models or []):
+            if model.get("id") == model_id:
+                self.models[i] = model_data
                 break
+        # 同步到 ModelManager
+        ModelManager.get().set_models(self.models)
+
+    # 获取激活的模型
+    def get_active_model(self) -> dict[str, Any] | None:
+        """获取当前激活的模型配置"""
+        if self.activate_model_id:
+            model = self.get_model(self.activate_model_id)
+            if model:
+                return model
+        # 如果没有或找不到，返回第一个
+        if self.models:
+            return self.models[0]
+        return None
+
+    # 设置激活的模型
+    def set_active_model_id(self, model_id: str) -> None:
+        """设置激活的模型 ID"""
+        self.activate_model_id = model_id
+        ModelManager.get().set_active_model_id(model_id)
+
+    # 同步模型数据到 ModelManager
+    def sync_models_to_manager(self) -> None:
+        """将 Config 中的 models 同步到 ModelManager"""
+        manager = ModelManager.get()
+        manager.set_models(self.models or [])
+        manager.set_active_model_id(self.activate_model_id)
+
+    # 从 ModelManager 同步模型数据
+    def sync_models_from_manager(self) -> None:
+        """从 ModelManager 同步数据到 Config"""
+        manager = ModelManager.get()
+        self.models = manager.get_models_as_dict()
+        self.activate_model_id = manager.activate_model_id

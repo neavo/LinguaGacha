@@ -31,7 +31,7 @@ from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ReTranslationPage import ReTranslationPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
-from frontend.Project.PlatformPage import PlatformPage
+from frontend.Project.ModelPage import ModelPage
 from frontend.Project.ProjectPage import ProjectPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.GlossaryPage import GlossaryPage
@@ -341,11 +341,11 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加项目类页面
     def add_project_pages(self) -> None:
-        # 接口管理
+        # 模型管理
         self.addSubInterface(
-            PlatformPage("platform_page", self),
+            ModelPage("model_page", self),
             FluentIcon.IOT,
-            Localizer.get().app_platform_page,
+            Localizer.get().app_model_page,
             NavigationItemPosition.SCROLL
         )
 
