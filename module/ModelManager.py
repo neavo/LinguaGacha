@@ -3,6 +3,7 @@ import os
 import threading
 from typing import ClassVar
 
+from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
 
@@ -15,15 +16,17 @@ class ModelManager:
     _instance: ClassVar["ModelManager"] = None
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
-    # 资源文件路径
-    PRESET_MODELS_PATH: str = "resource/preset/models/preset_models.json"
-    PRESET_GOOGLE_TEMPLATE_PATH: str = "resource/preset/models/preset_google_template.json"
-    PRESET_OPENAI_TEMPLATE_PATH: str = "resource/preset/models/preset_openai_template.json"
-    PRESET_ANTHROPIC_TEMPLATE_PATH: str = "resource/preset/models/preset_anthropic_template.json"
+    # 预设文件名
+    PRESET_BUILD_IN_FILENAME: str = "preset_model_build_in.json"
+    PRESET_CUSTOM_GOOGLE_FILENAME: str = "preset_model_custom_google.json"
+    PRESET_CUSTOM_OPENAI_FILENAME: str = "preset_model_custom_openai.json"
+    PRESET_CUSTOM_ANTHROPIC_FILENAME: str = "preset_model_custom_anthropic.json"
 
     def __init__(self) -> None:
         self.models: list[Model] = []
         self.activate_model_id: str = ""
+        # 当前使用的 UI 语言，用于确定预设目录
+        self.app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
     @classmethod
     def get(cls) -> "ModelManager":
@@ -40,10 +43,20 @@ class ModelManager:
         with cls._lock:
             cls._instance = None
 
+    def set_app_language(self, language: BaseLanguage.Enum) -> None:
+        """设置 UI 语言，用于确定预设目录"""
+        self.app_language = language
+
+    def get_preset_dir(self) -> str:
+        """根据 UI 语言获取预设目录路径"""
+        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
+        # 中文用户使用 zh 目录，其他语言使用 en 目录
+        lang_dir = "zh" if self.app_language == BaseLanguage.Enum.ZH else "en"
+        return os.path.join(app_dir, "resource", "preset", "model", lang_dir)
+
     def load_preset_models(self) -> list[dict]:
         """从 preset_models.json 加载预设模型数据"""
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
-        preset_path = os.path.join(app_dir, self.PRESET_MODELS_PATH)
+        preset_path = os.path.join(self.get_preset_dir(), self.PRESET_BUILD_IN_FILENAME)
         try:
             with open(preset_path, "r", encoding="utf-8-sig") as reader:
                 return json.load(reader)
@@ -52,14 +65,14 @@ class ModelManager:
 
     def load_template(self, model_type: ModelType) -> dict:
         """根据模型类型加载对应模板"""
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
+        preset_dir = self.get_preset_dir()
 
         if model_type == ModelType.CUSTOM_GOOGLE:
-            template_path = os.path.join(app_dir, self.PRESET_GOOGLE_TEMPLATE_PATH)
+            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_GOOGLE_FILENAME)
         elif model_type == ModelType.CUSTOM_OPENAI:
-            template_path = os.path.join(app_dir, self.PRESET_OPENAI_TEMPLATE_PATH)
+            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_OPENAI_FILENAME)
         elif model_type == ModelType.CUSTOM_ANTHROPIC:
-            template_path = os.path.join(app_dir, self.PRESET_ANTHROPIC_TEMPLATE_PATH)
+            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_ANTHROPIC_FILENAME)
         else:
             return {}
 

@@ -25,7 +25,7 @@ from widget.LineEditCard import LineEditCard
 from widget.LineEditMessageBox import LineEditMessageBox
 from widget.SpinCard import SpinCard
 
-class ModelEditPage(MessageBoxBase, Base):
+class ModelBasicSettingPage(MessageBoxBase, Base):
 
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -92,7 +92,7 @@ class ModelEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.get_line_edit().setText(self.model.get("name", ""))
             widget.get_line_edit().setFixedWidth(256)
-            widget.get_line_edit().setPlaceholderText(Localizer.get().model_edit_page_name)
+            widget.get_line_edit().setPlaceholderText(Localizer.get().model_basic_setting_page_name)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -102,8 +102,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().model_edit_page_name_title,
-                Localizer.get().model_edit_page_name_content,
+                Localizer.get().model_basic_setting_page_name_title,
+                Localizer.get().model_basic_setting_page_name_content,
                 init=init,
                 text_changed=text_changed,
             )
@@ -115,7 +115,7 @@ class ModelEditPage(MessageBoxBase, Base):
         def init(widget: LineEditCard) -> None:
             widget.get_line_edit().setText(self.model.get("api_url", ""))
             widget.get_line_edit().setFixedWidth(384)
-            widget.get_line_edit().setPlaceholderText(Localizer.get().model_edit_page_api_url)
+            widget.get_line_edit().setPlaceholderText(Localizer.get().model_basic_setting_page_api_url)
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -125,8 +125,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().model_edit_page_api_url_title,
-                Localizer.get().model_edit_page_api_url_content,
+                Localizer.get().model_basic_setting_page_api_url_title,
+                Localizer.get().model_basic_setting_page_api_url_content,
                 init=init,
                 text_changed=text_changed,
             )
@@ -149,15 +149,15 @@ class ModelEditPage(MessageBoxBase, Base):
             if isinstance(api_key, list):
                 api_key = "\n".join(api_key)
             plain_text_edit.setPlainText(api_key)
-            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_api_key)
+            plain_text_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_key)
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
         parent.addWidget(
             GroupCard(
                 parent=self,
-                title=Localizer.get().model_edit_page_api_key_title,
-                description=Localizer.get().model_edit_page_api_key_content,
+                title=Localizer.get().model_basic_setting_page_api_key_title,
+                description=Localizer.get().model_basic_setting_page_api_key_content,
                 init=init,
             )
         )
@@ -173,13 +173,13 @@ class ModelEditPage(MessageBoxBase, Base):
             config.save()
 
             empty_card.get_description_label().setText(
-                Localizer.get().model_edit_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
+                Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
             )
 
         def triggered_edit() -> None:
             message_box = LineEditMessageBox(
                 window,
-                Localizer.get().model_edit_page_model_id,
+                Localizer.get().model_basic_setting_page_model_id,
                 message_box_close=message_box_close
             )
             message_box.get_line_edit().setText(self.model.get("model_id", ""))
@@ -192,12 +192,12 @@ class ModelEditPage(MessageBoxBase, Base):
             # 更新 UI 文本
             self.model = Config().load().get_model(self.model_id)
             empty_card.get_description_label().setText(
-                Localizer.get().model_edit_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
+                Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
             )
 
         empty_card = EmptyCard(
-            Localizer.get().model_edit_page_model_id_title,
-            Localizer.get().model_edit_page_model_id_content.replace("{MODEL}", self.model.get("model_id", "")),
+            Localizer.get().model_basic_setting_page_model_id_title,
+            Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", "")),
         )
         parent.addWidget(empty_card)
 
@@ -211,7 +211,7 @@ class ModelEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.EDIT,
-                Localizer.get().model_edit_page_model_id_edit,
+                Localizer.get().model_basic_setting_page_model_id_edit,
                 triggered=lambda _: triggered_edit(),
             )
         )
@@ -219,7 +219,7 @@ class ModelEditPage(MessageBoxBase, Base):
         menu.addAction(
             Action(
                 FluentIcon.SYNC,
-                Localizer.get().model_edit_page_model_id_sync,
+                Localizer.get().model_basic_setting_page_model_id_sync,
                 triggered=lambda _: triggered_sync(),
             )
         )
@@ -228,8 +228,8 @@ class ModelEditPage(MessageBoxBase, Base):
     # 思考挡位
     def add_widget_thinking_level(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         empty_card = EmptyCard(
-            Localizer.get().model_edit_page_thinking_title,
-            Localizer.get().model_edit_page_thinking_content,
+            Localizer.get().model_basic_setting_page_thinking_title,
+            Localizer.get().model_basic_setting_page_thinking_content,
         )
         parent.addWidget(empty_card)
 
@@ -237,10 +237,10 @@ class ModelEditPage(MessageBoxBase, Base):
         combo_box = ComboBox()
         combo_box.setFixedWidth(128)
         combo_box.addItems([
-            Localizer.get().model_edit_page_thinking_off,
-            Localizer.get().model_edit_page_thinking_low,
-            Localizer.get().model_edit_page_thinking_medium,
-            Localizer.get().model_edit_page_thinking_high,
+            Localizer.get().model_basic_setting_page_thinking_off,
+            Localizer.get().model_basic_setting_page_thinking_low,
+            Localizer.get().model_basic_setting_page_thinking_medium,
+            Localizer.get().model_basic_setting_page_thinking_high,
         ])
 
         # 设置当前值
@@ -280,8 +280,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SpinCard(
-                title=Localizer.get().model_edit_page_input_token_title,
-                description=Localizer.get().model_edit_page_input_token_content,
+                title=Localizer.get().model_basic_setting_page_input_token_title,
+                description=Localizer.get().model_basic_setting_page_input_token_content,
                 init=init_input_token,
                 value_changed=value_changed_input_token,
             )
@@ -302,8 +302,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SpinCard(
-                title=Localizer.get().model_edit_page_output_token_title,
-                description=Localizer.get().model_edit_page_output_token_content,
+                title=Localizer.get().model_basic_setting_page_output_token_title,
+                description=Localizer.get().model_basic_setting_page_output_token_content,
                 init=init_output_token,
                 value_changed=value_changed_output_token,
             )
@@ -324,8 +324,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SpinCard(
-                title=Localizer.get().model_edit_page_concurrency_title,
-                description=Localizer.get().model_edit_page_concurrency_content,
+                title=Localizer.get().model_basic_setting_page_concurrency_title,
+                description=Localizer.get().model_basic_setting_page_concurrency_content,
                 init=init_concurrency,
                 value_changed=value_changed_concurrency,
             )
@@ -346,8 +346,8 @@ class ModelEditPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SpinCard(
-                title=Localizer.get().model_edit_page_rpm_title,
-                description=Localizer.get().model_edit_page_rpm_content,
+                title=Localizer.get().model_basic_setting_page_rpm_title,
+                description=Localizer.get().model_basic_setting_page_rpm_content,
                 init=init_rpm,
                 value_changed=value_changed_rpm,
             )

@@ -1,0 +1,31 @@
+{
+    "type": "CUSTOM_GOOGLE",
+    "name": "Custom Google",
+    "api_format": "Google",
+    "api_url": "https://generativelanguage.googleapis.com",
+    "api_key": "no_key_required",
+    "model_id": "gemini-2.0-flash",
+    "network_config": {
+        "custom_headers": {},
+        "custom_body": {}
+    },
+    "thresholds": {
+        "input_token_limit": 768,
+        "output_token_limit": 4096,
+        "rpm_limit": 0,
+        "concurrency_limit": 0
+    },
+    "thinking": {
+        "level": "OFF"
+    },
+    "generation": {
+        "temperature": 0.95,
+        "temperature_custom_enable": false,
+        "top_p": 0.95,
+        "top_p_custom_enable": false,
+        "presence_penalty": 0.0,
+        "presence_penalty_custom_enable": false,
+        "frequency_penalty": 0.0,
+        "frequency_penalty_custom_enable": false
+    }
+}

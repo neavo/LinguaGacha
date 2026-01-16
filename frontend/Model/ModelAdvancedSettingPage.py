@@ -266,15 +266,15 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             headers = network_config.get("custom_headers", {})
             if headers:
                 plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_headers_placeholder)
+            plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_headers_placeholder)
             plain_text_edit.textChanged.connect(lambda: text_changed_headers(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
         parent.addWidget(
             GroupCard(
                 parent=self,
-                title=Localizer.get().model_edit_page_headers_title,
-                description=Localizer.get().model_edit_page_headers_content,
+                title=Localizer.get().model_advanced_setting_page_headers_title,
+                description=Localizer.get().model_advanced_setting_page_headers_content,
                 init=init_headers,
             )
         )
@@ -297,15 +297,15 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             body = network_config.get("custom_body", {})
             if body:
                 plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_body_placeholder)
+            plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_body_placeholder)
             plain_text_edit.textChanged.connect(lambda: text_changed_body(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
         parent.addWidget(
             GroupCard(
                 parent=self,
-                title=Localizer.get().model_edit_page_body_title,
-                description=Localizer.get().model_edit_page_body_content,
+                title=Localizer.get().model_advanced_setting_page_body_title,
+                description=Localizer.get().model_advanced_setting_page_body_content,
                 init=init_body,
             )
         )

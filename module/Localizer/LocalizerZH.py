@@ -146,8 +146,8 @@ class LocalizerZH():
 
     # 模型管理
     model_page_activate: str = "激活模型"
-    model_page_edit: str = "基础设置"
-    model_page_advanced: str = "高级设置"
+    model_page_basic_setting: str = "基础设置"
+    model_page_advanced_setting: str = "高级设置"
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
@@ -155,7 +155,7 @@ class LocalizerZH():
     model_page_add_openai: str = "自定义 OpenAI 模型"
     model_page_add_anthropic: str = "自定义 Anthropic 模型"
     model_page_category_preset_title: str = "预设模型"
-    model_page_category_preset_desc: str = "内置模型配置，可编辑但不可删除，支持重置为初始状态"
+    model_page_category_preset_desc: str = "应用内置的预设模型"
     model_page_category_google_title: str = "自定义 Google 模型"
     model_page_category_google_desc: str = "兼容 Google Gemini API 格式的自定义模型"
     model_page_category_openai_title: str = "自定义 OpenAI 模型"
@@ -165,56 +165,52 @@ class LocalizerZH():
     model_page_migrated_toast: str = "检测到 {COUNT} 个预设模型已失效，已自动迁移至自定义模型分类 …"
     model_page_delete_last_one_toast: str = "每个分类至少需要保留一个模型，无法删除 …"
     model_page_reset_success_toast: str = "模型已重置 …"
-
-    # 模型编辑
-    model_edit_page_name: str = "请输入模型名称 …"
-    model_edit_page_name_title: str = "模型名称"
-    model_edit_page_name_content: str = "请输入模型名称，仅用于应用内显示，无实际作用"
-    model_edit_page_api_url: str = "请输入接口地址 …"
-    model_edit_page_api_url_title: str = "接口地址"
-    model_edit_page_api_url_content: str = "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
-    model_edit_page_api_key: str = "请输入接口密钥 …"
-    model_edit_page_api_key_title: str = "接口密钥"
-    model_edit_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
-    model_edit_page_model_id: str = "请输入模型标识 …"
-    model_edit_page_model_id_title: str = "模型标识"
-    model_edit_page_model_id_content: str = "当前使用的模型标识为 {MODEL}"
-    model_edit_page_model_id_edit: str = "手动输入"
-    model_edit_page_model_id_sync: str = "在线获取"
-    model_edit_page_thinking_title: str = "思考挡位"
-    model_edit_page_thinking_content: str = "设置思考模式的级别，不同级别对应不同的思考预算或开关状态 [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
-    model_edit_page_thinking_off: str = "无"
-    model_edit_page_thinking_low: str = "低"
-    model_edit_page_thinking_medium: str = "中"
-    model_edit_page_thinking_high: str = "高"
-    model_edit_page_input_token_title: str = "输入 Token 限制"
-    model_edit_page_input_token_content: str = "每个任务输入文本的最大 Token 数量"
-    model_edit_page_output_token_title: str = "输出 Token 限制"
-    model_edit_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
-    model_edit_page_rpm_title: str = "每分钟请求数限制 (RPM)"
-    model_edit_page_rpm_content: str = (
+    model_basic_setting_page_name: str = "请输入模型名称 …"
+    model_basic_setting_page_name_title: str = "模型名称"
+    model_basic_setting_page_name_content: str = "请输入模型名称，仅用于应用内显示，无实际作用"
+    model_basic_setting_page_api_url: str = "请输入接口地址 …"
+    model_basic_setting_page_api_url_title: str = "接口地址"
+    model_basic_setting_page_api_url_content: str = "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
+    model_basic_setting_page_api_key: str = "请输入接口密钥 …"
+    model_basic_setting_page_api_key_title: str = "接口密钥"
+    model_basic_setting_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
+    model_basic_setting_page_model_id: str = "请输入模型标识 …"
+    model_basic_setting_page_model_id_title: str = "模型标识"
+    model_basic_setting_page_model_id_content: str = "当前使用的模型标识为 {MODEL}"
+    model_basic_setting_page_model_id_edit: str = "手动输入"
+    model_basic_setting_page_model_id_sync: str = "在线获取"
+    model_basic_setting_page_thinking_title: str = "思考挡位"
+    model_basic_setting_page_thinking_content: str = "设置思考模式的级别，不同级别对应不同的思考预算或开关状态 [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
+    model_basic_setting_page_thinking_off: str = "无"
+    model_basic_setting_page_thinking_low: str = "低"
+    model_basic_setting_page_thinking_medium: str = "中"
+    model_basic_setting_page_thinking_high: str = "高"
+    model_basic_setting_page_input_token_title: str = "输入 Token 限制"
+    model_basic_setting_page_input_token_content: str = "每个任务输入文本的最大 Token 数量"
+    model_basic_setting_page_output_token_title: str = "输出 Token 限制"
+    model_basic_setting_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
+    model_basic_setting_page_rpm_title: str = "每分钟请求数限制 (RPM)"
+    model_basic_setting_page_rpm_content: str = (
         "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 限制"
         "<br>"
         "部分平台会对网络请求的速率进行限制，请参考 API 平台的文档进行设置，0 = 无限制"
         ""
         ""
     )
-    model_edit_page_concurrency_title: str = "并发任务数限制"
-    model_edit_page_concurrency_content: str = (
+    model_basic_setting_page_concurrency_title: str = "并发任务数限制"
+    model_basic_setting_page_concurrency_content: str = (
         "同时执行的任务数量的最大值"
         "<br>"
         "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
         ""
         ""
     )
-    model_edit_page_headers_title: str = "自定义 HTTP Headers"
-    model_edit_page_headers_content: str = "自定义 HTTP Headers（JSON 格式），将合并到请求中"
-    model_edit_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
-    model_edit_page_body_title: str = "自定义请求 Body"
-    model_edit_page_body_content: str = "自定义请求 Body 参数（JSON 格式），将合并到请求中"
-    model_edit_page_body_placeholder: str = '例如：{"stream": false}'
-
-    # 高级设置
+    model_advanced_setting_page_headers_title: str = "自定义 HTTP Headers"
+    model_advanced_setting_page_headers_content: str = "自定义 HTTP Headers（JSON 格式），将合并到请求中"
+    model_advanced_setting_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
+    model_advanced_setting_page_body_title: str = "自定义请求 Body"
+    model_advanced_setting_page_body_content: str = "自定义请求 Body 参数（JSON 格式），将合并到请求中"
+    model_advanced_setting_page_body_placeholder: str = '例如：{"stream": false}'
     model_advanced_setting_page_top_p_title: str = "top_p"
     model_advanced_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_temperature_title: str = "temperature"
@@ -224,8 +220,6 @@ class LocalizerZH():
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
     model_advanced_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_document_link: str = "点击查看文档"
-
-    # 模型列表
     model_list_page_title: str = "可用的模型列表"
     model_list_page_content: str = "点击选择要使用的模型"
     model_list_page_fail: str = "获取模型列表失败，请检查接口配置 …"
@@ -314,7 +308,6 @@ class LocalizerZH():
     basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
     basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
     basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
-
     basic_settings_page_max_workers_title: str = "并发任务阈值"
     basic_settings_page_max_workers_content: str = (
         "同时执行的任务数量的最大值"
