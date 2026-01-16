@@ -273,6 +273,10 @@ class LocalizerZH():
     proofreading_page_indeterminate_loading: str = "加载数据中 …"
     proofreading_page_indeterminate_saving: str = "保存数据中 …"
     proofreading_page_indeterminate_exporting: str = "导出数据中 …"
+    proofreading_page_batch_retranslate: str = "重新翻译已选条目"
+    proofreading_page_batch_retranslate_confirm: str = "确定要重新翻译全部 {COUNT} 个已选条目吗？"
+    proofreading_page_batch_retranslate_progress: str = "正在重新翻译 … {CURRENT}/{TOTAL} 条 …"
+    proofreading_page_batch_retranslate_success: str = "批量翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "并发任务阈值"

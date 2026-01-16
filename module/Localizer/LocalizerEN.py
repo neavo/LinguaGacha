@@ -273,6 +273,10 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_loading: str = "Loading data …"
     proofreading_page_indeterminate_saving: str = "Saving data …"
     proofreading_page_indeterminate_exporting: str = "Exporting data …"
+    proofreading_page_batch_retranslate: str = "Retranslate selected"
+    proofreading_page_batch_retranslate_confirm: str = "Confirm to retranslate all {COUNT} selected entries?"
+    proofreading_page_batch_retranslate_progress: str = "Retranslating … {CURRENT}/{TOTAL} …"
+    proofreading_page_batch_retranslate_success: str = "Batch translation completed, {SUCCESS} succeeded, {FAILED} failed"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"

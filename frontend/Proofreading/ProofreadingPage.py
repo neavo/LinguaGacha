@@ -5,17 +5,14 @@ import time
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MessageBox
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
@@ -33,6 +30,7 @@ from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
+from widget.ProgressToast import ProgressToast
 from widget.SearchCard import SearchCard
 
 class ProofreadingPage(QWidget, Base):
@@ -43,6 +41,8 @@ class ProofreadingPage(QWidget, Base):
     translate_done = pyqtSignal(object, bool)   # 翻译完成信号
     save_done = pyqtSignal(bool)                # 保存完成信号
     export_done = pyqtSignal(bool, str)         # 导出完成信号 (success, error_msg)
+    progress_updated = pyqtSignal(str, int, int)  # 进度更新信号 (content, current, total)
+    progress_finished = pyqtSignal()              # 进度完成信号
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -81,10 +81,16 @@ class ProofreadingPage(QWidget, Base):
         self.translate_done.connect(self._on_translate_done_ui)
         self.save_done.connect(self._on_save_done_ui)
         self.export_done.connect(self._on_export_done_ui)
+        self.progress_updated.connect(self._on_progress_updated_ui)
+        self.progress_finished.connect(self._on_progress_finished_ui)
 
         # Loading 指示器状态追踪
         self._indeterminate_start_time: float = 0.0      # 开始显示的时间戳
         self._indeterminate_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
+
+        # 创建悬浮式进度提示组件
+        self.progress_toast = ProgressToast(self)
+        self.progress_toast.set_bottom_offset(80)  # 在 action bar 上方
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
@@ -92,6 +98,7 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget = ProofreadingTableWidget()
         self.table_widget.cell_edited.connect(self._on_cell_edited)
         self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
+        self.table_widget.batch_retranslate_clicked.connect(self._on_batch_retranslate_clicked)
         self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
         self.table_widget.set_items([], {})
@@ -151,26 +158,12 @@ class ProofreadingPage(QWidget, Base):
         )
         self.btn_filter.setEnabled(False)
 
-        self.command_bar_card.add_separator()
-
-        # 分页与状态指示器
+        # 分页组件（放到右侧）
+        # 使用 add_widget 添加到 hbox，而非 command_bar 内部，使 stretch 能正确生效
+        self.command_bar_card.add_stretch(1)
         self.pagination_bar = PaginationBar()
         self.pagination_bar.page_changed.connect(self._on_page_changed)
-        self.command_bar_card.add_widget_to_command_bar(self.pagination_bar)
-        self.command_bar_card.add_stretch(1)
-
-        self.info_label = CaptionLabel("", self)
-        self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        self.info_label.hide()
-
-        self.indeterminate = IndeterminateProgressRing()
-        self.indeterminate.setFixedSize(16, 16)
-        self.indeterminate.setStrokeWidth(3)
-        self.indeterminate.hide()
-
-        self.command_bar_card.add_widget(self.info_label)
-        self.command_bar_card.add_spacing(4)
-        self.command_bar_card.add_widget(self.indeterminate)
+        self.command_bar_card.add_widget(self.pagination_bar)
 
     # ========== 加载功能 ==========
     def _on_load_clicked(self) -> None:
@@ -501,7 +494,7 @@ class ProofreadingPage(QWidget, Base):
 
     # ========== 重新翻译功能 ==========
     def _on_retranslate_clicked(self, item: Item) -> None:
-        """重新翻译按钮点击"""
+        """重新翻译按钮点击 - 单条翻译也使用批量翻译流程"""
         if self.is_readonly or not self.config:
             return
 
@@ -516,23 +509,98 @@ class ProofreadingPage(QWidget, Base):
         if not message_box.exec():
             return
 
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            self.table_widget.set_row_loading(row, True)
+        # 使用统一的批量翻译流程（单条也走这个逻辑）
+        self._do_batch_retranslate([item])
 
-        item.set_status(Base.ProjectStatus.NONE)
-        item.set_retry_count(0)
+    def _on_batch_retranslate_clicked(self, items: list[Item]) -> None:
+        """批量重新翻译按钮点击"""
+        if self.is_readonly or not self.config or not items:
+            return
 
-        Engine.get().translate_single_item(
-            item=item,
-            config=self.config,
-            callback=lambda i, s: self.translate_done.emit(i, s)
+        # 确认对话框
+        count = len(items)
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_batch_retranslate_confirm.replace("{COUNT}", str(count)),
+            self.window
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+
+        if not message_box.exec():
+            return
+
+        self._do_batch_retranslate(items)
+
+    def _do_batch_retranslate(self, items: list[Item]) -> None:
+        """执行批量翻译（单条和多条统一入口）"""
+        count = len(items)
+        # 使用最新配置，而非缓存的 self.config
+        config = Config().load()
+
+        # 显示进度 Toast
+        self.progress_show(
+            Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "0").replace("{TOTAL}", str(count)),
+            0, count
         )
 
+        def batch_translate_task() -> None:
+            success_count = 0
+            fail_count = 0
+            total = len(items)
+
+            for idx, item in enumerate(items):
+                # 重置状态
+                item.set_status(Base.ProjectStatus.NONE)
+                item.set_retry_count(0)
+
+                # 同步翻译（使用 Event 等待完成）
+                result = {"done": False, "success": False}
+
+                def callback(i: Item, s: bool) -> None:
+                    result["success"] = s
+                    result["done"] = True
+
+                Engine.get().translate_single_item(
+                    item=item,
+                    config=config,
+                    callback=callback
+                )
+
+                # 等待翻译完成
+                while not result["done"]:
+                    time.sleep(0.1)
+
+                if result["success"]:
+                    success_count += 1
+                else:
+                    fail_count += 1
+                    item.set_status(Base.ProjectStatus.PROCESSED)
+
+                # 更新进度（通过信号在主线程执行）
+                current = idx + 1
+                self.progress_updated.emit(
+                    Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", str(current)).replace("{TOTAL}", str(total)),
+                    current, total
+                )
+
+            # 完成后隐藏 Toast（通过信号在主线程执行）
+            self.progress_finished.emit()
+
+            # 显示结果
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.SUCCESS if fail_count == 0 else Base.ToastType.WARNING,
+                "message": Localizer.get().proofreading_page_batch_retranslate_success.replace("{SUCCESS}", str(success_count)).replace("{FAILED}", str(fail_count)),
+            })
+
+        threading.Thread(target=batch_translate_task, daemon=True).start()
+
     def _on_translate_done_ui(self, item: Item, success: bool) -> None:
-        """翻译完成的 UI 更新（主线程）"""
+        """翻译完成的 UI 更新（主线程）- 仅刷新 UI，不显示 Toast（批量流程统一显示）"""
         row = self.table_widget.find_row_by_item(item)
         if row < 0:
+            # 批量翻译时刷新当前页
+            self._render_page(self.pagination_bar.get_page())
             return
 
         self.table_widget.set_row_loading(row, False)
@@ -540,17 +608,18 @@ class ProofreadingPage(QWidget, Base):
         if success:
             self.table_widget.update_row_dst(row, item.get_dst())
             self._recheck_item(item)
-
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_retranslate_success,
-            })
         else:
             item.set_status(Base.ProjectStatus.PROCESSED)
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().proofreading_page_retranslate_failed,
-            })
+
+    def _on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
+        """进度更新的 UI 处理（主线程）"""
+        self.progress_update(content, current, total)
+
+    def _on_progress_finished_ui(self) -> None:
+        """进度完成的 UI 处理（主线程）"""
+        self.indeterminate_hide()
+        # 刷新当前页表格数据
+        self._render_page(self.pagination_bar.get_page())
 
     # ========== 保存功能 ==========
     def _on_save_clicked(self) -> None:
@@ -727,23 +796,38 @@ class ProofreadingPage(QWidget, Base):
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
-        """显示 loading 指示器，如果已在显示则立即更新文字"""
+        """显示 loading 指示器"""
         # 如果有待执行的隐藏 timer，取消它（因为有新任务了）
         if self._indeterminate_hide_timer is not None:
             self._indeterminate_hide_timer.stop()
             self._indeterminate_hide_timer = None
 
         # 记录开始时间（如果是首次显示）
-        if not self.indeterminate.isVisible():
+        if self._indeterminate_start_time == 0.0:
             self._indeterminate_start_time = time.time()
 
-        self.indeterminate.show()
-        self.info_label.show()
-        self.info_label.setText(msg)
+        # 显示 ProgressToast
+        self.progress_toast.show_indeterminate(msg)
+
+    def progress_show(self, msg: str, current: int = 0, total: int = 0) -> None:
+        """显示确定进度指示器"""
+        if self._indeterminate_hide_timer is not None:
+            self._indeterminate_hide_timer.stop()
+            self._indeterminate_hide_timer = None
+
+        if self._indeterminate_start_time == 0.0:
+            self._indeterminate_start_time = time.time()
+
+        self.progress_toast.show_progress(msg, current, total)
+
+    def progress_update(self, msg: str, current: int, total: int) -> None:
+        """更新进度"""
+        self.progress_toast.set_content(msg)
+        self.progress_toast.set_progress(current, total)
 
     def indeterminate_hide(self) -> None:
         """隐藏 loading 指示器，确保至少显示 1500ms"""
-        if not self.indeterminate.isVisible():
+        if self._indeterminate_start_time == 0.0:
             return
 
         min_display_ms = 1500
@@ -762,6 +846,11 @@ class ProofreadingPage(QWidget, Base):
     def _do_indeterminate_hide(self) -> None:
         """实际执行隐藏操作"""
         self._indeterminate_hide_timer = None
-        self.indeterminate.hide()
-        self.info_label.hide()
-        self.info_label.setText("")
+        self._indeterminate_start_time = 0.0
+        self.progress_toast.hide_toast()
+
+    def resizeEvent(self, event) -> None:
+        """窗口大小变化时更新 ProgressToast 位置"""
+        super().resizeEvent(event)
+        if self.progress_toast.isVisible():
+            self.progress_toast._update_position()

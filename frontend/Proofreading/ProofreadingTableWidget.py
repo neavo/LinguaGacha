@@ -1,6 +1,7 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QContextMenuEvent
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
@@ -27,6 +28,7 @@ class ProofreadingTableWidget(TableWidget):
     # 信号定义
     cell_edited = pyqtSignal(object, str)       # (item, new_dst) 单元格编辑完成
     retranslate_clicked = pyqtSignal(object)    # (item) 重新翻译
+    batch_retranslate_clicked = pyqtSignal(list) # (items) 批量重新翻译
     copy_src_clicked = pyqtSignal(object)       # (item) 复制原文到译文
     copy_dst_clicked = pyqtSignal(object)       # (item) 复制译文到剪贴板
 
@@ -64,7 +66,8 @@ class ProofreadingTableWidget(TableWidget):
 
         # 设置表格属性
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        # 支持 Ctrl/Shift 多选和拖拽选择
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         # 禁用默认的双击编辑，改为双击弹出对话框
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
@@ -371,3 +374,51 @@ class ProofreadingTableWidget(TableWidget):
         self.selectRow(row)
         # 延迟滚动，确保 cell widget 布局先完成更新
         QTimer.singleShot(0, lambda: self.scrollToItem(self.item(row, self.COL_SRC), QAbstractItemView.PositionAtCenter))
+
+    def get_selected_items(self) -> list[Item]:
+        """获取所有选中行对应的 Item 对象"""
+        items = []
+        for row in sorted(set(index.row() for index in self.selectedIndexes())):
+            item = self.get_item_at_row(row)
+            if item:
+                items.append(item)
+        return items
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """右键菜单事件"""
+        if self._readonly:
+            return
+
+        selected_items = self.get_selected_items()
+        if not selected_items:
+            return
+
+        menu = RoundMenu(parent=self)
+
+        if len(selected_items) == 1:
+            # 单选：显示完整菜单
+            item = selected_items[0]
+            menu.addAction(Action(
+                FluentIcon.SYNC,
+                Localizer.get().proofreading_page_retranslate,
+                triggered=lambda checked: self.retranslate_clicked.emit(item)
+            ))
+            menu.addAction(Action(
+                FluentIcon.PASTE,
+                Localizer.get().proofreading_page_copy_src,
+                triggered=lambda checked: self.copy_src_clicked.emit(item)
+            ))
+            menu.addAction(Action(
+                FluentIcon.COPY,
+                Localizer.get().proofreading_page_copy_dst,
+                triggered=lambda checked: self.copy_dst_clicked.emit(item)
+            ))
+        else:
+            # 多选：只显示批量重翻
+            menu.addAction(Action(
+                FluentIcon.SYNC,
+                Localizer.get().proofreading_page_batch_retranslate,
+                triggered=lambda checked: self.batch_retranslate_clicked.emit(selected_items)
+            ))
+
+        menu.exec(event.globalPos())
