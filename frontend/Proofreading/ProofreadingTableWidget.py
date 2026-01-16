@@ -156,15 +156,12 @@ class ProofreadingTableWidget(TableWidget):
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
         src_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        # 设置 Tooltip 显示完整内容
-        src_item.setToolTip(src_text)
         self.setItem(row, self.COL_SRC, src_item)
 
         # 译文列：显示换行符，超宽自动省略
         dst_display = dst_text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
         dst_item = QTableWidgetItem(dst_display)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        dst_item.setToolTip(dst_text)
         if self._readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
         self.setItem(row, self.COL_DST, dst_item)
@@ -193,23 +190,16 @@ class ProofreadingTableWidget(TableWidget):
             status_icon = IconWidget(self.STATUS_ICONS[status])
             status_icon.setFixedSize(16, 16)
             status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
-            # 格式修改为：
-            # 翻译状态
-            # 当前状态：xxx
             status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self._get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
         # 警告图标（有警告才显示）
         if warnings:
-            # 使用 FEEDBACK 图标（感叹号三角），更有警示意图
             warning_icon = IconWidget(FluentIcon.VPN)
             warning_icon.setFixedSize(16, 16)
             warning_texts = [self._get_warning_text(e) for e in warnings]
             warning_icon.installEventFilter(ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP))
-            # 格式修改为：
-            # 结果检查
-            # 当前状态：xxx | xxx | xxx
             warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
@@ -340,7 +330,7 @@ class ProofreadingTableWidget(TableWidget):
             return
 
         # 弹出编辑对话框
-        dialog = TextEditDialog(item.get_src(), item.get_dst(), self.window())
+        dialog = TextEditDialog(item.get_src(), item.get_dst(), item.get_file_path(), self.window())
         if dialog.exec():
             new_dst = dialog.get_dst_text()
             # 只在内容变化时发出信号
@@ -363,8 +353,7 @@ class ProofreadingTableWidget(TableWidget):
             # 显示换行符，超宽自动省略
             dst_display = new_dst.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
             dst_cell.setText(dst_display)
-            # Tooltip 显示完整内容
-            dst_cell.setToolTip(new_dst)
+
         self.blockSignals(False)
 
     def select_row(self, row: int) -> None:
