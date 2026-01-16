@@ -1,6 +1,5 @@
 from functools import partial
 
-from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -15,6 +14,7 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from frontend.Model.ModelBasicSettingPage import ModelBasicSettingPage
 from model.Model import ModelType
 from module.Config import Config
@@ -336,11 +336,6 @@ class ModelPage(QWidget, Base):
     def show_model_basic_setting_page(self, model_id: str) -> None:
         """显示编辑模型对话框"""
         ModelBasicSettingPage(model_id, self.window).exec()
-
-        # 激活模型
-        config = Config().load()
-        config.set_active_model_id(model_id)
-        config.save()
 
         # 刷新显示
         self.refresh_all_categories()
