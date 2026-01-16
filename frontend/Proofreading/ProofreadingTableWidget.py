@@ -395,30 +395,11 @@ class ProofreadingTableWidget(TableWidget):
 
         menu = RoundMenu(parent=self)
 
-        if len(selected_items) == 1:
-            # 单选：显示完整菜单
-            item = selected_items[0]
-            menu.addAction(Action(
-                FluentIcon.SYNC,
-                Localizer.get().proofreading_page_retranslate,
-                triggered=lambda checked: self.retranslate_clicked.emit(item)
-            ))
-            menu.addAction(Action(
-                FluentIcon.PASTE,
-                Localizer.get().proofreading_page_copy_src,
-                triggered=lambda checked: self.copy_src_clicked.emit(item)
-            ))
-            menu.addAction(Action(
-                FluentIcon.COPY,
-                Localizer.get().proofreading_page_copy_dst,
-                triggered=lambda checked: self.copy_dst_clicked.emit(item)
-            ))
-        else:
-            # 多选：只显示批量重翻
-            menu.addAction(Action(
-                FluentIcon.SYNC,
-                Localizer.get().proofreading_page_batch_retranslate,
-                triggered=lambda checked: self.batch_retranslate_clicked.emit(selected_items)
-            ))
+        # 统一使用批量重翻逻辑，无论单选还是多选
+        menu.addAction(Action(
+            FluentIcon.SYNC,
+            Localizer.get().proofreading_page_batch_retranslate,
+            triggered=lambda checked: self.batch_retranslate_clicked.emit(selected_items)
+        ))
 
         menu.exec(event.globalPos())

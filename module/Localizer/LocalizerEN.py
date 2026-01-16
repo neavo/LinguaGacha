@@ -251,8 +251,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_load_failed: str = "Failed to read cache file"
     proofreading_page_save_failed: str = "Save failed"
     proofreading_page_retranslate_confirm: str = "Confirm to retranslate this entry?"
-    proofreading_page_retranslate_failed: str = "Translation failed, please retry"
-    proofreading_page_retranslate_success: str = "Translation completed"
     proofreading_page_warning_tooltip_title: str = "Result Check"
     proofreading_page_filter_warning_type: str = "Result Check"
     proofreading_page_filter_status: str = "Translation Status"
@@ -274,9 +272,9 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_saving: str = "Saving data …"
     proofreading_page_indeterminate_exporting: str = "Exporting data …"
     proofreading_page_batch_retranslate: str = "Retranslate selected"
-    proofreading_page_batch_retranslate_confirm: str = "Confirm to retranslate all {COUNT} selected entries?"
-    proofreading_page_batch_retranslate_progress: str = "Retranslating … {CURRENT}/{TOTAL} …"
-    proofreading_page_batch_retranslate_success: str = "Batch translation completed, {SUCCESS} succeeded, {FAILED} failed"
+    proofreading_page_batch_retranslate_confirm: str = "Confirm to re-translate all {COUNT} selected items?"
+    proofreading_page_batch_retranslate_progress: str = "Re-translating, item {CURRENT} of {TOTAL} …"
+    proofreading_page_batch_retranslate_success: str = "Batch translation completed, {SUCCESS} successful, {FAILED} failed"
 
     # 基础设置
     basic_settings_page_max_workers_title: str = "Concurrent Task Threshold"

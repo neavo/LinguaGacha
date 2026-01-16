@@ -540,7 +540,7 @@ class ProofreadingPage(QWidget, Base):
 
         # 显示进度 Toast
         self.progress_show(
-            Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "0").replace("{TOTAL}", str(count)),
+            Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "1").replace("{TOTAL}", str(count)),
             0, count
         )
 

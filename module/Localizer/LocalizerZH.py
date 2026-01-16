@@ -251,8 +251,6 @@ class LocalizerZH():
     proofreading_page_load_failed: str = "缓存文件读取失败"
     proofreading_page_save_failed: str = "保存失败"
     proofreading_page_retranslate_confirm: str = "确定要重新翻译此条目吗？"
-    proofreading_page_retranslate_failed: str = "翻译失败，请重试"
-    proofreading_page_retranslate_success: str = "翻译完成"
     proofreading_page_warning_tooltip_title: str = "结果检查"
     proofreading_page_filter_warning_type: str = "结果检查"
     proofreading_page_filter_status: str = "翻译状态"
@@ -275,7 +273,7 @@ class LocalizerZH():
     proofreading_page_indeterminate_exporting: str = "导出数据中 …"
     proofreading_page_batch_retranslate: str = "重新翻译已选条目"
     proofreading_page_batch_retranslate_confirm: str = "确定要重新翻译全部 {COUNT} 个已选条目吗？"
-    proofreading_page_batch_retranslate_progress: str = "正在重新翻译 … {CURRENT}/{TOTAL} 条 …"
+    proofreading_page_batch_retranslate_progress: str = "正在重新翻译，第 {CURRENT} 项，共 {TOTAL} 项 …"
     proofreading_page_batch_retranslate_success: str = "批量翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条"
 
     # 基础设置
