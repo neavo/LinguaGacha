@@ -14,8 +14,8 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from frontend.Model.ModelEditPage import ModelEditPage
-from frontend.Model.ModelRequestSettingPage import ModelRequestSettingPage
 from model.Model import ModelType
 from model.ModelManager import ModelManager
 from module.Config import Config
@@ -213,27 +213,27 @@ class ModelPage(QWidget, Base):
             )
             menu.addSeparator()
 
-            # 编辑
+            # 基础设置
             menu.addAction(
                 Action(
-                    FluentIcon.EDIT,
+                    FluentIcon.SETTING,
                     Localizer.get().model_page_edit,
                     triggered=partial(self.show_model_edit_page, model_id),
                 )
             )
             menu.addSeparator()
 
-            # 参数
+            # 高级设置
             menu.addAction(
                 Action(
                     FluentIcon.DEVELOPER_TOOLS,
-                    Localizer.get().model_page_args,
-                    triggered=partial(self.show_args_edit_page, model_id),
+                    Localizer.get().model_page_advanced,
+                    triggered=partial(self.show_advanced_edit_page, model_id),
                 )
             )
             menu.addSeparator()
 
-            # 测试
+            # 测试模型
             menu.addAction(
                 Action(
                     FluentIcon.SEND,
@@ -243,7 +243,7 @@ class ModelPage(QWidget, Base):
             )
             menu.addSeparator()
 
-            # 预设模型：重置；自定义模型：删除
+            # 重置模型/删除模型
             if model_type == ModelType.PRESET.value:
                 menu.addAction(
                     Action(
@@ -345,9 +345,9 @@ class ModelPage(QWidget, Base):
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_args_edit_page(self, model_id: str) -> None:
+    def show_advanced_edit_page(self, model_id: str) -> None:
         """显示编辑参数对话框"""
-        ModelRequestSettingPage(model_id, self.window).exec()
+        ModelAdvancedSettingPage(model_id, self.window).exec()
 
     def reset_preset_model(self, model_id: str) -> None:
         """重置预设模型"""
@@ -360,6 +360,11 @@ class ModelPage(QWidget, Base):
             # 同步回 Config
             config.models = manager.get_models_as_dict()
             config.save()
+
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().model_page_reset_success_toast,
+            })
 
         # 刷新显示
         self.refresh_all_categories()

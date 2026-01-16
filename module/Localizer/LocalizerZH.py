@@ -145,11 +145,9 @@ class LocalizerZH():
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
     # 模型管理
-    model_page_widget_title: str = "模型列表"
-    model_page_widget_content: str = "在此添加和管理任何兼容 Google、OpenAI、Anthropic 格式的 LLM 模型"
     model_page_activate: str = "激活模型"
-    model_page_edit: str = "基本参数"
-    model_page_args: str = "请求参数"
+    model_page_edit: str = "基础设置"
+    model_page_advanced: str = "高级设置"
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
@@ -166,6 +164,7 @@ class LocalizerZH():
     model_page_category_anthropic_desc: str = "兼容 Anthropic Claude API 格式的自定义模型"
     model_page_migrated_toast: str = "检测到 {COUNT} 个预设模型已失效，已自动迁移至自定义模型分类 …"
     model_page_delete_last_one_toast: str = "每个分类至少需要保留一个模型，无法删除 …"
+    model_page_reset_success_toast: str = "模型已重置 …"
 
     # 模型编辑
     model_edit_page_name: str = "请输入模型名称 …"
@@ -193,9 +192,21 @@ class LocalizerZH():
     model_edit_page_output_token_title: str = "输出 Token 限制"
     model_edit_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
     model_edit_page_rpm_title: str = "每分钟请求数限制 (RPM)"
-    model_edit_page_rpm_content: str = "每分钟执行的任务总数量的最大值，0 = 无限制"
+    model_edit_page_rpm_content: str = (
+        "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 限制"
+        "<br>"
+        "部分平台会对网络请求的速率进行限制，请参考 API 平台的文档进行设置，0 = 无限制"
+        ""
+        ""
+    )
     model_edit_page_concurrency_title: str = "并发任务数限制"
-    model_edit_page_concurrency_content: str = "同时执行的任务数量的最大值，0 = 自动"
+    model_edit_page_concurrency_content: str = (
+        "同时执行的任务数量的最大值"
+        "<br>"
+        "合理设置可以显著加快任务的完成速度，请参考 API 平台的文档进行设置，0 = 自动"
+        ""
+        ""
+    )
     model_edit_page_headers_title: str = "自定义 HTTP Headers"
     model_edit_page_headers_content: str = "自定义 HTTP Headers（JSON 格式），将合并到请求中"
     model_edit_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
@@ -203,16 +214,16 @@ class LocalizerZH():
     model_edit_page_body_content: str = "自定义请求 Body 参数（JSON 格式），将合并到请求中"
     model_edit_page_body_placeholder: str = '例如：{"stream": false}'
 
-    # 参数编辑
-    model_request_setting_page_top_p_title: str = "top_p"
-    model_request_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    model_request_setting_page_temperature_title: str = "temperature"
-    model_request_setting_page_temperature_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    model_request_setting_page_presence_penalty_title: str = "presence_penalty"
-    model_request_setting_page_presence_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    model_request_setting_page_frequency_penalty_title: str = "frequency_penalty"
-    model_request_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    model_request_setting_page_document_link: str = "点击查看文档"
+    # 高级设置
+    model_advanced_setting_page_top_p_title: str = "top_p"
+    model_advanced_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_temperature_title: str = "temperature"
+    model_advanced_setting_page_temperature_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_presence_penalty_title: str = "presence_penalty"
+    model_advanced_setting_page_presence_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
+    model_advanced_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_document_link: str = "点击查看文档"
 
     # 模型列表
     model_list_page_title: str = "可用的模型列表"

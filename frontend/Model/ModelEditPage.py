@@ -81,9 +81,6 @@ class ModelEditPage(MessageBoxBase, Base):
         # 阈值设置
         self.add_widget_thresholds(self.vbox, config, window)
 
-        # 自定义网络配置
-        self.add_widget_network_config(self.vbox, config, window)
-
         # 填充
         self.vbox.addStretch(1)
 
@@ -310,28 +307,6 @@ class ModelEditPage(MessageBoxBase, Base):
             )
         )
 
-        # RPM 限制
-        def init_rpm(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(thresholds.get("rpm_limit", 0))
-
-        def value_changed_rpm(widget: SpinCard) -> None:
-            config = Config().load()
-            if "thresholds" not in self.model:
-                self.model["thresholds"] = {}
-            self.model["thresholds"]["rpm_limit"] = widget.get_spin_box().value()
-            config.set_model(self.model)
-            config.save()
-
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().model_edit_page_rpm_title,
-                description=Localizer.get().model_edit_page_rpm_content,
-                init=init_rpm,
-                value_changed=value_changed_rpm,
-            )
-        )
-
         # 并发数限制
         def init_concurrency(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
@@ -354,70 +329,26 @@ class ModelEditPage(MessageBoxBase, Base):
             )
         )
 
-    # 自定义网络配置
-    def add_widget_network_config(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        import json
+        # RPM 限制
+        def init_rpm(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(thresholds.get("rpm_limit", 0))
 
-        network_config = self.model.get("network_config", {})
-
-        # 自定义 Headers
-        def text_changed_headers(widget: PlainTextEdit) -> None:
+        def value_changed_rpm(widget: SpinCard) -> None:
             config = Config().load()
-            try:
-                headers = json.loads(widget.toPlainText().strip() or "{}")
-            except json.JSONDecodeError:
-                headers = {}
-            if "network_config" not in self.model:
-                self.model["network_config"] = {}
-            self.model["network_config"]["custom_headers"] = headers
+            if "thresholds" not in self.model:
+                self.model["thresholds"] = {}
+            self.model["thresholds"]["rpm_limit"] = widget.get_spin_box().value()
             config.set_model(self.model)
             config.save()
 
-        def init_headers(widget: GroupCard) -> None:
-            plain_text_edit = PlainTextEdit(self)
-            headers = network_config.get("custom_headers", {})
-            if headers:
-                plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_headers_placeholder)
-            plain_text_edit.textChanged.connect(lambda: text_changed_headers(plain_text_edit))
-            widget.add_widget(plain_text_edit)
-
         parent.addWidget(
-            GroupCard(
-                parent=self,
-                title=Localizer.get().model_edit_page_headers_title,
-                description=Localizer.get().model_edit_page_headers_content,
-                init=init_headers,
+            SpinCard(
+                title=Localizer.get().model_edit_page_rpm_title,
+                description=Localizer.get().model_edit_page_rpm_content,
+                init=init_rpm,
+                value_changed=value_changed_rpm,
             )
         )
 
-        # 自定义 Body
-        def text_changed_body(widget: PlainTextEdit) -> None:
-            config = Config().load()
-            try:
-                body = json.loads(widget.toPlainText().strip() or "{}")
-            except json.JSONDecodeError:
-                body = {}
-            if "network_config" not in self.model:
-                self.model["network_config"] = {}
-            self.model["network_config"]["custom_body"] = body
-            config.set_model(self.model)
-            config.save()
 
-        def init_body(widget: GroupCard) -> None:
-            plain_text_edit = PlainTextEdit(self)
-            body = network_config.get("custom_body", {})
-            if body:
-                plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_body_placeholder)
-            plain_text_edit.textChanged.connect(lambda: text_changed_body(plain_text_edit))
-            widget.add_widget(plain_text_edit)
-
-        parent.addWidget(
-            GroupCard(
-                parent=self,
-                title=Localizer.get().model_edit_page_body_title,
-                description=Localizer.get().model_edit_page_body_content,
-                init=init_body,
-            )
-        )

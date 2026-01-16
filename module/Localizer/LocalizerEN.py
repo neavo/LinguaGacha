@@ -145,11 +145,9 @@ class LocalizerEN(LocalizerZH):
     app_settings_page_close: str = "The application will close, please confirm …"
 
     # Model Management
-    model_page_widget_title: str = "Model List"
-    model_page_widget_content: str = "Add and manage any LLM model compatible with Google, OpenAI and Anthropic formats here"
     model_page_activate: str = "Activate Model"
-    model_page_edit: str = "Basic Parameters"
-    model_page_args: str = "Request Parameters"
+    model_page_edit: str = "Basic Settings"
+    model_page_advanced: str = "Advanced Settings"
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
@@ -166,6 +164,7 @@ class LocalizerEN(LocalizerZH):
     model_page_category_anthropic_desc: str = "Custom models compatible with Anthropic Claude API format"
     model_page_migrated_toast: str = "Detected {COUNT} deprecated preset models, automatically migrated to custom model categories …"
     model_page_delete_last_one_toast: str = "At least one model must be kept in each category, cannot delete …"
+    model_page_reset_success_toast: str = "Model reset successfully …"
 
     # Model Edit
     model_edit_page_name: str = "Please enter model name …"
@@ -193,9 +192,21 @@ class LocalizerEN(LocalizerZH):
     model_edit_page_output_token_title: str = "Output Token Limit"
     model_edit_page_output_token_content: str = "Maximum number of tokens for each task output"
     model_edit_page_rpm_title: str = "Requests Per Minute Limit (RPM)"
-    model_edit_page_rpm_content: str = "Maximum total number of tasks executed per minute, 0 = unlimited"
+    model_edit_page_rpm_content: str = (
+        "Maximum total number of tasks executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> limit"
+        "<br>"
+        "Some platforms may limit the request rate"
+        "<br>"
+        "Please refer to the API platform's documentation for settings, 0 = unlimited"
+    )
     model_edit_page_concurrency_title: str = "Concurrent Task Limit"
-    model_edit_page_concurrency_content: str = "Maximum number of tasks executing simultaneously, 0 = automatic"
+    model_edit_page_concurrency_content: str = (
+        "Maximum number of tasks executing simultaneously"
+        "<br>"
+        "Proper configuration can significantly speed up task completion"
+        "<br>"
+        "Please refer to the API platform's documentation for settings, 0 = Automatic"
+    )
     model_edit_page_headers_title: str = "Custom HTTP Headers"
     model_edit_page_headers_content: str = "Custom HTTP Headers (JSON format), will be merged into the request"
     model_edit_page_headers_placeholder: str = 'Example: {"Authorization": "Bearer xxx"}'
@@ -203,16 +214,16 @@ class LocalizerEN(LocalizerZH):
     model_edit_page_body_content: str = "Custom request body parameters (JSON format), will be merged into the request"
     model_edit_page_body_placeholder: str = 'Example: {"stream": false}'
 
-    # 参数编辑
-    model_request_setting_page_top_p_title: str = "top_p"
-    model_request_setting_page_top_p_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    model_request_setting_page_temperature_title: str = "temperature"
-    model_request_setting_page_temperature_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    model_request_setting_page_presence_penalty_title: str = "presence_penalty"
-    model_request_setting_page_presence_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    model_request_setting_page_frequency_penalty_title: str = "frequency_penalty"
-    model_request_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
-    model_request_setting_page_document_link: str = "Click to view documentation"
+    # Advanced Settings
+    model_advanced_setting_page_top_p_title: str = "top_p"
+    model_advanced_setting_page_top_p_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_advanced_setting_page_temperature_title: str = "temperature"
+    model_advanced_setting_page_temperature_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_advanced_setting_page_presence_penalty_title: str = "presence_penalty"
+    model_advanced_setting_page_presence_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
+    model_advanced_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
+    model_advanced_setting_page_document_link: str = "Click to view documentation"
 
     # 模型列表
     model_list_page_title: str = "Available Model List"

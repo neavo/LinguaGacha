@@ -10,7 +10,7 @@
         "custom_body": {}
     },
     "thresholds": {
-        "input_token_limit": 512,
+        "input_token_limit": 768,
         "output_token_limit": 4096,
         "rpm_limit": 0,
         "concurrency_limit": 0

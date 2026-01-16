@@ -1,3 +1,5 @@
+import json
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QLayout
@@ -6,15 +8,17 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
+from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.GroupCard import GroupCard
 from widget.SliderCard import SliderCard
 
-class ModelRequestSettingPage(MessageBoxBase, Base):
+class ModelAdvancedSettingPage(MessageBoxBase, Base):
 
     TOP_P_DEFAULT: float = 0.95
     TEMPERATURE_DEFAULT: float = 0.95
@@ -61,6 +65,11 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
         self.add_widget_temperature(scroll_area_vbox, config, window)
         self.add_widget_presence_penalty(scroll_area_vbox, config, window)
         self.add_widget_frequency_penalty(scroll_area_vbox, config, window)
+
+
+        # 自定义网络配置
+        self.add_widget_network_config(scroll_area_vbox, config, window)
+
         self.add_widget_url(scroll_area_vbox, config, window)
 
         # 填充
@@ -134,8 +143,8 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().model_request_setting_page_top_p_title,
-                description=Localizer.get().model_request_setting_page_top_p_content,
+                title=Localizer.get().model_advanced_setting_page_top_p_title,
+                description=Localizer.get().model_advanced_setting_page_top_p_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "top_p"),
             )
@@ -165,8 +174,8 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().model_request_setting_page_temperature_title,
-                description=Localizer.get().model_request_setting_page_temperature_content,
+                title=Localizer.get().model_advanced_setting_page_temperature_title,
+                description=Localizer.get().model_advanced_setting_page_temperature_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "temperature"),
             )
@@ -196,8 +205,8 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().model_request_setting_page_presence_penalty_title,
-                description=Localizer.get().model_request_setting_page_presence_penalty_content,
+                title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
+                description=Localizer.get().model_advanced_setting_page_presence_penalty_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "presence_penalty"),
             )
@@ -227,10 +236,77 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
 
         parent.addWidget(
             SliderCard(
-                title=Localizer.get().model_request_setting_page_frequency_penalty_title,
-                description=Localizer.get().model_request_setting_page_frequency_penalty_content,
+                title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
+                description=Localizer.get().model_advanced_setting_page_frequency_penalty_content,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "frequency_penalty"),
+            )
+        )
+
+    # 自定义网络配置
+    def add_widget_network_config(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+
+        network_config = self.model.get("network_config", {})
+
+        # 自定义 Headers
+        def text_changed_headers(widget: PlainTextEdit) -> None:
+            config = Config().load()
+            try:
+                headers = json.loads(widget.toPlainText().strip() or "{}")
+            except json.JSONDecodeError:
+                headers = {}
+            if "network_config" not in self.model:
+                self.model["network_config"] = {}
+            self.model["network_config"]["custom_headers"] = headers
+            config.set_model(self.model)
+            config.save()
+
+        def init_headers(widget: GroupCard) -> None:
+            plain_text_edit = PlainTextEdit(self)
+            headers = network_config.get("custom_headers", {})
+            if headers:
+                plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
+            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_headers_placeholder)
+            plain_text_edit.textChanged.connect(lambda: text_changed_headers(plain_text_edit))
+            widget.add_widget(plain_text_edit)
+
+        parent.addWidget(
+            GroupCard(
+                parent=self,
+                title=Localizer.get().model_edit_page_headers_title,
+                description=Localizer.get().model_edit_page_headers_content,
+                init=init_headers,
+            )
+        )
+
+        # 自定义 Body
+        def text_changed_body(widget: PlainTextEdit) -> None:
+            config = Config().load()
+            try:
+                body = json.loads(widget.toPlainText().strip() or "{}")
+            except json.JSONDecodeError:
+                body = {}
+            if "network_config" not in self.model:
+                self.model["network_config"] = {}
+            self.model["network_config"]["custom_body"] = body
+            config.set_model(self.model)
+            config.save()
+
+        def init_body(widget: GroupCard) -> None:
+            plain_text_edit = PlainTextEdit(self)
+            body = network_config.get("custom_body", {})
+            if body:
+                plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
+            plain_text_edit.setPlaceholderText(Localizer.get().model_edit_page_body_placeholder)
+            plain_text_edit.textChanged.connect(lambda: text_changed_body(plain_text_edit))
+            widget.add_widget(plain_text_edit)
+
+        parent.addWidget(
+            GroupCard(
+                parent=self,
+                title=Localizer.get().model_edit_page_body_title,
+                description=Localizer.get().model_edit_page_body_content,
+                init=init_body,
             )
         )
 
@@ -246,7 +322,7 @@ class ModelRequestSettingPage(MessageBoxBase, Base):
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
 
-        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().model_request_setting_page_document_link)
+        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().model_advanced_setting_page_document_link)
         hyper_link_label.setUnderlineVisible(True)
 
         parent.addSpacing(16)
