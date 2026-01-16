@@ -36,7 +36,6 @@ class Config():
     font_hinting: bool = True
     scale_factor: str = ""
 
-
     request_timeout: int = 120
     max_round: int = 16
 
@@ -49,7 +48,6 @@ class Config():
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
 
-
     # BasicSettingsPage
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
@@ -57,8 +55,6 @@ class Config():
     output_folder: str = "./output"
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
-
-
 
     # GlossaryPage
     glossary_enable: bool = True

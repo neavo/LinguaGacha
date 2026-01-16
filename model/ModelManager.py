@@ -84,7 +84,7 @@ class ModelManager:
         if existing_models:
             for model in existing_models:
                 # 仅处理标记为 PRESET 但 ID 已不在最新预设列表中的模型
-                if model.get("type") == ModelType.PRESET and model.get("id") not in preset_ids:
+                if model.get("type") == ModelType.PRESET.value and model.get("id") not in preset_ids:
                     api_format = model.get("api_format", "")
 
                     if api_format == "Google":
