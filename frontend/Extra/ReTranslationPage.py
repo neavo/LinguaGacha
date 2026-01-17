@@ -1,30 +1,30 @@
 import time
 
-from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import MessageBox
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import MessageBox
 from qfluentwidgets import PlainTextEdit
-from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
-from module.File.FileManager import FileManager
 from model.Item import Item
-from module.CacheManager import CacheManager
 from model.Project import Project
+from module.CacheManager import CacheManager
 from module.Config import Config
+from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from widget.CommandBarCard import CommandBarCard
+from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
-from widget.CommandBarCard import CommandBarCard
 
 class ReTranslationPage(QWidget, Base):
 
@@ -72,7 +72,7 @@ class ReTranslationPage(QWidget, Base):
         parent.addWidget(scroll_area)
 
         def init(widget: GroupCard) -> None:
-            self.keyword_text_edit = PlainTextEdit(self)
+            self.keyword_text_edit = CustomTextEdit(self)
             self.keyword_text_edit.setPlaceholderText(Localizer.get().placeholder)
             widget.add_widget(self.keyword_text_edit)
 

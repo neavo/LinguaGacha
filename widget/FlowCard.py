@@ -1,19 +1,19 @@
 from typing import Callable
 
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
 from widget.Separator import Separator
 
 class FlowCard(CardWidget):
 
-    def __init__(self, parent: QWidget, title: str, description: str, init: Callable = None, clicked: Callable = None) -> None:
+    def __init__(self, parent: QWidget, title: str, description: str, accent_color: str = None, init: Callable = None, clicked: Callable = None) -> None:
         super().__init__(parent)
 
         # 设置容器
@@ -28,10 +28,17 @@ class FlowCard(CardWidget):
         self.head_hbox.setContentsMargins(0, 0, 0, 0)
         self.root.addWidget(self.head_container)
 
+        # 添加强调色装饰条
+        if accent_color:
+            accent_bar = QWidget(self)
+            accent_bar.setFixedWidth(4)
+            accent_bar.setStyleSheet(f"background-color: {accent_color}; border-radius: 2px;")
+            self.head_hbox.addWidget(accent_bar)
+
         # 添加文本容器
         self.text_container = QWidget(self)
         self.text_vbox = QVBoxLayout(self.text_container)
-        self.text_vbox.setSpacing(8)
+        self.text_vbox.setSpacing(4)
         self.text_vbox.setContentsMargins(0, 0, 0, 0)
         self.head_hbox.addWidget(self.text_container)
 

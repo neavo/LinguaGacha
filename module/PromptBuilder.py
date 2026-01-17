@@ -28,25 +28,25 @@ class PromptBuilder(Base):
     @classmethod
     @lru_cache(maxsize = None)
     def get_base(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(f"resource/preset/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
             return reader.read().strip()
 
     @classmethod
     @lru_cache(maxsize = None)
     def get_prefix(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(f"resource/preset/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
             return reader.read().strip()
 
     @classmethod
     @lru_cache(maxsize = None)
     def get_suffix(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(f"resource/preset/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
             return reader.read().strip()
 
     @classmethod
     @lru_cache(maxsize = None)
     def get_suffix_glossary(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(f"resource/preset/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
             return reader.read().strip()
 
     # 获取主提示词
