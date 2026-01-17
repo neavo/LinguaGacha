@@ -1,0 +1,15 @@
+{
+    "id": 6,
+    "name": "ZhiPu",
+    "api_url": "https://open.bigmodel.cn/api/paas/v4",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "OpenAI",
+    "model": "glm-4-flash",
+    "thinking": false,
+    "top_p": 0.95,
+    "temperature": 0.95,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}

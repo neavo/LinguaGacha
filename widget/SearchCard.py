@@ -7,6 +7,7 @@ from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import PillPushButton
+from qfluentwidgets import SearchLineEdit
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import TransparentPushButton
@@ -14,7 +15,6 @@ from qfluentwidgets import TransparentToolButton
 from qfluentwidgets import VerticalSeparator
 
 from module.Localizer.Localizer import Localizer
-from widget.CustomLineEdit import CustomSearchLineEdit
 
 class SearchCard(CardWidget):
     """搜索卡片组件，支持普通/正则搜索模式及上下跳转"""
@@ -43,8 +43,24 @@ class SearchCard(CardWidget):
         self.root.addWidget(VerticalSeparator())
 
         # 2. 搜索输入框
-        self.line_edit = CustomSearchLineEdit(self)
+        self.line_edit = SearchLineEdit(self)
         self.line_edit.setMinimumWidth(256)
+        # 使用 QSS 覆盖默认样式以实现扁平化设计，匹配整体 CommandBar 风格
+        self.line_edit.setStyleSheet("""
+            SearchLineEdit {
+                border: none;
+                background: transparent;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            SearchLineEdit:hover {
+                background: rgba(0, 0, 0, 0.05);
+            }
+            SearchLineEdit[has-focus=true] {
+                background: rgba(255, 255, 255, 0.7);
+                border-bottom: 2px solid #005fb8;
+            }
+        """)
         self.line_edit.setPlaceholderText(Localizer.get().placeholder)
         self.line_edit.setClearButtonEnabled(True)
         self.root.addWidget(self.line_edit, 1) # 让输入框自动拉伸占满空间
@@ -93,7 +109,7 @@ class SearchCard(CardWidget):
         """获取当前是否为正则搜索模式"""
         return self._regex_mode
 
-    def get_line_edit(self) -> CustomSearchLineEdit:
+    def get_line_edit(self) -> SearchLineEdit:
         """获取搜索输入框实例"""
         return self.line_edit
 

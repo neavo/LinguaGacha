@@ -1,24 +1,14 @@
-import os
-import webbrowser
-
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from widget.ComboBoxCard import ComboBoxCard
-from widget.PushButtonCard import PushButtonCard
 from widget.SpinCard import SpinCard
-from widget.SwitchButtonCard import SwitchButtonCard
 
 class BasicSettingsPage(QWidget, Base):
 
@@ -28,12 +18,6 @@ class BasicSettingsPage(QWidget, Base):
 
         # 载入并保存默认配置
         config = Config().load().save()
-
-        # 根据应用语言构建语言列表
-        if Localizer.get_app_language() == BaseLanguage.Enum.ZH:
-            self.languages = [BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()]
-        else:
-            self.languages = [BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()]
 
         # 设置容器
         self.root = QVBoxLayout(self)
@@ -55,186 +39,97 @@ class BasicSettingsPage(QWidget, Base):
         self.root.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_source_language(scroll_area_vbox, config, window)
-        self.add_widget_target_language(scroll_area_vbox, config, window)
-        self.add_widget_input_folder(scroll_area_vbox, config, window)
-        self.add_widget_output_folder(scroll_area_vbox, config, window)
-        self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
-        self.add_widget_traditional_chinese(scroll_area_vbox, config, window)
+        self.add_widget_max_workers(scroll_area_vbox, config, window)
+        self.add_widget_rpm_threshold(scroll_area_vbox, config, window)
+        self.add_widget_input_token_threshold(scroll_area_vbox, config, window)
+        self.add_widget_output_token_threshold(scroll_area_vbox, config, window)
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
         self.add_widget_max_round(scroll_area_vbox, config, window)
 
         # 填充
         scroll_area_vbox.addStretch(1)
 
-    # 原文语言
-    def add_widget_source_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            if config.source_language in BaseLanguage.get_languages():
-                widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.source_language)
-                )
+    # 每秒任务数阈值
+    def add_widget_max_workers(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
-        def current_changed(widget: ComboBoxCard) -> None:
+        def init(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.max_workers)
+
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.source_language = BaseLanguage.get_languages()[widget.get_combo_box().currentIndex()]
+            config.max_workers = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_source_language_title,
-                Localizer.get().basic_settings_page_source_language_content,
-                items = self.languages,
+            SpinCard(
+                title = Localizer.get().basic_settings_page_max_workers_title,
+                description = Localizer.get().basic_settings_page_max_workers_content,
                 init = init,
-                current_changed = current_changed,
+                value_changed = value_changed,
             )
         )
 
-    # 译文语言
-    def add_widget_target_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
+    # 每分钟任务数阈值
+    def add_widget_rpm_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
-        def init(widget: ComboBoxCard) -> None:
-            if config.target_language in BaseLanguage.get_languages():
-                widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.target_language)
-                )
+        def init(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.rpm_threshold)
 
-        def current_changed(widget: ComboBoxCard) -> None:
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.target_language = BaseLanguage.get_languages()[widget.get_combo_box().currentIndex()]
+            config.rpm_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_target_language_title,
-                Localizer.get().basic_settings_page_target_language_content,
-                items = self.languages,
+            SpinCard(
+                title = Localizer.get().basic_settings_page_rpm_threshold_title,
+                description = Localizer.get().basic_settings_page_rpm_threshold_content,
                 init = init,
-                current_changed = current_changed,
+                value_changed = value_changed,
             )
         )
 
-    # 输入文件夹
-    def add_widget_input_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
+    # 输入令牌长度阈值
+    def add_widget_input_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
-        def open_btn_clicked(widget: PushButton) -> None:
-            webbrowser.open(os.path.abspath(Config().load().input_folder))
+        def init(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.input_token_threshold)
 
-        def init(widget: PushButtonCard) -> None:
-            open_btn = PushButton(FluentIcon.FOLDER, Localizer.get().open, self)
-            open_btn.clicked.connect(open_btn_clicked)
-            widget.add_spacing(4)
-            widget.add_widget(open_btn)
-
-            widget.get_description_label().setText(f"{Localizer.get().basic_settings_page_input_folder_content} {config.input_folder}")
-            widget.get_push_button().setText(Localizer.get().select)
-            widget.get_push_button().setIcon(FluentIcon.ADD_TO)
-
-        def clicked(widget: PushButtonCard) -> None:
-            # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().select, "")
-            if path == None or path == "":
-                return
-
-            # 更新UI
-            widget.get_description_label().setText(f"{Localizer.get().basic_settings_page_input_folder_content} {path.strip()}")
-
-            # 更新并保存配置
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.input_folder = path.strip()
+            config.input_token_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
-            PushButtonCard(
-                title = Localizer.get().basic_settings_page_input_folder_title,
-                description = "",
+            SpinCard(
+                title = Localizer.get().basic_settings_page_input_token_threshold_title,
+                description = Localizer.get().basic_settings_page_input_token_threshold_content,
                 init = init,
-                clicked = clicked,
+                value_changed = value_changed,
             )
         )
 
-    # 输出文件夹
-    def add_widget_output_folder(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
+    # 输出令牌长度阈值
+    def add_widget_output_token_threshold(self, parent: QLayout, config: Config, window: FluentWindow)-> None:
 
-        def open_btn_clicked(widget: PushButton) -> None:
-            webbrowser.open(os.path.abspath(Config().load().output_folder))
+        def init(widget: SpinCard) -> None:
+            widget.get_spin_box().setRange(0, 9999999)
+            widget.get_spin_box().setValue(config.output_token_threshold)
 
-        def init(widget: PushButtonCard) -> None:
-            open_btn = PushButton(FluentIcon.FOLDER, Localizer.get().open, self)
-            open_btn.clicked.connect(open_btn_clicked)
-            widget.add_spacing(4)
-            widget.add_widget(open_btn)
-
-            widget.get_description_label().setText(f"{Localizer.get().basic_settings_page_output_folder_content} {config.output_folder}")
-            widget.get_push_button().setText(Localizer.get().select)
-            widget.get_push_button().setIcon(FluentIcon.ADD_TO)
-
-        def clicked(widget: PushButtonCard) -> None:
-            # 选择文件夹
-            path = QFileDialog.getExistingDirectory(None, Localizer.get().select, "")
-            if path == None or path == "":
-                return
-
-            # 更新UI
-            widget.get_description_label().setText(f"{Localizer.get().basic_settings_page_output_folder_content} {path.strip()}")
-
-            # 更新并保存配置
+        def value_changed(widget: SpinCard) -> None:
             config = Config().load()
-            config.output_folder = path.strip()
+            config.output_token_threshold = widget.get_spin_box().value()
             config.save()
 
         parent.addWidget(
-            PushButtonCard(
-                title = Localizer.get().basic_settings_page_output_folder_title,
-                description = "",
+            SpinCard(
+                title = Localizer.get().basic_settings_page_output_token_threshold_title,
+                description = Localizer.get().basic_settings_page_output_token_threshold_content,
                 init = init,
-                clicked = clicked,
-            )
-        )
-
-    # 任务完成后自动打开输出文件夹
-    def add_widget_output_folder_open_on_finish(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
-
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.output_folder_open_on_finish
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            # 更新并保存配置
-            config = Config().load()
-            config.output_folder_open_on_finish = widget.get_switch_button().isChecked()
-            config.save()
-
-        parent.addWidget(
-            SwitchButtonCard(
-                title = Localizer.get().basic_settings_page_output_folder_open_on_finish_title,
-                description = Localizer.get().basic_settings_page_output_folder_open_on_finish_content,
-                init = init,
-                checked_changed = checked_changed,
-            )
-        )
-
-    # 繁体输出
-    def add_widget_traditional_chinese(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
-
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.traditional_chinese_enable
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            # 更新并保存配置
-            config = Config().load()
-            config.traditional_chinese_enable = widget.get_switch_button().isChecked()
-            config.save()
-
-        parent.addWidget(
-            SwitchButtonCard(
-                Localizer.get().basic_settings_page_traditional_chinese_title,
-                Localizer.get().basic_settings_page_traditional_chinese_content,
-                init = init,
-                checked_changed = checked_changed,
+                value_changed = value_changed,
             )
         )
 

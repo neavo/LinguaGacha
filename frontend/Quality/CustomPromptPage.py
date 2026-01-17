@@ -2,25 +2,25 @@ import os
 from functools import partial
 
 from PyQt5.QtCore import QPoint
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+
 from qfluentwidgets import Action
-from qfluentwidgets import CommandButton
-from qfluentwidgets import FluentIcon
-from qfluentwidgets import FluentWindow
-from qfluentwidgets import MessageBox
-from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import FluentIcon
+from qfluentwidgets import MessageBox
+from qfluentwidgets import FluentWindow
+from qfluentwidgets import CommandButton
+from qfluentwidgets import PlainTextEdit
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from widget.CommandBarCard import CommandBarCard
-from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
+from widget.CommandBarCard import CommandBarCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 class CustomPromptPage(QWidget, Base):
@@ -82,7 +82,7 @@ class CustomPromptPage(QWidget, Base):
         self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
-        self.main_text = CustomTextEdit(self)
+        self.main_text = PlainTextEdit(self)
         self.main_text.setPlainText(getattr(config, f"{self.base_key}_data",))
         parent.addWidget(self.main_text)
 

@@ -11,49 +11,45 @@ from google.genai import types
 
 from base.Base import Base
 from base.VersionManager import VersionManager
-from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
 class TaskRequester(Base):
-    """
-    任务请求器 - 负责向各种 LLM API 发送请求
-    直接使用新的 Model 数据结构，不兼容旧的 platform 格式
-    """
 
     # 密钥索引
     API_KEY_INDEX: int = 0
 
     # Gemini
-    RE_GEMINI_2_5_PRO: re.Pattern = re.compile(r"gemini-2\.5-pro", flags=re.IGNORECASE)
-    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags=re.IGNORECASE)
-    RE_GEMINI_3_PRO: re.Pattern = re.compile(r"gemini-3-pro", flags=re.IGNORECASE)
-    RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
+    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
+    RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags = re.IGNORECASE)
 
     # Claude
     RE_CLAUDE: tuple[re.Pattern] = (
-        re.compile(r"claude-3-7-sonnet", flags=re.IGNORECASE),
-        re.compile(r"claude-opus-4-\d", flags=re.IGNORECASE),
-        re.compile(r"claude-haiku-4-\d", flags=re.IGNORECASE),
-        re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
+        re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE),
+        re.compile(r"claude-opus-4-\d", flags = re.IGNORECASE),
+        re.compile(r"claude-haiku-4-\d", flags = re.IGNORECASE),
+        re.compile(r"claude-sonnet-4-\d", flags = re.IGNORECASE),
     )
 
     # OpenAI Compatible
     RE_GLM: tuple[re.Pattern] = (
-        re.compile(r"glm-4\.5", flags=re.IGNORECASE),
-        re.compile(r"glm-4\.6", flags=re.IGNORECASE),
-        re.compile(r"glm-4\.7", flags=re.IGNORECASE),
+        re.compile(r"glm-4\.5", flags = re.IGNORECASE),
+        re.compile(r"glm-4\.6", flags = re.IGNORECASE),
+        re.compile(r"glm-4\.7", flags = re.IGNORECASE),
     )
     RE_DOUBAO: tuple[re.Pattern] = (
-        re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
-        re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
+        re.compile(r"doubao-seed-1-6", flags = re.IGNORECASE),
+        re.compile(r"doubao-seed-1-8", flags = re.IGNORECASE),
     )
     RE_DEEPSEEK: tuple[re.Pattern] = (
-        re.compile(r"deepseek", flags=re.IGNORECASE),
+        re.compile(r"deepseek-v3-1", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3-2", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3\.1", flags = re.IGNORECASE),
+        re.compile(r"deepseek-v3\.2", flags = re.IGNORECASE),
     )
     RE_OPENAI: tuple[re.Pattern] = (
-        re.compile(r"gpt-\d", flags=re.IGNORECASE),
-        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
+        re.compile(r"gpt-\d", flags = re.IGNORECASE),
+        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags = re.IGNORECASE),
     )
 
     # 正则
@@ -62,48 +58,12 @@ class TaskRequester(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, model: dict) -> None:
-        """
-        初始化请求器
-
-        Args:
-            config: 全局配置对象
-            model: 模型配置字典（新格式）
-        """
+    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list]) -> None:
         super().__init__()
+
+        # 初始化
         self.config = config
-        self.model = model
-
-        # 从模型配置中提取常用字段
-        self.api_url: str = model.get("api_url", "")
-        self.api_format: str = model.get("api_format", "OpenAI")
-        self.model_id: str = model.get("model_id", "")
-
-        # 解析 API 密钥列表
-        api_keys_str = str(model.get("api_key", ""))
-        self.api_keys: list[str] = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
-
-        # 提取阈值配置
-        self.output_token_limit: int = model.get("threshold", {}).get("output_token_limit", 4096)
-
-        # 提取请求配置（根据开关状态决定是否使用）
-        request_config = model.get("request", {})
-        extra_headers_custom_enable = request_config.get("extra_headers_custom_enable", False)
-        extra_body_custom_enable = request_config.get("extra_body_custom_enable", False)
-        self.extra_headers: dict = request_config.get("extra_headers", {}) if extra_headers_custom_enable else {}
-        self.extra_body: dict = request_config.get("extra_body", {}) if extra_body_custom_enable else {}
-
-        # 解析思考挡位
-        thinking_config = model.get("thinking", {})
-        thinking_level_str = thinking_config.get("level", "OFF")
-        try:
-            self.thinking_level = ThinkingLevel(thinking_level_str)
-        except ValueError:
-            self.thinking_level = ThinkingLevel.OFF
-
-        # 提取生成参数
-        generation = model.get("generation", {})
-        self.generation = generation
+        self.platform = platform
 
     # 重置
     @classmethod
@@ -122,129 +82,172 @@ class TaskRequester(Base):
         cls.API_KEY_INDEX = (cls.API_KEY_INDEX + 1) % len(keys)
         return key
 
+    # 获取密钥
     @classmethod
-    @lru_cache(maxsize=None)
-    def get_url(cls, url: str, api_format: str) -> str:
-        if api_format == Base.APIFormat.SAKURALLM:
+    @lru_cache(maxsize = None)
+    def get_url(cls, url: str, format: str) -> str:
+        if format == Base.APIFormat.SAKURALLM:
             return url.removesuffix("/").removesuffix("/chat/completions")
-        elif api_format == Base.APIFormat.GOOGLE:
+        elif format == Base.APIFormat.GOOGLE:
             return url.removesuffix("/")
-        elif api_format == Base.APIFormat.ANTHROPIC:
+        elif format == Base.APIFormat.ANTHROPIC:
             return url.removesuffix("/")
         else:
             return url.removesuffix("/").removesuffix("/chat/completions")
 
+    # 获取客户端
     @classmethod
-    @lru_cache(maxsize=None)
-    def get_client(cls, url: str, key: str, api_format: str, timeout: int, extra_headers_tuple: tuple = ()) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
-        # extra_headers_tuple 用于 Google API，格式为 ((k1, v1), (k2, v2), ...)，可作为缓存 key
-        if api_format == Base.APIFormat.SAKURALLM:
+    @lru_cache(maxsize = None)
+    def get_client(cls, url: str, key: str, format: Base.APIFormat, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
+        # connect (连接超时):
+        #   建议值: 5.0 到 10.0 秒。
+        #   解释: 建立到 LLM API 服务器的 TCP 连接。通常这个过程很快，但网络波动时可能需要更长时间。设置过短可能导致在网络轻微抖动时连接失败。
+        # read (读取超时):
+        #   建议值: 非常依赖具体场景。
+        #   对于快速响应的简单任务（如分类、简单问答）：10.0 到 30.0 秒。
+        #   对于中等复杂任务或中等长度输出：30.0 到 90.0 秒。
+        #   对于复杂任务或长文本生成（如 GPT-4 生成大段代码或文章）：60.0 到 180.0 秒，甚至更长。
+        #   解释: 这是从发送完请求到接收完整个响应体的最大时间。这是 LLM 请求中最容易超时的部分。你需要根据你的模型、提示和期望输出来估算一个合理的上限。强烈建议监控你的P95/P99响应时间来调整这个值。
+        # write (写入超时):
+        #   建议值: 5.0 到 10.0 秒。
+        #   解释: 发送请求体（包含你的 prompt）到服务器的时间。除非你的 prompt 非常巨大（例如，包含超长上下文），否则这个过程通常很快。
+        # pool (从连接池获取连接超时):
+        #   建议值: 5.0 到 10.0 秒 (如果并发量高，可以适当增加)。
+        #   解释: 如果你使用 httpx.Client 并且并发发起大量请求，可能会耗尽连接池中的连接。此参数定义了等待可用连接的最长时间。
+        if format == Base.APIFormat.SAKURALLM:
             return openai.OpenAI(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
-                max_retries=0,
+                base_url = url,
+                api_key = key,
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
+                max_retries = 0,
             )
-        elif api_format == Base.APIFormat.GOOGLE:
-            # 合并默认 headers 和自定义 headers
-            headers = cls.get_default_headers()
-            headers.update(dict(extra_headers_tuple))
+        elif format == Base.APIFormat.GOOGLE:
+            # https://github.com/googleapis/python-genai
             return genai.Client(
-                api_key=key,
-                http_options=types.HttpOptions(
-                    base_url=url,
-                    timeout=timeout * 1000,
-                    headers=headers,
+                api_key = key,
+                http_options = types.HttpOptions(
+                    base_url = url,
+                    timeout = timeout * 1000,
+                    headers = {
+                        "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
+                    },
                 ),
             )
-        elif api_format == Base.APIFormat.ANTHROPIC:
+        elif format == Base.APIFormat.ANTHROPIC:
             return anthropic.Anthropic(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
-                max_retries=0,
+                base_url = url,
+                api_key = key,
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
+                max_retries = 0,
             )
         else:
             return openai.OpenAI(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
-                max_retries=0,
+                base_url = url,
+                api_key = key,
+                timeout = httpx.Timeout(
+                    read = timeout,
+                    pool = 8.00,
+                    write = 8.00,
+                    connect = 8.00,
+                ),
+                max_retries = 0,
             )
 
-    @staticmethod
-    def get_default_headers() -> dict:
-        """获取默认请求头"""
-        return {
-            "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
-        }
-
-    def request(self, messages: list[dict]) -> tuple[bool, str, str, int, int]:
-        """发起请求"""
-        # 构建生成参数
+    # 发起请求
+    def request(self, messages: list[dict]) -> tuple[bool, str, int, int]:
         args: dict[str, float] = {}
-        if self.generation.get("top_p_custom_enable"):
-            args["top_p"] = self.generation.get("top_p")
-        if self.generation.get("temperature_custom_enable"):
-            args["temperature"] = self.generation.get("temperature")
-        if self.generation.get("presence_penalty_custom_enable"):
-            args["presence_penalty"] = self.generation.get("presence_penalty")
-        if self.generation.get("frequency_penalty_custom_enable"):
-            args["frequency_penalty"] = self.generation.get("frequency_penalty")
+        if self.platform.get("top_p_custom_enable") == True:
+            args["top_p"] = self.platform.get("top_p")
+        if self.platform.get("temperature_custom_enable") == True:
+            args["temperature"] = self.platform.get("temperature")
+        if self.platform.get("presence_penalty_custom_enable") == True:
+            args["presence_penalty"] = self.platform.get("presence_penalty")
+        if self.platform.get("frequency_penalty_custom_enable") == True:
+            args["frequency_penalty"] = self.platform.get("frequency_penalty")
 
-        # 根据 API 格式发起请求
-        if self.api_format == Base.APIFormat.SAKURALLM:
-            return self.request_sakura(messages, args)
-        elif self.api_format == Base.APIFormat.GOOGLE:
-            return self.request_google(messages, args)
-        elif self.api_format == Base.APIFormat.ANTHROPIC:
-            return self.request_anthropic(messages, args)
+        thinking = self.platform.get("thinking")
+
+        # 发起请求
+        if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_sakura(
+                messages,
+                thinking,
+                args,
+            )
+        elif self.platform.get("api_format") == Base.APIFormat.GOOGLE:
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_google(
+                messages,
+                thinking,
+                args,
+            )
+        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_anthropic(
+                messages,
+                thinking,
+                args,
+            )
         else:
-            return self.request_openai(messages, args)
+            skip, response_think, response_result, input_tokens, output_tokens = self.request_openai(
+                messages,
+                thinking,
+                args,
+            )
 
-    def build_extra_headers(self) -> dict:
-        """构建请求头，合并自定义 Headers"""
-        headers = self.get_default_headers()
-        headers.update(self.extra_headers)
-        return headers
+        return skip, response_think, response_result, input_tokens, output_tokens
 
-    # ========== Sakura 请求 ==========
-
-    def generate_sakura_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
-        result = args | {
-            "model": self.model_id,
+    # 生成请求参数
+    def generate_sakura_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
+        args: dict = args | {
+            "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
-            "extra_body": self.extra_body,
+            "max_tokens": self.config.output_token_threshold,
+            "extra_headers": {
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+            }
         }
-        return result
 
-    def request_sakura(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+        return args
+
+    # 发起请求
+    def request_sakura(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
+            # 获取客户端
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
                 )
 
+            # 发起请求
             response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_sakura_args(messages, args)
+                **self.generate_sakura_args(messages, thinking, args)
             )
 
+            # 提取回复的文本内容
             response_result = response.choices[0].message.content
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
-        # 获取 Token 消耗
+        # 获取输入消耗
         try:
             input_tokens = int(response.usage.prompt_tokens)
         except Exception:
             input_tokens = 0
 
+        # 获取输出消耗
         try:
             output_tokens = int(response.usage.completion_tokens)
         except Exception:
@@ -253,68 +256,73 @@ class TaskRequester(Base):
         # Sakura 返回的内容多行文本，将其转换为 JSON 字符串
         response_result = json.dumps(
             {str(i): line.strip() for i, line in enumerate(response_result.strip().splitlines())},
-            indent=None,
-            ensure_ascii=False,
+            indent = None,
+            ensure_ascii = False,
         )
 
         return False, "", response_result, input_tokens, output_tokens
 
-    # ========== OpenAI 请求 ==========
-
-    def generate_openai_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
-        result = args | {
-            "model": self.model_id,
+    # 生成请求参数
+    def generate_openai_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
+        args: dict = args | {
+            "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
+            "max_tokens": self.config.output_token_threshold,
+            "extra_headers": {
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+            }
         }
+
+        # 初始化 extra_body
+        if isinstance(args.get("extra_body"), dict) == False:
+            args["extra_body"] = {}
 
         # 为 OpenAI 平台设置 max_completion_tokens
         if (
-            self.api_url.startswith("https://api.openai.com")
-            or any(v.search(self.model_id) is not None for v in __class__.RE_OPENAI)
+            self.platform.get("api_url").startswith("https://api.openai.com")
+            or any(v.search(self.platform.get("model")) is not None for v in __class__.RE_OPENAI)
         ):
-            result.pop("max_tokens", None)
-            result["max_completion_tokens"] = self.output_token_limit
-
-        # 构建 extra_body：先设置内置值，再合并用户配置（用户值优先）
-        extra_body = {}
+            args.pop("max_tokens", None)
+            args["max_completion_tokens"] = self.config.output_token_threshold
 
         # GLM
-        if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
-            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
-            extra_body["thinking"] = {"type": thinking_type}
-        # Doubao
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
-            if self.thinking_level == ThinkingLevel.OFF:
-                extra_body["reasoning_effort"] = "minimal"
-                extra_body["thinking"] = {"type": "disabled"}
+        if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_GLM):
+            if thinking == True:
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
             else:
-                extra_body["reasoning_effort"] = self.thinking_level.lower()
-                extra_body["thinking"] = {"type": "enabled"}
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+        # Doubao
+        elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DOUBAO):
+            if thinking == True:
+                args["extra_body"]["reasoning_effort"] = "low"
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            else:
+                args["extra_body"]["reasoning_effort"] = "minimal"
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
         # DeepSeek
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_DEEPSEEK):
-            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
-            extra_body["thinking"] = {"type": thinking_type}
+        elif any(v.search(self.platform.get("model")) is not None for v in __class__.RE_DEEPSEEK):
+            if thinking == True:
+                args["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            else:
+                args["extra_body"].setdefault("thinking", {})["type"] = "disabled"
 
-        # 用户配置覆盖内置值
-        extra_body.update(self.extra_body)
-        result["extra_body"] = extra_body
+        return args
 
-        return result
-
-    def request_openai(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    # 发起请求
+    def request_openai(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
+            # 获取客户端
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
                 )
 
+            # 发起请求
             response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_openai_args(messages, args)
+                **self.generate_openai_args(messages, thinking, args)
             )
 
             # 提取回复内容
@@ -333,12 +341,13 @@ class TaskRequester(Base):
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
-        # 获取 Token 消耗
+        # 获取输入消耗
         try:
             input_tokens = int(response.usage.prompt_tokens)
         except Exception:
             input_tokens = 0
 
+        # 获取输出消耗
         try:
             output_tokens = int(response.usage.completion_tokens)
         except Exception:
@@ -346,113 +355,73 @@ class TaskRequester(Base):
 
         return False, response_think, response_result, input_tokens, output_tokens
 
-    # ========== Google 请求 ==========
-
-    def generate_google_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
-        config_args = args | {
-            "max_output_tokens": self.output_token_limit,
+    # 生成请求参数
+    def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
+        args: dict = args | {
+            "max_output_tokens": self.config.output_token_threshold,
             "safety_settings": (
-                types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_HARASSMENT",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_HATE_SPEECH",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold = "BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category = "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold = "BLOCK_NONE",
+                ),
             ),
         }
 
-        # Gemini 3 Pro
-        if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
-            if self.thinking_level in (ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM):
-                config_args["thinking_config"] = types.ThinkingConfig(
-                        thinking_level="low",
-                        include_thoughts=True,
-                    )
-            else:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="high",
-                    include_thoughts=True,
-            )
-        # Gemini 3 Flash
-        elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
-            if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="minimal",
-                    include_thoughts=True,
-                )
-            else:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level=self.thinking_level.lower(),
-                    include_thoughts=True,
-                )
         # Gemini 2.5 Pro
-        elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
-            if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=128,
-                    include_thoughts=True,
+        if __class__.RE_GEMINI_2_5_FLASH.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget = 1024,
+                    include_thoughts = True,
                 )
-            elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1024,
-                    include_thoughts=True,
+            else:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget = 0,
+                    include_thoughts = False,
                 )
-            elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1536,
-                    include_thoughts=True,
+        if __class__.RE_GEMINI_3_FLASH.search(self.platform.get("model")) is not None:
+            if thinking == True:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level = "low",
                 )
-            elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=2048,
-                    include_thoughts=True,
+            else:
+                args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level = "minimal",
                 )
-        # Gemini 2.5 Flash
-        elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
-            if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=0,
-                    include_thoughts=True,
-                )
-            elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1024,
-                    include_thoughts=True,
-                )
-            elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1536,
-                    include_thoughts=True,
-                )
-            elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=2048,
-                    include_thoughts=True,
-            )
-
-        # Custom Body
-        if self.extra_body:
-            config_args.update(self.extra_body)
 
         return {
-            "model": self.model_id,
+            "model": self.platform.get("model"),
             "contents": [v.get("content") for v in messages if v.get("role") == "user"],
-            "config": types.GenerateContentConfig(**config_args),
+            "config": types.GenerateContentConfig(**args),
         }
 
-    def request_google(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    # 发起请求
+    def request_google(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, int, int]:
         try:
-            # 将 custom_headers 转换为 tuple 以支持 lru_cache
-            extra_headers_tuple = tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
+            # 获取客户端
             with __class__.LOCK:
                 client: genai.Client = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
-                    extra_headers_tuple=extra_headers_tuple,
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
                 )
 
+            # 发起请求
             response: types.GenerateContentResponse = client.models.generate_content(
-                **self.generate_google_args(messages, args)
+                **self.generate_google_args(messages, thinking, args)
             )
 
             # 提取回复内容
@@ -470,12 +439,13 @@ class TaskRequester(Base):
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
-        # 获取 Token 消耗
+        # 获取输入消耗
         try:
             input_tokens = int(response.usage_metadata.prompt_token_count)
         except Exception:
             input_tokens = 0
 
+        # 获取输出消耗
         try:
             total_token_count = int(response.usage_metadata.total_token_count)
             prompt_token_count = int(response.usage_metadata.prompt_token_count)
@@ -485,78 +455,58 @@ class TaskRequester(Base):
 
         return False, response_think, response_result, input_tokens, output_tokens
 
-    # ========== Anthropic 请求 ==========
-
-    def generate_anthropic_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
-        result = args | {
-            "model": self.model_id,
+    # 生成请求参数
+    def generate_anthropic_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
+        args: dict = args | {
+            "model": self.platform.get("model"),
             "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
+            "max_tokens": self.config.output_token_threshold,
+            "extra_headers": {
+                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+            }
         }
 
         # 移除不支持的参数
-        result.pop("presence_penalty", None)
-        result.pop("frequency_penalty", None)
+        args.pop("presence_penalty", None)
+        args.pop("frequency_penalty", None)
 
-        # Claude Sonnet 3.4 / Claude Haiku 4.x / Claude Sonnet 4.x / Claude Opus 4.x
-        if any(v.search(self.model_id) is not None for v in __class__.RE_CLAUDE):
-            if self.thinking_level == ThinkingLevel.OFF:
-                result["thinking"] = {
-                    "type": "disabled",
-                }
-            elif self.thinking_level == ThinkingLevel.LOW:
-                result["thinking"] = {
+        # # Claude-3.7 Claude-4.0
+        if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_CLAUDE):
+            if thinking == True:
+                args["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 1024,
                 }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
-            elif self.thinking_level == ThinkingLevel.MEDIUM:
-                result["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 1536,
-                }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
-            elif self.thinking_level == ThinkingLevel.HIGH:
-                result["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 2048,
-                }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
 
-        # 用户配置覆盖内置值
-        if self.extra_body:
-            result["extra_body"] = self.extra_body
+        return args
 
-        return result
-
-    def request_anthropic(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    # 发起请求
+    def request_anthropic(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
+            # 获取客户端
             with __class__.LOCK:
                 client: anthropic.Anthropic = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    url = __class__.get_url(self.platform.get("api_url"), self.platform.get("api_format")),
+                    key = __class__.get_key(self.platform.get("api_key")),
+                    format = self.platform.get("api_format"),
+                    timeout = self.config.request_timeout,
                 )
 
+            # 发起请求
             response: anthropic.types.Message = client.messages.create(
-                **self.generate_anthropic_args(messages, args)
+                **self.generate_anthropic_args(messages, thinking, args)
             )
 
             # 提取回复内容
             text_messages = [msg for msg in response.content if hasattr(msg, "text") and isinstance(msg.text, str)]
             think_messages = [msg for msg in response.content if hasattr(msg, "thinking") and isinstance(msg.thinking, str)]
 
-            if text_messages:
+            if text_messages != []:
                 response_result = text_messages[-1].text.strip()
             else:
                 response_result = ""
 
-            if think_messages:
+            if think_messages != []:
                 response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
             else:
                 response_think = ""
@@ -564,12 +514,13 @@ class TaskRequester(Base):
             self.error(f"{Localizer.get().log_task_fail}", e)
             return True, None, None, None, None
 
-        # 获取 Token 消耗
+        # 获取输入消耗
         try:
             input_tokens = int(response.usage.input_tokens)
         except Exception:
             input_tokens = 0
 
+        # 获取输出消耗
         try:
             output_tokens = int(response.usage.output_tokens)
         except Exception:

@@ -1,0 +1,15 @@
+{
+    "id": 11,
+    "name": "Custom - Google",
+    "api_url": "https://generativelanguage.googleapis.com",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "Google",
+    "model": "gemini-2.0-flash",
+    "thinking": false,
+    "top_p": 0.95,
+    "temperature": 0.95,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}
