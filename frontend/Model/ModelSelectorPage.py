@@ -13,80 +13,75 @@ from PyQt5.QtWidgets import QListWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
-from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import ListWidget
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SearchLineEdit
-from qfluentwidgets import StrongBodyLabel
+from qfluentwidgets import SubtitleLabel
 
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.Separator import Separator
 
-class ModelListPage(MessageBoxBase, Base):
+class ModelSelectorPage(MessageBoxBase, Base):
 
     # 模型加载完成信号
     models_loaded = pyqtSignal(list)
 
+    # 列表区域固定高度
+    LIST_HEIGHT = 392
+
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
-        # 初始化
+        # 初始化数据
         self.model_id: str = model_id
         self.available_models: list[str] = []
 
         # 连接信号
         self.models_loaded.connect(self.on_models_loaded)
 
-        # 载入并保存默认配置
-        config = Config().load().save()
+        # 初始化界面
+        self.init_ui()
 
+        # 延迟加载模型列表，让 UI 先渲染
+        QTimer.singleShot(50, self.start_loading)
+
+    def init_ui(self) -> None:
+        """初始化界面控件"""
         # 设置框体
         self.widget.setFixedSize(560, 640)
         self.yesButton.setText(Localizer.get().close)
         self.cancelButton.hide()
 
-        # 设置主布局
-        self.viewLayout.setContentsMargins(0, 0, 0, 0)
-
-        # 创建主卡片
-        self.card = CardWidget(self)
-        self.card.setBorderRadius(4)
-        self.viewLayout.addWidget(self.card)
-
-        # 卡片内部布局
-        self.card_layout = QVBoxLayout(self.card)
-        self.card_layout.setContentsMargins(16, 16, 16, 16)
-        self.card_layout.setSpacing(12)
+        # 设置主布局（MessageBoxBase 自带卡片容器，直接使用 viewLayout）
+        self.viewLayout.setContentsMargins(16, 16, 16, 16)
+        self.viewLayout.setSpacing(12)
 
         # 标题
-        self.title_label = StrongBodyLabel(Localizer.get().model_list_page_title, self.card)
-        self.card_layout.addWidget(self.title_label)
+        self.title_label = SubtitleLabel(Localizer.get().model_selector_page_title, self)
+        self.viewLayout.addWidget(self.title_label)
 
         # 描述
-        self.description_label = CaptionLabel(Localizer.get().model_list_page_content, self.card)
+        self.description_label = CaptionLabel(Localizer.get().model_selector_page_content, self)
         self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        self.card_layout.addWidget(self.description_label)
+        self.viewLayout.addWidget(self.description_label)
 
         # 分割线
-        self.card_layout.addWidget(Separator(self.card))
+        self.viewLayout.addWidget(Separator(self))
 
         # 搜索框
-        self.search_edit = SearchLineEdit(self.card)
+        self.search_edit = SearchLineEdit(self)
         self.search_edit.setPlaceholderText(Localizer.get().filter)
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.on_filter_changed)
-        self.card_layout.addWidget(self.search_edit)
-
-        # 列表区域固定高度
-        LIST_HEIGHT = 420
+        self.viewLayout.addWidget(self.search_edit)
 
         # 加载指示器容器
-        self.loading_container = QWidget(self.card)
-        self.loading_container.setFixedHeight(LIST_HEIGHT)
+        self.loading_container = QWidget(self)
+        self.loading_container.setFixedHeight(__class__.LIST_HEIGHT)
         loading_layout = QVBoxLayout(self.loading_container)
         loading_layout.setContentsMargins(0, 0, 0, 0)
         loading_layout.setAlignment(Qt.AlignCenter)
@@ -95,17 +90,14 @@ class ModelListPage(MessageBoxBase, Base):
         self.loading_ring.setFixedSize(48, 48)
         loading_layout.addWidget(self.loading_ring, 0, Qt.AlignCenter)
 
-        self.loading_label = CaptionLabel(Localizer.get().model_list_page_loading, self.loading_container)
+        self.loading_label = CaptionLabel(Localizer.get().model_selector_page_loading, self.loading_container)
         self.loading_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         loading_layout.addWidget(self.loading_label, 0, Qt.AlignCenter)
 
-        self.card_layout.addWidget(self.loading_container)
+        self.viewLayout.addWidget(self.loading_container)
 
         # 模型列表（初始隐藏）
-        self.model_list = ListWidget(self.card)
-        self.model_list.setFixedHeight(LIST_HEIGHT)
-        self.model_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.model_list.setFocusPolicy(Qt.StrongFocus)
+        self.model_list = ListWidget(self)
         self.model_list.setStyleSheet("""
             ListWidget {
                 background: transparent;
@@ -113,23 +105,12 @@ class ModelListPage(MessageBoxBase, Base):
                 border-radius: 6px;
                 outline: none;
             }
-            ListWidget::item {
-                background: transparent;
-                border: none;
-                padding: 8px 12px;
-                margin: 2px 4px;
-                border-radius: 4px;
-            }
-            ListWidget::item:hover {
-                background: rgba(0, 0, 0, 0.04);
-            }
-            ListWidget::item:selected {
-                background: rgba(0, 120, 212, 0.1);
-            }
         """)
+        self.model_list.setFixedHeight(__class__.LIST_HEIGHT)
+        self.model_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.model_list.itemClicked.connect(self.on_item_clicked)
         self.model_list.hide()
-        self.card_layout.addWidget(self.model_list)
+        self.viewLayout.addWidget(self.model_list)
 
         # 延迟加载模型列表，让 UI 先渲染
         QTimer.singleShot(50, self.start_loading)
@@ -192,10 +173,10 @@ class ModelListPage(MessageBoxBase, Base):
                 )
                 return [model.id for model in client.models.list()]
         except Exception as e:
-            self.debug(Localizer.get().model_list_page_fail, e)
+            self.debug(Localizer.get().model_selector_page_fail, e)
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.WARNING,
-                "message": Localizer.get().model_list_page_fail,
+                "message": Localizer.get().model_selector_page_fail,
             })
 
         return result

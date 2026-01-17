@@ -14,7 +14,7 @@ from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import SmoothMode
 
 from base.Base import Base
-from frontend.Model.ModelListPage import ModelListPage
+from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from model.Model import ModelType
 from model.Model import ThinkingLevel
 from module.Config import Config
@@ -187,7 +187,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
 
         def triggered_sync() -> None:
             # 弹出页面
-            ModelListPage(self.model_id, window).exec()
+            ModelSelectorPage(self.model_id, window).exec()
 
             # 更新 UI 文本
             self.model = Config().load().get_model(self.model_id)

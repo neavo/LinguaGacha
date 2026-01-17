@@ -218,10 +218,10 @@ class LocalizerEN(LocalizerZH):
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
     model_advanced_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_document_link: str = "Click to view documentation"
-    model_list_page_title: str = "Available Model List"
-    model_list_page_content: str = "Click to select the model to use"
-    model_list_page_fail: str = "Failed to get model list, please check API configuration …"
-    model_list_page_loading: str = "Loading model list …"
+    model_selector_page_title: str = "Available Model List"
+    model_selector_page_content: str = "Click to select the model to use"
+    model_selector_page_fail: str = "Failed to get model list, please check API configuration …"
+    model_selector_page_loading: str = "Loading model list …"
 
     # 翻译任务
     translation_page_status_idle: str = "Idle"
