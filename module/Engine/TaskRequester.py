@@ -147,9 +147,7 @@ class TaskRequester(Base):
             )
         elif api_format == Base.APIFormat.GOOGLE:
             # 合并默认 headers 和自定义 headers
-            headers = {
-                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
-            }
+            headers = cls.get_default_headers()
             headers.update(dict(extra_headers_tuple))
             return genai.Client(
                 api_key=key,
@@ -173,6 +171,13 @@ class TaskRequester(Base):
                 timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
                 max_retries=0,
             )
+
+    @staticmethod
+    def get_default_headers() -> dict:
+        """获取默认请求头"""
+        return {
+            "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+        }
 
     def request(self, messages: list[dict]) -> tuple[bool, str, str, int, int]:
         """发起请求"""
@@ -199,9 +204,7 @@ class TaskRequester(Base):
 
     def build_extra_headers(self) -> dict:
         """构建请求头，合并自定义 Headers"""
-        headers = {
-            "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
-        }
+        headers = self.get_default_headers()
         headers.update(self.extra_headers)
         return headers
 
@@ -213,13 +216,8 @@ class TaskRequester(Base):
             "messages": messages,
             "max_tokens": self.output_token_limit,
             "extra_headers": self.build_extra_headers(),
+            "extra_body": self.extra_body,
         }
-
-        # 合并自定义 Body
-        if self.extra_body:
-            result["extra_body"] = result.get("extra_body", {})
-            result["extra_body"].update(self.extra_body)
-
         return result
 
     def request_sakura(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
@@ -271,11 +269,6 @@ class TaskRequester(Base):
             "extra_headers": self.build_extra_headers(),
         }
 
-        # 初始化 extra_body 并合并自定义 Body
-        result["extra_body"] = result.get("extra_body", {})
-        if self.extra_body:
-            result["extra_body"].update(self.extra_body)
-
         # 为 OpenAI 平台设置 max_completion_tokens
         if (
             self.api_url.startswith("https://api.openai.com")
@@ -284,26 +277,29 @@ class TaskRequester(Base):
             result.pop("max_tokens", None)
             result["max_completion_tokens"] = self.output_token_limit
 
+        # 构建 extra_body：先设置内置值，再合并用户配置（用户值优先）
+        extra_body = {}
+
         # GLM
         if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
-            if self.thinking_level == ThinkingLevel.OFF:
-                result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
-            else:
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            extra_body["thinking"] = {"type": thinking_type}
         # Doubao
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
             if self.thinking_level == ThinkingLevel.OFF:
-                result["extra_body"]["reasoning_effort"] = "minimal"
-                result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
+                extra_body["reasoning_effort"] = "minimal"
+                extra_body["thinking"] = {"type": "disabled"}
             else:
-                result["extra_body"]["reasoning_effort"] = self.thinking_level.lower()
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+                extra_body["reasoning_effort"] = self.thinking_level.lower()
+                extra_body["thinking"] = {"type": "enabled"}
         # DeepSeek
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DEEPSEEK):
-            if self.thinking_level == ThinkingLevel.OFF:
-                result["extra_body"].setdefault("thinking", {})["type"] = "disabled"
-            else:
-                result["extra_body"].setdefault("thinking", {})["type"] = "enabled"
+            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            extra_body["thinking"] = {"type": thinking_type}
+
+        # 用户配置覆盖内置值
+        extra_body.update(self.extra_body)
+        result["extra_body"] = extra_body
 
         return result
 
@@ -432,6 +428,10 @@ class TaskRequester(Base):
                     include_thoughts=True,
             )
 
+        # Custom Body
+        if self.extra_body:
+            config_args.update(self.extra_body)
+
         return {
             "model": self.model_id,
             "contents": [v.get("content") for v in messages if v.get("role") == "user"],
@@ -510,22 +510,26 @@ class TaskRequester(Base):
                     "type": "enabled",
                     "budget_tokens": 1024,
                 }
-                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("top_p", None)           # 思考模式下不支持调整
                 result.pop("temperature", None)     # 思考模式下不支持调整
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 result["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 1536,
                 }
-                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("top_p", None)           # 思考模式下不支持调整
                 result.pop("temperature", None)     # 思考模式下不支持调整
             elif self.thinking_level == ThinkingLevel.HIGH:
                 result["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 2048,
                 }
-                result.pop("top_p", 0.95)           # 思考模式下不支持调整
+                result.pop("top_p", None)           # 思考模式下不支持调整
                 result.pop("temperature", None)     # 思考模式下不支持调整
+
+        # 用户配置覆盖内置值
+        if self.extra_body:
+            result["extra_body"] = self.extra_body
 
         return result
 
