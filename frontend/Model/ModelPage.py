@@ -12,6 +12,7 @@ from qfluentwidgets import PrimaryDropDownPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SmoothMode
 
 from base.Base import Base
 from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
@@ -55,7 +56,8 @@ class ModelPage(QWidget, Base):
         # 设置滚动区域
         self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroll_area.enableTransparentBackground()
+        # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
 
         # 设置主容器
         self.scroll_widget = QWidget()

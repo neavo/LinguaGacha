@@ -46,11 +46,11 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
 
         # 设置滚动器
-        self.scroller = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
-        self.scroller.setWidgetResizable(True)
-        self.scroller.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        self.scroller.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
-        self.viewLayout.addWidget(self.scroller)
+        self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.enableTransparentBackground()
+        # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
+        self.viewLayout.addWidget(self.scroll_area)
 
         # 设置滚动控件
         self.vbox_parent = QWidget(self)
@@ -58,7 +58,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         self.vbox = QVBoxLayout(self.vbox_parent)
         self.vbox.setSpacing(8)
         self.vbox.setContentsMargins(24, 24, 24, 24)
-        self.scroller.setWidget(self.vbox_parent)
+        self.scroll_area.setWidget(self.vbox_parent)
 
         # 模型名称
         self.add_widget_name(self.vbox, config, window)
@@ -137,17 +137,13 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
 
         def text_changed(widget: PlainTextEdit) -> None:
             config = Config().load()
-            # 新结构中 api_key 是单个字符串，用换行分隔多个key
             self.model["api_key"] = widget.toPlainText().strip()
             config.set_model(self.model)
             config.save()
 
         def init(widget: GroupCard) -> None:
-            plain_text_edit = PlainTextEdit(self)
             api_key = self.model.get("api_key", "")
-            # 兼容旧格式（列表）
-            if isinstance(api_key, list):
-                api_key = "\n".join(api_key)
+            plain_text_edit = PlainTextEdit(self)
             plain_text_edit.setPlainText(api_key)
             plain_text_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_key)
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))

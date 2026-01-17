@@ -80,13 +80,8 @@ class TaskRequester(Base):
         self.model_id: str = model.get("model_id", "")
 
         # 解析 API 密钥列表
-        api_key_raw = model.get("api_key", "")
-        if isinstance(api_key_raw, str):
-            self.api_keys: list[str] = [k.strip() for k in api_key_raw.split("\n") if k.strip()]
-        elif isinstance(api_key_raw, list):
-            self.api_keys = api_key_raw
-        else:
-            self.api_keys = []
+        api_keys_str = str(model.get("api_key", ""))
+        self.api_keys: list[str] = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
 
         # 提取阈值配置
         self.output_token_limit: int = model.get("thresholds", {}).get("output_token_limit", 4096)

@@ -82,13 +82,8 @@ class APITester(Base):
             ]
 
         # 获取 API 密钥列表
-        api_key_raw = model.get("api_key", "")
-        if isinstance(api_key_raw, str):
-            api_keys = [k.strip() for k in api_key_raw.split("\n") if k.strip()]
-        elif isinstance(api_key_raw, list):
-            api_keys = api_key_raw
-        else:
-            api_keys = []
+        api_keys_str = str(model.get("api_key", ""))
+        api_keys = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
 
         if not api_keys:
             api_keys = ["no_key_required"]

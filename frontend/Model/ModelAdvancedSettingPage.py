@@ -10,6 +10,7 @@ from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SmoothMode
 from qfluentwidgets import SwitchButton
 
 from base.Base import Base
@@ -56,8 +57,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.enableTransparentBackground()
-
-        # 将滚动区域添加到父布局
+        # scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
         self.viewLayout.addWidget(scroll_area)
 
         # 添加控件
@@ -65,7 +65,6 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         self.add_widget_temperature(scroll_area_vbox, config, window)
         self.add_widget_presence_penalty(scroll_area_vbox, config, window)
         self.add_widget_frequency_penalty(scroll_area_vbox, config, window)
-
 
         # 自定义网络配置
         self.add_widget_network_config(scroll_area_vbox, config, window)

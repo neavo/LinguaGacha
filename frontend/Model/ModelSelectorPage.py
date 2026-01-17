@@ -118,15 +118,7 @@ class ModelSelectorPage(MessageBoxBase, Base):
     def start_loading(self) -> None:
         """在后台线程中加载模型列表"""
         model_data: dict = Config().load().get_model(self.model_id)
-        api_key = model_data.get("api_key", "")
-
-        # 兼容旧格式（列表）
-        if isinstance(api_key, list):
-            api_key = api_key[0] if api_key else ""
-        # 新格式可能是换行分隔的多个key，取第一个
-        elif isinstance(api_key, str) and "\n" in api_key:
-            api_key = api_key.split("\n")[0].strip()
-
+        api_key = model_data.get("api_key", "").split("\n")[0].strip()  # 取第一个key
         api_url = model_data.get("api_url", "")
         api_format = model_data.get("api_format", "")
 
