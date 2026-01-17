@@ -51,6 +51,7 @@ class ProofreadingPage(QWidget, Base):
         self.items: list[Item] = []                         # 全量数据
         self.filtered_items: list[Item] = []                # 筛选后数据
         self.warning_map: dict[int, list[WarningType]] = {} # 警告映射表
+        self.result_checker: ResultChecker | None = None    # 结果检查器
         self.is_readonly: bool = False                      # 只读模式标志
         self.config: Config | None = None                   # 配置
         self.filter_options: dict = {}                      # 当前筛选选项
@@ -188,6 +189,7 @@ class ProofreadingPage(QWidget, Base):
 
                 self.items = items
                 self.warning_map = warning_map
+                self.result_checker = checker
                 self.filter_options = {}
 
                 self.items_loaded.emit(items)
@@ -219,14 +221,19 @@ class ProofreadingPage(QWidget, Base):
     # ========== 筛选功能 ==========
     def _on_filter_clicked(self) -> None:
         """筛选按钮点击"""
-        if not self.items:
+        if not self.items or not self.result_checker:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.WARNING,
                 "message": Localizer.get().proofreading_page_no_cache,
             })
             return
 
-        dialog = FilterDialog(self.items, self.warning_map, self.window)
+        dialog = FilterDialog(
+            items=self.items,
+            warning_map=self.warning_map,
+            result_checker=self.result_checker,
+            parent=self.window,
+        )
         dialog.set_filter_options(self.filter_options)
 
         if dialog.exec():
@@ -238,6 +245,7 @@ class ProofreadingPage(QWidget, Base):
         warning_types = self.filter_options.get(FilterDialog.KEY_WARNING_TYPES)
         statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
         file_paths = self.filter_options.get(FilterDialog.KEY_FILE_PATHS)
+        glossary_terms = self.filter_options.get(FilterDialog.KEY_GLOSSARY_TERMS)
 
         filtered = []
         for item in self.items:
@@ -253,6 +261,16 @@ class ProofreadingPage(QWidget, Base):
                     continue
                 if not item_warnings and FilterDialog.NO_WARNING_TAG not in warning_types:
                     continue
+
+                # 术语级筛选：仅当警告包含 GLOSSARY 且指定了术语时生效
+                if (
+                    glossary_terms is not None
+                    and WarningType.GLOSSARY in item_warnings
+                    and self.result_checker
+                ):
+                    item_terms = self.result_checker.get_failed_glossary_terms(item)
+                    if not any(t in glossary_terms for t in item_terms):
+                        continue
 
             # 翻译状态和路径筛选：使用合并判断减少嵌套
             if statuses is not None and item.get_status() not in statuses:

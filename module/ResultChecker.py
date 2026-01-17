@@ -110,6 +110,23 @@ class ResultChecker(Base):
                 return True
         return False
 
+    def get_failed_glossary_terms(self, item: Item) -> list[tuple[str, str]]:
+        """获取单个条目中未生效的术语列表，返回 (src, dst) 元组列表"""
+        if not self._prepared_glossary_data:
+            return []
+
+        src_repl, dst_repl = self._get_repl_texts(item)
+        failed_terms: list[tuple[str, str]] = []
+
+        for v in self._prepared_glossary_data:
+            glossary_src = v.get("src", "")
+            glossary_dst = v.get("dst", "")
+            # 原文包含术语原文，但译文不包含术语译文
+            if glossary_src and glossary_src in src_repl and glossary_dst not in dst_repl:
+                failed_terms.append((glossary_src, glossary_dst))
+
+        return failed_terms
+
     def _has_untranslated_error(self, item: Item) -> bool:
         """检查是否未翻译"""
         return item.get_status() == Base.ProjectStatus.NONE
