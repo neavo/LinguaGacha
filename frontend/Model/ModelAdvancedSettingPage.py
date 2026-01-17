@@ -8,13 +8,8 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
-from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import SingleDirectionScrollArea
-from qfluentwidgets import SmoothMode
 from qfluentwidgets import SwitchButton
-from qfluentwidgets import isDarkTheme
-from qfluentwidgets import qconfig
-from qfluentwidgets import themeColor
 
 from base.Base import Base
 from module.Config import Config
@@ -253,7 +248,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         request_config = self.model.get("request", {})
 
         # 自定义 Headers
-        def switch_changed_headers(checked: bool, plain_text_edit: PlainTextEdit) -> None:
+        def switch_changed_headers(checked: bool, plain_text_edit: CustomTextEdit) -> None:
             plain_text_edit.setReadOnly(not checked)
             config = Config().load()
             if "request" not in self.model:
@@ -262,17 +257,47 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             config.set_model(self.model)
             config.save()
 
-        def text_changed_headers(widget: PlainTextEdit) -> None:
-            config = Config().load()
+        def validate_and_save_headers(plain_text_edit: CustomTextEdit) -> bool:
+            """ 校验 JSON 并保存，返回是否有效 """
+            text = plain_text_edit.toPlainText().strip()
+
+            # 空内容视为有效的空对象
+            if not text:
+                plain_text_edit.set_error(False)
+                self._save_request_field("extra_headers", {})
+                return True
+
             try:
-                headers = json.loads(widget.toPlainText().strip() or "{}")
+                parsed = json.loads(text)
+                # 类型校验：必须是 dict
+                if not isinstance(parsed, dict):
+                    plain_text_edit.set_error(True)
+                    return False
+                plain_text_edit.set_error(False)
+                self._save_request_field("extra_headers", parsed)
+                return True
             except json.JSONDecodeError:
-                headers = {}
-            if "request" not in self.model:
-                self.model["request"] = {}
-            self.model["request"]["extra_headers"] = headers
-            config.set_model(self.model)
-            config.save()
+                plain_text_edit.set_error(True)
+                return False
+
+        def focus_out_headers(plain_text_edit: CustomTextEdit) -> None:
+            """ 失去焦点时，如果内容有误则显示 Toast """
+            text = plain_text_edit.toPlainText().strip()
+            if not text:
+                return
+
+            try:
+                parsed = json.loads(text)
+                if not isinstance(parsed, dict):
+                    self.emit(Base.Event.TOAST, {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                    })
+            except json.JSONDecodeError:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                })
 
         def init_headers(widget: GroupCard) -> None:
             # 添加开关按钮到标题行右侧
@@ -291,7 +316,10 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
             plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_headers_placeholder)
             plain_text_edit.setReadOnly(not is_enabled)
-            plain_text_edit.textChanged.connect(lambda: text_changed_headers(plain_text_edit))
+            # 输入时实时校验并更新红框状态
+            plain_text_edit.textChanged.connect(lambda: validate_and_save_headers(plain_text_edit))
+            # 失去焦点时才显示 Toast 提示
+            plain_text_edit.set_on_focus_out(lambda: focus_out_headers(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
             # 注册开关事件
@@ -307,7 +335,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         )
 
         # 自定义 Body
-        def switch_changed_body(checked: bool, plain_text_edit: PlainTextEdit) -> None:
+        def switch_changed_body(checked: bool, plain_text_edit: CustomTextEdit) -> None:
             plain_text_edit.setReadOnly(not checked)
             config = Config().load()
             if "request" not in self.model:
@@ -316,17 +344,47 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             config.set_model(self.model)
             config.save()
 
-        def text_changed_body(widget: PlainTextEdit) -> None:
-            config = Config().load()
+        def validate_and_save_body(plain_text_edit: CustomTextEdit) -> bool:
+            """ 校验 JSON 并保存，返回是否有效 """
+            text = plain_text_edit.toPlainText().strip()
+
+            # 空内容视为有效的空对象
+            if not text:
+                plain_text_edit.set_error(False)
+                self._save_request_field("extra_body", {})
+                return True
+
             try:
-                body = json.loads(widget.toPlainText().strip() or "{}")
+                parsed = json.loads(text)
+                # 类型校验：必须是 dict
+                if not isinstance(parsed, dict):
+                    plain_text_edit.set_error(True)
+                    return False
+                plain_text_edit.set_error(False)
+                self._save_request_field("extra_body", parsed)
+                return True
             except json.JSONDecodeError:
-                body = {}
-            if "request" not in self.model:
-                self.model["request"] = {}
-            self.model["request"]["extra_body"] = body
-            config.set_model(self.model)
-            config.save()
+                plain_text_edit.set_error(True)
+                return False
+
+        def focus_out_body(plain_text_edit: CustomTextEdit) -> None:
+            """ 失去焦点时，如果内容有误则显示 Toast """
+            text = plain_text_edit.toPlainText().strip()
+            if not text:
+                return
+
+            try:
+                parsed = json.loads(text)
+                if not isinstance(parsed, dict):
+                    self.emit(Base.Event.TOAST, {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                    })
+            except json.JSONDecodeError:
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                })
 
         def init_body(widget: GroupCard) -> None:
             # 添加开关按钮到标题行右侧
@@ -345,7 +403,10 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
             plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_body_placeholder)
             plain_text_edit.setReadOnly(not is_enabled)
-            plain_text_edit.textChanged.connect(lambda: text_changed_body(plain_text_edit))
+            # 输入时实时校验并更新红框状态
+            plain_text_edit.textChanged.connect(lambda: validate_and_save_body(plain_text_edit))
+            # 失去焦点时才显示 Toast 提示
+            plain_text_edit.set_on_focus_out(lambda: focus_out_body(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
             # 注册开关事件
@@ -359,6 +420,15 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 init=init_body,
             )
         )
+
+    def _save_request_field(self, field: str, value: dict) -> None:
+        """ 保存请求配置字段 """
+        config = Config().load()
+        if "request" not in self.model:
+            self.model["request"] = {}
+        self.model["request"][field] = value
+        config.set_model(self.model)
+        config.save()
 
     # 添加链接
     def add_widget_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:

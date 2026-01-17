@@ -1,3 +1,6 @@
+from typing import Callable
+
+from PyQt5.QtGui import QFocusEvent
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
@@ -11,6 +14,8 @@ class CustomTextEdit(PlainTextEdit):
     - 自动适应深色/浅色主题
     - 只读模式与编辑模式有视觉区分
     - 默认自动换行
+    - 支持通过 set_error() 显示错误状态
+    - 支持通过 set_on_focus_out() 设置失去焦点回调
     """
 
     # 深色主题颜色
@@ -26,6 +31,9 @@ class CustomTextEdit(PlainTextEdit):
     LIGHT_TEXT_READONLY = "rgba(0, 0, 0, 0.5)"
     LIGHT_TEXT_EDITABLE = "rgba(0, 0, 0, 0.9)"
     LIGHT_BORDER = "rgba(0, 0, 0, 0.1)"
+
+    # 错误状态边框颜色
+    ERROR_BORDER = "#e74c3c"
 
     # 等宽字体回落: Windows → macOS → Linux → 通用
     FONT_MONOSPACE = (
@@ -52,6 +60,8 @@ class CustomTextEdit(PlainTextEdit):
 
         self._is_read_only = False
         self._monospace = monospace
+        self._has_error = False
+        self._on_focus_out: Callable[[], None] | None = None
 
         # 默认自动换行
         self.setLineWrapMode(PlainTextEdit.LineWrapMode.WidgetWidth)
@@ -74,6 +84,22 @@ class CustomTextEdit(PlainTextEdit):
         self._is_read_only = read_only
         super().setReadOnly(read_only)
         self.update_style()
+
+    def set_error(self, has_error: bool) -> None:
+        """ 设置错误状态，显示红色边框 """
+        if self._has_error != has_error:
+            self._has_error = has_error
+            self.update_style()
+
+    def set_on_focus_out(self, callback: Callable[[], None]) -> None:
+        """ 设置失去焦点时的回调函数 """
+        self._on_focus_out = callback
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        """ 重写失去焦点事件，触发回调 """
+        super().focusOutEvent(event)
+        if self._on_focus_out:
+            self._on_focus_out()
 
     def update_style(self) -> None:
         is_dark = isDarkTheme()
@@ -101,6 +127,11 @@ class CustomTextEdit(PlainTextEdit):
                 color = self.LIGHT_TEXT_EDITABLE
             # 编辑模式下焦点时显示主题色边框
             focus_border = f"1px solid {theme_color}"
+
+        # 错误状态覆盖边框颜色
+        if self._has_error and not self._is_read_only:
+            border = f"1px solid {self.ERROR_BORDER}"
+            focus_border = f"1px solid {self.ERROR_BORDER}"
 
         self.setStyleSheet(f"""
             QPlainTextEdit {{

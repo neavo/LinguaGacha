@@ -218,6 +218,7 @@ class LocalizerEN(LocalizerZH):
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
     model_advanced_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_document_link: str = "Click to view documentation"
+    model_advanced_setting_page_json_format_error: str = "JSON format error, please enter a valid JSON object"
     model_selector_page_title: str = "Available Model List"
     model_selector_page_content: str = "Click to select the model to use"
     model_selector_page_fail: str = "Failed to get model list, please check API configuration …"

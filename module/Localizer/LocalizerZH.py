@@ -218,6 +218,7 @@ class LocalizerZH():
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
     model_advanced_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_document_link: str = "点击查看文档"
+    model_advanced_setting_page_json_format_error: str = "JSON 格式错误，请输入有效的 JSON 对象"
     model_selector_page_title: str = "可用的模型列表"
     model_selector_page_content: str = "点击选择要使用的模型"
     model_selector_page_fail: str = "获取模型列表失败，请检查接口配置 …"
