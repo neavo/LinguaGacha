@@ -21,27 +21,33 @@ class ThinkingLevel(StrEnum):
 
 
 @dataclass
-class NetworkConfig:
-    """自定义网络配置"""
-    custom_headers: dict[str, str] = field(default_factory=dict)
-    custom_body: dict[str, Any] = field(default_factory=dict)
+class RequestConfig:
+    """自定义请求配置"""
+    extra_headers: dict[str, str] = field(default_factory=dict)
+    extra_headers_custom_enable: bool = False
+    extra_body: dict[str, Any] = field(default_factory=dict)
+    extra_body_custom_enable: bool = False
 
     def to_dict(self) -> dict:
         return {
-            "custom_headers": self.custom_headers,
-            "custom_body": self.custom_body,
+            "extra_headers": self.extra_headers,
+            "extra_headers_custom_enable": self.extra_headers_custom_enable,
+            "extra_body": self.extra_body,
+            "extra_body_custom_enable": self.extra_body_custom_enable,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NetworkConfig":
+    def from_dict(cls, data: dict) -> "RequestConfig":
         return cls(
-            custom_headers=data.get("custom_headers", {}),
-            custom_body=data.get("custom_body", {}),
+            extra_headers=data.get("extra_headers", {}),
+            extra_headers_custom_enable=data.get("extra_headers_custom_enable", False),
+            extra_body=data.get("extra_body", {}),
+            extra_body_custom_enable=data.get("extra_body_custom_enable", False),
         )
 
 
 @dataclass
-class Thresholds:
+class ThresholdConfig:
     """阈值配置"""
     input_token_limit: int = 512
     output_token_limit: int = 4096
@@ -57,7 +63,7 @@ class Thresholds:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Thresholds":
+    def from_dict(cls, data: dict) -> "ThresholdConfig":
         return cls(
             input_token_limit=data.get("input_token_limit", 512),
             output_token_limit=data.get("output_token_limit", 4096),
@@ -132,8 +138,8 @@ class Model:
     api_url: str
     api_key: str
     model_id: str
-    network_config: NetworkConfig = field(default_factory=NetworkConfig)
-    thresholds: Thresholds = field(default_factory=Thresholds)
+    request: RequestConfig = field(default_factory=RequestConfig)
+    threshold: ThresholdConfig = field(default_factory=ThresholdConfig)
     thinking: ThinkingConfig = field(default_factory=ThinkingConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
 
@@ -147,8 +153,8 @@ class Model:
             "api_url": self.api_url,
             "api_key": self.api_key,
             "model_id": self.model_id,
-            "network_config": self.network_config.to_dict(),
-            "thresholds": self.thresholds.to_dict(),
+            "request": self.request.to_dict(),
+            "threshold": self.threshold.to_dict(),
             "thinking": self.thinking.to_dict(),
             "generation": self.generation.to_dict(),
         }
@@ -170,8 +176,8 @@ class Model:
             api_url=data.get("api_url", ""),
             api_key=data.get("api_key", "no_key_required"),
             model_id=data.get("model_id", ""),
-            network_config=NetworkConfig.from_dict(data.get("network_config", {})),
-            thresholds=Thresholds.from_dict(data.get("thresholds", {})),
+            request=RequestConfig.from_dict(data.get("request", {})),
+            threshold=ThresholdConfig.from_dict(data.get("threshold", {})),
             thinking=ThinkingConfig.from_dict(data.get("thinking", {})),
             generation=GenerationConfig.from_dict(data.get("generation", {})),
         )

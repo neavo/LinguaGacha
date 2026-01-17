@@ -84,12 +84,14 @@ class TaskRequester(Base):
         self.api_keys: list[str] = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
 
         # 提取阈值配置
-        self.output_token_limit: int = model.get("thresholds", {}).get("output_token_limit", 4096)
+        self.output_token_limit: int = model.get("threshold", {}).get("output_token_limit", 4096)
 
-        # 提取网络配置
-        network_config = model.get("network_config", {})
-        self.custom_headers: dict = network_config.get("custom_headers", {})
-        self.custom_body: dict = network_config.get("custom_body", {})
+        # 提取请求配置（根据开关状态决定是否使用）
+        request_config = model.get("request", {})
+        extra_headers_custom_enable = request_config.get("extra_headers_custom_enable", False)
+        extra_body_custom_enable = request_config.get("extra_body_custom_enable", False)
+        self.extra_headers: dict = request_config.get("extra_headers", {}) if extra_headers_custom_enable else {}
+        self.extra_body: dict = request_config.get("extra_body", {}) if extra_body_custom_enable else {}
 
         # 解析思考挡位
         thinking_config = model.get("thinking", {})
@@ -200,7 +202,7 @@ class TaskRequester(Base):
         headers = {
             "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
         }
-        headers.update(self.custom_headers)
+        headers.update(self.extra_headers)
         return headers
 
     # ========== Sakura 请求 ==========
@@ -214,9 +216,9 @@ class TaskRequester(Base):
         }
 
         # 合并自定义 Body
-        if self.custom_body:
+        if self.extra_body:
             result["extra_body"] = result.get("extra_body", {})
-            result["extra_body"].update(self.custom_body)
+            result["extra_body"].update(self.extra_body)
 
         return result
 
@@ -271,8 +273,8 @@ class TaskRequester(Base):
 
         # 初始化 extra_body 并合并自定义 Body
         result["extra_body"] = result.get("extra_body", {})
-        if self.custom_body:
-            result["extra_body"].update(self.custom_body)
+        if self.extra_body:
+            result["extra_body"].update(self.extra_body)
 
         # 为 OpenAI 平台设置 max_completion_tokens
         if (
@@ -439,7 +441,7 @@ class TaskRequester(Base):
     def request_google(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
         try:
             # 将 custom_headers 转换为 tuple 以支持 lru_cache
-            extra_headers_tuple = tuple(sorted(self.custom_headers.items())) if self.custom_headers else ()
+            extra_headers_tuple = tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
             with __class__.LOCK:
                 client: genai.Client = __class__.get_client(
                     url=__class__.get_url(self.api_url, self.api_format),

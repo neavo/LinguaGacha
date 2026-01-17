@@ -7,11 +7,13 @@
         "api_url": "http://127.0.0.1:8080",
         "api_key": "no_key_required",
         "model_id": "no_model_required",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
+        "threshold": {
             "input_token_limit": 384,
             "output_token_limit": 768,
             "rpm_limit": 0,
@@ -39,12 +41,14 @@
         "api_url": "https://generativelanguage.googleapis.com",
         "api_key": "no_key_required",
         "model_id": "gemini-2.0-flash",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -71,12 +75,14 @@
         "api_url": "https://api.openai.com/v1",
         "api_key": "no_key_required",
         "model_id": "gpt-4.1-mini",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -103,12 +109,14 @@
         "api_url": "https://api.deepseek.com",
         "api_key": "no_key_required",
         "model_id": "deepseek-chat",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -135,12 +143,14 @@
         "api_url": "https://api.anthropic.com",
         "api_key": "no_key_required",
         "model_id": "claude-3-5-haiku",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -167,12 +177,14 @@
         "api_url": "https://open.bigmodel.cn/api/paas/v4",
         "api_key": "no_key_required",
         "model_id": "glm-4-flash",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -199,12 +211,14 @@
         "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "api_key": "no_key_required",
         "model_id": "qwen-turbo",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -231,12 +245,14 @@
         "api_url": "https://api.moonshot.cn/v1",
         "api_key": "no_key_required",
         "model_id": "moonshot-v1-8k",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -263,12 +279,14 @@
         "api_url": "https://api.siliconflow.cn/v1",
         "api_key": "no_key_required",
         "model_id": "deepseek-ai/DeepSeek-V3",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0
@@ -295,12 +313,14 @@
         "api_url": "https://ark.cn-beijing.volces.com/api/v3",
         "api_key": "no_key_required",
         "model_id": "deepseek-v3-250324",
-        "network_config": {
-            "custom_headers": {},
-            "custom_body": {}
+        "request": {
+            "extra_headers": {},
+            "extra_body": {},
+            "extra_headers_custom_enable": false,
+            "extra_body_custom_enable": false
         },
-        "thresholds": {
-            "input_token_limit": 768,
+        "threshold": {
+            "input_token_limit": 512,
             "output_token_limit": 4096,
             "rpm_limit": 0,
             "concurrency_limit": 0

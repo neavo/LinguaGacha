@@ -17,12 +17,12 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import ListWidget
 from qfluentwidgets import MessageBoxBase
-from qfluentwidgets import SearchLineEdit
 from qfluentwidgets import SubtitleLabel
 
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.CustomLineEdit import CustomSearchLineEdit
 from widget.Separator import Separator
 
 class ModelSelectorPage(MessageBoxBase, Base):
@@ -73,7 +73,7 @@ class ModelSelectorPage(MessageBoxBase, Base):
         self.viewLayout.addWidget(Separator(self))
 
         # 搜索框
-        self.search_edit = SearchLineEdit(self)
+        self.search_edit = CustomSearchLineEdit(self)
         self.search_edit.setPlaceholderText(Localizer.get().filter)
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self.on_filter_changed)

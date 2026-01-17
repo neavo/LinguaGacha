@@ -203,12 +203,12 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "Please refer to the API platform's documentation for settings, 0 = Automatic"
     )
-    model_advanced_setting_page_headers_title: str = "Custom HTTP Headers"
-    model_advanced_setting_page_headers_content: str = "Custom HTTP Headers (JSON format), will be merged into the request"
+    model_advanced_setting_page_headers_title: str = "Custom Request Headers"
+    model_advanced_setting_page_headers_content: str = "Custom request header parameters, please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_headers_placeholder: str = 'Example: {"Authorization": "Bearer xxx"}'
     model_advanced_setting_page_body_title: str = "Custom Request Body"
-    model_advanced_setting_page_body_content: str = "Custom request body parameters (JSON format), will be merged into the request"
-    model_advanced_setting_page_body_placeholder: str = 'Example: {"stream": false}'
+    model_advanced_setting_page_body_content: str = "Custom request body parameters, please set with caution, incorrect values may cause abnormal results or request errors"
+    model_advanced_setting_page_body_placeholder: str = 'Example: {"seed": 42}'
     model_advanced_setting_page_top_p_title: str = "top_p"
     model_advanced_setting_page_top_p_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_temperature_title: str = "temperature"

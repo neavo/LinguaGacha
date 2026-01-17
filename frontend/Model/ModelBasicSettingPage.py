@@ -19,6 +19,7 @@ from model.Model import ModelType
 from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
 from widget.LineEditCard import LineEditCard
@@ -81,7 +82,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
             self.add_widget_thinking_level(self.vbox, config, window)
 
         # 阈值设置
-        self.add_widget_thresholds(self.vbox, config, window)
+        self.add_widget_threshold(self.vbox, config, window)
 
         # 填充
         self.vbox.addStretch(1)
@@ -143,8 +144,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
 
         def init(widget: GroupCard) -> None:
             api_key = self.model.get("api_key", "")
-            plain_text_edit = PlainTextEdit(self)
+            plain_text_edit = CustomTextEdit(self, monospace=True)
             plain_text_edit.setPlainText(api_key)
+            plain_text_edit.setFixedHeight(192)
             plain_text_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_key)
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))
             widget.add_widget(plain_text_edit)
@@ -258,19 +260,19 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         empty_card.add_widget(combo_box)
 
     # 阈值设置
-    def add_widget_thresholds(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        thresholds = self.model.get("thresholds", {})
+    def add_widget_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        threshold = self.model.get("threshold", {})
 
         # 输入 Token 限制
         def init_input_token(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(thresholds.get("input_token_limit", 512))
+            widget.get_spin_box().setValue(threshold.get("input_token_limit", 512))
 
         def value_changed_input_token(widget: SpinCard) -> None:
             config = Config().load()
-            if "thresholds" not in self.model:
-                self.model["thresholds"] = {}
-            self.model["thresholds"]["input_token_limit"] = widget.get_spin_box().value()
+            if "threshold" not in self.model:
+                self.model["threshold"] = {}
+            self.model["threshold"]["input_token_limit"] = widget.get_spin_box().value()
             config.set_model(self.model)
             config.save()
 
@@ -286,13 +288,13 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         # 输出 Token 限制
         def init_output_token(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(thresholds.get("output_token_limit", 4096))
+            widget.get_spin_box().setValue(threshold.get("output_token_limit", 4096))
 
         def value_changed_output_token(widget: SpinCard) -> None:
             config = Config().load()
-            if "thresholds" not in self.model:
-                self.model["thresholds"] = {}
-            self.model["thresholds"]["output_token_limit"] = widget.get_spin_box().value()
+            if "threshold" not in self.model:
+                self.model["threshold"] = {}
+            self.model["threshold"]["output_token_limit"] = widget.get_spin_box().value()
             config.set_model(self.model)
             config.save()
 
@@ -308,13 +310,13 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         # 并发数限制
         def init_concurrency(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(thresholds.get("concurrency_limit", 0))
+            widget.get_spin_box().setValue(threshold.get("concurrency_limit", 0))
 
         def value_changed_concurrency(widget: SpinCard) -> None:
             config = Config().load()
-            if "thresholds" not in self.model:
-                self.model["thresholds"] = {}
-            self.model["thresholds"]["concurrency_limit"] = widget.get_spin_box().value()
+            if "threshold" not in self.model:
+                self.model["threshold"] = {}
+            self.model["threshold"]["concurrency_limit"] = widget.get_spin_box().value()
             config.set_model(self.model)
             config.save()
 
@@ -330,13 +332,13 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         # RPM 限制
         def init_rpm(widget: SpinCard) -> None:
             widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(thresholds.get("rpm_limit", 0))
+            widget.get_spin_box().setValue(threshold.get("rpm_limit", 0))
 
         def value_changed_rpm(widget: SpinCard) -> None:
             config = Config().load()
-            if "thresholds" not in self.model:
-                self.model["thresholds"] = {}
-            self.model["thresholds"]["rpm_limit"] = widget.get_spin_box().value()
+            if "threshold" not in self.model:
+                self.model["threshold"] = {}
+            self.model["threshold"]["rpm_limit"] = widget.get_spin_box().value()
             config.set_model(self.model)
             config.save()
 

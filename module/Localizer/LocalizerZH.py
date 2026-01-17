@@ -203,12 +203,12 @@ class LocalizerZH():
         ""
         ""
     )
-    model_advanced_setting_page_headers_title: str = "自定义 HTTP Headers"
-    model_advanced_setting_page_headers_content: str = "自定义 HTTP Headers（JSON 格式），将合并到请求中"
+    model_advanced_setting_page_headers_title: str = "自定义请求头"
+    model_advanced_setting_page_headers_content: str = "自定义请求头参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
-    model_advanced_setting_page_body_title: str = "自定义请求 Body"
-    model_advanced_setting_page_body_content: str = "自定义请求 Body 参数（JSON 格式），将合并到请求中"
-    model_advanced_setting_page_body_placeholder: str = '例如：{"stream": false}'
+    model_advanced_setting_page_body_title: str = "自定义请求体"
+    model_advanced_setting_page_body_content: str = "自定义请求体参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_body_placeholder: str = '例如：{"seed": 42}'
     model_advanced_setting_page_top_p_title: str = "top_p"
     model_advanced_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_temperature_title: str = "temperature"

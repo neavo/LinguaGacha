@@ -146,7 +146,7 @@ class Translator(Base):
 
         local_flag = self.initialize_local_flag()
         max_workers, rpm_threshold = self.initialize_max_workers()
-        input_token_threshold = self.model.get("thresholds", {}).get("input_token_limit", 512)
+        input_token_threshold = self.model.get("threshold", {}).get("input_token_limit", 512)
 
         # 重置
         TextProcessor.reset()
@@ -334,10 +334,10 @@ class Translator(Base):
 
     # 初始化速度控制器
     def initialize_max_workers(self) -> tuple[int, int]:
-        # 从模型的 thresholds 读取
-        thresholds = self.model.get("thresholds", {})
-        max_workers: int = thresholds.get("concurrency_limit", 0)
-        rpm_threshold: int = thresholds.get("rpm_limit", 0)
+        # 从模型的 threshold 读取
+        threshold = self.model.get("threshold", {})
+        max_workers: int = threshold.get("concurrency_limit", 0)
+        rpm_threshold: int = threshold.get("rpm_limit", 0)
 
         # 当 max_workers = 0 时，尝试获取 llama.cpp 槽数
         if max_workers == 0:

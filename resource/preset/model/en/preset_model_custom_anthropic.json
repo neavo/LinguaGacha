@@ -5,12 +5,14 @@
     "api_url": "https://api.anthropic.com",
     "api_key": "no_key_required",
     "model_id": "claude-3-5-haiku",
-    "network_config": {
-        "custom_headers": {},
-        "custom_body": {}
+    "request": {
+        "extra_headers": {},
+        "extra_body": {},
+        "extra_headers_custom_enable": false,
+        "extra_body_custom_enable": false
     },
-    "thresholds": {
-        "input_token_limit": 768,
+    "threshold": {
+        "input_token_limit": 512,
         "output_token_limit": 4096,
         "rpm_limit": 0,
         "concurrency_limit": 0

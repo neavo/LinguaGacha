@@ -12,10 +12,14 @@ from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import SmoothMode
 from qfluentwidgets import SwitchButton
+from qfluentwidgets import isDarkTheme
+from qfluentwidgets import qconfig
+from qfluentwidgets import themeColor
 
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.CustomTextEdit import CustomTextEdit
 from widget.GroupCard import GroupCard
 from widget.SliderCard import SliderCard
 
@@ -67,8 +71,9 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         self.add_widget_frequency_penalty(scroll_area_vbox, config, window)
 
         # 自定义网络配置
-        self.add_widget_network_config(scroll_area_vbox, config, window)
+        self.add_widget_request_config(scroll_area_vbox, config, window)
 
+        # URL
         self.add_widget_url(scroll_area_vbox, config, window)
 
         # 填充
@@ -242,32 +247,55 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             )
         )
 
-    # 自定义网络配置
-    def add_widget_network_config(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    # 自定义请求配置
+    def add_widget_request_config(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
-        network_config = self.model.get("network_config", {})
+        request_config = self.model.get("request", {})
 
         # 自定义 Headers
+        def switch_changed_headers(checked: bool, plain_text_edit: PlainTextEdit) -> None:
+            plain_text_edit.setReadOnly(not checked)
+            config = Config().load()
+            if "request" not in self.model:
+                self.model["request"] = {}
+            self.model["request"]["extra_headers_custom_enable"] = checked
+            config.set_model(self.model)
+            config.save()
+
         def text_changed_headers(widget: PlainTextEdit) -> None:
             config = Config().load()
             try:
                 headers = json.loads(widget.toPlainText().strip() or "{}")
             except json.JSONDecodeError:
                 headers = {}
-            if "network_config" not in self.model:
-                self.model["network_config"] = {}
-            self.model["network_config"]["custom_headers"] = headers
+            if "request" not in self.model:
+                self.model["request"] = {}
+            self.model["request"]["extra_headers"] = headers
             config.set_model(self.model)
             config.save()
 
         def init_headers(widget: GroupCard) -> None:
-            plain_text_edit = PlainTextEdit(self)
-            headers = network_config.get("custom_headers", {})
+            # 添加开关按钮到标题行右侧
+            switch_button = SwitchButton()
+            switch_button.setOnText("")
+            switch_button.setOffText("")
+            is_enabled = request_config.get("extra_headers_custom_enable", False)
+            switch_button.setChecked(is_enabled)
+            widget.add_header_widget(switch_button)
+
+            # 添加文本编辑框
+            plain_text_edit = CustomTextEdit(self, monospace=True)
+            plain_text_edit.setFixedHeight(192)
+            headers = request_config.get("extra_headers", {})
             if headers:
                 plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
             plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_headers_placeholder)
+            plain_text_edit.setReadOnly(not is_enabled)
             plain_text_edit.textChanged.connect(lambda: text_changed_headers(plain_text_edit))
             widget.add_widget(plain_text_edit)
+
+            # 注册开关事件
+            switch_button.checkedChanged.connect(lambda checked: switch_changed_headers(checked, plain_text_edit))
 
         parent.addWidget(
             GroupCard(
@@ -279,26 +307,49 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         )
 
         # 自定义 Body
+        def switch_changed_body(checked: bool, plain_text_edit: PlainTextEdit) -> None:
+            plain_text_edit.setReadOnly(not checked)
+            config = Config().load()
+            if "request" not in self.model:
+                self.model["request"] = {}
+            self.model["request"]["extra_body_custom_enable"] = checked
+            config.set_model(self.model)
+            config.save()
+
         def text_changed_body(widget: PlainTextEdit) -> None:
             config = Config().load()
             try:
                 body = json.loads(widget.toPlainText().strip() or "{}")
             except json.JSONDecodeError:
                 body = {}
-            if "network_config" not in self.model:
-                self.model["network_config"] = {}
-            self.model["network_config"]["custom_body"] = body
+            if "request" not in self.model:
+                self.model["request"] = {}
+            self.model["request"]["extra_body"] = body
             config.set_model(self.model)
             config.save()
 
         def init_body(widget: GroupCard) -> None:
-            plain_text_edit = PlainTextEdit(self)
-            body = network_config.get("custom_body", {})
+            # 添加开关按钮到标题行右侧
+            switch_button = SwitchButton()
+            switch_button.setOnText("")
+            switch_button.setOffText("")
+            is_enabled = request_config.get("extra_body_custom_enable", False)
+            switch_button.setChecked(is_enabled)
+            widget.add_header_widget(switch_button)
+
+            # 添加文本编辑框
+            plain_text_edit = CustomTextEdit(self, monospace=True)
+            plain_text_edit.setFixedHeight(192)
+            body = request_config.get("extra_body", {})
             if body:
                 plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
             plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_body_placeholder)
+            plain_text_edit.setReadOnly(not is_enabled)
             plain_text_edit.textChanged.connect(lambda: text_changed_body(plain_text_edit))
             widget.add_widget(plain_text_edit)
+
+            # 注册开关事件
+            switch_button.checkedChanged.connect(lambda checked: switch_changed_body(checked, plain_text_edit))
 
         parent.addWidget(
             GroupCard(
