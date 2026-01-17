@@ -1,5 +1,7 @@
 from collections import Counter
 
+from PyQt5.QtCore import QModelIndex
+from PyQt5.QtCore import QPointF
 from PyQt5.QtCore import QRect
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
@@ -8,6 +10,7 @@ from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPalette
+from PyQt5.QtGui import QPen
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QHBoxLayout
@@ -42,43 +45,76 @@ ROLE_CHECKED = Qt.UserRole + 2
 class FilterListDelegate(ListItemDelegate):
     """自定义列表项委托：绘制自定义勾选指示器 + 文本 + 右侧计数"""
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
+    def initStyleOption(self, option: QStyleOptionViewItem, index: QModelIndex):
+        super().initStyleOption(option, index)
+        # 清除文本和图标以防止基类绘制它们，避免双重渲染
+        option.text = ""
+        option.icon = QIcon()
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        """强制指定列表项高度为 40px，防止基类 sizeHint 覆盖 QListWidgetItem 的设置"""
+        return QSize(option.rect.width(), 40)
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # 1. 绘制 Fluent 风格背景（使用基类逻辑，但清空文本和图标防止重叠）
-        # 复制 option 以避免修改原始对象影响后续步骤
-        bg_option = QStyleOptionViewItem(option)
-        bg_option.text = ""
-        bg_option.icon = QIcon()
-        super().paint(painter, bg_option, index)
+        # 1. 绘制 Fluent 风格背景
+        # 必须先调用 super().paint 绘制背景 (Hover/Selected 效果)
+        super().paint(painter, option, index)
 
         rect = option.rect
         # 布局参数
-        checkbox_size = 22
-        left_padding = 14
+        checkbox_size = 18
+        left_padding = 12
         item_spacing = 12
 
-        # 2. 绘制 CheckBox (使用当前 Style 绘制以匹配 QFluentWidgets 风格)
-        # 获取当前激活状态
+        # 2. 手动绘制 Fluent 风格 CheckBox
+        # 这样可以完美控制抗锯齿、颜色和形状，避免 drawPrimitive 的各种瑕疵
         is_checked = index.data(ROLE_CHECKED)
 
-        checkbox_opt = QStyleOptionButton()
-        checkbox_opt.rect = QRect(
+        # Checkbox 垂直居中
+        cy = rect.center().y()
+        checkbox_rect = QRect(
             rect.left() + left_padding,
-            rect.top() + (rect.height() - checkbox_size) // 2,
+            int(cy - checkbox_size / 2),
             checkbox_size,
             checkbox_size
         )
-        # 设置状态：启用 | 根据 UserRole 设置选中态
-        checkbox_opt.state = QStyle.State_Enabled
-        if is_checked:
-            checkbox_opt.state |= QStyle.State_On
-        else:
-            checkbox_opt.state |= QStyle.State_Off
 
-        # 使用 application style (可能是 FluentStyle) 绘制
-        QApplication.style().drawPrimitive(QStyle.PE_IndicatorCheckBox, checkbox_opt, painter)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        if is_checked:
+            # 选中状态：主题色背景 + 白色勾
+            painter.setBrush(themeColor())
+            painter.setPen(Qt.NoPen)
+            # 圆角 5px (Fluent Design)
+            painter.drawRoundedRect(checkbox_rect, 5, 5)
+
+            # 绘制白色对勾
+            check_pen = QPen(Qt.white, 2)
+            check_pen.setCapStyle(Qt.RoundCap)
+            check_pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(check_pen)
+
+            # 对勾路径坐标 (相对于 checkbox_rect) 使用比例计算
+            origin = checkbox_rect.topLeft()
+            w = checkbox_size
+            p1 = origin + QPointF(w * 0.27, w * 0.5)
+            p2 = origin + QPointF(w * 0.44, w * 0.68)
+            p3 = origin + QPointF(w * 0.75, w * 0.34)
+            painter.drawPolyline([p1, p2, p3])
+        else:
+            # 未选中状态：边框 + 透明背景
+            painter.setBrush(Qt.NoBrush)
+            # 根据深浅色模式决定边框颜色
+            border_c = QColor(255, 255, 255, 138) if isDarkTheme() else QColor(0, 0, 0, 110)
+            # 如果 Item 被 disable 了，颜色要更淡
+            if not (option.state & QStyle.State_Enabled):
+                border_c = QColor(255, 255, 255, 60) if isDarkTheme() else QColor(0, 0, 0, 60)
+
+            painter.setPen(QPen(border_c, 1))
+            painter.drawRoundedRect(checkbox_rect, 5, 5)
 
         # 3. 绘制图标 (如果有)
         current_x = rect.left() + left_padding + checkbox_size + item_spacing
@@ -87,7 +123,7 @@ class FilterListDelegate(ListItemDelegate):
             icon_size = 16
             icon_rect = QRect(
                 current_x,
-                rect.top() + (rect.height() - icon_size) // 2,
+                int(cy - icon_size / 2),
                 icon_size,
                 icon_size
             )
@@ -98,31 +134,38 @@ class FilterListDelegate(ListItemDelegate):
                 mode = QIcon.Selected
 
             icon.paint(painter, icon_rect, Qt.AlignCenter, mode, QIcon.Off)
-            current_x += icon_size + 8  # 图标与文本的间距
+            current_x += icon_size + 8
 
         # 4. 绘制文本
-        # 计算文本区域，右侧保留 48px 给计数
-        text_rect = QRect(current_x, rect.top(), rect.right() - 48 - current_x, rect.height())
+        right_margin = 48
+        # 使用 rect.height() (40px) 确保有足够的垂直空间
+        text_rect = QRect(
+            current_x,
+            rect.top(),
+            rect.right() - right_margin - current_x,
+            rect.height()
+        )
 
         text = index.data(Qt.DisplayRole) or ""
-        # 文本颜色逻辑与原 ListItemDelegate 保持一致或使用标准颜色
+
+        # 文本颜色：优先使用 Theme 的 Text Color
         if option.state & QStyle.State_Selected:
-            text_color = option.palette.color(QPalette.HighlightedText) if option.palette else Qt.white
-            # FluentWidgets 选中时通常文字颜色也会变，或者保持原色。
-            # 这里简单处理，参考之前：
-            text_color = QColor(255, 255, 255) if isDarkTheme() else QColor(0, 0, 0)
+             text_color = option.palette.text().color()
         else:
-            text_color = QColor("#e0e0e0") if isDarkTheme() else QColor("#303030")
+             text_color = option.palette.text().color()
 
         painter.setPen(text_color)
         painter.setFont(option.font)
 
-        # 文本省略
-        fm = QFontMetrics(option.font)
+        # 2. 文本省略处理
+        fm = option.fontMetrics
         elided_text = fm.elidedText(text, Qt.ElideRight, text_rect.width())
+
+        # 3. 标准绘制
+        # 相信 Qt 的布局计算，在 40px 高度下，AlignVCenter 能完美居中且不被截断
         painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, elided_text)
 
-        # 4. 绘制右侧计数
+        # 5. 绘制右侧计数
         count = index.data(Qt.UserRole + 1)
         if count is not None:
             count_text = str(count)
@@ -130,6 +173,7 @@ class FilterListDelegate(ListItemDelegate):
             count_color = QColor("#d0d0d0") if isDarkTheme() else QColor("#606060")
             painter.setPen(count_color)
 
+            # 计数使用稍小的字体
             font = option.font
             font.setPixelSize(12)
             painter.setFont(font)
@@ -273,7 +317,7 @@ class FilterDialog(MessageBoxBase):
             count = file_item_counts[path]
 
             list_item = QListWidgetItem(display_name)
-            list_item.setSizeHint(QSize(-1, 36))
+            list_item.setSizeHint(QSize(-1, 40))
             list_item.setData(Qt.UserRole, path)     # 存储路径
             list_item.setData(Qt.UserRole + 1, 0)    # 存储动态计数(初始0，稍后refresh更新)
             list_item.setData(ROLE_CHECKED, True)    # 默认激活
@@ -337,7 +381,7 @@ class FilterDialog(MessageBoxBase):
         ]
 
         for status, label in status_types:
-            btn = PillPushButton(f"{label} · 0")
+            btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setFixedHeight(26)
@@ -380,7 +424,7 @@ class FilterDialog(MessageBoxBase):
         ]
 
         for warning_type, label in warning_types:
-            btn = PillPushButton(f"{label} · 0")
+            btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setFixedHeight(26)
@@ -569,8 +613,8 @@ class FilterDialog(MessageBoxBase):
         status_counts = Counter(item.get_status() for item in filtered_items)
         for status, btn in self.status_buttons.items():
             count = status_counts.get(status, 0)
-            base_label = btn.text().rsplit(" · ", 1)[0]
-            btn.setText(f"{base_label} · {count}")
+            base_label = btn.text().rsplit(" • ", 1)[0]
+            btn.setText(f"{base_label} • {count}")
 
         # 更新警告标签计数
         warning_counts: dict[str | WarningType, int] = {}
@@ -585,8 +629,8 @@ class FilterDialog(MessageBoxBase):
 
         for warning_type, btn in self.warning_buttons.items():
             count = no_warning_count if warning_type == self.NO_WARNING_TAG else warning_counts.get(warning_type, 0)
-            base_label = btn.text().rsplit(" · ", 1)[0]
-            btn.setText(f"{base_label} · {count}")
+            base_label = btn.text().rsplit(" • ", 1)[0]
+            btn.setText(f"{base_label} • {count}")
 
         # 更新术语明细
         glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
@@ -643,7 +687,7 @@ class FilterDialog(MessageBoxBase):
         for term, count in sorted_terms:
             src, dst = term
             list_item = QListWidgetItem(f"{src} → {dst}")
-            list_item.setSizeHint(QSize(-1, 36))
+            list_item.setSizeHint(QSize(-1, 40))
             list_item.setData(Qt.UserRole, term)      # 存储术语 Key
             list_item.setData(Qt.UserRole + 1, count) # 存储计数
             list_item.setData(ROLE_CHECKED, True)     # 默认激活
