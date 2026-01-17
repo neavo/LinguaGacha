@@ -9,7 +9,9 @@ from typing import Self
 
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
+from model.Model import Model
 from module.Localizer.Localizer import Localizer
+from module.ModelManager import ModelManager
 
 @dataclasses.dataclass
 class Config():
@@ -23,9 +25,9 @@ class Config():
     theme: str = Theme.LIGHT
     app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
-    # PlatformPage
-    activate_platform: int = 0
-    platforms: list[dict[str, Any]] = None
+    # ModelPage - 模型管理系统
+    activate_model_id: str = ""
+    models: list[dict[str, Any]] = None
 
     # AppSettingsPage
     expert_mode: bool = False
@@ -34,11 +36,6 @@ class Config():
     font_hinting: bool = True
     scale_factor: str = ""
 
-    # BasicSettingsPage
-    input_token_threshold: int = 384
-    output_token_threshold: int = 4096
-    max_workers: int = 0
-    rpm_threshold: int = 0
     request_timeout: int = 120
     max_round: int = 16
 
@@ -51,7 +48,7 @@ class Config():
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
 
-    # ProjectPage
+    # BasicSettingsPage
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
     input_folder: str = "./input"
@@ -133,6 +130,22 @@ class Config():
         if path is None:
             path = __class__.get_config_path()
 
+        # 按分类排序: 预设 - Google - OpenAI - Claude
+        if self.models:
+            def get_sort_key(model: dict[str, Any]) -> int:
+                type_str = model.get("type", "")
+                if type_str == "PRESET":
+                    return 0
+                elif type_str == "CUSTOM_GOOGLE":
+                    return 1
+                elif type_str == "CUSTOM_OPENAI":
+                    return 2
+                elif type_str == "CUSTOM_ANTHROPIC":
+                    return 3
+                return 99
+
+            self.models.sort(key=get_sort_key)
+
         with __class__.CONFIG_LOCK:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok = True)
@@ -158,16 +171,67 @@ class Config():
         self.text_preserve_enable: bool = False
         self.text_preserve_data: list[Any] = []
 
-    # 获取平台配置
-    def get_platform(self, id: int) -> dict[str, Any]:
-        item: dict[str, str | bool | int | float | list[str]] = None
-        for item in self.platforms:
-            if item.get("id", 0) == id:
-                return item
+    # 初始化模型管理器
+    def initialize_models(self) -> int:
+        """初始化模型列表，如果没有则从预设复制。返回已被迁移的失效预设模型数量。"""
+        manager = ModelManager.get()
+        # 设置 UI 语言以确定预设目录
+        manager.set_app_language(self.app_language)
+        self.models, migrated_count = manager.initialize_models(self.models or [])
+        manager.set_models(self.models)
+        # 如果没有激活模型，设置为第一个
+        if not self.activate_model_id and self.models:
+            self.activate_model_id = self.models[0].get("id", "")
+        manager.set_active_model_id(self.activate_model_id)
+        return migrated_count
 
-    # 更新平台配置
-    def set_platform(self, platform: dict[str, Any]) -> None:
-        for i, item in enumerate(self.platforms):
-            if item.get("id", 0) == platform.get("id", 0):
-                self.platforms[i] = platform
+    # 获取模型配置
+    def get_model(self, model_id: str) -> dict[str, Any] | None:
+        """根据 ID 获取模型配置字典"""
+        for model in self.models or []:
+            if model.get("id") == model_id:
+                return model
+        return None
+
+    # 更新模型配置
+    def set_model(self, model_data: dict[str, Any]) -> None:
+        """更新模型配置"""
+        model_id = model_data.get("id")
+        for i, model in enumerate(self.models or []):
+            if model.get("id") == model_id:
+                self.models[i] = model_data
                 break
+        # 同步到 ModelManager
+        ModelManager.get().set_models(self.models)
+
+    # 获取激活的模型
+    def get_active_model(self) -> dict[str, Any] | None:
+        """获取当前激活的模型配置"""
+        if self.activate_model_id:
+            model = self.get_model(self.activate_model_id)
+            if model:
+                return model
+        # 如果没有或找不到，返回第一个
+        if self.models:
+            return self.models[0]
+        return None
+
+    # 设置激活的模型
+    def set_active_model_id(self, model_id: str) -> None:
+        """设置激活的模型 ID"""
+        self.activate_model_id = model_id
+        ModelManager.get().set_active_model_id(model_id)
+
+    # 同步模型数据到 ModelManager
+    def sync_models_to_manager(self) -> None:
+        """将 Config 中的 models 同步到 ModelManager"""
+        manager = ModelManager.get()
+        manager.set_models(self.models or [])
+        manager.set_active_model_id(self.activate_model_id)
+
+    # 从 ModelManager 同步模型数据
+    def sync_models_from_manager(self) -> None:
+        """从 ModelManager 同步数据到 Config"""
+        manager = ModelManager.get()
+        self.models = manager.get_models_as_dict()
+        self.activate_model_id = manager.activate_model_id

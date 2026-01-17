@@ -30,7 +30,7 @@ class TranslatorTask(Base):
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
-    def __init__(self, config: Config, platform: dict, local_flag: bool, items: list[Item], precedings: list[Item], skip_glossary_merge: bool = False, skip_response_check: bool = False) -> None:
+    def __init__(self, config: Config, model: dict, local_flag: bool, items: list[Item], precedings: list[Item], skip_glossary_merge: bool = False, skip_response_check: bool = False) -> None:
         super().__init__()
 
         # 初始化
@@ -38,7 +38,7 @@ class TranslatorTask(Base):
         self.precedings = precedings
         self.processors = [TextProcessor(config, item) for item in items]
         self.config = config
-        self.platform = platform
+        self.model = model  # 新模型数据结构
         self.local_flag = local_flag
         self.skip_glossary_merge = skip_glossary_merge
         self.skip_response_check = skip_response_check
@@ -78,13 +78,14 @@ class TranslatorTask(Base):
             }
 
         # 生成请求提示词
-        if self.platform.get("api_format") != Base.APIFormat.SAKURALLM:
+        api_format = self.model.get("api_format", "OpenAI")
+        if api_format != Base.APIFormat.SAKURALLM:
             self.messages, console_log = self.prompt_builder.generate_prompt(srcs, samples, precedings, local_flag)
         else:
             self.messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
 
         # 发起请求
-        requester = TaskRequester(self.config, self.platform)
+        requester = TaskRequester(self.config, self.model)
         skip, response_think, response_result, input_tokens, output_tokens = requester.request(self.messages)
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
@@ -371,22 +372,23 @@ class TranslatorTask(Base):
         def task() -> None:
             success = False
             try:
-                # 获取激活的平台配置
-                platform = config.get_platform(config.activate_platform)
-                if not platform:
+                # 获取激活的模型配置
+                model = config.get_active_model()
+                if not model:
                     return
 
                 # 判断是否为本地模型
+                api_url = model.get("api_url", "")
                 local_flag = re.search(
                     r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-                    platform.get("api_url", ""),
+                    api_url,
                     flags=re.IGNORECASE,
                 ) is not None
 
                 # 创建翻译任务（跳过术语表合并和响应校验）
                 translator_task = TranslatorTask(
                     config=config,
-                    platform=platform,
+                    model=model,
                     local_flag=local_flag,
                     items=[item],
                     precedings=[],
@@ -400,7 +402,7 @@ class TranslatorTask(Base):
             except Exception:
                 success = False
             finally:
-                # 回调通知（在当前线程直接调用，UI 层需自行处理线程切换）
+                # 回调通知
                 if callback:
                     callback(item, success)
 

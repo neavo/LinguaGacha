@@ -203,7 +203,6 @@ class TextReplacementPage(QWidget, Base):
         self.command_bar_card.add_stretch(1)
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
-
     # 导入
     def add_command_bar_action_import(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
 
