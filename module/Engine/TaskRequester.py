@@ -499,7 +499,7 @@ class TaskRequester(Base):
         result.pop("presence_penalty", None)
         result.pop("frequency_penalty", None)
 
-        # Claude Sonnet 3.4 / Claude Haiku 4.x / Claude Sonnet 4.x / Claude Opus 4.x
+        # Claude Sonnet 3.7 / Claude Haiku 4.x / Claude Sonnet 4.x / Claude Opus 4.x
         if any(v.search(self.model_id) is not None for v in __class__.RE_CLAUDE):
             if self.thinking_level == ThinkingLevel.OFF:
                 result["thinking"] = {
