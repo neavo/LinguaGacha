@@ -35,7 +35,6 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
 
-
 class FilterListItemWidget(QWidget):
     """自定义列表项 widget：悬浮背景 + 手绘 checkbox + CaptionLabel 文本 + 计数"""
 
@@ -236,6 +235,11 @@ class FilterDialog(MessageBoxBase):
         # 预计算术语错误明细：{ (src, dst): [item, ...] }
         self.glossary_error_map: dict[tuple[str, str], list[Item]] = {}
         self._build_glossary_error_map()
+
+        # 持久化保存术语选中状态，初始化为全选
+        self._term_checked_state: set[tuple[str, str]] = set(
+            self.glossary_error_map.keys()
+        )
 
         self._init_ui()
         # 初始化后刷新一次联动数据
@@ -666,14 +670,21 @@ class FilterDialog(MessageBoxBase):
         glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
         self._refresh_term_list(filtered_items, glossary_active)
 
+    def _sync_term_widgets_to_state(self) -> None:
+        """将当前可见 widget 的状态同步到持久化存储（增量更新）"""
+        current_widgets = getattr(self, "term_list_widgets", {})
+        if current_widgets:
+            for term, widget in current_widgets.items():
+                if widget.is_checked():
+                    self._term_checked_state.add(term)
+                else:
+                    self._term_checked_state.discard(term)
+
     def _refresh_term_list(self, filtered_items: list[Item], active: bool) -> None:
         """刷新术语明细列表"""
 
-        # 记录当前激活的术语，以便在重建列表时维持状态
-        previous_checked = set()
-        for term, widget in getattr(self, "term_list_widgets", {}).items():
-            if widget.is_checked():
-                previous_checked.add(term)
+        # 先同步当前状态
+        self._sync_term_widgets_to_state()
 
         self.term_list.clear()
         self.term_list_items.clear()
@@ -729,9 +740,8 @@ class FilterDialog(MessageBoxBase):
 
             # 创建自定义 widget 并设置
             item_widget = FilterListItemWidget(display_text, self.term_list)
-            # 若之前有记录，则恢复选中状态；否则默认勾选
-            should_check = term in previous_checked if previous_checked else True
-            item_widget.set_checked(should_check)
+            # 从持久化状态恢复选中
+            item_widget.set_checked(term in self._term_checked_state)
             item_widget.set_count(count)
             item_widget.set_tooltip(display_text)
             self.term_list.setItemWidget(list_item, item_widget)
@@ -744,6 +754,9 @@ class FilterDialog(MessageBoxBase):
     # =========================================
 
     def get_filter_options(self) -> dict:
+        # 强制同步当前可见 widget 的状态到持久化存储，以防最后的操作没有触发刷新
+        self._sync_term_widgets_to_state()
+
         selected_warnings = {
             w for w, btn in self.warning_buttons.items() if btn.isChecked()
         }
@@ -757,14 +770,10 @@ class FilterDialog(MessageBoxBase):
         }
 
         selected_terms = None
-        term_widgets = getattr(self, "term_list_widgets", {})
-        if WarningType.GLOSSARY in selected_warnings and term_widgets:
-            checked_terms = {
-                term for term, widget in term_widgets.items() if widget.is_checked()
-            }
-
-            if len(checked_terms) < len(term_widgets):
-                selected_terms = checked_terms
+        if WarningType.GLOSSARY in selected_warnings:
+            # 只有当选中项少于总项数时才返回具体集合
+            if len(self._term_checked_state) < len(self.glossary_error_map):
+                selected_terms = self._term_checked_state
 
         return {
             self.KEY_WARNING_TYPES: selected_warnings
@@ -792,10 +801,13 @@ class FilterDialog(MessageBoxBase):
         for path, widget in self.file_list_widgets.items():
             widget.set_checked(file_paths is None or path in file_paths)
 
-        self._refresh_all()
-
+        # 在 _refresh_all 前预设术语持久化状态
+        # 如果传入 None，保持默认的全选状态（已经在 __init__ 中处理）
         glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
-        term_widgets = getattr(self, "term_list_widgets", {})
-        if glossary_terms and term_widgets:
-            for term, widget in term_widgets.items():
-                widget.set_checked(term in glossary_terms)
+        if glossary_terms is not None:
+            self._term_checked_state = set(glossary_terms)
+            # 关键修复：设置了新状态后，必须清空旧的 widget 引用
+            # 防止随后的 _refresh_all -> _sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
+            self.term_list_widgets = {}
+
+        self._refresh_all()
