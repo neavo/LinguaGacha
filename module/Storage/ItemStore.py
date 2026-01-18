@@ -9,6 +9,7 @@ from typing import Generator
 from base.Base import Base
 from model.Item import Item
 
+
 class ItemStore(Base):
     """翻译条目存储层 - 管理大量翻译条目的 CRUD 操作"""
 
@@ -31,7 +32,9 @@ class ItemStore(Base):
         if self._keep_alive_conn is None:
             # 确保持久化连接使用相同的参数
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._keep_alive_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._keep_alive_conn = sqlite3.connect(
+                self.db_path, check_same_thread=False
+            )
             self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
             self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
 
@@ -131,7 +134,9 @@ class ItemStore(Base):
             data_json = self._item_to_json(item)
 
             if item.get_id() is None:
-                cursor = conn.execute("INSERT INTO items (data) VALUES (?)", (data_json,))
+                cursor = conn.execute(
+                    "INSERT INTO items (data) VALUES (?)", (data_json,)
+                )
                 item.set_id(cursor.lastrowid)
             else:
                 conn.execute(
@@ -150,7 +155,9 @@ class ItemStore(Base):
 
             for item in items:
                 data_json = self._item_to_json(item)
-                cursor = conn.execute("INSERT INTO items (data) VALUES (?)", (data_json,))
+                cursor = conn.execute(
+                    "INSERT INTO items (data) VALUES (?)", (data_json,)
+                )
                 item.set_id(cursor.lastrowid)
 
             conn.commit()

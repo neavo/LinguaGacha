@@ -9,6 +9,7 @@ from typing import Generator
 from base.Base import Base
 from model.Project import Project
 
+
 class ProjectStore(Base):
     """项目元数据存储层 - 管理单例项目状态"""
 
@@ -31,7 +32,9 @@ class ProjectStore(Base):
         if self._keep_alive_conn is None:
             # 确保持久化连接使用相同的参数
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._keep_alive_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._keep_alive_conn = sqlite3.connect(
+                self.db_path, check_same_thread=False
+            )
             self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
             self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
 
@@ -66,7 +69,7 @@ class ProjectStore(Base):
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
 
-            # 2. 确保表结构存在：每次新建连接时检查
+            # 确保表结构存在
             self._ensure_table(conn)
 
             yield conn

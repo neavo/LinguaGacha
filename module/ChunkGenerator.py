@@ -3,9 +3,9 @@ from model.Item import Item
 
 
 class ChunkGenerator:
-    """Translation task chunk generator - splits item list into processable batches."""
+    """翻译任务分片生成器 - 将条目列表拆分为可处理的批次"""
 
-    # Ending punctuation marks for context boundary detection
+    # 上下文边界检测的结尾标点符号
     END_LINE_PUNCTUATION = (
         ".",
         "。",
@@ -29,7 +29,7 @@ class ChunkGenerator:
         input_token_threshold: int,
         preceding_lines_threshold: int,
     ) -> tuple[list[list[Item]], list[list[Item]]]:
-        """Generate translation task chunks and corresponding preceding context."""
+        """生成翻译任务分片及对应的上文上下文"""
         # 根据 Token 阈值计算行数阈值，避免大量短句导致行数太多
         line_limit = max(8, int(input_token_threshold / 16))
 
@@ -96,7 +96,7 @@ class ChunkGenerator:
         skip: int,
         preceding_lines_threshold: int,
     ) -> list[Item]:
-        """Generate preceding context for a single chunk."""
+        """为单个分片生成上文上下文"""
         result: list[Item] = []
 
         for i in range(start - skip - len(chunk) - 1, -1, -1):

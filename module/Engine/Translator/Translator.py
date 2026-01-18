@@ -28,6 +28,7 @@ from module.Storage.ItemStore import ItemStore
 from module.Storage.ProjectStore import ProjectStore
 from module.TextProcessor import TextProcessor
 
+
 # 翻译器
 class Translator(Base):
     def __init__(self) -> None:
@@ -117,8 +118,10 @@ class Translator(Base):
                     Engine.get().set_status(Base.TaskStatus.IDLE)
 
                     # 释放数据库会话（触发 Checkpoint）
-                    if self.item_store: self.item_store.close_session()
-                    if self.project_store: self.project_store.close_session()
+                    if self.item_store:
+                        self.item_store.close_session()
+                    if self.project_store:
+                        self.project_store.close_session()
 
                     self.emit(Base.Event.TRANSLATION_DONE, {})
                     break
@@ -391,8 +394,10 @@ class Translator(Base):
         Engine.get().set_status(Base.TaskStatus.IDLE)
 
         # 释放数据库会话（触发 Checkpoint）
-        if self.item_store: self.item_store.close_session()
-        if self.project_store: self.project_store.close_session()
+        if self.item_store:
+            self.item_store.close_session()
+        if self.project_store:
+            self.project_store.close_session()
 
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_DONE, {})
