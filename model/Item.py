@@ -45,6 +45,7 @@ class Item():
         RPGMAKER = "RPGMAKER"                      # RPGMAKER 游戏文本
 
     # 默认值
+    id: int | None = None                                                                       # 数据库主键（自增）
     src: str = ""                                                                               # 原文
     dst: str = ""                                                                               # 译文
     name_src: str | list[str] = None                                                            # 角色姓名原文
@@ -107,6 +108,16 @@ class Item():
                 self.set_text_type(__class__.TextType.RPGMAKER)
             elif any(v.search(self.get_src()) is not None for v in __class__.REGEX_RENPY):
                 self.set_text_type(__class__.TextType.RENPY)
+
+    # 获取数据库主键
+    def get_id(self) -> int | None:
+        with self.lock:
+            return self.id
+
+    # 设置数据库主键
+    def set_id(self, id: int | None) -> None:
+        with self.lock:
+            self.id = id
 
     # 获取原文
     def get_src(self) -> str:
