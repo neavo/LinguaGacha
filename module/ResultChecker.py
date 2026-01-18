@@ -1,5 +1,3 @@
-import json
-import os
 from enum import StrEnum
 
 import opencc
@@ -8,23 +6,23 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
+
 class WarningType(StrEnum):
     """检查警告类型枚举"""
-    KANA = "KANA"                           # 假名残留
-    HANGEUL = "HANGEUL"                     # 谚文残留
-    TEXT_PRESERVE = "TEXT_PRESERVE"         # 文本保护失效
-    SIMILARITY = "SIMILARITY"               # 相似度过高
-    GLOSSARY = "GLOSSARY"                   # 术语表未生效
-    RETRY_THRESHOLD = "RETRY_THRESHOLD"     # 重试次数达阈值
+
+    KANA = "KANA"  # 假名残留
+    HANGEUL = "HANGEUL"  # 谚文残留
+    TEXT_PRESERVE = "TEXT_PRESERVE"  # 文本保护失效
+    SIMILARITY = "SIMILARITY"  # 相似度过高
+    GLOSSARY = "GLOSSARY"  # 术语表未生效
+    RETRY_THRESHOLD = "RETRY_THRESHOLD"  # 重试次数达阈值
 
 
 class ResultChecker(Base):
-
     # 类变量
     OPENCCT2S = opencc.OpenCC("t2s")
     OPENCCS2T = opencc.OpenCC("s2tw")
@@ -43,7 +41,11 @@ class ResultChecker(Base):
             return []
 
         # 根据繁体输出设置转换术语表译文
-        converter = ResultChecker.OPENCCS2T if self.config.traditional_chinese_enable else ResultChecker.OPENCCT2S
+        converter = (
+            ResultChecker.OPENCCS2T
+            if self.config.traditional_chinese_enable
+            else ResultChecker.OPENCCT2S
+        )
         return [
             {
                 "src": v.get("src", ""),
@@ -62,12 +64,18 @@ class ResultChecker(Base):
         dst = item.get_dst()
 
         # 译前替换
-        if self.config.pre_translation_replacement_enable and self.config.pre_translation_replacement_data:
+        if (
+            self.config.pre_translation_replacement_enable
+            and self.config.pre_translation_replacement_data
+        ):
             for v in self.config.pre_translation_replacement_data:
                 src = src.replace(v.get("src", ""), v.get("dst", ""))
 
         # 译后逆替换（还原）
-        if self.config.post_translation_replacement_enable and self.config.post_translation_replacement_data:
+        if (
+            self.config.post_translation_replacement_enable
+            and self.config.post_translation_replacement_data
+        ):
             for v in self.config.post_translation_replacement_data:
                 dst = dst.replace(v.get("dst", ""), v.get("src", ""))
 
@@ -86,7 +94,9 @@ class ResultChecker(Base):
             return False
         return TextHelper.KO.any_hangeul(item.get_dst())
 
-    def _has_text_preserve_error(self, item: Item, src_repl: str, dst_repl: str) -> bool:
+    def _has_text_preserve_error(
+        self, item: Item, src_repl: str, dst_repl: str
+    ) -> bool:
         """检查文本保护是否失效"""
         return not self.text_processor.check(src_repl, dst_repl, item.get_text_type())
 
@@ -95,7 +105,11 @@ class ResultChecker(Base):
         src = src_repl.strip()
         dst = dst_repl.strip()
         # 判断是否包含或相似
-        return src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80
+        return (
+            src in dst
+            or dst in src
+            or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80
+        )
 
     def _has_glossary_error(self, src_repl: str, dst_repl: str) -> bool:
         """检查术语表是否未生效"""
@@ -106,7 +120,11 @@ class ResultChecker(Base):
             glossary_src = v.get("src", "")
             glossary_dst = v.get("dst", "")
             # 原文包含术语原文，但译文不包含术语译文
-            if glossary_src and glossary_src in src_repl and glossary_dst not in dst_repl:
+            if (
+                glossary_src
+                and glossary_src in src_repl
+                and glossary_dst not in dst_repl
+            ):
                 return True
         return False
 
@@ -122,7 +140,11 @@ class ResultChecker(Base):
             glossary_src = v.get("src", "")
             glossary_dst = v.get("dst", "")
             # 原文包含术语原文，但译文不包含术语译文
-            if glossary_src and glossary_src in src_repl and glossary_dst not in dst_repl:
+            if (
+                glossary_src
+                and glossary_src in src_repl
+                and glossary_dst not in dst_repl
+            ):
                 failed_terms.append((glossary_src, glossary_dst))
 
         return failed_terms

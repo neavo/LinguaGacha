@@ -527,6 +527,7 @@ class FilterDialog(MessageBoxBase):
         layout.addWidget(self.term_empty_label)
 
         self.term_list_items: dict[tuple[str, str], QListWidgetItem] = {}
+        self.term_list_widgets: dict[tuple[str, str], FilterListItemWidget] = {}
 
         return card
 
@@ -728,7 +729,9 @@ class FilterDialog(MessageBoxBase):
 
             # 创建自定义 widget 并设置
             item_widget = FilterListItemWidget(display_text, self.term_list)
-            item_widget.set_checked(True)
+            # 若之前有记录，则恢复选中状态；否则默认勾选
+            should_check = term in previous_checked if previous_checked else True
+            item_widget.set_checked(should_check)
             item_widget.set_count(count)
             item_widget.set_tooltip(display_text)
             self.term_list.setItemWidget(list_item, item_widget)

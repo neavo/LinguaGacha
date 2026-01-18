@@ -1,8 +1,6 @@
 import re
 import threading
-import time
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
@@ -31,16 +29,19 @@ from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
+
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
 
     # 信号定义
-    items_loaded = pyqtSignal(list)             # 数据加载完成信号
-    translate_done = pyqtSignal(object, bool)   # 翻译完成信号
-    save_done = pyqtSignal(bool)                # 保存完成信号
-    export_done = pyqtSignal(bool, str)         # 导出完成信号 (success, error_msg)
-    progress_updated = pyqtSignal(str, int, int)  # 进度更新信号 (content, current, total)
-    progress_finished = pyqtSignal()              # 进度完成信号
+    items_loaded = pyqtSignal(list)  # 数据加载完成信号
+    translate_done = pyqtSignal(object, bool)  # 翻译完成信号
+    save_done = pyqtSignal(bool)  # 保存完成信号
+    export_done = pyqtSignal(bool, str)  # 导出完成信号 (success, error_msg)
+    progress_updated = pyqtSignal(
+        str, int, int
+    )  # 进度更新信号 (content, current, total)
+    progress_finished = pyqtSignal()  # 进度完成信号
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -48,17 +49,19 @@ class ProofreadingPage(QWidget, Base):
 
         # 成员变量
         self.window = window
-        self.items: list[Item] = []                         # 全量数据
-        self.filtered_items: list[Item] = []                # 筛选后数据
-        self.warning_map: dict[int, list[WarningType]] = {} # 警告映射表
-        self.result_checker: ResultChecker | None = None    # 结果检查器
-        self.is_readonly: bool = False                      # 只读模式标志
-        self.config: Config | None = None                   # 配置
-        self.filter_options: dict = {}                      # 当前筛选选项
-        self.search_keyword: str = ""                       # 当前搜索关键词
-        self.search_is_regex: bool = False                  # 是否正则搜索
-        self.search_match_indices: list[int] = []           # 匹配项在 filtered_items 中的索引
-        self.search_current_match: int = -1                 # 当前匹配项索引（在 search_match_indices 中的位置）
+        self.items: list[Item] = []  # 全量数据
+        self.filtered_items: list[Item] = []  # 筛选后数据
+        self.warning_map: dict[int, list[WarningType]] = {}  # 警告映射表
+        self.result_checker: ResultChecker | None = None  # 结果检查器
+        self.is_readonly: bool = False  # 只读模式标志
+        self.config: Config | None = None  # 配置
+        self.filter_options: dict = {}  # 当前筛选选项
+        self.search_keyword: str = ""  # 当前搜索关键词
+        self.search_is_regex: bool = False  # 是否正则搜索
+        self.search_match_indices: list[int] = []  # 匹配项在 filtered_items 中的索引
+        self.search_current_match: int = (
+            -1
+        )  # 当前匹配项索引（在 search_match_indices 中的位置）
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -73,7 +76,9 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_RUN, self._on_engine_status_changed)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self._on_engine_status_changed)
         self.subscribe(Base.Event.TRANSLATION_DONE, self._on_engine_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed)
+        self.subscribe(
+            Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed
+        )
 
         # 连接信号
         self.items_loaded.connect(self._on_items_loaded_ui)
@@ -89,7 +94,9 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget = ProofreadingTableWidget()
         self.table_widget.cell_edited.connect(self._on_cell_edited)
         self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
-        self.table_widget.batch_retranslate_clicked.connect(self._on_batch_retranslate_clicked)
+        self.table_widget.batch_retranslate_clicked.connect(
+            self._on_batch_retranslate_clicked
+        )
         self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
         self.table_widget.set_items([], {})
@@ -118,34 +125,58 @@ class ProofreadingPage(QWidget, Base):
 
         # 加载按钮
         self.btn_load = self.command_bar_card.add_action(
-            Action(FluentIcon.DOWNLOAD, Localizer.get().proofreading_page_load, triggered=self._on_load_clicked)
+            Action(
+                FluentIcon.DOWNLOAD,
+                Localizer.get().proofreading_page_load,
+                triggered=self._on_load_clicked,
+            )
         )
 
         # 保存按钮
-        action_save = Action(FluentIcon.SAVE, Localizer.get().proofreading_page_save, triggered=self._on_save_clicked)
+        action_save = Action(
+            FluentIcon.SAVE,
+            Localizer.get().proofreading_page_save,
+            triggered=self._on_save_clicked,
+        )
         action_save.setShortcut("Ctrl+S")
         self.btn_save = self.command_bar_card.add_action(action_save)
-        self.btn_save.installEventFilter(ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP))
+        self.btn_save.installEventFilter(
+            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
+        )
         self.btn_save.setToolTip(Localizer.get().proofreading_page_save_tooltip)
         self.btn_save.setEnabled(False)
 
         # 分隔符与功能按钮组
         self.command_bar_card.add_separator()
         self.btn_export = self.command_bar_card.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().proofreading_page_export, triggered=self._on_export_clicked)
+            Action(
+                FluentIcon.SHARE,
+                Localizer.get().proofreading_page_export,
+                triggered=self._on_export_clicked,
+            )
         )
-        self.btn_export.installEventFilter(ToolTipFilter(self.btn_export, 300, ToolTipPosition.TOP))
+        self.btn_export.installEventFilter(
+            ToolTipFilter(self.btn_export, 300, ToolTipPosition.TOP)
+        )
         self.btn_export.setToolTip(Localizer.get().proofreading_page_export_tooltip)
         self.btn_export.setEnabled(False)
 
         self.command_bar_card.add_separator()
         self.btn_search = self.command_bar_card.add_action(
-            Action(FluentIcon.SEARCH, Localizer.get().proofreading_page_search, triggered=self._on_search_clicked)
+            Action(
+                FluentIcon.SEARCH,
+                Localizer.get().proofreading_page_search,
+                triggered=self._on_search_clicked,
+            )
         )
         self.btn_search.setEnabled(False)
 
         self.btn_filter = self.command_bar_card.add_action(
-            Action(FluentIcon.FILTER, Localizer.get().proofreading_page_filter, triggered=self._on_filter_clicked)
+            Action(
+                FluentIcon.FILTER,
+                Localizer.get().proofreading_page_filter,
+                triggered=self._on_filter_clicked,
+            )
         )
         self.btn_filter.setEnabled(False)
 
@@ -177,10 +208,13 @@ class ProofreadingPage(QWidget, Base):
                 items = [i for i in items if i.get_src().strip()]
 
                 if not items:
-                    self.emit(Base.Event.TOAST, {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().proofreading_page_no_cache,
-                    })
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().proofreading_page_no_cache,
+                        },
+                    )
                     self.items_loaded.emit([])
                     return
 
@@ -196,10 +230,13 @@ class ProofreadingPage(QWidget, Base):
 
             except Exception as e:
                 self.error(f"{Localizer.get().proofreading_page_load_failed}", e)
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().proofreading_page_load_failed,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().proofreading_page_load_failed,
+                    },
+                )
                 self.items_loaded.emit([])
 
         threading.Thread(target=task, daemon=True).start()
@@ -222,10 +259,13 @@ class ProofreadingPage(QWidget, Base):
     def _on_filter_clicked(self) -> None:
         """筛选按钮点击"""
         if not self.items or not self.result_checker:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().proofreading_page_no_cache,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().proofreading_page_no_cache,
+                },
+            )
             return
 
         dialog = FilterDialog(
@@ -250,7 +290,10 @@ class ProofreadingPage(QWidget, Base):
         filtered = []
         for item in self.items:
             # 排除掉 已排除 和 重复条目（通常无需校对）
-            if item.get_status() in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED):
+            if item.get_status() in (
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.DUPLICATED,
+            ):
                 continue
 
             # 警告类型筛选：如果开启了筛选，则过滤不吻合的项
@@ -259,7 +302,10 @@ class ProofreadingPage(QWidget, Base):
                 # 逻辑展平：分别处理有警告和无警告的显示条件
                 if item_warnings and not any(e in warning_types for e in item_warnings):
                     continue
-                if not item_warnings and FilterDialog.NO_WARNING_TAG not in warning_types:
+                if (
+                    not item_warnings
+                    and FilterDialog.NO_WARNING_TAG not in warning_types
+                ):
                     continue
 
                 # 术语级筛选：仅当警告包含 GLOSSARY 且指定了术语时生效
@@ -324,10 +370,13 @@ class ProofreadingPage(QWidget, Base):
         if is_regex:
             is_valid, error_msg = self.search_card.validate_regex()
             if not is_valid:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.ERROR,
-                    "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                    },
+                )
                 return
 
         self.search_keyword = keyword
@@ -338,10 +387,13 @@ class ProofreadingPage(QWidget, Base):
 
         if not self.search_match_indices:
             self.search_card.set_match_info(0, 0)
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().search_no_match,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().search_no_match,
+                },
+            )
             return
 
         # 跳转到第一个匹配项
@@ -430,7 +482,6 @@ class ProofreadingPage(QWidget, Base):
         row_in_page = item_index % page_size
         self.table_widget.select_row(row_in_page)
 
-
     # ========== 分页渲染 ==========
     def _on_page_changed(self, page: int) -> None:
         """页码变化"""
@@ -443,7 +494,9 @@ class ProofreadingPage(QWidget, Base):
         end_idx = start_idx + page_size
 
         page_items = self.filtered_items[start_idx:end_idx]
-        page_warning_map = {id(item): self.warning_map.get(id(item), []) for item in page_items}
+        page_warning_map = {
+            id(item): self.warning_map.get(id(item), []) for item in page_items
+        }
 
         self.table_widget.set_items(page_items, page_warning_map)
 
@@ -458,7 +511,10 @@ class ProofreadingPage(QWidget, Base):
 
         # 如果译文不为空，且当前状态不是已处理状态，则强制更新为 PROCESSED
         # 这确保了手工修改的 排重/已排除 条目在导出时被视为有效翻译
-        if new_dst and item.get_status() not in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.PROCESSED_IN_PAST):
+        if new_dst and item.get_status() not in (
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.PROCESSED_IN_PAST,
+        ):
             item.set_status(Base.ProjectStatus.PROCESSED)
 
         self._recheck_item(item)
@@ -485,20 +541,26 @@ class ProofreadingPage(QWidget, Base):
         clipboard = QApplication.clipboard()
         clipboard.setText(item.get_src())
 
-        self.emit(Base.Event.TOAST, {
-            "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().proofreading_page_copy_src_done,
-        })
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().proofreading_page_copy_src_done,
+            },
+        )
 
     def _on_copy_dst_clicked(self, item: Item) -> None:
         """复制译文到剪贴板"""
         clipboard = QApplication.clipboard()
         clipboard.setText(item.get_dst())
 
-        self.emit(Base.Event.TOAST, {
-            "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().proofreading_page_copy_dst_done,
-        })
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().proofreading_page_copy_dst_done,
+            },
+        )
 
     # ========== 重新翻译功能 ==========
     def _on_retranslate_clicked(self, item: Item) -> None:
@@ -509,7 +571,7 @@ class ProofreadingPage(QWidget, Base):
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_retranslate_confirm,
-            self.window
+            self.window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -529,8 +591,10 @@ class ProofreadingPage(QWidget, Base):
         count = len(items)
         message_box = MessageBox(
             Localizer.get().confirm,
-            Localizer.get().proofreading_page_batch_retranslate_confirm.replace("{COUNT}", str(count)),
-            self.window
+            Localizer.get().proofreading_page_batch_retranslate_confirm.replace(
+                "{COUNT}", str(count)
+            ),
+            self.window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -548,8 +612,11 @@ class ProofreadingPage(QWidget, Base):
 
         # 显示进度 Toast（初始显示"正在处理第 1 个"）
         self.progress_show(
-            Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "1").replace("{TOTAL}", str(count)),
-            1, count
+            Localizer.get()
+            .proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "1")
+            .replace("{TOTAL}", str(count)),
+            1,
+            count,
         )
 
         def batch_translate_task() -> None:
@@ -561,8 +628,13 @@ class ProofreadingPage(QWidget, Base):
                 # 更新进度（在任务开始前显示"正在处理第 N 个"）
                 current = idx + 1
                 self.progress_updated.emit(
-                    Localizer.get().proofreading_page_batch_retranslate_progress.replace("{CURRENT}", str(current)).replace("{TOTAL}", str(total)),
-                    current, total
+                    Localizer.get()
+                    .proofreading_page_batch_retranslate_progress.replace(
+                        "{CURRENT}", str(current)
+                    )
+                    .replace("{TOTAL}", str(total)),
+                    current,
+                    total,
                 )
 
                 # 重置状态
@@ -580,9 +652,7 @@ class ProofreadingPage(QWidget, Base):
                     complete_event.set()
 
                 Engine.get().translate_single_item(
-                    item=item,
-                    config=config,
-                    callback=callback
+                    item=item, config=config, callback=callback
                 )
 
                 # 阻塞等待翻译完成，避免忙轮询
@@ -598,10 +668,19 @@ class ProofreadingPage(QWidget, Base):
             self.progress_finished.emit()
 
             # 显示结果
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS if fail_count == 0 else Base.ToastType.WARNING,
-                "message": Localizer.get().proofreading_page_batch_retranslate_success.replace("{SUCCESS}", str(success_count)).replace("{FAILED}", str(fail_count)),
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS
+                    if fail_count == 0
+                    else Base.ToastType.WARNING,
+                    "message": Localizer.get()
+                    .proofreading_page_batch_retranslate_success.replace(
+                        "{SUCCESS}", str(success_count)
+                    )
+                    .replace("{FAILED}", str(fail_count)),
+                },
+            )
 
         threading.Thread(target=batch_translate_task, daemon=True).start()
 
@@ -653,7 +732,7 @@ class ProofreadingPage(QWidget, Base):
                 cache_manager.save_to_file(
                     project=cache_manager.get_project(),
                     items=items,
-                    output_folder=config.output_folder
+                    output_folder=config.output_folder,
                 )
                 self.save_done.emit(True)
             except Exception as e:
@@ -669,7 +748,7 @@ class ProofreadingPage(QWidget, Base):
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_export_confirm,
-            self.window
+            self.window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -691,22 +770,30 @@ class ProofreadingPage(QWidget, Base):
         if pending_export:
             # 导出流程中的保存
             if success:
-                self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_exporting)
+                self.indeterminate_show(
+                    Localizer.get().proofreading_page_indeterminate_exporting
+                )
                 self.export_data()  # 异步执行，完成后由 export_done 信号触发隐藏
             else:
                 self.indeterminate_hide()
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().proofreading_page_save_failed,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().proofreading_page_save_failed,
+                    },
+                )
         else:
             # 普通保存流程：成功时直接隐藏进度条，失败时弹出错误提示
             self.indeterminate_hide()
             if not success:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().proofreading_page_save_failed,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().proofreading_page_save_failed,
+                    },
+                )
 
     def export_data(self) -> None:
         """导出数据（异步执行）"""
@@ -733,10 +820,14 @@ class ProofreadingPage(QWidget, Base):
         # 成功时直接隐藏进度条，失败时弹出错误提示
         self.indeterminate_hide()
         if not success:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.ERROR,
-                "message": error_msg or Localizer.get().proofreading_page_export_failed,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": error_msg
+                    or Localizer.get().proofreading_page_export_failed,
+                },
+            )
 
     # ========== 只读模式控制 ==========
     def _on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
@@ -747,7 +838,10 @@ class ProofreadingPage(QWidget, Base):
         """检查并更新只读模式"""
         # 获取全局引擎状态，确保 UI 状态与后台任务一致
         engine_status = Engine.get().get_status()
-        is_busy = engine_status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
+        is_busy = engine_status in (
+            Base.TaskStatus.TRANSLATING,
+            Base.TaskStatus.STOPPING,
+        )
 
         # 1. 如果处于翻译中/停止中，清空页面数据
         if is_busy and self.items:
@@ -782,27 +876,36 @@ class ProofreadingPage(QWidget, Base):
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
         """显示 loading 指示器（不定进度）"""
-        self.emit(Base.Event.PROGRESS_TOAST_SHOW, {
-            "message": msg,
-            "indeterminate": True,
-        })
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": msg,
+                "indeterminate": True,
+            },
+        )
 
     def progress_show(self, msg: str, current: int = 0, total: int = 0) -> None:
         """显示确定进度指示器"""
-        self.emit(Base.Event.PROGRESS_TOAST_SHOW, {
-            "message": msg,
-            "indeterminate": False,
-            "current": current,
-            "total": total,
-        })
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": msg,
+                "indeterminate": False,
+                "current": current,
+                "total": total,
+            },
+        )
 
     def progress_update(self, msg: str, current: int, total: int) -> None:
         """更新进度"""
-        self.emit(Base.Event.PROGRESS_TOAST_UPDATE, {
-            "message": msg,
-            "current": current,
-            "total": total,
-        })
+        self.emit(
+            Base.Event.PROGRESS_TOAST_UPDATE,
+            {
+                "message": msg,
+                "current": current,
+                "total": total,
+            },
+        )
 
     def indeterminate_hide(self) -> None:
         """隐藏 loading 指示器"""
