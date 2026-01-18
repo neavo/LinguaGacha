@@ -39,13 +39,15 @@
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
   - Windows: Download `.zip` file, extract and run `app.exe`
-  - macOS: Download `.dmg` file (`x86_64` for Intel, `arm64` for Apple Silicon), drag to Applications folder
-    - On first launch, you may see "unidentified developer" warning. Right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
-  - Linux: Download `.AppImage` file, make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - macOS: Download `.dmg` file, choose `x86_64` for Intel or `arm64` for Apple Silicon, drag to Applications folder
+    - On first launch, you may see "unidentified developer" warning
+    - Please right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: Download `.AppImage` file
+    - Make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
   - [ [Gemini API](https://aistudio.google.com/) ] (Paid, cost-effective, fast, relatively-high-quality, no GPU required)　`👈👈 Recommended`
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Unstable during the day, Alternative`
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Recommended`
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
@@ -83,9 +85,16 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260118 v0.41.0
+  - ADD - `Model Management` feature
+    - Replaces the original `Interface Management` feature, need to be reconfigured
+    - Added support for `Custom Request Headers` and `Custom Request Body`
+    - Parameters such as `Reasoning Level`, `Task Length`, and `Request Speed` can now be set individually for each model
+  - ADJ - Proofreading tasks now support secondary filtering for `Ineffective Glossaries`
+
 - 20260116 v0.40.2
-  - Adjustment - Visual and interaction improvements
-  - Adjustment - EPUB compatibility optimization
+  - ADJ - Visual and interaction improvements
+  - ADJ - EPUB compatibility optimization
   - From now on, `macOS`, `Linux` and `Windows` platforms will be released simultaneously
 
 - 20260114 v0.40.1
@@ -106,6 +115,7 @@
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
 - Install dependencies `uv sync -U`
 - Run application `uv run app.py`
+- Please ensure you run `uv run ruff check --fix` and `uv run ruff format` to maintain code standards before submitting a PR
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥

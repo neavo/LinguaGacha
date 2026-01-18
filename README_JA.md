@@ -38,13 +38,15 @@
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
   - Windows: `.zip` ファイルをダウンロードし、解凍して `app.exe` を実行
-  - macOS: `.dmg` ファイルをダウンロード（Intel は `x86_64`、Apple Silicon は `arm64`）し、アプリケーションフォルダにドラッグ
-    - 初回起動時に「開発元を確認できない」という警告が表示される場合があります。アプリを右クリックして「開く」を選択するか、`xattr -cr /Applications/LinguaGacha.app` を実行してください
-  - Linux: `.AppImage` ファイルをダウンロードし、実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - macOS: `.dmg` ファイルをダウンロード、Intel は `x86_64`、Apple Silicon は `arm64`、アプリケーションフォルダにドラッグ
+    - 初回起動時に「開発元を確認できない」という警告が表示される場合があります
+    - アプリを右クリックして「開く」を選択するか、`xattr -cr /Applications/LinguaGacha.app` を実行してください
+  - Linux: `.AppImage` ファイルをダウンロード
+    - 実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
   - [ [Gemini API](https://aistudio.google.com/) ] (有料、費用対効果が高い、高速、比較的高品質、GPU不要)　`👈👈 推奨`
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (有料、費用対効果が高い、高速、高品質、GPU不要)　`👈👈 日中不安定、代替案`
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (有料、費用対効果が高い、高速、高品質、GPU不要)　`👈👈 推奨`
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
@@ -85,13 +87,8 @@
 - 本プロジェクトは [**uv**](https://github.com/astral-sh/uv) で管理されています
 - 依存関係のインストール: `uv sync -U`
 - アプリの実行: `uv run app.py`
+- PRを提出する前に、コード規約を遵守するために `uv run ruff check --fix` および `uv run ruff format` を必ず実行してください
 - 非開発者の方は [リリースページ](https://github.com/neavo/LinguaGacha/releases) からビルド済みバージョンをダウンロードすることをお勧めします
-
-## FAQ 📥
-- [LinguaGacha](https://github.com/neavo/LinguaGacha) と [AiNiee](https://github.com/NEKOparapa/AiNiee) の関係
-  - `LinguaGacha` の作者は `AiNiee v5` の主要な開発およびメンテナンス担当者の一人です
-  - `LinguaGacha` は `AiNiee` の派生ではなく、`AiNiee` の経験を基に開発された、よりシンプルで強力な、全く新しい翻訳アプリです
-  - よりシンプルに、よりパワフルに。機能の強力さは、煩雑な設定を必要としません。
 
 ## サポート 😥
 - 実行時のログは `log` フォルダに保存されます

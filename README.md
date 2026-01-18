@@ -35,13 +35,15 @@
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
   - Windows: 下载 `.zip` 文件，解压后双击 `app.exe` 启动
-  - macOS: 下载 `.dmg` 文件（Intel 选择 `x86_64`，Apple Silicon 选择 `arm64`），拖拽到应用程序文件夹
-    - 首次运行可能提示"无法验证开发者"，请右键点击应用选择"打开"，或执行 `xattr -cr /Applications/LinguaGacha.app`
-  - Linux: 下载 `.AppImage` 文件，添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - macOS: 下载 `.dmg` 文件，Intel 选择 `x86_64`，Apple Silicon 选择 `arm64`，拖拽到应用程序文件夹
+    - 首次运行可能提示"无法验证开发者"
+    - 请右键点击应用选择"打开"，或执行 `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: 下载 `.AppImage` 文件
+    - 添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
   - [ [火山引擎](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ]，需付费但便宜，速度快，质量高，无显卡要求　`👈👈 推荐`
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，需付费但便宜，速度快，质量高，无显卡要求 `👈👈 白天不稳定，备选`
+  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，需付费但便宜，速度快，质量高，无显卡要求 `👈👈 推荐`
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
   - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
@@ -80,6 +82,13 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260118 v0.41.0
+  - 新增 - `模型管理` 功能
+    - 替代了原有的 `接口管理` 功能，需要重新设置
+    - 新增对 `自定义请求头` 和 `自定义请求体` 的支持
+    - 可以分别为每个模型设置 `思考等级`、`任务长度`、`请求速度` 等参数了
+  - 调整 - 校对任务支持对 `未生效术语表` 的二次筛选
+
 - 20260116 v0.40.2
   - 调整 - 视觉与交互改进
   - 调整 - EPUB 兼容性优化
@@ -103,6 +112,7 @@
 - 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理
 - 安装依赖 `uv sync -U`
 - 运行应用 `uv run app.py`
+- 提交 PR 前请务必执行 `uv run ruff check --fix` 及 `uv run ruff format` 确保代码规范
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 
 ## 问题反馈 😥
