@@ -1,0 +1,15 @@
+{
+    "id": 10,
+    "name": "火山引擎",
+    "api_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "OpenAI",
+    "model": "deepseek-v3-250324",
+    "thinking": false,
+    "top_p": 0.95,
+    "temperature": 0.95,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}

@@ -1,4 +1,3 @@
-import copy
 import threading
 
 from base.Base import Base
@@ -8,16 +7,15 @@ from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 
 class APITester(Base):
-    """API 测试器 - 直接使用新的 Model 数据结构"""
 
     def __init__(self) -> None:
         super().__init__()
 
         # 注册事件
-        self.subscribe(Base.Event.APITEST_RUN, self.api_test_start)
+        self.subscribe(Base.Event.APITEST_RUN, self.platform_test_start)
 
     # 接口测试开始事件
-    def api_test_start(self, event: Base.Event, data: dict) -> None:
+    def platform_test_start(self, event: Base.Event, data: dict) -> None:
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             self.emit(Base.Event.TOAST, {
                 "type": Base.ToastType.WARNING,
@@ -25,44 +23,25 @@ class APITester(Base):
             })
         else:
             threading.Thread(
-                target=self.api_test_start_target,
-                args=(event, data),
+                target = self.platform_test_start_target,
+                args = (event, data),
             ).start()
 
     # 接口测试开始
-    def api_test_start_target(self, event: Base.Event, data: dict) -> None:
+    def platform_test_start_target(self, event: Base.Event, data: dict) -> None:
         # 更新运行状态
         Engine.get().set_status(Base.TaskStatus.TESTING)
 
         # 加载配置
         config = Config().load()
-
-        # 通过 model_id 获取模型配置
-        model_id = data.get("model_id")
-        if not model_id:
-            self.emit(Base.Event.APITEST_DONE, {
-                "result": False,
-                "result_msg": "Missing model_id",
-            })
-            Engine.get().set_status(Base.TaskStatus.IDLE)
-            return
-
-        model = config.get_model(model_id)
-        if model is None:
-            self.emit(Base.Event.APITEST_DONE, {
-                "result": False,
-                "result_msg": "Model not found",
-            })
-            Engine.get().set_status(Base.TaskStatus.IDLE)
-            return
+        platform = config.get_platform(data.get("id"))
 
         # 测试结果
         failure = []
         success = []
 
         # 构造提示词
-        api_format = model.get("api_format", "OpenAI")
-        if api_format == Base.APIFormat.SAKURALLM:
+        if platform.get("api_format") == Base.APIFormat.SAKURALLM:
             messages = [
                 {
                     "role": "system",
@@ -81,24 +60,19 @@ class APITester(Base):
                 },
             ]
 
-        # 获取 API 密钥列表
-        api_keys_str = str(model.get("api_key", ""))
-        api_keys = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
-
-        if not api_keys:
-            api_keys = ["no_key_required"]
+        # 复制配置用于测试
+        platform_test = platform.copy()
 
         # 开始测试
-        for key in api_keys:
-            # 重置请求器，清除缓存和索引
+        for key in platform.get("api_key"):
+            # 重置请求器，清除缓存和索引，避免不同key之间相互影响
             TaskRequester.reset()
 
-            # 深拷贝模型配置，避免嵌套字典引用问题
-            model_test = copy.deepcopy(model)
-            model_test["api_key"] = key
+            # 设置当前要测试的key
+            platform_test["api_key"] = [key]
 
-            # 创建请求器
-            requester = TaskRequester(config, model_test)
+            # 为每个key创建新的requester实例
+            requester = TaskRequester(config, platform_test)
 
             self.print("")
             self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
@@ -106,7 +80,7 @@ class APITester(Base):
             skip, response_think, response_result, _, _ = requester.request(messages)
 
             # 提取回复内容
-            if skip:
+            if skip == True:
                 failure.append(key)
                 self.warning(Localizer.get().log_api_test_fail)
             elif response_think == "":
@@ -119,7 +93,7 @@ class APITester(Base):
 
         # 测试结果
         result_msg = (
-            Localizer.get().api_tester_result.replace("{COUNT}", str(len(api_keys)))
+            Localizer.get().api_tester_result.replace("{COUNT}", str(len(platform.get("api_key"))))
                                              .replace("{SUCCESS}", str(len(success)))
                                              .replace("{FAILURE}", str(len(failure)))
         )

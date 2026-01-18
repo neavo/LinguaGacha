@@ -1,0 +1,15 @@
+{
+    "id": 5,
+    "name": "阿里云",
+    "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "api_key": [
+        "no_key_required"
+    ],
+    "api_format": "OpenAI",
+    "model": "qwen-turbo",
+    "thinking": false,
+    "top_p": 0.95,
+    "temperature": 0.95,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0
+}

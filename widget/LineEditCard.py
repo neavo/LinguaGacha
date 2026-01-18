@@ -1,14 +1,13 @@
 from typing import Callable
 
 from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
+from qfluentwidgets import LineEdit
+from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
-
-from widget.CustomLineEdit import CustomLineEdit
 
 class LineEditCard(CardWidget):
 
@@ -38,7 +37,7 @@ class LineEditCard(CardWidget):
         self.root.addStretch(1)
 
         # 添加控件
-        self.line_edit = CustomLineEdit()
+        self.line_edit = LineEdit()
         self.line_edit.setFixedWidth(192)
         self.line_edit.setClearButtonEnabled(True)
         self.root.addWidget(self.line_edit)
@@ -49,7 +48,7 @@ class LineEditCard(CardWidget):
         if callable(text_changed):
             self.line_edit.textChanged.connect(lambda text: text_changed(self, text))
 
-    def get_line_edit(self) -> CustomLineEdit:
+    def get_line_edit(self) -> LineEdit:
         return self.line_edit
 
     # 添加控件
