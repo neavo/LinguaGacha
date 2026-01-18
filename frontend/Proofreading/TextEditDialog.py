@@ -1,22 +1,22 @@
 from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
 from qfluentwidgets import MessageBoxBase
-from qfluentwidgets import PlainTextEdit
-from qfluentwidgets import StrongBodyLabel
-from qfluentwidgets import isDarkTheme
 
 from module.Localizer.Localizer import Localizer
-from widget.Separator import Separator
+from widget.CustomTextEdit import CustomTextEdit
+from widget.GroupCard import GroupCard
+
 
 class TextEditDialog(MessageBoxBase):
     """使用统一风格重构的多行文本编辑对话框"""
 
-    def __init__(self, src_text: str, dst_text: str, file_path: str, parent: QWidget) -> None:
+    def __init__(
+        self, src_text: str, dst_text: str, file_path: str, parent: QWidget
+    ) -> None:
         super().__init__(parent)
 
         self.src_text = src_text
@@ -51,74 +51,40 @@ class TextEditDialog(MessageBoxBase):
             self.viewLayout.addWidget(file_card)
 
         # ========== Source Card (Read-only) ==========
-        self.src_card = self.create_group_card(Localizer.get().proofreading_page_col_src)
+        def init_src(widget: GroupCard) -> None:
+            self.src_text_edit = CustomTextEdit(widget)
+            self.src_text_edit.setPlainText(self.src_text)
+            self.src_text_edit.setReadOnly(True)
+            self.src_text_edit.setMinimumHeight(128)
+            widget.add_widget(self.src_text_edit)
 
-        # 根据主题确定字体颜色
-        text_color = "white" if isDarkTheme() else "black"
-
-        self.src_text_edit = PlainTextEdit(self.src_card)
-        self.src_text_edit.setPlainText(self.src_text)
-        self.src_text_edit.setReadOnly(True)
-        self.src_text_edit.setMinimumHeight(128)
-        # 扁平化样式：原文作为参考，去框去背景，融入卡片
-        self.src_text_edit.setStyleSheet(f"""
-            QPlainTextEdit {{
-                background-color: transparent;
-                border: none;
-                padding: 0px;
-                color: {text_color};
-                font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            }}
-        """)
-
-        self.src_card.layout().addWidget(self.src_text_edit)
+        self.src_card = GroupCard(
+            parent=self.widget,
+            title=Localizer.get().proofreading_page_col_src,
+            init=init_src,
+        )
         self.viewLayout.addWidget(self.src_card)
 
-        self.dst_card = self.create_group_card(Localizer.get().proofreading_page_col_dst)
+        # ========== Destination Card (Editable) ==========
+        def init_dst(widget: GroupCard) -> None:
+            self.dst_text_edit = CustomTextEdit(widget)
+            self.dst_text_edit.setPlainText(self.dst_text)
+            self.dst_text_edit.setMinimumHeight(128)
+            widget.add_widget(self.dst_text_edit)
+            # 延迟设置焦点
+            self.dst_text_edit.setFocus()
 
-        self.dst_text_edit = PlainTextEdit(self.dst_card)
-        self.dst_text_edit.setPlainText(self.dst_text)
-        self.dst_text_edit.setMinimumHeight(128)
-        # 扁平化样式：译文区域半透明背景，无边框，简约风格
-        self.dst_text_edit.setStyleSheet(f"""
-            QPlainTextEdit {{
-                background-color: rgba(0, 0, 0, 0.035);
-                border: none;
-                border-radius: 6px;
-                padding: 8px;
-                color: {text_color};
-                font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            }}
-        """)
-
-        self.dst_card.layout().addWidget(self.dst_text_edit)
+        self.dst_card = GroupCard(
+            parent=self.widget,
+            title=Localizer.get().proofreading_page_col_dst,
+            init=init_dst,
+        )
+        # 最后一个参数 1 表示拉伸因子，让译文卡片占据更多空间（如果不再垂直拉伸，可以为 0）
+        # 这里原来的实现给 dst_card 加了 stretch 1，保持一致
         self.viewLayout.addWidget(self.dst_card, 1)
 
         self.yesButton.setText(Localizer.get().confirm)
         self.cancelButton.setText(Localizer.get().cancel)
-
-        self.dst_text_edit.setFocus()
-
-    def create_group_card(self, title: str) -> CardWidget:
-        """创建风格类似于 GroupCard 但更轻量的卡片"""
-        card = CardWidget(self.widget)
-        card.setBorderRadius(4)
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 8, 12, 12)
-
-        # 手动编排元素间距
-        layout.setSpacing(0)
-
-        # 标题
-        layout.addWidget(StrongBodyLabel(title, card))
-        layout.addSpacing(6)
-
-        # 分割线
-        layout.addWidget(Separator(card))
-        layout.addSpacing(8)
-
-        return card
 
     def get_dst_text(self) -> str:
         """获取编辑后的翻译文本"""

@@ -35,6 +35,7 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
 
+
 class FilterListItemWidget(QWidget):
     """自定义列表项 widget：悬浮背景 + 手绘 checkbox + CaptionLabel 文本 + 计数"""
 
@@ -355,7 +356,8 @@ class FilterDialog(MessageBoxBase):
         self.file_list_widgets: dict[str, FilterListItemWidget] = {}
 
         for path in file_paths:
-            display_name = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            # 直接使用原始路径（通常是相对于项目根目录的路径），与 Tooltip 保持一致
+            display_name = path
 
             list_item = QListWidgetItem()
             list_item.setSizeHint(QSize(-1, 40))
