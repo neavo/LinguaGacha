@@ -35,6 +35,7 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
 
+
 class FilterListItemWidget(QWidget):
     """自定义列表项 widget：悬浮背景 + 手绘 checkbox + CaptionLabel 文本 + 计数"""
 
@@ -102,6 +103,14 @@ class FilterListItemWidget(QWidget):
         self.update()
         super().leaveEvent(event)
 
+    def _get_check_color(self) -> QColor:
+        if not isDarkTheme():
+            return QColor(255, 255, 255)
+
+        color = themeColor()
+        luma = 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF()
+        return QColor(0, 0, 0) if luma > 0.75 else QColor(255, 255, 255)
+
     def paintEvent(self, event) -> None:
         """绘制悬浮背景 + Fluent 风格 checkbox"""
         painter = QPainter(self)
@@ -134,7 +143,7 @@ class FilterListItemWidget(QWidget):
             painter.drawRoundedRect(checkbox_rect, 5, 5)
 
             # 绘制白色对勾
-            check_pen = QPen(Qt.white, 2)
+            check_pen = QPen(self._get_check_color(), 2)
             check_pen.setCapStyle(Qt.RoundCap)
             check_pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(check_pen)
@@ -177,6 +186,27 @@ class FilterDialog(MessageBoxBase):
     """双栏式筛选对话框：左栏文件范围，右栏筛选条件与术语明细，全联动刷新"""
 
     NO_WARNING_TAG = "NO_WARNING"
+    LIST_STYLE = """
+            ListWidget, QListWidget, QListView {
+                background: transparent;
+                outline: none;
+                border: none;
+                selection-background-color: transparent;
+                alternate-background-color: transparent;
+                padding-left: 0px;
+                padding-right: 0px;
+                margin: 0px;
+            }
+            ListWidget::item, QListWidget::item, QListView::item {
+                background: transparent;
+                border: 0px;
+                padding-left: 0px;
+                padding-right: 0px;
+                margin-left: 0px;
+                margin-right: 0px;
+                height: 40px;
+            }
+        """
 
     # 筛选选项字典 Key 定义
     KEY_WARNING_TYPES = "warning_types"
@@ -228,26 +258,45 @@ class FilterDialog(MessageBoxBase):
         self.viewLayout.setSpacing(16)
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
 
-        # 双栏容器
         body = QWidget()
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(16)
 
-        # 左栏：文件范围
-        left_card = self._create_left_panel()
-        left_card.setFixedWidth(300)
-        body_layout.addWidget(left_card)
+        left_container = QWidget()
+        left_layout = QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(12)
+        left_layout.setAlignment(Qt.AlignTop)
 
-        # 右栏：筛选条件 + 术语明细
-        right_container = self._create_right_panel()
-        body_layout.addWidget(right_container, 1)
+        left_layout.addWidget(self._create_status_card())
+        left_layout.addWidget(self._create_warning_card())
+        left_layout.addWidget(self._create_left_panel(), 1)
+
+        self.term_card = self._create_term_card()
+        self.term_card.setFixedWidth(360)
+
+        body_layout.addWidget(left_container, 1)
+        body_layout.addWidget(self.term_card)
 
         self.viewLayout.addWidget(body)
 
         # 使用默认按钮
         self.yesButton.setText(Localizer.get().confirm)
         self.cancelButton.setText(Localizer.get().cancel)
+
+    def _setup_small_button(self, btn: QWidget) -> None:
+        btn.setFixedHeight(26)
+        font = btn.font()
+        font.setPixelSize(12)
+        btn.setFont(font)
+
+    def _setup_filter_list_widget(self, list_widget: ListWidget) -> None:
+        list_widget.setSelectionMode(QAbstractItemView.NoSelection)
+        list_widget.setItemDelegate(FilterListDelegate(list_widget))
+        list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        list_widget.setResizeMode(ListWidget.Adjust)
+        list_widget.setStyleSheet(self.LIST_STYLE)
 
     def _create_left_panel(self) -> CardWidget:
         """创建左栏：文件范围选择"""
@@ -270,10 +319,7 @@ class FilterDialog(MessageBoxBase):
         btn_clear = PushButton(Localizer.get().proofreading_page_filter_clear)
 
         for btn in (btn_select_all, btn_clear):
-            btn.setFixedHeight(26)
-            font = btn.font()
-            font.setPixelSize(12)
-            btn.setFont(font)
+            self._setup_small_button(btn)
 
         btn_select_all.clicked.connect(self._select_all_files)
         btn_clear.clicked.connect(self._deselect_all_files)
@@ -294,37 +340,8 @@ class FilterDialog(MessageBoxBase):
 
         # 文件列表
         self.file_list = ListWidget()
-        self.file_list.setMinimumHeight(400)
-        # 禁用默认的选中高亮行为，通过点击事件切换激活状态
-        self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.file_list.setItemDelegate(FilterListDelegate(self.file_list))
-        # 禁用水平滚动条，确保 itemWidget 不会超出可见区域
-        self.file_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # 让 items 随 viewport 调整大小
-        self.file_list.setResizeMode(ListWidget.Adjust)
-        # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
-        self.file_list.setStyleSheet("""
-            ListWidget, QListWidget, QListView {
-                background: transparent;
-                outline: none;
-                border: none;
-                selection-background-color: transparent;
-                alternate-background-color: transparent;
-                padding-left: 0px;
-                padding-right: 0px;
-                margin: 0px;
-            }
-            ListWidget::item, QListWidget::item, QListView::item {
-                background: transparent;
-                border: 0px;
-                padding-left: 0px;
-                padding-right: 0px;
-                margin-left: 0px;
-                margin-right: 0px;
-                height: 40px;
-            }
-        """)
-        # 绑定点击事件用于切换激活状态
+        self.file_list.setMinimumHeight(240)
+        self._setup_filter_list_widget(self.file_list)
         self.file_list.itemClicked.connect(self._on_file_item_clicked)
 
         # 统计每个文件的条目数，按路径排序
@@ -356,33 +373,6 @@ class FilterDialog(MessageBoxBase):
 
         return card
 
-    def _create_right_panel(self) -> QWidget:
-        """创建右栏：筛选条件 + 术语明细"""
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-
-        # 上部：翻译状态卡片
-        status_card = self._create_status_card()
-        layout.addWidget(status_card)
-
-        # 中部：质量检查卡片
-        warning_card = self._create_warning_card()
-        layout.addWidget(warning_card)
-
-        # 下部：术语明细卡片（常驻，固定高度）
-        self.term_card = self._create_term_card()
-        self.term_card.setFixedHeight(384)
-        layout.addWidget(self.term_card)
-
-        # 选中信息（与卡片保持间距）
-        layout.addSpacing(20)
-        self.selected_info_label = CaptionLabel()
-        layout.addWidget(self.selected_info_label)
-
-        return container
-
     def _create_status_card(self) -> CardWidget:
         """创建翻译状态卡片"""
         card = CardWidget(self.widget)
@@ -393,10 +383,10 @@ class FilterDialog(MessageBoxBase):
         layout.setSpacing(0)
 
         layout.addWidget(BodyLabel(Localizer.get().proofreading_page_filter_status))
-        layout.addSpacing(8)
+        layout.addSpacing(6)
 
         status_row = FlowLayout(needAni=False)
-        status_row.setSpacing(8)
+        status_row.setSpacing(6)
         status_row.setContentsMargins(0, 0, 0, 0)
 
         self.status_buttons: dict[Base.ProjectStatus, PillPushButton] = {}
@@ -416,10 +406,7 @@ class FilterDialog(MessageBoxBase):
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
-            btn.setFixedHeight(26)
-            font = btn.font()
-            font.setPixelSize(12)
-            btn.setFont(font)
+            self._setup_small_button(btn)
             btn.clicked.connect(self._on_filter_changed)
             self.status_buttons[status] = btn
             status_row.addWidget(btn)
@@ -440,10 +427,10 @@ class FilterDialog(MessageBoxBase):
         layout.addWidget(
             BodyLabel(Localizer.get().proofreading_page_filter_warning_type)
         )
-        layout.addSpacing(8)
+        layout.addSpacing(6)
 
         warning_row = FlowLayout(needAni=False)
-        warning_row.setSpacing(8)
+        warning_row.setSpacing(6)
         warning_row.setContentsMargins(0, 0, 0, 0)
 
         self.warning_buttons: dict[str | WarningType, PillPushButton] = {}
@@ -470,10 +457,7 @@ class FilterDialog(MessageBoxBase):
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
-            btn.setFixedHeight(26)
-            font = btn.font()
-            font.setPixelSize(12)
-            btn.setFont(font)
+            self._setup_small_button(btn)
             btn.clicked.connect(self._on_filter_changed)
             self.warning_buttons[warning_type] = btn
             warning_row.addWidget(btn)
@@ -509,10 +493,7 @@ class FilterDialog(MessageBoxBase):
         )
 
         for btn in (self.btn_select_all_terms, self.btn_clear_terms):
-            btn.setFixedHeight(26)
-            font = btn.font()
-            font.setPixelSize(12)
-            btn.setFont(font)
+            self._setup_small_button(btn)
 
         self.btn_select_all_terms.clicked.connect(self._select_all_terms)
         self.btn_clear_terms.clicked.connect(self._deselect_all_terms)
@@ -533,34 +514,7 @@ class FilterDialog(MessageBoxBase):
 
         # 术语列表
         self.term_list = ListWidget()
-        self.term_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.term_list.setItemDelegate(FilterListDelegate(self.term_list))
-        # 禁用水平滚动条
-        self.term_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # 让 items 随 viewport 调整大小
-        self.term_list.setResizeMode(ListWidget.Adjust)
-        # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
-        self.term_list.setStyleSheet("""
-            ListWidget, QListWidget, QListView {
-                background: transparent;
-                outline: none;
-                border: none;
-                selection-background-color: transparent;
-                alternate-background-color: transparent;
-                padding-left: 0px;
-                padding-right: 0px;
-                margin: 0px;
-            }
-            ListWidget::item, QListWidget::item, QListView::item {
-                background: transparent;
-                border: 0px;
-                padding-left: 0px;
-                padding-right: 0px;
-                margin-left: 0px;
-                margin-right: 0px;
-                height: 40px;
-            }
-        """)
+        self._setup_filter_list_widget(self.term_list)
         self.term_list.itemClicked.connect(self._on_term_item_clicked)
         layout.addWidget(self.term_list, 1)
 
@@ -592,7 +546,6 @@ class FilterDialog(MessageBoxBase):
         widget = self.term_list.itemWidget(item)
         if isinstance(widget, FilterListItemWidget):
             widget.set_checked(not widget.is_checked())
-        self._update_selected_info()
 
     def _on_filter_changed(self) -> None:
         """任意筛选条件变化时触发全局联动刷新"""
@@ -626,12 +579,10 @@ class FilterDialog(MessageBoxBase):
     def _select_all_terms(self) -> None:
         for widget in getattr(self, "term_list_widgets", {}).values():
             widget.set_checked(True)
-        self._update_selected_info()
 
     def _deselect_all_terms(self) -> None:
         for widget in getattr(self, "term_list_widgets", {}).values():
             widget.set_checked(False)
-        self._update_selected_info()
 
     # =========================================
     # 全量联动刷新
@@ -713,7 +664,6 @@ class FilterDialog(MessageBoxBase):
         # 更新术语明细
         glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
         self._refresh_term_list(filtered_items, glossary_active)
-        self._update_selected_info()
 
     def _refresh_term_list(self, filtered_items: list[Item], active: bool) -> None:
         """刷新术语明细列表"""
@@ -786,38 +736,6 @@ class FilterDialog(MessageBoxBase):
             self.term_list_items[term] = list_item
             self.term_list_widgets[term] = item_widget
 
-    def _update_selected_info(self) -> None:
-        """更新底部选中信息"""
-        filtered_items = self._get_current_filtered_items()
-
-        # 如果术语筛选激活，进一步过滤
-        glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
-        term_widgets = getattr(self, "term_list_widgets", {})
-        if glossary_active and term_widgets:
-            selected_terms = {
-                term for term, widget in term_widgets.items() if widget.is_checked()
-            }
-
-            final_items = []
-            for item in filtered_items:
-                item_warnings = self.warning_map.get(id(item), [])
-                if WarningType.GLOSSARY in item_warnings:
-                    item_terms = self.result_checker.get_failed_glossary_terms(item)
-                    if any(t in selected_terms for t in item_terms):
-                        final_items.append(item)
-                else:
-                    final_items.append(item)
-            filtered_items = final_items
-
-        count = len(filtered_items)
-        files_with_items = len(set(i.get_file_path() for i in filtered_items))
-
-        self.selected_info_label.setText(
-            Localizer.get().proofreading_page_filter_selected_info.format(
-                count=count, files=files_with_items
-            )
-        )
-
     # =========================================
     # 公共接口
     # =========================================
@@ -873,10 +791,8 @@ class FilterDialog(MessageBoxBase):
 
         self._refresh_all()
 
-        # 刷新后再尝试恢复术语激活状态
         glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
         term_widgets = getattr(self, "term_list_widgets", {})
         if glossary_terms and term_widgets:
             for term, widget in term_widgets.items():
                 widget.set_checked(term in glossary_terms)
-            self._update_selected_info()
