@@ -1,12 +1,13 @@
+import contextlib
 import json
 import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
+from typing import Generator
 
 from base.Base import Base
 from model.Project import Project
-
 
 class ProjectStore(Base):
     """项目元数据存储层 - 管理单例项目状态"""
@@ -23,13 +24,27 @@ class ProjectStore(Base):
     def __init__(self, db_path: str) -> None:
         super().__init__()
         self.db_path = db_path
-        self._local = threading.local()
-        self._ensure_table()
+        self._keep_alive_conn: sqlite3.Connection | None = None
+
+    def open_session(self) -> None:
+        """开启会话（建立长连接以维持 WAL 模式，避免频繁 checkpoint）"""
+        if self._keep_alive_conn is None:
+            # 确保持久化连接使用相同的参数
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._keep_alive_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
+            self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
+
+    def close_session(self) -> None:
+        """关闭会话（释放长连接，允许 SQLite 执行 checkpoint 并删除 WAL 文件）"""
+        if self._keep_alive_conn is not None:
+            self._keep_alive_conn.close()
+            self._keep_alive_conn = None
 
     @classmethod
     def get(cls, output_folder: str) -> "ProjectStore":
         """获取或创建指定输出目录的存储实例"""
-        db_path = str(Path(output_folder) / "cache" / "cache.db")
+        db_path = str(Path(output_folder) / "cache" / "project.db")
 
         with cls._LOCK:
             if db_path not in cls._instances:
@@ -39,28 +54,27 @@ class ProjectStore(Base):
 
         return cls._instances[db_path]
 
-    @classmethod
-    def close_all(cls) -> None:
-        """关闭所有存储实例"""
-        with cls._LOCK:
-            cls._instances.clear()
+    @contextlib.contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """获取数据库连接上下文管理器（随用随连）"""
+        # 确保目录存在
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """获取当前线程的数据库连接（线程本地存储）"""
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            # 确保目录存在（处理跨线程调用的情况）
-            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
-            self._local.conn = conn
 
-        return self._local.conn
+            # 2. 确保表结构存在：每次新建连接时检查
+            self._ensure_table(conn)
 
-    def _ensure_table(self) -> None:
+            yield conn
+        finally:
+            conn.close()
+
+    def _ensure_table(self, conn: sqlite3.Connection) -> None:
         """确保数据表存在"""
-        conn = self._get_connection()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS project (
                 id INTEGER PRIMARY KEY,
@@ -71,32 +85,32 @@ class ProjectStore(Base):
 
     def get_project(self) -> Project:
         """获取项目数据，不存在则返回空项目"""
-        conn = self._get_connection()
-        cursor = conn.execute(
-            "SELECT data FROM project WHERE id = ?", (self._PROJECT_ID,)
-        )
-        row = cursor.fetchone()
+        with self._connection() as conn:
+            cursor = conn.execute(
+                "SELECT data FROM project WHERE id = ?", (self._PROJECT_ID,)
+            )
+            row = cursor.fetchone()
 
-        if row is None:
-            return Project()
+            if row is None:
+                return Project()
 
-        data: dict[str, Any] = json.loads(row["data"])
-        return Project.from_dict(data)
+            data: dict[str, Any] = json.loads(row["data"])
+            return Project.from_dict(data)
 
     def set_project(self, project: Project) -> None:
         """保存项目数据（覆盖写入）"""
-        conn = self._get_connection()
-        data_json = json.dumps(project.to_dict(), ensure_ascii=False)
+        with self._connection() as conn:
+            data_json = json.dumps(project.to_dict(), ensure_ascii=False)
 
-        # 使用 REPLACE 实现 upsert
-        conn.execute(
-            "INSERT OR REPLACE INTO project (id, data) VALUES (?, ?)",
-            (self._PROJECT_ID, data_json),
-        )
-        conn.commit()
+            # 使用 REPLACE 实现 upsert
+            conn.execute(
+                "INSERT OR REPLACE INTO project (id, data) VALUES (?, ?)",
+                (self._PROJECT_ID, data_json),
+            )
+            conn.commit()
 
     def clear(self) -> None:
         """清空项目数据"""
-        conn = self._get_connection()
-        conn.execute("DELETE FROM project")
-        conn.commit()
+        with self._connection() as conn:
+            conn.execute("DELETE FROM project")
+            conn.commit()

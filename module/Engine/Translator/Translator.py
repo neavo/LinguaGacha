@@ -28,7 +28,6 @@ from module.Storage.ItemStore import ItemStore
 from module.Storage.ProjectStore import ProjectStore
 from module.TextProcessor import TextProcessor
 
-
 # 翻译器
 class Translator(Base):
     def __init__(self) -> None:
@@ -116,6 +115,11 @@ class Translator(Base):
 
                     # 更新运行状态
                     Engine.get().set_status(Base.TaskStatus.IDLE)
+
+                    # 释放数据库会话（触发 Checkpoint）
+                    if self.item_store: self.item_store.close_session()
+                    if self.project_store: self.project_store.close_session()
+
                     self.emit(Base.Event.TRANSLATION_DONE, {})
                     break
 
@@ -176,13 +180,19 @@ class Translator(Base):
             self.project_store = ProjectStore.get(self.config.output_folder)
             self.project = self.project_store.get_project()
         else:
-            # 新翻译：清空缓存目录并重新初始化
+            # 新翻译：
+
+            # 清空缓存目录并重新初始化
             shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors=True)
             self.item_store = ItemStore.get(self.config.output_folder)
             self.project_store = ProjectStore.get(self.config.output_folder)
             self.project, items = FileManager(self.config).read_from_path()
             self.item_store.set_items(items)
             self.project_store.set_project(self.project)
+
+        # 开启高性能会话模式（维持 WAL）
+        self.item_store.open_session()
+        self.project_store.open_session()
 
         # 检查数据是否为空
         if self.item_store.get_item_count() == 0:
@@ -379,6 +389,10 @@ class Translator(Base):
 
         # 重置内部状态（正常完成翻译）
         Engine.get().set_status(Base.TaskStatus.IDLE)
+
+        # 释放数据库会话（触发 Checkpoint）
+        if self.item_store: self.item_store.close_session()
+        if self.project_store: self.project_store.close_session()
 
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_DONE, {})

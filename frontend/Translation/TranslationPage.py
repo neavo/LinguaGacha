@@ -317,7 +317,7 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.setFixedSize(16, 16)
         self.indeterminate.setStrokeWidth(3)
         self.indeterminate.hide()
-        self.info_label = CaptionLabel(Localizer.get().translation_page_indeterminate_saving, self)
+        self.info_label = CaptionLabel("", self)
         self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.info_label.hide()
 
@@ -547,11 +547,7 @@ class TranslationPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            # 如果缓存正在保存，等待其完成后再导出
-            if self.indeterminate.isVisible():
-                self._pending_export = True
-            else:
-                self._do_export()
+            self._do_export()
 
         self.action_export = parent.add_action(
             Action(FluentIcon.SHARE, Localizer.get().translation_page_export, parent, triggered = triggered),
@@ -642,8 +638,3 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.hide()
         self.info_label.hide()
         self.info_label.setText("")
-
-        # 检查是否有待处理的导出操作，若有则触发导出
-        if getattr(self, "_pending_export", False):
-            self._pending_export = False
-            self._do_export()
