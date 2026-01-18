@@ -22,15 +22,16 @@ from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import WarningType
 
+
 class ProofreadingTableWidget(TableWidget):
     """校对任务专用表格组件"""
 
     # 信号定义
-    cell_edited = pyqtSignal(object, str)       # (item, new_dst) 单元格编辑完成
-    retranslate_clicked = pyqtSignal(object)    # (item) 重新翻译
-    batch_retranslate_clicked = pyqtSignal(list) # (items) 批量重新翻译
-    copy_src_clicked = pyqtSignal(object)       # (item) 复制原文到译文
-    copy_dst_clicked = pyqtSignal(object)       # (item) 复制译文到剪贴板
+    cell_edited = pyqtSignal(object, str)  # (item, new_dst) 单元格编辑完成
+    retranslate_clicked = pyqtSignal(object)  # (item) 重新翻译
+    batch_retranslate_clicked = pyqtSignal(list)  # (items) 批量重新翻译
+    copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到译文
+    copy_dst_clicked = pyqtSignal(object)  # (item) 复制译文到剪贴板
 
     # 列索引常量
     COL_SRC = 0
@@ -57,12 +58,14 @@ class ProofreadingTableWidget(TableWidget):
 
         # 设置列头
         self.setColumnCount(4)
-        self.setHorizontalHeaderLabels([
-            Localizer.get().proofreading_page_col_src,
-            Localizer.get().proofreading_page_col_dst,
-            Localizer.get().proofreading_page_col_status,
-            "",
-        ])
+        self.setHorizontalHeaderLabels(
+            [
+                Localizer.get().proofreading_page_col_src,
+                Localizer.get().proofreading_page_col_dst,
+                Localizer.get().proofreading_page_col_status,
+                "",
+            ]
+        )
 
         # 设置表格属性
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -100,9 +103,7 @@ class ProofreadingTableWidget(TableWidget):
         self.cellDoubleClicked.connect(self._on_cell_double_clicked)
 
     def set_items(
-        self,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]]
+        self, items: list[Item], warning_map: dict[int, list[WarningType]]
     ) -> None:
         """填充表格数据"""
         self.blockSignals(True)
@@ -139,19 +140,17 @@ class ProofreadingTableWidget(TableWidget):
                     self.removeCellWidget(row, col)
                     widget.deleteLater()
 
-
-    def _set_row_data(
-        self,
-        row: int,
-        item: Item,
-        warnings: list[WarningType]
-    ) -> None:
+    def _set_row_data(self, row: int, item: Item, warnings: list[WarningType]) -> None:
         """设置单行数据"""
         src_text = item.get_src()
         dst_text = item.get_dst()
 
         # 原文列：显示换行符，超宽自动省略
-        src_display = src_text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
+        src_display = (
+            src_text.replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\n", self.SYMBOL_NEWLINE)
+        )
         src_item = QTableWidgetItem(src_display)
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
@@ -159,7 +158,11 @@ class ProofreadingTableWidget(TableWidget):
         self.setItem(row, self.COL_SRC, src_item)
 
         # 译文列：显示换行符，超宽自动省略
-        dst_display = dst_text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
+        dst_display = (
+            dst_text.replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\n", self.SYMBOL_NEWLINE)
+        )
         dst_item = QTableWidgetItem(dst_display)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         if self._readonly:
@@ -172,7 +175,9 @@ class ProofreadingTableWidget(TableWidget):
         # 操作列
         self._create_action_widget(row, item)
 
-    def _create_status_widget(self, row: int, item: Item, warnings: list[WarningType]) -> None:
+    def _create_status_widget(
+        self, row: int, item: Item, warnings: list[WarningType]
+    ) -> None:
         """创建状态显示组件"""
         widget = QWidget()
         # 固定高度与行高一致，确保 layout 能正确计算居中位置
@@ -189,7 +194,9 @@ class ProofreadingTableWidget(TableWidget):
         if status in self.STATUS_ICONS:
             status_icon = IconWidget(self.STATUS_ICONS[status])
             status_icon.setFixedSize(16, 16)
-            status_icon.installEventFilter(ToolTipFilter(status_icon, 300, ToolTipPosition.TOP))
+            status_icon.installEventFilter(
+                ToolTipFilter(status_icon, 300, ToolTipPosition.TOP)
+            )
             status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self._get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
@@ -199,7 +206,9 @@ class ProofreadingTableWidget(TableWidget):
             warning_icon = IconWidget(FluentIcon.VPN)
             warning_icon.setFixedSize(16, 16)
             warning_texts = [self._get_warning_text(e) for e in warnings]
-            warning_icon.installEventFilter(ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP))
+            warning_icon.installEventFilter(
+                ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP)
+            )
             warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
@@ -244,25 +253,31 @@ class ProofreadingTableWidget(TableWidget):
             menu = RoundMenu(parent=btn_action)
 
             # 重新翻译
-            menu.addAction(Action(
-                FluentIcon.SYNC,
-                Localizer.get().proofreading_page_retranslate,
-                triggered=lambda checked: self.retranslate_clicked.emit(item)
-            ))
+            menu.addAction(
+                Action(
+                    FluentIcon.SYNC,
+                    Localizer.get().proofreading_page_retranslate,
+                    triggered=lambda checked: self.retranslate_clicked.emit(item),
+                )
+            )
 
             # 复制原文到译文
-            menu.addAction(Action(
-                FluentIcon.PASTE,
-                Localizer.get().proofreading_page_copy_src,
-                triggered=lambda checked: self.copy_src_clicked.emit(item)
-            ))
+            menu.addAction(
+                Action(
+                    FluentIcon.PASTE,
+                    Localizer.get().proofreading_page_copy_src,
+                    triggered=lambda checked: self.copy_src_clicked.emit(item),
+                )
+            )
 
             # 复制译文到剪贴板
-            menu.addAction(Action(
-                FluentIcon.COPY,
-                Localizer.get().proofreading_page_copy_dst,
-                triggered=lambda checked: self.copy_dst_clicked.emit(item)
-            ))
+            menu.addAction(
+                Action(
+                    FluentIcon.COPY,
+                    Localizer.get().proofreading_page_copy_dst,
+                    triggered=lambda checked: self.copy_dst_clicked.emit(item),
+                )
+            )
 
             menu.exec(btn_action.mapToGlobal(btn_action.rect().bottomLeft()))
 
@@ -330,7 +345,9 @@ class ProofreadingTableWidget(TableWidget):
             return
 
         # 弹出编辑对话框
-        dialog = TextEditDialog(item.get_src(), item.get_dst(), item.get_file_path(), self.window())
+        dialog = TextEditDialog(
+            item.get_src(), item.get_dst(), item.get_file_path(), self.window()
+        )
         if dialog.exec():
             new_dst = dialog.get_dst_text()
             # 只在内容变化时发出信号
@@ -351,7 +368,11 @@ class ProofreadingTableWidget(TableWidget):
         dst_cell = self.item(row, self.COL_DST)
         if dst_cell:
             # 显示换行符，超宽自动省略
-            dst_display = new_dst.replace("\r\n", "\n").replace("\r", "\n").replace("\n", self.SYMBOL_NEWLINE)
+            dst_display = (
+                new_dst.replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .replace("\n", self.SYMBOL_NEWLINE)
+            )
             dst_cell.setText(dst_display)
 
         self.blockSignals(False)
@@ -362,7 +383,12 @@ class ProofreadingTableWidget(TableWidget):
             return
         self.selectRow(row)
         # 延迟滚动，确保 cell widget 布局先完成更新
-        QTimer.singleShot(0, lambda: self.scrollToItem(self.item(row, self.COL_SRC), QAbstractItemView.PositionAtCenter))
+        QTimer.singleShot(
+            0,
+            lambda: self.scrollToItem(
+                self.item(row, self.COL_SRC), QAbstractItemView.PositionAtCenter
+            ),
+        )
 
     def get_selected_items(self) -> list[Item]:
         """获取所有选中行对应的 Item 对象"""
@@ -378,6 +404,16 @@ class ProofreadingTableWidget(TableWidget):
         if self._readonly:
             return
 
+        # 获取点击位置的 item
+        item = self.itemAt(event.pos())
+        if item:
+            row = item.row()
+            # 如果点击的行不在选中范围内，则选中该行
+            # 这样可以在保留多选的情况下，修正右键点击未选中行时的行为
+            selected_rows = {index.row() for index in self.selectedIndexes()}
+            if row not in selected_rows:
+                self.selectRow(row)
+
         selected_items = self.get_selected_items()
         if not selected_items:
             return
@@ -385,10 +421,14 @@ class ProofreadingTableWidget(TableWidget):
         menu = RoundMenu(parent=self)
 
         # 统一使用批量重翻逻辑，无论单选还是多选
-        menu.addAction(Action(
-            FluentIcon.SYNC,
-            Localizer.get().proofreading_page_batch_retranslate,
-            triggered=lambda checked: self.batch_retranslate_clicked.emit(selected_items)
-        ))
+        menu.addAction(
+            Action(
+                FluentIcon.SYNC,
+                Localizer.get().proofreading_page_batch_retranslate,
+                triggered=lambda checked: self.batch_retranslate_clicked.emit(
+                    selected_items
+                ),
+            )
+        )
 
         menu.exec(event.globalPos())
