@@ -58,7 +58,6 @@ class TranslationPage(QWidget, Base):
         self.add_widget_foot(self.container, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.CACHE_SAVE, self.cache_save)
         self.subscribe(Base.Event.PROJECT_CHECK_DONE, self.update_button_status)
         self.subscribe(Base.Event.APITEST_RUN, self.update_button_status)
         self.subscribe(Base.Event.APITEST_DONE, self.update_button_status)
@@ -119,13 +118,6 @@ class TranslationPage(QWidget, Base):
             self.action_continue.setEnabled(True)
         else:
             self.action_continue.setEnabled(False)
-
-    def cache_save(self, event: Base.Event, data: dict) -> None:
-        if self.indeterminate.isHidden():
-            self.indeterminate_show(Localizer.get().translation_page_indeterminate_saving)
-
-            # 延迟关闭
-            QTimer.singleShot(1500, lambda: self.indeterminate_hide())
 
     def translation_done(self, event: Base.Event, data: dict) -> None:
         self.update_button_status(event, data)

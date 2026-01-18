@@ -34,7 +34,6 @@ class Base():
         APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"             # 更新 - 下载报错
         APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"           # 更新 - 下载更新
         APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                           # 更新 - 解压
-        CACHE_SAVE = "CACHE_SAVE"                                           # 保存缓存
         GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                               # 术语表刷新
 
     # 接口格式

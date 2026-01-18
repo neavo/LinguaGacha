@@ -19,13 +19,13 @@ from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
-from module.CacheManager import CacheManager
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
+from module.Storage.ItemStore import ItemStore
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -201,9 +201,9 @@ class ProofreadingPage(QWidget, Base):
             # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
                 self.config = Config().load()
-                cache_manager = CacheManager(service=False)
-                cache_manager.load_items_from_file(self.config.output_folder)
-                items = cache_manager.get_items()
+                # 从数据库加载条目
+                item_store = ItemStore.get(self.config.output_folder)
+                items = item_store.get_all_items()
                 # 过滤掉原文为空的条目
                 items = [i for i in items if i.get_src().strip()]
 
@@ -726,14 +726,9 @@ class ProofreadingPage(QWidget, Base):
 
         def task() -> None:
             try:
-                cache_manager = CacheManager(service=False)
-                cache_manager.set_items(items)
-                cache_manager.load_project_from_file(config.output_folder)
-                cache_manager.save_to_file(
-                    project=cache_manager.get_project(),
-                    items=items,
-                    output_folder=config.output_folder,
-                )
+                # 保存到数据库
+                item_store = ItemStore.get(config.output_folder)
+                item_store.set_items(items)
                 self.save_done.emit(True)
             except Exception as e:
                 self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
