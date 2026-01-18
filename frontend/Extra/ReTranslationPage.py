@@ -27,7 +27,6 @@ from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
 
-
 class ReTranslationPage(QWidget, Base):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -183,7 +182,7 @@ class ReTranslationPage(QWidget, Base):
             item_store.set_items(items)
             project_store.set_project(project)
 
-            window.switchTo(window.task_page)
+            window.switchTo(window.translation_page)
             self.emit(
                 Base.Event.TRANSLATION_RUN,
                 {

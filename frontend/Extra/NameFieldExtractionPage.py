@@ -219,7 +219,7 @@ class NameFieldExtractionPage(QWidget, Base):
         item_store.set_items(items)
         project_store.set_project(project)
 
-        window.switchTo(window.task_page)
+        window.switchTo(window.translation_page)
         self.emit(
             Base.Event.TRANSLATION_RUN,
             {
