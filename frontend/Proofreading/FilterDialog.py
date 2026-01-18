@@ -167,6 +167,11 @@ class FilterListDelegate(ListItemDelegate):
         # 不绘制任何内容，由 itemWidget 负责全部渲染
         pass
 
+    def updateEditorGeometry(
+        self, editor: QWidget, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> None:
+        editor.setGeometry(option.rect)
+
 
 class FilterDialog(MessageBoxBase):
     """双栏式筛选对话框：左栏文件范围，右栏筛选条件与术语明细，全联动刷新"""
@@ -299,7 +304,7 @@ class FilterDialog(MessageBoxBase):
         self.file_list.setResizeMode(ListWidget.Adjust)
         # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
         self.file_list.setStyleSheet("""
-            ListWidget {
+            ListWidget, QListWidget, QListView {
                 background: transparent;
                 outline: none;
                 border: none;
@@ -307,12 +312,15 @@ class FilterDialog(MessageBoxBase):
                 alternate-background-color: transparent;
                 padding-left: 0px;
                 padding-right: 0px;
+                margin: 0px;
             }
-            ListWidget::item {
+            ListWidget::item, QListWidget::item, QListView::item {
                 background: transparent;
                 border: 0px;
                 padding-left: 0px;
                 padding-right: 0px;
+                margin-left: 0px;
+                margin-right: 0px;
                 height: 40px;
             }
         """)
@@ -533,7 +541,7 @@ class FilterDialog(MessageBoxBase):
         self.term_list.setResizeMode(ListWidget.Adjust)
         # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
         self.term_list.setStyleSheet("""
-            ListWidget {
+            ListWidget, QListWidget, QListView {
                 background: transparent;
                 outline: none;
                 border: none;
@@ -541,12 +549,15 @@ class FilterDialog(MessageBoxBase):
                 alternate-background-color: transparent;
                 padding-left: 0px;
                 padding-right: 0px;
+                margin: 0px;
             }
-            ListWidget::item {
+            ListWidget::item, QListWidget::item, QListView::item {
                 background: transparent;
                 border: 0px;
                 padding-left: 0px;
                 padding-right: 0px;
+                margin-left: 0px;
+                margin-right: 0px;
                 height: 40px;
             }
         """)
