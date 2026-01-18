@@ -277,7 +277,6 @@ class LocalizerZH:
     translation_page_status_idle: str = "无任务"
     translation_page_status_translating: str = "翻译中"
     translation_page_status_stopping: str = "停止中"
-    translation_page_indeterminate_saving: str = "缓存保存中 …"
     translation_page_indeterminate_stopping: str = "正在停止任务 …"
     translation_page_card_time: str = "累计时间"
     translation_page_card_remaining_time: str = "剩余时间"

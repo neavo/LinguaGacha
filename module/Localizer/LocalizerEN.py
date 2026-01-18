@@ -1,6 +1,5 @@
 from module.Localizer.LocalizerZH import LocalizerZH
 
-
 class LocalizerEN(LocalizerZH):
     # 保留
     switch_language: str = (
@@ -262,7 +261,6 @@ class LocalizerEN(LocalizerZH):
     translation_page_status_idle: str = "Idle"
     translation_page_status_translating: str = "Translating"
     translation_page_status_stopping: str = "Stopping"
-    translation_page_indeterminate_saving: str = "Saving cache …"
     translation_page_indeterminate_stopping: str = "Stopping task …"
     translation_page_card_time: str = "Elapsed Time"
     translation_page_card_remaining_time: str = "Remaining Time"

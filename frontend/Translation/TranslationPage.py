@@ -58,7 +58,6 @@ class TranslationPage(QWidget, Base):
         self.add_widget_foot(self.container, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.CACHE_SAVE, self.cache_save)
         self.subscribe(Base.Event.PROJECT_CHECK_DONE, self.update_button_status)
         self.subscribe(Base.Event.APITEST_RUN, self.update_button_status)
         self.subscribe(Base.Event.APITEST_DONE, self.update_button_status)
@@ -119,13 +118,6 @@ class TranslationPage(QWidget, Base):
             self.action_continue.setEnabled(True)
         else:
             self.action_continue.setEnabled(False)
-
-    def cache_save(self, event: Base.Event, data: dict) -> None:
-        if self.indeterminate.isHidden():
-            self.indeterminate_show(Localizer.get().translation_page_indeterminate_saving)
-
-            # 延迟关闭
-            QTimer.singleShot(1500, lambda: self.indeterminate_hide())
 
     def translation_done(self, event: Base.Event, data: dict) -> None:
         self.update_button_status(event, data)
@@ -325,7 +317,7 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.setFixedSize(16, 16)
         self.indeterminate.setStrokeWidth(3)
         self.indeterminate.hide()
-        self.info_label = CaptionLabel(Localizer.get().translation_page_indeterminate_saving, self)
+        self.info_label = CaptionLabel("", self)
         self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.info_label.hide()
 
@@ -555,11 +547,7 @@ class TranslationPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            # 如果缓存正在保存，等待其完成后再导出
-            if self.indeterminate.isVisible():
-                self._pending_export = True
-            else:
-                self._do_export()
+            self._do_export()
 
         self.action_export = parent.add_action(
             Action(FluentIcon.SHARE, Localizer.get().translation_page_export, parent, triggered = triggered),
@@ -650,8 +638,3 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.hide()
         self.info_label.hide()
         self.info_label.setText("")
-
-        # 检查是否有待处理的导出操作，若有则触发导出
-        if getattr(self, "_pending_export", False):
-            self._pending_export = False
-            self._do_export()
