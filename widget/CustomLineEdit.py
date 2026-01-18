@@ -4,6 +4,7 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 from qfluentwidgets import themeColor
 
+
 class LineEditStyleMixin:
     """
     单行输入框样式混入类
@@ -83,9 +84,11 @@ class LineEditStyleMixin:
             }}
             {cls}:hover {{
                 background-color: {bg_hover};
+                border: 1px solid {border_color};
             }}
             {cls}:focus {{
                 border: 1px solid {theme_color};
+                border-bottom: 1px solid {theme_color};
                 background-color: {bg_color};
             }}
         """)
@@ -103,7 +106,7 @@ class CustomLineEdit(LineEdit, LineEditStyleMixin):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._init_style_mixin("LineEdit")
+        self._init_style_mixin("CustomLineEdit")
 
 
 class CustomSearchLineEdit(SearchLineEdit, LineEditStyleMixin):
@@ -119,4 +122,4 @@ class CustomSearchLineEdit(SearchLineEdit, LineEditStyleMixin):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._init_style_mixin("SearchLineEdit")
+        self._init_style_mixin("CustomSearchLineEdit")

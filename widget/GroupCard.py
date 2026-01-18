@@ -10,15 +10,22 @@ from qfluentwidgets import StrongBodyLabel
 
 from widget.Separator import Separator
 
-class GroupCard(CardWidget):
 
-    def __init__(self, parent: QWidget, title: str, description: str, init: Callable = None, clicked: Callable = None) -> None:
+class GroupCard(CardWidget):
+    def __init__(
+        self,
+        parent: QWidget,
+        title: str,
+        description: str = None,
+        init: Callable = None,
+        clicked: Callable = None,
+    ) -> None:
         super().__init__(parent)
 
         # 设置容器
         self.setBorderRadius(4)
         self.root = QVBoxLayout(self)
-        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 标题行使用水平布局，支持右侧添加控件
         self.header_hbox = QHBoxLayout()
@@ -28,10 +35,14 @@ class GroupCard(CardWidget):
         self.title_vbox = QVBoxLayout()
         self.title_vbox.setContentsMargins(0, 0, 0, 0)
         self.title_label = StrongBodyLabel(title, self)
-        self.description_label = CaptionLabel(description, self)
-        self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.title_vbox.addWidget(self.title_label)
-        self.title_vbox.addWidget(self.description_label)
+
+        if description:
+            self.description_label = CaptionLabel(description, self)
+            self.description_label.setTextColor(
+                QColor(96, 96, 96), QColor(160, 160, 160)
+            )
+            self.title_vbox.addWidget(self.description_label)
 
         self.header_hbox.addLayout(self.title_vbox)
         self.header_hbox.addStretch(1)
@@ -51,7 +62,7 @@ class GroupCard(CardWidget):
             init(self)
 
         if callable(clicked):
-            self.clicked.connect(lambda : clicked(self))
+            self.clicked.connect(lambda: clicked(self))
 
     # 添加控件到标题行右侧
     def add_header_widget(self, widget) -> None:

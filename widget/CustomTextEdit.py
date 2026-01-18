@@ -37,22 +37,22 @@ class CustomTextEdit(PlainTextEdit):
 
     # 等宽字体回落: Windows → macOS → Linux → 通用
     FONT_MONOSPACE = (
-        "Consolas, "              # Windows
-        "'SF Mono', Menlo, "      # macOS
-        "'Ubuntu Mono', "         # Linux
+        "Consolas, "  # Windows
+        "'SF Mono', Menlo, "  # macOS
+        "'Ubuntu Mono', "  # Linux
         "'Noto Sans Mono CJK SC', 'Noto Sans Mono CJK JP', "  # CJK 等宽
-        "monospace"               # 通用回落
+        "monospace"  # 通用回落
     )
 
     # 默认字体回落: 系统 UI → 各平台 → CJK → 通用
     FONT_DEFAULT = (
-        "system-ui, "                                          # 现代浏览器/Qt 自动选择系统字体
-        "'Segoe UI', "                                         # Windows
-        "'-apple-system', 'SF Pro Text', 'Helvetica Neue', "   # macOS
-        "'Ubuntu', 'Noto Sans', "                              # Linux
-        "'Microsoft YaHei', 'PingFang SC', "                   # 中文
-        "'Hiragino Sans', 'Meiryo', "                          # 日文
-        "sans-serif"                                           # 通用回落
+        "system-ui, "  # 现代浏览器/Qt 自动选择系统字体
+        "'Segoe UI', "  # Windows
+        "'-apple-system', 'SF Pro Text', 'Helvetica Neue', "  # macOS
+        "'Ubuntu', 'Noto Sans', "  # Linux
+        "'Microsoft YaHei', 'PingFang SC', "  # 中文
+        "'Hiragino Sans', 'Meiryo', "  # 日文
+        "sans-serif"  # 通用回落
     )
 
     def __init__(self, parent=None, monospace: bool = False):
@@ -74,7 +74,7 @@ class CustomTextEdit(PlainTextEdit):
         self.destroyed.connect(self._disconnect_signals)
 
     def _disconnect_signals(self) -> None:
-        """ 断开全局信号连接，避免内存泄漏 """
+        """断开全局信号连接，避免内存泄漏"""
         try:
             qconfig.themeChanged.disconnect(self.update_style)
         except (TypeError, RuntimeError):
@@ -86,17 +86,17 @@ class CustomTextEdit(PlainTextEdit):
         self.update_style()
 
     def set_error(self, has_error: bool) -> None:
-        """ 设置错误状态，显示红色边框 """
+        """设置错误状态，显示红色边框"""
         if self._has_error != has_error:
             self._has_error = has_error
             self.update_style()
 
     def set_on_focus_out(self, callback: Callable[[], None]) -> None:
-        """ 设置失去焦点时的回调函数 """
+        """设置失去焦点时的回调函数"""
         self._on_focus_out = callback
 
     def focusOutEvent(self, event: QFocusEvent) -> None:
-        """ 重写失去焦点事件，触发回调 """
+        """重写失去焦点事件，触发回调"""
         super().focusOutEvent(event)
         if self._on_focus_out:
             self._on_focus_out()
@@ -134,7 +134,7 @@ class CustomTextEdit(PlainTextEdit):
             focus_border = f"1px solid {self.ERROR_BORDER}"
 
         self.setStyleSheet(f"""
-            QPlainTextEdit {{
+            CustomTextEdit {{
                 background-color: {bg_color};
                 border: {border};
                 border-radius: 6px;
@@ -143,8 +143,13 @@ class CustomTextEdit(PlainTextEdit):
                 padding: 10px;
                 selection-background-color: {theme_color};
             }}
-            QPlainTextEdit:focus {{
+            CustomTextEdit:hover {{
+                border: {border};
+                background-color: {bg_color};
+            }}
+            CustomTextEdit:focus {{
                 border: {focus_border};
+                border-bottom: 1px solid {theme_color};
                 background-color: {bg_color};
             }}
         """)
