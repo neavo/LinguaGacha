@@ -27,7 +27,8 @@ trigger: always_on
 5. Python
 - 使用 `uv` 管理和运行 Python 项目
 - **必须**：
-  - 标注类型
+  - 标注类型 (Type Hints)
+  - 代码交付前执行 `ruff check --fix` 及 `ruff format`，确保无 Lint 报错且格式统一
 - **优先**：
   - f-string
   - 列表推导式
