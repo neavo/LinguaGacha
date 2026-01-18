@@ -6,17 +6,11 @@ from PyQt5.QtCore import QRect
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtGui import QIcon
 from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPalette
 from PyQt5.QtGui import QPen
 from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QListWidgetItem
-from PyQt5.QtWidgets import QStyle
-from PyQt5.QtWidgets import QStyleOptionButton
 from PyQt5.QtWidgets import QStyleOptionViewItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -29,6 +23,8 @@ from qfluentwidgets import ListWidget
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import PushButton
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
@@ -39,56 +35,102 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
 
-# 自定义激活状态存储在 UserRole + 2
-ROLE_CHECKED = Qt.UserRole + 2
+class FilterListItemWidget(QWidget):
+    """自定义列表项 widget：悬浮背景 + 手绘 checkbox + CaptionLabel 文本 + 计数"""
 
-class FilterListDelegate(ListItemDelegate):
-    """自定义列表项委托：绘制自定义勾选指示器 + 文本 + 右侧计数"""
+    def __init__(self, text: str, parent: QWidget = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(40)
+        # 启用鼠标追踪以接收 enterEvent/leaveEvent
+        self.setMouseTracking(True)
 
-    def initStyleOption(self, option: QStyleOptionViewItem, index: QModelIndex):
-        super().initStyleOption(option, index)
-        # 清除文本和图标以防止基类绘制它们，避免双重渲染
-        option.text = ""
-        option.icon = QIcon()
+        self._checked = True
+        self._count = 0
+        self._hovered = False
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
-        """强制指定列表项高度为 40px，防止基类 sizeHint 覆盖 QListWidgetItem 的设置"""
-        return QSize(option.rect.width(), 40)
-
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        # 1. 绘制 Fluent 风格背景
-        # 必须先调用 super().paint 绘制背景 (Hover/Selected 效果)
-        super().paint(painter, option, index)
-
-        rect = option.rect
         # 布局参数
-        checkbox_size = 18
-        left_padding = 12
-        item_spacing = 12
+        self._checkbox_size = 18
+        self._left_padding = 12
 
-        # 2. 手动绘制 Fluent 风格 CheckBox
-        # 这样可以完美控制抗锯齿、颜色和形状，避免 drawPrimitive 的各种瑕疵
-        is_checked = index.data(ROLE_CHECKED)
+        # 使用 CaptionLabel 显示文本（12px 字体，QFluentWidgets 内置控件处理好渲染）
+        self.text_label = CaptionLabel(text, self)
+        self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.text_label.setAttribute(Qt.WA_TransparentForMouseEvents)
 
-        # Checkbox 垂直居中
-        cy = rect.center().y()
-        checkbox_rect = QRect(
-            rect.left() + left_padding,
-            int(cy - checkbox_size / 2),
-            checkbox_size,
-            checkbox_size
+        # 使用 CaptionLabel 显示计数
+        self.count_label = CaptionLabel("0", self)
+        self.count_label.setMinimumWidth(32)
+        self.count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.count_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        # 布局
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(
+            self._left_padding + self._checkbox_size + 8, 0, 12, 0
         )
+        layout.addWidget(self.text_label, 1)
+        layout.addWidget(self.count_label)
 
+    def set_checked(self, checked: bool) -> None:
+        self._checked = checked
+        self.update()
+
+    def is_checked(self) -> bool:
+        return self._checked
+
+    def set_count(self, count: int) -> None:
+        self._count = count
+        self.count_label.setText(str(count))
+
+    def get_count(self) -> int:
+        return self._count
+
+    def set_tooltip(self, tooltip: str) -> None:
+        """使用 QFluentWidgets 的 ToolTipFilter 设置 tooltip（300ms 延迟）"""
+        self.setToolTip(tooltip)
+        self.installEventFilter(ToolTipFilter(self, 300, ToolTipPosition.TOP))
+
+    def enterEvent(self, event) -> None:
+        """鼠标进入时设置悬浮状态"""
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        """鼠标离开时取消悬浮状态"""
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event) -> None:
+        """绘制悬浮背景 + Fluent 风格 checkbox"""
+        painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        if is_checked:
+        # 1. 绘制悬浮背景（Fluent 风格圆角矩形）
+        if self._hovered:
+            hover_color = (
+                QColor(255, 255, 255, 20) if isDarkTheme() else QColor(0, 0, 0, 10)
+            )
+            painter.setBrush(hover_color)
+            painter.setPen(Qt.NoPen)
+            # 不留左右边距，与搜索框对齐
+            bg_rect = self.rect().adjusted(0, 2, 0, -2)
+            painter.drawRoundedRect(bg_rect, 5, 5)
+
+        # 2. Checkbox 垂直居中
+        cy = self.height() // 2
+        checkbox_rect = QRect(
+            self._left_padding,
+            cy - self._checkbox_size // 2,
+            self._checkbox_size,
+            self._checkbox_size,
+        )
+
+        if self._checked:
             # 选中状态：主题色背景 + 白色勾
             painter.setBrush(themeColor())
             painter.setPen(Qt.NoPen)
-            # 圆角 5px (Fluent Design)
             painter.drawRoundedRect(checkbox_rect, 5, 5)
 
             # 绘制白色对勾
@@ -97,9 +139,8 @@ class FilterListDelegate(ListItemDelegate):
             check_pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(check_pen)
 
-            # 对勾路径坐标 (相对于 checkbox_rect) 使用比例计算
             origin = checkbox_rect.topLeft()
-            w = checkbox_size
+            w = self._checkbox_size
             p1 = origin + QPointF(w * 0.27, w * 0.5)
             p2 = origin + QPointF(w * 0.44, w * 0.68)
             p3 = origin + QPointF(w * 0.75, w * 0.34)
@@ -107,81 +148,25 @@ class FilterListDelegate(ListItemDelegate):
         else:
             # 未选中状态：边框 + 透明背景
             painter.setBrush(Qt.NoBrush)
-            # 根据深浅色模式决定边框颜色
-            border_c = QColor(255, 255, 255, 138) if isDarkTheme() else QColor(0, 0, 0, 110)
-            # 如果 Item 被 disable 了，颜色要更淡
-            if not (option.state & QStyle.State_Enabled):
-                border_c = QColor(255, 255, 255, 60) if isDarkTheme() else QColor(0, 0, 0, 60)
-
+            border_c = (
+                QColor(255, 255, 255, 138) if isDarkTheme() else QColor(0, 0, 0, 110)
+            )
             painter.setPen(QPen(border_c, 1))
             painter.drawRoundedRect(checkbox_rect, 5, 5)
 
-        # 3. 绘制图标 (如果有)
-        current_x = rect.left() + left_padding + checkbox_size + item_spacing
-        icon = index.data(Qt.DecorationRole)
-        if icon and not icon.isNull():
-            icon_size = 16
-            icon_rect = QRect(
-                current_x,
-                int(cy - icon_size / 2),
-                icon_size,
-                icon_size
-            )
-            mode = QIcon.Normal
-            if not (option.state & QStyle.State_Enabled):
-                mode = QIcon.Disabled
-            elif option.state & QStyle.State_Selected:
-                mode = QIcon.Selected
 
-            icon.paint(painter, icon_rect, Qt.AlignCenter, mode, QIcon.Off)
-            current_x += icon_size + 8
+class FilterListDelegate(ListItemDelegate):
+    """简化的列表项委托：只控制高度，不绘制任何内容"""
 
-        # 4. 绘制文本
-        right_margin = 48
-        # 使用 rect.height() (40px) 确保有足够的垂直空间
-        text_rect = QRect(
-            current_x,
-            rect.top(),
-            rect.right() - right_margin - current_x,
-            rect.height()
-        )
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        return QSize(option.rect.width(), 40)
 
-        text = index.data(Qt.DisplayRole) or ""
+    def paint(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
+    ):
+        # 不绘制任何内容，由 itemWidget 负责全部渲染
+        pass
 
-        # 文本颜色：优先使用 Theme 的 Text Color
-        if option.state & QStyle.State_Selected:
-             text_color = option.palette.text().color()
-        else:
-             text_color = option.palette.text().color()
-
-        painter.setPen(text_color)
-        painter.setFont(option.font)
-
-        # 2. 文本省略处理
-        fm = option.fontMetrics
-        elided_text = fm.elidedText(text, Qt.ElideRight, text_rect.width())
-
-        # 3. 标准绘制
-        # 相信 Qt 的布局计算，在 40px 高度下，AlignVCenter 能完美居中且不被截断
-        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, elided_text)
-
-        # 5. 绘制右侧计数
-        count = index.data(Qt.UserRole + 1)
-        if count is not None:
-            count_text = str(count)
-            # 计数文字颜色偏淡
-            count_color = QColor("#d0d0d0") if isDarkTheme() else QColor("#606060")
-            painter.setPen(count_color)
-
-            # 计数使用稍小的字体
-            font = option.font
-            font.setPixelSize(12)
-            painter.setFont(font)
-
-            count_rect = QRect(rect.right() - 40, rect.top(), 32, rect.height())
-            painter.drawText(count_rect, Qt.AlignRight | Qt.AlignVCenter, count_text)
-
-        painter.restore()
 
 class FilterDialog(MessageBoxBase):
     """双栏式筛选对话框：左栏文件范围，右栏筛选条件与术语明细，全联动刷新"""
@@ -205,8 +190,10 @@ class FilterDialog(MessageBoxBase):
 
         # 仅针对可见状态进行筛选
         self.items = [
-            i for i in items
-            if i.get_status() not in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED)
+            i
+            for i in items
+            if i.get_status()
+            not in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED)
         ]
         self.warning_map = warning_map
         self.result_checker = result_checker
@@ -292,7 +279,9 @@ class FilterDialog(MessageBoxBase):
 
         # 搜索框
         self.file_search = CustomSearchLineEdit()
-        self.file_search.setPlaceholderText(Localizer.get().proofreading_page_filter_search_file)
+        self.file_search.setPlaceholderText(
+            Localizer.get().proofreading_page_filter_search_file
+        )
         self.file_search.textChanged.connect(self._filter_file_list)
         layout.addWidget(self.file_search)
 
@@ -304,6 +293,29 @@ class FilterDialog(MessageBoxBase):
         # 禁用默认的选中高亮行为，通过点击事件切换激活状态
         self.file_list.setSelectionMode(QAbstractItemView.NoSelection)
         self.file_list.setItemDelegate(FilterListDelegate(self.file_list))
+        # 禁用水平滚动条，确保 itemWidget 不会超出可见区域
+        self.file_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 让 items 随 viewport 调整大小
+        self.file_list.setResizeMode(ListWidget.Adjust)
+        # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
+        self.file_list.setStyleSheet("""
+            ListWidget {
+                background: transparent;
+                outline: none;
+                border: none;
+                selection-background-color: transparent;
+                alternate-background-color: transparent;
+                padding-left: 0px;
+                padding-right: 0px;
+            }
+            ListWidget::item {
+                background: transparent;
+                border: 0px;
+                padding-left: 0px;
+                padding-right: 0px;
+                height: 40px;
+            }
+        """)
         # 绑定点击事件用于切换激活状态
         self.file_list.itemClicked.connect(self._on_file_item_clicked)
 
@@ -311,20 +323,26 @@ class FilterDialog(MessageBoxBase):
         file_item_counts = Counter(item.get_file_path() for item in self.items)
         file_paths = sorted(file_item_counts.keys())
         self.file_list_items: dict[str, QListWidgetItem] = {}
+        self.file_list_widgets: dict[str, FilterListItemWidget] = {}
 
         for path in file_paths:
             display_name = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-            count = file_item_counts[path]
 
-            list_item = QListWidgetItem(display_name)
+            list_item = QListWidgetItem()
             list_item.setSizeHint(QSize(-1, 40))
-            list_item.setData(Qt.UserRole, path)     # 存储路径
-            list_item.setData(Qt.UserRole + 1, 0)    # 存储动态计数(初始0，稍后refresh更新)
-            list_item.setData(ROLE_CHECKED, True)    # 默认激活
-            list_item.setToolTip(path)               # 原生 ToolTip
+            list_item.setData(Qt.UserRole, path)  # 存储路径
 
             self.file_list.addItem(list_item)
+
+            # 创建自定义 widget 并设置
+            item_widget = FilterListItemWidget(display_name, self.file_list)
+            item_widget.set_checked(True)
+            item_widget.set_count(0)
+            item_widget.set_tooltip(path)
+            self.file_list.setItemWidget(list_item, item_widget)
+
             self.file_list_items[path] = list_item
+            self.file_list_widgets[path] = item_widget
 
         layout.addWidget(self.file_list, 1)
 
@@ -376,8 +394,14 @@ class FilterDialog(MessageBoxBase):
         self.status_buttons: dict[Base.ProjectStatus, PillPushButton] = {}
         status_types = [
             (Base.ProjectStatus.NONE, Localizer.get().proofreading_page_status_none),
-            (Base.ProjectStatus.PROCESSED, Localizer.get().proofreading_page_status_processed),
-            (Base.ProjectStatus.PROCESSED_IN_PAST, Localizer.get().proofreading_page_status_processed_in_past),
+            (
+                Base.ProjectStatus.PROCESSED,
+                Localizer.get().proofreading_page_status_processed,
+            ),
+            (
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+                Localizer.get().proofreading_page_status_processed_in_past,
+            ),
         ]
 
         for status, label in status_types:
@@ -405,7 +429,9 @@ class FilterDialog(MessageBoxBase):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(0)
 
-        layout.addWidget(BodyLabel(Localizer.get().proofreading_page_filter_warning_type))
+        layout.addWidget(
+            BodyLabel(Localizer.get().proofreading_page_filter_warning_type)
+        )
         layout.addSpacing(8)
 
         warning_row = FlowLayout(needAni=False)
@@ -417,10 +443,19 @@ class FilterDialog(MessageBoxBase):
             (self.NO_WARNING_TAG, Localizer.get().proofreading_page_filter_no_warning),
             (WarningType.KANA, Localizer.get().proofreading_page_warning_kana),
             (WarningType.HANGEUL, Localizer.get().proofreading_page_warning_hangeul),
-            (WarningType.TEXT_PRESERVE, Localizer.get().proofreading_page_warning_text_preserve),
-            (WarningType.SIMILARITY, Localizer.get().proofreading_page_warning_similarity),
+            (
+                WarningType.TEXT_PRESERVE,
+                Localizer.get().proofreading_page_warning_text_preserve,
+            ),
+            (
+                WarningType.SIMILARITY,
+                Localizer.get().proofreading_page_warning_similarity,
+            ),
             (WarningType.GLOSSARY, Localizer.get().proofreading_page_warning_glossary),
-            (WarningType.RETRY_THRESHOLD, Localizer.get().proofreading_page_warning_retry),
+            (
+                WarningType.RETRY_THRESHOLD,
+                Localizer.get().proofreading_page_warning_retry,
+            ),
         ]
 
         for warning_type, label in warning_types:
@@ -452,12 +487,18 @@ class FilterDialog(MessageBoxBase):
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        self.term_title = BodyLabel(Localizer.get().proofreading_page_filter_glossary_detail)
+        self.term_title = BodyLabel(
+            Localizer.get().proofreading_page_filter_glossary_detail
+        )
         title_row.addWidget(self.term_title)
         title_row.addStretch(1)
 
-        self.btn_select_all_terms = PushButton(Localizer.get().proofreading_page_filter_select_all)
-        self.btn_clear_terms = PushButton(Localizer.get().proofreading_page_filter_clear)
+        self.btn_select_all_terms = PushButton(
+            Localizer.get().proofreading_page_filter_select_all
+        )
+        self.btn_clear_terms = PushButton(
+            Localizer.get().proofreading_page_filter_clear
+        )
 
         for btn in (self.btn_select_all_terms, self.btn_clear_terms):
             btn.setFixedHeight(26)
@@ -474,7 +515,9 @@ class FilterDialog(MessageBoxBase):
 
         # 搜索框
         self.term_search = CustomSearchLineEdit()
-        self.term_search.setPlaceholderText(Localizer.get().proofreading_page_filter_search_term)
+        self.term_search.setPlaceholderText(
+            Localizer.get().proofreading_page_filter_search_term
+        )
         self.term_search.textChanged.connect(self._filter_term_list)
         layout.addWidget(self.term_search)
 
@@ -484,11 +527,36 @@ class FilterDialog(MessageBoxBase):
         self.term_list = ListWidget()
         self.term_list.setSelectionMode(QAbstractItemView.NoSelection)
         self.term_list.setItemDelegate(FilterListDelegate(self.term_list))
+        # 禁用水平滚动条
+        self.term_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 让 items 随 viewport 调整大小
+        self.term_list.setResizeMode(ListWidget.Adjust)
+        # 完整覆盖 qfluentwidgets 的样式表，移除所有 padding
+        self.term_list.setStyleSheet("""
+            ListWidget {
+                background: transparent;
+                outline: none;
+                border: none;
+                selection-background-color: transparent;
+                alternate-background-color: transparent;
+                padding-left: 0px;
+                padding-right: 0px;
+            }
+            ListWidget::item {
+                background: transparent;
+                border: 0px;
+                padding-left: 0px;
+                padding-right: 0px;
+                height: 40px;
+            }
+        """)
         self.term_list.itemClicked.connect(self._on_term_item_clicked)
         layout.addWidget(self.term_list, 1)
 
         # 空状态/禁用状态提示
-        self.term_empty_label = CaptionLabel(Localizer.get().proofreading_page_filter_no_glossary_error)
+        self.term_empty_label = CaptionLabel(
+            Localizer.get().proofreading_page_filter_no_glossary_error
+        )
         self.term_empty_label.setAlignment(Qt.AlignCenter)
         self.term_empty_label.hide()
         layout.addWidget(self.term_empty_label)
@@ -503,16 +571,16 @@ class FilterDialog(MessageBoxBase):
 
     def _on_file_item_clicked(self, item: QListWidgetItem) -> None:
         """处理文件列表项点击：切换激活状态，刷新列表"""
-        current = item.data(ROLE_CHECKED)
-        item.setData(ROLE_CHECKED, not current)
-        self.file_list.viewport().update()
+        widget = self.file_list.itemWidget(item)
+        if isinstance(widget, FilterListItemWidget):
+            widget.set_checked(not widget.is_checked())
         self._refresh_all()
 
     def _on_term_item_clicked(self, item: QListWidgetItem) -> None:
         """处理术语列表项点击：切换激活状态，刷新信息"""
-        current = item.data(ROLE_CHECKED)
-        item.setData(ROLE_CHECKED, not current)
-        self.term_list.viewport().update()
+        widget = self.term_list.itemWidget(item)
+        if isinstance(widget, FilterListItemWidget):
+            widget.set_checked(not widget.is_checked())
         self._update_selected_info()
 
     def _on_filter_changed(self) -> None:
@@ -535,27 +603,23 @@ class FilterDialog(MessageBoxBase):
             list_item.setHidden(not visible)
 
     def _select_all_files(self) -> None:
-        for i in range(self.file_list.count()):
-            self.file_list.item(i).setData(ROLE_CHECKED, True)
-        self.file_list.viewport().update()
+        for widget in self.file_list_widgets.values():
+            widget.set_checked(True)
         self._refresh_all()
 
     def _deselect_all_files(self) -> None:
-        for i in range(self.file_list.count()):
-            self.file_list.item(i).setData(ROLE_CHECKED, False)
-        self.file_list.viewport().update()
+        for widget in self.file_list_widgets.values():
+            widget.set_checked(False)
         self._refresh_all()
 
     def _select_all_terms(self) -> None:
-        for i in range(self.term_list.count()):
-            self.term_list.item(i).setData(ROLE_CHECKED, True)
-        self.term_list.viewport().update()
+        for widget in getattr(self, "term_list_widgets", {}).values():
+            widget.set_checked(True)
         self._update_selected_info()
 
     def _deselect_all_terms(self) -> None:
-        for i in range(self.term_list.count()):
-            self.term_list.item(i).setData(ROLE_CHECKED, False)
-        self.term_list.viewport().update()
+        for widget in getattr(self, "term_list_widgets", {}).values():
+            widget.set_checked(False)
         self._update_selected_info()
 
     # =========================================
@@ -564,15 +628,19 @@ class FilterDialog(MessageBoxBase):
 
     def _get_current_filtered_items(self) -> list[Item]:
         """根据当前所有筛选条件获取符合条件的条目列表"""
-        # 使用 Qt.UserRole 获取文件路径，根据 ROLE_CHECKED 判断是否激活
-        selected_files = set()
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            if item.data(ROLE_CHECKED):
-                selected_files.add(item.data(Qt.UserRole))
+        # 根据 widget 的选中状态判断文件是否激活
+        selected_files = {
+            path
+            for path, widget in self.file_list_widgets.items()
+            if widget.is_checked()
+        }
 
-        selected_statuses = {s for s, btn in self.status_buttons.items() if btn.isChecked()}
-        selected_warnings = {w for w, btn in self.warning_buttons.items() if btn.isChecked()}
+        selected_statuses = {
+            s for s, btn in self.status_buttons.items() if btn.isChecked()
+        }
+        selected_warnings = {
+            w for w, btn in self.warning_buttons.items() if btn.isChecked()
+        }
 
         result = []
         for item in self.items:
@@ -598,16 +666,11 @@ class FilterDialog(MessageBoxBase):
         filtered_items = self._get_current_filtered_items()
 
         # 更新文件列表计数
-        # 更新文件列表计数 (UserRole+1) 并强制重绘
         file_counts = Counter(item.get_file_path() for item in filtered_items)
-        for i in range(self.file_list.count()):
-            list_item = self.file_list.item(i)
-            path = list_item.data(Qt.UserRole)
+        for path, widget in self.file_list_widgets.items():
             count = file_counts.get(path, 0)
-            if list_item.data(Qt.UserRole + 1) != count:
-                list_item.setData(Qt.UserRole + 1, count)
-        # 触发重绘以更新计数显示
-        self.file_list.viewport().update()
+            if widget.get_count() != count:
+                widget.set_count(count)
 
         # 更新状态标签计数
         status_counts = Counter(item.get_status() for item in filtered_items)
@@ -628,7 +691,11 @@ class FilterDialog(MessageBoxBase):
                 no_warning_count += 1
 
         for warning_type, btn in self.warning_buttons.items():
-            count = no_warning_count if warning_type == self.NO_WARNING_TAG else warning_counts.get(warning_type, 0)
+            count = (
+                no_warning_count
+                if warning_type == self.NO_WARNING_TAG
+                else warning_counts.get(warning_type, 0)
+            )
             base_label = btn.text().rsplit(" • ", 1)[0]
             btn.setText(f"{base_label} • {count}")
 
@@ -642,13 +709,13 @@ class FilterDialog(MessageBoxBase):
 
         # 记录当前激活的术语，以便在重建列表时维持状态
         previous_checked = set()
-        for i in range(self.term_list.count()):
-            item = self.term_list.item(i)
-            if item.data(ROLE_CHECKED):
-                previous_checked.add(item.data(Qt.UserRole))
+        for term, widget in getattr(self, "term_list_widgets", {}).items():
+            if widget.is_checked():
+                previous_checked.add(term)
 
         self.term_list.clear()
         self.term_list_items.clear()
+        self.term_list_widgets: dict[tuple[str, str], FilterListItemWidget] = {}
 
         # 更新控件启用状态
         self.term_search.setEnabled(active)
@@ -658,7 +725,9 @@ class FilterDialog(MessageBoxBase):
 
         if not active:
             # 未激活状态：显示禁用提示
-            self.term_empty_label.setText(Localizer.get().proofreading_page_filter_no_glossary_error)
+            self.term_empty_label.setText(
+                Localizer.get().proofreading_page_filter_no_glossary_error
+            )
             self.term_empty_label.show()
             self.term_list.hide()
             return
@@ -676,7 +745,9 @@ class FilterDialog(MessageBoxBase):
         sorted_terms = sorted(term_counts.items(), key=lambda x: x[1], reverse=True)
 
         if not sorted_terms:
-            self.term_empty_label.setText(Localizer.get().proofreading_page_filter_no_glossary_error)
+            self.term_empty_label.setText(
+                Localizer.get().proofreading_page_filter_no_glossary_error
+            )
             self.term_empty_label.show()
             self.term_list.hide()
             return
@@ -686,15 +757,23 @@ class FilterDialog(MessageBoxBase):
 
         for term, count in sorted_terms:
             src, dst = term
-            list_item = QListWidgetItem(f"{src} → {dst}")
+            display_text = f"{src} → {dst}"
+
+            list_item = QListWidgetItem()
             list_item.setSizeHint(QSize(-1, 40))
-            list_item.setData(Qt.UserRole, term)      # 存储术语 Key
-            list_item.setData(Qt.UserRole + 1, count) # 存储计数
-            list_item.setData(ROLE_CHECKED, True)     # 默认激活
-            list_item.setToolTip(f"{src} → {dst}")
+            list_item.setData(Qt.UserRole, term)  # 存储术语 Key
 
             self.term_list.addItem(list_item)
+
+            # 创建自定义 widget 并设置
+            item_widget = FilterListItemWidget(display_text, self.term_list)
+            item_widget.set_checked(True)
+            item_widget.set_count(count)
+            item_widget.set_tooltip(display_text)
+            self.term_list.setItemWidget(list_item, item_widget)
+
             self.term_list_items[term] = list_item
+            self.term_list_widgets[term] = item_widget
 
     def _update_selected_info(self) -> None:
         """更新底部选中信息"""
@@ -702,12 +781,11 @@ class FilterDialog(MessageBoxBase):
 
         # 如果术语筛选激活，进一步过滤
         glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
-        if glossary_active and self.term_list.count() > 0:
-            selected_terms = set()
-            for i in range(self.term_list.count()):
-                item = self.term_list.item(i)
-                if item.data(ROLE_CHECKED):
-                    selected_terms.add(item.data(Qt.UserRole))
+        term_widgets = getattr(self, "term_list_widgets", {})
+        if glossary_active and term_widgets:
+            selected_terms = {
+                term for term, widget in term_widgets.items() if widget.is_checked()
+            }
 
             final_items = []
             for item in filtered_items:
@@ -719,7 +797,6 @@ class FilterDialog(MessageBoxBase):
                 else:
                     final_items.append(item)
             filtered_items = final_items
-
 
         count = len(filtered_items)
         files_with_items = len(set(i.get_file_path() for i in filtered_items))
@@ -735,29 +812,38 @@ class FilterDialog(MessageBoxBase):
     # =========================================
 
     def get_filter_options(self) -> dict:
-        selected_warnings = {w for w, btn in self.warning_buttons.items() if btn.isChecked()}
-        selected_statuses = {s for s, btn in self.status_buttons.items() if btn.isChecked()}
-        selected_files = set()
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            if item.data(ROLE_CHECKED):
-                selected_files.add(item.data(Qt.UserRole))
+        selected_warnings = {
+            w for w, btn in self.warning_buttons.items() if btn.isChecked()
+        }
+        selected_statuses = {
+            s for s, btn in self.status_buttons.items() if btn.isChecked()
+        }
+        selected_files = {
+            path
+            for path, widget in self.file_list_widgets.items()
+            if widget.is_checked()
+        }
 
         selected_terms = None
-        if WarningType.GLOSSARY in selected_warnings and self.term_list.count() > 0:
-            checked_terms = set()
-            for i in range(self.term_list.count()):
-                item = self.term_list.item(i)
-                if item.data(ROLE_CHECKED):
-                    checked_terms.add(item.data(Qt.UserRole))
+        term_widgets = getattr(self, "term_list_widgets", {})
+        if WarningType.GLOSSARY in selected_warnings and term_widgets:
+            checked_terms = {
+                term for term, widget in term_widgets.items() if widget.is_checked()
+            }
 
-            if len(checked_terms) < self.term_list.count():
+            if len(checked_terms) < len(term_widgets):
                 selected_terms = checked_terms
 
         return {
-            self.KEY_WARNING_TYPES: selected_warnings if len(selected_warnings) < len(self.warning_buttons) else None,
-            self.KEY_STATUSES: selected_statuses if len(selected_statuses) < len(self.status_buttons) else None,
-            self.KEY_FILE_PATHS: selected_files if len(selected_files) < len(self.file_list_items) else None,
+            self.KEY_WARNING_TYPES: selected_warnings
+            if len(selected_warnings) < len(self.warning_buttons)
+            else None,
+            self.KEY_STATUSES: selected_statuses
+            if len(selected_statuses) < len(self.status_buttons)
+            else None,
+            self.KEY_FILE_PATHS: selected_files
+            if len(selected_files) < len(self.file_list_items)
+            else None,
             self.KEY_GLOSSARY_TERMS: selected_terms,
         }
 
@@ -771,20 +857,15 @@ class FilterDialog(MessageBoxBase):
             btn.setChecked(statuses is None or status in statuses)
 
         file_paths = options.get(self.KEY_FILE_PATHS)
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            path = item.data(Qt.UserRole)
-            item.setData(ROLE_CHECKED, file_paths is None or path in file_paths)
+        for path, widget in self.file_list_widgets.items():
+            widget.set_checked(file_paths is None or path in file_paths)
 
-        self.file_list.viewport().update()
         self._refresh_all()
 
         # 刷新后再尝试恢复术语激活状态
         glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
-        if glossary_terms and self.term_list.count() > 0:
-            for i in range(self.term_list.count()):
-                item = self.term_list.item(i)
-                term = item.data(Qt.UserRole)
-                item.setData(ROLE_CHECKED, term in glossary_terms)
-            self.term_list.viewport().update()
+        term_widgets = getattr(self, "term_list_widgets", {})
+        if glossary_terms and term_widgets:
+            for term, widget in term_widgets.items():
+                widget.set_checked(term in glossary_terms)
             self._update_selected_info()
