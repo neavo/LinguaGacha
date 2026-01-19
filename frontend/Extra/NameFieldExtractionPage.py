@@ -16,10 +16,9 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.DataAccessLayer import DataAccessLayer
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.Storage.ItemStore import ItemStore
-from module.Storage.ProjectStore import ProjectStore
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 
@@ -213,11 +212,7 @@ class NameFieldExtractionPage(QWidget, Base):
             }
         )
 
-        # 写入缓存文件
-        item_store = ItemStore.get(config.output_folder)
-        project_store = ProjectStore.get(config.output_folder)
-        item_store.set_items(items)
-        project_store.set_project(project)
+        DataAccessLayer.set_items(items, config)
 
         window.switchTo(window.translation_page)
         self.emit(

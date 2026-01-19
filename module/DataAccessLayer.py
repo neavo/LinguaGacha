@@ -11,6 +11,7 @@ from module.Storage.ItemStore import ItemStore
 from module.Storage.LGDatabase import LGDatabase
 from module.Storage.ProjectStore import ProjectStore
 
+
 class DataAccessLayer:
     """统一数据访问层"""
 
@@ -412,4 +413,3 @@ class DataAccessLayer:
                     result.append((path, content))
 
         return result
-

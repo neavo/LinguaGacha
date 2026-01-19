@@ -11,6 +11,7 @@ from base.Base import Base
 from module.ProjectConfig import ProjectConfig
 from module.Storage.LGDatabase import LGDatabase
 
+
 class SessionContext(Base):
     """会话级上下文，管理当前工程实例"""
 
@@ -106,9 +107,9 @@ class SessionContext(Base):
         total_items = self._db.get_item_count()
         translated_items = 0
 
-        # 统计已翻译条目
+        # 统计已翻译条目（使用 PROCESSED 状态）
         for item in self._db.get_all_items():
-            if item.get("status") == Base.ProjectStatus.DONE:
+            if item.get("status") == Base.ProjectStatus.PROCESSED:
                 translated_items += 1
 
         progress = translated_items / max(1, total_items)
@@ -123,6 +124,30 @@ class SessionContext(Base):
             "translated_items": translated_items,
             "progress": progress,
         }
+
+    # ========== 翻译状态管理 ==========
+
+    def get_project_status(self) -> Base.ProjectStatus:
+        """获取当前工程的翻译状态"""
+        if self._db is None:
+            return Base.ProjectStatus.NONE
+        return self._db.get_meta("project_status", Base.ProjectStatus.NONE)
+
+    def set_project_status(self, status: Base.ProjectStatus) -> None:
+        """设置当前工程的翻译状态"""
+        if self._db is not None:
+            self._db.set_meta("project_status", status)
+
+    def get_translation_extras(self) -> dict[str, Any]:
+        """获取翻译进度额外数据（用于断点续译）"""
+        if self._db is None:
+            return {}
+        return self._db.get_meta("translation_extras", {})
+
+    def set_translation_extras(self, extras: dict[str, Any]) -> None:
+        """设置翻译进度额外数据"""
+        if self._db is not None:
+            self._db.set_meta("translation_extras", extras)
 
     # ========== 保存 ==========
 

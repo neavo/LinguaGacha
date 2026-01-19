@@ -57,6 +57,9 @@ class ProjectCreator(Base):
         Returns:
             创建的 LGDatabase 实例
         """
+        from module.Config import Config
+        from module.File.FileManager import FileManager
+
         # 确保输出目录存在
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -80,6 +83,20 @@ class ProjectCreator(Base):
             self._report_progress(
                 i + 1, total_files, f"正在收纳: {Path(file_path).name}"
             )
+
+        # 解析翻译条目
+        self._report_progress(total_files, total_files, "正在解析翻译条目...")
+
+        # 构造 Config 对象指向源目录
+        config = Config().load()
+        config.input_folder = source_path
+
+        # 使用 FileManager 读取翻译条目
+        _, items = FileManager(config).read_from_path()
+
+        # 将条目保存到数据库
+        if items:
+            db.set_items([item.to_dict() for item in items])
 
         self._report_progress(total_files, total_files, "工程创建完成")
 

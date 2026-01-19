@@ -1,7 +1,6 @@
 import concurrent.futures
 import os
 import re
-import shutil
 import threading
 import time
 import webbrowser
@@ -24,8 +23,7 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.Storage.ItemStore import ItemStore
-from module.Storage.ProjectStore import ProjectStore
+from module.SessionContext import SessionContext
 from module.TextProcessor import TextProcessor
 
 
@@ -34,9 +32,11 @@ class Translator(Base):
     def __init__(self) -> None:
         super().__init__()
 
-        # Store 实例（在 start 时根据 output_folder 初始化）
-        self.item_store: ItemStore | None = None
-        self.project_store: ProjectStore | None = None
+        # 翻译过程中的 items 缓存（内存中维护，避免频繁读写数据库）
+        self._items_cache: list[Item] | None = None
+
+        # 翻译进度额外数据
+        self.extras: dict = {}
 
         # 线程锁
         self.data_lock = threading.Lock()
@@ -55,9 +55,12 @@ class Translator(Base):
             if Engine.get().get_status() != Base.TaskStatus.IDLE:
                 status = Base.ProjectStatus.NONE
             else:
-                output_folder = Config().load().output_folder
-                project_store = ProjectStore.get(output_folder)
-                status = project_store.get_project().get_status()
+                # 从 SessionContext 获取工程状态
+                ctx = SessionContext.get()
+                if ctx.is_loaded():
+                    status = ctx.get_project_status()
+                else:
+                    status = Base.ProjectStatus.NONE
 
             self.emit(
                 Base.Event.PROJECT_CHECK_DONE,
@@ -97,8 +100,8 @@ class Translator(Base):
                     # 等待回调执行完毕
                     time.sleep(1.0)
 
-                    # 保存项目状态
-                    self.project_store.set_project(self.project)
+                    # 保存翻译进度到 .lg 文件
+                    self._save_translation_state()
 
                     # 日志
                     self.print("")
@@ -117,11 +120,8 @@ class Translator(Base):
                     # 更新运行状态
                     Engine.get().set_status(Base.TaskStatus.IDLE)
 
-                    # 释放数据库会话（触发 Checkpoint）
-                    if self.item_store:
-                        self.item_store.close_session()
-                    if self.project_store:
-                        self.project_store.close_session()
+                    # 清理缓存
+                    self._items_cache = None
 
                     self.emit(Base.Event.TRANSLATION_DONE, {})
                     break
@@ -135,7 +135,7 @@ class Translator(Base):
 
         # 复制一份以避免影响原始数据
         def start(event: str, data: dict) -> None:
-            items = self.item_store.copy_items()
+            items = self._copy_items()
             self.mtool_optimizer_postprocess(items)
             self.check_and_wirte_result(items)
 
@@ -151,6 +151,21 @@ class Translator(Base):
 
         # 初始化
         self.config = config if isinstance(config, Config) else Config().load()
+
+        # 检查工程是否已加载
+        ctx = SessionContext.get()
+        if not ctx.is_loaded():
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": "请先加载工程文件",
+                },
+            )
+            self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
+            return None
+
+        db = ctx.get_db()
 
         # 从新模型系统获取激活模型
         self.model = self.config.get_active_model()
@@ -176,29 +191,11 @@ class Translator(Base):
         TaskRequester.reset()
         PromptBuilder.reset()
 
-        # 初始化存储层
-        if status == Base.ProjectStatus.PROCESSING:
-            # 继续翻译：从数据库加载已有数据
-            self.item_store = ItemStore.get(self.config.output_folder)
-            self.project_store = ProjectStore.get(self.config.output_folder)
-            self.project = self.project_store.get_project()
-        else:
-            # 新翻译：
-
-            # 清空缓存目录并重新初始化
-            shutil.rmtree(f"{self.config.output_folder}/cache", ignore_errors=True)
-            self.item_store = ItemStore.get(self.config.output_folder)
-            self.project_store = ProjectStore.get(self.config.output_folder)
-            self.project, items = FileManager(self.config).read_from_path()
-            self.item_store.set_items(items)
-            self.project_store.set_project(self.project)
-
-        # 开启高性能会话模式（维持 WAL）
-        self.item_store.open_session()
-        self.project_store.open_session()
+        # 从 .lg 文件加载条目到内存缓存
+        self._items_cache = [Item.from_dict(d) for d in db.get_all_items()]
 
         # 检查数据是否为空
-        if self.item_store.get_item_count() == 0:
+        if len(self._items_cache) == 0:
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -211,12 +208,18 @@ class Translator(Base):
 
         # 加载进度数据
         if status == Base.ProjectStatus.PROCESSING:
-            self.extras = self.project.get_extras()
+            # 继续翻译：恢复进度
+            self.extras = ctx.get_translation_extras()
             self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-            self.extras["line"] = self.item_store.get_item_count_by_status(
+            self.extras["line"] = self._get_item_count_by_status(
                 Base.ProjectStatus.PROCESSED
             )
         else:
+            # 新翻译：重置所有条目状态
+            for item in self._items_cache:
+                if item.get_status() not in (Base.ProjectStatus.EXCLUDED,):
+                    item.set_status(Base.ProjectStatus.NONE)
+
             self.extras = {
                 "start_time": time.time(),
                 "total_line": 0,
@@ -231,13 +234,13 @@ class Translator(Base):
         self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
 
         # 规则过滤
-        self.rule_filter(self.item_store.get_all_items())
+        self.rule_filter(self._items_cache)
 
         # 语言过滤
-        self.language_filter(self.item_store.get_all_items())
+        self.language_filter(self._items_cache)
 
         # MTool 优化器预处理
-        self.mtool_optimizer_preprocess(self.item_store.get_all_items())
+        self.mtool_optimizer_preprocess(self._items_cache)
 
         # 开始循环
         for current_round in range(self.config.max_round):
@@ -247,7 +250,7 @@ class Translator(Base):
 
             # 第一轮时更新任务的总行数
             if current_round == 0:
-                remaining_count = self.item_store.get_item_count_by_status(
+                remaining_count = self._get_item_count_by_status(
                     Base.ProjectStatus.NONE
                 )
                 self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
@@ -258,7 +261,7 @@ class Translator(Base):
 
             # 生成缓存数据条目片段
             chunks, precedings = ChunkGenerator.generate_item_chunks(
-                items=self.item_store.get_all_items(),
+                items=self._items_cache,
                 input_token_threshold=input_token_threshold,
                 preceding_lines_threshold=self.config.preceding_lines_threshold,
             )
@@ -341,8 +344,8 @@ class Translator(Base):
                         futures.append(future)
 
             # 判断是否需要继续翻译
-            if self.item_store.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
-                self.project.set_status(Base.ProjectStatus.PROCESSED)
+            if self._get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
+                ctx.set_project_status(Base.ProjectStatus.PROCESSED)
 
                 # 日志
                 self.print("")
@@ -382,25 +385,54 @@ class Translator(Base):
         time.sleep(1.0)
 
         # MTool 优化器后处理
-        self.mtool_optimizer_postprocess(self.item_store.get_all_items())
+        self.mtool_optimizer_postprocess(self._items_cache)
 
-        # 保存项目状态
-        self.project_store.set_project(self.project)
+        # 保存翻译结果到 .lg 文件
+        self._save_translation_state()
 
         # 检查结果并写入文件
-        self.check_and_wirte_result(self.item_store.get_all_items())
+        self.check_and_wirte_result(self._items_cache)
 
         # 重置内部状态（正常完成翻译）
         Engine.get().set_status(Base.TaskStatus.IDLE)
 
-        # 释放数据库会话（触发 Checkpoint）
-        if self.item_store:
-            self.item_store.close_session()
-        if self.project_store:
-            self.project_store.close_session()
+        # 清理缓存
+        self._items_cache = None
 
         # 触发翻译停止完成的事件
         self.emit(Base.Event.TRANSLATION_DONE, {})
+
+    # ========== 辅助方法 ==========
+
+    def _get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
+        """按状态统计缓存中的条目数量"""
+        if self._items_cache is None:
+            return 0
+        return len([item for item in self._items_cache if item.get_status() == status])
+
+    def _copy_items(self) -> list[Item]:
+        """深拷贝缓存中的条目列表"""
+        if self._items_cache is None:
+            return []
+        return [Item.from_dict(item.to_dict()) for item in self._items_cache]
+
+    def _save_translation_state(self) -> None:
+        """保存翻译状态到 .lg 文件"""
+        ctx = SessionContext.get()
+        if not ctx.is_loaded() or self._items_cache is None:
+            return
+
+        db = ctx.get_db()
+
+        # 保存所有条目（更新 items 表）
+        db.set_items([item.to_dict() for item in self._items_cache])
+
+        # 保存翻译进度额外数据（仅当存在时）
+        if self.extras:
+            ctx.set_translation_extras(self.extras)
+
+        # 设置项目状态为处理中
+        ctx.set_project_status(Base.ProjectStatus.PROCESSING)
 
     # 初始化本地标识
     def initialize_local_flag(self) -> bool:
@@ -635,15 +667,6 @@ class Translator(Base):
                 ) + result.get("output_tokens", 0)
                 new["time"] = time.time() - self.extras.get("start_time", 0)
                 self.extras = new
-
-            # 更新翻译进度
-            self.project.set_extras(self.extras)
-
-            # 更新翻译状态
-            self.project.set_status(Base.ProjectStatus.PROCESSING)
-
-            # 实时保存项目状态
-            self.project_store.set_project(self.project)
 
             # 日志
             progress.update(

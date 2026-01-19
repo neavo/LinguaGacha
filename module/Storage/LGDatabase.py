@@ -251,6 +251,40 @@ class LGDatabase(Base):
             cursor = conn.execute("SELECT COUNT(*) FROM items")
             return cursor.fetchone()[0]
 
+    def get_item_count_by_status(self, status: str) -> int:
+        """按状态统计翻译条目数量
+
+        Args:
+            status: 状态字符串（如 "NONE", "PROCESSED", "EXCLUDED" 等）
+        """
+        count = 0
+        for item in self.get_all_items():
+            if item.get("status") == status:
+                count += 1
+        return count
+
+    def update_item(self, item: dict[str, Any]) -> None:
+        """更新单个翻译条目（仅更新，不新增）
+
+        Args:
+            item: 包含 id 字段的条目数据
+        """
+        item_id = item.get("id")
+        if item_id is None:
+            return
+
+        with self._connection() as conn:
+            data = {k: v for k, v in item.items() if k != "id"}
+            data_json = json.dumps(data, ensure_ascii=False)
+            conn.execute("UPDATE items SET data = ? WHERE id = ?", (data_json, item_id))
+            conn.commit()
+
+    def copy_items(self) -> list[dict[str, Any]]:
+        """深拷贝所有条目"""
+        import copy
+
+        return copy.deepcopy(self.get_all_items())
+
     def clear_items(self) -> None:
         """清空所有翻译条目"""
         with self._connection() as conn:
