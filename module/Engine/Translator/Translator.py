@@ -345,8 +345,6 @@ class Translator(Base):
 
             # 判断是否需要继续翻译
             if self._get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
-                ctx.set_project_status(Base.ProjectStatus.PROCESSED)
-
                 # 日志
                 self.print("")
                 self.info(Localizer.get().engine_task_done)
@@ -387,8 +385,15 @@ class Translator(Base):
         # MTool 优化器后处理
         self.mtool_optimizer_postprocess(self._items_cache)
 
+        # 确定最终项目状态
+        final_status = (
+            Base.ProjectStatus.PROCESSED
+            if self._get_item_count_by_status(Base.ProjectStatus.NONE) == 0
+            else Base.ProjectStatus.PROCESSING
+        )
+
         # 保存翻译结果到 .lg 文件
-        self._save_translation_state()
+        self._save_translation_state(final_status)
 
         # 检查结果并写入文件
         self.check_and_wirte_result(self._items_cache)
@@ -416,7 +421,9 @@ class Translator(Base):
             return []
         return [Item.from_dict(item.to_dict()) for item in self._items_cache]
 
-    def _save_translation_state(self) -> None:
+    def _save_translation_state(
+        self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
+    ) -> None:
         """保存翻译状态到 .lg 文件"""
         ctx = SessionContext.get()
         if not ctx.is_loaded() or self._items_cache is None:
@@ -431,8 +438,8 @@ class Translator(Base):
         if self.extras:
             ctx.set_translation_extras(self.extras)
 
-        # 设置项目状态为处理中
-        ctx.set_project_status(Base.ProjectStatus.PROCESSING)
+        # 设置项目状态
+        ctx.set_project_status(status)
 
     # 初始化本地标识
     def initialize_local_flag(self) -> bool:
@@ -487,7 +494,7 @@ class Translator(Base):
             pid = progress.new()
             for item in items:
                 progress.update(pid, advance=1, total=len(items))
-                if RuleFilter.filter(item.get_src()) == True:
+                if RuleFilter.filter(item.get_src()):
                     count = count + 1
                     item.set_status(Base.ProjectStatus.EXCLUDED)
 
@@ -508,10 +515,7 @@ class Translator(Base):
             pid = progress.new()
             for item in items:
                 progress.update(pid, advance=1, total=len(items))
-                if (
-                    LanguageFilter.filter(item.get_src(), self.config.source_language)
-                    == True
-                ):
+                if LanguageFilter.filter(item.get_src(), self.config.source_language):
                     count = count + 1
                     item.set_status(Base.ProjectStatus.EXCLUDED)
 
@@ -522,7 +526,7 @@ class Translator(Base):
 
     # MTool 优化器预处理
     def mtool_optimizer_preprocess(self, items: list[Item]) -> None:
-        if len(items) == 0 or self.config.mtool_optimizer_enable == False:
+        if len(items) == 0 or not self.config.mtool_optimizer_enable:
             return None
 
         # 筛选
@@ -571,7 +575,7 @@ class Translator(Base):
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:
-        if len(items) == 0 or self.config.mtool_optimizer_enable == False:
+        if len(items) == 0 or not self.config.mtool_optimizer_enable:
             return None
 
         # 筛选
@@ -610,10 +614,7 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
         # 启用自动术语表的时，更新配置文件
-        if (
-            self.config.glossary_enable == True
-            and self.config.auto_glossary_enable == True
-        ):
+        if self.config.glossary_enable and self.config.auto_glossary_enable:
             # 更新配置文件
             config = Config().load()
             config.glossary_data = self.config.glossary_data
@@ -633,7 +634,7 @@ class Translator(Base):
         self.print("")
 
         # 打开输出文件夹
-        if self.config.output_folder_open_on_finish == True:
+        if self.config.output_folder_open_on_finish:
             webbrowser.open(os.path.abspath(self.config.output_folder))
 
     # 翻译任务完成时

@@ -366,3 +366,44 @@ class LGDatabase(Base):
         db.set_meta("updated_at", datetime.now().isoformat())
 
         return db
+
+    # ========== 业务辅助 ==========
+
+    def get_project_summary(self) -> dict[str, Any]:
+        """获取项目概览信息（进度、文件数等）"""
+        with self._connection() as conn:
+            # 读取基础信息
+            meta_cursor = conn.execute("SELECT key, value FROM meta")
+            meta = {
+                row["key"]: json.loads(row["value"]) for row in meta_cursor.fetchall()
+            }
+
+            file_count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
+
+            # 计算进度
+            # 优先使用翻译进度信息（更准确，排除已筛选的条目）
+            extras = meta.get("translation_extras", {})
+            if isinstance(extras, dict) and "line" in extras and "total_line" in extras:
+                translated_items = extras["line"]
+                total_items = extras["total_line"]
+            else:
+                # 兼容旧版本：未开始翻译的项目视为 0 进度
+                total_items = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+                translated_items = 0
+
+            if total_items == 0:
+                progress = 0.0
+            else:
+                progress = min(1.0, translated_items / total_items)
+
+            return {
+                "name": meta.get("name", Path(self.db_path).stem),
+                "source_language": meta.get("source_language", ""),
+                "target_language": meta.get("target_language", ""),
+                "created_at": meta.get("created_at", ""),
+                "updated_at": meta.get("updated_at", ""),
+                "file_count": file_count,
+                "total_items": total_items,
+                "translated_items": translated_items,
+                "progress": progress,
+            }

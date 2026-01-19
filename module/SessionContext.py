@@ -104,26 +104,7 @@ class SessionContext(Base):
         if self._db is None:
             return {}
 
-        total_items = self._db.get_item_count()
-        translated_items = 0
-
-        # 统计已翻译条目（使用 PROCESSED 状态）
-        for item in self._db.get_all_items():
-            if item.get("status") == Base.ProjectStatus.PROCESSED:
-                translated_items += 1
-
-        progress = translated_items / max(1, total_items)
-
-        return {
-            "name": self._db.get_meta("name", ""),
-            "source_language": self._db.get_meta("source_language", ""),
-            "target_language": self._db.get_meta("target_language", ""),
-            "created_at": self._db.get_meta("created_at", ""),
-            "updated_at": self._db.get_meta("updated_at", ""),
-            "total_items": total_items,
-            "translated_items": translated_items,
-            "progress": progress,
-        }
+        return self._db.get_project_summary()
 
     # ========== 翻译状态管理 ==========
 
