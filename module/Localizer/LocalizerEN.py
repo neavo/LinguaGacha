@@ -1,5 +1,6 @@
 from module.Localizer.LocalizerZH import LocalizerZH
 
+
 class LocalizerEN(LocalizerZH):
     # 保留
     switch_language: str = (
@@ -36,6 +37,7 @@ class LocalizerEN(LocalizerZH):
     placeholder: str = "Please enter keywords …"
     task_success: str = "Task succeeded …"
     alert_no_data: str = "No valid data …"
+    alert_load_project_first: str = "Please create or load a project file first …"
     alert_reset_timer: str = "Confirm to reset timer?"
     alert_reset_translation: str = (
         "Confirm to reset translation task and start a new task?"
@@ -164,7 +166,6 @@ class LocalizerEN(LocalizerZH):
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
-
     model_page_category_preset_title: str = "Preset Models"
     model_page_category_preset_desc: str = "Built-in preset models of the application"
     model_page_category_google_title: str = "Custom Google Models"
@@ -256,6 +257,66 @@ class LocalizerEN(LocalizerZH):
         "Failed to get model list, please check API configuration …"
     )
     model_selector_page_loading: str = "Loading model list …"
+
+    # 工作台
+    workbench_new_project_title: str = "New Project"
+    workbench_new_project_subtitle: str = (
+        "Create a new .lg translation project, offline mode supported."
+    )
+    workbench_new_project_btn: str = "Create Now"
+    workbench_open_project_title: str = "Open Project"
+    workbench_open_project_subtitle: str = (
+        "Load an existing .lg project file to continue working."
+    )
+    workbench_recent_projects_title: str = "Recent Projects"
+    workbench_open_project_btn: str = "Open Project"
+    workbench_drop_zone_source_title: str = "Click or Drag Source File"
+
+    workbench_drop_zone_lg_title: str = "Click or Drag .lg File"
+
+    workbench_features_format_title: str = "Features & Formats"
+
+    workbench_feature_format_support: str = "Formats"
+    workbench_feature_format_support_desc: str = "txt, md, json, xlsx, epub, ass"
+    workbench_feature_private_rule: str = "Private Rules"
+    workbench_feature_private_rule_desc: str = (
+        "Glossary and replacement rules embedded in project"
+    )
+    workbench_feature_offline_mode: str = "Offline Mode"
+    workbench_feature_offline_mode_desc: str = (
+        "Source files can be safely removed after creation"
+    )
+    workbench_feature_zero_config: str = "Zero Config"
+    workbench_feature_zero_config_desc: str = (
+        "Recursively scan directories and build index"
+    )
+
+    workbench_select_source_dir_title: str = "Select Source Directory"
+    workbench_toast_no_valid_file: str = (
+        "No supported source files found in this directory"
+    )
+
+    workbench_drop_ready_source: str = "{COUNT} source files found, ready"
+    workbench_select_project_title: str = "Select Project File"
+    workbench_toast_invalid_lg: str = "Please select a .lg project file"
+    workbench_msg_file_not_found_title: str = "File Not Found"
+    workbench_msg_file_not_found_content: str = (
+        "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
+    )
+    workbench_progress_creating: str = "Creating project..."
+    workbench_toast_create_success: str = "Project created successfully: {NAME}"
+    workbench_toast_create_fail: str = "Failed to create project: {ERROR}"
+    workbench_toast_load_success: str = "Project loaded: {NAME}"
+    workbench_toast_load_fail: str = "Failed to load project: {ERROR}"
+    workbench_save_project_title: str = "Save Project File"
+    workbench_project_ready: str = "Project Ready"
+    workbench_project_preparing: str = "Preparing..."
+    workbench_info_file_count: str = "File Count"
+    workbench_info_created_at: str = "Created At"
+    workbench_info_update: str = "Last Updated"
+    workbench_info_progress: str = "Progress"
+    workbench_info_translated: str = "Translated: {COUNT}"
+    workbench_info_total: str = "Total: {COUNT}"
 
     # 翻译任务
     translation_page_status_idle: str = "Idle"

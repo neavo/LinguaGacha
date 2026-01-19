@@ -163,6 +163,7 @@ class ProjectLoader(Base):
             meta = db.get_all_meta()
 
             # 统计条目
+            file_count = db.get_asset_count()
             total_items = db.get_item_count()
             translated_items = 0
 
@@ -178,6 +179,7 @@ class ProjectLoader(Base):
                 "target_language": meta.get("target_language", ""),
                 "created_at": meta.get("created_at", ""),
                 "updated_at": meta.get("updated_at", ""),
+                "file_count": file_count,
                 "total_items": total_items,
                 "translated_items": translated_items,
                 "progress": progress,

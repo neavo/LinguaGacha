@@ -25,10 +25,10 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
-from module.SessionContext import SessionContext
 from module.Storage.ItemStore import ItemStore
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
+
 
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
@@ -866,19 +866,7 @@ class ProofreadingPage(QWidget, Base):
     def showEvent(self, event: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(event)
-
-        # 检查是否已加载工程，未加载则跳转工作台
-        if not SessionContext.get().is_loaded():
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(0, self._switch_to_workbench)
-            return
-
         self._check_engine_status()
-
-    def _switch_to_workbench(self) -> None:
-        """切换到工作台页面"""
-        if hasattr(self.window, "workbench_page"):
-            self.window.stackedWidget.setCurrentWidget(self.window.workbench_page)
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:

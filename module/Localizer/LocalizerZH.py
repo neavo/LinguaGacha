@@ -1,3 +1,5 @@
+# 用于保持与英文的行数对齐，请勿移除
+# 用于保持与英文的行数对齐，请勿移除
 class LocalizerZH:
     # 保留
     switch_language: str = (
@@ -34,6 +36,7 @@ class LocalizerZH:
     placeholder: str = "请输入关键词 …"
     task_success: str = "任务执行成功 …"
     alert_no_data: str = "没有有效数据 …"
+    alert_load_project_first: str = "请先新建或者载入工程文件 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
     alert_reset_translation: str = (
         "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
@@ -172,7 +175,6 @@ class LocalizerZH:
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
-
     model_page_category_preset_title: str = "预设模型"
     model_page_category_preset_desc: str = "应用内置的预设模型"
     model_page_category_google_title: str = "自定义 Google 模型"
@@ -272,6 +274,54 @@ class LocalizerZH:
     model_selector_page_content: str = "点击选择要使用的模型"
     model_selector_page_fail: str = "获取模型列表失败，请检查接口配置 …"
     model_selector_page_loading: str = "正在获取模型列表 …"
+
+    # 工作台
+    workbench_new_project_title: str = "新建工程"
+    workbench_new_project_subtitle: str = "创建新的 .lg 翻译项目，支持脱机运行。"
+    workbench_new_project_btn: str = "立即创建"
+    workbench_open_project_title: str = "打开工程"
+    workbench_open_project_subtitle: str = "加载现有的 .lg 工程文件以继续工作。"
+    workbench_recent_projects_title: str = "最近打开"
+    workbench_open_project_btn: str = "打开工程"
+    workbench_drop_zone_source_title: str = "点击或拖拽源文件"
+
+    workbench_drop_zone_lg_title: str = "点击或拖拽 .lg 文件"
+
+    workbench_features_format_title: str = "特性与格式"
+
+    workbench_feature_format_support: str = "格式支持"
+    workbench_feature_format_support_desc: str = "txt, md, json, xlsx, epub, ass"
+    workbench_feature_private_rule: str = "私有规则"
+    workbench_feature_private_rule_desc: str = "术语表与替换规则内嵌于工程"
+    workbench_feature_offline_mode: str = "脱机模式"
+    workbench_feature_offline_mode_desc: str = "创建后原始文件可安全移除"
+    workbench_feature_zero_config: str = "零配置"
+    workbench_feature_zero_config_desc: str = "自动递归扫描目录并建立索引"
+
+    workbench_select_source_dir_title: str = "选择源文件目录"
+    workbench_toast_no_valid_file: str = "该目录下没有支持的源文件"
+
+    workbench_drop_ready_source: str = "包含 {COUNT} 个源文件，准备就绪"
+    workbench_select_project_title: str = "选择工程文件"
+    workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
+    workbench_msg_file_not_found_title: str = "文件不存在"
+    workbench_msg_file_not_found_content: str = (
+        "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除？"
+    )
+    workbench_progress_creating: str = "正在创建工程..."
+    workbench_toast_create_success: str = "工程创建成功：{NAME}"
+    workbench_toast_create_fail: str = "创建工程失败：{ERROR}"
+    workbench_toast_load_success: str = "工程已加载：{NAME}"
+    workbench_toast_load_fail: str = "加载工程失败：{ERROR}"
+    workbench_save_project_title: str = "保存工程文件"
+    workbench_project_ready: str = "项目已就绪"
+    workbench_project_preparing: str = "准备中..."
+    workbench_info_file_count: str = "文件数量"
+    workbench_info_created_at: str = "创建时间"
+    workbench_info_update: str = "最后修改"
+    workbench_info_progress: str = "翻译进度"
+    workbench_info_translated: str = "已翻译: {COUNT} 行"
+    workbench_info_total: str = "总计: {COUNT} 行"
 
     # 翻译任务
     translation_page_status_idle: str = "无任务"
@@ -377,6 +427,8 @@ class LocalizerZH:
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
+        ""  # 用于保持与英文的行数对齐，请勿移除
+        ""  # 用于保持与英文的行数对齐，请勿移除
     )
     basic_settings_page_max_round_title: str = "任务轮次阈值"
     basic_settings_page_max_round_content: str = "当完成一轮任务后，将在新的轮次中对失败的任务进行重试，直到全部完成或达到轮次阈值"
