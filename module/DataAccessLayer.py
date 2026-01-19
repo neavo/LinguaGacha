@@ -1,17 +1,9 @@
-"""统一数据访问层
-
-屏蔽工程模式（.lg 文件）的数据访问细节。
-业务模块无需关心数据来源，通过 DataAccessLayer 统一访问。
-
-注意：传统模式（ItemStore/ProjectStore）已被移除，当前仅支持工程模式。
-"""
-
+from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.SessionContext import SessionContext
-from module.Storage.AssetCompressor import AssetCompressor
-from module.Storage.LGDatabase import LGDatabase
-
+from module.Storage.AssetStore import AssetStore
+from module.Storage.DataStore import DataStore
 
 class DataAccessLayer:
     """统一数据访问层"""
@@ -30,7 +22,7 @@ class DataAccessLayer:
 
     @classmethod
     def prepare_mode_context(cls):
-        """准备模式上下文管理器 (用于 ProjectCreator 等场景)"""
+        """准备模式上下文管理器 (用于 ProjectStore 等场景)"""
 
         class Context:
             def __enter__(self):
@@ -42,7 +34,7 @@ class DataAccessLayer:
         return Context()
 
     @classmethod
-    def get_db(cls) -> LGDatabase | None:
+    def get_db(cls) -> DataStore | None:
         """获取当前工程的数据库（仅工程模式可用）"""
         return SessionContext.get().get_db()
 
@@ -101,7 +93,7 @@ class DataAccessLayer:
             db = cls.get_db()
             if db is None:
                 return []
-            return db.get_rules(LGDatabase.RuleType.GLOSSARY)
+            return db.get_rules(DataStore.RuleType.GLOSSARY)
 
         if config is None:
             config = Config().load()
@@ -114,7 +106,7 @@ class DataAccessLayer:
             db = cls.get_db()
             if db is None:
                 return []
-            return db.get_rules(LGDatabase.RuleType.PRE_REPLACEMENT)
+            return db.get_rules(DataStore.RuleType.PRE_REPLACEMENT)
 
         if config is None:
             config = Config().load()
@@ -127,7 +119,7 @@ class DataAccessLayer:
             db = cls.get_db()
             if db is None:
                 return []
-            return db.get_rules(LGDatabase.RuleType.POST_REPLACEMENT)
+            return db.get_rules(DataStore.RuleType.POST_REPLACEMENT)
 
         if config is None:
             config = Config().load()
@@ -140,7 +132,7 @@ class DataAccessLayer:
             db = cls.get_db()
             if db is None:
                 return []
-            return db.get_rules(LGDatabase.RuleType.TEXT_PRESERVE)
+            return db.get_rules(DataStore.RuleType.TEXT_PRESERVE)
 
         if config is None:
             config = Config().load()
@@ -152,7 +144,7 @@ class DataAccessLayer:
         if cls.is_project_mode():
             db = cls.get_db()
             if db is not None:
-                db.set_rules(LGDatabase.RuleType.GLOSSARY, data)
+                db.set_rules(DataStore.RuleType.GLOSSARY, data)
             return
 
         config = Config().load()
@@ -165,7 +157,7 @@ class DataAccessLayer:
         if cls.is_project_mode():
             db = cls.get_db()
             if db is not None:
-                db.set_rules(LGDatabase.RuleType.PRE_REPLACEMENT, data)
+                db.set_rules(DataStore.RuleType.PRE_REPLACEMENT, data)
             return
 
         config = Config().load()
@@ -178,7 +170,7 @@ class DataAccessLayer:
         if cls.is_project_mode():
             db = cls.get_db()
             if db is not None:
-                db.set_rules(LGDatabase.RuleType.POST_REPLACEMENT, data)
+                db.set_rules(DataStore.RuleType.POST_REPLACEMENT, data)
             return
 
         config = Config().load()
@@ -191,7 +183,7 @@ class DataAccessLayer:
         if cls.is_project_mode():
             db = cls.get_db()
             if db is not None:
-                db.set_rules(LGDatabase.RuleType.TEXT_PRESERVE, data)
+                db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
             return
 
         config = Config().load()
@@ -294,6 +286,108 @@ class DataAccessLayer:
         config.post_translation_replacement_enable = enable
         config.save()
 
+    # ========== 自定义提示词操作 ==========
+
+    @classmethod
+    def get_custom_prompt_data(cls, language: BaseLanguage.Enum) -> str:
+        """获取自定义提示词数据
+
+        Args:
+            language: 语言类型（ZH 或 EN）
+        """
+        if cls.is_project_mode():
+            db = cls.get_db()
+            if db is not None:
+                rule_type = (
+                    DataStore.RuleType.CUSTOM_PROMPT_ZH
+                    if language == BaseLanguage.Enum.ZH
+                    else DataStore.RuleType.CUSTOM_PROMPT_EN
+                )
+                return db.get_rule_text(rule_type)
+            return ""
+
+        config = Config().load()
+        if language == BaseLanguage.Enum.ZH:
+            return config.custom_prompt_zh_data or ""
+        return config.custom_prompt_en_data or ""
+
+    @classmethod
+    def set_custom_prompt_data(cls, language: BaseLanguage.Enum, data: str) -> None:
+        """保存自定义提示词数据
+
+        Args:
+            language: 语言类型（ZH 或 EN）
+            data: 提示词内容
+        """
+        if cls.is_project_mode():
+            db = cls.get_db()
+            if db is not None:
+                rule_type = (
+                    DataStore.RuleType.CUSTOM_PROMPT_ZH
+                    if language == BaseLanguage.Enum.ZH
+                    else DataStore.RuleType.CUSTOM_PROMPT_EN
+                )
+                db.set_rule_text(rule_type, data)
+            return
+
+        config = Config().load()
+        if language == BaseLanguage.Enum.ZH:
+            config.custom_prompt_zh_data = data
+        else:
+            config.custom_prompt_en_data = data
+        config.save()
+
+    @classmethod
+    def get_custom_prompt_enable(cls, language: BaseLanguage.Enum) -> bool:
+        """获取自定义提示词启用状态
+
+        Args:
+            language: 语言类型（ZH 或 EN）
+        """
+        if cls.is_project_mode():
+            db = cls.get_db()
+            if db is not None:
+                meta_key = (
+                    "custom_prompt_zh_enable"
+                    if language == BaseLanguage.Enum.ZH
+                    else "custom_prompt_en_enable"
+                )
+                return db.get_meta(meta_key, False)
+            return False
+
+        config = Config().load()
+        if language == BaseLanguage.Enum.ZH:
+            return config.custom_prompt_zh_enable
+        return config.custom_prompt_en_enable
+
+    @classmethod
+    def set_custom_prompt_enable(
+        cls, language: BaseLanguage.Enum, enable: bool
+    ) -> None:
+        """设置自定义提示词启用状态
+
+        Args:
+            language: 语言类型（ZH 或 EN）
+            enable: 是否启用
+        """
+        if cls.is_project_mode():
+            db = cls.get_db()
+            if db is not None:
+                meta_key = (
+                    "custom_prompt_zh_enable"
+                    if language == BaseLanguage.Enum.ZH
+                    else "custom_prompt_en_enable"
+                )
+                db.set_meta(meta_key, enable)
+            return
+
+        config = Config().load()
+        if language == BaseLanguage.Enum.ZH:
+            config.custom_prompt_zh_enable = enable
+        else:
+            config.custom_prompt_en_enable = enable
+        config.save()
+
     # ========== 资产操作 ==========
 
     @classmethod
@@ -328,7 +422,7 @@ class DataAccessLayer:
         if compressed is None:
             return None
 
-        return AssetCompressor.decompress(compressed)
+        return AssetStore.decompress(compressed)
 
     @classmethod
     def get_asset_text(cls, rel_path: str, encoding: str = "utf-8") -> str | None:

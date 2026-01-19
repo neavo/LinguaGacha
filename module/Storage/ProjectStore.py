@@ -1,11 +1,3 @@
-"""工程创建器
-
-负责将源文件目录转换为 .lg 工程文件：
-1. 递归扫描源目录
-2. 压缩文件并存入数据库
-3. 解析文件内容提取翻译条目
-"""
-
 import os
 from pathlib import Path
 
@@ -13,12 +5,11 @@ from base.Base import Base
 from module.Config import Config
 from module.DataAccessLayer import DataAccessLayer
 from module.File.FileManager import FileManager
-from module.Storage.AssetCompressor import AssetCompressor
-from module.Storage.LGDatabase import LGDatabase
+from module.Storage.AssetStore import AssetStore
+from module.Storage.DataStore import DataStore
 
-
-class ProjectCreator(Base):
-    """工程创建器"""
+class ProjectStore(Base):
+    """工程存储管理器"""
 
     # 支持的文件扩展名
     SUPPORTED_EXTENSIONS = {
@@ -50,7 +41,7 @@ class ProjectCreator(Base):
         self,
         source_path: str,
         output_path: str,
-    ) -> LGDatabase:
+    ) -> DataStore:
         """创建工程
 
         Args:
@@ -58,7 +49,7 @@ class ProjectCreator(Base):
             output_path: 输出的 .lg 文件路径
 
         Returns:
-            创建的 LGDatabase 实例
+            创建的 DataStore 实例
         """
 
         # 确保输出目录存在
@@ -70,7 +61,7 @@ class ProjectCreator(Base):
 
         # 创建数据库
         project_name = Path(source_path).name
-        db = LGDatabase.create(output_path, project_name)
+        db = DataStore.create(output_path, project_name)
 
         # 收集源文件
         source_files = self._collect_source_files(source_path)
@@ -139,7 +130,7 @@ class ProjectCreator(Base):
         ext = Path(file_path).suffix.lower()
         return ext in self.SUPPORTED_EXTENSIONS
 
-    def _ingest_asset(self, db: LGDatabase, base_path: str, file_path: str) -> None:
+    def _ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
         """收纳单个资产到数据库"""
         # 计算相对路径
         if os.path.isfile(base_path):
@@ -148,14 +139,10 @@ class ProjectCreator(Base):
             relative_path = os.path.relpath(file_path, base_path)
 
         # 压缩文件
-        compressed_data, original_size = AssetCompressor.compress_file(file_path)
+        compressed_data, original_size = AssetStore.compress_file(file_path)
 
         # 存入数据库
         db.add_asset(relative_path, compressed_data, original_size)
-
-
-class ProjectLoader(Base):
-    """工程加载器"""
 
     @staticmethod
     def get_project_preview(lg_path: str) -> dict:
@@ -168,5 +155,5 @@ class ProjectLoader(Base):
             raise FileNotFoundError(f"工程文件不存在: {lg_path}")
 
         # 使用短连接模式（不调用 open()）
-        db = LGDatabase(lg_path)
+        db = DataStore(lg_path)
         return db.get_project_summary()

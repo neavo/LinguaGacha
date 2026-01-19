@@ -6,9 +6,10 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.DataAccessLayer import DataAccessLayer
+
 
 class PromptBuilder(Base):
-
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
@@ -26,27 +27,43 @@ class PromptBuilder(Base):
         cls.get_suffix_glossary.cache_clear()
 
     @classmethod
-    @lru_cache(maxsize = None)
+    @lru_cache(maxsize=None)
     def get_base(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/preset/prompt/{language.lower()}/base.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(
+            f"resource/preset/prompt/{language.lower()}/base.txt",
+            "r",
+            encoding="utf-8-sig",
+        ) as reader:
             return reader.read().strip()
 
     @classmethod
-    @lru_cache(maxsize = None)
+    @lru_cache(maxsize=None)
     def get_prefix(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/preset/prompt/{language.lower()}/prefix.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(
+            f"resource/preset/prompt/{language.lower()}/prefix.txt",
+            "r",
+            encoding="utf-8-sig",
+        ) as reader:
             return reader.read().strip()
 
     @classmethod
-    @lru_cache(maxsize = None)
+    @lru_cache(maxsize=None)
     def get_suffix(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/preset/prompt/{language.lower()}/suffix.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(
+            f"resource/preset/prompt/{language.lower()}/suffix.txt",
+            "r",
+            encoding="utf-8-sig",
+        ) as reader:
             return reader.read().strip()
 
     @classmethod
-    @lru_cache(maxsize = None)
+    @lru_cache(maxsize=None)
     def get_suffix_glossary(cls, language: BaseLanguage.Enum) -> str:
-        with open(f"resource/preset/prompt/{language.lower()}/suffix_glossary.txt", "r", encoding = "utf-8-sig") as reader:
+        with open(
+            f"resource/preset/prompt/{language.lower()}/suffix_glossary.txt",
+            "r",
+            encoding="utf-8-sig",
+        ) as reader:
             return reader.read().strip()
 
     # 获取主提示词
@@ -66,10 +83,17 @@ class PromptBuilder(Base):
             prefix = __class__.get_prefix(prompt_language)
 
             # 基本
-            if prompt_language == BaseLanguage.Enum.ZH and self.config.custom_prompt_zh_enable == True:
-                base = self.config.custom_prompt_zh_data
-            elif prompt_language == BaseLanguage.Enum.EN and self.config.custom_prompt_en_enable == True:
-                base = self.config.custom_prompt_en_data
+            # 通过 DAL 获取自定义提示词（工程模式下从 .lg 读取）
+            if (
+                prompt_language == BaseLanguage.Enum.ZH
+                and DataAccessLayer.get_custom_prompt_enable(BaseLanguage.Enum.ZH)
+            ):
+                base = DataAccessLayer.get_custom_prompt_data(BaseLanguage.Enum.ZH)
+            elif (
+                prompt_language == BaseLanguage.Enum.EN
+                and DataAccessLayer.get_custom_prompt_enable(BaseLanguage.Enum.EN)
+            ):
+                base = DataAccessLayer.get_custom_prompt_data(BaseLanguage.Enum.EN)
             else:
                 base = __class__.get_base(prompt_language)
 
@@ -93,12 +117,18 @@ class PromptBuilder(Base):
         elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "参考上文："
-                + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in precedings])
+                + "\n"
+                + "\n".join(
+                    [item.get_src().strip().replace("\n", "\\n") for item in precedings]
+                )
             )
         else:
             return (
                 "Preceding Context:"
-                + "\n" + "\n".join([item.get_src().strip().replace("\n", "\\n") for item in precedings])
+                + "\n"
+                + "\n".join(
+                    [item.get_src().strip().replace("\n", "\\n") for item in precedings]
+                )
             )
 
     # 构造术语表
@@ -140,12 +170,14 @@ class PromptBuilder(Base):
         elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "术语表 <术语原文> -> <术语译文> #<术语信息>:"
-                + "\n" + "\n".join(result)
+                + "\n"
+                + "\n".join(result)
             )
         else:
             return (
                 "Glossary <Original Term> -> <Translated Term> #<Term Information>:"
-                + "\n" + "\n".join(result)
+                + "\n"
+                + "\n".join(result)
             )
 
     # 构造术语表
@@ -206,32 +238,28 @@ class PromptBuilder(Base):
         else:
             prefix: str = "Control Characters Samples:"
 
-        return prefix + "\n" + f"{", ".join(samples)}"
+        return prefix + "\n" + f"{', '.join(samples)}"
 
     # 构建输入
     def build_inputs(self, srcs: list[str]) -> str:
         inputs = "\n".join(
-            json.dumps({str(i): line}, indent = None, ensure_ascii = False)
+            json.dumps({str(i): line}, indent=None, ensure_ascii=False)
             for i, line in enumerate(srcs)
         )
 
         if self.config.target_language == BaseLanguage.Enum.ZH:
-            return (
-                "输入："
-                "\n" + "```jsonline"
-                "\n" + f"{inputs}"
-                "\n" + "```"
-            )
+            return "输入：\n" + "```jsonline\n" + f"{inputs}\n" + "```"
         else:
-            return (
-                "Input:"
-                "\n" + "```jsonline"
-                "\n" + f"{inputs}"
-                "\n" + "```"
-            )
+            return "Input:\n" + "```jsonline\n" + f"{inputs}\n" + "```"
 
     # 生成提示词
-    def generate_prompt(self, srcs: list[str], samples: list[str], precedings: list[Item], local_flag: bool) -> tuple[list[dict], list[str]]:
+    def generate_prompt(
+        self,
+        srcs: list[str],
+        samples: list[str],
+        precedings: list[Item],
+        local_flag: bool,
+    ) -> tuple[list[dict], list[str]]:
         # 初始化
         messages: list[dict[str, str]] = []
         console_log: list[str] = []
@@ -265,10 +293,12 @@ class PromptBuilder(Base):
             content = content + "\n" + result
 
         # 构建提示词列表
-        messages.append({
-            "role": "user",
-            "content": content,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": content,
+            }
+        )
 
         return messages, console_log
 
@@ -279,10 +309,12 @@ class PromptBuilder(Base):
         console_log: list[str] = []
 
         # 构建系统提示词
-        messages.append({
-            "role": "system",
-            "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。"
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。",
+            }
+        )
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(srcs)
@@ -290,15 +322,20 @@ class PromptBuilder(Base):
             result = self.build_glossary_sakura(srcs)
             if result != "":
                 content = (
-                    "根据以下术语表（可以为空）：\n" + result
-                    + "\n" + "将下面的日文文本根据对应关系和备注翻译成中文：\n" + "\n".join(srcs)
+                    "根据以下术语表（可以为空）：\n"
+                    + result
+                    + "\n"
+                    + "将下面的日文文本根据对应关系和备注翻译成中文：\n"
+                    + "\n".join(srcs)
                 )
                 console_log.append(result)
 
         # 构建提示词列表
-        messages.append({
-            "role": "user",
-            "content": content,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": content,
+            }
+        )
 
         return messages, console_log

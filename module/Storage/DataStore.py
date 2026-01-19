@@ -1,12 +1,3 @@
-"""统一的 .lg 文件访问类
-
-.lg 文件是一个 SQLite 数据库，包含以下表：
-- meta: 工程元数据（名称、语言、创建时间等）
-- assets: 原始资产 BLOB（Zstd 压缩）
-- items: 翻译条目
-- rules: 质量规则（术语表、替换规则）
-"""
-
 import contextlib
 import json
 import sqlite3
@@ -19,8 +10,7 @@ from typing import Generator
 
 from base.Base import Base
 
-
-class LGDatabase(Base):
+class DataStore(Base):
     """统一的 .lg 文件访问类"""
 
     class RuleType(StrEnum):
@@ -352,7 +342,7 @@ class LGDatabase(Base):
         cls,
         db_path: str,
         name: str,
-    ) -> "LGDatabase":
+    ) -> "DataStore":
         """创建新的 .lg 数据库
 
         使用短连接初始化数据库结构和元数据，不保持长连接。

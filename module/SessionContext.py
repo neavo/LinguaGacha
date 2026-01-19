@@ -1,21 +1,10 @@
-"""会话级上下文
-
-管理当前工程实例的加载、运行、卸载生命周期。
-替代静态全局变量，确保项目关闭后内存完全释放、状态彻底重置。
-
-连接管理策略：
-- 平时使用短连接（操作完即关闭，WAL 文件自动清理）
-- 翻译期间由 Translator 控制长连接（翻译结束后关闭，WAL 文件消失）
-"""
-
 import os
 import threading
 from datetime import datetime
 from typing import Any
 
 from base.Base import Base
-from module.Storage.LGDatabase import LGDatabase
-
+from module.Storage.DataStore import DataStore
 
 class SessionContext(Base):
     """会话级上下文，管理当前工程实例"""
@@ -25,7 +14,7 @@ class SessionContext(Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self._db: LGDatabase | None = None
+        self._db: DataStore | None = None
         self._lg_path: str | None = None
 
     @classmethod
@@ -42,7 +31,7 @@ class SessionContext(Base):
     def load(self, lg_path: str) -> None:
         """加载工程
 
-        只记录工程路径并创建 LGDatabase 实例，不建立长连接。
+        只记录工程路径并创建 DataStore 实例，不建立长连接。
         长连接由 Translator 在翻译期间按需管理。
 
         Args:
@@ -58,7 +47,7 @@ class SessionContext(Base):
 
         # 加载新工程（只创建实例，不打开长连接）
         self._lg_path = lg_path
-        self._db = LGDatabase(lg_path)
+        self._db = DataStore(lg_path)
 
         # 更新最后访问时间（使用短连接）
         self._db.set_meta("updated_at", datetime.now().isoformat())
@@ -87,7 +76,7 @@ class SessionContext(Base):
 
     # ========== 访问器 ==========
 
-    def get_db(self) -> LGDatabase | None:
+    def get_db(self) -> DataStore | None:
         """获取当前工程的数据库访问对象"""
         return self._db
 

@@ -1,8 +1,3 @@
-"""工作台页面
-
-提供"新建工程"和"打开工程"两个入口，是用户进入翻译工作流的首页。
-"""
-
 import os
 from datetime import datetime
 from pathlib import Path
@@ -37,10 +32,8 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ProjectCreator import ProjectCreator
-from module.ProjectCreator import ProjectLoader
 from module.SessionContext import SessionContext
-
+from module.Storage.ProjectStore import ProjectStore
 
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
@@ -616,8 +609,8 @@ class WorkbenchPage(ScrollArea, Base):
             return
 
         # 检查是否包含支持的文件
-        creator = ProjectCreator()
-        source_files = creator._collect_source_files(path)
+        store = ProjectStore()
+        source_files = store._collect_source_files(path)
 
         if not source_files:
             self.emit(
@@ -716,7 +709,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 显示项目详情
         try:
-            info = ProjectLoader.get_project_preview(path)
+            info = ProjectStore.get_project_preview(path)
             self.project_info_panel = ProjectInfoPanel(self.open_project_card)
             self.project_info_panel.set_info(info)
             self.open_project_card.layout().insertWidget(
@@ -778,8 +771,8 @@ class WorkbenchPage(ScrollArea, Base):
             )
 
             # 创建工程
-            creator = ProjectCreator()
-            db = creator.create(self._selected_source_path, path)
+            store = ProjectStore()
+            db = store.create(self._selected_source_path, path)
 
             # 更新最近打开列表
             config = Config().load()

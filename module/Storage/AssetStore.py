@@ -1,12 +1,7 @@
-"""Zstd 压缩/解压工具类
-
-用于资产收纳（将源文件压缩存入数据库）和导出（从数据库解压还原文件）。
-"""
-
 import zstandard as zstd
 
-class AssetCompressor:
-    """Zstd 压缩/解压工具类"""
+class AssetStore:
+    """资产存储工具类（Zstd 压缩/解压）"""
 
     # 压缩级别（1-22，默认 3 是速度与压缩率的平衡点）
     COMPRESSION_LEVEL = 3
