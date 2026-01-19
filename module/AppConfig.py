@@ -19,6 +19,7 @@ from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
 
+
 @dataclasses.dataclass
 class AppConfig:
     """应用级别配置"""
@@ -42,9 +43,9 @@ class AppConfig:
     activate_model_id: str = ""
     models: list[dict[str, Any]] = None
 
-    # 翻译设置（App 级默认值，新建工程时使用）
-    default_source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
-    default_target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
+    # 翻译设置
+    source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
+    target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
     max_round: int = 16
 
     # 专家模式
@@ -61,11 +62,11 @@ class AppConfig:
         """获取配置文件路径"""
         data_dir = os.environ.get("LINGUAGACHA_DATA_DIR")
         app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
-        # 便携式环境使用 data_dir/app_config.json
+        # 便携式环境使用 data_dir/config.json
         if data_dir and app_dir and data_dir != app_dir:
-            return os.path.join(data_dir, "app_config.json")
-        # 默认使用 resource/app_config.json
-        return os.path.join(app_dir or ".", "resource", "app_config.json")
+            return os.path.join(data_dir, "config.json")
+        # 默认使用 resource/config.json
+        return os.path.join(app_dir or ".", "resource", "config.json")
 
     def load(self, path: str = None) -> Self:
         """加载配置"""
@@ -112,7 +113,9 @@ class AppConfig:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as writer:
-                    json.dump(dataclasses.asdict(self), writer, indent=4, ensure_ascii=False)
+                    json.dump(
+                        dataclasses.asdict(self), writer, indent=4, ensure_ascii=False
+                    )
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 
@@ -181,7 +184,9 @@ class AppConfig:
         from datetime import datetime
 
         # 移除已存在的同路径条目
-        self.recent_projects = [p for p in self.recent_projects if p.get("path") != path]
+        self.recent_projects = [
+            p for p in self.recent_projects if p.get("path") != path
+        ]
 
         # 添加到开头
         self.recent_projects.insert(
@@ -198,4 +203,6 @@ class AppConfig:
 
     def remove_recent_project(self, path: str) -> None:
         """移除最近打开的工程"""
-        self.recent_projects = [p for p in self.recent_projects if p.get("path") != path]
+        self.recent_projects = [
+            p for p in self.recent_projects if p.get("path") != path
+        ]

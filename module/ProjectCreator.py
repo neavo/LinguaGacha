@@ -10,11 +10,9 @@ import os
 from pathlib import Path
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
-from module.AppConfig import AppConfig
-from module.ProjectConfig import ProjectConfig
 from module.Storage.AssetCompressor import AssetCompressor
 from module.Storage.LGDatabase import LGDatabase
+
 
 class ProjectCreator(Base):
     """工程创建器"""
@@ -49,28 +47,16 @@ class ProjectCreator(Base):
         self,
         source_path: str,
         output_path: str,
-        source_language: BaseLanguage.Enum = None,
-        target_language: BaseLanguage.Enum = None,
     ) -> LGDatabase:
         """创建工程
 
         Args:
             source_path: 源文件或目录路径
             output_path: 输出的 .lg 文件路径
-            source_language: 原文语言（不指定则使用 App 默认值）
-            target_language: 译文语言（不指定则使用 App 默认值）
 
         Returns:
             创建的 LGDatabase 实例
         """
-        # 加载 App 配置获取默认值
-        app_config = AppConfig().load()
-
-        if source_language is None:
-            source_language = app_config.default_source_language
-        if target_language is None:
-            target_language = app_config.default_target_language
-
         # 确保输出目录存在
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -80,7 +66,7 @@ class ProjectCreator(Base):
 
         # 创建数据库
         project_name = Path(source_path).name
-        db = LGDatabase.create(output_path, project_name, source_language, target_language)
+        db = LGDatabase.create(output_path, project_name)
 
         # 收集源文件
         source_files = self._collect_source_files(source_path)
@@ -91,15 +77,9 @@ class ProjectCreator(Base):
         # 收纳资产
         for i, file_path in enumerate(source_files):
             self._ingest_asset(db, source_path, file_path)
-            self._report_progress(i + 1, total_files, f"正在收纳: {Path(file_path).name}")
-
-        # 保存项目配置
-        project_config = ProjectConfig(
-            source_language=source_language,
-            target_language=target_language,
-            activate_model_id=app_config.activate_model_id,
-        )
-        project_config.save_to_db(db)
+            self._report_progress(
+                i + 1, total_files, f"正在收纳: {Path(file_path).name}"
+            )
 
         self._report_progress(total_files, total_files, "工程创建完成")
 
@@ -175,8 +155,6 @@ class ProjectLoader(Base):
 
             return {
                 "name": meta.get("name", Path(lg_path).stem),
-                "source_language": meta.get("source_language", ""),
-                "target_language": meta.get("target_language", ""),
                 "created_at": meta.get("created_at", ""),
                 "updated_at": meta.get("updated_at", ""),
                 "file_count": file_count,

@@ -1,7 +1,6 @@
 """项目级别配置
 
 存储在 .lg 文件内部，与特定翻译项目相关：
-- 原文/译文语言
 - 翻译引擎（模型 ID）
 - 术语表、替换规则
 - 自定义提示词
@@ -10,16 +9,14 @@
 import dataclasses
 from typing import Any
 
-from base.BaseLanguage import BaseLanguage
 from module.Storage.LGDatabase import LGDatabase
+
 
 @dataclasses.dataclass
 class ProjectConfig:
     """项目级别配置"""
 
-    # 基础设置
-    source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
-    target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
+    # 繁体中文转换
     traditional_chinese_enable: bool = False
 
     # 翻译引擎（存储模型 ID，实际模型配置在 AppConfig 中）

@@ -18,7 +18,7 @@ from typing import Any
 from typing import Generator
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
+
 
 class LGDatabase(Base):
     """统一的 .lg 文件访问类"""
@@ -46,7 +46,9 @@ class LGDatabase(Base):
         """打开数据库连接（长连接，维持 WAL 模式）"""
         if self._keep_alive_conn is None:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._keep_alive_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._keep_alive_conn = sqlite3.connect(
+                self.db_path, check_same_thread=False
+            )
             self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
             self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
             self._ensure_schema()
@@ -118,7 +120,9 @@ class LGDatabase(Base):
         """)
 
         # 创建索引以加速查询
-        target_conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path)")
+        target_conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path)"
+        )
         target_conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type)")
 
         target_conn.commit()
@@ -214,10 +218,14 @@ class LGDatabase(Base):
             data_json = json.dumps(data, ensure_ascii=False)
 
             if item_id is None:
-                cursor = conn.execute("INSERT INTO items (data) VALUES (?)", (data_json,))
+                cursor = conn.execute(
+                    "INSERT INTO items (data) VALUES (?)", (data_json,)
+                )
                 item_id = cursor.lastrowid
             else:
-                conn.execute("UPDATE items SET data = ? WHERE id = ?", (data_json, item_id))
+                conn.execute(
+                    "UPDATE items SET data = ? WHERE id = ?", (data_json, item_id)
+                )
 
             conn.commit()
             return item_id
@@ -230,7 +238,9 @@ class LGDatabase(Base):
             for item in items:
                 data = {k: v for k, v in item.items() if k != "id"}
                 data_json = json.dumps(data, ensure_ascii=False)
-                cursor = conn.execute("INSERT INTO items (data) VALUES (?)", (data_json,))
+                cursor = conn.execute(
+                    "INSERT INTO items (data) VALUES (?)", (data_json,)
+                )
                 ids.append(cursor.lastrowid)
             conn.commit()
             return ids
@@ -296,8 +306,6 @@ class LGDatabase(Base):
         cls,
         db_path: str,
         name: str,
-        source_language: BaseLanguage.Enum,
-        target_language: BaseLanguage.Enum,
     ) -> "LGDatabase":
         """创建新的 .lg 数据库"""
         db = cls(db_path)
@@ -306,8 +314,6 @@ class LGDatabase(Base):
         # 设置初始元数据
         db.set_meta("schema_version", cls.SCHEMA_VERSION)
         db.set_meta("name", name)
-        db.set_meta("source_language", source_language)
-        db.set_meta("target_language", target_language)
         db.set_meta("created_at", datetime.now().isoformat())
         db.set_meta("updated_at", datetime.now().isoformat())
 
