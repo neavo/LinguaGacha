@@ -36,7 +36,6 @@ from module.Localizer.Localizer import Localizer
 from module.Storage.ProjectStore import ProjectStore
 from module.Storage.StorageContext import StorageContext
 
-
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
 
@@ -232,6 +231,7 @@ class RecentProjectItem(QFrame):
         self.remove_btn.hide()
 
 
+
 class ProjectInfoPanel(SimpleCardWidget):
     """项目详情面板"""
 
@@ -346,6 +346,37 @@ class ProjectInfoPanel(SimpleCardWidget):
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             return iso_time
+
+
+class EmptyRecentProjectState(QWidget):
+    """最近项目列表为空时的占位显示"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.v_layout = QVBoxLayout(self)
+        self.v_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.v_layout.setSpacing(16)
+        self.v_layout.setContentsMargins(0, 60, 0, 60)
+
+        self.icon_widget = IconWidget(FluentIcon.HISTORY, self)
+        self.icon_widget.setFixedSize(64, 64)
+
+        self.label = BodyLabel("暂无最近打开的工程", self)
+
+        self.v_layout.addWidget(
+            self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
+        )
+        self.v_layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self._update_style()
+
+    def _update_style(self):
+        is_dark = isDarkTheme()
+        icon_color = "rgba(255, 255, 255, 0.1)" if is_dark else "rgba(0, 0, 0, 0.1)"
+        text_color = "rgba(255, 255, 255, 0.4)" if is_dark else "rgba(0, 0, 0, 0.4)"
+
+        self.icon_widget.setStyleSheet(f"color: {icon_color};")
+        self.label.setStyleSheet(f"color: {text_color}; font-size: 14px;")
 
 
 class WorkbenchPage(ScrollArea, Base):
@@ -593,20 +624,24 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 加载最近项目
         config = Config().load()
-        if not config.recent_projects:
-            # TODO: 显示空状态或原来的特性列表？根据需求，这里先留空或显示提示
-            pass
 
+        valid_items_count = 0
         for project in config.recent_projects:
             path = project.get("path")
             name = project.get("name")
-            if not path or not os.path.exists(path):
+
+            if not path:
                 continue
 
             item = RecentProjectItem(name, path, self.recent_projects_container)
             item.clicked.connect(self.on_recent_clicked)
             item.remove_clicked.connect(self.on_remove_recent_project)
             self.recent_list_layout.addWidget(item)
+            valid_items_count += 1
+
+        # 如果没有有效项目（包含列表为空或所有文件都不存在的情况），显示空状态
+        if valid_items_count == 0:
+            self.recent_list_layout.addWidget(EmptyRecentProjectState(self))
 
     def on_remove_recent_project(self, path: str) -> None:
         """移除最近打开的项目"""
