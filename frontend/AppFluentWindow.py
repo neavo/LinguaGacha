@@ -46,6 +46,7 @@ from module.Localizer.Localizer import Localizer
 from module.Storage.StorageContext import StorageContext
 from widget.ProgressToast import ProgressToast
 
+
 class AppFluentWindow(FluentWindow, Base):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
@@ -590,7 +591,7 @@ class AppFluentWindow(FluentWindow, Base):
         self._update_navigation_status()
         self.switchTo(self.translation_page)
         # 刷新工作台最近打开列表
-        self.workbench_page._refresh_recent_list()
+        self.workbench_page.refresh_recent_list()
 
     # 工程卸载后的处理
     def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:

@@ -26,6 +26,7 @@ from qfluentwidgets import ScrollArea
 from qfluentwidgets import SimpleCardWidget
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import TitleLabel
+from qfluentwidgets import TransparentToolButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
@@ -34,6 +35,7 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.Storage.ProjectStore import ProjectStore
 from module.Storage.StorageContext import StorageContext
+
 
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
@@ -48,9 +50,9 @@ class FileDisplayCard(CardWidget):
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_layout.setSpacing(8)
 
-        self._update_style()
+        self.update_style()
 
-    def _update_style(self):
+    def update_style(self):
         """更新样式，适配亮/暗色主题"""
         border_color = (
             "rgba(255, 255, 255, 0.1)" if isDarkTheme() else "rgba(0, 0, 0, 0.1)"
@@ -168,6 +170,7 @@ class RecentProjectItem(QFrame):
     """最近打开的项目条目"""
 
     clicked = pyqtSignal(str)  # 传递项目路径
+    remove_clicked = pyqtSignal(str)  # 删除信号
 
     def __init__(self, name: str, path: str, parent=None) -> None:
         super().__init__(parent)
@@ -203,6 +206,13 @@ class RecentProjectItem(QFrame):
         layout.addLayout(text_layout)
         layout.addStretch()
 
+        # 删除按钮
+        self.remove_btn = TransparentToolButton(FluentIcon.CLOSE, self)
+        self.remove_btn.setFixedSize(32, 32)
+        self.remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.path))
+        self.remove_btn.hide()  # 默认隐藏，hover 时显示
+        layout.addWidget(self.remove_btn)
+
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.path)
@@ -215,9 +225,11 @@ class RecentProjectItem(QFrame):
         self.setStyleSheet(
             f"RecentProjectItem {{ background-color: {bg_color}; border-radius: 4px; }}"
         )
+        self.remove_btn.show()
 
     def leaveEvent(self, event) -> None:
         self.setStyleSheet("")
+        self.remove_btn.hide()
 
 
 class ProjectInfoPanel(SimpleCardWidget):
@@ -326,7 +338,7 @@ class ProjectInfoPanel(SimpleCardWidget):
 
             layout.addWidget(stats_frame)
 
-    def _format_time(self, iso_time: str) -> str:
+    def format_time(self, iso_time: str) -> str:
         """格式化 ISO 时间字符串为人性化格式"""
         try:
             dt = datetime.fromisoformat(iso_time)
@@ -346,8 +358,8 @@ class WorkbenchPage(ScrollArea, Base):
         self.enableTransparentBackground()  # 启用透明背景
 
         # 选中状态
-        self._selected_source_path: str | None = None  # 新建工程时选中的源文件/目录
-        self._selected_lg_path: str | None = None  # 打开工程时选中的 .lg 文件
+        self.selected_source_path: str | None = None  # 新建工程时选中的源文件/目录
+        self.selected_lg_path: str | None = None  # 打开工程时选中的 .lg 文件
 
         # 主容器
         self.container = QWidget()
@@ -359,14 +371,14 @@ class WorkbenchPage(ScrollArea, Base):
         main_layout.setSpacing(24)
 
         # 左侧卡片：新建工程
-        self.new_project_card = self._create_new_project_card()
+        self.new_project_card = self.create_new_project_card()
         main_layout.addWidget(self.new_project_card)
 
         # 右侧卡片：打开工程
-        self.open_project_card = self._create_open_project_card()
+        self.open_project_card = self.create_open_project_card()
         main_layout.addWidget(self.open_project_card)
 
-    def _create_header(
+    def create_header(
         self, title_text: str, subtitle_text: str, color: str
     ) -> QHBoxLayout:
         """创建带有装饰条的统一标题头"""
@@ -399,7 +411,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         return layout
 
-    def _create_new_project_card(self) -> QWidget:
+    def create_new_project_card(self) -> QWidget:
         """创建新建工程卡片"""
         card = SimpleCardWidget(self)
 
@@ -412,7 +424,7 @@ class WorkbenchPage(ScrollArea, Base):
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addLayout(
-            self._create_header(
+            self.create_header(
                 Localizer.get().workbench_new_project_title,
                 Localizer.get().workbench_new_project_subtitle,
                 "#0078d4",
@@ -425,8 +437,8 @@ class WorkbenchPage(ScrollArea, Base):
         self.new_drop_zone = DropZone(
             FluentIcon.ADD, Localizer.get().workbench_drop_zone_source_title, "", card
         )
-        self.new_drop_zone.clicked.connect(self._on_select_source)
-        self.new_drop_zone.fileDropped.connect(self._on_source_dropped)
+        self.new_drop_zone.clicked.connect(self.on_select_source)
+        self.new_drop_zone.fileDropped.connect(self.on_source_dropped)
         layout.addWidget(self.new_drop_zone)
 
         # 特性区域
@@ -491,14 +503,14 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.new_btn.setFixedSize(160, 36)  # 固定宽度
         self.new_btn.setEnabled(False)
-        self.new_btn.clicked.connect(self._on_create_project)
+        self.new_btn.clicked.connect(self.on_create_project)
         btn_layout.addWidget(self.new_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(btn_container)
 
         return card
 
-    def _create_open_project_card(self) -> QWidget:
+    def create_open_project_card(self) -> QWidget:
         """创建打开工程卡片"""
         card = SimpleCardWidget(self)
 
@@ -511,7 +523,7 @@ class WorkbenchPage(ScrollArea, Base):
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addLayout(
-            self._create_header(
+            self.create_header(
                 Localizer.get().workbench_open_project_title,
                 Localizer.get().workbench_open_project_subtitle,
                 "#5e45cd",  # 使用不同的强调色区分
@@ -524,8 +536,8 @@ class WorkbenchPage(ScrollArea, Base):
         self.open_drop_zone = DropZone(
             FluentIcon.FOLDER, Localizer.get().workbench_drop_zone_lg_title, "", card
         )
-        self.open_drop_zone.clicked.connect(self._on_select_lg)
-        self.open_drop_zone.fileDropped.connect(self._on_lg_dropped)
+        self.open_drop_zone.clicked.connect(self.on_select_lg)
+        self.open_drop_zone.fileDropped.connect(self.on_lg_dropped)
         layout.addWidget(self.open_drop_zone)
 
         self.selected_file_display = None
@@ -561,17 +573,17 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.open_btn.setFixedSize(160, 36)
         self.open_btn.setEnabled(False)
-        self.open_btn.clicked.connect(self._on_open_project)
+        self.open_btn.clicked.connect(self.on_open_project)
         btn_layout.addWidget(self.open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(btn_container)
 
         # 初始加载最近项目
-        self._refresh_recent_list()
+        self.refresh_recent_list()
 
         return card
 
-    def _refresh_recent_list(self) -> None:
+    def refresh_recent_list(self) -> None:
         """刷新最近打开列表"""
         # 清空现有列表
         while self.recent_list_layout.count():
@@ -592,18 +604,26 @@ class WorkbenchPage(ScrollArea, Base):
                 continue
 
             item = RecentProjectItem(name, path, self.recent_projects_container)
-            item.clicked.connect(self._on_recent_clicked)
+            item.clicked.connect(self.on_recent_clicked)
+            item.remove_clicked.connect(self.on_remove_recent_project)
             self.recent_list_layout.addWidget(item)
 
-    def _on_select_source(self) -> None:
+    def on_remove_recent_project(self, path: str) -> None:
+        """移除最近打开的项目"""
+        config = Config().load()
+        config.remove_recent_project(path)
+        config.save()
+        self.refresh_recent_list()
+
+    def on_select_source(self) -> None:
         """点击选择源文件/目录"""
         path = QFileDialog.getExistingDirectory(
             self, Localizer.get().workbench_select_source_dir_title
         )
         if path:
-            self._on_source_dropped(path)
+            self.on_source_dropped(path)
 
-    def _on_source_dropped(self, path: str) -> None:
+    def on_source_dropped(self, path: str) -> None:
         """源文件/目录拖入"""
         if not os.path.exists(path):
             return
@@ -621,7 +641,7 @@ class WorkbenchPage(ScrollArea, Base):
                 },
             )
             # 重置状态
-            self._selected_source_path = None
+            self.selected_source_path = None
             self.new_btn.setEnabled(False)
             self.new_drop_zone.set_icon(FluentIcon.ADD)
             self.new_drop_zone.set_text(
@@ -629,7 +649,7 @@ class WorkbenchPage(ScrollArea, Base):
             )
             return
 
-        self._selected_source_path = path
+        self.selected_source_path = path
 
         # 更新 UI
         file_name = Path(path).name
@@ -644,7 +664,7 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.new_btn.setEnabled(True)
 
-    def _on_select_lg(self) -> None:
+    def on_select_lg(self) -> None:
         """点击选择 .lg 文件"""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -653,9 +673,9 @@ class WorkbenchPage(ScrollArea, Base):
             "LinguaGacha 工程 (*.lg)",
         )
         if path:
-            self._on_lg_dropped(path)
+            self.on_lg_dropped(path)
 
-    def _on_lg_dropped(self, path: str) -> None:
+    def on_lg_dropped(self, path: str) -> None:
         """lg 文件拖入"""
         if not path.endswith(".lg"):
             self.emit(
@@ -680,10 +700,10 @@ class WorkbenchPage(ScrollArea, Base):
                 config = Config().load()
                 config.remove_recent_project(path)
                 config.save()
-                self._refresh_recent_list()
+                self.refresh_recent_list()
             return
 
-        self._selected_lg_path = path
+        self.selected_lg_path = path
         self.open_btn.setEnabled(True)
 
         # 隐藏拖拽区域，显示选中状态
@@ -701,8 +721,8 @@ class WorkbenchPage(ScrollArea, Base):
         self.selected_file_display = SelectedFileDisplay(
             file_name, True, self.open_project_card
         )
-        self.selected_file_display.clicked.connect(self._on_select_lg)
-        self.selected_file_display.fileDropped.connect(self._on_lg_dropped)
+        self.selected_file_display.clicked.connect(self.on_select_lg)
+        self.selected_file_display.fileDropped.connect(self.on_lg_dropped)
         self.open_project_card.layout().insertWidget(
             1, self.selected_file_display
         )  # 插入到 drop_zone 位置 (index 1 after header)
@@ -718,13 +738,13 @@ class WorkbenchPage(ScrollArea, Base):
         except Exception as e:
             self.error(f"读取工程预览失败: {e}")
 
-    def _on_recent_clicked(self, path: str) -> None:
+    def on_recent_clicked(self, path: str) -> None:
         """点击最近打开的项目"""
-        self._on_lg_dropped(path)
+        self.on_lg_dropped(path)
 
-    def _on_cancel_selection(self) -> None:
+    def on_cancel_selection(self) -> None:
         """取消选择（保留用于内部重置，虽然按钮已隐藏）"""
-        self._selected_lg_path = None
+        self.selected_lg_path = None
         self.open_btn.setEnabled(False)
 
         # 移除选中显示
@@ -740,13 +760,13 @@ class WorkbenchPage(ScrollArea, Base):
         self.open_drop_zone.setVisible(True)
         self.recent_projects_container.setVisible(True)
 
-    def _on_create_project(self) -> None:
+    def on_create_project(self) -> None:
         """创建工程"""
-        if not self._selected_source_path:
+        if not self.selected_source_path:
             return
 
         # 弹出另存为对话框
-        default_name = Path(self._selected_source_path).name + ".lg"
+        default_name = Path(self.selected_source_path).name + ".lg"
         path, _ = QFileDialog.getSaveFileName(
             self,
             Localizer.get().workbench_save_project_title,
@@ -772,7 +792,7 @@ class WorkbenchPage(ScrollArea, Base):
 
             # 创建工程
             store = ProjectStore()
-            db = store.create(self._selected_source_path, path)
+            db = store.create(self.selected_source_path, path)
 
             # 更新最近打开列表
             config = Config().load()
@@ -794,7 +814,7 @@ class WorkbenchPage(ScrollArea, Base):
             )
 
             # 重置选中状态
-            self._selected_source_path = None
+            self.selected_source_path = None
             self.new_btn.setEnabled(False)
             self.new_drop_zone.set_icon(FluentIcon.ADD)
             self.new_drop_zone.set_text(
@@ -813,19 +833,19 @@ class WorkbenchPage(ScrollArea, Base):
                 },
             )
 
-    def _on_open_project(self) -> None:
+    def on_open_project(self) -> None:
         """打开工程"""
-        if not self._selected_lg_path:
+        if not self.selected_lg_path:
             return
 
         try:
             # 加载工程
-            StorageContext.get().load(self._selected_lg_path)
+            StorageContext.get().load(self.selected_lg_path)
 
             # 更新最近打开列表
             config = Config().load()
-            name = Path(self._selected_lg_path).stem
-            config.add_recent_project(self._selected_lg_path, name)
+            name = Path(self.selected_lg_path).stem
+            config.add_recent_project(self.selected_lg_path, name)
             config.save()
 
             self.emit(
