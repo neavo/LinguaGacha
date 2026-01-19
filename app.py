@@ -20,6 +20,7 @@ from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
 
 
 def excepthook(
@@ -151,6 +152,14 @@ if __name__ == "__main__":
 
     # 创建版本管理器
     VersionManager.get().set_version(version)
+
+    # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
+    def cleanup_on_exit() -> None:
+        ctx = SessionContext.get()
+        if ctx.is_loaded():
+            ctx.unload()
+
+    app.aboutToQuit.connect(cleanup_on_exit)
 
     # 处理启动参数
     if not CLIManager.get().run():

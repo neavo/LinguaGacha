@@ -103,6 +103,9 @@ class Translator(Base):
                     # 保存翻译进度到 .lg 文件
                     self._save_translation_state()
 
+                    # 关闭长连接（WAL 文件将被清理）
+                    self._close_db_connection()
+
                     # 日志
                     self.print("")
                     self.info(Localizer.get().engine_task_stop)
@@ -166,6 +169,9 @@ class Translator(Base):
             return None
 
         db = ctx.get_db()
+
+        # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
+        db.open()
 
         # 从新模型系统获取激活模型
         self.model = self.config.get_active_model()
@@ -336,9 +342,10 @@ class Translator(Base):
 
                         future = executor.submit(task.start)
                         future.add_done_callback(task_limiter.release)
+                        # 传递 task 对象以便回调中进行即时写入
                         future.add_done_callback(
-                            lambda future: self.task_done_callback(
-                                future, pid, progress
+                            lambda future, t=task: self.task_done_callback(
+                                future, pid, progress, t
                             )
                         )
                         futures.append(future)
@@ -395,6 +402,9 @@ class Translator(Base):
         # 保存翻译结果到 .lg 文件
         self._save_translation_state(final_status)
 
+        # 关闭长连接（WAL 文件将被清理）
+        self._close_db_connection()
+
         # 检查结果并写入文件
         self.check_and_wirte_result(self._items_cache)
 
@@ -420,6 +430,28 @@ class Translator(Base):
         if self._items_cache is None:
             return []
         return [Item.from_dict(item.to_dict()) for item in self._items_cache]
+
+    def _close_db_connection(self) -> None:
+        """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
+        ctx = SessionContext.get()
+        if ctx.is_loaded():
+            db = ctx.get_db()
+            if db is not None:
+                db.close()
+
+    def _save_items_batch(self, items: list[Item]) -> None:
+        """批量保存条目到数据库（即时写入，用于断点续译）"""
+        ctx = SessionContext.get()
+        if not ctx.is_loaded():
+            return
+
+        db = ctx.get_db()
+        if db is None:
+            return
+
+        # 逐条更新（只更新已翻译的条目，不是全量替换）
+        for item in items:
+            db.update_item(item.to_dict())
 
     def _save_translation_state(
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
@@ -639,7 +671,11 @@ class Translator(Base):
 
     # 翻译任务完成时
     def task_done_callback(
-        self, future: concurrent.futures.Future, pid: TaskID, progress: ProgressBar
+        self,
+        future: concurrent.futures.Future,
+        pid: TaskID,
+        progress: ProgressBar,
+        task: "TranslatorTask",
     ) -> None:
         try:
             # 获取结果
@@ -648,6 +684,15 @@ class Translator(Base):
             # 结果为空则跳过后续的更新步骤
             if not isinstance(result, dict) or len(result) == 0:
                 return
+
+            # 即时写入已翻译的条目到数据库（支持断点续译）
+            translated_items = [
+                item
+                for item in task.items
+                if item.get_status() == Base.ProjectStatus.PROCESSED
+            ]
+            if translated_items:
+                self._save_items_batch(translated_items)
 
             # 记录数据
             with self.data_lock:

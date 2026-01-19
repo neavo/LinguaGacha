@@ -1,3 +1,20 @@
+"""姓名字段提取页面
+
+TODO: 此页面的第一步（翻译）目前存在问题，无法正常工作
+-------------------------------------------------
+原因：
+1. step_01_clicked() 设计为使用传统模式（ItemStore）存储翻译条目
+2. 调用 DataAccessLayer.set_items() 后发送 TRANSLATION_RUN 事件启动翻译
+3. 但 Translator.start() 强制要求工程模式（SessionContext.is_loaded() == True）
+4. 因此翻译器会拒绝执行，提示"请先加载工程文件"
+
+注意：step_02_clicked()（生成术语表）功能正常，不受此问题影响
+
+修复方案：
+- 改造为工程模式兼容，要求用户先创建/加载工程
+- 或重新设计此功能的工作流程
+"""
+
 import time
 
 from PyQt5.QtCore import Qt

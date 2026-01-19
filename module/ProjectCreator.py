@@ -161,15 +161,12 @@ class ProjectLoader(Base):
     def get_project_preview(lg_path: str) -> dict:
         """获取工程预览信息（不完全加载）
 
+        使用短连接模式，操作完成后自动关闭，WAL 文件会被清理。
         用于在工作台中显示项目详情。
         """
         if not os.path.exists(lg_path):
             raise FileNotFoundError(f"工程文件不存在: {lg_path}")
 
+        # 使用短连接模式（不调用 open()）
         db = LGDatabase(lg_path)
-        db.open()
-
-        try:
-            return db.get_project_summary()
-        finally:
-            db.close()
+        return db.get_project_summary()

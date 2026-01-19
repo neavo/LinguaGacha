@@ -51,6 +51,7 @@ class LGDatabase(Base):
             )
             self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
             self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
+            self._keep_alive_conn.row_factory = sqlite3.Row
             self._ensure_schema()
 
     def close(self) -> None:
@@ -65,7 +66,18 @@ class LGDatabase(Base):
 
     @contextlib.contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """获取数据库连接上下文管理器"""
+        """获取数据库连接上下文管理器
+
+        如果长连接已打开，则复用长连接（不会关闭）；
+        否则创建临时短连接（用完即关闭，触发 WAL checkpoint）。
+        """
+        # 长连接模式：复用已打开的连接，加锁保证多线程安全
+        if self._keep_alive_conn is not None:
+            with self._lock:
+                yield self._keep_alive_conn
+            return
+
+        # 短连接模式：创建临时连接，操作完成后关闭
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
         try:
@@ -341,28 +353,16 @@ class LGDatabase(Base):
         db_path: str,
         name: str,
     ) -> "LGDatabase":
-        """创建新的 .lg 数据库"""
-        db = cls(db_path)
-        db.open()
+        """创建新的 .lg 数据库
 
-        # 设置初始元数据
+        使用短连接初始化数据库结构和元数据，不保持长连接。
+        """
+        db = cls(db_path)
+
+        # 使用短连接设置初始元数据（操作完成后自动关闭，WAL 文件消失）
         db.set_meta("schema_version", cls.SCHEMA_VERSION)
         db.set_meta("name", name)
         db.set_meta("created_at", datetime.now().isoformat())
-        db.set_meta("updated_at", datetime.now().isoformat())
-
-        return db
-
-    @classmethod
-    def load(cls, db_path: str) -> "LGDatabase":
-        """加载已有的 .lg 数据库"""
-        if not Path(db_path).exists():
-            raise FileNotFoundError(f"工程文件不存在: {db_path}")
-
-        db = cls(db_path)
-        db.open()
-
-        # 更新最后访问时间
         db.set_meta("updated_at", datetime.now().isoformat())
 
         return db

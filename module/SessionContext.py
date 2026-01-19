@@ -2,9 +2,15 @@
 
 管理当前工程实例的加载、运行、卸载生命周期。
 替代静态全局变量，确保项目关闭后内存完全释放、状态彻底重置。
+
+连接管理策略：
+- 平时使用短连接（操作完即关闭，WAL 文件自动清理）
+- 翻译期间由 Translator 控制长连接（翻译结束后关闭，WAL 文件消失）
 """
 
+import os
 import threading
+from datetime import datetime
 from typing import Any
 
 from base.Base import Base
@@ -36,6 +42,9 @@ class SessionContext(Base):
     def load(self, lg_path: str) -> None:
         """加载工程
 
+        只记录工程路径并创建 LGDatabase 实例，不建立长连接。
+        长连接由 Translator 在翻译期间按需管理。
+
         Args:
             lg_path: .lg 文件的绝对路径
         """
@@ -43,9 +52,16 @@ class SessionContext(Base):
         if self.is_loaded():
             self.unload()
 
-        # 加载新工程
+        # 检查文件是否存在
+        if not os.path.exists(lg_path):
+            raise FileNotFoundError(f"工程文件不存在: {lg_path}")
+
+        # 加载新工程（只创建实例，不打开长连接）
         self._lg_path = lg_path
-        self._db = LGDatabase.load(lg_path)
+        self._db = LGDatabase(lg_path)
+
+        # 更新最后访问时间（使用短连接）
+        self._db.set_meta("updated_at", datetime.now().isoformat())
 
         # 发送工程加载事件
         self.emit(Base.Event.PROJECT_LOADED, {"path": lg_path})
@@ -53,7 +69,7 @@ class SessionContext(Base):
     def unload(self) -> None:
         """卸载当前工程"""
         if self._db is not None:
-            # 关闭数据库
+            # 确保关闭任何可能存在的长连接
             self._db.close()
 
         # 清空状态
@@ -67,7 +83,7 @@ class SessionContext(Base):
 
     def is_loaded(self) -> bool:
         """检查是否已加载工程"""
-        return self._db is not None and self._db.is_open()
+        return self._db is not None and self._lg_path is not None
 
     # ========== 访问器 ==========
 

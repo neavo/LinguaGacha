@@ -1,16 +1,14 @@
 import re
 
-from base.LogManager import LogManager
 
-class EscapeFixer():
-
+class EscapeFixer:
     # \f[21]\c[4]\E仲良くなるためのヒント
     # \f[21]\c[4]\\E增进亲密度的小提示
 
     # 「\\n[1]様、おはようございます」
     # 「\n[1] 殿下，早安」
 
-    RE_ESCAPE_PATTERN: re.Pattern = re.compile(r"\\+", flags = re.IGNORECASE)
+    RE_ESCAPE_PATTERN: re.Pattern = re.compile(r"\\+", flags=re.IGNORECASE)
 
     def __init__(self) -> None:
         super().__init__()

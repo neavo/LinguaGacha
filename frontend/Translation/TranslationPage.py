@@ -26,9 +26,9 @@ from frontend.Translation.TimerMessageBox import TimerMessageBox
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
+
 
 class TranslationPage(QWidget, Base):
     # Token 显示模式

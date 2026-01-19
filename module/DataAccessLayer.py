@@ -1,23 +1,21 @@
 """统一数据访问层
 
-屏蔽工程模式（.lg 文件）与传统模式（input/output 目录）的差异。
+屏蔽工程模式（.lg 文件）的数据访问细节。
 业务模块无需关心数据来源，通过 DataAccessLayer 统一访问。
+
+注意：传统模式（ItemStore/ProjectStore）已被移除，当前仅支持工程模式。
 """
 
 from model.Item import Item
 from module.Config import Config
 from module.SessionContext import SessionContext
 from module.Storage.AssetCompressor import AssetCompressor
-from module.Storage.ItemStore import ItemStore
 from module.Storage.LGDatabase import LGDatabase
-from module.Storage.ProjectStore import ProjectStore
 
 
 class DataAccessLayer:
     """统一数据访问层"""
 
-    _item_store_cache: ItemStore | None = None
-    _project_store_cache: ProjectStore | None = None
     _prepare_mode_flag: bool = False
 
     @classmethod
@@ -48,111 +46,51 @@ class DataAccessLayer:
         """获取当前工程的数据库（仅工程模式可用）"""
         return SessionContext.get().get_db()
 
-    @classmethod
-    def get_item_store(cls, config: Config = None) -> ItemStore | None:
-        """获取条目存储
-
-        工程模式下返回 None（使用 get_db 直接操作）
-        传统模式下返回 ItemStore
-        """
-        if cls.is_project_mode():
-            return None
-
-        if config is None:
-            config = Config().load()
-
-        return ItemStore.get(config.output_folder)
-
-    @classmethod
-    def get_project_store(cls, config: Config = None) -> ProjectStore | None:
-        """获取项目存储
-
-        工程模式下返回 None
-        传统模式下返回 ProjectStore
-        """
-        if cls.is_project_mode():
-            return None
-
-        if config is None:
-            config = Config().load()
-
-        return ProjectStore.get(config.output_folder)
-
     # ========== 统一的翻译条目操作 ==========
 
     @classmethod
     def get_all_items(cls, config: Config = None) -> list[Item]:
         """获取所有翻译条目"""
-        if cls.is_project_mode():
-            db = cls.get_db()
-            if db is None:
-                return []
-            return [Item.from_dict(d) for d in db.get_all_items()]
-
-        store = cls.get_item_store(config)
-        if store is None:
+        db = cls.get_db()
+        if db is None:
             return []
-        return store.get_all_items()
+        return [Item.from_dict(d) for d in db.get_all_items()]
 
     @classmethod
     def set_items(cls, items: list[Item], config: Config = None) -> list[Item]:
         """保存所有翻译条目"""
-        if cls.is_project_mode():
-            db = cls.get_db()
-            if db is None:
-                return items
-            ids = db.set_items([item.to_dict() for item in items])
-            for i, item in enumerate(items):
-                item.set_id(ids[i])
+        db = cls.get_db()
+        if db is None:
             return items
-
-        store = cls.get_item_store(config)
-        if store is None:
-            return items
-        return store.set_items(items)
+        ids = db.set_items([item.to_dict() for item in items])
+        for i, item in enumerate(items):
+            item.set_id(ids[i])
+        return items
 
     @classmethod
     def set_item(cls, item: Item, config: Config = None) -> Item:
         """保存单个翻译条目"""
-        if cls.is_project_mode():
-            db = cls.get_db()
-            if db is None:
-                return item
-            item_id = db.set_item(item.to_dict())
-            item.set_id(item_id)
+        db = cls.get_db()
+        if db is None:
             return item
-
-        store = cls.get_item_store(config)
-        if store is None:
-            return item
-        return store.set_item(item)
+        item_id = db.set_item(item.to_dict())
+        item.set_id(item_id)
+        return item
 
     @classmethod
     def get_item_count(cls, config: Config = None) -> int:
         """获取条目总数"""
-        if cls.is_project_mode():
-            db = cls.get_db()
-            if db is None:
-                return 0
-            return db.get_item_count()
-
-        store = cls.get_item_store(config)
-        if store is None:
+        db = cls.get_db()
+        if db is None:
             return 0
-        return store.get_item_count()
+        return db.get_item_count()
 
     @classmethod
     def clear_items(cls, config: Config = None) -> None:
         """清空所有条目"""
-        if cls.is_project_mode():
-            db = cls.get_db()
-            if db is not None:
-                db.clear_items()
-            return
-
-        store = cls.get_item_store(config)
-        if store is not None:
-            store.clear()
+        db = cls.get_db()
+        if db is not None:
+            db.clear_items()
 
     # ========== 统一的规则操作 ==========
 
