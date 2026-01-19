@@ -30,6 +30,12 @@ override-dependencies = [
     "pyqt5-qt5==5.15.2; sys_platform == 'win32'",
 ]
 
+[tool.ruff]
+force-exclude = true        # 强制应用排除规则
+extend-exclude = [
+    "module/Localizer/",
+]
+
 [tool.ruff.format]
 quote-style = "double"
 
