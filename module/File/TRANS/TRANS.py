@@ -1,18 +1,18 @@
 import itertools
 import json
 import os
-import shutil
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.File.TRANS.KAG import KAG
 from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
+from module.SessionContext import SessionContext
+from module.Storage.AssetStore import AssetStore
 
 
 class TRANS(Base):
@@ -32,17 +32,6 @@ class TRANS(Base):
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 仅在非工程模式且非准备模式下复制文件（用于后续写入）
-            if (
-                not DataAccessLayer.is_project_mode()
-                and not DataAccessLayer.is_prepare_mode()
-            ):
-                os.makedirs(
-                    os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"),
-                    exist_ok=True,
-                )
-                shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
 
             # 数据处理
             with open(abs_path, "r", encoding="utf-8-sig") as reader:
@@ -138,19 +127,15 @@ class TRANS(Base):
             abs_path = f"{self.output_path}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
-            # 获取原始文件内容（工程模式从 assets 获取，传统模式从 cache 获取）
-            if DataAccessLayer.is_project_mode():
-                original_content = DataAccessLayer.get_asset_text(rel_path)
-                if original_content is None:
-                    continue
-                json_data = json.loads(original_content)
-            else:
-                with open(
-                    f"{self.output_path}/cache/temp/{rel_path}",
-                    "r",
-                    encoding="utf-8-sig",
-                ) as reader:
-                    json_data = json.load(reader)
+            # 从工程 assets 获取原始文件内容
+            db = SessionContext.get().get_db()
+            if db is None:
+                continue
+            compressed = db.get_asset(rel_path)
+            if compressed is None:
+                continue
+            original_content = AssetStore.decompress(compressed).decode("utf-8-sig")
+            json_data = json.loads(original_content)
 
             with open(abs_path, "w", encoding="utf-8") as writer:
                 # 有效性校验

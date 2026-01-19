@@ -46,7 +46,6 @@ from module.Localizer.Localizer import Localizer
 from module.SessionContext import SessionContext
 from widget.ProgressToast import ProgressToast
 
-
 class AppFluentWindow(FluentWindow, Base):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800

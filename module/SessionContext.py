@@ -1,10 +1,10 @@
 import os
 import threading
 from datetime import datetime
-from typing import Any
 
 from base.Base import Base
 from module.Storage.DataStore import DataStore
+
 
 class SessionContext(Base):
     """会话级上下文，管理当前工程实例"""
@@ -84,41 +84,26 @@ class SessionContext(Base):
         """获取当前工程的 .lg 文件路径"""
         return self._lg_path
 
-    def get_project_name(self) -> str:
-        """获取当前工程名称"""
-        if self._db is None:
-            return ""
-        return self._db.get_meta("name", "")
-
-    # ========== 工程信息 ==========
-
-    def get_project_info(self) -> dict[str, Any]:
-        """获取当前工程的概要信息"""
-        if self._db is None:
-            return {}
-
-        return self._db.get_project_summary()
-
-    # ========== 翻译状态管理 ==========
-
-    def get_project_status(self) -> Base.ProjectStatus:
-        """获取当前工程的翻译状态"""
+    def get_project_status(self) -> "Base.ProjectStatus":
+        """获取当前工程的项目状态"""
         if self._db is None:
             return Base.ProjectStatus.NONE
-        return self._db.get_meta("project_status", Base.ProjectStatus.NONE)
+        status_str = self._db.get_meta("project_status", Base.ProjectStatus.NONE)
+        return Base.ProjectStatus(status_str)
 
-    def set_project_status(self, status: Base.ProjectStatus) -> None:
-        """设置当前工程的翻译状态"""
+    def set_project_status(self, status: "Base.ProjectStatus") -> None:
+        """设置当前工程的项目状态"""
         if self._db is not None:
-            self._db.set_meta("project_status", status)
+            self._db.set_meta("project_status", status.value)
 
-    def get_translation_extras(self) -> dict[str, Any]:
-        """获取翻译进度额外数据（用于断点续译）"""
+    def get_translation_extras(self) -> dict:
+        """获取翻译进度额外数据"""
         if self._db is None:
             return {}
-        return self._db.get_meta("translation_extras", {})
+        extras = self._db.get_meta("translation_extras", {})
+        return extras if isinstance(extras, dict) else {}
 
-    def set_translation_extras(self, extras: dict[str, Any]) -> None:
+    def set_translation_extras(self, extras: dict) -> None:
         """设置翻译进度额外数据"""
         if self._db is not None:
             self._db.set_meta("translation_extras", extras)

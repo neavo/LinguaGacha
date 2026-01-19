@@ -23,8 +23,9 @@ from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
+from module.Storage.DataStore import DataStore
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
@@ -54,15 +55,41 @@ class TextPreservePage(QWidget, Base):
         # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
 
+    # 获取文本保护数据
+    def _get_text_preserve_data(self) -> list[dict[str, str]]:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return []
+        return db.get_rules(DataStore.RuleType.TEXT_PRESERVE)
+
+    # 保存文本保护数据
+    def _set_text_preserve_data(self, data: list[dict[str, str]]) -> None:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
+
+    # 获取启用状态
+    def _get_text_preserve_enable(self) -> bool:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            return db.get_meta("text_preserve_enable", True)
+        return True
+
+    # 设置启用状态
+    def _set_text_preserve_enable(self, enable: bool) -> None:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            db.set_meta("text_preserve_enable", enable)
+
     # 工程加载后刷新数据
     def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
         self.table_manager.reset()
-        self.table_manager.set_data(DataAccessLayer.get_text_preserve_data())
+        self.table_manager.set_data(self._get_text_preserve_data())
         self.table_manager.sync()
         # 刷新开关状态
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(
-                DataAccessLayer.get_text_preserve_enable()
+                self._get_text_preserve_enable()
             )
 
     # 头部
@@ -70,14 +97,10 @@ class TextPreservePage(QWidget, Base):
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                DataAccessLayer.get_text_preserve_enable()
-            )
+            widget.get_switch_button().setChecked(self._get_text_preserve_enable())
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            DataAccessLayer.set_text_preserve_enable(
-                widget.get_switch_button().isChecked()
-            )
+            self._set_text_preserve_enable(widget.get_switch_button().isChecked())
 
         self.switch_card = SwitchButtonCard(
             getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
@@ -126,8 +149,8 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_text_preserve_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -173,7 +196,7 @@ class TextPreservePage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type=TableManager.Type.TEXT_PRESERVE,
-            data=DataAccessLayer.get_text_preserve_data(),
+            data=self._get_text_preserve_data(),
             table=self.table,
         )
         self.table_manager.sync()
@@ -251,8 +274,8 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_text_preserve_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -359,8 +382,8 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.set_data(Config().text_preserve_data or [])
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_text_preserve_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -381,8 +404,8 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_text_preserve_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(

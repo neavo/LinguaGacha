@@ -15,9 +15,10 @@ from qfluentwidgets import RoundMenu
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.SessionContext import SessionContext
+from module.Storage.DataStore import DataStore
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
@@ -41,10 +42,10 @@ class CustomPromptPage(QWidget, Base):
         config = Config().load()
 
         # 初始化默认提示词（如果尚未设置）
-        current_data = DataAccessLayer.get_custom_prompt_data(language)
+        current_data = self._get_custom_prompt_data()
         if not current_data:
             default_prompt = PromptBuilder(config).get_base(language)
-            DataAccessLayer.set_custom_prompt_data(language, default_prompt)
+            self._set_custom_prompt_data(default_prompt)
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -59,14 +60,62 @@ class CustomPromptPage(QWidget, Base):
         # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
 
+    # 获取自定义提示词数据
+    def _get_custom_prompt_data(self) -> str:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return ""
+        rule_type = (
+            DataStore.RuleType.CUSTOM_PROMPT_ZH
+            if self.language == BaseLanguage.Enum.ZH
+            else DataStore.RuleType.CUSTOM_PROMPT_EN
+        )
+        return db.get_rule_text(rule_type)
+
+    # 保存自定义提示词数据
+    def _set_custom_prompt_data(self, data: str) -> None:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return
+        rule_type = (
+            DataStore.RuleType.CUSTOM_PROMPT_ZH
+            if self.language == BaseLanguage.Enum.ZH
+            else DataStore.RuleType.CUSTOM_PROMPT_EN
+        )
+        db.set_rule_text(rule_type, data)
+
+    # 获取启用状态
+    def _get_custom_prompt_enable(self) -> bool:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return False
+        meta_key = (
+            "custom_prompt_zh_enable"
+            if self.language == BaseLanguage.Enum.ZH
+            else "custom_prompt_en_enable"
+        )
+        return db.get_meta(meta_key, False)
+
+    # 设置启用状态
+    def _set_custom_prompt_enable(self, enable: bool) -> None:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return
+        meta_key = (
+            "custom_prompt_zh_enable"
+            if self.language == BaseLanguage.Enum.ZH
+            else "custom_prompt_en_enable"
+        )
+        db.set_meta(meta_key, enable)
+
     # 工程加载后刷新数据
     def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
-        prompt_data = DataAccessLayer.get_custom_prompt_data(self.language)
+        prompt_data = self._get_custom_prompt_data()
         self.main_text.setPlainText(prompt_data)
         # 刷新开关状态
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(
-                DataAccessLayer.get_custom_prompt_enable(self.language)
+                self._get_custom_prompt_enable()
             )
 
     # 头部
@@ -80,14 +129,10 @@ class CustomPromptPage(QWidget, Base):
         )
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                DataAccessLayer.get_custom_prompt_enable(self.language),
-            )
+            widget.get_switch_button().setChecked(self._get_custom_prompt_enable())
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            DataAccessLayer.set_custom_prompt_enable(
-                self.language, widget.get_switch_button().isChecked()
-            )
+            self._set_custom_prompt_enable(widget.get_switch_button().isChecked())
 
         self.switch_card = SwitchButtonCard(
             title=getattr(Localizer.get(), f"{base_key}_page_head"),
@@ -108,9 +153,7 @@ class CustomPromptPage(QWidget, Base):
         parent.addWidget(self.prefix_body)
 
         self.main_text = CustomTextEdit(self)
-        self.main_text.setPlainText(
-            DataAccessLayer.get_custom_prompt_data(self.language)
-        )
+        self.main_text.setPlainText(self._get_custom_prompt_data())
         parent.addWidget(self.main_text)
 
         self.suffix_body = EmptyCard(
@@ -135,10 +178,8 @@ class CustomPromptPage(QWidget, Base):
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
-            # 通过 DAL 保存（工程模式写入 .lg，否则写入 config.json）
-            DataAccessLayer.set_custom_prompt_data(
-                self.language, self.main_text.toPlainText().strip()
-            )
+            # 保存数据
+            self._set_custom_prompt_data(self.main_text.toPlainText().strip())
 
             # 弹出提示
             self.emit(
@@ -192,7 +233,7 @@ class CustomPromptPage(QWidget, Base):
             # 重置为默认提示词
             config = Config().load()
             default_prompt = PromptBuilder(config).get_base(self.language)
-            DataAccessLayer.set_custom_prompt_data(self.language, default_prompt)
+            self._set_custom_prompt_data(default_prompt)
 
             # 更新 UI
             self.main_text.setPlainText(default_prompt)
@@ -216,8 +257,8 @@ class CustomPromptPage(QWidget, Base):
             except Exception:
                 pass
 
-            # 通过 DAL 保存
-            DataAccessLayer.set_custom_prompt_data(self.language, prompt)
+            # 保存数据
+            self._set_custom_prompt_data(prompt)
 
             # 更新 UI
             self.main_text.setPlainText(prompt)

@@ -33,9 +33,9 @@ from base.Base import Base
 from model.Item import Item
 from model.Project import Project
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
@@ -191,7 +191,18 @@ class ReTranslationPage(QWidget, Base):
                 }
             )
 
-            DataAccessLayer.set_items(items, config)
+            # 写入工程数据库
+            db = SessionContext.get().get_db()
+            if db is None:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().alert_no_data,
+                    },
+                )
+                return None
+            db.set_items([item.to_dict() for item in items])
 
             window.switchTo(window.translation_page)
             self.emit(

@@ -24,8 +24,9 @@ from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
+from module.Storage.DataStore import DataStore
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
@@ -57,26 +58,50 @@ class GlossaryPage(QWidget, Base):
         # 工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self.glossary_refresh)
 
+    # 获取术语表数据
+    def _get_glossary_data(self) -> list[dict[str, str]]:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return []
+        return db.get_rules(DataStore.RuleType.GLOSSARY)
+
+    # 保存术语表数据
+    def _set_glossary_data(self, data: list[dict[str, str]]) -> None:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            db.set_rules(DataStore.RuleType.GLOSSARY, data)
+
+    # 获取术语表启用状态
+    def _get_glossary_enable(self) -> bool:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            return db.get_meta("glossary_enable", True)
+        return True
+
+    # 设置术语表启用状态
+    def _set_glossary_enable(self, enable: bool) -> None:
+        db = SessionContext.get().get_db()
+        if db is not None:
+            db.set_meta("glossary_enable", enable)
+
     # 术语表刷新事件
     def glossary_refresh(self, event: Base.Event, data: dict) -> None:
         self.table_manager.reset()
-        self.table_manager.set_data(DataAccessLayer.get_glossary_data())
+        self.table_manager.set_data(self._get_glossary_data())
         self.table_manager.sync()
         # 刷新开关状态
         if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(
-                DataAccessLayer.get_glossary_enable()
-            )
+            self.switch_card.get_switch_button().setChecked(self._get_glossary_enable())
 
     # 头部
     def add_widget_head(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(DataAccessLayer.get_glossary_enable())
+            widget.get_switch_button().setChecked(self._get_glossary_enable())
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            DataAccessLayer.set_glossary_enable(widget.get_switch_button().isChecked())
+            self._set_glossary_enable(widget.get_switch_button().isChecked())
 
         self.switch_card = SwitchButtonCard(
             getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
@@ -125,8 +150,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -179,7 +204,7 @@ class GlossaryPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type=TableManager.Type.GLOSSARY,
-            data=DataAccessLayer.get_glossary_data(),
+            data=self._get_glossary_data(),
             table=self.table,
         )
         self.table_manager.sync()
@@ -261,8 +286,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -369,8 +394,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.set_data(Config().glossary_data or [])
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(
@@ -391,8 +416,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
-            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
+            # 保存数据
+            self._set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(

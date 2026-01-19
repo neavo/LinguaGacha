@@ -26,7 +26,6 @@ from module.PromptBuilder import PromptBuilder
 from module.SessionContext import SessionContext
 from module.TextProcessor import TextProcessor
 
-
 # 翻译器
 class Translator(Base):
     def __init__(self) -> None:

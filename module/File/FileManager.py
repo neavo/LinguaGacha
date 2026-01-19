@@ -19,8 +19,8 @@ from module.File.WOLFXLSX import WOLFXLSX
 from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
 
-class FileManager(Base):
 
+class FileManager(Base):
     def __init__(self, config: Config) -> None:
         super().__init__()
 
@@ -29,9 +29,12 @@ class FileManager(Base):
 
     # 读
     def read_from_path(self) -> tuple[Project, list[Item]]:
-        project: Project = Project.from_dict({
-            "id": f"{datetime.now().strftime("%Y%m%d_%H%M%S")}_{random.randint(100000, 999999)}",
-        })
+        """读取文件并解析翻译条目"""
+        project: Project = Project.from_dict(
+            {
+                "id": f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100000, 999999)}",
+            }
+        )
 
         items: list[Item] = []
         try:
@@ -41,19 +44,65 @@ class FileManager(Base):
                 paths = [input_folder]
             elif os.path.isdir(input_folder):
                 for root, _, files in os.walk(input_folder):
-                    paths.extend([f"{root}/{file}".replace("\\", "/") for file in files])
+                    paths.extend(
+                        [f"{root}/{file}".replace("\\", "/") for file in files]
+                    )
 
-            items.extend(MD(self.config).read_from_path([path for path in paths if path.lower().endswith(".md")]))
-            items.extend(TXT(self.config).read_from_path([path for path in paths if path.lower().endswith(".txt")]))
-            items.extend(ASS(self.config).read_from_path([path for path in paths if path.lower().endswith(".ass")]))
-            items.extend(SRT(self.config).read_from_path([path for path in paths if path.lower().endswith(".srt")]))
-            items.extend(EPUB(self.config).read_from_path([path for path in paths if path.lower().endswith(".epub")]))
-            items.extend(XLSX(self.config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
-            items.extend(WOLFXLSX(self.config).read_from_path([path for path in paths if path.lower().endswith(".xlsx")]))
-            items.extend(RENPY(self.config).read_from_path([path for path in paths if path.lower().endswith(".rpy")]))
-            items.extend(TRANS(self.config).read_from_path([path for path in paths if path.lower().endswith(".trans")]))
-            items.extend(KVJSON(self.config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
-            items.extend(MESSAGEJSON(self.config).read_from_path([path for path in paths if path.lower().endswith(".json")]))
+            items.extend(
+                MD(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".md")]
+                )
+            )
+            items.extend(
+                TXT(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".txt")]
+                )
+            )
+            items.extend(
+                ASS(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".ass")]
+                )
+            )
+            items.extend(
+                SRT(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".srt")]
+                )
+            )
+            items.extend(
+                EPUB(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".epub")]
+                )
+            )
+            items.extend(
+                XLSX(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".xlsx")]
+                )
+            )
+            items.extend(
+                WOLFXLSX(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".xlsx")]
+                )
+            )
+            items.extend(
+                RENPY(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".rpy")]
+                )
+            )
+            items.extend(
+                TRANS(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".trans")]
+                )
+            )
+            items.extend(
+                KVJSON(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".json")]
+                )
+            )
+            items.extend(
+                MESSAGEJSON(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".json")]
+                )
+            )
         except Exception as e:
             self.error(f"{Localizer.get().log_read_file_fail}", e)
 

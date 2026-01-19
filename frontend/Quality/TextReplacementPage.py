@@ -23,8 +23,9 @@ from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
+from module.Storage.DataStore import DataStore
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
@@ -67,29 +68,41 @@ class TextReplacementPage(QWidget, Base):
     # 数据访问辅助方法
     def _get_data(self) -> list[dict[str, str]]:
         """根据 base_key 获取数据"""
+        db = SessionContext.get().get_db()
+        if db is None:
+            return []
         if self.base_key == "pre_translation_replacement":
-            return DataAccessLayer.get_pre_replacement_data()
-        return DataAccessLayer.get_post_replacement_data()
+            return db.get_rules(DataStore.RuleType.PRE_REPLACEMENT)
+        return db.get_rules(DataStore.RuleType.POST_REPLACEMENT)
 
     def _set_data(self, data: list[dict[str, str]]) -> None:
         """根据 base_key 保存数据"""
+        db = SessionContext.get().get_db()
+        if db is None:
+            return
         if self.base_key == "pre_translation_replacement":
-            DataAccessLayer.set_pre_replacement_data(data)
+            db.set_rules(DataStore.RuleType.PRE_REPLACEMENT, data)
         else:
-            DataAccessLayer.set_post_replacement_data(data)
+            db.set_rules(DataStore.RuleType.POST_REPLACEMENT, data)
 
     def _get_enable(self) -> bool:
         """根据 base_key 获取启用状态"""
+        db = SessionContext.get().get_db()
+        if db is None:
+            return True
         if self.base_key == "pre_translation_replacement":
-            return DataAccessLayer.get_pre_replacement_enable()
-        return DataAccessLayer.get_post_replacement_enable()
+            return db.get_meta("pre_translation_replacement_enable", True)
+        return db.get_meta("post_translation_replacement_enable", True)
 
     def _set_enable(self, enable: bool) -> None:
         """根据 base_key 设置启用状态"""
+        db = SessionContext.get().get_db()
+        if db is None:
+            return
         if self.base_key == "pre_translation_replacement":
-            DataAccessLayer.set_pre_replacement_enable(enable)
+            db.set_meta("pre_translation_replacement_enable", enable)
         else:
-            DataAccessLayer.set_post_replacement_enable(enable)
+            db.set_meta("post_translation_replacement_enable", enable)
 
     def _get_default_data(self) -> list[dict[str, str]]:
         """获取默认数据（用于重置）"""
@@ -155,7 +168,7 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
+            # 保存数据
             self._set_data(self.table_manager.get_data())
 
             # 弹出提示
@@ -282,7 +295,7 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
+            # 保存数据
             self._set_data(self.table_manager.get_data())
 
             # 弹出提示
@@ -390,7 +403,7 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.set_data(self._get_default_data())
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
+            # 保存数据
             self._set_data(self.table_manager.get_data())
 
             # 弹出提示
@@ -412,7 +425,7 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 使用 DataAccessLayer 保存数据
+            # 保存数据
             self._set_data(self.table_manager.get_data())
 
             # 弹出提示

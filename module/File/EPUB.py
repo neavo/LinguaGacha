@@ -1,7 +1,7 @@
 import copy
+import io
 import os
 import re
-import shutil
 import zipfile
 
 from bs4 import BeautifulSoup
@@ -12,6 +12,9 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
+from module.Storage.AssetStore import AssetStore
+
 
 class EPUB(Base):
     # 显式引用以避免打包问题
@@ -44,20 +47,10 @@ class EPUB(Base):
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[Item]:
-        from module.DataAccessLayer import DataAccessLayer
-
         items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 仅在非工程模式且非准备模式下复制文件（用于后续写入）
-            if (
-                not DataAccessLayer.is_project_mode()
-                and not DataAccessLayer.is_prepare_mode()
-            ):
-                os.makedirs(os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"), exist_ok=True)
-                shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
 
             # 数据处理
             with zipfile.ZipFile(abs_path, "r") as zip_reader:
@@ -71,7 +64,7 @@ class EPUB(Base):
                                 # 跳过空标签或嵌套标签
                                 if (
                                     dom.get_text().strip() == ""
-                                    or dom.find(EPUB.EPUB_TAGS) != None
+                                    or dom.find(EPUB.EPUB_TAGS) is not None
                                 ):
                                     continue
 
@@ -115,8 +108,6 @@ class EPUB(Base):
 
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
-        from module.DataAccessLayer import DataAccessLayer
-
         def process_opf(zip_reader: zipfile.ZipFile, path: str) -> None:
             with zip_reader.open(path) as reader:
                 zip_writer.writestr(
@@ -151,7 +142,7 @@ class EPUB(Base):
                     # 处理不同情况
                     item = target.pop(0)
                     dom_a = dom.find("a")
-                    if dom_a != None:
+                    if dom_a is not None:
                         dom_a.string = item.get_dst()
                     else:
                         dom.string = item.get_dst()
@@ -198,8 +189,8 @@ class EPUB(Base):
 
                 # 判断是否是导航页（包括目录和地标导航）
                 is_nav_page = (
-                    bs.find("nav", attrs={"epub:type": "toc"}) != None
-                    or bs.find("nav", attrs={"epub:type": "landmarks"}) != None
+                    bs.find("nav", attrs={"epub:type": "toc"}) is not None
+                    or bs.find("nav", attrs={"epub:type": "landmarks"}) is not None
                 )
 
                 # 移除竖排样式
@@ -223,16 +214,19 @@ class EPUB(Base):
 
                 for dom in bs.find_all(EPUB.EPUB_TAGS):
                     # 跳过空标签或嵌套标签
-                    if dom.get_text().strip() == "" or dom.find(EPUB.EPUB_TAGS) != None:
+                    if (
+                        dom.get_text().strip() == ""
+                        or dom.find(EPUB.EPUB_TAGS) is not None
+                    ):
                         continue
 
                     # 取数据
                     item = target.pop(0)
 
                     # 输出双语（导航页除外，避免链接重复指向）
-                    if bilingual == True and is_nav_page == False:
-                        if self.config.deduplication_in_bilingual != True or (
-                            self.config.deduplication_in_bilingual == True
+                    if bilingual and not is_nav_page:
+                        if not self.config.deduplication_in_bilingual or (
+                            self.config.deduplication_in_bilingual
                             and item.get_src() != item.get_dst()
                         ):
                             line_src = copy.copy(dom)
@@ -251,7 +245,7 @@ class EPUB(Base):
                                 "html.parser",
                             )
                         )
-                    elif is_nav_page == False:
+                    elif not is_nav_page:
                         dom.string = item.get_dst()
                     else:
                         pass
@@ -279,16 +273,15 @@ class EPUB(Base):
             abs_path = f"{self.output_path}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
-            # 获取原始文件内容（工程模式从 assets 获取，传统模式从 cache 获取）
-            if DataAccessLayer.is_project_mode():
-                original_content = DataAccessLayer.get_asset_content(rel_path)
-                if original_content is None:
-                    continue
-                import io
-
-                source_zip = io.BytesIO(original_content)
-            else:
-                source_zip = f"{self.output_path}/cache/temp/{rel_path}"
+            # 从工程 assets 获取原始文件内容
+            db = SessionContext.get().get_db()
+            if db is None:
+                continue
+            compressed = db.get_asset(rel_path)
+            if compressed is None:
+                continue
+            original_content = AssetStore.decompress(compressed)
+            source_zip = io.BytesIO(original_content)
 
             with zipfile.ZipFile(self.insert_target(abs_path), "w") as zip_writer:
                 with zipfile.ZipFile(source_zip, "r") as zip_reader:
@@ -313,16 +306,15 @@ class EPUB(Base):
             abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
-            # 获取原始文件内容（工程模式从 assets 获取，传统模式从 cache 获取）
-            if DataAccessLayer.is_project_mode():
-                original_content = DataAccessLayer.get_asset_content(rel_path)
-                if original_content is None:
-                    continue
-                import io
-
-                source_zip = io.BytesIO(original_content)
-            else:
-                source_zip = f"{self.output_path}/cache/temp/{rel_path}"
+            # 从工程 assets 获取原始文件内容
+            db = SessionContext.get().get_db()
+            if db is None:
+                continue
+            compressed = db.get_asset(rel_path)
+            if compressed is None:
+                continue
+            original_content = AssetStore.decompress(compressed)
+            source_zip = io.BytesIO(original_content)
 
             with zipfile.ZipFile(
                 self.insert_source_target(abs_path), "w"

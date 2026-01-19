@@ -20,12 +20,12 @@ from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
+from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -201,7 +201,19 @@ class ProofreadingPage(QWidget, Base):
             # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
                 self.config = Config().load()
-                items = DataAccessLayer.get_all_items(self.config)
+                # 从工程数据库读取所有条目
+                db = SessionContext.get().get_db()
+                if db is None:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().proofreading_page_no_cache,
+                        },
+                    )
+                    self.items_loaded.emit([])
+                    return
+                items = [Item.from_dict(d) for d in db.get_all_items()]
                 # 过滤掉原文为空的条目
                 items = [i for i in items if i.get_src().strip()]
 
@@ -719,12 +731,16 @@ class ProofreadingPage(QWidget, Base):
             return
 
         # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
-        config = self.config
         items = self.items
 
         def task() -> None:
             try:
-                DataAccessLayer.set_items(items, config)
+                # 直接写入工程数据库
+                db = SessionContext.get().get_db()
+                if db is None:
+                    self.save_done.emit(False)
+                    return
+                db.set_items([item.to_dict() for item in items])
                 self.save_done.emit(True)
             except Exception as e:
                 self.error(f"{Localizer.get().proofreading_page_save_failed}", e)

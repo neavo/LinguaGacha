@@ -1,5 +1,4 @@
 import os
-import shutil
 
 import openpyxl
 import openpyxl.styles
@@ -9,7 +8,6 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
 from module.TableManager import TableManager
 
 
@@ -72,17 +70,6 @@ class WOLFXLSX(Base):
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 仅在非工程模式且非准备模式下复制文件（用于后续写入）
-            if (
-                not DataAccessLayer.is_project_mode()
-                and not DataAccessLayer.is_prepare_mode()
-            ):
-                os.makedirs(
-                    os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"),
-                    exist_ok=True,
-                )
-                shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
 
             # 数据处理
             book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)

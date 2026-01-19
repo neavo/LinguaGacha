@@ -6,7 +6,8 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.DataAccessLayer import DataAccessLayer
+from module.SessionContext import SessionContext
+from module.Storage.DataStore import DataStore
 
 
 class PromptBuilder(Base):
@@ -66,6 +67,30 @@ class PromptBuilder(Base):
         ) as reader:
             return reader.read().strip()
 
+    # 获取自定义提示词数据
+    def _get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return ""
+        rule_type = (
+            DataStore.RuleType.CUSTOM_PROMPT_ZH
+            if language == BaseLanguage.Enum.ZH
+            else DataStore.RuleType.CUSTOM_PROMPT_EN
+        )
+        return db.get_rule_text(rule_type)
+
+    # 获取自定义提示词启用状态
+    def _get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
+        db = SessionContext.get().get_db()
+        if db is None:
+            return False
+        meta_key = (
+            "custom_prompt_zh_enable"
+            if language == BaseLanguage.Enum.ZH
+            else "custom_prompt_en_enable"
+        )
+        return db.get_meta(meta_key, False)
+
     # 获取主提示词
     def build_main(self) -> str:
         # 判断提示词语言
@@ -82,18 +107,17 @@ class PromptBuilder(Base):
             # 前缀
             prefix = __class__.get_prefix(prompt_language)
 
-            # 基本
-            # 通过 DAL 获取自定义提示词（工程模式下从 .lg 读取）
+            # 基本（从工程读取自定义提示词）
             if (
                 prompt_language == BaseLanguage.Enum.ZH
-                and DataAccessLayer.get_custom_prompt_enable(BaseLanguage.Enum.ZH)
+                and self._get_custom_prompt_enable(BaseLanguage.Enum.ZH)
             ):
-                base = DataAccessLayer.get_custom_prompt_data(BaseLanguage.Enum.ZH)
+                base = self._get_custom_prompt_data(BaseLanguage.Enum.ZH)
             elif (
                 prompt_language == BaseLanguage.Enum.EN
-                and DataAccessLayer.get_custom_prompt_enable(BaseLanguage.Enum.EN)
+                and self._get_custom_prompt_enable(BaseLanguage.Enum.EN)
             ):
-                base = DataAccessLayer.get_custom_prompt_data(BaseLanguage.Enum.EN)
+                base = self._get_custom_prompt_data(BaseLanguage.Enum.EN)
             else:
                 base = __class__.get_base(prompt_language)
 
