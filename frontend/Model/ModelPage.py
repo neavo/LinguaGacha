@@ -12,7 +12,6 @@ from qfluentwidgets import PrimaryDropDownPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
-from qfluentwidgets import SmoothMode
 
 from base.Base import Base
 from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage

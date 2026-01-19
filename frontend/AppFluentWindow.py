@@ -39,6 +39,7 @@ from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation import TranslationPage
+from frontend.WorkbenchPage import WorkbenchPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.ProgressToast import ProgressToast
@@ -88,6 +89,8 @@ class AppFluentWindow(FluentWindow, Base):
         self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
         self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
         self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide_handler)
+        self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 创建进度 Toast 组件（应用级别，挂载到主窗口）
         self.progress_toast = ProgressToast(self)
@@ -260,7 +263,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 更新 - 检查完成
     def app_update_check_done(self, event: Base.Event, data: dict) -> None:
-        if data.get("new_version", False) == True:
+        if data.get("new_version", False):
             self.home_page_widget.setName(Localizer.get().app_new_version)
 
     # 更新 - 下载完成
@@ -281,6 +284,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 开始添加页面
     def add_pages(self) -> None:
+        # 创建工作台页面（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
+        self.workbench_page = WorkbenchPage("workbench_page", self)
+        self.stackedWidget.addWidget(self.workbench_page)
+
         self.add_project_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_task_pages()
@@ -291,7 +298,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_extra_pages()
 
-        # 设置默认页面
+        # 设置默认页面为翻译页面
         self.switchTo(self.translation_page)
 
         # 主题切换按钮
@@ -492,3 +499,15 @@ class AppFluentWindow(FluentWindow, Base):
         # 百宝箱 - 姓名字段注入
         self.name_field_extraction_page = NameFieldExtractionPage("name_field_extraction_page", self)
         self.stackedWidget.addWidget(self.name_field_extraction_page)
+
+    # 工程加载后的处理
+    def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        """工程加载后切换到翻译页面"""
+        self.switchTo(self.translation_page)
+        # 刷新工作台最近打开列表
+        self.workbench_page._refresh_recent_list()
+
+    # 工程卸载后的处理
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后返回工作台"""
+        self.switchTo(self.workbench_page)

@@ -10,7 +10,6 @@ from qfluentwidgets import CommandButton
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
-from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import RoundMenu
 
 from base.Base import Base

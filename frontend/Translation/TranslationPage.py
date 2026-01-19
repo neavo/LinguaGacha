@@ -26,6 +26,7 @@ from frontend.Translation.TimerMessageBox import TimerMessageBox
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
 
@@ -75,11 +76,24 @@ class TranslationPage(QWidget, Base):
     def showEvent(self, event) -> None:
         super().showEvent(event)
 
+        # 检查是否已加载工程，未加载则跳转工作台
+        if not SessionContext.get().is_loaded():
+            # 延迟切换以避免事件处理冲突
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(0, self._switch_to_workbench)
+            return
+
         # 重置 frontend 状态
         self.action_continue.setEnabled(False)
 
         # 触发事件
         self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+
+    def _switch_to_workbench(self) -> None:
+        """切换到工作台页面"""
+        window = self.window()
+        if hasattr(window, "workbench_page"):
+            window.stackedWidget.setCurrentWidget(window.workbench_page)
 
     def update_ui_tick(self) -> None:
         self.update_time(self.data)

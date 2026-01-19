@@ -23,6 +23,7 @@ from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.Config import Config
+from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -51,18 +52,48 @@ class TextReplacementPage(QWidget, Base):
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
 
+    # 数据访问辅助方法
+    def _get_data(self) -> list[dict[str, str]]:
+        """根据 base_key 获取数据"""
+        if self.base_key == "pre_translation_replacement":
+            return DataAccessLayer.get_pre_replacement_data()
+        return DataAccessLayer.get_post_replacement_data()
+
+    def _set_data(self, data: list[dict[str, str]]) -> None:
+        """根据 base_key 保存数据"""
+        if self.base_key == "pre_translation_replacement":
+            DataAccessLayer.set_pre_replacement_data(data)
+        else:
+            DataAccessLayer.set_post_replacement_data(data)
+
+    def _get_enable(self) -> bool:
+        """根据 base_key 获取启用状态"""
+        if self.base_key == "pre_translation_replacement":
+            return DataAccessLayer.get_pre_replacement_enable()
+        return DataAccessLayer.get_post_replacement_enable()
+
+    def _set_enable(self, enable: bool) -> None:
+        """根据 base_key 设置启用状态"""
+        if self.base_key == "pre_translation_replacement":
+            DataAccessLayer.set_pre_replacement_enable(enable)
+        else:
+            DataAccessLayer.set_post_replacement_enable(enable)
+
+    def _get_default_data(self) -> list[dict[str, str]]:
+        """获取默认数据（用于重置）"""
+        config = Config()
+        if self.base_key == "pre_translation_replacement":
+            return config.pre_translation_replacement_data or []
+        return config.post_translation_replacement_data or []
+
     # 头部
     def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                getattr(config, f"{self.base_key}_enable")
-            )
+            widget.get_switch_button().setChecked(self._get_enable())
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            config = Config().load()
-            setattr(config, f"{self.base_key}_enable", widget.get_switch_button().isChecked())
-            config.save()
+            self._set_enable(widget.get_switch_button().isChecked())
 
         parent.addWidget(
             SwitchButtonCard(
@@ -77,7 +108,7 @@ class TextReplacementPage(QWidget, Base):
     def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def item_changed(item: QTableWidgetItem) -> None:
-            if self.table_manager.get_updating() == True:
+            if self.table_manager.get_updating():
                 return None
 
             new_row = item.row()
@@ -106,10 +137,8 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            self._set_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -154,7 +183,7 @@ class TextReplacementPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type = TableManager.Type.REPLACEMENT,
-            data = getattr(config, f"{self.base_key}_data"),
+            data = self._get_data(),
             table = self.table,
         )
         self.table_manager.sync()
@@ -219,10 +248,8 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            self._set_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -292,13 +319,11 @@ class TextReplacementPage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(getattr(Config(), f"{self.base_key}_data"))
+            self.table_manager.set_data(self._get_default_data())
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            self._set_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -316,10 +341,8 @@ class TextReplacementPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            self._set_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {

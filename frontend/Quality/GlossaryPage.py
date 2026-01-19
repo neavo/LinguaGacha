@@ -24,6 +24,7 @@ from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
 from module.Config import Config
+from module.DataAccessLayer import DataAccessLayer
 from module.Localizer.Localizer import Localizer
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -57,7 +58,7 @@ class GlossaryPage(QWidget, Base):
     # 术语表刷新事件
     def glossary_refresh(self, event: Base.Event, data: dict) -> None:
         self.table_manager.reset()
-        self.table_manager.set_data(getattr(Config().load(), f"{__class__.BASE}_data"))
+        self.table_manager.set_data(DataAccessLayer.get_glossary_data())
         self.table_manager.sync()
 
     # 头部
@@ -65,13 +66,11 @@ class GlossaryPage(QWidget, Base):
 
         def init(widget: SwitchButtonCard) -> None:
             widget.get_switch_button().setChecked(
-                getattr(config, f"{__class__.BASE}_enable")
+                DataAccessLayer.get_glossary_enable()
             )
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_enable", widget.get_switch_button().isChecked())
-            config.save()
+            DataAccessLayer.set_glossary_enable(widget.get_switch_button().isChecked())
 
         parent.addWidget(
             SwitchButtonCard(
@@ -86,7 +85,7 @@ class GlossaryPage(QWidget, Base):
     def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
 
         def item_changed(item: QTableWidgetItem) -> None:
-            if self.table_manager.get_updating() == True:
+            if self.table_manager.get_updating():
                 return None
 
             new_row = item.row()
@@ -115,10 +114,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -166,7 +163,7 @@ class GlossaryPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type = TableManager.Type.GLOSSARY,
-            data = getattr(config, f"{__class__.BASE}_data"),
+            data = DataAccessLayer.get_glossary_data(),
             table = self.table,
         )
         self.table_manager.sync()
@@ -233,10 +230,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -306,13 +301,11 @@ class GlossaryPage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(getattr(Config(), f"{__class__.BASE}_data"))
+            self.table_manager.set_data(Config().glossary_data or [])
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {
@@ -330,10 +323,8 @@ class GlossaryPage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 使用 DataAccessLayer 保存数据
+            DataAccessLayer.set_glossary_data(self.table_manager.get_data())
 
             # 弹出提示
             self.emit(Base.Event.TOAST, {

@@ -21,6 +21,7 @@ dependencies = [
     "httpx",
     "json-repair",
     "charset-normalizer",
+    "zstandard",
 ]
 
 [tool.uv]

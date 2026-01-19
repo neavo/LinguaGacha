@@ -11,12 +11,9 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
-from qfluentwidgets import SmoothMode
 
 from base.Base import Base
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
-from model.Model import ModelType
-from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.CustomTextEdit import CustomTextEdit

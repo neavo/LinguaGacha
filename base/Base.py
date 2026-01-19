@@ -35,6 +35,8 @@ class Base():
         APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"           # 更新 - 下载更新
         APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"                           # 更新 - 解压
         GLOSSARY_REFRESH = "GLOSSARY_REFRESH"                               # 术语表刷新
+        PROJECT_LOADED = "PROJECT_LOADED"                                   # 工程 - 已加载
+        PROJECT_UNLOADED = "PROJECT_UNLOADED"                               # 工程 - 已卸载
 
     # 接口格式
     class APIFormat(StrEnum):
