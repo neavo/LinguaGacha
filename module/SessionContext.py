@@ -8,7 +8,6 @@ import threading
 from typing import Any
 
 from base.Base import Base
-from module.ProjectConfig import ProjectConfig
 from module.Storage.LGDatabase import LGDatabase
 
 
@@ -21,7 +20,6 @@ class SessionContext(Base):
     def __init__(self) -> None:
         super().__init__()
         self._db: LGDatabase | None = None
-        self._config: ProjectConfig | None = None
         self._lg_path: str | None = None
 
     @classmethod
@@ -48,7 +46,6 @@ class SessionContext(Base):
         # 加载新工程
         self._lg_path = lg_path
         self._db = LGDatabase.load(lg_path)
-        self._config = ProjectConfig.load_from_db(self._db)
 
         # 发送工程加载事件
         self.emit(Base.Event.PROJECT_LOADED, {"path": lg_path})
@@ -56,17 +53,12 @@ class SessionContext(Base):
     def unload(self) -> None:
         """卸载当前工程"""
         if self._db is not None:
-            # 保存配置
-            if self._config is not None:
-                self._config.save_to_db(self._db)
-
             # 关闭数据库
             self._db.close()
 
         # 清空状态
         old_path = self._lg_path
         self._db = None
-        self._config = None
         self._lg_path = None
 
         # 发送工程卸载事件
@@ -82,10 +74,6 @@ class SessionContext(Base):
     def get_db(self) -> LGDatabase | None:
         """获取当前工程的数据库访问对象"""
         return self._db
-
-    def get_config(self) -> ProjectConfig | None:
-        """获取当前工程的配置"""
-        return self._config
 
     def get_lg_path(self) -> str | None:
         """获取当前工程的 .lg 文件路径"""
@@ -129,10 +117,3 @@ class SessionContext(Base):
         """设置翻译进度额外数据"""
         if self._db is not None:
             self._db.set_meta("translation_extras", extras)
-
-    # ========== 保存 ==========
-
-    def save(self) -> None:
-        """保存当前工程配置"""
-        if self._db is not None and self._config is not None:
-            self._config.save_to_db(self._db)

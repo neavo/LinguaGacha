@@ -27,7 +27,6 @@ from qfluentwidgets import IconWidget
 from qfluentwidgets import MessageBox
 from qfluentwidgets import PrimaryPushButton
 from qfluentwidgets import ProgressBar
-from qfluentwidgets import PushButton
 from qfluentwidgets import ScrollArea
 from qfluentwidgets import SimpleCardWidget
 from qfluentwidgets import StrongBodyLabel
@@ -36,11 +35,12 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
 from base.Base import Base
-from module.AppConfig import AppConfig
+from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.ProjectCreator import ProjectCreator
 from module.ProjectCreator import ProjectLoader
 from module.SessionContext import SessionContext
+
 
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
@@ -59,7 +59,9 @@ class FileDisplayCard(CardWidget):
 
     def _update_style(self):
         """更新样式，适配亮/暗色主题"""
-        border_color = "rgba(255, 255, 255, 0.1)" if isDarkTheme() else "rgba(0, 0, 0, 0.1)"
+        border_color = (
+            "rgba(255, 255, 255, 0.1)" if isDarkTheme() else "rgba(0, 0, 0, 0.1)"
+        )
 
         # 计算 hover 背景色 (使用极低透明度的主题色)
         c = themeColor()
@@ -103,15 +105,21 @@ class DropZone(FileDisplayCard):
         # 图标
         self.icon_widget = IconWidget(icon, self)
         self.icon_widget.setFixedSize(48, 48)
-        self.main_layout.addWidget(self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(
+            self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
+        )
 
         # 标题
         self.title_label = StrongBodyLabel(title, self)
-        self.main_layout.addWidget(self.title_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(
+            self.title_label, alignment=Qt.AlignmentFlag.AlignCenter
+        )
 
         # 副标题
         self.subtitle_label = CaptionLabel(subtitle, self)
-        self.main_layout.addWidget(self.subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(
+            self.subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter
+        )
 
     def set_text(self, title: str, subtitle: str) -> None:
         self.title_label.setText(title)
@@ -139,14 +147,20 @@ class SelectedFileDisplay(FileDisplayCard):
         # 图标
         self.icon_widget = IconWidget(FluentIcon.DOCUMENT, self)
         self.icon_widget.setFixedSize(48, 48)
-        self.main_layout.addWidget(self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(
+            self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
+        )
 
         # 文件名
         name_label = StrongBodyLabel(file_name, self)
         self.main_layout.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # 状态
-        status_text = Localizer.get().workbench_project_ready if is_ready else Localizer.get().workbench_project_preparing
+        status_text = (
+            Localizer.get().workbench_project_ready
+            if is_ready
+            else Localizer.get().workbench_project_preparing
+        )
         status_label = CaptionLabel(status_text, self)
         self.main_layout.addWidget(status_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -170,7 +184,7 @@ class RecentProjectItem(QFrame):
         # self.setFixedHeight(48)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 12, 10, 12) # 增加垂直间距
+        layout.setContentsMargins(10, 12, 10, 12)  # 增加垂直间距
         layout.setSpacing(12)
 
         # 图标
@@ -188,7 +202,9 @@ class RecentProjectItem(QFrame):
         text_layout.addWidget(name_label)
 
         path_label = CaptionLabel(path, self)
-        path_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160)) # 参考 ModelSelectorPage 的灰色
+        path_label.setTextColor(
+            QColor(96, 96, 96), QColor(160, 160, 160)
+        )  # 参考 ModelSelectorPage 的灰色
         text_layout.addWidget(path_label)
 
         layout.addLayout(text_layout)
@@ -200,8 +216,12 @@ class RecentProjectItem(QFrame):
         super().mousePressEvent(event)
 
     def enterEvent(self, event) -> None:
-        bg_color = "rgba(255, 255, 255, 0.05)" if isDarkTheme() else "rgba(0, 0, 0, 0.05)"
-        self.setStyleSheet(f"RecentProjectItem {{ background-color: {bg_color}; border-radius: 4px; }}")
+        bg_color = (
+            "rgba(255, 255, 255, 0.05)" if isDarkTheme() else "rgba(0, 0, 0, 0.05)"
+        )
+        self.setStyleSheet(
+            f"RecentProjectItem {{ background-color: {bg_color}; border-radius: 4px; }}"
+        )
 
     def leaveEvent(self, event) -> None:
         self.setStyleSheet("")
@@ -219,7 +239,6 @@ class ProjectInfoPanel(SimpleCardWidget):
 
         # 信息行容器
         self.rows: dict[str, QLabel] = {}
-
 
     def set_info(self, info: dict) -> None:
         """设置项目信息"""
@@ -266,7 +285,9 @@ class ProjectInfoPanel(SimpleCardWidget):
             progress_header_layout = QHBoxLayout(progress_header)
             progress_header_layout.setContentsMargins(0, 0, 0, 0)
 
-            progress_label = CaptionLabel(Localizer.get().workbench_info_progress, progress_header)
+            progress_label = CaptionLabel(
+                Localizer.get().workbench_info_progress, progress_header
+            )
             progress_header_layout.addWidget(progress_label)
 
             percent = int(info["progress"] * 100)
@@ -294,12 +315,20 @@ class ProjectInfoPanel(SimpleCardWidget):
             translated = info.get("translated_items", 0)
             total = info.get("total_items", 0)
 
-            left_stat = CaptionLabel(Localizer.get().workbench_info_translated.replace("{COUNT}", f"{translated:,}"), stats_frame)
+            left_stat = CaptionLabel(
+                Localizer.get().workbench_info_translated.replace(
+                    "{COUNT}", f"{translated:,}"
+                ),
+                stats_frame,
+            )
             stats_layout.addWidget(left_stat)
 
             stats_layout.addStretch()
 
-            right_stat = CaptionLabel(Localizer.get().workbench_info_total.replace("{COUNT}", f"{total:,}"), stats_frame)
+            right_stat = CaptionLabel(
+                Localizer.get().workbench_info_total.replace("{COUNT}", f"{total:,}"),
+                stats_frame,
+            )
             stats_layout.addWidget(right_stat)
 
             layout.addWidget(stats_frame)
@@ -344,7 +373,9 @@ class WorkbenchPage(ScrollArea, Base):
         self.open_project_card = self._create_open_project_card()
         main_layout.addWidget(self.open_project_card)
 
-    def _create_header(self, title_text: str, subtitle_text: str, color: str) -> QHBoxLayout:
+    def _create_header(
+        self, title_text: str, subtitle_text: str, color: str
+    ) -> QHBoxLayout:
         """创建带有装饰条的统一标题头"""
         layout = QHBoxLayout()
         layout.setSpacing(12)
@@ -353,7 +384,7 @@ class WorkbenchPage(ScrollArea, Base):
         # 装饰条
         bar = QFrame()
         bar.setFixedWidth(4)
-        bar.setFixedHeight(34) # 稍微加高以覆盖两行文字的视觉高度
+        bar.setFixedHeight(34)  # 稍微加高以覆盖两行文字的视觉高度
         bar.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
         layout.addWidget(bar)
 
@@ -387,20 +418,19 @@ class WorkbenchPage(ScrollArea, Base):
         header_widget = QWidget(card)
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.addLayout(self._create_header(
-            Localizer.get().workbench_new_project_title,
-            Localizer.get().workbench_new_project_subtitle,
-            "#0078d4"
-        ))
+        header_layout.addLayout(
+            self._create_header(
+                Localizer.get().workbench_new_project_title,
+                Localizer.get().workbench_new_project_subtitle,
+                "#0078d4",
+            )
+        )
 
         layout.addWidget(header_widget)
 
         # 拖拽区域
         self.new_drop_zone = DropZone(
-            FluentIcon.ADD,
-            Localizer.get().workbench_drop_zone_source_title,
-            "",
-            card
+            FluentIcon.ADD, Localizer.get().workbench_drop_zone_source_title, "", card
         )
         self.new_drop_zone.clicked.connect(self._on_select_source)
         self.new_drop_zone.fileDropped.connect(self._on_source_dropped)
@@ -412,14 +442,28 @@ class WorkbenchPage(ScrollArea, Base):
         features_layout.setContentsMargins(0, 20, 0, 0)
         features_layout.setSpacing(10)
 
-        features_title = StrongBodyLabel(Localizer.get().workbench_features_format_title, features_frame)
+        features_title = StrongBodyLabel(
+            Localizer.get().workbench_features_format_title, features_frame
+        )
         features_layout.addWidget(features_title)
 
         features = [
-            (Localizer.get().workbench_feature_format_support, Localizer.get().workbench_feature_format_support_desc),
-            (Localizer.get().workbench_feature_private_rule, Localizer.get().workbench_feature_private_rule_desc),
-            (Localizer.get().workbench_feature_offline_mode, Localizer.get().workbench_feature_offline_mode_desc),
-            (Localizer.get().workbench_feature_zero_config, Localizer.get().workbench_feature_zero_config_desc),
+            (
+                Localizer.get().workbench_feature_format_support,
+                Localizer.get().workbench_feature_format_support_desc,
+            ),
+            (
+                Localizer.get().workbench_feature_private_rule,
+                Localizer.get().workbench_feature_private_rule_desc,
+            ),
+            (
+                Localizer.get().workbench_feature_offline_mode,
+                Localizer.get().workbench_feature_offline_mode_desc,
+            ),
+            (
+                Localizer.get().workbench_feature_zero_config,
+                Localizer.get().workbench_feature_zero_config_desc,
+            ),
         ]
 
         for title, desc in features:
@@ -430,7 +474,9 @@ class WorkbenchPage(ScrollArea, Base):
 
             check = IconWidget(FluentIcon.ACCEPT, item)
             check.setFixedSize(16, 16)
-            check.setStyleSheet(f"IconWidget {{ color: {themeColor().name()}; }}") # 使用主题色
+            check.setStyleSheet(
+                f"IconWidget {{ color: {themeColor().name()}; }}"
+            )  # 使用主题色
             item_layout.addWidget(check)
 
             text = BodyLabel(f"<b>{title}</b>：{desc}", item)
@@ -447,7 +493,9 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout = QVBoxLayout(btn_container)
         btn_layout.setContentsMargins(0, 24, 0, 0)  # 增加顶部间距
 
-        self.new_btn = PrimaryPushButton(Localizer.get().workbench_new_project_btn, card)
+        self.new_btn = PrimaryPushButton(
+            Localizer.get().workbench_new_project_btn, card
+        )
         self.new_btn.setFixedSize(160, 36)  # 固定宽度
         self.new_btn.setEnabled(False)
         self.new_btn.clicked.connect(self._on_create_project)
@@ -469,20 +517,19 @@ class WorkbenchPage(ScrollArea, Base):
         header_widget = QWidget(card)
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.addLayout(self._create_header(
-            Localizer.get().workbench_open_project_title,
-            Localizer.get().workbench_open_project_subtitle,
-            "#5e45cd"  # 使用不同的强调色区分
-        ))
+        header_layout.addLayout(
+            self._create_header(
+                Localizer.get().workbench_open_project_title,
+                Localizer.get().workbench_open_project_subtitle,
+                "#5e45cd",  # 使用不同的强调色区分
+            )
+        )
 
         layout.addWidget(header_widget)
 
         # 拖拽区域（默认状态）/ 选中显示
         self.open_drop_zone = DropZone(
-            FluentIcon.FOLDER,
-            Localizer.get().workbench_drop_zone_lg_title,
-            "",
-            card
+            FluentIcon.FOLDER, Localizer.get().workbench_drop_zone_lg_title, "", card
         )
         self.open_drop_zone.clicked.connect(self._on_select_lg)
         self.open_drop_zone.fileDropped.connect(self._on_lg_dropped)
@@ -497,7 +544,10 @@ class WorkbenchPage(ScrollArea, Base):
         recent_layout.setContentsMargins(0, 20, 0, 0)
         recent_layout.setSpacing(10)
 
-        recent_title = StrongBodyLabel(Localizer.get().workbench_recent_projects_title, self.recent_projects_container)
+        recent_title = StrongBodyLabel(
+            Localizer.get().workbench_recent_projects_title,
+            self.recent_projects_container,
+        )
         recent_layout.addWidget(recent_title)
 
         self.recent_list_layout = QVBoxLayout()
@@ -513,7 +563,9 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout = QVBoxLayout(btn_container)
         btn_layout.setContentsMargins(0, 24, 0, 0)
 
-        self.open_btn = PrimaryPushButton(Localizer.get().workbench_open_project_btn, card)
+        self.open_btn = PrimaryPushButton(
+            Localizer.get().workbench_open_project_btn, card
+        )
         self.open_btn.setFixedSize(160, 36)
         self.open_btn.setEnabled(False)
         self.open_btn.clicked.connect(self._on_open_project)
@@ -535,7 +587,7 @@ class WorkbenchPage(ScrollArea, Base):
                 item.widget().deleteLater()
 
         # 加载最近项目
-        config = AppConfig().load()
+        config = Config().load()
         if not config.recent_projects:
             # TODO: 显示空状态或原来的特性列表？根据需求，这里先留空或显示提示
             pass
@@ -552,7 +604,9 @@ class WorkbenchPage(ScrollArea, Base):
 
     def _on_select_source(self) -> None:
         """点击选择源文件/目录"""
-        path = QFileDialog.getExistingDirectory(self, Localizer.get().workbench_select_source_dir_title)
+        path = QFileDialog.getExistingDirectory(
+            self, Localizer.get().workbench_select_source_dir_title
+        )
         if path:
             self._on_source_dropped(path)
 
@@ -568,15 +622,17 @@ class WorkbenchPage(ScrollArea, Base):
         if not source_files:
             self.emit(
                 Base.Event.TOAST,
-                {"type": Base.ToastType.WARNING, "message": Localizer.get().workbench_toast_no_valid_file},
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().workbench_toast_no_valid_file,
+                },
             )
             # 重置状态
             self._selected_source_path = None
             self.new_btn.setEnabled(False)
             self.new_drop_zone.set_icon(FluentIcon.ADD)
             self.new_drop_zone.set_text(
-                Localizer.get().workbench_drop_zone_source_title,
-                ""
+                Localizer.get().workbench_drop_zone_source_title, ""
             )
             return
 
@@ -589,13 +645,19 @@ class WorkbenchPage(ScrollArea, Base):
         count_str = f"{count}" if count < 1000 else "999+"
 
         self.new_drop_zone.set_icon(FluentIcon.FOLDER)
-        self.new_drop_zone.set_text(file_name, Localizer.get().workbench_drop_ready_source.replace("{COUNT}", count_str))
+        self.new_drop_zone.set_text(
+            file_name,
+            Localizer.get().workbench_drop_ready_source.replace("{COUNT}", count_str),
+        )
         self.new_btn.setEnabled(True)
 
     def _on_select_lg(self) -> None:
         """点击选择 .lg 文件"""
         path, _ = QFileDialog.getOpenFileName(
-            self, Localizer.get().workbench_select_project_title, "", "LinguaGacha 工程 (*.lg)"
+            self,
+            Localizer.get().workbench_select_project_title,
+            "",
+            "LinguaGacha 工程 (*.lg)",
         )
         if path:
             self._on_lg_dropped(path)
@@ -605,7 +667,10 @@ class WorkbenchPage(ScrollArea, Base):
         if not path.endswith(".lg"):
             self.emit(
                 Base.Event.TOAST,
-                {"type": Base.ToastType.WARNING, "message": Localizer.get().workbench_toast_invalid_lg},
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().workbench_toast_invalid_lg,
+                },
             )
             return
 
@@ -613,11 +678,13 @@ class WorkbenchPage(ScrollArea, Base):
             # 文件不存在，提示移除
             box = MessageBox(
                 Localizer.get().workbench_msg_file_not_found_title,
-                Localizer.get().workbench_msg_file_not_found_content.replace("{PATH}", path),
+                Localizer.get().workbench_msg_file_not_found_content.replace(
+                    "{PATH}", path
+                ),
                 self,
             )
             if box.exec():
-                config = AppConfig().load()
+                config = Config().load()
                 config.remove_recent_project(path)
                 config.save()
                 self._refresh_recent_list()
@@ -643,14 +710,18 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.selected_file_display.clicked.connect(self._on_select_lg)
         self.selected_file_display.fileDropped.connect(self._on_lg_dropped)
-        self.open_project_card.layout().insertWidget(1, self.selected_file_display) # 插入到 drop_zone 位置 (index 1 after header)
+        self.open_project_card.layout().insertWidget(
+            1, self.selected_file_display
+        )  # 插入到 drop_zone 位置 (index 1 after header)
 
         # 显示项目详情
         try:
             info = ProjectLoader.get_project_preview(path)
             self.project_info_panel = ProjectInfoPanel(self.open_project_card)
             self.project_info_panel.set_info(info)
-            self.open_project_card.layout().insertWidget(2, self.project_info_panel) # 插入到 selected_file_display 下方
+            self.open_project_card.layout().insertWidget(
+                2, self.project_info_panel
+            )  # 插入到 selected_file_display 下方
         except Exception as e:
             self.error(f"读取工程预览失败: {e}")
 
@@ -684,7 +755,10 @@ class WorkbenchPage(ScrollArea, Base):
         # 弹出另存为对话框
         default_name = Path(self._selected_source_path).name + ".lg"
         path, _ = QFileDialog.getSaveFileName(
-            self, Localizer.get().workbench_save_project_title, default_name, "LinguaGacha 工程 (*.lg)"
+            self,
+            Localizer.get().workbench_save_project_title,
+            default_name,
+            "LinguaGacha 工程 (*.lg)",
         )
 
         if not path:
@@ -708,7 +782,7 @@ class WorkbenchPage(ScrollArea, Base):
             db = creator.create(self._selected_source_path, path)
 
             # 更新最近打开列表
-            config = AppConfig().load()
+            config = Config().load()
             config.add_recent_project(path, db.get_meta("name", ""))
             config.save()
 
@@ -720,7 +794,9 @@ class WorkbenchPage(ScrollArea, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().workbench_toast_create_success.replace("{NAME}", Path(path).name),
+                    "message": Localizer.get().workbench_toast_create_success.replace(
+                        "{NAME}", Path(path).name
+                    ),
                 },
             )
 
@@ -729,15 +805,19 @@ class WorkbenchPage(ScrollArea, Base):
             self.new_btn.setEnabled(False)
             self.new_drop_zone.set_icon(FluentIcon.ADD)
             self.new_drop_zone.set_text(
-                Localizer.get().workbench_drop_zone_source_title,
-                ""
+                Localizer.get().workbench_drop_zone_source_title, ""
             )
 
         except Exception as e:
             self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
             self.emit(
                 Base.Event.TOAST,
-                {"type": Base.ToastType.ERROR, "message": Localizer.get().workbench_toast_create_fail.replace("{ERROR}", str(e))},
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().workbench_toast_create_fail.replace(
+                        "{ERROR}", str(e)
+                    ),
+                },
             )
 
     def _on_open_project(self) -> None:
@@ -750,18 +830,28 @@ class WorkbenchPage(ScrollArea, Base):
             SessionContext.get().load(self._selected_lg_path)
 
             # 更新最近打开列表
-            config = AppConfig().load()
+            config = Config().load()
             name = Path(self._selected_lg_path).stem
             config.add_recent_project(self._selected_lg_path, name)
             config.save()
 
             self.emit(
                 Base.Event.TOAST,
-                {"type": Base.ToastType.SUCCESS, "message": Localizer.get().workbench_toast_load_success.replace("{NAME}", name)},
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().workbench_toast_load_success.replace(
+                        "{NAME}", name
+                    ),
+                },
             )
 
         except Exception as e:
             self.emit(
                 Base.Event.TOAST,
-                {"type": Base.ToastType.ERROR, "message": Localizer.get().workbench_toast_load_fail.replace("{ERROR}", str(e))},
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().workbench_toast_load_fail.replace(
+                        "{ERROR}", str(e)
+                    ),
+                },
             )

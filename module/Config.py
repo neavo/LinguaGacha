@@ -9,15 +9,13 @@ from typing import Self
 
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
-from model.Model import Model
 from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
 
+
 @dataclasses.dataclass
-class Config():
-
+class Config:
     class Theme(StrEnum):
-
         DARK = "DARK"
         LIGHT = "LIGHT"
 
@@ -58,19 +56,23 @@ class Config():
 
     # GlossaryPage
     glossary_enable: bool = True
-    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
 
     # TextPreservePage
     text_preserve_enable: bool = False
-    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
 
     # PreTranslationReplacementPage
     pre_translation_replacement_enable: bool = True
-    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
+        default_factory=list
+    )
 
     # PostTranslationReplacementPage
     post_translation_replacement_enable: bool = True
-    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(default_factory = list)
+    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
+        default_factory=list
+    )
 
     # CustomPromptZHPage
     custom_prompt_zh_enable: bool = False
@@ -83,6 +85,9 @@ class Config():
     # LaboratoryPage
     auto_glossary_enable: bool = False
     mtool_optimizer_enable: bool = False
+
+    # 最近打开的工程列表 [{"path": "...", "name": "...", "updated_at": "..."}]
+    recent_projects: list[dict[str, str]] = dataclasses.field(default_factory=list)
 
     # 类属性
     CONFIG_LOCK: ClassVar[threading.Lock] = threading.Lock()
@@ -104,9 +109,9 @@ class Config():
 
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(path), exist_ok = True)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 if os.path.isfile(path):
-                    with open(path, "r", encoding = "utf-8-sig") as reader:
+                    with open(path, "r", encoding="utf-8-sig") as reader:
                         config: dict = json.load(reader)
                         for k, v in config.items():
                             if hasattr(self, k):
@@ -132,6 +137,7 @@ class Config():
 
         # 按分类排序: 预设 - Google - OpenAI - Claude
         if self.models:
+
             def get_sort_key(model: dict[str, Any]) -> int:
                 type_str = model.get("type", "")
                 if type_str == "PRESET":
@@ -148,9 +154,11 @@ class Config():
 
         with __class__.CONFIG_LOCK:
             try:
-                os.makedirs(os.path.dirname(path), exist_ok = True)
-                with open(path, "w", encoding = "utf-8") as writer:
-                    json.dump(dataclasses.asdict(self), writer, indent = 4, ensure_ascii = False)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as writer:
+                    json.dump(
+                        dataclasses.asdict(self), writer, indent=4, ensure_ascii=False
+                    )
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 
@@ -235,3 +243,33 @@ class Config():
         manager = ModelManager.get()
         self.models = manager.get_models_as_dict()
         self.activate_model_id = manager.activate_model_id
+
+    # ========== 最近打开的工程 ==========
+
+    def add_recent_project(self, path: str, name: str) -> None:
+        """添加最近打开的工程"""
+        from datetime import datetime
+
+        # 移除已存在的同路径条目
+        self.recent_projects = [
+            p for p in self.recent_projects if p.get("path") != path
+        ]
+
+        # 添加到开头
+        self.recent_projects.insert(
+            0,
+            {
+                "path": path,
+                "name": name,
+                "updated_at": datetime.now().isoformat(),
+            },
+        )
+
+        # 保留最近 10 个
+        self.recent_projects = self.recent_projects[:10]
+
+    def remove_recent_project(self, path: str) -> None:
+        """移除最近打开的工程"""
+        self.recent_projects = [
+            p for p in self.recent_projects if p.get("path") != path
+        ]

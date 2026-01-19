@@ -17,7 +17,7 @@ from base.CLIManager import CLIManager
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
-from module.AppConfig import AppConfig
+from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 
@@ -93,14 +93,14 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(data_dir, "output"), exist_ok=True)
 
     # 载入并保存默认配置
-    config = AppConfig().load()
+    config = Config().load()
 
     # 加载版本号
     with open("version.txt", "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
-    setTheme(Theme.DARK if config.theme == AppConfig.Theme.DARK else Theme.LIGHT)
+    setTheme(Theme.DARK if config.theme == Config.Theme.DARK else Theme.LIGHT)
 
     # 设置应用语言
     Localizer.set_app_language(config.app_language)
