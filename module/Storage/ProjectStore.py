@@ -83,7 +83,7 @@ class ProjectStore(Base):
         config = Config().load()
 
         # 使用 FileManager 读取翻译条目
-        _, items = FileManager(config).read_from_path()
+        _, items = FileManager(config).read_from_path(source_path)
 
         # 将条目保存到数据库
         if items:

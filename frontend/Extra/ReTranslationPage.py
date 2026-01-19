@@ -35,6 +35,7 @@ from model.Project import Project
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.OutputPath import OutputPath
 from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
@@ -235,10 +236,13 @@ class ReTranslationPage(QWidget, Base):
 
     # 处理单文件部分
     def process_single(self) -> tuple[Project, list[Item], str]:
+        # 获取输出目录作为输入源
+        output_path = OutputPath.get_translated_path()
+        input_path = f"{output_path}/dst"
+
         # 读取译文
         config = Config().load()
-        config.input_folder = f"{config.input_folder}/dst"
-        project, items_dst = FileManager(config).read_from_path()
+        project, items_dst = FileManager(config).read_from_path(input_path)
         items_dst = [
             v
             for v in items_dst
@@ -277,10 +281,13 @@ class ReTranslationPage(QWidget, Base):
 
     # 处理双文件部分
     def process_double(self) -> tuple[Project, list[Item], str]:
+        # 获取输出目录作为输入源
+        output_path = OutputPath.get_translated_path()
+
         # 读取译文
         config = Config().load()
-        config.input_folder = f"{config.input_folder}/dst"
-        project, items_dst = FileManager(config).read_from_path()
+        dst_input_path = f"{output_path}/dst"
+        project, items_dst = FileManager(config).read_from_path(dst_input_path)
         items_dst = [
             v
             for v in items_dst
@@ -300,8 +307,8 @@ class ReTranslationPage(QWidget, Base):
 
         # 读取原文
         config = Config().load()
-        config.input_folder = f"{config.input_folder}/src"
-        project, items_src = FileManager(config).read_from_path()
+        src_input_path = f"{output_path}/src"
+        project, items_src = FileManager(config).read_from_path(src_input_path)
         items_src = [
             v
             for v in items_src

@@ -21,10 +21,12 @@ from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
+from module.OutputPath import OutputPath
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.SessionContext import SessionContext
 from module.TextProcessor import TextProcessor
+
 
 # 翻译器
 class Translator(Base):
@@ -657,16 +659,16 @@ class Translator(Base):
         # 写入文件
         FileManager(self.config).write_to_path(items)
         self.print("")
-        self.info(
-            Localizer.get().engine_task_save_done.replace(
-                "{PATH}", self.config.output_folder
-            )
-        )
+
+        # 获取输出目录路径
+        output_path = OutputPath.get_translated_path()
+
+        self.info(Localizer.get().engine_task_save_done.replace("{PATH}", output_path))
         self.print("")
 
         # 打开输出文件夹
         if self.config.output_folder_open_on_finish:
-            webbrowser.open(os.path.abspath(self.config.output_folder))
+            webbrowser.open(os.path.abspath(output_path))
 
     # 翻译任务完成时
     def task_done_callback(

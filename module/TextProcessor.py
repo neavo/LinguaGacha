@@ -20,8 +20,8 @@ from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
 from module.RubyCleaner import RubyCleaner
 
-class TextProcessor(Base):
 
+class TextProcessor(Base):
     # 对文本进行处理的流程为：
     # - 正规化
     # - 清理注音
@@ -38,7 +38,6 @@ class TextProcessor(Base):
     # 注意预处理和后处理的顺序应该镜像颠倒
 
     class RuleType(StrEnum):
-
         CHECK = "CHECK"
         SAMPLE = "SAMPLE"
         PREFIX = "PREFIX"
@@ -49,7 +48,7 @@ class TextProcessor(Base):
     OPENCCS2T = opencc.OpenCC("s2tw")
 
     # 正则表达式
-    RE_NAME = re.compile(r"^[\[【](.*?)[\]】]\s*", flags = re.IGNORECASE)
+    RE_NAME = re.compile(r"^[\[【](.*?)[\]】]\s*", flags=re.IGNORECASE)
     RE_BLANK: re.Pattern = re.compile(r"\s+", re.IGNORECASE)
 
     # 类线程锁
@@ -73,68 +72,109 @@ class TextProcessor(Base):
         cls.get_rule.cache_clear()
 
     @classmethod
-    @lru_cache(maxsize = None)
-    def get_rule(cls, custom: bool, custom_data: list[str], rule_type: RuleType, text_type: Item.TextType, language: BaseLanguage.Enum) -> re.Pattern[str]:
+    @lru_cache(maxsize=None)
+    def get_rule(
+        cls,
+        custom: bool,
+        custom_data: list[str],
+        rule_type: RuleType,
+        text_type: Item.TextType,
+        language: BaseLanguage.Enum,
+    ) -> re.Pattern[str]:
         data: list[dict[str, str]] = []
         if custom == True:
             data = custom_data
         else:
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
             try:
-                with open(path, "r", encoding = "utf-8-sig") as reader:
-                    data: list[str] = [v.get("src") for v in json.load(reader) if v.get("src") != ""]
-            except Exception as e:
-                print(f"Error reading rule file '{path}': {e}")
+                with open(path, "r", encoding="utf-8-sig") as reader:
+                    data: list[str] = [
+                        v.get("src") for v in json.load(reader) if v.get("src") != ""
+                    ]
+            except Exception:
+                pass  # 不是每个格式都有对应的预置保护规则，找不到时静默跳过
 
         if len(data) == 0:
             return None
         elif rule_type == __class__.RuleType.CHECK:
-            return re.compile(rf"(?:{"|".join(data)})+", re.IGNORECASE)
+            return re.compile(rf"(?:{'|'.join(data)})+", re.IGNORECASE)
         elif rule_type == __class__.RuleType.SAMPLE:
-            return re.compile(rf"{"|".join(data)}", re.IGNORECASE)
+            return re.compile(rf"{'|'.join(data)}", re.IGNORECASE)
         elif rule_type == __class__.RuleType.PREFIX:
-            return re.compile(rf"^(?:{"|".join(data)})+", re.IGNORECASE)
+            return re.compile(rf"^(?:{'|'.join(data)})+", re.IGNORECASE)
         elif rule_type == __class__.RuleType.SUFFIX:
-            return re.compile(rf"(?:{"|".join(data)})+$", re.IGNORECASE)
+            return re.compile(rf"(?:{'|'.join(data)})+$", re.IGNORECASE)
 
     def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
-                custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
-                rule_type = __class__.RuleType.CHECK,
-                text_type = text_type,
-                language = Localizer.get_app_language(),
+                custom=custom,
+                custom_data=tuple(
+                    [
+                        v.get("src")
+                        for v in self.config.text_preserve_data
+                        if v.get("src") != ""
+                    ]
+                )
+                if custom == True
+                else None,
+                rule_type=__class__.RuleType.CHECK,
+                text_type=text_type,
+                language=Localizer.get_app_language(),
             )
 
     def get_re_sample(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
-                custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
-                rule_type = __class__.RuleType.SAMPLE,
-                text_type = text_type,
-                language = Localizer.get_app_language(),
+                custom=custom,
+                custom_data=tuple(
+                    [
+                        v.get("src")
+                        for v in self.config.text_preserve_data
+                        if v.get("src") != ""
+                    ]
+                )
+                if custom == True
+                else None,
+                rule_type=__class__.RuleType.SAMPLE,
+                text_type=text_type,
+                language=Localizer.get_app_language(),
             )
 
     def get_re_prefix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
-                custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
-                rule_type = __class__.RuleType.PREFIX,
-                text_type = text_type,
-                language = Localizer.get_app_language(),
+                custom=custom,
+                custom_data=tuple(
+                    [
+                        v.get("src")
+                        for v in self.config.text_preserve_data
+                        if v.get("src") != ""
+                    ]
+                )
+                if custom == True
+                else None,
+                rule_type=__class__.RuleType.PREFIX,
+                text_type=text_type,
+                language=Localizer.get_app_language(),
             )
 
     def get_re_suffix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
         with __class__.LOCK:
             return __class__.get_rule(
-                custom = custom,
-                custom_data = tuple([v.get("src") for v in self.config.text_preserve_data if v.get("src") != ""]) if custom == True else None,
-                rule_type = __class__.RuleType.SUFFIX,
-                text_type = text_type,
-                language = Localizer.get_app_language(),
+                custom=custom,
+                custom_data=tuple(
+                    [
+                        v.get("src")
+                        for v in self.config.text_preserve_data
+                        if v.get("src") != ""
+                    ]
+                )
+                if custom == True
+                else None,
+                rule_type=__class__.RuleType.SUFFIX,
+                text_type=text_type,
+                language=Localizer.get_app_language(),
             )
 
     # 按规则提取文本
@@ -144,6 +184,7 @@ class TextProcessor(Base):
         def repl(match: re.Match) -> str:
             codes.append(match.group(0))
             return ""
+
         line = rule.sub(repl, line)
 
         return line, codes
@@ -283,15 +324,15 @@ class TextProcessor(Base):
             return src
 
         rule: re.Pattern = self.get_re_prefix(
-            custom = self.config.text_preserve_enable,
-            text_type = text_type,
+            custom=self.config.text_preserve_enable,
+            text_type=text_type,
         )
         if rule is not None:
             src, self.prefix_codes[i] = self.extract(rule, src)
 
         rule: re.Pattern = self.get_re_suffix(
-            custom = self.config.text_preserve_enable,
-            text_type = text_type,
+            custom=self.config.text_preserve_enable,
+            text_type=text_type,
         )
         if rule is not None:
             src, self.suffix_codes[i] = self.extract(rule, src)
@@ -326,8 +367,8 @@ class TextProcessor(Base):
 
                     # 查找控制字符示例
                     rule: re.Pattern = self.get_re_sample(
-                        custom = self.config.text_preserve_enable,
-                        text_type = text_type,
+                        custom=self.config.text_preserve_enable,
+                        text_type=text_type,
                     )
                     if rule is not None:
                         self.samples.extend([v.group(0) for v in rule.finditer(src)])
@@ -386,14 +427,22 @@ class TextProcessor(Base):
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern = self.get_re_check(
-            custom = self.config.text_preserve_enable,
-            text_type = text_type,
+            custom=self.config.text_preserve_enable,
+            text_type=text_type,
         )
         if rule is not None:
             x = [v.group(0) for v in rule.finditer(src)]
             y = [v.group(0) for v in rule.finditer(dst)]
 
-        x = [__class__.RE_BLANK.sub("", v) for v in x if __class__.RE_BLANK.sub("", v) != ""]
-        y = [__class__.RE_BLANK.sub("", v) for v in y if __class__.RE_BLANK.sub("", v) != ""]
+        x = [
+            __class__.RE_BLANK.sub("", v)
+            for v in x
+            if __class__.RE_BLANK.sub("", v) != ""
+        ]
+        y = [
+            __class__.RE_BLANK.sub("", v)
+            for v in y
+            if __class__.RE_BLANK.sub("", v) != ""
+        ]
 
         return x == y

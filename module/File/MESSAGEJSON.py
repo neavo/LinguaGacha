@@ -1,14 +1,15 @@
-import os
 import json
+import os
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
 from model.Item import Item
 from module.Config import Config
+from module.OutputPath import OutputPath
+from module.Text.TextHelper import TextHelper
+
 
 class MESSAGEJSON(Base):
-
     # [
     #     {
     #         "name": "",
@@ -39,23 +40,21 @@ class MESSAGEJSON(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
         items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 获取文件编码
-            encoding = TextHelper.get_enconding(path = abs_path, add_sig_to_utf8 = True)
+            encoding = TextHelper.get_enconding(path=abs_path, add_sig_to_utf8=True)
 
             # 数据处理
-            with open(abs_path, "r", encoding = encoding) as reader:
+            with open(abs_path, "r", encoding=encoding) as reader:
                 json_data: list[dict[str, dict]] = json.load(reader)
 
                 # 格式校验
@@ -79,29 +78,33 @@ class MESSAGEJSON(Base):
 
                     # 添加数据
                     items.append(
-                        Item.from_dict({
-                            "src": entry_message,
-                            "dst": entry_message,
-                            "name_src": name,
-                            "name_dst": name,
-                            "row": len(items),
-                            "file_type": Item.FileType.MESSAGEJSON,
-                            "file_path": rel_path,
-                            "text_type": Item.TextType.KAG,
-                        })
+                        Item.from_dict(
+                            {
+                                "src": entry_message,
+                                "dst": entry_message,
+                                "name_src": name,
+                                "name_dst": name,
+                                "row": len(items),
+                                "file_type": Item.FileType.MESSAGEJSON,
+                                "file_path": rel_path,
+                                "text_type": Item.TextType.KAG,
+                            }
+                        )
                     )
 
         return items
 
     # 写入数据
     def write_to_path(self, items: list[Item]) -> None:
+        # 获取输出目录
+        output_path = OutputPath.get_translated_path()
+
         target = [
-            item for item in items
-            if item.get_file_type() == Item.FileType.MESSAGEJSON
+            item for item in items if item.get_file_type() == Item.FileType.MESSAGEJSON
         ]
 
         # 统一或还原姓名字段
-        if self.config.write_translated_name_fields_to_file == False:
+        if not self.config.write_translated_name_fields_to_file:
             self.revert_name(target)
         else:
             self.uniform_name(target)
@@ -112,32 +115,38 @@ class MESSAGEJSON(Base):
 
         for rel_path, items in group.items():
             # 按行号排序
-            items = sorted(items, key = lambda x: x.get_row())
+            items = sorted(items, key=lambda x: x.get_row())
 
             # 数据处理
-            abs_path = os.path.join(self.output_path, rel_path)
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             result = []
             for item in items:
                 name = item.get_name_dst()
                 if isinstance(name, str):
-                    result.append({
-                        "name": name,
-                        "message": item.get_dst(),
-                    })
+                    result.append(
+                        {
+                            "name": name,
+                            "message": item.get_dst(),
+                        }
+                    )
                 elif isinstance(name, list):
-                    result.append({
-                        "names": name,
-                        "message": item.get_dst(),
-                    })
+                    result.append(
+                        {
+                            "names": name,
+                            "message": item.get_dst(),
+                        }
+                    )
                 else:
-                    result.append({
-                        "message": item.get_dst(),
-                    })
+                    result.append(
+                        {
+                            "message": item.get_dst(),
+                        }
+                    )
 
-            with open(abs_path, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+            with open(abs_path, "w", encoding="utf-8") as writer:
+                writer.write(json.dumps(result, indent=4, ensure_ascii=False))
 
     # 还原姓名字段
     def revert_name(self, items: list[Item]) -> list[Item]:
@@ -180,7 +189,7 @@ class MESSAGEJSON(Base):
 
         # 获取译文
         for src, item in result.items():
-            result[src] = max(item, key = item.get)
+            result[src] = max(item, key=item.get)
 
         # 赋值
         for item in items:

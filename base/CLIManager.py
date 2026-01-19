@@ -10,6 +10,19 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
 class CLIManager(Base):
+    """命令行管理器
+
+    TODO: CLI 模式目前需要改造以适配工程文件模式
+    ------------------------------------------
+    原因：
+    1. 原设计通过 --input_folder 和 --output_folder 指定目录
+    2. 现已移除 Config.input_folder 和 Config.output_folder 字段
+    3. 需要改造为基于工程文件（.lg）的工作模式
+
+    修复方案：
+    - 添加 --project 参数指定工程文件路径
+    - 或添加 --create_project 参数创建新工程
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -43,15 +56,14 @@ class CLIManager(Base):
 
     def run(self) -> bool:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--cli", action = "store_true")
-        parser.add_argument("--config", type = str)
-        parser.add_argument("--input_folder", type = str)
-        parser.add_argument("--output_folder", type = str)
-        parser.add_argument("--source_language", type = str)
-        parser.add_argument("--target_language", type = str)
+        parser.add_argument("--cli", action="store_true")
+        parser.add_argument("--config", type=str)
+        # TODO: 添加 --project 参数以支持工程文件模式
+        parser.add_argument("--source_language", type=str)
+        parser.add_argument("--target_language", type=str)
         args = parser.parse_args()
 
-        if args.cli == False:
+        if not args.cli:
             return False
 
         config: Config = None
@@ -60,23 +72,7 @@ class CLIManager(Base):
         else:
             config = Config().load()
 
-        if isinstance(args.input_folder, str) == False:
-            pass
-        elif self.verify_folder(args.input_folder):
-            config.input_folder = args.input_folder
-        else:
-            self.error(f"--input_folder {Localizer.get().cli_verify_folder}")
-            self.exit()
-
-        if isinstance(args.output_folder, str) == False:
-            pass
-        elif self.verify_folder(args.output_folder):
-            config.output_folder = args.output_folder
-        else:
-            self.error(f"--output_folder {Localizer.get().cli_verify_folder}")
-            self.exit()
-
-        if isinstance(args.source_language, str) == False:
+        if not isinstance(args.source_language, str):
             pass
         elif self.verify_language(args.source_language):
             config.source_language = args.source_language
@@ -84,7 +80,7 @@ class CLIManager(Base):
             self.error(f"--source_language {Localizer.get().cli_verify_language}")
             self.exit()
 
-        if isinstance(args.target_language, str) == False:
+        if not isinstance(args.target_language, str):
             pass
         elif self.verify_language(args.target_language):
             config.target_language = args.target_language
@@ -92,10 +88,13 @@ class CLIManager(Base):
             self.error(f"--target_language {Localizer.get().cli_verify_language}")
             self.exit()
 
-        self.emit(Base.Event.TRANSLATION_RUN, {
-            "config": config,
-            "status": Base.ProjectStatus.NONE,
-        })
+        self.emit(
+            Base.Event.TRANSLATION_RUN,
+            {
+                "config": config,
+                "status": Base.ProjectStatus.NONE,
+            },
+        )
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
 
         return True

@@ -49,8 +49,6 @@ class Config:
     # BasicSettingsPage
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
-    input_folder: str = "./input"
-    output_folder: str = "./output"
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
 
@@ -118,16 +116,6 @@ class Config:
                                 setattr(self, k, v)
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_read_file_fail}", e)
-
-        # 便携式环境下调整默认路径
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
-        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR", ".")
-        if data_dir != app_dir:
-            # 便携式环境中，将默认相对路径解析到 data_dir
-            if self.input_folder == "./input":
-                self.input_folder = os.path.join(data_dir, "input")
-            if self.output_folder == "./output":
-                self.output_folder = os.path.join(data_dir, "output")
 
         return self
 

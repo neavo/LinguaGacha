@@ -11,6 +11,7 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
+from module.OutputPath import OutputPath
 from module.SessionContext import SessionContext
 from module.Storage.AssetStore import AssetStore
 
@@ -21,17 +22,15 @@ class TRANS(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
         items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
             with open(abs_path, "r", encoding="utf-8-sig") as reader:
@@ -123,8 +122,11 @@ class TRANS(Base):
             # 按行号排序
             items = sorted(items, key=lambda x: x.get_row())
 
+            # 获取输出目录
+            output_path = OutputPath.get_translated_path()
+
             # 数据处理
-            abs_path = f"{self.output_path}/{rel_path}"
+            abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容

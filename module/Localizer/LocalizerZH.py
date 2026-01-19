@@ -81,7 +81,8 @@ class LocalizerZH:
     app_treasure_chest_page: str = "百宝箱"
 
     # 路径
-    path_bilingual: str = "双语对照"
+    path_translated: str = "译文"
+    path_translated_bilingual: str = "译文_双语对照"
     path_result_name_field_extraction: str = "姓名字段提取.xlsx"
 
     # 日志
@@ -348,12 +349,12 @@ class LocalizerZH:
     basic_settings_page_source_language_content: str = "设置当前项目中输入文本的语言"
     basic_settings_page_target_language_title: str = "译文语言"
     basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
-    basic_settings_page_input_folder_title: str = "输入文件夹"
-    basic_settings_page_input_folder_content: str = "当前输入文件夹为"
-    basic_settings_page_output_folder_title: str = "输出文件夹（不能与输入文件夹相同）"
-    basic_settings_page_output_folder_content: str = "当前输出文件夹为"
     basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
     basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
+
+
+
+
     basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
     basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
 

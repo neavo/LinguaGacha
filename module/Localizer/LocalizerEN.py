@@ -81,7 +81,8 @@ class LocalizerEN(LocalizerZH):
     app_treasure_chest_page: str = "Treasure Chest"
 
     # 路径
-    path_bilingual: str = "bilingual"
+    path_translated: str = "Translated"
+    path_translated_bilingual: str = "Translated_Bilingual"
     path_result_name_field_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
@@ -348,12 +349,12 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_source_language_content: str = "Set the language of the input text in the current project"
     basic_settings_page_target_language_title: str = "Target Language"
     basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
-    basic_settings_page_input_folder_title: str = "Input Folder"
-    basic_settings_page_input_folder_content: str = "The current input folder is"
-    basic_settings_page_output_folder_title: str = "Output Folder (Can not be same as input folder)"
-    basic_settings_page_output_folder_content: str = "The current output folder is"
     basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
     basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
+
+
+
+
     basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
     basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
 

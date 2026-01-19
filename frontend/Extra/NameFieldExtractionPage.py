@@ -35,6 +35,7 @@ from model.Item import Item
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.OutputPath import OutputPath
 from module.SessionContext import SessionContext
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
@@ -161,9 +162,19 @@ class NameFieldExtractionPage(QWidget, Base):
         if not message_box.exec():
             return None
 
-        # 读取文件
-        config = Config().load()
-        project, items = FileManager(config).read_from_path()
+        # 从工程数据库读取 items
+        db = SessionContext.get().get_db()
+        if db is None:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().alert_no_data,
+                },
+            )
+            return None
+
+        items = [Item.from_dict(d) for d in db.get_items()]
         items = [
             v
             for v in items
@@ -210,24 +221,17 @@ class NameFieldExtractionPage(QWidget, Base):
             )
             return None
 
-        # 设置项目数据
-        project.set_status(Base.ProjectStatus.PROCESSING)
-        project.set_extras(
-            {
-                "start_time": time.time(),
-                "total_line": len(
-                    [
-                        item
-                        for item in items
-                        if item.get_status() == Base.ProjectStatus.NONE
-                    ]
-                ),
-                "line": 0,
-                "total_tokens": 0,
-                "total_output_tokens": 0,
-                "time": 0,
-            }
-        )
+        # 设置翻译进度元数据
+        translation_extras = {
+            "start_time": time.time(),
+            "total_line": len(
+                [item for item in items if item.get_status() == Base.ProjectStatus.NONE]
+            ),
+            "line": 0,
+            "total_tokens": 0,
+            "total_output_tokens": 0,
+            "time": 0,
+        }
 
         # 写入工程数据库
         db = SessionContext.get().get_db()
@@ -241,6 +245,7 @@ class NameFieldExtractionPage(QWidget, Base):
             )
             return None
         db.set_items([item.to_dict() for item in items])
+        db.set_meta("translation_extras", translation_extras)
 
         window.switchTo(window.translation_page)
         self.emit(
@@ -252,10 +257,10 @@ class NameFieldExtractionPage(QWidget, Base):
 
     # 第二步点击事件
     def step_02_clicked(self, window: FluentWindow) -> None:
-        # 读取文件
+        # 从输出目录读取文件
         config = Config().load()
-        config.input_folder = config.output_folder
-        _, items = FileManager(config).read_from_path()
+        output_path = OutputPath.get_translated_path()
+        _, items = FileManager(config).read_from_path(output_path)
         items = [
             v
             for v in items

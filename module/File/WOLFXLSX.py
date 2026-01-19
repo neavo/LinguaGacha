@@ -8,6 +8,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.OutputPath import OutputPath
 from module.TableManager import TableManager
 
 
@@ -59,17 +60,15 @@ class WOLFXLSX(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[Item]:
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
         items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
             book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
@@ -146,6 +145,9 @@ class WOLFXLSX(Base):
 
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
+        # 获取输出目录
+        output_path = OutputPath.get_translated_path()
+
         target = [
             item for item in items if item.get_file_type() == Item.FileType.WOLFXLSX
         ]
@@ -179,7 +181,7 @@ class WOLFXLSX(Base):
                 )
 
             # 保存工作簿
-            abs_path = f"{self.output_path}/{rel_path}"
+            abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             book.save(abs_path)
 
