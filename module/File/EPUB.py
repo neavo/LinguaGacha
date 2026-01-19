@@ -1,6 +1,6 @@
+import copy
 import os
 import re
-import copy
 import shutil
 import zipfile
 
@@ -14,7 +14,6 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
 class EPUB(Base):
-
     # 显式引用以避免打包问题
     etree
 
@@ -39,76 +38,108 @@ class EPUB(Base):
     # 在扩展名前插入文本
     def insert_source_target(self, path: str) -> str:
         root, ext = os.path.splitext(path)
-        return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        return (
+            f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        )
 
     # 读取
     def read_from_path(self, abs_paths: list[str]) -> list[Item]:
-        items:list[Item] = []
+        from module.DataAccessLayer import DataAccessLayer
+
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, self.input_path)
 
-            # 将原始文件复制一份
-            os.makedirs(os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"), exist_ok = True)
-            shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
+            # 仅在非工程模式且非准备模式下复制文件（用于后续写入）
+            if (
+                not DataAccessLayer.is_project_mode()
+                and not DataAccessLayer.is_prepare_mode()
+            ):
+                os.makedirs(os.path.dirname(f"{self.output_path}/cache/temp/{rel_path}"), exist_ok=True)
+                shutil.copy(abs_path, f"{self.output_path}/cache/temp/{rel_path}")
 
             # 数据处理
             with zipfile.ZipFile(abs_path, "r") as zip_reader:
                 for path in zip_reader.namelist():
                     if path.lower().endswith((".htm", ".html", ".xhtml")):
                         with zip_reader.open(path) as reader:
-                            bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
+                            bs = BeautifulSoup(
+                                reader.read().decode("utf-8-sig"), "html.parser"
+                            )
                             for dom in bs.find_all(EPUB.EPUB_TAGS):
                                 # 跳过空标签或嵌套标签
-                                if dom.get_text().strip() == "" or dom.find(EPUB.EPUB_TAGS) != None:
+                                if (
+                                    dom.get_text().strip() == ""
+                                    or dom.find(EPUB.EPUB_TAGS) != None
+                                ):
                                     continue
 
                                 # 添加数据
-                                items.append(Item.from_dict({
-                                    "src": dom.get_text(),
-                                    "dst": dom.get_text(),
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": Item.FileType.EPUB,
-                                    "file_path": rel_path,
-                                }))
+                                items.append(
+                                    Item.from_dict(
+                                        {
+                                            "src": dom.get_text(),
+                                            "dst": dom.get_text(),
+                                            "tag": path,
+                                            "row": len(items),
+                                            "file_type": Item.FileType.EPUB,
+                                            "file_path": rel_path,
+                                        }
+                                    )
+                                )
                     elif path.lower().endswith(".ncx"):
                         with zip_reader.open(path) as reader:
-                            bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "lxml-xml")
+                            bs = BeautifulSoup(
+                                reader.read().decode("utf-8-sig"), "lxml-xml"
+                            )
                             for dom in bs.find_all("text"):
                                 # 跳过空标签
                                 if dom.get_text().strip() == "":
                                     continue
 
-                                items.append(Item.from_dict({
-                                    "src": dom.get_text(),
-                                    "dst": dom.get_text(),
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": Item.FileType.EPUB,
-                                    "file_path": rel_path,
-                                }))
+                                items.append(
+                                    Item.from_dict(
+                                        {
+                                            "src": dom.get_text(),
+                                            "dst": dom.get_text(),
+                                            "tag": path,
+                                            "row": len(items),
+                                            "file_type": Item.FileType.EPUB,
+                                            "file_path": rel_path,
+                                        }
+                                    )
+                                )
 
         return items
 
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
+        from module.DataAccessLayer import DataAccessLayer
 
         def process_opf(zip_reader: zipfile.ZipFile, path: str) -> None:
             with zip_reader.open(path) as reader:
                 zip_writer.writestr(
                     path,
-                    reader.read().decode("utf-8-sig").replace("page-progression-direction=\"rtl\"", ""),
+                    reader.read()
+                    .decode("utf-8-sig")
+                    .replace('page-progression-direction="rtl"', ""),
                 )
 
         def process_css(zip_reader: zipfile.ZipFile, path: str) -> None:
             with zip_reader.open(path) as reader:
                 zip_writer.writestr(
                     path,
-                    re.sub(r"[^;\s]*writing-mode\s*:\s*vertical-rl;*", "", reader.read().decode("utf-8-sig")),
+                    re.sub(
+                        r"[^;\s]*writing-mode\s*:\s*vertical-rl;*",
+                        "",
+                        reader.read().decode("utf-8-sig"),
+                    ),
                 )
 
-        def process_ncx(zip_reader: zipfile.ZipFile, path: str, items: list[Item]) -> None:
+        def process_ncx(
+            zip_reader: zipfile.ZipFile, path: str, items: list[Item]
+        ) -> None:
             with zip_reader.open(path) as reader:
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "lxml-xml")
@@ -132,51 +163,59 @@ class EPUB(Base):
             """修正 SVG 标签的大小写敏感属性"""
             # 需要修正的属性映射(小写 -> 正确大小写)
             attr_fixes = {
-                'viewbox': 'viewBox',
-                'preserveaspectratio': 'preserveAspectRatio',
-                'pathlength': 'pathLength',
-                'gradientunits': 'gradientUnits',
-                'gradienttransform': 'gradientTransform',
-                'spreadmethod': 'spreadMethod',
-                'maskcontentunits': 'maskContentUnits',
-                'maskunits': 'maskUnits',
-                'patterncontentunits': 'patternContentUnits',
-                'patternunits': 'patternUnits',
-                'patterntransform': 'patternTransform',
+                "viewbox": "viewBox",
+                "preserveaspectratio": "preserveAspectRatio",
+                "pathlength": "pathLength",
+                "gradientunits": "gradientUnits",
+                "gradienttransform": "gradientTransform",
+                "spreadmethod": "spreadMethod",
+                "maskcontentunits": "maskContentUnits",
+                "maskunits": "maskUnits",
+                "patterncontentunits": "patternContentUnits",
+                "patternunits": "patternUnits",
+                "patterntransform": "patternTransform",
             }
-            
+
             # 遍历所有 SVG 标签
-            for svg in bs.find_all('svg'):
+            for svg in bs.find_all("svg"):
                 # 修正 SVG 标签本身的属性
                 for attr_lower, attr_correct in attr_fixes.items():
                     if attr_lower in svg.attrs:
                         svg.attrs[attr_correct] = svg.attrs.pop(attr_lower)
-                
+
                 # 修正 SVG 子元素的属性
                 for child in svg.find_all():
                     for attr_lower, attr_correct in attr_fixes.items():
                         if attr_lower in child.attrs:
                             child.attrs[attr_correct] = child.attrs.pop(attr_lower)
-                            
-        def process_html(zip_reader: zipfile.ZipFile, path: str, items: list[Item], bilingual: bool) -> None:
+
+        def process_html(
+            zip_reader: zipfile.ZipFile, path: str, items: list[Item], bilingual: bool
+        ) -> None:
             with zip_reader.open(path) as reader:
                 target = [item for item in items if item.get_tag() == path]
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
 
                 # 判断是否是导航页（包括目录和地标导航）
                 is_nav_page = (
-                    bs.find("nav", attrs = {"epub:type": "toc"}) != None or
-                    bs.find("nav", attrs = {"epub:type": "landmarks"}) != None
+                    bs.find("nav", attrs={"epub:type": "toc"}) != None
+                    or bs.find("nav", attrs={"epub:type": "landmarks"}) != None
                 )
 
                 # 移除竖排样式
                 for dom in bs.find_all():
-                    class_content: str = re.sub(r"[hv]rtl|[hv]ltr", "", " ".join(dom.get("class", "")))
+                    class_content: str = re.sub(
+                        r"[hv]rtl|[hv]ltr", "", " ".join(dom.get("class", ""))
+                    )
                     if class_content == "":
                         dom.attrs.pop("class", None)
                     else:
                         dom["class"] = class_content.split(" ")
-                    style_content: str = re.sub(r"[^;\s]*writing-mode\s*:\s*vertical-rl;*", "", dom.get("style", ""))
+                    style_content: str = re.sub(
+                        r"[^;\s]*writing-mode\s*:\s*vertical-rl;*",
+                        "",
+                        dom.get("style", ""),
+                    )
                     if style_content == "":
                         dom.attrs.pop("style", None)
                     else:
@@ -192,18 +231,26 @@ class EPUB(Base):
 
                     # 输出双语（导航页除外，避免链接重复指向）
                     if bilingual == True and is_nav_page == False:
-                        if (
-                            self.config.deduplication_in_bilingual != True
-                            or (self.config.deduplication_in_bilingual == True and item.get_src() != item.get_dst())
+                        if self.config.deduplication_in_bilingual != True or (
+                            self.config.deduplication_in_bilingual == True
+                            and item.get_src() != item.get_dst()
                         ):
                             line_src = copy.copy(dom)
-                            line_src["style"] = line_src.get("style", "").removesuffix(";") + "opacity:0.50;"
+                            line_src["style"] = (
+                                line_src.get("style", "").removesuffix(";")
+                                + "opacity:0.50;"
+                            )
                             dom.insert_before(line_src)
                             dom.insert_before("\n")
 
                     # 根据不同类型的页面处理不同情况
                     if item.get_src() in str(dom):
-                        dom.replace_with(BeautifulSoup(str(dom).replace(item.get_src(), item.get_dst()), "html.parser"))
+                        dom.replace_with(
+                            BeautifulSoup(
+                                str(dom).replace(item.get_src(), item.get_dst()),
+                                "html.parser",
+                            )
+                        )
                     elif is_nav_page == False:
                         dom.string = item.get_dst()
                     else:
@@ -216,10 +263,7 @@ class EPUB(Base):
                 zip_writer.writestr(path, str(bs))
 
         # 筛选
-        target = [
-            item for item in items
-            if item.get_file_type() == Item.FileType.EPUB
-        ]
+        target = [item for item in items if item.get_file_type() == Item.FileType.EPUB]
 
         # 按文件路径分组
         group: dict[str, list[str]] = {}
@@ -229,13 +273,25 @@ class EPUB(Base):
         # 分别处理每个文件
         for rel_path, items in group.items():
             # 按行号排序
-            items = sorted(items, key = lambda x: x.get_row())
+            items = sorted(items, key=lambda x: x.get_row())
 
             # 数据处理
             abs_path = f"{self.output_path}/{rel_path}"
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+
+            # 获取原始文件内容（工程模式从 assets 获取，传统模式从 cache 获取）
+            if DataAccessLayer.is_project_mode():
+                original_content = DataAccessLayer.get_asset_content(rel_path)
+                if original_content is None:
+                    continue
+                import io
+
+                source_zip = io.BytesIO(original_content)
+            else:
+                source_zip = f"{self.output_path}/cache/temp/{rel_path}"
+
             with zipfile.ZipFile(self.insert_target(abs_path), "w") as zip_writer:
-                with zipfile.ZipFile(f"{self.output_path}/cache/temp/{rel_path}", "r") as zip_reader:
+                with zipfile.ZipFile(source_zip, "r") as zip_reader:
                     for path in zip_reader.namelist():
                         if path.lower().endswith(".css"):
                             process_css(zip_reader, path)
@@ -251,13 +307,27 @@ class EPUB(Base):
         # 分别处理每个文件（双语）
         for rel_path, items in group.items():
             # 按行号排序
-            items = sorted(items, key = lambda x: x.get_row())
+            items = sorted(items, key=lambda x: x.get_row())
 
             # 数据处理
             abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with zipfile.ZipFile(self.insert_source_target(abs_path), "w") as zip_writer:
-                with zipfile.ZipFile(f"{self.output_path}/cache/temp/{rel_path}", "r") as zip_reader:
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+
+            # 获取原始文件内容（工程模式从 assets 获取，传统模式从 cache 获取）
+            if DataAccessLayer.is_project_mode():
+                original_content = DataAccessLayer.get_asset_content(rel_path)
+                if original_content is None:
+                    continue
+                import io
+
+                source_zip = io.BytesIO(original_content)
+            else:
+                source_zip = f"{self.output_path}/cache/temp/{rel_path}"
+
+            with zipfile.ZipFile(
+                self.insert_source_target(abs_path), "w"
+            ) as zip_writer:
+                with zipfile.ZipFile(source_zip, "r") as zip_reader:
                     for path in zip_reader.namelist():
                         if path.lower().endswith(".css"):
                             process_css(zip_reader, path)

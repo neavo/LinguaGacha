@@ -112,7 +112,7 @@ if __name__ == "__main__":
     ) if LogManager.get().is_expert_mode() else None
 
     # 网络代理
-    if config.proxy_enable == False or config.proxy_url == "":
+    if not config.proxy_enable or config.proxy_url == "":
         os.environ.pop("http_proxy", None)
         os.environ.pop("https_proxy", None)
     else:
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    if config.font_hinting == True:
+    if config.font_hinting:
         font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     else:
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     VersionManager.get().set_version(version)
 
     # 处理启动参数
-    if CLIManager.get().run() == False:
+    if not CLIManager.get().run():
         app_fluent_window = AppFluentWindow()
         app_fluent_window.show()
 

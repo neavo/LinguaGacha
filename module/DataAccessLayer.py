@@ -7,6 +7,7 @@
 from model.Item import Item
 from module.Config import Config
 from module.SessionContext import SessionContext
+from module.Storage.AssetCompressor import AssetCompressor
 from module.Storage.ItemStore import ItemStore
 from module.Storage.LGDatabase import LGDatabase
 from module.Storage.ProjectStore import ProjectStore
@@ -17,11 +18,30 @@ class DataAccessLayer:
 
     _item_store_cache: ItemStore | None = None
     _project_store_cache: ProjectStore | None = None
+    _prepare_mode_flag: bool = False
 
     @classmethod
     def is_project_mode(cls) -> bool:
         """检查是否处于工程模式"""
         return SessionContext.get().is_loaded()
+
+    @classmethod
+    def is_prepare_mode(cls) -> bool:
+        """检查是否处于准备模式（如工程创建、导入资产阶段）"""
+        return cls._prepare_mode_flag
+
+    @classmethod
+    def prepare_mode_context(cls):
+        """准备模式上下文管理器 (用于 ProjectCreator 等场景)"""
+
+        class Context:
+            def __enter__(self):
+                DataAccessLayer._prepare_mode_flag = True
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                DataAccessLayer._prepare_mode_flag = False
+
+        return Context()
 
     @classmethod
     def get_db(cls) -> LGDatabase | None:
@@ -365,8 +385,6 @@ class DataAccessLayer:
         db = cls.get_db()
         if db is None:
             return None
-
-        from module.Storage.AssetCompressor import AssetCompressor
 
         compressed = db.get_asset(rel_path)
         if compressed is None:

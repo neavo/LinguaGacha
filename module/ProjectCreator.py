@@ -10,6 +10,9 @@ import os
 from pathlib import Path
 
 from base.Base import Base
+from module.Config import Config
+from module.DataAccessLayer import DataAccessLayer
+from module.File.FileManager import FileManager
 from module.Storage.AssetCompressor import AssetCompressor
 from module.Storage.LGDatabase import LGDatabase
 
@@ -57,8 +60,6 @@ class ProjectCreator(Base):
         Returns:
             创建的 LGDatabase 实例
         """
-        from module.Config import Config
-        from module.File.FileManager import FileManager
 
         # 确保输出目录存在
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -89,10 +90,11 @@ class ProjectCreator(Base):
 
         # 构造 Config 对象指向源目录
         config = Config().load()
-        config.input_folder = source_path
 
-        # 使用 FileManager 读取翻译条目
-        _, items = FileManager(config).read_from_path()
+        # 使用准备模式上下文，避免 FileManager 复制文件到 cache
+        with DataAccessLayer.prepare_mode_context():
+            # 使用 FileManager 读取翻译条目
+            _, items = FileManager(config).read_from_path()
 
         # 将条目保存到数据库
         if items:
