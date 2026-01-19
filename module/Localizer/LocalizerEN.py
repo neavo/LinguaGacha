@@ -234,11 +234,8 @@ class LocalizerEN(LocalizerZH):
     workbench_recent_projects_title: str = "Recent Projects"
     workbench_open_project_btn: str = "Open Project"
     workbench_drop_zone_source_title: str = "Click or Drag Source File"
-
     workbench_drop_zone_lg_title: str = "Click or Drag .lg File"
-
     workbench_features_format_title: str = "Features & Formats"
-
     workbench_feature_format_support: str = "Formats"
     workbench_feature_format_support_desc: str = "txt, md, json, xlsx, epub, ass"
     workbench_feature_private_rule: str = "Private Rules"
@@ -247,16 +244,15 @@ class LocalizerEN(LocalizerZH):
     workbench_feature_offline_mode_desc: str = "Source files can be safely removed after creation"
     workbench_feature_zero_config: str = "Zero Config"
     workbench_feature_zero_config_desc: str = "Recursively scan directories and build index"
-
     workbench_select_source_dir_title: str = "Select Source Directory"
     workbench_toast_no_valid_file: str = "No supported source files found in this directory"
-
     workbench_drop_ready_source: str = "{COUNT} source files found, ready"
     workbench_select_project_title: str = "Select Project File"
     workbench_toast_invalid_lg: str = "Please select a .lg project file"
     workbench_msg_file_not_found_title: str = "File Not Found"
     workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
     workbench_progress_creating: str = "Creating project..."
+    workbench_progress_loading: str = "Loading project..."
     workbench_toast_create_fail: str = "Failed to create project: {ERROR}"
     workbench_toast_load_fail: str = "Failed to load project: {ERROR}"
     workbench_save_project_title: str = "Save Project File"
@@ -349,13 +345,8 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
     basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
     basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
-
-
-
-
     basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
     basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
-
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
         "The maximum time (seconds) to wait for the model's response when making a request"

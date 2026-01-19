@@ -231,7 +231,6 @@ class RecentProjectItem(QFrame):
         self.remove_btn.hide()
 
 
-
 class ProjectInfoPanel(SimpleCardWidget):
     """项目详情面板"""
 
@@ -837,8 +836,6 @@ class WorkbenchPage(ScrollArea, Base):
             # 加载工程
             StorageContext.get().load(path)
 
-            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-
             # 重置选中状态
             self.selected_source_path = None
             self.new_btn.setEnabled(False)
@@ -846,9 +843,7 @@ class WorkbenchPage(ScrollArea, Base):
             self.new_drop_zone.set_text(
                 Localizer.get().workbench_drop_zone_source_title, ""
             )
-
         except Exception as e:
-            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -858,6 +853,8 @@ class WorkbenchPage(ScrollArea, Base):
                     ),
                 },
             )
+        finally:
+            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
     def on_open_project(self) -> None:
         """打开工程"""
@@ -865,6 +862,15 @@ class WorkbenchPage(ScrollArea, Base):
             return
 
         try:
+            # 显示进度 Toast
+            self.emit(
+                Base.Event.PROGRESS_TOAST_SHOW,
+                {
+                    "message": Localizer.get().workbench_progress_loading,
+                    "indeterminate": True,
+                },
+            )
+
             # 加载工程
             StorageContext.get().load(self.selected_lg_path)
 
@@ -883,3 +889,5 @@ class WorkbenchPage(ScrollArea, Base):
                     ),
                 },
             )
+        finally:
+            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})

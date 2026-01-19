@@ -234,11 +234,8 @@ class LocalizerZH:
     workbench_recent_projects_title: str = "最近打开"
     workbench_open_project_btn: str = "打开工程"
     workbench_drop_zone_source_title: str = "点击或拖拽源文件"
-
     workbench_drop_zone_lg_title: str = "点击或拖拽 .lg 文件"
-
     workbench_features_format_title: str = "特性与格式"
-
     workbench_feature_format_support: str = "格式支持"
     workbench_feature_format_support_desc: str = "txt, md, json, xlsx, epub, ass"
     workbench_feature_private_rule: str = "私有规则"
@@ -247,16 +244,15 @@ class LocalizerZH:
     workbench_feature_offline_mode_desc: str = "创建后原始文件可安全移除"
     workbench_feature_zero_config: str = "零配置"
     workbench_feature_zero_config_desc: str = "自动递归扫描目录并建立索引"
-
     workbench_select_source_dir_title: str = "选择源文件目录"
     workbench_toast_no_valid_file: str = "该目录下没有支持的源文件"
-
     workbench_drop_ready_source: str = "包含 {COUNT} 个源文件，准备就绪"
     workbench_select_project_title: str = "选择工程文件"
     workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
     workbench_msg_file_not_found_title: str = "文件不存在"
     workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除？"
     workbench_progress_creating: str = "正在创建工程..."
+    workbench_progress_loading: str = "正在加载工程..."
     workbench_toast_create_fail: str = "创建工程失败：{ERROR}"
     workbench_toast_load_fail: str = "加载工程失败：{ERROR}"
     workbench_save_project_title: str = "保存工程文件"
@@ -349,13 +345,8 @@ class LocalizerZH:
     basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
     basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
     basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
-
-
-
-
     basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
     basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
-
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
