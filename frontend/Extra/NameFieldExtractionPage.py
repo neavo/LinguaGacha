@@ -5,7 +5,7 @@ TODO: 此页面的第一步（翻译）目前存在问题，无法正常工作
 原因：
 1. step_01_clicked() 设计为使用传统模式（ItemStore）存储翻译条目
 2. 调用 DataAccessLayer.set_items() 后发送 TRANSLATION_RUN 事件启动翻译
-3. 但 Translator.start() 强制要求工程模式（SessionContext.is_loaded() == True）
+3. 但 Translator.start() 强制要求工程模式（StorageContext.is_loaded() == True）
 4. 因此翻译器会拒绝执行，提示"请先加载工程文件"
 
 注意：step_02_clicked()（生成术语表）功能正常，不受此问题影响
@@ -35,11 +35,10 @@ from model.Item import Item
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.OutputPath import OutputPath
-from module.SessionContext import SessionContext
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
-
 
 class NameFieldExtractionPage(QWidget, Base):
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -163,7 +162,7 @@ class NameFieldExtractionPage(QWidget, Base):
             return None
 
         # 从工程数据库读取 items
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             self.emit(
                 Base.Event.TOAST,
@@ -234,7 +233,7 @@ class NameFieldExtractionPage(QWidget, Base):
         }
 
         # 写入工程数据库
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             self.emit(
                 Base.Event.TOAST,
@@ -259,7 +258,7 @@ class NameFieldExtractionPage(QWidget, Base):
     def step_02_clicked(self, window: FluentWindow) -> None:
         # 从输出目录读取文件
         config = Config().load()
-        output_path = OutputPath.get_translated_path()
+        output_path = PathStore.get_translated_path()
         _, items = FileManager(config).read_from_path(output_path)
         items = [
             v

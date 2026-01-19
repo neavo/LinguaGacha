@@ -25,10 +25,9 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
-from module.SessionContext import SessionContext
+from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
-
 
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
@@ -202,7 +201,7 @@ class ProofreadingPage(QWidget, Base):
             try:
                 self.config = Config().load()
                 # 从工程数据库读取所有条目
-                db = SessionContext.get().get_db()
+                db = StorageContext.get().get_db()
                 if db is None:
                     self.emit(
                         Base.Event.TOAST,
@@ -736,7 +735,7 @@ class ProofreadingPage(QWidget, Base):
         def task() -> None:
             try:
                 # 直接写入工程数据库
-                db = SessionContext.get().get_db()
+                db = StorageContext.get().get_db()
                 if db is None:
                     self.save_done.emit(False)
                     return

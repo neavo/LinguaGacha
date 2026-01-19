@@ -11,10 +11,9 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.OutputPath import OutputPath
-from module.SessionContext import SessionContext
 from module.Storage.AssetStore import AssetStore
-
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 
 class TRANS(Base):
     def __init__(self, config: Config) -> None:
@@ -123,14 +122,14 @@ class TRANS(Base):
             items = sorted(items, key=lambda x: x.get_row())
 
             # 获取输出目录
-            output_path = OutputPath.get_translated_path()
+            output_path = PathStore.get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = SessionContext.get().get_db()
+            db = StorageContext.get().get_db()
             if db is None:
                 continue
             compressed = db.get_asset(rel_path)

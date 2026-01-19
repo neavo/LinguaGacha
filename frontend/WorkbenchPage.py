@@ -32,8 +32,8 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
 from module.Storage.ProjectStore import ProjectStore
+from module.Storage.StorageContext import StorageContext
 
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
@@ -780,7 +780,7 @@ class WorkbenchPage(ScrollArea, Base):
             config.save()
 
             # 加载工程
-            SessionContext.get().load(path)
+            StorageContext.get().load(path)
 
             self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
             self.emit(
@@ -820,7 +820,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         try:
             # 加载工程
-            SessionContext.get().load(self._selected_lg_path)
+            StorageContext.get().load(self._selected_lg_path)
 
             # 更新最近打开列表
             config = Config().load()

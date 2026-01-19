@@ -24,13 +24,12 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
 from module.Storage.DataStore import DataStore
+from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
-
 
 class TextReplacementPage(QWidget, Base):
     def __init__(self, name: str, window: FluentWindow, base_key: str) -> None:
@@ -68,7 +67,7 @@ class TextReplacementPage(QWidget, Base):
     # 数据访问辅助方法
     def _get_data(self) -> list[dict[str, str]]:
         """根据 base_key 获取数据"""
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return []
         if self.base_key == "pre_translation_replacement":
@@ -77,7 +76,7 @@ class TextReplacementPage(QWidget, Base):
 
     def _set_data(self, data: list[dict[str, str]]) -> None:
         """根据 base_key 保存数据"""
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return
         if self.base_key == "pre_translation_replacement":
@@ -87,7 +86,7 @@ class TextReplacementPage(QWidget, Base):
 
     def _get_enable(self) -> bool:
         """根据 base_key 获取启用状态"""
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return True
         if self.base_key == "pre_translation_replacement":
@@ -96,7 +95,7 @@ class TextReplacementPage(QWidget, Base):
 
     def _set_enable(self, enable: bool) -> None:
         """根据 base_key 设置启用状态"""
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return
         if self.base_key == "pre_translation_replacement":

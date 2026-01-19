@@ -21,12 +21,11 @@ from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
-from module.OutputPath import OutputPath
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.SessionContext import SessionContext
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 from module.TextProcessor import TextProcessor
-
 
 # 翻译器
 class Translator(Base):
@@ -56,8 +55,8 @@ class Translator(Base):
             if Engine.get().get_status() != Base.TaskStatus.IDLE:
                 status = Base.ProjectStatus.NONE
             else:
-                # 从 SessionContext 获取工程状态
-                ctx = SessionContext.get()
+                # 从 StorageContext 获取工程状态
+                ctx = StorageContext.get()
                 if ctx.is_loaded():
                     status = ctx.get_project_status()
                 else:
@@ -157,7 +156,7 @@ class Translator(Base):
         self.config = config if isinstance(config, Config) else Config().load()
 
         # 检查工程是否已加载
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if not ctx.is_loaded():
             self.emit(
                 Base.Event.TOAST,
@@ -434,7 +433,7 @@ class Translator(Base):
 
     def _close_db_connection(self) -> None:
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if ctx.is_loaded():
             db = ctx.get_db()
             if db is not None:
@@ -442,7 +441,7 @@ class Translator(Base):
 
     def _save_items_batch(self, items: list[Item]) -> None:
         """批量保存条目到数据库（即时写入，用于断点续译）"""
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if not ctx.is_loaded():
             return
 
@@ -458,7 +457,7 @@ class Translator(Base):
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
     ) -> None:
         """保存翻译状态到 .lg 文件"""
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if not ctx.is_loaded() or self._items_cache is None:
             return
 
@@ -661,7 +660,7 @@ class Translator(Base):
         self.print("")
 
         # 获取输出目录路径
-        output_path = OutputPath.get_translated_path()
+        output_path = PathStore.get_translated_path()
 
         self.info(Localizer.get().engine_task_save_done.replace("{PATH}", output_path))
         self.print("")

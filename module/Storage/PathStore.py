@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
+from module.Storage.StorageContext import StorageContext
 
 class PathStore:
     """输出路径管理器
@@ -15,7 +15,7 @@ class PathStore:
     @staticmethod
     def get_translated_path() -> str:
         """获取译文输出目录路径"""
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if not ctx.is_loaded():
             raise RuntimeError("工程未加载，无法获取输出路径")
 
@@ -26,7 +26,7 @@ class PathStore:
     @staticmethod
     def get_bilingual_path() -> str:
         """获取双语对照输出目录路径"""
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if not ctx.is_loaded():
             raise RuntimeError("工程未加载，无法获取输出路径")
 

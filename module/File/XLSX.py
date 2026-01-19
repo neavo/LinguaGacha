@@ -7,9 +7,8 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.OutputPath import OutputPath
+from module.Storage.PathStore import PathStore
 from module.TableManager import TableManager
-
 
 class XLSX(Base):
     def __init__(self, config: Config) -> None:
@@ -96,7 +95,7 @@ class XLSX(Base):
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
         # 获取输出目录
-        output_path = OutputPath.get_translated_path()
+        output_path = PathStore.get_translated_path()
 
         target = [item for item in items if item.get_file_type() == Item.FileType.XLSX]
 

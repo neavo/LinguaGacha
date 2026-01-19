@@ -43,7 +43,7 @@ from frontend.Translation import TranslationPage
 from frontend.WorkbenchPage import WorkbenchPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
+from module.Storage.StorageContext import StorageContext
 from widget.ProgressToast import ProgressToast
 
 class AppFluentWindow(FluentWindow, Base):
@@ -113,7 +113,7 @@ class AppFluentWindow(FluentWindow, Base):
     def switchTo(self, interface: QWidget):
         """切换页面"""
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工作台
-        if not SessionContext.get().is_loaded() and interface != self.workbench_page:
+        if not StorageContext.get().is_loaded() and interface != self.workbench_page:
             if self._is_project_dependent(interface):
                 interface = self.workbench_page
 
@@ -123,7 +123,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     def _update_navigation_status(self) -> None:
         """根据工程加载状态更新侧边栏导航项的可点击状态"""
-        is_loaded = SessionContext.get().is_loaded()
+        is_loaded = StorageContext.get().is_loaded()
 
         # 只有这些页面在未加载工程时需要彻底禁用
         disable_names = [

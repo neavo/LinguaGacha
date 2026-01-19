@@ -24,13 +24,12 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
 from module.Storage.DataStore import DataStore
+from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
-
 
 class TextPreservePage(QWidget, Base):
     BASE: str = "text_preserve"
@@ -57,27 +56,27 @@ class TextPreservePage(QWidget, Base):
 
     # 获取文本保护数据
     def _get_text_preserve_data(self) -> list[dict[str, str]]:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return []
         return db.get_rules(DataStore.RuleType.TEXT_PRESERVE)
 
     # 保存文本保护数据
     def _set_text_preserve_data(self, data: list[dict[str, str]]) -> None:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is not None:
             db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
 
     # 获取启用状态
     def _get_text_preserve_enable(self) -> bool:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is not None:
             return db.get_meta("text_preserve_enable", True)
         return True
 
     # 设置启用状态
     def _set_text_preserve_enable(self, enable: bool) -> None:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is not None:
             db.set_meta("text_preserve_enable", enable)
 

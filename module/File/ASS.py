@@ -4,9 +4,8 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.OutputPath import OutputPath
+from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
-
 
 class ASS(Base):
     # [Script Info]
@@ -103,8 +102,8 @@ class ASS(Base):
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
         # 获取输出目录
-        output_path = OutputPath.get_translated_path()
-        bilingual_path = OutputPath.get_bilingual_path()
+        output_path = PathStore.get_translated_path()
+        bilingual_path = PathStore.get_bilingual_path()
 
         # 筛选
         target = [item for item in items if item.get_file_type() == Item.FileType.ASS]

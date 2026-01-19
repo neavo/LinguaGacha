@@ -5,7 +5,7 @@ TODO: 此页面目前存在问题，无法正常工作
 原因：
 1. 此页面设计为使用传统模式（ItemStore）存储翻译条目
 2. 调用 DataAccessLayer.set_items() 后发送 TRANSLATION_RUN 事件启动翻译
-3. 但 Translator.start() 强制要求工程模式（SessionContext.is_loaded() == True）
+3. 但 Translator.start() 强制要求工程模式（StorageContext.is_loaded() == True）
 4. 因此翻译器会拒绝执行，提示"请先加载工程文件"
 
 修复方案：
@@ -35,13 +35,12 @@ from model.Project import Project
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.OutputPath import OutputPath
-from module.SessionContext import SessionContext
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
-
 
 class ReTranslationPage(QWidget, Base):
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -193,7 +192,7 @@ class ReTranslationPage(QWidget, Base):
             )
 
             # 写入工程数据库
-            db = SessionContext.get().get_db()
+            db = StorageContext.get().get_db()
             if db is None:
                 self.emit(
                     Base.Event.TOAST,
@@ -237,7 +236,7 @@ class ReTranslationPage(QWidget, Base):
     # 处理单文件部分
     def process_single(self) -> tuple[Project, list[Item], str]:
         # 获取输出目录作为输入源
-        output_path = OutputPath.get_translated_path()
+        output_path = PathStore.get_translated_path()
         input_path = f"{output_path}/dst"
 
         # 读取译文
@@ -282,7 +281,7 @@ class ReTranslationPage(QWidget, Base):
     # 处理双文件部分
     def process_double(self) -> tuple[Project, list[Item], str]:
         # 获取输出目录作为输入源
-        output_path = OutputPath.get_translated_path()
+        output_path = PathStore.get_translated_path()
 
         # 读取译文
         config = Config().load()

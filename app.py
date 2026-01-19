@@ -20,8 +20,7 @@ from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.SessionContext import SessionContext
-
+from module.Storage.StorageContext import StorageContext
 
 def excepthook(
     exc_type: type[BaseException],
@@ -155,7 +154,7 @@ if __name__ == "__main__":
 
     # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
     def cleanup_on_exit() -> None:
-        ctx = SessionContext.get()
+        ctx = StorageContext.get()
         if ctx.is_loaded():
             ctx.unload()
 

@@ -17,13 +17,12 @@ from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.SessionContext import SessionContext
 from module.Storage.DataStore import DataStore
+from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.SwitchButtonCard import SwitchButtonCard
-
 
 class CustomPromptPage(QWidget, Base):
     def __init__(
@@ -62,7 +61,7 @@ class CustomPromptPage(QWidget, Base):
 
     # 获取自定义提示词数据
     def _get_custom_prompt_data(self) -> str:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return ""
         rule_type = (
@@ -74,7 +73,7 @@ class CustomPromptPage(QWidget, Base):
 
     # 保存自定义提示词数据
     def _set_custom_prompt_data(self, data: str) -> None:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return
         rule_type = (
@@ -86,7 +85,7 @@ class CustomPromptPage(QWidget, Base):
 
     # 获取启用状态
     def _get_custom_prompt_enable(self) -> bool:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return False
         meta_key = (
@@ -98,7 +97,7 @@ class CustomPromptPage(QWidget, Base):
 
     # 设置启用状态
     def _set_custom_prompt_enable(self, enable: bool) -> None:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return
         meta_key = (

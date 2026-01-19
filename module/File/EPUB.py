@@ -11,10 +11,9 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.OutputPath import OutputPath
-from module.SessionContext import SessionContext
 from module.Storage.AssetStore import AssetStore
-
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 
 class EPUB(Base):
     # 显式引用以避免打包问题
@@ -268,14 +267,14 @@ class EPUB(Base):
             items = sorted(items, key=lambda x: x.get_row())
 
             # 获取输出目录
-            output_path = OutputPath.get_translated_path()
+            output_path = PathStore.get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = SessionContext.get().get_db()
+            db = StorageContext.get().get_db()
             if db is None:
                 continue
             compressed = db.get_asset(rel_path)
@@ -304,14 +303,14 @@ class EPUB(Base):
             items = sorted(items, key=lambda x: x.get_row())
 
             # 获取输出目录
-            bilingual_path = OutputPath.get_bilingual_path()
+            bilingual_path = PathStore.get_bilingual_path()
 
             # 数据处理
             abs_path = os.path.join(bilingual_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = SessionContext.get().get_db()
+            db = StorageContext.get().get_db()
             if db is None:
                 continue
             compressed = db.get_asset(rel_path)

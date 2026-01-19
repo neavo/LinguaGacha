@@ -5,11 +5,10 @@ from datetime import datetime
 from base.Base import Base
 from module.Storage.DataStore import DataStore
 
-
-class SessionContext(Base):
+class StorageContext(Base):
     """会话级上下文，管理当前工程实例"""
 
-    _instance: "SessionContext | None" = None
+    _instance: "StorageContext | None" = None
     _lock = threading.Lock()
 
     def __init__(self) -> None:
@@ -18,7 +17,7 @@ class SessionContext(Base):
         self._lg_path: str | None = None
 
     @classmethod
-    def get(cls) -> "SessionContext":
+    def get(cls) -> "StorageContext":
         """获取单例实例"""
         if cls._instance is None:
             with cls._lock:

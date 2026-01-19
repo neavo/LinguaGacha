@@ -6,9 +6,8 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.SessionContext import SessionContext
 from module.Storage.DataStore import DataStore
-
+from module.Storage.StorageContext import StorageContext
 
 class PromptBuilder(Base):
     # 类线程锁
@@ -69,7 +68,7 @@ class PromptBuilder(Base):
 
     # 获取自定义提示词数据
     def _get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return ""
         rule_type = (
@@ -81,7 +80,7 @@ class PromptBuilder(Base):
 
     # 获取自定义提示词启用状态
     def _get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
-        db = SessionContext.get().get_db()
+        db = StorageContext.get().get_db()
         if db is None:
             return False
         meta_key = (
