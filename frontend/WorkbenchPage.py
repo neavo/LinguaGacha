@@ -273,7 +273,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             # 格式化时间
             value = str(info.get(key, ""))
             if key in ["created_at", "updated_at"] and value:
-                value = self._format_time(value)
+                value = self.format_time(value)
 
             value_widget = BodyLabel(value, row)
             value_widget.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -838,15 +838,6 @@ class WorkbenchPage(ScrollArea, Base):
             StorageContext.get().load(path)
 
             self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().workbench_toast_create_success.replace(
-                        "{NAME}", Path(path).name
-                    ),
-                },
-            )
 
             # 重置选中状态
             self.selected_source_path = None
@@ -882,17 +873,6 @@ class WorkbenchPage(ScrollArea, Base):
             name = Path(self.selected_lg_path).stem
             config.add_recent_project(self.selected_lg_path, name)
             config.save()
-
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().workbench_toast_load_success.replace(
-                        "{NAME}", name
-                    ),
-                },
-            )
-
         except Exception as e:
             self.emit(
                 Base.Event.TOAST,
