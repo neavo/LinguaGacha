@@ -5,6 +5,7 @@ from pathlib import Path
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QCursor
 from PyQt5.QtGui import QDragEnterEvent
 from PyQt5.QtGui import QDropEvent
 from PyQt5.QtGui import QFont
@@ -14,6 +15,7 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import Action
 from qfluentwidgets import BodyLabel
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
@@ -22,6 +24,7 @@ from qfluentwidgets import IconWidget
 from qfluentwidgets import MessageBox
 from qfluentwidgets import PrimaryPushButton
 from qfluentwidgets import ProgressBar
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import ScrollArea
 from qfluentwidgets import SimpleCardWidget
 from qfluentwidgets import StrongBodyLabel
@@ -663,8 +666,39 @@ class WorkbenchPage(ScrollArea, Base):
 
     def on_select_source(self) -> None:
         """点击选择源文件/目录"""
+        menu = RoundMenu(parent=self)
+
+        # 选择文件
+        select_file_action = Action(
+            FluentIcon.DOCUMENT, Localizer.get().select_file, self
+        )
+        select_file_action.triggered.connect(self._select_source_file)
+        menu.addAction(select_file_action)
+
+        # 选择文件夹
+        select_folder_action = Action(
+            FluentIcon.FOLDER, Localizer.get().select_folder, self
+        )
+        select_folder_action.triggered.connect(self._select_source_folder)
+        menu.addAction(select_folder_action)
+
+        menu.exec(QCursor.pos())
+
+    def _select_source_folder(self):
+        """选择源目录"""
         path = QFileDialog.getExistingDirectory(
             self, Localizer.get().workbench_select_source_dir_title
+        )
+        if path:
+            self.on_source_dropped(path)
+
+    def _select_source_file(self):
+        """选择源文件"""
+        extensions = [f"*{ext}" for ext in ProjectStore.SUPPORTED_EXTENSIONS]
+        filter_str = f"{Localizer.get().supported_files} ({' '.join(extensions)})"
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, Localizer.get().select_file, "", filter_str
         )
         if path:
             self.on_source_dropped(path)

@@ -17,6 +17,9 @@ class LocalizerZH:
     # 通用
     add: str = "新增"
     edit: str = "修改"
+    select_file: str = "选择文件"
+    select_folder: str = "选择文件夹"
+    supported_files: str = "支持的文件"
     none: str = "无"
     back: str = "返回"
     stop: str = "停止"

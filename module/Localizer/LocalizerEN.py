@@ -17,6 +17,9 @@ class LocalizerEN(LocalizerZH):
     # 通用
     add: str = "Add"
     edit: str = "Edit"
+    select_file: str = "Select File"
+    select_folder: str = "Select Folder"
+    supported_files: str = "Supported Files"
     none: str = "None"
     back: str = "Back"
     stop: str = "Stop"
