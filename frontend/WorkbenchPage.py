@@ -48,6 +48,7 @@ class FileDisplayCard(CardWidget):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(8)
 
         self.update_style()
@@ -69,6 +70,7 @@ class FileDisplayCard(CardWidget):
                 border: 2px dashed {border_color};
                 border-radius: 8px;
                 background-color: transparent;
+                padding: 0px;
             }}
             FileDisplayCard:hover, DropZone:hover, SelectedFileDisplay:hover {{
                 border-color: {hover_border};
@@ -116,9 +118,18 @@ class DropZone(FileDisplayCard):
             self.subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter
         )
 
+        # 初始状态下如果为空则隐藏
+        if not subtitle:
+            self.subtitle_label.hide()
+
     def set_text(self, title: str, subtitle: str) -> None:
         self.title_label.setText(title)
         self.subtitle_label.setText(subtitle)
+
+        if subtitle:
+            self.subtitle_label.show()
+        else:
+            self.subtitle_label.hide()
 
     def set_icon(self, icon: FluentIcon) -> None:
         self.icon_widget.setIcon(icon)
