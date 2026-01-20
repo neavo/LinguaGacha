@@ -30,7 +30,6 @@ from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
-from frontend.Extra.ReTranslationPage import ReTranslationPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
 from frontend.Model.ModelPage import ModelPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
@@ -573,10 +572,6 @@ class AppFluentWindow(FluentWindow, Base):
             text=Localizer.get().app_treasure_chest_page,
             position=NavigationItemPosition.SCROLL,
         )
-
-        # 百宝箱 - 部分重翻
-        self.re_translation_page = ReTranslationPage("re_translation_page", self)
-        self.stackedWidget.addWidget(self.re_translation_page)
 
         # 百宝箱 - 姓名字段注入
         self.name_field_extraction_page = NameFieldExtractionPage(

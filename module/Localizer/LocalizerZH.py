@@ -516,34 +516,11 @@ class LocalizerZH:
     )
 
     # 百宝箱
-    tool_box_page_re_translation: str = "部分重翻"
-    tool_box_page_re_translation_desc: str = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正"
     tool_box_page_name_field_extraction: str = "姓名字段提取"
     tool_box_page_name_field_extraction_desc: str = (
         "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段数据，"
         "自动生成对应的术语表数据，方便后续进行翻译"
     )
-
-    # 百宝箱 - 部分重翻
-    re_translation_page: str = "部分重翻"
-    re_translation_page_desc: str = (
-        "将根据设置的筛选条件对 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的文本进行筛选，然后对符合条件的文本进行重翻"
-        "<br>"
-        "工作流程："
-        "<br>"
-        "• 分别从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 的 <font color='darkgoldenrod'><b>src</b></font> 与 <font color='darkgoldenrod'><b>dst</b></font> 子目录中读取原文与译文"
-        "<br>"
-        "• 原文文件和译文文件的文件名和文件内容必须严格一一对应"
-        "<br>"
-        "• 根据本页中的设置筛选出需要重翻的文本，按正常流程进行翻译，翻译完成后输出更新后的译文文件"
-    )
-    re_translation_page_white_list: str = "关键字 - 白名单"
-    re_translation_page_white_list_desc: str = (
-        "包含这些关键字的文本将被重新翻译，可以填入多个关键字，每行一个，只需要命中其中之一即判断为需要重翻的文本"
-        ""
-        ""
-    )
-    re_translation_page_alert_not_equal: str = "原文与译文的行数不匹配 …"
 
     # 百宝箱 - 姓名字段提取
     name_field_extraction_page: str = "姓名字段提取"
@@ -570,3 +547,8 @@ class LocalizerZH:
         "<br>"
         "然后生成对应的术语表数据，请注意检查生成的术语表数据是否正确"
     )
+    name_field_extraction_action_extract: str = "提取"
+    name_field_extraction_action_translate: str = "翻译"
+    name_field_extraction_action_import: str = "导入到术语表"
+    name_field_extraction_context: str = "上下文"
+

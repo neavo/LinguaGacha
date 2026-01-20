@@ -10,6 +10,7 @@ from typing import Generator
 
 from base.Base import Base
 
+
 class DataStore(Base):
     """统一的 .lg 文件访问类"""
 
@@ -295,16 +296,18 @@ class DataStore(Base):
 
     # ========== 规则操作 ==========
 
-    def get_rules(self, rule_type: RuleType) -> list[dict[str, str]]:
+    def get_rules(self, rule_type: RuleType) -> list[dict[str, Any]]:
         """获取指定类型的规则"""
+
         with self._connection() as conn:
             cursor = conn.execute(
                 "SELECT data FROM rules WHERE type = ? ORDER BY id", (rule_type,)
             )
             return [json.loads(row["data"]) for row in cursor.fetchall()]
 
-    def set_rules(self, rule_type: RuleType, rules: list[dict[str, str]]) -> None:
+    def set_rules(self, rule_type: RuleType, rules: list[dict[str, Any]]) -> None:
         """设置指定类型的规则（清空后重新写入）"""
+
         with self._connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             for rule in rules:

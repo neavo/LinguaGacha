@@ -516,34 +516,11 @@ class LocalizerEN(LocalizerZH):
     )
 
     # 百宝箱
-    tool_box_page_re_translation: str = "Partial Re-Translation"
-    tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
     tool_box_page_name_field_extraction: str = "Name-Field Extraction"
     tool_box_page_name_field_extraction_desc: str = (
         "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
         "and automatically generate corresponding glossary data to facilitate subsequent translation"
     )
-
-    # 百宝箱 - 部分重翻
-    re_translation_page: str = "Partial Re-Translation"
-    re_translation_page_desc: str = (
-        "Will filter the text in the <font color='darkgoldenrod'><b>Input Folder</b></font> based on the set filter conditions, and then retranslate the text that meets the conditions"
-        "<br>"
-        "Workflow:"
-        "<br>"
-        "• Load the original and translated texts from the <font color='darkgoldenrod'><b>src</b></font> and <font color='darkgoldenrod'><b>dst</b></font> subdirectories of the <font color='darkgoldenrod'><b>Input Folder</b></font>"
-        "<br>"
-        "• The filenames and file contents of the original and translation files must correspond strictly one-to-one"
-        "<br>"
-        "• Filter out the text that needs to be retranslated according to the settings on this page, translate it according to the normal process"
-    )
-    re_translation_page_white_list: str = "Keywords - Whitelist"
-    re_translation_page_white_list_desc: str = (
-        "Text containing these keywords will be retranslated. You can enter multiple keywords, one per line"
-        "\n"
-        "Hitting one of them is enough to determine that the text needs to be retranslated"
-    )
-    re_translation_page_alert_not_equal: str = "The number of lines in the original and translated texts does not match …"
 
     # 百宝箱 - 姓名字段提取
     name_field_extraction_page: str = "Name-Field Extraction"
@@ -570,3 +547,8 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "Then generate the corresponding glossary data, check if the generated glossary data is correct"
     )
+    name_field_extraction_action_extract: str = "Extract"
+    name_field_extraction_action_translate: str = "Translate"
+    name_field_extraction_action_import: str = "Import to Glossary"
+    name_field_extraction_context: str = "Context"
+
