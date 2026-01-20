@@ -595,45 +595,94 @@ class NameFieldExtractionPage(QWidget, Base):
     def search(self, keyword: str, reverse: bool = False) -> None:
         """搜索表格"""
         if not keyword:
+            self.search_card.clear_match_info()
             return
 
         row_count = self.table.rowCount()
-        current_row = self.table.currentRow()
 
         # 避免只有一行或空表时的无意义操作
         if row_count < 1:
             return
 
-        # 生成搜索索引序列
-        indices = []
-        for i in range(1, row_count + 1):  # 遍历一整圈，包括回到起点
-            offset = -i if reverse else i
-            # 确保索引为正
-            idx = (current_row + offset) % row_count
-            indices.append(idx)
+        # 获取搜索配置
+        use_regex = self.search_card.is_regex_mode()
 
-        for row in indices:
+        # 预编译正则
+        pattern = None
+        if use_regex:
+            try:
+                pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                # 正则错误时不执行搜索
+                self.search_card.clear_match_info()
+                return
+
+        # 1. 扫描所有匹配项
+        matches: list[int] = []
+        for row in range(row_count):
+            # 获取原文和译文
             item_src = self.table.item(row, 0)
             item_dst = self.table.item(row, 1)
 
-            # 获取文本，处理 None 情况
-            src_text = item_src.text().lower() if item_src else ""
-            dst_text = item_dst.text().lower() if item_dst else ""
+            src_text = item_src.text() if item_src else ""
+            dst_text = item_dst.text() if item_dst else ""
 
             # 跳过空数据行
             if not src_text and not dst_text:
                 continue
 
-            # 简单的子串搜索
-            match_src = keyword.lower() in src_text
-            match_dst = keyword.lower() in dst_text
+            is_match = False
+            if use_regex and pattern:
+                if pattern.search(src_text) or pattern.search(dst_text):
+                    is_match = True
+            else:
+                # 普通模式：不区分大小写
+                if (
+                    keyword.lower() in src_text.lower()
+                    or keyword.lower() in dst_text.lower()
+                ):
+                    is_match = True
 
-            if match_src or match_dst:
-                self.table.setCurrentCell(row, 0)
-                self.table.scrollToItem(item_src)
-                return
+            if is_match:
+                matches.append(row)
 
-        self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
+        # 2. 更新 UI 显示
+        total_matches = len(matches)
+        if total_matches == 0:
+            self.search_card.clear_match_info()
+            self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
+            return
+
+        # 3. 计算跳转目标
+        current_row = self.table.currentRow()
+        target_row = -1
+
+        if reverse:
+            # 向上查找：找小于 current_row 的最大值
+            prev_matches = [m for m in matches if m < current_row]
+            if prev_matches:
+                target_row = prev_matches[-1]
+            else:
+                # 循环到末尾
+                target_row = matches[-1]
+        else:
+            # 向下查找：找大于 current_row 的最小值
+            next_matches = [m for m in matches if m > current_row]
+            if next_matches:
+                target_row = next_matches[0]
+            else:
+                # 循环到开头
+                target_row = matches[0]
+
+        # 计算当前是第几个匹配 (1-based)
+        current_match_index = matches.index(target_row) + 1
+        self.search_card.set_match_info(current_match_index, total_matches)
+
+        # 4. 执行跳转
+        self.table.setCurrentCell(target_row, 0)
+        item = self.table.item(target_row, 0)
+        if item:
+            self.table.scrollToItem(item)
 
     def show_toast(self, type: Base.ToastType, message: str) -> None:
         self.emit(
