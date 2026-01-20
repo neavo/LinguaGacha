@@ -32,6 +32,7 @@ from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
+
 class GlossaryPage(QWidget, Base):
     BASE: str = "glossary"
 
@@ -56,6 +57,8 @@ class GlossaryPage(QWidget, Base):
         self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
         # 工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self.glossary_refresh)
+        # 工程卸载后清空数据
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
     # 获取术语表数据
     def _get_glossary_data(self) -> list[dict[str, str]]:
@@ -91,6 +94,14 @@ class GlossaryPage(QWidget, Base):
         # 刷新开关状态
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(self._get_glossary_enable())
+
+    # 工程卸载后清空数据
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.sync()
+        # 重置开关状态
+        if hasattr(self, "switch_card"):
+            self.switch_card.get_switch_button().setChecked(True)
 
     # 头部
     def add_widget_head(
@@ -203,7 +214,7 @@ class GlossaryPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type=TableManager.Type.GLOSSARY,
-            data=self._get_glossary_data(),
+            data=[],
             table=self.table,
         )
         self.table_manager.sync()

@@ -24,6 +24,7 @@ from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
+
 class CustomPromptPage(QWidget, Base):
     def __init__(
         self, text: str, window: FluentWindow, language: BaseLanguage.Enum
@@ -40,12 +41,6 @@ class CustomPromptPage(QWidget, Base):
         # 载入配置
         config = Config().load()
 
-        # 初始化默认提示词（如果尚未设置）
-        current_data = self._get_custom_prompt_data()
-        if not current_data:
-            default_prompt = PromptBuilder(config).get_base(language)
-            self._set_custom_prompt_data(default_prompt)
-
         # 设置主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
@@ -58,6 +53,8 @@ class CustomPromptPage(QWidget, Base):
 
         # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
+        # 工程卸载后清空数据
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
     # 获取自定义提示词数据
     def _get_custom_prompt_data(self) -> str:
@@ -110,12 +107,26 @@ class CustomPromptPage(QWidget, Base):
     # 工程加载后刷新数据
     def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
         prompt_data = self._get_custom_prompt_data()
+
+        # 如果数据为空（新工程），则加载默认提示词
+        if not prompt_data:
+            config = Config().load()
+            prompt_data = PromptBuilder(config).get_base(self.language)
+            self._set_custom_prompt_data(prompt_data)
+
         self.main_text.setPlainText(prompt_data)
         # 刷新开关状态
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(
                 self._get_custom_prompt_enable()
             )
+
+    # 工程卸载后清空数据
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.main_text.clear()
+        # 重置开关状态
+        if hasattr(self, "switch_card"):
+            self.switch_card.get_switch_button().setChecked(True)
 
     # 头部
     def add_widget_header(
@@ -152,7 +163,7 @@ class CustomPromptPage(QWidget, Base):
         parent.addWidget(self.prefix_body)
 
         self.main_text = CustomTextEdit(self)
-        self.main_text.setPlainText(self._get_custom_prompt_data())
+        self.main_text.setPlainText("")
         parent.addWidget(self.main_text)
 
         self.suffix_body = EmptyCard(

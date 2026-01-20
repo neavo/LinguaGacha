@@ -31,6 +31,7 @@ from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
+
 class TextReplacementPage(QWidget, Base):
     def __init__(self, name: str, window: FluentWindow, base_key: str) -> None:
         super().__init__(window)
@@ -54,6 +55,8 @@ class TextReplacementPage(QWidget, Base):
 
         # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
+        # 工程卸载后清空数据
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
     # 工程加载后刷新数据
     def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
@@ -63,6 +66,14 @@ class TextReplacementPage(QWidget, Base):
         # 刷新开关状态
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(self._get_enable())
+
+    # 工程卸载后清空数据
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.sync()
+        # 重置开关状态
+        if hasattr(self, "switch_card"):
+            self.switch_card.get_switch_button().setChecked(True)
 
     # 数据访问辅助方法
     def _get_data(self) -> list[dict[str, str]]:
@@ -216,7 +227,7 @@ class TextReplacementPage(QWidget, Base):
         # 向表格更新数据
         self.table_manager = TableManager(
             type=TableManager.Type.REPLACEMENT,
-            data=self._get_data(),
+            data=[],
             table=self.table,
         )
         self.table_manager.sync()
