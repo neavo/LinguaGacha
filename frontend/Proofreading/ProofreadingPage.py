@@ -29,6 +29,7 @@ from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
+
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
 
@@ -78,6 +79,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed
         )
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 连接信号
         self.items_loaded.connect(self._on_items_loaded_ui)
@@ -916,3 +918,35 @@ class ProofreadingPage(QWidget, Base):
     def indeterminate_hide(self) -> None:
         """隐藏 loading 指示器"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后清理数据"""
+        # 清空数据
+        self.items = []
+        self.filtered_items = []
+        self.warning_map = {}
+        self.result_checker = None
+        self.config = None
+        self.filter_options = {}
+
+        # 清空搜索状态
+        self.search_keyword = ""
+        self.search_is_regex = False
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
+        self.search_card.setVisible(False)
+        self.command_bar_card.setVisible(True)
+
+        # 重置表格和分页
+        self.table_widget.set_items([], {})
+        self.pagination_bar.reset()
+
+        # 重置按钮状态
+        self.btn_save.setEnabled(False)
+        self.btn_export.setEnabled(False)
+        self.btn_search.setEnabled(False)
+        self.btn_filter.setEnabled(False)
+
+        # 隐藏 loading
+        self.indeterminate_hide()

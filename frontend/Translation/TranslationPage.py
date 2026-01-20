@@ -65,6 +65,7 @@ class TranslationPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self.update_button_status)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 定时器
         self.ui_update_timer = QTimer(self)
@@ -749,3 +750,25 @@ class TranslationPage(QWidget, Base):
         self.indeterminate.hide()
         self.info_label.hide()
         self.info_label.setText("")
+
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后清理数据"""
+        self.data = {}
+        self.waveform.clear()
+        self.ring.setValue(0)
+        self.ring.setFormat(Localizer.get().translation_page_status_idle)
+
+        # 重置卡片数据
+        self.time.set_value(Localizer.get().none)
+        self.remaining_time.set_value(Localizer.get().none)
+        self.line_card.set_value(Localizer.get().none)
+        self.remaining_line.set_value(Localizer.get().none)
+        self.speed.set_value(Localizer.get().none)
+        self.token.set_value(Localizer.get().none)
+        self.task.set_value(Localizer.get().none)
+
+        # 重置按钮状态
+        self.update_button_status(event, {"status": Base.ProjectStatus.NONE})
+
+        # 重置定时器
+        self._reset_timer()

@@ -57,6 +57,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         # 注册事件
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 连接信号
         self.update_signal.connect(self.update_row)
@@ -692,3 +693,14 @@ class NameFieldExtractionPage(QWidget, Base):
                 "message": message,
             },
         )
+
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后清理数据"""
+        self.items = []
+        self.refresh_table()
+
+        # 重置搜索栏
+        self.search_card.clear_match_info()
+        self.search_card.setVisible(False)
+        self.search_card.get_line_edit().clear()
+        self.command_bar_card.setVisible(True)
