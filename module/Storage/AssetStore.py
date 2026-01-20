@@ -1,4 +1,6 @@
 import zstandard as zstd
+from pathlib import Path
+
 
 class AssetStore:
     """资产存储工具类（Zstd 压缩/解压）"""
@@ -29,7 +31,6 @@ class AssetStore:
     @classmethod
     def decompress_to_file(cls, data: bytes, file_path: str) -> None:
         """解压数据并写入文件"""
-        from pathlib import Path
 
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
         decompressed_data = cls.decompress(data)

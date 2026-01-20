@@ -534,4 +534,3 @@ class LocalizerZH:
     name_field_extraction_action_translate: str = "翻译"
     name_field_extraction_action_import: str = "导入到术语表"
     name_field_extraction_context: str = "上下文"
-

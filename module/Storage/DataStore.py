@@ -1,12 +1,12 @@
 import contextlib
+import copy
 import json
 import sqlite3
 import threading
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
-from typing import Generator
+from typing import Any, Generator
 
 from base.Base import Base
 
@@ -30,42 +30,42 @@ class DataStore(Base):
     def __init__(self, db_path: str) -> None:
         super().__init__()
         self.db_path = db_path
-        self._lock = threading.Lock()
-        self._keep_alive_conn: sqlite3.Connection | None = None
+        self.lock = threading.Lock()
+        self.keep_alive_conn: sqlite3.Connection | None = None
 
     def open(self) -> None:
         """打开数据库连接（长连接，维持 WAL 模式）"""
-        if self._keep_alive_conn is None:
+        if self.keep_alive_conn is None:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._keep_alive_conn = sqlite3.connect(
+            self.keep_alive_conn = sqlite3.connect(
                 self.db_path, check_same_thread=False
             )
-            self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
-            self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
-            self._keep_alive_conn.row_factory = sqlite3.Row
-            self._ensure_schema()
+            self.keep_alive_conn.execute("PRAGMA journal_mode=WAL")
+            self.keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
+            self.keep_alive_conn.row_factory = sqlite3.Row
+            self.ensure_schema()
 
     def close(self) -> None:
         """关闭数据库连接"""
-        if self._keep_alive_conn is not None:
-            self._keep_alive_conn.close()
-            self._keep_alive_conn = None
+        if self.keep_alive_conn is not None:
+            self.keep_alive_conn.close()
+            self.keep_alive_conn = None
 
     def is_open(self) -> bool:
         """检查数据库是否已打开"""
-        return self._keep_alive_conn is not None
+        return self.keep_alive_conn is not None
 
     @contextlib.contextmanager
-    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+    def connection(self) -> Generator[sqlite3.Connection, None, None]:
         """获取数据库连接上下文管理器
 
         如果长连接已打开，则复用长连接（不会关闭）；
         否则创建临时短连接（用完即关闭，触发 WAL checkpoint）。
         """
         # 长连接模式：复用已打开的连接，加锁保证多线程安全
-        if self._keep_alive_conn is not None:
-            with self._lock:
-                yield self._keep_alive_conn
+        if self.keep_alive_conn is not None:
+            with self.lock:
+                yield self.keep_alive_conn
             return
 
         # 短连接模式：创建临时连接，操作完成后关闭
@@ -75,14 +75,14 @@ class DataStore(Base):
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
-            self._ensure_schema(conn)
+            self.ensure_schema(conn)
             yield conn
         finally:
             conn.close()
 
-    def _ensure_schema(self, conn: sqlite3.Connection | None = None) -> None:
+    def ensure_schema(self, conn: sqlite3.Connection | None = None) -> None:
         """确保数据库表结构存在"""
-        target_conn = conn or self._keep_alive_conn
+        target_conn = conn or self.keep_alive_conn
         if target_conn is None:
             return
 
@@ -134,7 +134,7 @@ class DataStore(Base):
 
     def get_meta(self, key: str, default: Any = None) -> Any:
         """获取元数据"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT value FROM meta WHERE key = ?", (key,))
             row = cursor.fetchone()
             if row is None:
@@ -143,7 +143,7 @@ class DataStore(Base):
 
     def set_meta(self, key: str, value: Any) -> None:
         """设置元数据"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                 (key, json.dumps(value, ensure_ascii=False)),
@@ -152,7 +152,7 @@ class DataStore(Base):
 
     def get_all_meta(self) -> dict[str, Any]:
         """获取所有元数据"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT key, value FROM meta")
             return {row["key"]: json.loads(row["value"]) for row in cursor.fetchall()}
 
@@ -160,17 +160,19 @@ class DataStore(Base):
 
     def add_asset(self, path: str, data: bytes, original_size: int) -> int:
         """添加资产（已压缩的数据）"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute(
                 "INSERT INTO assets (path, data, original_size, compressed_size) VALUES (?, ?, ?, ?)",
                 (path, data, original_size, len(data)),
             )
             conn.commit()
+            if cursor.lastrowid is None:
+                raise ValueError("Failed to get lastrowid")
             return cursor.lastrowid
 
     def get_asset(self, path: str) -> bytes | None:
         """获取资产数据"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT data FROM assets WHERE path = ?", (path,))
             row = cursor.fetchone()
             if row is None:
@@ -179,13 +181,13 @@ class DataStore(Base):
 
     def get_all_asset_paths(self) -> list[str]:
         """获取所有资产路径"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT path FROM assets ORDER BY path")
             return [row["path"] for row in cursor.fetchall()]
 
     def get_asset_count(self) -> int:
         """获取资产数量"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM assets")
             return cursor.fetchone()[0]
 
@@ -193,7 +195,7 @@ class DataStore(Base):
 
     def get_item(self, item_id: int) -> dict[str, Any] | None:
         """获取单个翻译条目"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT id, data FROM items WHERE id = ?", (item_id,))
             row = cursor.fetchone()
             if row is None:
@@ -204,7 +206,7 @@ class DataStore(Base):
 
     def get_all_items(self) -> list[dict[str, Any]]:
         """获取所有翻译条目"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
             result = []
             for row in cursor.fetchall():
@@ -215,7 +217,7 @@ class DataStore(Base):
 
     def set_item(self, item: dict[str, Any]) -> int:
         """保存单个翻译条目"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             item_id = item.get("id")
             data = {k: v for k, v in item.items() if k != "id"}
             data_json = json.dumps(data, ensure_ascii=False)
@@ -224,18 +226,21 @@ class DataStore(Base):
                 cursor = conn.execute(
                     "INSERT INTO items (data) VALUES (?)", (data_json,)
                 )
-                item_id = cursor.lastrowid
+                new_id = cursor.lastrowid
+                if new_id is None:
+                    raise ValueError("Failed to get lastrowid")
+                item_id = new_id
             else:
                 conn.execute(
                     "UPDATE items SET data = ? WHERE id = ?", (data_json, item_id)
                 )
 
             conn.commit()
-            return item_id
+            return int(item_id)
 
     def set_items(self, items: list[dict[str, Any]]) -> list[int]:
         """批量保存翻译条目（清空后重新写入）"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             conn.execute("DELETE FROM items")
             ids = []
             for item in items:
@@ -250,7 +255,7 @@ class DataStore(Base):
 
     def get_item_count(self) -> int:
         """获取翻译条目数量"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM items")
             return cursor.fetchone()[0]
 
@@ -276,7 +281,7 @@ class DataStore(Base):
         if item_id is None:
             return
 
-        with self._connection() as conn:
+        with self.connection() as conn:
             data = {k: v for k, v in item.items() if k != "id"}
             data_json = json.dumps(data, ensure_ascii=False)
             conn.execute("UPDATE items SET data = ? WHERE id = ?", (data_json, item_id))
@@ -284,13 +289,11 @@ class DataStore(Base):
 
     def copy_items(self) -> list[dict[str, Any]]:
         """深拷贝所有条目"""
-        import copy
-
         return copy.deepcopy(self.get_all_items())
 
     def clear_items(self) -> None:
         """清空所有翻译条目"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             conn.execute("DELETE FROM items")
             conn.commit()
 
@@ -299,7 +302,7 @@ class DataStore(Base):
     def get_rules(self, rule_type: RuleType) -> list[dict[str, Any]]:
         """获取指定类型的规则"""
 
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute(
                 "SELECT data FROM rules WHERE type = ? ORDER BY id", (rule_type,)
             )
@@ -308,7 +311,7 @@ class DataStore(Base):
     def set_rules(self, rule_type: RuleType, rules: list[dict[str, Any]]) -> None:
         """设置指定类型的规则（清空后重新写入）"""
 
-        with self._connection() as conn:
+        with self.connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             for rule in rules:
                 conn.execute(
@@ -319,7 +322,7 @@ class DataStore(Base):
 
     def get_rule_text(self, rule_type: RuleType) -> str:
         """获取文本类型的规则（如自定义提示词）"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             cursor = conn.execute(
                 "SELECT data FROM rules WHERE type = ? LIMIT 1", (rule_type,)
             )
@@ -330,7 +333,7 @@ class DataStore(Base):
 
     def set_rule_text(self, rule_type: RuleType, text: str) -> None:
         """设置文本类型的规则（如自定义提示词）"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             conn.execute(
                 "INSERT INTO rules (type, data) VALUES (?, ?)",
@@ -364,7 +367,7 @@ class DataStore(Base):
 
     def get_project_summary(self) -> dict[str, Any]:
         """获取项目概览信息（进度、文件数等）"""
-        with self._connection() as conn:
+        with self.connection() as conn:
             # 读取基础信息
             meta_cursor = conn.execute("SELECT key, value FROM meta")
             meta = {

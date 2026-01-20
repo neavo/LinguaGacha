@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from base.Base import Base
@@ -26,16 +25,16 @@ class ProjectStore(Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self._progress_callback = None
+        self.progress_callback = None
 
     def set_progress_callback(self, callback) -> None:
         """设置进度回调函数 callback(current, total, message)"""
-        self._progress_callback = callback
+        self.progress_callback = callback
 
-    def _report_progress(self, current: int, total: int, message: str) -> None:
+    def report_progress(self, current: int, total: int, message: str) -> None:
         """报告进度"""
-        if self._progress_callback:
-            self._progress_callback(current, total, message)
+        if self.progress_callback:
+            self.progress_callback(current, total, message)
 
     def create(
         self,
@@ -56,28 +55,28 @@ class ProjectStore(Base):
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         # 删除已存在的文件
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        if Path(output_path).exists():
+            Path(output_path).unlink()
 
         # 创建数据库
         project_name = Path(source_path).name
         db = DataStore.create(output_path, project_name)
 
         # 收集源文件
-        source_files = self._collect_source_files(source_path)
+        source_files = self.collect_source_files(source_path)
         total_files = len(source_files)
 
-        self._report_progress(0, total_files, "正在收纳资产...")
+        self.report_progress(0, total_files, "正在收纳资产...")
 
         # 收纳资产
         for i, file_path in enumerate(source_files):
-            self._ingest_asset(db, source_path, file_path)
-            self._report_progress(
+            self.ingest_asset(db, source_path, file_path)
+            self.report_progress(
                 i + 1, total_files, f"正在收纳: {Path(file_path).name}"
             )
 
         # 解析翻译条目
-        self._report_progress(total_files, total_files, "正在解析翻译条目...")
+        self.report_progress(total_files, total_files, "正在解析翻译条目...")
 
         # 构造 Config 对象指向源目录
         config = Config().load()
@@ -101,40 +100,39 @@ class ProjectStore(Base):
             }
             db.set_meta("translation_extras", extras)
 
-        self._report_progress(total_files, total_files, "工程创建完成")
+        self.report_progress(total_files, total_files, "工程创建完成")
 
         return db
 
-    def _collect_source_files(self, source_path: str) -> list[str]:
+    def collect_source_files(self, source_path: str) -> list[str]:
         """收集源文件列表"""
         source_files = []
+        path_obj = Path(source_path)
 
-        if os.path.isfile(source_path):
+        if path_obj.is_file():
             # 单个文件
-            if self._is_supported_file(source_path):
+            if self.is_supported_file(source_path):
                 source_files.append(source_path)
         else:
             # 目录递归扫描
-            for root, _, files in os.walk(source_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    if self._is_supported_file(file_path):
-                        source_files.append(file_path)
+            for file_path in path_obj.rglob("*"):
+                if file_path.is_file() and self.is_supported_file(str(file_path)):
+                    source_files.append(str(file_path))
 
         return source_files
 
-    def _is_supported_file(self, file_path: str) -> bool:
+    def is_supported_file(self, file_path: str) -> bool:
         """检查是否为支持的文件类型"""
         ext = Path(file_path).suffix.lower()
         return ext in self.SUPPORTED_EXTENSIONS
 
-    def _ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
+    def ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
         """收纳单个资产到数据库"""
         # 计算相对路径
-        if os.path.isfile(base_path):
+        if Path(base_path).is_file():
             relative_path = Path(file_path).name
         else:
-            relative_path = os.path.relpath(file_path, base_path)
+            relative_path = str(Path(file_path).relative_to(base_path))
 
         # 压缩文件
         compressed_data, original_size = AssetStore.compress_file(file_path)
@@ -149,7 +147,7 @@ class ProjectStore(Base):
         使用短连接模式，操作完成后自动关闭，WAL 文件会被清理。
         用于在工作台中显示项目详情。
         """
-        if not os.path.exists(lg_path):
+        if not Path(lg_path).exists():
             raise FileNotFoundError(f"工程文件不存在: {lg_path}")
 
         # 使用短连接模式（不调用 open()）

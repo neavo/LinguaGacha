@@ -36,6 +36,7 @@ from module.Localizer.Localizer import Localizer
 from module.Storage.ProjectStore import ProjectStore
 from module.Storage.StorageContext import StorageContext
 
+
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
 
@@ -664,7 +665,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 检查是否包含支持的文件
         store = ProjectStore()
-        source_files = store._collect_source_files(path)
+        source_files = store.collect_source_files(path)
 
         if not source_files:
             self.emit(

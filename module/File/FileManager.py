@@ -46,8 +46,10 @@ class FileManager(Base):
 
         try:
             paths: list[str] = []
+            base_path = input_path
             if os.path.isfile(input_path):
                 paths = [input_path]
+                base_path = os.path.dirname(input_path)
             elif os.path.isdir(input_path):
                 for root, _, files in os.walk(input_path):
                     paths.extend(
@@ -56,67 +58,67 @@ class FileManager(Base):
 
             items.extend(
                 MD(self.config).read_from_path(
-                    [path for path in paths if path.lower().endswith(".md")], input_path
+                    [path for path in paths if path.lower().endswith(".md")], base_path
                 )
             )
             items.extend(
                 TXT(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".txt")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 ASS(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".ass")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 SRT(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".srt")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 EPUB(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".epub")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 XLSX(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".xlsx")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 WOLFXLSX(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".xlsx")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 RENPY(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".rpy")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 TRANS(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".trans")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 KVJSON(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".json")],
-                    input_path,
+                    base_path,
                 )
             )
             items.extend(
                 MESSAGEJSON(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".json")],
-                    input_path,
+                    base_path,
                 )
             )
         except Exception as e:
