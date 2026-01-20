@@ -29,15 +29,11 @@ class LocalizerZH:
     cancel: str = "取消"
     auto: str = "自动"
     wiki: str = "功能说明"
-    open: str = "打开"
-    select: str = "选择"
     filter: str = "过滤"
     search: str = "搜索"
-    generate: str = "生成"
     placeholder: str = "请输入关键词 …"
     task_success: str = "任务执行成功 …"
     alert_no_data: str = "没有有效数据 …"
-    alert_load_project_first: str = "请先新建或者载入工程文件 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
     alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
     search_prev_match: str = "上一个匹配项"
@@ -85,7 +81,6 @@ class LocalizerZH:
     # 路径
     path_translated: str = "译文"
     path_translated_bilingual: str = "译文_双语对照"
-    path_result_name_field_extraction: str = "姓名字段提取.xlsx"
 
     # 日志
     log_crash: str = "出现严重错误，应用即将退出，错误信息已保存至日志文件 …"
@@ -95,7 +90,6 @@ class LocalizerZH:
     log_task_fail: str = "任务失败 …"
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
-    cli_verify_folder: str = "参数发生错误：无效的路径 …"
     cli_verify_language: str = "参数发生错误：无效的语言 …"
 
     # 引擎
@@ -313,7 +307,6 @@ class LocalizerZH:
     proofreading_page_warning_tooltip_title: str = "结果检查"
     proofreading_page_filter_warning_type: str = "结果检查"
     proofreading_page_filter_status: str = "翻译状态"
-    proofreading_page_filter_file: str = "所属文件"
     proofreading_page_status_none: str = "未翻译"
     proofreading_page_status_processed: str = "已完成"
     proofreading_page_status_processed_in_past: str = "历史完成"
@@ -536,18 +529,6 @@ class LocalizerZH:
         "• RenPy 导出游戏文本（.rpy）"
         "<br>"
         "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
-    )
-    name_field_extraction_page_step_01: str = "第一步 - 提取数据"
-    name_field_extraction_page_step_01_desc: str = (
-        "提取姓名字段及与其相关的上下文，发送至翻译器进行翻译"
-        "<br>"
-        f"翻译完成后，将在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成 <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> 文件"
-    )
-    name_field_extraction_page_step_02: str = "第二步 - 生成术语表"
-    name_field_extraction_page_step_02_desc: str = (
-        f"将从 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内的 <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> 文件中提取翻译后的数据"
-        "<br>"
-        "然后生成对应的术语表数据，请注意检查生成的术语表数据是否正确"
     )
     name_field_extraction_action_extract: str = "提取"
     name_field_extraction_action_translate: str = "翻译"

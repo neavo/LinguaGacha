@@ -29,15 +29,11 @@ class LocalizerEN(LocalizerZH):
     cancel: str = "Cancel"
     auto: str = "Auto"
     wiki: str = "Wiki"
-    open: str = "Open"
-    select: str = "Select"
     filter: str = "Filter"
     search: str = "Search"
-    generate: str = "Generate"
     placeholder: str = "Please enter keywords …"
     task_success: str = "Task succeeded …"
     alert_no_data: str = "No valid data …"
-    alert_load_project_first: str = "Please create or load a project file first …"
     alert_reset_timer: str = "Confirm to reset timer?"
     alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
     search_prev_match: str = "Previous match"
@@ -85,7 +81,6 @@ class LocalizerEN(LocalizerZH):
     # 路径
     path_translated: str = "Translated"
     path_translated_bilingual: str = "Translated_Bilingual"
-    path_result_name_field_extraction: str = "name_field_extraction.xlsx"
 
     # 日志
     log_crash: str = "A critical error has occurred, app will now exit, error detail has been saved to the log file …"
@@ -95,7 +90,6 @@ class LocalizerEN(LocalizerZH):
     log_task_fail: str = "Task failed …"
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
-    cli_verify_folder: str = "parameter error: invalid path …"
     cli_verify_language: str = "parameter error: invalid language …"
 
     # 引擎
@@ -313,7 +307,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_warning_tooltip_title: str = "Result Check"
     proofreading_page_filter_warning_type: str = "Result Check"
     proofreading_page_filter_status: str = "Translation Status"
-    proofreading_page_filter_file: str = "File"
     proofreading_page_status_none: str = "Untranslated"
     proofreading_page_status_processed: str = "Completed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
@@ -536,18 +529,6 @@ class LocalizerEN(LocalizerZH):
         "• RenPy exported game text (.rpy)"
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
-    )
-    name_field_extraction_page_step_01: str = "Step 1 - Extract Data"
-    name_field_extraction_page_step_01_desc: str = (
-        "Extract name fields and their related context, and send them to the translator for translation"
-        "<br>"
-        f"After translation is complete, the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-    )
-    name_field_extraction_page_step_02: str = "Step 2 - Generate Glossary"
-    name_field_extraction_page_step_02_desc: str = (
-        f"Extract translated data from the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-        "<br>"
-        "Then generate the corresponding glossary data, check if the generated glossary data is correct"
     )
     name_field_extraction_action_extract: str = "Extract"
     name_field_extraction_action_translate: str = "Translate"
