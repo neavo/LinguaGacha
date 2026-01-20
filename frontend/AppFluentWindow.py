@@ -145,6 +145,11 @@ class AppFluentWindow(FluentWindow, Base):
             if widget:
                 widget.setEnabled(is_loaded)
 
+        # 设置关闭项目按钮的可见性
+        close_btn = self.navigationInterface.widget("close_project_navigation_button")
+        if close_btn:
+            close_btn.setVisible(is_loaded)
+
     def _is_project_dependent(self, interface: QWidget) -> bool:
         """判断页面是否依赖工程"""
         dependent_names = self._get_project_dependent_names()
@@ -316,6 +321,18 @@ class AppFluentWindow(FluentWindow, Base):
             },
         )
 
+    # 关闭当前项目
+    def close_current_project(self) -> None:
+        if StorageContext.get().is_loaded():
+            StorageContext.get().unload()
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().project_closed_toast,
+                },
+            )
+
     # 打开主页
     def open_project_page(self) -> None:
         if VersionManager.get().get_status() == VersionManager.Status.NEW_VERSION:
@@ -372,11 +389,15 @@ class AppFluentWindow(FluentWindow, Base):
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_extra_pages()
 
-        # 设置默认页面为工作台页面
-        self.switchTo(self.workbench_page)
-
-        # 初始化侧边栏状态
-        self._update_navigation_status()
+        # 关闭项目按钮
+        self.navigationInterface.addWidget(
+            routeKey="close_project_navigation_button",
+            widget=NavigationPushButton(
+                FluentIcon.POWER_BUTTON, Localizer.get().app_close_project_btn, False
+            ),
+            onClick=self.close_current_project,
+            position=NavigationItemPosition.BOTTOM,
+        )
 
         # 主题切换按钮
         self.navigationInterface.addWidget(
@@ -417,6 +438,12 @@ class AppFluentWindow(FluentWindow, Base):
             onClick=self.open_project_page,
             position=NavigationItemPosition.BOTTOM,
         )
+
+        # 设置默认页面为工作台页面
+        self.switchTo(self.workbench_page)
+
+        # 初始化侧边栏状态
+        self._update_navigation_status()
 
     # 添加项目类页面
     def add_project_pages(self) -> None:

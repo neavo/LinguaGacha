@@ -61,6 +61,8 @@ class LocalizerEN(LocalizerZH):
     app_new_version_success: str = "New version download successful …"
     app_new_version_downloaded: str = "Click to apply New Version!"
     app_new_version_waiting_restart: str = "Update completed, application will close soon …"
+    project_closed_toast: str = "Current project closed …"
+    app_close_project_btn: str = "Close Project"
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
     app_settings_page: str = "App Settings"
