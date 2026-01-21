@@ -11,6 +11,7 @@ from PyQt5.QtGui import QDropEvent
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QFrame
+from PyQt5.QtWidgets import QGridLayout
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QVBoxLayout
@@ -45,7 +46,7 @@ class FileDisplayCard(CardWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedHeight(180)
+        self.setFixedHeight(150)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAcceptDrops(True)
 
@@ -190,8 +191,6 @@ class RecentProjectItem(QFrame):
         super().__init__(parent)
         self.path = path
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        # 移除固定高度，避免截断，让布局决定高度
-        # self.setFixedHeight(48)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 12, 10, 12)  # 增加垂直间距
@@ -375,7 +374,7 @@ class EmptyRecentProjectState(QWidget):
         self.icon_widget = IconWidget(FluentIcon.HISTORY, self)
         self.icon_widget.setFixedSize(64, 64)
 
-        self.label = BodyLabel("暂无最近打开的工程", self)
+        self.label = BodyLabel(Localizer.get().workbench_recent_empty, self)
 
         self.v_layout.addWidget(
             self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
@@ -391,6 +390,29 @@ class EmptyRecentProjectState(QWidget):
 
         self.icon_widget.setStyleSheet(f"color: {icon_color};")
         self.label.setStyleSheet(f"color: {text_color}; font-size: 14px;")
+
+
+class SupportedFormatItem(CardWidget):
+    """支持的文件格式展示项"""
+
+    def __init__(self, title: str, extensions: str, parent=None) -> None:
+        super().__init__(parent)
+
+        # 布局
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(2)
+
+        # 标题
+        self.title_label = StrongBodyLabel(title, self)
+        layout.addWidget(self.title_label)
+
+        # 扩展名
+        self.ext_label = CaptionLabel(extensions, self)
+        # 参照 RecentProjectItem 的颜色设置
+        self.ext_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
+        layout.addWidget(self.ext_label)
 
 
 class WorkbenchPage(ScrollArea, Base):
@@ -486,56 +508,70 @@ class WorkbenchPage(ScrollArea, Base):
         self.new_drop_zone.fileDropped.connect(self.on_source_dropped)
         layout.addWidget(self.new_drop_zone)
 
-        # 特性区域
+        # 特性与格式区域
         features_frame = QFrame(card)
         features_layout = QVBoxLayout(features_frame)
         features_layout.setContentsMargins(0, 20, 0, 0)
-        features_layout.setSpacing(10)
+        features_layout.setSpacing(12)
 
+        # 标题
         features_title = StrongBodyLabel(
-            Localizer.get().workbench_features_format_title, features_frame
+            Localizer.get().workbench_fmt_title, features_frame
         )
         features_layout.addWidget(features_title)
 
+        # 内容网格
+        grid_widget = QWidget(features_frame)
+        grid_layout = QGridLayout(grid_widget)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setHorizontalSpacing(12)
+        grid_layout.setVerticalSpacing(12)
+
         features = [
             (
-                Localizer.get().workbench_feature_format_support,
-                Localizer.get().workbench_feature_format_support_desc,
+                f"{Localizer.get().workbench_fmt_subtitle} / {Localizer.get().workbench_fmt_ebook} / {Localizer.get().workbench_fmt_markdown}",
+                ".srt .ass .txt .epub .md",
             ),
             (
-                Localizer.get().workbench_feature_private_rule,
-                Localizer.get().workbench_feature_private_rule_desc,
+                Localizer.get().workbench_fmt_renpy,
+                ".rpy",
             ),
             (
-                Localizer.get().workbench_feature_offline_mode,
-                Localizer.get().workbench_feature_offline_mode_desc,
+                Localizer.get().workbench_fmt_mtool,
+                ".json",
             ),
             (
-                Localizer.get().workbench_feature_zero_config,
-                Localizer.get().workbench_feature_zero_config_desc,
+                Localizer.get().workbench_fmt_sextractor,
+                ".txt .json .xlsx",
+            ),
+            (
+                Localizer.get().workbench_fmt_vntextpatch,
+                ".json",
+            ),
+            (
+                Localizer.get().workbench_fmt_trans_proj,
+                ".trans",
+            ),
+            (
+                Localizer.get().workbench_fmt_trans_export,
+                ".xlsx",
+            ),
+            (
+                Localizer.get().workbench_fmt_wolf,
+                ".xlsx",
             ),
         ]
 
-        for title, desc in features:
-            item = QFrame(features_frame)
-            item_layout = QHBoxLayout(item)
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(8)
+        for i, (title, desc) in enumerate(features):
+            row = i // 2
+            col = i % 2
 
-            check = IconWidget(FluentIcon.ACCEPT, item)
-            check.setFixedSize(16, 16)
-            check.setStyleSheet(
-                f"IconWidget {{ color: {themeColor().name()}; }}"
-            )  # 使用主题色
-            item_layout.addWidget(check)
+            item = SupportedFormatItem(title, desc, grid_widget)
+            grid_layout.addWidget(item, row, col)
 
-            text = BodyLabel(f"<b>{title}</b>：{desc}", item)
-            item_layout.addWidget(text)
-            item_layout.addStretch()
-
-            features_layout.addWidget(item)
-
+        features_layout.addWidget(grid_widget)
         layout.addWidget(features_frame)
+
         layout.addStretch()
 
         # 底部按钮容器
@@ -641,6 +677,10 @@ class WorkbenchPage(ScrollArea, Base):
 
         valid_items_count = 0
         for project in config.recent_projects:
+            # 最多显示 4 条
+            if valid_items_count >= 4:
+                break
+
             path = project.get("path")
             name = project.get("name")
 
@@ -750,7 +790,7 @@ class WorkbenchPage(ScrollArea, Base):
             self,
             Localizer.get().workbench_select_project_title,
             "",
-            "LinguaGacha 工程 (*.lg)",
+            Localizer.get().workbench_file_filter_lg,
         )
         if path:
             self.on_lg_dropped(path)
@@ -816,29 +856,13 @@ class WorkbenchPage(ScrollArea, Base):
                 2, self.project_info_panel
             )  # 插入到 selected_file_display 下方
         except Exception as e:
-            self.error(f"读取工程预览失败: {e}")
+            self.error(
+                Localizer.get().workbench_error_read_preview.replace("{ERROR}", str(e))
+            )
 
     def on_recent_clicked(self, path: str) -> None:
         """点击最近打开的项目"""
         self.on_lg_dropped(path)
-
-    def on_cancel_selection(self) -> None:
-        """取消选择（保留用于内部重置，虽然按钮已隐藏）"""
-        self.selected_lg_path = None
-        self.open_btn.setEnabled(False)
-
-        # 移除选中显示
-        if self.selected_file_display:
-            self.selected_file_display.deleteLater()
-            self.selected_file_display = None
-
-        if self.project_info_panel:
-            self.project_info_panel.deleteLater()
-            self.project_info_panel = None
-
-        # 显示拖拽区域和特性
-        self.open_drop_zone.setVisible(True)
-        self.recent_projects_container.setVisible(True)
 
     def on_create_project(self) -> None:
         """创建工程"""
@@ -851,7 +875,7 @@ class WorkbenchPage(ScrollArea, Base):
             self,
             Localizer.get().workbench_save_project_title,
             default_name,
-            "LinguaGacha 工程 (*.lg)",
+            Localizer.get().workbench_file_filter_lg,
         )
 
         if not path:
