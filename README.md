@@ -64,7 +64,7 @@
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
   - [补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
-  - [百宝箱 - 部分重翻](https://github.com/neavo/LinguaGacha/wiki/ReTranslation)　　[百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
+  - [百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -82,6 +82,16 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260121 v0.50.0
+  - 重新设计了翻译工程的整个流程
+    - 单个 `.lg` 工程文件即包含所有项目数据
+    - `术语表` `译前替换` `译后替换` 等规则各项目独立
+    - 进度实时写入工程文件，随时可以继续工作
+    - 生成 `译文文件` 不再需要 `原文文件`
+    - … …
+  - 重新设计了 `姓名字段提取` 功能
+  - 移除 - `部分重翻` 功能（通过 `校对任务`即可实现）
+
 - 20260118 v0.41.0
   - 新增 - `模型管理` 功能
     - 替代了原有的 `接口管理` 功能，需要重新设置
@@ -93,20 +103,6 @@
   - 调整 - 视觉与交互改进
   - 调整 - EPUB 兼容性优化
   - 从此开始，将同步发布 `macOS`、`Linux`、`Windows` 三个平台的打包版本
-
-- 20260114 v0.40.1
-  - 新增 - `校对任务` 功能
-    - 移除了不再需要的 `批量修正` 等功能
-  - 调整 - 视觉与交互改进
-  - 调整 - 分别统计输入/输出令牌
-  - 调整 - 搜索功能重构，现在可以支持正则搜索了
-  - 修正 - 相似度判断不能正确生效的问题
-
-- 20260112 v0.30.0
-  - 新增 - 替换与术语表功能支持 `大小写敏感` #291
-  - 新增 - 自动处理前后缀的保护文本段（专家设置） #259
-  - 调整 - 注音清理兼容性优化
-  - 修正 - 用户反馈问题 #251 #289 #290
 
 ### 开发指南 🛠️
 - 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理

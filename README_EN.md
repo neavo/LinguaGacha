@@ -67,7 +67,7 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Partial ReTranslation](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
@@ -85,6 +85,16 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260121 v0.50.0
+  - Redesigned the entire workflow of translation projects
+    - A single `.lg` project file contains all project data
+    - Rules such as `Glossary`, `Pre-translation Replacement`, and `Post-translation Replacement` are independent for each project
+    - Progress is written to the project file in real-time, allowing work to resume at any time
+    - Generating `Translated Files` no longer requires `Source Files`
+    - ... ...
+  - Redesigned the `Name Field Extraction` feature
+  - Removed - `Partial Re-translation` feature (can be achieved via `Proofreading Tasks`)
+
 - 20260118 v0.41.0
   - ADD - `Model Management` feature
     - Replaces the original `Interface Management` feature, need to be reconfigured
@@ -96,20 +106,6 @@
   - ADJ - Visual and interaction improvements
   - ADJ - EPUB compatibility optimization
   - From now on, `macOS`, `Linux` and `Windows` platforms will be released simultaneously
-
-- 20260114 v0.40.1
-  - ADD - `Proofreading Task` feature
-    - Removed functions that are no longer needed, such as `Batch Correction`
-  - ADJ - Visual and interaction improvements
-  - ADJ - Separate statistics for input/output tokens
-  - ADJ - Search function refactoring, now supports regex search
-  - FIX - Issue where similarity judgment could not take effect correctly
-
-- 20260112 v0.30.0
-  - ADD - Replace and Glossary now support `Case Sensitive` #291
-  - ADD - Auto-process prefix/suffix text segments for preservation (Expert Settings) #259
-  - ADJ - Optimized compatibility for Ruby Clean
-  - FIX - Resolved user feedback issues #251 #289 #290
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
