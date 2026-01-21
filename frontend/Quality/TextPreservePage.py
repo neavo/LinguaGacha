@@ -24,13 +24,15 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.Storage.DataStore import DataStore
+from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class TextPreservePage(QWidget, Base):
 
+class TextPreservePage(QWidget, Base):
     BASE: str = "text_preserve"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -43,40 +45,87 @@ class TextPreservePage(QWidget, Base):
         # 设置主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
-        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 添加控件
         self.add_widget_head(self.root, config, window)
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
 
-    # 头部
-    def add_widget_head(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
+        self.subscribe(Base.Event.PROJECT_LOADED, self._on_project_loaded)
+        # 工程卸载后清空数据
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                getattr(config, f"{__class__.BASE}_enable")
+    # 获取文本保护数据
+    def _get_text_preserve_data(self) -> list[dict[str, str]]:
+        db = StorageContext.get().get_db()
+        if db is None:
+            return []
+        return db.get_rules(DataStore.RuleType.TEXT_PRESERVE)
+
+    # 保存文本保护数据
+    def _set_text_preserve_data(self, data: list[dict[str, str]]) -> None:
+        db = StorageContext.get().get_db()
+        if db is not None:
+            db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
+
+    # 获取启用状态
+    def _get_text_preserve_enable(self) -> bool:
+        db = StorageContext.get().get_db()
+        if db is not None:
+            return db.get_meta("text_preserve_enable", True)
+        return True
+
+    # 设置启用状态
+    def _set_text_preserve_enable(self, enable: bool) -> None:
+        db = StorageContext.get().get_db()
+        if db is not None:
+            db.set_meta("text_preserve_enable", enable)
+
+    # 工程加载后刷新数据
+    def _on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.set_data(self._get_text_preserve_data())
+        self.table_manager.sync()
+        # 刷新开关状态
+        if hasattr(self, "switch_card"):
+            self.switch_card.get_switch_button().setChecked(
+                self._get_text_preserve_enable()
             )
+
+    # 工程卸载后清空数据
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.sync()
+        # 重置开关状态
+        if hasattr(self, "switch_card"):
+            self.switch_card.get_switch_button().setChecked(True)
+
+    # 头部
+    def add_widget_head(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(self._get_text_preserve_enable())
 
         def checked_changed(widget: SwitchButtonCard) -> None:
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_enable", widget.get_switch_button().isChecked())
-            config.save()
+            self._set_text_preserve_enable(widget.get_switch_button().isChecked())
 
-        parent.addWidget(
-            SwitchButtonCard(
-                getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
-                getattr(Localizer.get(), f"{__class__.BASE}_page_head_content"),
-                init = init,
-                checked_changed = checked_changed,
-            )
+        self.switch_card = SwitchButtonCard(
+            getattr(Localizer.get(), f"{__class__.BASE}_page_head_title"),
+            getattr(Localizer.get(), f"{__class__.BASE}_page_head_content"),
+            init=init,
+            checked_changed=checked_changed,
         )
+        parent.addWidget(self.switch_card)
 
     # 主体
-    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_body(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def item_changed(item: QTableWidgetItem) -> None:
-            if self.table_manager.get_updating() == True:
+            if self.table_manager.get_updating():
                 return None
 
             new_row = item.row()
@@ -90,31 +139,37 @@ class TextPreservePage(QWidget, Base):
                     continue
 
                 if new.get("src") == old.get("src"):
-                    self.emit(Base.Event.TOAST, {
-                        "type": Base.ToastType.WARNING,
-                        "duration": 5000,
-                        "message": (
-                            f"{Localizer.get().quality_merge_duplication}"
-                            "\n" + f"{json.dumps(new, indent = None, ensure_ascii = False)}"
-                            "\n" + f"{json.dumps(old, indent = None, ensure_ascii = False)}"
-                        ),
-                    })
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "duration": 5000,
+                            "message": (
+                                f"{Localizer.get().quality_merge_duplication}"
+                                "\n"
+                                + f"{json.dumps(new, indent=None, ensure_ascii=False)}"
+                                "\n"
+                                + f"{json.dumps(old, indent=None, ensure_ascii=False)}"
+                            ),
+                        },
+                    )
 
             # 清空数据，再从表格加载数据
             self.table_manager.set_data([])
             self.table_manager.append_data_from_table()
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_save_toast,
+                },
+            )
 
         def custom_context_menu_requested(position: QPoint) -> None:
             menu = RoundMenu("", self.table)
@@ -122,7 +177,7 @@ class TextPreservePage(QWidget, Base):
                 Action(
                     FluentIcon.DELETE,
                     Localizer.get().quality_delete_row,
-                    triggered = self.table_manager.delete_row,
+                    triggered=self.table_manager.delete_row,
                 )
             )
             menu.exec(self.table.viewport().mapToGlobal(position))
@@ -150,9 +205,9 @@ class TextPreservePage(QWidget, Base):
 
         # 向表格更新数据
         self.table_manager = TableManager(
-            type = TableManager.Type.TEXT_PRESERVE,
-            data = getattr(config, f"{__class__.BASE}_data"),
-            table = self.table,
+            type=TableManager.Type.TEXT_PRESERVE,
+            data=[],
+            table=self.table,
         )
         self.table_manager.sync()
 
@@ -162,7 +217,9 @@ class TextPreservePage(QWidget, Base):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
     # 底部
-    def add_widget_foot(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_foot(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         # 创建搜索栏
         self.search_card = SearchCard(self)
         self.search_card.setVisible(False)
@@ -171,6 +228,7 @@ class TextPreservePage(QWidget, Base):
         def back_clicked(widget: SearchCard) -> None:
             self.search_card.setVisible(False)
             self.command_bar_card.setVisible(True)
+
         self.search_card.on_back_clicked(back_clicked)
 
         def next_clicked(widget: SearchCard) -> None:
@@ -180,10 +238,14 @@ class TextPreservePage(QWidget, Base):
             if row > -1:
                 self.table.setCurrentCell(row, 0)
             else:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().alert_no_data,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().alert_no_data,
+                    },
+                )
+
         self.search_card.on_next_clicked(next_clicked)
 
         # 创建命令栏
@@ -201,11 +263,17 @@ class TextPreservePage(QWidget, Base):
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
 
     # 导入
-    def add_command_bar_action_import(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_import(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         def triggered() -> None:
             # 选择文件
-            path, _ = QFileDialog.getOpenFileName(None, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
+            path, _ = QFileDialog.getOpenFileName(
+                None,
+                Localizer.get().quality_select_file,
+                "",
+                Localizer.get().quality_select_file_type,
+            )
             if not isinstance(path, str) or path == "":
                 return
 
@@ -216,26 +284,38 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_import_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_import_toast,
+                },
+            )
 
         parent.add_action(
-            Action(FluentIcon.DOWNLOAD, Localizer.get().quality_import, parent, triggered = triggered),
+            Action(
+                FluentIcon.DOWNLOAD,
+                Localizer.get().quality_import,
+                parent,
+                triggered=triggered,
+            ),
         )
 
     # 导出
-    def add_command_bar_action_export(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_export(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         def triggered() -> None:
-            path, _ = QFileDialog.getSaveFileName(window, Localizer.get().quality_select_file, "", Localizer.get().quality_select_file_type)
+            path, _ = QFileDialog.getSaveFileName(
+                window,
+                Localizer.get().quality_select_file,
+                "",
+                Localizer.get().quality_select_file_type,
+            )
             if not isinstance(path, str) or path == "":
                 return None
 
@@ -243,44 +323,64 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.export(str(Path(path).with_suffix("")))
 
             # 弹出提示
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_export_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_export_toast,
+                },
+            )
 
         parent.add_action(
-            Action(FluentIcon.SHARE, Localizer.get().quality_export, parent, triggered = triggered),
+            Action(
+                FluentIcon.SHARE,
+                Localizer.get().quality_export,
+                parent,
+                triggered=triggered,
+            ),
         )
 
     # 搜索
-    def add_command_bar_action_search(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_search(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         def triggered() -> None:
             self.search_card.setVisible(True)
             self.command_bar_card.setVisible(False)
 
         parent.add_action(
-            Action(FluentIcon.SEARCH, Localizer.get().search, parent, triggered = triggered),
+            Action(
+                FluentIcon.SEARCH, Localizer.get().search, parent, triggered=triggered
+            ),
         )
 
     # 预设
-    def add_command_bar_action_preset(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_preset(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         widget: CommandButton = None
 
         def load_preset() -> list[str]:
             filenames: list[str] = []
 
             try:
-                for _, _, filenames in os.walk(f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"):
-                    filenames = [v.lower().removesuffix(".json") for v in filenames if v.lower().endswith(".json")]
+                for _, _, filenames in os.walk(
+                    f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"
+                ):
+                    filenames = [
+                        v.lower().removesuffix(".json")
+                        for v in filenames
+                        if v.lower().endswith(".json")
+                    ]
             except Exception:
                 pass
 
             return filenames
 
         def reset() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
+            message_box = MessageBox(
+                Localizer.get().alert, Localizer.get().quality_reset_alert, window
+            )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -289,19 +389,20 @@ class TextPreservePage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(getattr(Config(), f"{__class__.BASE}_data"))
+            self.table_manager.set_data(Config().text_preserve_data or [])
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_reset_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_reset_toast,
+                },
+            )
 
         def apply_preset(filename: str) -> None:
             path: str = f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
@@ -313,16 +414,17 @@ class TextPreservePage(QWidget, Base):
             self.table_manager.append_data_from_file(path)
             self.table_manager.sync()
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{__class__.BASE}_data", self.table_manager.get_data())
-            config.save()
+            # 保存数据
+            self._set_text_preserve_data(self.table_manager.get_data())
 
             # 弹出提示
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_import_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_import_toast,
+                },
+            )
 
         def triggered() -> None:
             menu = RoundMenu("", widget)
@@ -330,7 +432,7 @@ class TextPreservePage(QWidget, Base):
                 Action(
                     FluentIcon.CLEAR_SELECTION,
                     Localizer.get().quality_reset,
-                    triggered = reset,
+                    triggered=reset,
                 )
             )
             for v in load_preset():
@@ -338,21 +440,24 @@ class TextPreservePage(QWidget, Base):
                     Action(
                         FluentIcon.EDIT,
                         v,
-                        triggered = partial(apply_preset, v),
+                        triggered=partial(apply_preset, v),
                     )
                 )
             menu.exec(widget.mapToGlobal(QPoint(0, -menu.height())))
 
-        widget = parent.add_action(Action(
-            FluentIcon.EXPRESSIVE_INPUT_ENTRY,
-            Localizer.get().quality_preset,
-            parent = parent,
-            triggered = triggered
-        ))
+        widget = parent.add_action(
+            Action(
+                FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                Localizer.get().quality_preset,
+                parent=parent,
+                triggered=triggered,
+            )
+        )
 
     # WiKi
-    def add_command_bar_action_wiki(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_wiki(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
 

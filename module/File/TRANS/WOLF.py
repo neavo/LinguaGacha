@@ -3,31 +3,30 @@ import itertools
 
 from module.File.TRANS.NONE import NONE
 from model.Item import Item
-from base.LogManager import LogManager
+
 
 class WOLF(NONE):
-
     TEXT_TYPE: str = Item.TextType.WOLF
 
     WHITELIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"/Database/stringArgs/0$", flags = re.IGNORECASE),
-        re.compile(r"/CommonEvent/stringArgs/\d*[1-9]\d*$", flags = re.IGNORECASE),
-        re.compile(r"/CommonEventByName/stringArgs/\d*[1-9]\d*$", flags = re.IGNORECASE),
-        re.compile(r"/Message/stringArgs/\d+$", flags = re.IGNORECASE),
-        re.compile(r"/Picture/stringArgs/\d+$", flags = re.IGNORECASE),
-        re.compile(r"/Choices/stringArgs/\d+$", flags = re.IGNORECASE),
-        re.compile(r"/SetString/stringArgs/\d+$", flags = re.IGNORECASE),
-        re.compile(r"/StringCondition/stringArgs/\d+$", flags = re.IGNORECASE),
+        re.compile(r"/Database/stringArgs/0$", flags=re.IGNORECASE),
+        re.compile(r"/CommonEvent/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
+        re.compile(r"/CommonEventByName/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
+        re.compile(r"/Message/stringArgs/\d+$", flags=re.IGNORECASE),
+        re.compile(r"/Picture/stringArgs/\d+$", flags=re.IGNORECASE),
+        re.compile(r"/Choices/stringArgs/\d+$", flags=re.IGNORECASE),
+        re.compile(r"/SetString/stringArgs/\d+$", flags=re.IGNORECASE),
+        re.compile(r"/StringCondition/stringArgs/\d+$", flags=re.IGNORECASE),
     )
 
     BLACKLIST_ADDRESS: tuple[re.Pattern] = (
-        re.compile(r"/Database/stringArgs/\d*[1-9]\d*$", flags = re.IGNORECASE),
-        re.compile(r"/CommonEvent/stringArgs/0$", flags = re.IGNORECASE),
-        re.compile(r"/CommonEventByName/stringArgs/0$", flags = re.IGNORECASE),
-        re.compile(r"/name$", flags = re.IGNORECASE),
-        re.compile(r"/description$", flags = re.IGNORECASE),
-        re.compile(r"/Comment/stringArgs/", flags = re.IGNORECASE),
-        re.compile(r"/DebugMessage/stringArgs/", flags = re.IGNORECASE),
+        re.compile(r"/Database/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
+        re.compile(r"/CommonEvent/stringArgs/0$", flags=re.IGNORECASE),
+        re.compile(r"/CommonEventByName/stringArgs/0$", flags=re.IGNORECASE),
+        re.compile(r"/name$", flags=re.IGNORECASE),
+        re.compile(r"/description$", flags=re.IGNORECASE),
+        re.compile(r"/Comment/stringArgs/", flags=re.IGNORECASE),
+        re.compile(r"/DebugMessage/stringArgs/", flags=re.IGNORECASE),
     )
 
     # 预处理
@@ -49,17 +48,24 @@ class WOLF(NONE):
             if any(rule.search(address) is not None for rule in WOLF.WHITELIST_ADDRESS):
                 block.append(False)
             # 如果在地址黑名单，则需要过滤
-            elif any(rule.search(address) is not None for rule in WOLF.BLACKLIST_ADDRESS):
+            elif any(
+                rule.search(address) is not None for rule in WOLF.BLACKLIST_ADDRESS
+            ):
                 block.append(True)
             # 如果在标签黑名单，则需要过滤
             elif any(v in ("red", "blue") for v in tag):
                 block.append(True)
             # 如果符合指定地址规则，并且没有命中以上规则，则需要过滤
-            elif re.search(r"^common/", address, flags = re.IGNORECASE) is not None:
+            elif re.search(r"^common/", address, flags=re.IGNORECASE) is not None:
                 block.append(True)
             # 如果符合指定地址规则，并且文本在屏蔽数据中，则需要过滤
             elif (
-                re.search(r"DataBase.json/types/\d+/data/\d+/data/\d+/value", address, flags = re.IGNORECASE) is not None
+                re.search(
+                    r"DataBase.json/types/\d+/data/\d+/data/\d+/value",
+                    address,
+                    flags=re.IGNORECASE,
+                )
+                is not None
                 and src in self.block_text
             ):
                 block.append(True)
@@ -78,9 +84,7 @@ class WOLF(NONE):
         files: dict = project.get("files", {})
         for _, entry in files.items():
             for data, context in itertools.zip_longest(
-                entry.get("data", []),
-                entry.get("context", []),
-                fillvalue = None
+                entry.get("data", []), entry.get("context", []), fillvalue=None
             ):
                 # 处理可能为 None 的情况
                 data: list[str] = data if data is not None else []
@@ -94,7 +98,14 @@ class WOLF(NONE):
                 # 不需要屏蔽 - common/110.json/commands/29/Database/stringArgs/0
                 # 需要屏蔽   - common/110.json/commands/29/Database/stringArgs/1
                 context: str = "\n".join(context)
-                if re.search(r"/Database/stringArgs/\d*[1-9]\d*$", context, flags = re.IGNORECASE) is not None:
+                if (
+                    re.search(
+                        r"/Database/stringArgs/\d*[1-9]\d*$",
+                        context,
+                        flags=re.IGNORECASE,
+                    )
+                    is not None
+                ):
                     result.add(data[0])
 
         return result

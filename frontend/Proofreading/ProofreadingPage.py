@@ -25,7 +25,7 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
-from module.Storage.ItemStore import ItemStore
+from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -79,6 +79,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed
         )
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 连接信号
         self.items_loaded.connect(self._on_items_loaded_ui)
@@ -201,9 +202,19 @@ class ProofreadingPage(QWidget, Base):
             # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
                 self.config = Config().load()
-                # 从数据库加载条目
-                item_store = ItemStore.get(self.config.output_folder)
-                items = item_store.get_all_items()
+                # 从工程数据库读取所有条目
+                db = StorageContext.get().get_db()
+                if db is None:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().proofreading_page_no_cache,
+                        },
+                    )
+                    self.items_loaded.emit([])
+                    return
+                items = [Item.from_dict(d) for d in db.get_all_items()]
                 # 过滤掉原文为空的条目
                 items = [i for i in items if i.get_src().strip()]
 
@@ -721,14 +732,16 @@ class ProofreadingPage(QWidget, Base):
             return
 
         # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
-        config = self.config
         items = self.items
 
         def task() -> None:
             try:
-                # 保存到数据库
-                item_store = ItemStore.get(config.output_folder)
-                item_store.set_items(items)
+                # 直接写入工程数据库
+                db = StorageContext.get().get_db()
+                if db is None:
+                    self.save_done.emit(False)
+                    return
+                db.set_items([item.to_dict() for item in items])
                 self.save_done.emit(True)
             except Exception as e:
                 self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
@@ -905,3 +918,35 @@ class ProofreadingPage(QWidget, Base):
     def indeterminate_hide(self) -> None:
         """隐藏 loading 指示器"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+
+    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后清理数据"""
+        # 清空数据
+        self.items = []
+        self.filtered_items = []
+        self.warning_map = {}
+        self.result_checker = None
+        self.config = None
+        self.filter_options = {}
+
+        # 清空搜索状态
+        self.search_keyword = ""
+        self.search_is_regex = False
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
+        self.search_card.setVisible(False)
+        self.command_bar_card.setVisible(True)
+
+        # 重置表格和分页
+        self.table_widget.set_items([], {})
+        self.pagination_bar.reset()
+
+        # 重置按钮状态
+        self.btn_save.setEnabled(False)
+        self.btn_export.setEnabled(False)
+        self.btn_search.setEnabled(False)
+        self.btn_filter.setEnabled(False)
+
+        # 隐藏 loading
+        self.indeterminate_hide()

@@ -1,119 +1,158 @@
-import contextlib
-import json
-import sqlite3
-import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
-from typing import Generator
 
 from base.Base import Base
-from model.Project import Project
+from module.Config import Config
+from module.File.FileManager import FileManager
+from module.Storage.AssetStore import AssetStore
+from module.Storage.DataStore import DataStore
+
+# 进度回调类型：callback(current, total, message)
+ProgressCallback = Callable[[int, int, str], None]
 
 
 class ProjectStore(Base):
-    """项目元数据存储层 - 管理单例项目状态"""
+    """工程存储管理器"""
 
-    # 类级别线程锁
-    _LOCK = threading.Lock()
+    # 支持的文件扩展名
+    SUPPORTED_EXTENSIONS = {
+        ".txt",
+        ".md",
+        ".json",
+        ".xlsx",
+        ".epub",
+        ".ass",
+        ".srt",
+        ".rpy",
+        ".trans",
+    }
 
-    # 存储实例缓存（按数据库路径）
-    _instances: dict[str, "ProjectStore"] = {}
-
-    # 项目数据固定使用 id=1
-    _PROJECT_ID = 1
-
-    def __init__(self, db_path: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.db_path = db_path
-        self._keep_alive_conn: sqlite3.Connection | None = None
+        self.progress_callback: ProgressCallback | None = None
 
-    def open_session(self) -> None:
-        """开启会话（建立长连接以维持 WAL 模式，避免频繁 checkpoint）"""
-        if self._keep_alive_conn is None:
-            # 确保持久化连接使用相同的参数
-            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._keep_alive_conn = sqlite3.connect(
-                self.db_path, check_same_thread=False
+    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+        """设置进度回调函数 callback(current, total, message)"""
+        self.progress_callback = callback
+
+    def report_progress(self, current: int, total: int, message: str) -> None:
+        """报告进度"""
+        if self.progress_callback is None:
+            return
+        self.progress_callback(current, total, message)
+
+    def create(
+        self,
+        source_path: str,
+        output_path: str,
+    ) -> DataStore:
+        """创建工程
+
+        Args:
+            source_path: 源文件或目录路径
+            output_path: 输出的 .lg 文件路径
+
+        Returns:
+            创建的 DataStore 实例
+        """
+        # 确保输出目录存在
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # 删除已存在的文件
+        if Path(output_path).exists():
+            Path(output_path).unlink()
+
+        # 创建数据库
+        project_name = Path(source_path).name
+        db = DataStore.create(output_path, project_name)
+
+        # 收集源文件
+        source_files = self.collect_source_files(source_path)
+        total_files = len(source_files)
+
+        self.report_progress(0, total_files, "正在收纳资产...")
+
+        # 收纳资产
+        for i, file_path in enumerate(source_files):
+            self.ingest_asset(db, source_path, file_path)
+            self.report_progress(
+                i + 1, total_files, f"正在收纳: {Path(file_path).name}"
             )
-            self._keep_alive_conn.execute("PRAGMA journal_mode=WAL")
-            self._keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
 
-    def close_session(self) -> None:
-        """关闭会话（释放长连接，允许 SQLite 执行 checkpoint 并删除 WAL 文件）"""
-        if self._keep_alive_conn is not None:
-            self._keep_alive_conn.close()
-            self._keep_alive_conn = None
+        # 解析翻译条目
+        self.report_progress(total_files, total_files, "正在解析翻译条目...")
 
-    @classmethod
-    def get(cls, output_folder: str) -> "ProjectStore":
-        """获取或创建指定输出目录的存储实例"""
-        db_path = str(Path(output_folder) / "cache" / "project.db")
+        # 构造 Config 对象指向源目录
+        config = Config().load()
 
-        with cls._LOCK:
-            if db_path not in cls._instances:
-                # 确保目录存在
-                Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-                cls._instances[db_path] = cls(db_path)
+        # 使用 FileManager 读取翻译条目
+        _, items = FileManager(config).read_from_path(source_path)
 
-        return cls._instances[db_path]
+        # 将条目保存到数据库
+        if items:
+            db.set_items([item.to_dict() for item in items])
 
-    @contextlib.contextmanager
-    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """获取数据库连接上下文管理器（随用随连）"""
-        # 确保目录存在
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            # 初始化翻译进度元数据
+            # 这样在未开始翻译前也能显示正确的进度（0%），且无需遍历所有条目
+            extras = {
+                "total_line": len(items),
+                "line": 0,
+                "total_tokens": 0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "time": 0,
+            }
+            db.set_meta("translation_extras", extras)
 
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.row_factory = sqlite3.Row
+        self.report_progress(total_files, total_files, "工程创建完成")
 
-            # 确保表结构存在
-            self._ensure_table(conn)
+        return db
 
-            yield conn
-        finally:
-            conn.close()
+    def collect_source_files(self, source_path: str) -> list[str]:
+        """收集源文件列表"""
+        path_obj = Path(source_path)
 
-    def _ensure_table(self, conn: sqlite3.Connection) -> None:
-        """确保数据表存在"""
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS project (
-                id INTEGER PRIMARY KEY,
-                data TEXT NOT NULL
-            )
-        """)
-        conn.commit()
+        if path_obj.is_file():
+            # 单个文件
+            return [source_path] if self.is_supported_file(source_path) else []
 
-    def get_project(self) -> Project:
-        """获取项目数据，不存在则返回空项目"""
-        with self._connection() as conn:
-            cursor = conn.execute(
-                "SELECT data FROM project WHERE id = ?", (self._PROJECT_ID,)
-            )
-            row = cursor.fetchone()
+        # 目录递归扫描
+        return [
+            str(f)
+            for f in path_obj.rglob("*")
+            if f.is_file() and self.is_supported_file(str(f))
+        ]
 
-            if row is None:
-                return Project()
+    def is_supported_file(self, file_path: str) -> bool:
+        """检查是否为支持的文件类型"""
+        ext = Path(file_path).suffix.lower()
+        return ext in self.SUPPORTED_EXTENSIONS
 
-            data: dict[str, Any] = json.loads(row["data"])
-            return Project.from_dict(data)
+    def ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
+        """收纳单个资产到数据库"""
+        # 计算相对路径
+        relative_path = (
+            Path(file_path).name
+            if Path(base_path).is_file()
+            else str(Path(file_path).relative_to(base_path))
+        )
 
-    def set_project(self, project: Project) -> None:
-        """保存项目数据（覆盖写入）"""
-        with self._connection() as conn:
-            data_json = json.dumps(project.to_dict(), ensure_ascii=False)
+        # 压缩文件
+        compressed_data, original_size = AssetStore.compress_file(file_path)
 
-            # 使用 REPLACE 实现 upsert
-            conn.execute(
-                "INSERT OR REPLACE INTO project (id, data) VALUES (?, ?)",
-                (self._PROJECT_ID, data_json),
-            )
-            conn.commit()
+        # 存入数据库
+        db.add_asset(relative_path, compressed_data, original_size)
 
-    def clear(self) -> None:
-        """清空项目数据"""
-        with self._connection() as conn:
-            conn.execute("DELETE FROM project")
-            conn.commit()
+    @staticmethod
+    def get_project_preview(lg_path: str) -> dict:
+        """获取工程预览信息（不完全加载）
+
+        使用短连接模式，操作完成后自动关闭，WAL 文件会被清理。
+        用于在工作台中显示项目详情。
+        """
+        if not Path(lg_path).exists():
+            raise FileNotFoundError(f"工程文件不存在: {lg_path}")
+
+        # 使用短连接模式（不调用 open()）
+        db = DataStore(lg_path)
+        return db.get_project_summary()

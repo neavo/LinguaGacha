@@ -1,5 +1,6 @@
 from module.Localizer.LocalizerZH import LocalizerZH
 
+
 class LocalizerEN(LocalizerZH):
     # 保留
     switch_language: str = (
@@ -16,6 +17,9 @@ class LocalizerEN(LocalizerZH):
     # 通用
     add: str = "Add"
     edit: str = "Edit"
+    select_file: str = "Select File"
+    select_folder: str = "Select Folder"
+    supported_files: str = "Supported Files"
     none: str = "None"
     back: str = "Back"
     stop: str = "Stop"
@@ -28,18 +32,13 @@ class LocalizerEN(LocalizerZH):
     cancel: str = "Cancel"
     auto: str = "Auto"
     wiki: str = "Wiki"
-    open: str = "Open"
-    select: str = "Select"
     filter: str = "Filter"
     search: str = "Search"
-    generate: str = "Generate"
     placeholder: str = "Please enter keywords …"
     task_success: str = "Task succeeded …"
     alert_no_data: str = "No valid data …"
     alert_reset_timer: str = "Confirm to reset timer?"
-    alert_reset_translation: str = (
-        "Confirm to reset translation task and start a new task?"
-    )
+    alert_reset_translation: str = "Confirm to reset translation task and start a new task?"
     search_prev_match: str = "Previous match"
     search_next_match: str = "Next match"
     search_regex_on: str = "Regex Mode\nCurrent Status: Enabled"
@@ -60,9 +59,9 @@ class LocalizerEN(LocalizerZH):
     app_new_version_failure: str = "New version download failed …"
     app_new_version_success: str = "New version download successful …"
     app_new_version_downloaded: str = "Click to apply New Version!"
-    app_new_version_waiting_restart: str = (
-        "Update completed, application will close soon …"
-    )
+    app_new_version_waiting_restart: str = "Update completed, application will close soon …"
+    project_closed_toast: str = "Current project closed …"
+    app_close_project_btn: str = "Close Project"
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
     app_settings_page: str = "App Settings"
@@ -83,8 +82,8 @@ class LocalizerEN(LocalizerZH):
     app_treasure_chest_page: str = "Treasure Chest"
 
     # 路径
-    path_bilingual: str = "bilingual"
-    path_result_name_field_extraction: str = "name_field_extraction.xlsx"
+    path_translated: str = "Translated"
+    path_translated_bilingual: str = "Translated_Bilingual"
 
     # 日志
     log_crash: str = "A critical error has occurred, app will now exit, error detail has been saved to the log file …"
@@ -94,7 +93,6 @@ class LocalizerEN(LocalizerZH):
     log_task_fail: str = "Task failed …"
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
-    cli_verify_folder: str = "parameter error: invalid path …"
     cli_verify_language: str = "parameter error: invalid language …"
 
     # 引擎
@@ -104,12 +102,8 @@ class LocalizerEN(LocalizerZH):
     engine_task_fail: str = "Reached the maximum task rounds, but some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
     engine_task_save: str = "Saving task results …"
-    engine_task_save_done: str = (
-        "Task results have been saved to the {PATH} directory …"
-    )
-    engine_task_generation: str = (
-        "Task generation completed, {COUNT} tasks generated in total …"
-    )
+    engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
+    engine_task_generation: str = "Task generation completed, {COUNT} tasks generated in total …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
     engine_task_language_filter: str = "Language filtering completed, {COUNT} entries not containing the target language were filtered in total …"
     engine_max_round: str = "Max Rounds"
@@ -120,20 +114,14 @@ class LocalizerEN(LocalizerZH):
     engine_response_think: str = "Model Thinking:"
     engine_response_result: str = "Model Response:"
     engine_task_success: str = "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}"
-    engine_task_too_many: str = (
-        "Too many real-time tasks, details hidden for performance …"
-    )
+    engine_task_too_many: str = "Too many real-time tasks, details hidden for performance …"
     api_tester_key: str = "Testing Key:"
     api_tester_messages: str = "Task Prompts:"
-    api_tester_result: str = (
-        "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
-    )
+    api_tester_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
     api_tester_result_failure: str = "Failed Keys:"
     api_tester_running: str = "Task is running, please try again later …"
     translator_mtool_optimizer_pre_log: str = "MToolOptimizer pre-processing completed, {COUNT} entries containing duplicate clauses were filtered in total …"
-    translator_mtool_optimizer_post_log: str = (
-        "MToolOptimizer post-processing completed …"
-    )
+    translator_mtool_optimizer_post_log: str = "MToolOptimizer post-processing completed …"
     translator_response_check_fail: str = "Translated text failed check, will automatically retry in the next round of translation"
     translator_response_check_fail_all: str = "All translated text failed check, will automatically retry in the next round of translation"
     translator_response_check_fail_part: str = "Partial translated text failed check, will automatically retry in the next round of translation"
@@ -164,31 +152,20 @@ class LocalizerEN(LocalizerZH):
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
-
     model_page_category_preset_title: str = "Preset Models"
     model_page_category_preset_desc: str = "Built-in preset models of the application"
     model_page_category_google_title: str = "Custom Google Models"
-    model_page_category_google_desc: str = (
-        "Custom models compatible with Google Gemini API format"
-    )
+    model_page_category_google_desc: str = "Custom models compatible with Google Gemini API format"
     model_page_category_openai_title: str = "Custom OpenAI Models"
-    model_page_category_openai_desc: str = (
-        "Custom models compatible with OpenAI API format"
-    )
+    model_page_category_openai_desc: str = "Custom models compatible with OpenAI API format"
     model_page_category_anthropic_title: str = "Custom Anthropic Models"
-    model_page_category_anthropic_desc: str = (
-        "Custom models compatible with Anthropic Claude API format"
-    )
+    model_page_category_anthropic_desc: str = "Custom models compatible with Anthropic Claude API format"
     model_page_migrated_toast: str = "Detected {COUNT} deprecated preset models, automatically migrated to custom model categories …"
-    model_page_delete_last_one_toast: str = (
-        "At least one model must be kept in each category, cannot delete …"
-    )
+    model_page_delete_last_one_toast: str = "At least one model must be kept in each category, cannot delete …"
     model_page_reset_success_toast: str = "Model reset successfully …"
     model_basic_setting_page_name: str = "Please enter model name …"
     model_basic_setting_page_name_title: str = "Model Name"
-    model_basic_setting_page_name_content: str = (
-        "Please enter model name, only for display within the app, no practical effect"
-    )
+    model_basic_setting_page_name_content: str = "Please enter model name, only for display within the app, no practical effect"
     model_basic_setting_page_api_url: str = "Please enter API URL …"
     model_basic_setting_page_api_url_title: str = "API URL"
     model_basic_setting_page_api_url_content: str = "Please enter API URL, pay attention to whether /v1 needs to be added at the end"
@@ -207,13 +184,9 @@ class LocalizerEN(LocalizerZH):
     model_basic_setting_page_thinking_medium: str = "Medium"
     model_basic_setting_page_thinking_high: str = "High"
     model_basic_setting_page_input_token_title: str = "Input Token Limit"
-    model_basic_setting_page_input_token_content: str = (
-        "Maximum number of tokens for each task input"
-    )
+    model_basic_setting_page_input_token_content: str = "Maximum number of tokens for each task input"
     model_basic_setting_page_output_token_title: str = "Output Token Limit"
-    model_basic_setting_page_output_token_content: str = (
-        "Maximum number of tokens for each task output"
-    )
+    model_basic_setting_page_output_token_content: str = "Maximum number of tokens for each task output"
     model_basic_setting_page_rpm_title: str = "Requests Per Minute Limit (RPM)"
     model_basic_setting_page_rpm_content: str = (
         "Maximum total number of tasks executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> limit"
@@ -232,9 +205,7 @@ class LocalizerEN(LocalizerZH):
     )
     model_advanced_setting_page_headers_title: str = "Custom Request Headers"
     model_advanced_setting_page_headers_content: str = "Custom request header parameters, please set with caution, incorrect values may cause abnormal results or request errors"
-    model_advanced_setting_page_headers_placeholder: str = (
-        'Example: {"Authorization": "Bearer xxx"}'
-    )
+    model_advanced_setting_page_headers_placeholder: str = 'Example: {"Authorization": "Bearer xxx"}'
     model_advanced_setting_page_body_title: str = "Custom Request Body"
     model_advanced_setting_page_body_content: str = "Custom request body parameters, please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_body_placeholder: str = 'Example: {"seed": 42}'
@@ -247,15 +218,56 @@ class LocalizerEN(LocalizerZH):
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
     model_advanced_setting_page_frequency_penalty_content: str = "Please set with caution, incorrect values may cause abnormal results or request errors"
     model_advanced_setting_page_document_link: str = "Click to view documentation"
-    model_advanced_setting_page_json_format_error: str = (
-        "JSON format error, please enter a valid JSON object"
-    )
+    model_advanced_setting_page_json_format_error: str = "JSON format error, please enter a valid JSON object"
     model_selector_page_title: str = "Available Model List"
     model_selector_page_content: str = "Click to select the model to use"
-    model_selector_page_fail: str = (
-        "Failed to get model list, please check API configuration …"
-    )
+    model_selector_page_fail: str = "Failed to get model list, please check API configuration …"
     model_selector_page_loading: str = "Loading model list …"
+
+    # 工作台
+    workbench_new_project_title: str = "New Project"
+    workbench_new_project_subtitle: str = "Select source files to create a self-contained .lg project."
+    workbench_new_project_btn: str = "Create Project"
+    workbench_open_project_title: str = "Open Project"
+    workbench_open_project_subtitle: str = "Load a .lg project to continue with saved progress and rules."
+    workbench_recent_projects_title: str = "Recent Projects"
+    workbench_open_project_btn: str = "Open Project"
+    workbench_drop_zone_source_title: str = "Click or Drag Source File"
+    workbench_drop_zone_lg_title: str = "Click or Drag .lg File"
+    workbench_fmt_title: str = "Supported File Formats"
+    workbench_fmt_subtitle: str = "Subtitle"
+    workbench_fmt_ebook: str = "E-book"
+    workbench_fmt_markdown: str = "Markdown"
+    workbench_fmt_renpy: str = "RenPy Game Text"
+    workbench_fmt_mtool: str = "MTool Game Text"
+    workbench_fmt_sextractor: str = "SExtractor Game Text"
+    workbench_fmt_vntextpatch: str = "VNTextPatch Game Text"
+    workbench_fmt_trans_proj: str = "Translator++ Project File"
+    workbench_fmt_trans_export: str = "Translator++ Game Text"
+    workbench_fmt_wolf: str = "WOLF Offical Tool Game Text"
+    workbench_select_source_dir_title: str = "Select Source Directory"
+    workbench_toast_no_valid_file: str = "No supported source files found in this directory"
+    workbench_drop_ready_source: str = "{COUNT} source files found, ready"
+    workbench_select_project_title: str = "Select Project File"
+    workbench_toast_invalid_lg: str = "Please select a .lg project file"
+    workbench_msg_file_not_found_title: str = "File Not Found"
+    workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
+    workbench_progress_creating: str = "Creating project..."
+    workbench_progress_loading: str = "Loading project..."
+    workbench_toast_create_fail: str = "Failed to create project: {ERROR}"
+    workbench_toast_load_fail: str = "Failed to load project: {ERROR}"
+    workbench_save_project_title: str = "Save Project File"
+    workbench_project_ready: str = "Project Ready"
+    workbench_project_preparing: str = "Preparing..."
+    workbench_info_file_count: str = "File Count"
+    workbench_info_created_at: str = "Created At"
+    workbench_info_update: str = "Last Updated"
+    workbench_info_progress: str = "Progress"
+    workbench_info_translated: str = "Translated: {COUNT}"
+    workbench_info_total: str = "Total: {COUNT}"
+    workbench_recent_empty: str = "No recent projects"
+    workbench_file_filter_lg: str = "LinguaGacha Project (*.lg)"
+    workbench_error_read_preview: str = "Failed to read project preview: {ERROR}"
 
     # 翻译任务
     translation_page_status_idle: str = "Idle"
@@ -271,9 +283,7 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_token_output: str = "Output Tokens"
     translation_page_card_token_tooltip: str = "Click to toggle Input/Output"
     translation_page_card_task: str = "Real Time Tasks"
-    translation_page_alert_pause: str = (
-        "Stopped tasks can be resumed at any time. Confirm to stop the task … ?"
-    )
+    translation_page_alert_pause: str = "Stopped tasks can be resumed at any time. Confirm to stop the task … ?"
     translation_page_continue: str = "Continue"
     translation_page_export: str = "Export"
     translation_page_export_confirm: str = "Confirm to export the translation file?"
@@ -298,16 +308,13 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_col_src: str = "Source"
     proofreading_page_col_dst: str = "Translation"
     proofreading_page_col_status: str = "Status"
-    proofreading_page_no_cache: str = (
-        "No cache file found, please run translation task first"
-    )
+    proofreading_page_no_cache: str = "No cache file found, please run translation task first"
     proofreading_page_load_failed: str = "Failed to read cache file"
     proofreading_page_save_failed: str = "Save failed"
     proofreading_page_retranslate_confirm: str = "Confirm to retranslate this entry?"
     proofreading_page_warning_tooltip_title: str = "Result Check"
     proofreading_page_filter_warning_type: str = "Result Check"
     proofreading_page_filter_status: str = "Translation Status"
-    proofreading_page_filter_file: str = "File"
     proofreading_page_status_none: str = "Untranslated"
     proofreading_page_status_processed: str = "Completed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
@@ -325,47 +332,24 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_filter_search_file: str = "Search files by path …"
     proofreading_page_filter_glossary_detail: str = "Glossary Error Details"
     proofreading_page_filter_search_term: str = "Search term source or target …"
-    proofreading_page_filter_no_glossary_error: str = (
-        "No glossary errors in current scope"
-    )
+    proofreading_page_filter_no_glossary_error: str = "No glossary errors in current scope"
     proofreading_page_indeterminate_loading: str = "Loading data …"
     proofreading_page_indeterminate_saving: str = "Saving data …"
     proofreading_page_indeterminate_exporting: str = "Exporting data …"
     proofreading_page_batch_retranslate: str = "Retranslate selected"
-    proofreading_page_batch_retranslate_confirm: str = (
-        "Confirm to re-translate all {COUNT} selected items?"
-    )
-    proofreading_page_batch_retranslate_progress: str = (
-        "Re-translating, item {CURRENT} of {TOTAL} …"
-    )
-    proofreading_page_batch_retranslate_success: str = (
-        "Re-translation completed, {SUCCESS} successful, {FAILED} failed …"
-    )
+    proofreading_page_batch_retranslate_confirm: str = "Confirm to re-translate all {COUNT} selected items?"
+    proofreading_page_batch_retranslate_progress: str = "Re-translating, item {CURRENT} of {TOTAL} …"
+    proofreading_page_batch_retranslate_success: str = "Re-translation completed, {SUCCESS} successful, {FAILED} failed …"
 
     # 基础设置
     basic_settings_page_source_language_title: str = "Source Language"
-    basic_settings_page_source_language_content: str = (
-        "Set the language of the input text in the current project"
-    )
+    basic_settings_page_source_language_content: str = "Set the language of the input text in the current project"
     basic_settings_page_target_language_title: str = "Target Language"
-    basic_settings_page_target_language_content: str = (
-        "Set the language of the output text in the current project"
-    )
-    basic_settings_page_input_folder_title: str = "Input Folder"
-    basic_settings_page_input_folder_content: str = "The current input folder is"
-    basic_settings_page_output_folder_title: str = (
-        "Output Folder (Can not be same as input folder)"
-    )
-    basic_settings_page_output_folder_content: str = "The current output folder is"
-    basic_settings_page_output_folder_open_on_finish_title: str = (
-        "Open Output Folder on Task Completion"
-    )
+    basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
+    basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
     basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
-    basic_settings_page_traditional_chinese_title: str = (
-        "Output Chinese in Traditional Characters"
-    )
+    basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
     basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
-
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
         "The maximum time (seconds) to wait for the model's response when making a request"
@@ -378,9 +362,7 @@ class LocalizerEN(LocalizerZH):
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "Preceding Lines Threshold"
     expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, disabled by default"
-    expert_settings_page_preceding_disable_on_local: str = (
-        "Enable Preceding Lines for Local Interface"
-    )
+    expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
     expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
     expert_settings_page_clean_ruby: str = "Clean Ruby Text"
     expert_settings_page_clean_ruby_desc: str = (
@@ -396,17 +378,11 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]'
     )
-    expert_settings_page_deduplication_in_trans: str = (
-        "Deduplicate Repeated Text in T++ Project File"
-    )
+    expert_settings_page_deduplication_in_trans: str = "Deduplicate Repeated Text in T++ Project File"
     expert_settings_page_deduplication_in_trans_desc: str = "In T++ project file (i.e., <font color='darkgoldenrod'><b>.trans</b></font> file), whether to deduplicate repeated text, enabled by default"
-    expert_settings_page_deduplication_in_bilingual: str = (
-        "Output Only Once if Source and Target are Identical in Bilingual Output Files"
-    )
+    expert_settings_page_deduplication_in_bilingual: str = "Output Only Once if Source and Target are Identical in Bilingual Output Files"
     expert_settings_page_deduplication_in_bilingual_desc: str = "In subtitles or e-books, whether to output text only once if the source and target text are identical, enabled by default"
-    expert_settings_page_write_translated_name_fields_to_file: str = (
-        "Write Translated Name Fields to the Output File"
-    )
+    expert_settings_page_write_translated_name_fields_to_file: str = "Write Translated Name Fields to the Output File"
     expert_settings_page_write_translated_name_fields_to_file_desc: str = (
         "In some <font color='darkgoldenrod'><b>GalGame</b></font>, name field data is bound to resource files such as image or voice files"
         "<br>"
@@ -418,9 +394,7 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
     )
-    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = (
-        "Auto Process Prefix/Suffix Preserved Text"
-    )
+    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "Auto Process Prefix/Suffix Preserved Text"
     expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
         "Whether to auto-process text segments at the start/end that match preserve rules, enabled by default"
         "<br>"
@@ -474,9 +448,7 @@ class LocalizerEN(LocalizerZH):
         "• Disabled - Automatically detects text format and game engine, and applies smart preserve rules, works well for most content"
     )
     text_preserve_page_table_row_01: str = "Rule"
-    text_preserve_page_table_row_02: str = (
-        "Remarks (For reference only, has no actual effect)"
-    )
+    text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
 
     # 译前替换
     pre_translation_replacement_page_head_title: str = "Pre-translation Replacement"
@@ -501,9 +473,7 @@ class LocalizerEN(LocalizerZH):
     post_translation_replacement_page_table_row_03: str = "Advanced Rule"
 
     # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = (
-        "Custom Chinese Prompts (SakuraLLM model not supported)"
-    )
+    custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"
     custom_prompt_zh_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
@@ -513,9 +483,7 @@ class LocalizerEN(LocalizerZH):
     )
 
     # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = (
-        "Custom English Prompts (SakuraLLM model not supported)"
-    )
+    custom_prompt_en_page_head: str = "Custom English Prompts (SakuraLLM model not supported)"
     custom_prompt_en_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
@@ -537,9 +505,7 @@ class LocalizerEN(LocalizerZH):
         ""
         ""
     )
-    laboratory_page_auto_glossary_enable: str = (
-        "Auto Complete Glossary (Does not support SakuraLLM)"
-    )
+    laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
     laboratory_page_auto_glossary_enable_desc: str = (
         "Attempts to automatically add missing proper noun entries to the glossary during translation"
         "<br>"
@@ -553,35 +519,10 @@ class LocalizerEN(LocalizerZH):
     )
 
     # 百宝箱
-    tool_box_page_re_translation: str = "Partial Re-Translation"
-    tool_box_page_re_translation_desc: str = "Re-translate parts of already translated text based on set filters, mainly for content updates or error correction"
     tool_box_page_name_field_extraction: str = "Name-Field Extraction"
     tool_box_page_name_field_extraction_desc: str = (
         "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
         "and automatically generate corresponding glossary data to facilitate subsequent translation"
-    )
-
-    # 百宝箱 - 部分重翻
-    re_translation_page: str = "Partial Re-Translation"
-    re_translation_page_desc: str = (
-        "Will filter the text in the <font color='darkgoldenrod'><b>Input Folder</b></font> based on the set filter conditions, and then retranslate the text that meets the conditions"
-        "<br>"
-        "Workflow:"
-        "<br>"
-        "• Load the original and translated texts from the <font color='darkgoldenrod'><b>src</b></font> and <font color='darkgoldenrod'><b>dst</b></font> subdirectories of the <font color='darkgoldenrod'><b>Input Folder</b></font>"
-        "<br>"
-        "• The filenames and file contents of the original and translation files must correspond strictly one-to-one"
-        "<br>"
-        "• Filter out the text that needs to be retranslated according to the settings on this page, translate it according to the normal process"
-    )
-    re_translation_page_white_list: str = "Keywords - Whitelist"
-    re_translation_page_white_list_desc: str = (
-        "Text containing these keywords will be retranslated. You can enter multiple keywords, one per line"
-        "\n"
-        "Hitting one of them is enough to determine that the text needs to be retranslated"
-    )
-    re_translation_page_alert_not_equal: str = (
-        "The number of lines in the original and translated texts does not match …"
     )
 
     # 百宝箱 - 姓名字段提取
@@ -597,15 +538,7 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• VNTextPatch or SExtractor exported game text with name fields (.json)"
     )
-    name_field_extraction_page_step_01: str = "Step 1 - Extract Data"
-    name_field_extraction_page_step_01_desc: str = (
-        "Extract name fields and their related context, and send them to the translator for translation"
-        "<br>"
-        f"After translation is complete, the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file will be generated in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-    )
-    name_field_extraction_page_step_02: str = "Step 2 - Generate Glossary"
-    name_field_extraction_page_step_02_desc: str = (
-        f"Extract translated data from the <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> file in the <font color='darkgoldenrod'><b>Output Folder</b></font>"
-        "<br>"
-        "Then generate the corresponding glossary data, check if the generated glossary data is correct"
-    )
+    name_field_extraction_action_extract: str = "Extract"
+    name_field_extraction_action_translate: str = "Translate"
+    name_field_extraction_action_import: str = "Import to Glossary"
+    name_field_extraction_context: str = "Context"
