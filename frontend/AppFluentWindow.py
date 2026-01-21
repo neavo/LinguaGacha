@@ -166,16 +166,22 @@ class AppFluentWindow(FluentWindow, Base):
         # 只有这些页面在未加载工程时需要彻底禁用
         disable_names = [
             "glossary_page",
-            "text_preserve_page",
-            "replacement_page",
-            "pre_translation_replacement_page",
-            "post_translation_replacement_page",
             "custom_prompt_page",
             "custom_prompt_zh_page",
             "custom_prompt_en_page",
             "laboratory_page",
             "tool_box_page",
         ]
+
+        if LogManager.get().is_expert_mode():
+            disable_names.extend(
+                [
+                    "text_preserve_page",
+                    "replacement_page",
+                    "pre_translation_replacement_page",
+                    "post_translation_replacement_page",
+                ]
+            )
 
         # 遍历设置状态
         for key in disable_names:
@@ -545,46 +551,45 @@ class AppFluentWindow(FluentWindow, Base):
             position=NavigationItemPosition.SCROLL,
         )
 
-        # 文本保护
-        self.addSubInterface(
-            interface=TextPreservePage("text_preserve_page", self),
-            icon=FluentIcon.VPN,
-            text=Localizer.get().app_text_preserve_page,
-            position=NavigationItemPosition.SCROLL,
-        ) if LogManager.get().is_expert_mode() else None
+        if LogManager.get().is_expert_mode():
+            # 文本保护
+            self.addSubInterface(
+                interface=TextPreservePage("text_preserve_page", self),
+                icon=FluentIcon.VPN,
+                text=Localizer.get().app_text_preserve_page,
+                position=NavigationItemPosition.SCROLL,
+            )
 
-        # 文本替换
-        self.text_replacement_page = EmptyPage("replacement_page", self)
-        self.addSubInterface(
-            interface=self.text_replacement_page,
-            icon=FluentIcon.CLIPPING_TOOL,
-            text=Localizer.get().app_text_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-        ) if LogManager.get().is_expert_mode() else None
-        self.addSubInterface(
-            interface=TextReplacementPage(
-                "pre_translation_replacement_page", self, "pre_translation_replacement"
-            ),
-            icon=FluentIcon.SEARCH,
-            text=Localizer.get().app_pre_translation_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-            parent=self.text_replacement_page
-            if LogManager.get().is_expert_mode()
-            else None,
-        )
-        self.addSubInterface(
-            interface=TextReplacementPage(
-                "post_translation_replacement_page",
-                self,
-                "post_translation_replacement",
-            ),
-            icon=FluentIcon.SEARCH_MIRROR,
-            text=Localizer.get().app_post_translation_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-            parent=self.text_replacement_page
-            if LogManager.get().is_expert_mode()
-            else None,
-        )
+            # 文本替换
+            self.text_replacement_page = EmptyPage("replacement_page", self)
+            self.addSubInterface(
+                interface=self.text_replacement_page,
+                icon=FluentIcon.CLIPPING_TOOL,
+                text=Localizer.get().app_text_replacement_page,
+                position=NavigationItemPosition.SCROLL,
+            )
+            self.addSubInterface(
+                interface=TextReplacementPage(
+                    "pre_translation_replacement_page",
+                    self,
+                    "pre_translation_replacement",
+                ),
+                icon=FluentIcon.SEARCH,
+                text=Localizer.get().app_pre_translation_replacement_page,
+                position=NavigationItemPosition.SCROLL,
+                parent=self.text_replacement_page,
+            )
+            self.addSubInterface(
+                interface=TextReplacementPage(
+                    "post_translation_replacement_page",
+                    self,
+                    "post_translation_replacement",
+                ),
+                icon=FluentIcon.SEARCH_MIRROR,
+                text=Localizer.get().app_post_translation_replacement_page,
+                position=NavigationItemPosition.SCROLL,
+                parent=self.text_replacement_page,
+            )
 
         # 自定义提示词
         self.custom_prompt_page = EmptyPage("custom_prompt_page", self)
