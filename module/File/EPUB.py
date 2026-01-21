@@ -15,6 +15,7 @@ from module.Storage.AssetStore import AssetStore
 from module.Storage.PathStore import PathStore
 from module.Storage.StorageContext import StorageContext
 
+
 class EPUB(Base):
     # 显式引用以避免打包问题
     etree
@@ -126,10 +127,10 @@ class EPUB(Base):
                 )
 
         def process_ncx(
-            zip_reader: zipfile.ZipFile, path: str, items: list[Item]
+            zip_reader: zipfile.ZipFile, path: str, tag_group: dict[str, list[Item]]
         ) -> None:
             with zip_reader.open(path) as reader:
-                target = [item for item in items if item.get_tag() == path]
+                target = tag_group.get(path, [])
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "lxml-xml")
                 for dom in bs.find_all("text"):
                     # 跳过空标签
@@ -178,10 +179,13 @@ class EPUB(Base):
                             child.attrs[attr_correct] = child.attrs.pop(attr_lower)
 
         def process_html(
-            zip_reader: zipfile.ZipFile, path: str, items: list[Item], bilingual: bool
+            zip_reader: zipfile.ZipFile,
+            path: str,
+            tag_group: dict[str, list[Item]],
+            bilingual: bool,
         ) -> None:
             with zip_reader.open(path) as reader:
-                target = [item for item in items if item.get_tag() == path]
+                target = tag_group.get(path, [])
                 bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "html.parser")
 
                 # 判断是否是导航页（包括目录和地标导航）
@@ -266,6 +270,11 @@ class EPUB(Base):
             # 按行号排序
             items = sorted(items, key=lambda x: x.get_row())
 
+            # 预分组
+            tag_group: dict[str, list[Item]] = {}
+            for item in items:
+                tag_group.setdefault(item.get_tag(), []).append(item)
+
             # 获取输出目录
             output_path = PathStore.get_translated_path()
 
@@ -291,9 +300,9 @@ class EPUB(Base):
                         elif path.lower().endswith(".opf"):
                             process_opf(zip_reader, path)
                         elif path.lower().endswith(".ncx"):
-                            process_ncx(zip_reader, path, items)
+                            process_ncx(zip_reader, path, tag_group)
                         elif path.lower().endswith((".htm", ".html", ".xhtml")):
-                            process_html(zip_reader, path, items, False)
+                            process_html(zip_reader, path, tag_group, False)
                         else:
                             zip_writer.writestr(path, zip_reader.read(path))
 
@@ -301,6 +310,11 @@ class EPUB(Base):
         for rel_path, items in group.items():
             # 按行号排序
             items = sorted(items, key=lambda x: x.get_row())
+
+            # 预分组
+            tag_group: dict[str, list[Item]] = {}
+            for item in items:
+                tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
             bilingual_path = PathStore.get_bilingual_path()
@@ -329,8 +343,8 @@ class EPUB(Base):
                         elif path.lower().endswith(".opf"):
                             process_opf(zip_reader, path)
                         elif path.lower().endswith(".ncx"):
-                            process_ncx(zip_reader, path, items)
+                            process_ncx(zip_reader, path, tag_group)
                         elif path.lower().endswith((".htm", ".html", ".xhtml")):
-                            process_html(zip_reader, path, items, True)
+                            process_html(zip_reader, path, tag_group, True)
                         else:
                             zip_writer.writestr(path, zip_reader.read(path))

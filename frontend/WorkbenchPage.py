@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QThread
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QCursor
@@ -35,10 +36,49 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
 from base.Base import Base
+from base.EventManager import EventManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.Storage.ProjectStore import ProjectStore
 from module.Storage.StorageContext import StorageContext
+
+
+class CreateProjectThread(QThread):
+    """创建工程后台线程"""
+
+    # 信号：(是否成功, 结果数据/错误信息)
+    finished_signal = pyqtSignal(bool, object)
+
+    def __init__(self, source_path: str, output_path: str) -> None:
+        super().__init__()
+        self.source_path = source_path
+        self.output_path = output_path
+
+    def run(self) -> None:
+        try:
+            store = ProjectStore()
+
+            # 设置进度回调
+            def progress_callback(current: int, total: int, message: str) -> None:
+                EventManager.get().emit(
+                    Base.Event.PROGRESS_TOAST_UPDATE,
+                    {
+                        "message": message,
+                        "current": current,
+                        "total": total,
+                    },
+                )
+
+            store.set_progress_callback(progress_callback)
+
+            # 执行创建
+            db = store.create(self.source_path, self.output_path)
+
+            # 成功
+            self.finished_signal.emit(True, db)
+        except Exception as e:
+            # 失败
+            self.finished_signal.emit(False, str(e))
 
 
 class FileDisplayCard(CardWidget):
@@ -427,6 +467,7 @@ class WorkbenchPage(ScrollArea, Base):
         # 选中状态
         self.selected_source_path: str | None = None  # 新建工程时选中的源文件/目录
         self.selected_lg_path: str | None = None  # 打开工程时选中的 .lg 文件
+        self.create_thread: CreateProjectThread | None = None  # 创建工程线程
 
         # 主容器
         self.container = QWidget()
@@ -887,41 +928,70 @@ class WorkbenchPage(ScrollArea, Base):
         if not path.endswith(".lg"):
             path += ".lg"
 
-        try:
-            # 显示进度 Toast
-            self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
-                {
-                    "message": Localizer.get().workbench_progress_creating,
-                    "indeterminate": True,
-                },
-            )
+        # 禁用按钮防止重复操作
+        self.new_btn.setEnabled(False)
 
-            # 创建工程
-            store = ProjectStore()
-            db = store.create(self.selected_source_path, path)
+        # 显示进度 Toast
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().workbench_progress_creating,
+                "indeterminate": False,
+                "current": 0,
+                "total": 100,
+            },
+        )
 
-            # 更新最近打开列表
-            config = Config().load()
-            config.add_recent_project(path, db.get_meta("name", ""))
-            config.save()
+        # 启动后台线程
+        self.create_thread = CreateProjectThread(self.selected_source_path, path)
+        self.create_thread.finished_signal.connect(
+            lambda success, result: self.on_create_finished(path, success, result)
+        )
+        self.create_thread.start()
 
-            # 加载工程
-            StorageContext.get().load(path)
+    def on_create_finished(self, path: str, success: bool, result: object) -> None:
+        """创建工程完成回调"""
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        self.create_thread = None
 
-            self.reset_new_project_state()
-        except Exception as e:
+        if success:
+            try:
+                # result is db
+                db = result
+
+                # 更新最近打开列表
+                config = Config().load()
+                config.add_recent_project(path, db.get_meta("name", ""))
+                config.save()
+
+                # 加载工程
+                StorageContext.get().load(path)
+
+                self.reset_new_project_state()
+            except Exception as e:
+                # 虽然创建成功但后续处理失败
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().workbench_toast_load_fail.replace(
+                            "{ERROR}", str(e)
+                        ),
+                    },
+                )
+                self.new_btn.setEnabled(True)  # 恢复按钮
+        else:
+            # 创建失败
             self.emit(
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().workbench_toast_create_fail.replace(
-                        "{ERROR}", str(e)
+                        "{ERROR}", str(result)
                     ),
                 },
             )
-        finally:
-            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+            self.new_btn.setEnabled(True)  # 恢复按钮
 
     def on_open_project(self) -> None:
         """打开工程"""

@@ -15,6 +15,7 @@ from module.Storage.AssetStore import AssetStore
 from module.Storage.PathStore import PathStore
 from module.Storage.StorageContext import StorageContext
 
+
 class TRANS(Base):
     def __init__(self, config: Config) -> None:
         super().__init__()
@@ -121,6 +122,11 @@ class TRANS(Base):
             # 按行号排序
             items = sorted(items, key=lambda x: x.get_row())
 
+            # 预先构建 tag -> items 的索引以优化查找速度
+            tag_group: dict[str, list[Item]] = {}
+            for item in items:
+                tag_group.setdefault(item.get_tag(), []).append(item)
+
             # 获取输出目录
             output_path = PathStore.get_translated_path()
 
@@ -180,7 +186,7 @@ class TRANS(Base):
                     data: list[list[str]] = []
                     context: list[list[str]] = []
                     parameters: list[dict[str, str]] = []
-                    for item in [item for item in items if item.get_tag() == path]:
+                    for item in tag_group.get(path, []):
                         data.append((item.get_src(), item.get_dst()))
 
                         extra_field: dict[str, list[str]] = item.get_extra_field()
