@@ -17,6 +17,7 @@ from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
@@ -58,51 +59,29 @@ class CustomPromptPage(QWidget, Base):
 
     # 获取自定义提示词数据
     def _get_custom_prompt_data(self) -> str:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return ""
-        rule_type = (
-            DataStore.RuleType.CUSTOM_PROMPT_ZH
-            if self.language == BaseLanguage.Enum.ZH
-            else DataStore.RuleType.CUSTOM_PROMPT_EN
-        )
-        return db.get_rule_text(rule_type)
+        if self.language == BaseLanguage.Enum.ZH:
+            return QualityRuleManager.get().get_custom_prompt_zh()
+        return QualityRuleManager.get().get_custom_prompt_en()
 
     # 保存自定义提示词数据
     def _set_custom_prompt_data(self, data: str) -> None:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return
-        rule_type = (
-            DataStore.RuleType.CUSTOM_PROMPT_ZH
-            if self.language == BaseLanguage.Enum.ZH
-            else DataStore.RuleType.CUSTOM_PROMPT_EN
-        )
-        db.set_rule_text(rule_type, data)
+        if self.language == BaseLanguage.Enum.ZH:
+            QualityRuleManager.get().set_custom_prompt_zh(data)
+        else:
+            QualityRuleManager.get().set_custom_prompt_en(data)
 
     # 获取启用状态
     def _get_custom_prompt_enable(self) -> bool:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return False
-        meta_key = (
-            "custom_prompt_zh_enable"
-            if self.language == BaseLanguage.Enum.ZH
-            else "custom_prompt_en_enable"
-        )
-        return db.get_meta(meta_key, False)
+        if self.language == BaseLanguage.Enum.ZH:
+            return QualityRuleManager.get().get_custom_prompt_zh_enable()
+        return QualityRuleManager.get().get_custom_prompt_en_enable()
 
     # 设置启用状态
     def _set_custom_prompt_enable(self, enable: bool) -> None:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return
-        meta_key = (
-            "custom_prompt_zh_enable"
-            if self.language == BaseLanguage.Enum.ZH
-            else "custom_prompt_en_enable"
-        )
-        db.set_meta(meta_key, enable)
+        if self.language == BaseLanguage.Enum.ZH:
+            QualityRuleManager.get().set_custom_prompt_zh_enable(enable)
+        else:
+            QualityRuleManager.get().set_custom_prompt_en_enable(enable)
 
     # 工程加载后刷新数据
     def _on_project_loaded(self, event: Base.Event, data: dict) -> None:

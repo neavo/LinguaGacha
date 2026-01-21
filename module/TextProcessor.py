@@ -18,6 +18,7 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
+from module.QualityRuleManager import QualityRuleManager
 from module.RubyCleaner import RubyCleaner
 
 
@@ -112,7 +113,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in self.config.text_preserve_data
+                        for v in QualityRuleManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -130,7 +131,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in self.config.text_preserve_data
+                        for v in QualityRuleManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -148,7 +149,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in self.config.text_preserve_data
+                        for v in QualityRuleManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -166,7 +167,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in self.config.text_preserve_data
+                        for v in QualityRuleManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -253,10 +254,12 @@ class TextProcessor(Base):
 
     # 译前替换
     def replace_pre_translation(self, src: str) -> str:
-        if self.config.pre_translation_replacement_enable == False:
+        if QualityRuleManager.get().get_pre_replacement_enable() == False:
             return src
 
-        for v in self.config.pre_translation_replacement_data:
+        pre_replacement_data = QualityRuleManager.get().get_pre_replacement()
+
+        for v in pre_replacement_data:
             pattern = v.get("src")
             replacement = v.get("dst")
             is_regex = v.get("regex", False)
@@ -281,10 +284,12 @@ class TextProcessor(Base):
 
     # 译后替换
     def replace_post_translation(self, dst: str) -> str:
-        if self.config.post_translation_replacement_enable == False:
+        if QualityRuleManager.get().get_post_replacement_enable() == False:
             return dst
 
-        for v in self.config.post_translation_replacement_data:
+        post_replacement_data = QualityRuleManager.get().get_post_replacement()
+
+        for v in post_replacement_data:
             pattern = v.get("src")
             replacement = v.get("dst")
             is_regex = v.get("regex", False)
@@ -324,16 +329,17 @@ class TextProcessor(Base):
             return src
 
         rule: re.Pattern = self.get_re_prefix(
-            custom=self.config.text_preserve_enable,
+            custom=QualityRuleManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
         if rule is not None:
             src, self.prefix_codes[i] = self.extract(rule, src)
 
         rule: re.Pattern = self.get_re_suffix(
-            custom=self.config.text_preserve_enable,
+            custom=QualityRuleManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
+
         if rule is not None:
             src, self.suffix_codes[i] = self.extract(rule, src)
 
@@ -367,9 +373,10 @@ class TextProcessor(Base):
 
                     # 查找控制字符示例
                     rule: re.Pattern = self.get_re_sample(
-                        custom=self.config.text_preserve_enable,
+                        custom=QualityRuleManager.get().get_text_preserve_enable(),
                         text_type=text_type,
                     )
+
                     if rule is not None:
                         self.samples.extend([v.group(0) for v in rule.finditer(src)])
 
@@ -427,9 +434,10 @@ class TextProcessor(Base):
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern = self.get_re_check(
-            custom=self.config.text_preserve_enable,
+            custom=QualityRuleManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
+
         if rule is not None:
             x = [v.group(0) for v in rule.finditer(src)]
             y = [v.group(0) for v in rule.finditer(dst)]

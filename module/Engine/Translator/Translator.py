@@ -23,9 +23,11 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.PathStore import PathStore
 from module.Storage.StorageContext import StorageContext
 from module.TextProcessor import TextProcessor
+
 
 # 翻译器
 class Translator(Base):
@@ -646,12 +648,13 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
         # 启用自动术语表的时，更新配置文件
-        if self.config.glossary_enable and self.config.auto_glossary_enable:
-            # 更新配置文件
-            config = Config().load()
-            config.glossary_data = self.config.glossary_data
-            config.save()
+        if (
+            QualityRuleManager.get().get_glossary_enable()
+            and self.config.auto_glossary_enable
+        ):
+            # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
+            # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
 

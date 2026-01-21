@@ -6,8 +6,10 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
+
 
 class PromptBuilder(Base):
     # 类线程锁
@@ -68,27 +70,17 @@ class PromptBuilder(Base):
 
     # 获取自定义提示词数据
     def _get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return ""
-        rule_type = (
-            DataStore.RuleType.CUSTOM_PROMPT_ZH
-            if language == BaseLanguage.Enum.ZH
-            else DataStore.RuleType.CUSTOM_PROMPT_EN
-        )
-        return db.get_rule_text(rule_type)
+        if language == BaseLanguage.Enum.ZH:
+            return QualityRuleManager.get().get_custom_prompt_zh()
+        else:
+            return QualityRuleManager.get().get_custom_prompt_en()
 
     # 获取自定义提示词启用状态
     def _get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return False
-        meta_key = (
-            "custom_prompt_zh_enable"
-            if language == BaseLanguage.Enum.ZH
-            else "custom_prompt_en_enable"
-        )
-        return db.get_meta(meta_key, False)
+        if language == BaseLanguage.Enum.ZH:
+            return QualityRuleManager.get().get_custom_prompt_zh_enable()
+        else:
+            return QualityRuleManager.get().get_custom_prompt_en_enable()
 
     # 获取主提示词
     def build_main(self) -> str:
@@ -161,7 +153,9 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        for v in self.config.glossary_data:
+        glossary_data = QualityRuleManager.get().get_glossary()
+
+        for v in glossary_data:
             src = v.get("src", "")
             is_case_sensitive = v.get("case_sensitive", False)
 
@@ -210,7 +204,9 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        for v in self.config.glossary_data:
+        glossary_data = QualityRuleManager.get().get_glossary()
+
+        for v in glossary_data:
             src = v.get("src", "")
             is_case_sensitive = v.get("case_sensitive", False)
 
@@ -298,10 +294,11 @@ class PromptBuilder(Base):
                 console_log.append(result)
 
         # 术语表
-        if self.config.glossary_enable == True:
+        if QualityRuleManager.get().get_glossary_enable() == True:
             result = self.build_glossary(srcs)
             if result != "":
                 content = content + "\n" + result
+
                 console_log.append(result)
 
         # 控制字符示例
@@ -341,7 +338,7 @@ class PromptBuilder(Base):
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(srcs)
-        if self.config.glossary_enable == True:
+        if QualityRuleManager.get().get_glossary_enable() == True:
             result = self.build_glossary_sakura(srcs)
             if result != "":
                 content = (
