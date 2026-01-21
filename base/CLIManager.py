@@ -8,8 +8,12 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.Storage.ProjectStore import ProjectStore
+from module.Storage.StorageContext import StorageContext
+
 
 class CLIManager(Base):
+    """命令行管理器"""
 
     def __init__(self) -> None:
         super().__init__()
@@ -43,59 +47,99 @@ class CLIManager(Base):
 
     def run(self) -> bool:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--cli", action = "store_true")
-        parser.add_argument("--config", type = str)
-        parser.add_argument("--input_folder", type = str)
-        parser.add_argument("--output_folder", type = str)
-        parser.add_argument("--source_language", type = str)
-        parser.add_argument("--target_language", type = str)
+        parser.add_argument("--cli", action="store_true")
+        parser.add_argument("--config", type=str)
+        parser.add_argument("--source_language", type=str)
+        parser.add_argument("--target_language", type=str)
+
+        # Project management arguments
+        parser.add_argument("--project", type=str, help="Path to the .lg project file")
+        parser.add_argument(
+            "--create", action="store_true", help="Create a new project"
+        )
+        parser.add_argument(
+            "--input",
+            type=str,
+            help="Input source directory or file for project creation",
+        )
+
         args = parser.parse_args()
 
-        if args.cli == False:
+        if not args.cli:
             return False
 
-        config: Config = None
+        # Handle Project Creation or Loading
+        project_path = args.project
+        if args.create:
+            if not args.input or not project_path:
+                self.error(
+                    "Creating a project requires --input and --project arguments."
+                )
+                self.exit()
+                return True
+
+            if not os.path.exists(args.input):
+                self.error(f"Input path does not exist: {args.input}")
+                self.exit()
+                return True
+
+            self.info(f"Creating project at: {project_path}")
+            try:
+                # Create project
+                ProjectStore().create(args.input, project_path)
+            except Exception as e:
+                self.error(f"Failed to create project: {e}")
+                self.exit()
+                return True
+
+        # Load Project
+        if project_path:
+            if not os.path.exists(project_path):
+                self.error(f"Project file not found: {project_path}")
+                self.exit()
+                return True
+
+            try:
+                StorageContext.get().load(project_path)
+                self.info(f"Project loaded: {project_path}")
+            except Exception as e:
+                self.error(f"Failed to load project: {e}")
+                self.exit()
+                return True
+        else:
+            self.error("A project file must be specified using --project.")
+            self.exit()
+            return True
+
+        config: Config | None = None
         if isinstance(args.config, str) and self.verify_file(args.config):
             config = Config().load(args.config)
         else:
             config = Config().load()
 
-        if isinstance(args.input_folder, str) == False:
-            pass
-        elif self.verify_folder(args.input_folder):
-            config.input_folder = args.input_folder
-        else:
-            self.error(f"--input_folder {Localizer.get().cli_verify_folder}")
-            self.exit()
-
-        if isinstance(args.output_folder, str) == False:
-            pass
-        elif self.verify_folder(args.output_folder):
-            config.output_folder = args.output_folder
-        else:
-            self.error(f"--output_folder {Localizer.get().cli_verify_folder}")
-            self.exit()
-
-        if isinstance(args.source_language, str) == False:
+        if not isinstance(args.source_language, str):
             pass
         elif self.verify_language(args.source_language):
-            config.source_language = args.source_language
+            config.source_language = BaseLanguage.Enum(args.source_language)
         else:
             self.error(f"--source_language {Localizer.get().cli_verify_language}")
             self.exit()
 
-        if isinstance(args.target_language, str) == False:
+        if not isinstance(args.target_language, str):
             pass
         elif self.verify_language(args.target_language):
-            config.target_language = args.target_language
+            config.target_language = BaseLanguage.Enum(args.target_language)
         else:
             self.error(f"--target_language {Localizer.get().cli_verify_language}")
             self.exit()
 
-        self.emit(Base.Event.TRANSLATION_RUN, {
-            "config": config,
-            "status": Base.ProjectStatus.NONE,
-        })
+        self.emit(
+            Base.Event.TRANSLATION_RUN,
+            {
+                "config": config,
+                "status": Base.ProjectStatus.NONE,
+            },
+        )
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
 
         return True

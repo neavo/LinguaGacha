@@ -1,3 +1,6 @@
+# 用于保持与英文的行数对齐，请勿移除
+# 用于保持与英文的行数对齐，请勿移除
+# 用于保持与英文的行数对齐，请勿移除
 class LocalizerZH:
     # 保留
     switch_language: str = (
@@ -14,6 +17,9 @@ class LocalizerZH:
     # 通用
     add: str = "新增"
     edit: str = "修改"
+    select_file: str = "选择文件"
+    select_folder: str = "选择文件夹"
+    supported_files: str = "支持的文件"
     none: str = "无"
     back: str = "返回"
     stop: str = "停止"
@@ -26,18 +32,13 @@ class LocalizerZH:
     cancel: str = "取消"
     auto: str = "自动"
     wiki: str = "功能说明"
-    open: str = "打开"
-    select: str = "选择"
     filter: str = "过滤"
     search: str = "搜索"
-    generate: str = "生成"
     placeholder: str = "请输入关键词 …"
     task_success: str = "任务执行成功 …"
     alert_no_data: str = "没有有效数据 …"
     alert_reset_timer: str = "将重置定时器，是否确认 … ？"
-    alert_reset_translation: str = (
-        "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
-    )
+    alert_reset_translation: str = "将重置尚未完成的翻译任务，是否确认开始新的翻译任务 … ？"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
     search_regex_on: str = "正则模式\n当前状态：已启用"
@@ -53,14 +54,14 @@ class LocalizerZH:
     app_close_message_box: str = "确定是否退出程序 … ？"
     app_exit_countdown: str = "退出中 … {SECONDS} …"
     app_new_version: str = "点击下载更新版本！"
-    app_new_version_toast: str = (
-        "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
-    )
+    app_new_version_toast: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
     app_new_version_update: str = "正在下载 {PERCENT} …"
     app_new_version_failure: str = "新版本下载失败 … "
     app_new_version_success: str = "新版本下载成功 … "
     app_new_version_downloaded: str = "点击应用新版本！"
     app_new_version_waiting_restart: str = "更新完成，应用即将关闭 …"
+    project_closed_toast: str = "当前项目已关闭 …"
+    app_close_project_btn: str = "关闭项目"
     app_theme_btn: str = "变换自如"
     app_language_btn: str = "字字珠玑"
     app_settings_page: str = "应用设置"
@@ -81,8 +82,8 @@ class LocalizerZH:
     app_treasure_chest_page: str = "百宝箱"
 
     # 路径
-    path_bilingual: str = "双语对照"
-    path_result_name_field_extraction: str = "姓名字段提取.xlsx"
+    path_translated: str = "译文"
+    path_translated_bilingual: str = "译文_双语对照"
 
     # 日志
     log_crash: str = "出现严重错误，应用即将退出，错误信息已保存至日志文件 …"
@@ -92,7 +93,6 @@ class LocalizerZH:
     log_task_fail: str = "任务失败 …"
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
-    cli_verify_folder: str = "参数发生错误：无效的路径 …"
     cli_verify_language: str = "参数发生错误：无效的语言 …"
 
     # 引擎
@@ -105,9 +105,7 @@ class LocalizerZH:
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
     engine_task_generation: str = "任务生成已完成，共生成 {COUNT} 个任务 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
-    engine_task_language_filter: str = (
-        "语言过滤已完成，共过滤 {COUNT} 个不包含目标语言的条目 …"
-    )
+    engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个不包含目标语言的条目 …"
     engine_max_round: str = "最大轮次"
     engine_current_round: str = "当前轮次"
     engine_api_url: str = "接口地址"
@@ -119,24 +117,14 @@ class LocalizerZH:
     engine_task_too_many: str = "实时任务较多，暂时停止显示详细结果以提升性能 …"
     api_tester_key: str = "正在测试密钥："
     api_tester_messages: str = "任务提示词："
-    api_tester_result: str = (
-        "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
-    )
+    api_tester_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
     api_tester_result_failure: str = "失败的密钥："
     api_tester_running: str = "任务正在执行中，请稍后再试 …"
-    translator_mtool_optimizer_pre_log: str = (
-        "MToolOptimizer 预处理已完成，共过滤 {COUNT} 个包含重复子句的条目 …"
-    )
+    translator_mtool_optimizer_pre_log: str = "MToolOptimizer 预处理已完成，共过滤 {COUNT} 个包含重复子句的条目 …"
     translator_mtool_optimizer_post_log: str = "MToolOptimizer 后处理已完成 …"
-    translator_response_check_fail: str = (
-        "译文文本未通过检查，将在下一轮次的翻译中自动重试"
-    )
-    translator_response_check_fail_all: str = (
-        "全部译文文本未通过检查，将在下一轮次的翻译中自动重试"
-    )
-    translator_response_check_fail_part: str = (
-        "部分译文文本未通过检查，将在下一轮次的翻译中自动重试"
-    )
+    translator_response_check_fail: str = "译文文本未通过检查，将在下一轮次的翻译中自动重试"
+    translator_response_check_fail_all: str = "全部译文文本未通过检查，将在下一轮次的翻译中自动重试"
+    translator_response_check_fail_part: str = "部分译文文本未通过检查，将在下一轮次的翻译中自动重试"
     response_checker_fail_data: str = "数据结构错误"
     response_checker_fail_line_count: str = "行数不一致"
     response_checker_line_error_kana: str = "假名残留"
@@ -147,22 +135,14 @@ class LocalizerZH:
 
     # 应用设置
     app_settings_page_expert_title: str = "专家模式"
-    app_settings_page_expert_content: str = (
-        "启用此功能后，将显示更多日志信息并提供更多高级设置选项（将在应用重启后生效）"
-    )
+    app_settings_page_expert_content: str = "启用此功能后，将显示更多日志信息并提供更多高级设置选项（将在应用重启后生效）"
     app_settings_page_font_hinting_title: str = "字体优化"
-    app_settings_page_font_hinting_content: str = (
-        "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
-    )
+    app_settings_page_font_hinting_content: str = "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
     app_settings_page_scale_factor_title: str = "全局缩放比例"
-    app_settings_page_scale_factor_content: str = (
-        "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
-    )
+    app_settings_page_scale_factor_content: str = "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
     app_settings_page_proxy_url: str = "示例 - http://127.0.0.1:7890"
     app_settings_page_proxy_url_title: str = "网络代理"
-    app_settings_page_proxy_url_content: str = (
-        "启用此功能后，将使用设置的代理地址发送网络请求（将在应用重启后生效）"
-    )
+    app_settings_page_proxy_url_content: str = "启用此功能后，将使用设置的代理地址发送网络请求（将在应用重启后生效）"
     app_settings_page_close: str = "应用即将关闭，请确认 …"
 
     # 模型管理
@@ -172,7 +152,6 @@ class LocalizerZH:
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
-
     model_page_category_preset_title: str = "预设模型"
     model_page_category_preset_desc: str = "应用内置的预设模型"
     model_page_category_google_title: str = "自定义 Google 模型"
@@ -180,24 +159,16 @@ class LocalizerZH:
     model_page_category_openai_title: str = "自定义 OpenAI 模型"
     model_page_category_openai_desc: str = "兼容 OpenAI API 格式的自定义模型"
     model_page_category_anthropic_title: str = "自定义 Anthropic 模型"
-    model_page_category_anthropic_desc: str = (
-        "兼容 Anthropic Claude API 格式的自定义模型"
-    )
-    model_page_migrated_toast: str = (
-        "检测到 {COUNT} 个预设模型已失效，已自动迁移至自定义模型分类 …"
-    )
+    model_page_category_anthropic_desc: str = "兼容 Anthropic Claude API 格式的自定义模型"
+    model_page_migrated_toast: str = "检测到 {COUNT} 个预设模型已失效，已自动迁移至自定义模型分类 …"
     model_page_delete_last_one_toast: str = "每个分类至少需要保留一个模型，无法删除 …"
     model_page_reset_success_toast: str = "模型已重置 …"
     model_basic_setting_page_name: str = "请输入模型名称 …"
     model_basic_setting_page_name_title: str = "模型名称"
-    model_basic_setting_page_name_content: str = (
-        "请输入模型名称，仅用于应用内显示，无实际作用"
-    )
+    model_basic_setting_page_name_content: str = "请输入模型名称，仅用于应用内显示，无实际作用"
     model_basic_setting_page_api_url: str = "请输入接口地址 …"
     model_basic_setting_page_api_url_title: str = "接口地址"
-    model_basic_setting_page_api_url_content: str = (
-        "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
-    )
+    model_basic_setting_page_api_url_content: str = "请输入接口地址，请注意辨别结尾是否需要添加 /v1"
     model_basic_setting_page_api_key: str = "请输入接口密钥 …"
     model_basic_setting_page_api_key_title: str = "接口密钥"
     model_basic_setting_page_api_key_content: str = "请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个"
@@ -213,13 +184,9 @@ class LocalizerZH:
     model_basic_setting_page_thinking_medium: str = "中"
     model_basic_setting_page_thinking_high: str = "高"
     model_basic_setting_page_input_token_title: str = "输入 Token 限制"
-    model_basic_setting_page_input_token_content: str = (
-        "每个任务输入文本的最大 Token 数量"
-    )
+    model_basic_setting_page_input_token_content: str = "每个任务输入文本的最大 Token 数量"
     model_basic_setting_page_output_token_title: str = "输出 Token 限制"
-    model_basic_setting_page_output_token_content: str = (
-        "每个任务输出文本的最大 Token 数量"
-    )
+    model_basic_setting_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
     model_basic_setting_page_rpm_title: str = "每分钟请求数限制 (RPM)"
     model_basic_setting_page_rpm_content: str = (
         "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 限制"
@@ -237,41 +204,70 @@ class LocalizerZH:
         ""
     )
     model_advanced_setting_page_headers_title: str = "自定义请求头"
-    model_advanced_setting_page_headers_content: str = (
-        "自定义请求头参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
-    model_advanced_setting_page_headers_placeholder: str = (
-        '例如：{"Authorization": "Bearer xxx"}'
-    )
+    model_advanced_setting_page_headers_content: str = "自定义请求头参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
+    model_advanced_setting_page_headers_placeholder: str = '例如：{"Authorization": "Bearer xxx"}'
     model_advanced_setting_page_body_title: str = "自定义请求体"
-    model_advanced_setting_page_body_content: str = (
-        "自定义请求体参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
+    model_advanced_setting_page_body_content: str = "自定义请求体参数，请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_body_placeholder: str = '例如：{"seed": 42}'
     model_advanced_setting_page_top_p_title: str = "top_p"
-    model_advanced_setting_page_top_p_content: str = (
-        "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
+    model_advanced_setting_page_top_p_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_temperature_title: str = "temperature"
-    model_advanced_setting_page_temperature_content: str = (
-        "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
+    model_advanced_setting_page_temperature_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_presence_penalty_title: str = "presence_penalty"
-    model_advanced_setting_page_presence_penalty_content: str = (
-        "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
+    model_advanced_setting_page_presence_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_frequency_penalty_title: str = "frequency_penalty"
-    model_advanced_setting_page_frequency_penalty_content: str = (
-        "请谨慎设置，错误的值可能导致结果异常或者请求报错"
-    )
+    model_advanced_setting_page_frequency_penalty_content: str = "请谨慎设置，错误的值可能导致结果异常或者请求报错"
     model_advanced_setting_page_document_link: str = "点击查看文档"
-    model_advanced_setting_page_json_format_error: str = (
-        "JSON 格式错误，请输入有效的 JSON 对象"
-    )
+    model_advanced_setting_page_json_format_error: str = "JSON 格式错误，请输入有效的 JSON 对象"
     model_selector_page_title: str = "可用的模型列表"
     model_selector_page_content: str = "点击选择要使用的模型"
     model_selector_page_fail: str = "获取模型列表失败，请检查接口配置 …"
     model_selector_page_loading: str = "正在获取模型列表 …"
+
+    # 工作台
+    workbench_new_project_title: str = "新建工程"
+    workbench_new_project_subtitle: str = "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件。"
+    workbench_new_project_btn: str = "创建工程"
+    workbench_open_project_title: str = "打开工程"
+    workbench_open_project_subtitle: str = "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作。"
+    workbench_recent_projects_title: str = "最近打开"
+    workbench_open_project_btn: str = "打开工程"
+    workbench_drop_zone_source_title: str = "点击或拖拽源文件"
+    workbench_drop_zone_lg_title: str = "点击或拖拽 .lg 文件"
+    workbench_fmt_title: str = "支持文件格式"
+    workbench_fmt_subtitle: str = "字幕"
+    workbench_fmt_ebook: str = "电子书"
+    workbench_fmt_markdown: str = "Markdown"
+    workbench_fmt_renpy: str = "RenPy 导出游戏文本"
+    workbench_fmt_mtool: str = "MTool 导出游戏文本"
+    workbench_fmt_sextractor: str = "SExtractor 导出游戏文本"
+    workbench_fmt_vntextpatch: str = "VNTextPatch 导出游戏文本"
+    workbench_fmt_trans_proj: str = "Translator++ 项目文件"
+    workbench_fmt_trans_export: str = "Translator++ 导出游戏文本"
+    workbench_fmt_wolf: str = "WOLF 官方翻译工具游戏文本"
+    workbench_select_source_dir_title: str = "选择源文件目录"
+    workbench_toast_no_valid_file: str = "该目录下没有支持的源文件"
+    workbench_drop_ready_source: str = "包含 {COUNT} 个源文件，准备就绪"
+    workbench_select_project_title: str = "选择工程文件"
+    workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
+    workbench_msg_file_not_found_title: str = "文件不存在"
+    workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除？"
+    workbench_progress_creating: str = "正在创建工程..."
+    workbench_progress_loading: str = "正在加载工程..."
+    workbench_toast_create_fail: str = "创建工程失败：{ERROR}"
+    workbench_toast_load_fail: str = "加载工程失败：{ERROR}"
+    workbench_save_project_title: str = "保存工程文件"
+    workbench_project_ready: str = "项目已就绪"
+    workbench_project_preparing: str = "准备中..."
+    workbench_info_file_count: str = "文件数量"
+    workbench_info_created_at: str = "创建时间"
+    workbench_info_update: str = "最后修改"
+    workbench_info_progress: str = "翻译进度"
+    workbench_info_translated: str = "已翻译: {COUNT} 行"
+    workbench_info_total: str = "总计: {COUNT} 行"
+    workbench_recent_empty: str = "暂无最近打开的工程"
+    workbench_file_filter_lg: str = "LinguaGacha 工程 (*.lg)"
+    workbench_error_read_preview: str = "读取工程预览失败: {ERROR}"
 
     # 翻译任务
     translation_page_status_idle: str = "无任务"
@@ -287,9 +283,7 @@ class LocalizerZH:
     translation_page_card_token_output: str = "输出令牌"
     translation_page_card_token_tooltip: str = "点击切换输入/输出"
     translation_page_card_task: str = "实时任务数"
-    translation_page_alert_pause: str = (
-        "停止的任务可以随时继续执行，是否确定停止任务 … ？"
-    )
+    translation_page_alert_pause: str = "停止的任务可以随时继续执行，是否确定停止任务 … ？"
     translation_page_continue: str = "继续"
     translation_page_export: str = "导出"
     translation_page_export_confirm: str = "确定要导出译文文件吗？"
@@ -321,7 +315,6 @@ class LocalizerZH:
     proofreading_page_warning_tooltip_title: str = "结果检查"
     proofreading_page_filter_warning_type: str = "结果检查"
     proofreading_page_filter_status: str = "翻译状态"
-    proofreading_page_filter_file: str = "所属文件"
     proofreading_page_status_none: str = "未翻译"
     proofreading_page_status_processed: str = "已完成"
     proofreading_page_status_processed_in_past: str = "历史完成"
@@ -344,52 +337,33 @@ class LocalizerZH:
     proofreading_page_indeterminate_saving: str = "保存数据中 …"
     proofreading_page_indeterminate_exporting: str = "导出数据中 …"
     proofreading_page_batch_retranslate: str = "重新翻译已选条目"
-    proofreading_page_batch_retranslate_confirm: str = (
-        "确定要重新翻译全部 {COUNT} 个已选条目吗？"
-    )
-    proofreading_page_batch_retranslate_progress: str = (
-        "正在重新翻译，第 {CURRENT} 项，共 {TOTAL} 项 …"
-    )
-    proofreading_page_batch_retranslate_success: str = (
-        "重新翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条 …"
-    )
+    proofreading_page_batch_retranslate_confirm: str = "确定要重新翻译全部 {COUNT} 个已选条目吗？"
+    proofreading_page_batch_retranslate_progress: str = "正在重新翻译，第 {CURRENT} 项，共 {TOTAL} 项 …"
+    proofreading_page_batch_retranslate_success: str = "重新翻译完成，成功 {SUCCESS} 条，失败 {FAILED} 条 …"
 
     # 基础设置
     basic_settings_page_source_language_title: str = "原文语言"
     basic_settings_page_source_language_content: str = "设置当前项目中输入文本的语言"
     basic_settings_page_target_language_title: str = "译文语言"
     basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
-    basic_settings_page_input_folder_title: str = "输入文件夹"
-    basic_settings_page_input_folder_content: str = "当前输入文件夹为"
-    basic_settings_page_output_folder_title: str = "输出文件夹（不能与输入文件夹相同）"
-    basic_settings_page_output_folder_content: str = "当前输出文件夹为"
-    basic_settings_page_output_folder_open_on_finish_title: str = (
-        "任务完成时打开输出文件夹"
-    )
-    basic_settings_page_output_folder_open_on_finish_content: str = (
-        "启用此功能后，将在任务完成时自动打开输出文件夹"
-    )
+    basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
+    basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
     basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
-    basic_settings_page_traditional_chinese_content: str = (
-        "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
-    )
-
+    basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
+        ""
+        ""
     )
     basic_settings_page_max_round_title: str = "任务轮次阈值"
     basic_settings_page_max_round_content: str = "当完成一轮任务后，将在新的轮次中对失败的任务进行重试，直到全部完成或达到轮次阈值"
 
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "参考上文行数阈值"
-    expert_settings_page_preceding_lines_threshold_desc: str = (
-        "每个翻译任务最多可携带的参考上文的行数，默认禁用"
-    )
+    expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认禁用"
     expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
-    expert_settings_page_preceding_disable_on_local_desc: str = (
-        "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
-    )
+    expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
     expert_settings_page_clean_ruby: str = "清理原文中的注音文本"
     expert_settings_page_clean_ruby_desc: str = (
         "移除注音上标中的注音部分，仅保留正文部分，默认禁用"
@@ -406,15 +380,9 @@ class LocalizerZH:
     )
     expert_settings_page_deduplication_in_trans: str = "T++ 项目文件中对重复文本去重"
     expert_settings_page_deduplication_in_trans_desc: str = "在T++ 项目文件（即 <font color='darkgoldenrod'><b>.trans</b></font> 文件）中，如有重复文本是否去重，默认启用"
-    expert_settings_page_deduplication_in_bilingual: str = (
-        "双语输出文件中原文与译文一致的文本只输出一次"
-    )
-    expert_settings_page_deduplication_in_bilingual_desc: str = (
-        "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用"
-    )
-    expert_settings_page_write_translated_name_fields_to_file: str = (
-        "将姓名字段译文写入输出文件"
-    )
+    expert_settings_page_deduplication_in_bilingual: str = "双语输出文件中原文与译文一致的文本只输出一次"
+    expert_settings_page_deduplication_in_bilingual_desc: str = "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用"
+    expert_settings_page_write_translated_name_fields_to_file: str = "将姓名字段译文写入输出文件"
     expert_settings_page_write_translated_name_fields_to_file_desc: str = (
         "部分 <font color='darkgoldenrod'><b>GalGame</b></font> 中，姓名字段数据与立绘、配音等资源文件绑定，翻译后会报错，此时可以关闭该功能，默认启用"
         "<br>"
@@ -426,9 +394,7 @@ class LocalizerZH:
         ""
         ""
     )
-    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = (
-        "自动处理前后缀的保护文本段"
-    )
+    expert_settings_page_auto_process_prefix_suffix_preserved_text: str = "自动处理前后缀的保护文本段"
     expert_settings_page_auto_process_prefix_suffix_preserved_text_desc: str = (
         "是否自动处理每个文本条目头尾命中保护规则的文本段，默认启用"
         "<br>"
@@ -463,9 +429,7 @@ class LocalizerZH:
 
     # 术语表
     glossary_page_head_title: str = "术语表"
-    glossary_page_head_content: str = (
-        "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
-    )
+    glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_01: str = "原文"
     glossary_page_table_row_02: str = "译文"
     glossary_page_table_row_03: str = "高级规则"
@@ -503,9 +467,7 @@ class LocalizerZH:
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "译后替换"
-    post_translation_replacement_page_head_content: str = (
-        "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
-    )
+    post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
     post_translation_replacement_page_table_row_01: str = "原文"
     post_translation_replacement_page_table_row_02: str = "替换"
     post_translation_replacement_page_table_row_03: str = "高级规则"
@@ -543,9 +505,7 @@ class LocalizerZH:
         ""
         ""
     )
-    laboratory_page_auto_glossary_enable: str = (
-        "自动补全术语表（不支持 SakuraLLM 模型）"
-    )
+    laboratory_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
     laboratory_page_auto_glossary_enable_desc: str = (
         "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
         "<br>"
@@ -559,34 +519,11 @@ class LocalizerZH:
     )
 
     # 百宝箱
-    tool_box_page_re_translation: str = "部分重翻"
-    tool_box_page_re_translation_desc: str = "根据设置的筛选条件，重新对已完成的翻译文本中的部分内容进行翻译，主要用于内容的更新或错误的修正"
     tool_box_page_name_field_extraction: str = "姓名字段提取"
     tool_box_page_name_field_extraction_desc: str = (
         "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段数据，"
         "自动生成对应的术语表数据，方便后续进行翻译"
     )
-
-    # 百宝箱 - 部分重翻
-    re_translation_page: str = "部分重翻"
-    re_translation_page_desc: str = (
-        "将根据设置的筛选条件对 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中的文本进行筛选，然后对符合条件的文本进行重翻"
-        "<br>"
-        "工作流程："
-        "<br>"
-        "• 分别从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 的 <font color='darkgoldenrod'><b>src</b></font> 与 <font color='darkgoldenrod'><b>dst</b></font> 子目录中读取原文与译文"
-        "<br>"
-        "• 原文文件和译文文件的文件名和文件内容必须严格一一对应"
-        "<br>"
-        "• 根据本页中的设置筛选出需要重翻的文本，按正常流程进行翻译，翻译完成后输出更新后的译文文件"
-    )
-    re_translation_page_white_list: str = "关键字 - 白名单"
-    re_translation_page_white_list_desc: str = (
-        "包含这些关键字的文本将被重新翻译，可以填入多个关键字，每行一个，只需要命中其中之一即判断为需要重翻的文本"
-        ""
-        ""
-    )
-    re_translation_page_alert_not_equal: str = "原文与译文的行数不匹配 …"
 
     # 百宝箱 - 姓名字段提取
     name_field_extraction_page: str = "姓名字段提取"
@@ -601,15 +538,7 @@ class LocalizerZH:
         "<br>"
         "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）"
     )
-    name_field_extraction_page_step_01: str = "第一步 - 提取数据"
-    name_field_extraction_page_step_01_desc: str = (
-        "提取姓名字段及与其相关的上下文，发送至翻译器进行翻译"
-        "<br>"
-        f"翻译完成后，将在 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内生成 <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> 文件"
-    )
-    name_field_extraction_page_step_02: str = "第二步 - 生成术语表"
-    name_field_extraction_page_step_02_desc: str = (
-        f"将从 <font color='darkgoldenrod'><b>输出文件夹</b></font> 内的 <font color='darkgoldenrod'><b>{path_result_name_field_extraction}</b></font> 文件中提取翻译后的数据"
-        "<br>"
-        "然后生成对应的术语表数据，请注意检查生成的术语表数据是否正确"
-    )
+    name_field_extraction_action_extract: str = "提取"
+    name_field_extraction_action_translate: str = "翻译"
+    name_field_extraction_action_import: str = "导入到术语表"
+    name_field_extraction_context: str = "上下文"

@@ -20,8 +20,14 @@ from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.Storage.StorageContext import StorageContext
 
-def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: TracebackType) -> None:
+
+def excepthook(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_traceback: TracebackType,
+) -> None:
     LogManager.get().error(Localizer.get().log_crash, exc_value)
 
     if not isinstance(exc_value, KeyboardInterrupt):
@@ -32,9 +38,12 @@ def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_trac
 
     os.kill(os.getpid(), signal.SIGTERM)
 
+
 if __name__ == "__main__":
     # 捕获全局异常
-    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(exc_type, exc_value, exc_traceback)
+    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(
+        exc_type, exc_value, exc_traceback
+    )
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":
@@ -54,7 +63,9 @@ if __name__ == "__main__":
     # 1. 全局缩放使能 (Enable High DPI Scaling)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
 
     # 设置工作目录
     app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -79,14 +90,14 @@ if __name__ == "__main__":
     os.chdir(app_dir)
 
     # 创建文件夹
-    os.makedirs(os.path.join(data_dir, "input"), exist_ok = True)
-    os.makedirs(os.path.join(data_dir, "output"), exist_ok = True)
+    os.makedirs(os.path.join(data_dir, "input"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "output"), exist_ok=True)
 
     # 载入并保存默认配置
     config = Config().load()
 
     # 加载版本号
-    with open("version.txt", "r", encoding = "utf-8-sig") as reader:
+    with open("version.txt", "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
@@ -97,10 +108,12 @@ if __name__ == "__main__":
 
     # 打印日志
     LogManager.get().info(f"LinguaGacha {version}")
-    LogManager.get().info(Localizer.get().log_expert_mode) if LogManager.get().is_expert_mode() else None
+    LogManager.get().info(
+        Localizer.get().log_expert_mode
+    ) if LogManager.get().is_expert_mode() else None
 
     # 网络代理
-    if config.proxy_enable == False or config.proxy_url == "":
+    if not config.proxy_enable or config.proxy_url == "":
         os.environ.pop("http_proxy", None)
         os.environ.pop("https_proxy", None)
     else:
@@ -128,7 +141,7 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    if config.font_hinting == True:
+    if config.font_hinting:
         font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     else:
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
@@ -140,8 +153,16 @@ if __name__ == "__main__":
     # 创建版本管理器
     VersionManager.get().set_version(version)
 
+    # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
+    def cleanup_on_exit() -> None:
+        ctx = StorageContext.get()
+        if ctx.is_loaded():
+            ctx.unload()
+
+    app.aboutToQuit.connect(cleanup_on_exit)
+
     # 处理启动参数
-    if CLIManager.get().run() == False:
+    if not CLIManager.get().run():
         app_fluent_window = AppFluentWindow()
         app_fluent_window.show()
 

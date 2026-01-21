@@ -11,12 +11,9 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
-from qfluentwidgets import SmoothMode
 
 from base.Base import Base
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
-from model.Model import ModelType
-from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.CustomTextEdit import CustomTextEdit
@@ -26,8 +23,8 @@ from widget.LineEditCard import LineEditCard
 from widget.LineEditMessageBox import LineEditMessageBox
 from widget.SpinCard import SpinCard
 
-class ModelBasicSettingPage(MessageBoxBase, Base):
 
+class ModelBasicSettingPage(MessageBoxBase, Base):
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
@@ -47,7 +44,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
 
         # 设置滚动器
-        self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
+        self.scroll_area = SingleDirectionScrollArea(
+            self, orient=Qt.Orientation.Vertical
+        )
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.enableTransparentBackground()
         # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
@@ -66,19 +65,38 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
 
         # 模型地址
         api_format = self.model.get("api_format", "")
-        if api_format in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
+        if api_format in (
+            Base.APIFormat.OPENAI,
+            Base.APIFormat.GOOGLE,
+            Base.APIFormat.ANTHROPIC,
+            Base.APIFormat.SAKURALLM,
+        ):
             self.add_widget_api_url(self.vbox, config, window)
 
         # 模型密钥
-        if api_format in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
+        if api_format in (
+            Base.APIFormat.OPENAI,
+            Base.APIFormat.GOOGLE,
+            Base.APIFormat.ANTHROPIC,
+            Base.APIFormat.SAKURALLM,
+        ):
             self.add_widget_api_key(self.vbox, config, window)
 
         # 模型标识
-        if api_format in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC, Base.APIFormat.SAKURALLM):
+        if api_format in (
+            Base.APIFormat.OPENAI,
+            Base.APIFormat.GOOGLE,
+            Base.APIFormat.ANTHROPIC,
+            Base.APIFormat.SAKURALLM,
+        ):
             self.add_widget_model_id(self.vbox, config, window)
 
         # 思考挡位
-        if api_format in (Base.APIFormat.OPENAI, Base.APIFormat.GOOGLE, Base.APIFormat.ANTHROPIC):
+        if api_format in (
+            Base.APIFormat.OPENAI,
+            Base.APIFormat.GOOGLE,
+            Base.APIFormat.ANTHROPIC,
+        ):
             self.add_widget_thinking_level(self.vbox, config, window)
 
         # 阈值设置
@@ -88,12 +106,15 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         self.vbox.addStretch(1)
 
     # 模型名称
-    def add_widget_name(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_name(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: LineEditCard) -> None:
             widget.get_line_edit().setText(self.model.get("name", ""))
             widget.get_line_edit().setFixedWidth(256)
-            widget.get_line_edit().setPlaceholderText(Localizer.get().model_basic_setting_page_name)
+            widget.get_line_edit().setPlaceholderText(
+                Localizer.get().model_basic_setting_page_name
+            )
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -111,12 +132,15 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         )
 
     # 模型地址
-    def add_widget_api_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_api_url(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: LineEditCard) -> None:
             widget.get_line_edit().setText(self.model.get("api_url", ""))
             widget.get_line_edit().setFixedWidth(384)
-            widget.get_line_edit().setPlaceholderText(Localizer.get().model_basic_setting_page_api_url)
+            widget.get_line_edit().setPlaceholderText(
+                Localizer.get().model_basic_setting_page_api_url
+            )
 
         def text_changed(widget: LineEditCard, text: str) -> None:
             config = Config().load()
@@ -134,8 +158,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         )
 
     # 模型密钥
-    def add_widget_api_key(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_api_key(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def text_changed(widget: PlainTextEdit) -> None:
             config = Config().load()
             self.model["api_key"] = widget.toPlainText().strip()
@@ -147,7 +172,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
             plain_text_edit = CustomTextEdit(self, monospace=True)
             plain_text_edit.setPlainText(api_key)
             plain_text_edit.setFixedHeight(192)
-            plain_text_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_key)
+            plain_text_edit.setPlaceholderText(
+                Localizer.get().model_basic_setting_page_api_key
+            )
             plain_text_edit.textChanged.connect(lambda: text_changed(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
@@ -161,7 +188,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         )
 
     # 模型标识
-    def add_widget_model_id(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_model_id(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         empty_card = None
 
         def message_box_close(widget: LineEditMessageBox, text: str) -> None:
@@ -171,14 +200,16 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
             config.save()
 
             empty_card.get_description_label().setText(
-                Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
+                Localizer.get().model_basic_setting_page_model_id_content.replace(
+                    "{MODEL}", self.model.get("model_id", "")
+                )
             )
 
         def triggered_edit() -> None:
             message_box = LineEditMessageBox(
                 window,
                 Localizer.get().model_basic_setting_page_model_id,
-                message_box_close=message_box_close
+                message_box_close=message_box_close,
             )
             message_box.get_line_edit().setText(self.model.get("model_id", ""))
             message_box.exec()
@@ -190,12 +221,16 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
             # 更新 UI 文本
             self.model = Config().load().get_model(self.model_id)
             empty_card.get_description_label().setText(
-                Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", ""))
+                Localizer.get().model_basic_setting_page_model_id_content.replace(
+                    "{MODEL}", self.model.get("model_id", "")
+                )
             )
 
         empty_card = EmptyCard(
             Localizer.get().model_basic_setting_page_model_id_title,
-            Localizer.get().model_basic_setting_page_model_id_content.replace("{MODEL}", self.model.get("model_id", "")),
+            Localizer.get().model_basic_setting_page_model_id_content.replace(
+                "{MODEL}", self.model.get("model_id", "")
+            ),
         )
         parent.addWidget(empty_card)
 
@@ -224,7 +259,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         drop_down_push_button.setMenu(menu)
 
     # 思考挡位
-    def add_widget_thinking_level(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_thinking_level(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         empty_card = EmptyCard(
             Localizer.get().model_basic_setting_page_thinking_title,
             Localizer.get().model_basic_setting_page_thinking_content,
@@ -234,12 +271,14 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         # 下拉框选择
         combo_box = ComboBox()
         combo_box.setFixedWidth(128)
-        combo_box.addItems([
-            Localizer.get().model_basic_setting_page_thinking_off,
-            Localizer.get().model_basic_setting_page_thinking_low,
-            Localizer.get().model_basic_setting_page_thinking_medium,
-            Localizer.get().model_basic_setting_page_thinking_high,
-        ])
+        combo_box.addItems(
+            [
+                Localizer.get().model_basic_setting_page_thinking_off,
+                Localizer.get().model_basic_setting_page_thinking_low,
+                Localizer.get().model_basic_setting_page_thinking_medium,
+                Localizer.get().model_basic_setting_page_thinking_high,
+            ]
+        )
 
         # 设置当前值
         thinking = self.model.get("thinking", {})
@@ -260,7 +299,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         empty_card.add_widget(combo_box)
 
     # 阈值设置
-    def add_widget_threshold(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_threshold(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         threshold = self.model.get("threshold", {})
 
         # 输入 Token 限制
@@ -294,7 +335,9 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
             config = Config().load()
             if "threshold" not in self.model:
                 self.model["threshold"] = {}
-            self.model["threshold"]["output_token_limit"] = widget.get_spin_box().value()
+            self.model["threshold"]["output_token_limit"] = (
+                widget.get_spin_box().value()
+            )
             config.set_model(self.model)
             config.save()
 
@@ -350,5 +393,3 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
                 value_changed=value_changed_rpm,
             )
         )
-
-
