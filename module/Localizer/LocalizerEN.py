@@ -252,13 +252,13 @@ class LocalizerEN(LocalizerZH):
     workbench_toast_invalid_lg: str = "Please select a .lg project file"
     workbench_msg_file_not_found_title: str = "File Not Found"
     workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
-    workbench_progress_creating: str = "Creating project..."
-    workbench_progress_loading: str = "Loading project..."
+    workbench_progress_creating: str = "Creating project …"
+    workbench_progress_loading: str = "Loading project …"
     workbench_toast_create_fail: str = "Failed to create project: {ERROR}"
     workbench_toast_load_fail: str = "Failed to load project: {ERROR}"
     workbench_save_project_title: str = "Save Project File"
     workbench_project_ready: str = "Project Ready"
-    workbench_project_preparing: str = "Preparing..."
+    workbench_project_preparing: str = "Preparing …"
     workbench_info_file_count: str = "File Count"
     workbench_info_created_at: str = "Created At"
     workbench_info_update: str = "Last Updated"
@@ -542,3 +542,11 @@ class LocalizerEN(LocalizerZH):
     name_field_extraction_action_translate: str = "Translate"
     name_field_extraction_action_import: str = "Import to Glossary"
     name_field_extraction_context: str = "Context"
+
+    # ProjectStore
+    project_store_ingesting_assets: str = "Ingesting assets …"
+    project_store_ingesting_file: str = "Ingesting: {NAME}"
+    project_store_parsing_items: str = "Parsing translation items …"
+    project_store_created: str = "Project creation completed …"
+    project_store_file_not_found: str = "Project file not found: {PATH}"
+

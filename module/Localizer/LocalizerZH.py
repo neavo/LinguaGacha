@@ -252,13 +252,13 @@ class LocalizerZH:
     workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
     workbench_msg_file_not_found_title: str = "文件不存在"
     workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除？"
-    workbench_progress_creating: str = "正在创建工程..."
-    workbench_progress_loading: str = "正在加载工程..."
+    workbench_progress_creating: str = "正在创建工程 …"
+    workbench_progress_loading: str = "正在加载工程 …"
     workbench_toast_create_fail: str = "创建工程失败：{ERROR}"
     workbench_toast_load_fail: str = "加载工程失败：{ERROR}"
     workbench_save_project_title: str = "保存工程文件"
     workbench_project_ready: str = "项目已就绪"
-    workbench_project_preparing: str = "准备中..."
+    workbench_project_preparing: str = "准备中 …"
     workbench_info_file_count: str = "文件数量"
     workbench_info_created_at: str = "创建时间"
     workbench_info_update: str = "最后修改"
@@ -542,3 +542,11 @@ class LocalizerZH:
     name_field_extraction_action_translate: str = "翻译"
     name_field_extraction_action_import: str = "导入到术语表"
     name_field_extraction_context: str = "上下文"
+
+    # ProjectStore
+    project_store_ingesting_assets: str = "正在收纳资产 …"
+    project_store_ingesting_file: str = "正在收纳: {NAME}"
+    project_store_parsing_items: str = "正在解析翻译条目 …"
+    project_store_created: str = "工程创建完成 …"
+    project_store_file_not_found: str = "工程文件不存在: {PATH}"
+
