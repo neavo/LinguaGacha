@@ -27,7 +27,6 @@ from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
 
-
 class NameFieldExtractionPage(QWidget, Base):
     BASE: str = "name_field_extraction"
 
@@ -56,7 +55,6 @@ class NameFieldExtractionPage(QWidget, Base):
         self.add_widget_foot(self.root, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
 
         # 连接信号
@@ -260,11 +258,6 @@ class NameFieldExtractionPage(QWidget, Base):
         )
 
     # ================= 业务逻辑 =================
-
-    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
-        """工程加载完成事件"""
-        # 可以选择自动加载，也可以等待用户操作。这里保持空白比较安全。
-        pass
 
     def extract_names(self) -> None:
         """从工程中提取名字，并智能匹配最佳上下文"""

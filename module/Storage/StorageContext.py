@@ -1,6 +1,6 @@
+import threading
 from datetime import datetime
 from pathlib import Path
-import threading
 
 from base.Base import Base
 from module.Storage.DataStore import DataStore

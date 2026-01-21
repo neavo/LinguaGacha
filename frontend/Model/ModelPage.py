@@ -22,15 +22,16 @@ from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
 from widget.FlowCard import FlowCard
 
+
 class ModelPage(QWidget, Base):
     """模型管理页面，将模型分为4类显示在不同卡片中"""
 
     # 各模型类型的品牌色
     BRAND_COLORS = {
-        ModelType.PRESET.value: "#6B7280",          # 灰色 - 预设模型
-        ModelType.CUSTOM_GOOGLE.value: "#4285F4",   # Google 蓝
-        ModelType.CUSTOM_OPENAI.value: "#10A37F",   # OpenAI 绿
-        ModelType.CUSTOM_ANTHROPIC.value: "#D97757", # Anthropic 橙
+        ModelType.PRESET.value: "#6B7280",  # 灰色 - 预设模型
+        ModelType.CUSTOM_GOOGLE.value: "#4285F4",  # Google 蓝
+        ModelType.CUSTOM_OPENAI.value: "#10A37F",  # OpenAI 绿
+        ModelType.CUSTOM_ANTHROPIC.value: "#D97757",  # Anthropic 橙
     }
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -47,13 +48,20 @@ class ModelPage(QWidget, Base):
         config.save()
 
         if migrated_count > 0:
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.INFO,
-                "message": Localizer.get().model_page_migrated_toast.replace("{COUNT}", str(migrated_count)),
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.INFO,
+                    "message": Localizer.get().model_page_migrated_toast.replace(
+                        "{COUNT}", str(migrated_count)
+                    ),
+                },
+            )
 
         # 设置滚动区域
-        self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
+        self.scroll_area = SingleDirectionScrollArea(
+            self, orient=Qt.Orientation.Vertical
+        )
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.enableTransparentBackground()
         # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
@@ -80,7 +88,9 @@ class ModelPage(QWidget, Base):
         # 完成事件
         self.subscribe(Base.Event.APITEST_DONE, self.model_test_done)
 
-    def add_category_cards(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_category_cards(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         """添加4个分类卡片"""
 
         # 预设模型卡片
@@ -117,14 +127,16 @@ class ModelPage(QWidget, Base):
         )
 
         # 自定义 Anthropic 模型卡片
-        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = self.create_category_card(
-            parent=parent,
-            model_type=ModelType.CUSTOM_ANTHROPIC,
-            title=Localizer.get().model_page_category_anthropic_title,
-            description=Localizer.get().model_page_category_anthropic_desc,
-            accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
-            window=window,
-            show_add_button=True,
+        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = (
+            self.create_category_card(
+                parent=parent,
+                model_type=ModelType.CUSTOM_ANTHROPIC,
+                title=Localizer.get().model_page_category_anthropic_title,
+                description=Localizer.get().model_page_category_anthropic_desc,
+                accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
+                window=window,
+                show_add_button=True,
+            )
         )
 
         # 刷新所有分类的模型列表
@@ -180,9 +192,13 @@ class ModelPage(QWidget, Base):
 
         # 更新各分类卡片
         for model_type, card in self.category_cards.items():
-            self.update_category_card(card, models_by_type[model_type], config.activate_model_id)
+            self.update_category_card(
+                card, models_by_type[model_type], config.activate_model_id
+            )
 
-    def update_category_card(self, card: FlowCard, models: list[dict], active_model_id: str) -> None:
+    def update_category_card(
+        self, card: FlowCard, models: list[dict], active_model_id: str
+    ) -> None:
         """更新单个分类卡片的模型列表"""
         card.take_all_widgets()
 
@@ -271,10 +287,15 @@ class ModelPage(QWidget, Base):
 
     def model_test_done(self, event: Base.Event, data: dict) -> None:
         """接口测试完成"""
-        self.emit(Base.Event.TOAST, {
-            "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
-            "message": data.get("result_msg", "")
-        })
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS
+                if data.get("result", True)
+                else Base.ToastType.ERROR,
+                "message": data.get("result_msg", ""),
+            },
+        )
 
     def add_model(self, model_type: ModelType, window: FluentWindow) -> None:
         """添加模型"""
@@ -303,12 +324,17 @@ class ModelPage(QWidget, Base):
         if target_model_data:
             model_type = target_model_data.get("type", "")
             # 统计同类型模型数量
-            same_type_count = sum(1 for m in (config.models or []) if m.get("type") == model_type)
+            same_type_count = sum(
+                1 for m in (config.models or []) if m.get("type") == model_type
+            )
             if same_type_count <= 1:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().model_page_delete_last_one_toast,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().model_page_delete_last_one_toast,
+                    },
+                )
                 return
 
         # 删除模型
@@ -357,10 +383,13 @@ class ModelPage(QWidget, Base):
             config.models = manager.get_models_as_dict()
             config.save()
 
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().model_page_reset_success_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().model_page_reset_success_toast,
+                },
+            )
 
         # 刷新显示
         self.refresh_all_categories()

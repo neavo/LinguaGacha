@@ -265,11 +265,7 @@ class DataStore(Base):
         Args:
             status: 状态字符串（如 "NONE", "PROCESSED", "EXCLUDED" 等）
         """
-        count = 0
-        for item in self.get_all_items():
-            if item.get("status") == status:
-                count += 1
-        return count
+        return sum(1 for item in self.get_all_items() if item.get("status") == status)
 
     def update_item(self, item: dict[str, Any]) -> None:
         """更新单个翻译条目（仅更新，不新增）
@@ -301,7 +297,6 @@ class DataStore(Base):
 
     def get_rules(self, rule_type: RuleType) -> list[dict[str, Any]]:
         """获取指定类型的规则"""
-
         with self.connection() as conn:
             cursor = conn.execute(
                 "SELECT data FROM rules WHERE type = ? ORDER BY id", (rule_type,)
@@ -310,7 +305,6 @@ class DataStore(Base):
 
     def set_rules(self, rule_type: RuleType, rules: list[dict[str, Any]]) -> None:
         """设置指定类型的规则（清空后重新写入）"""
-
         with self.connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             for rule in rules:

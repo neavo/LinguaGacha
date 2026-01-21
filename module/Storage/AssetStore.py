@@ -1,5 +1,6 @@
-import zstandard as zstd
 from pathlib import Path
+
+import zstandard as zstd
 
 
 class AssetStore:

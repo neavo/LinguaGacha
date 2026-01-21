@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from base.Base import Base
@@ -5,6 +6,9 @@ from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
+
+# 进度回调类型：callback(current, total, message)
+ProgressCallback = Callable[[int, int, str], None]
 
 
 class ProjectStore(Base):
@@ -25,16 +29,17 @@ class ProjectStore(Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self.progress_callback = None
+        self.progress_callback: ProgressCallback | None = None
 
-    def set_progress_callback(self, callback) -> None:
+    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
         """设置进度回调函数 callback(current, total, message)"""
         self.progress_callback = callback
 
     def report_progress(self, current: int, total: int, message: str) -> None:
         """报告进度"""
-        if self.progress_callback:
-            self.progress_callback(current, total, message)
+        if self.progress_callback is None:
+            return
+        self.progress_callback(current, total, message)
 
     def create(
         self,
@@ -50,7 +55,6 @@ class ProjectStore(Base):
         Returns:
             创建的 DataStore 实例
         """
-
         # 确保输出目录存在
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -106,20 +110,18 @@ class ProjectStore(Base):
 
     def collect_source_files(self, source_path: str) -> list[str]:
         """收集源文件列表"""
-        source_files = []
         path_obj = Path(source_path)
 
         if path_obj.is_file():
             # 单个文件
-            if self.is_supported_file(source_path):
-                source_files.append(source_path)
-        else:
-            # 目录递归扫描
-            for file_path in path_obj.rglob("*"):
-                if file_path.is_file() and self.is_supported_file(str(file_path)):
-                    source_files.append(str(file_path))
+            return [source_path] if self.is_supported_file(source_path) else []
 
-        return source_files
+        # 目录递归扫描
+        return [
+            str(f)
+            for f in path_obj.rglob("*")
+            if f.is_file() and self.is_supported_file(str(f))
+        ]
 
     def is_supported_file(self, file_path: str) -> bool:
         """检查是否为支持的文件类型"""
@@ -129,10 +131,11 @@ class ProjectStore(Base):
     def ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
         """收纳单个资产到数据库"""
         # 计算相对路径
-        if Path(base_path).is_file():
-            relative_path = Path(file_path).name
-        else:
-            relative_path = str(Path(file_path).relative_to(base_path))
+        relative_path = (
+            Path(file_path).name
+            if Path(base_path).is_file()
+            else str(Path(file_path).relative_to(base_path))
+        )
 
         # 压缩文件
         compressed_data, original_size = AssetStore.compress_file(file_path)

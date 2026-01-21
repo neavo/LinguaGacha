@@ -22,6 +22,7 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Storage.StorageContext import StorageContext
 
+
 def excepthook(
     exc_type: type[BaseException],
     exc_value: BaseException,
