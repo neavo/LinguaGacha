@@ -3,10 +3,11 @@
 __pycache__
 
 /*log*
-/*debug*
 /*input*
 /*output*
-/*.json
-/*.xlsx
+
+*.lg
+*.json
+*.xlsx
+*译文*
 /resource/config.json
-/resource/expert_config.json

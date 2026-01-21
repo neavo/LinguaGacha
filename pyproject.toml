@@ -40,5 +40,4 @@ extend-exclude = [
 quote-style = "double"
 
 [tool.ruff.lint.isort]
-lines-after-imports = 1
 force-single-line = true
