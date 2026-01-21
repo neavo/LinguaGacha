@@ -85,13 +85,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260121 v0.50.0
+- 20260121 v0.50.1
   - Redesigned the entire workflow of translation projects
     - A single `.lg` project file contains all project data
     - Rules such as `Glossary`, `Pre-translation Replacement`, and `Post-translation Replacement` are independent for each project
     - Progress is written to the project file in real-time, allowing work to resume at any time
     - Generating `Translated Files` no longer requires `Source Files`
-    - ... ...
+    - … …
   - Redesigned the `Name Field Extraction` feature
   - Removed - `Partial Re-translation` feature (can be achieved via `Proofreading Tasks`)
 
