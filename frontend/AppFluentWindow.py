@@ -41,6 +41,7 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation import TranslationPage
 from frontend.WorkbenchPage import WorkbenchPage
 from module.Config import Config
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Storage.StorageContext import StorageContext
 from widget.ProgressToast import ProgressToast
@@ -109,6 +110,35 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 检查更新
         QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
+
+        # 监控运行任务，动态禁用关闭项目按钮
+        self.task_monitor_timer = QTimer(self)
+        self.task_monitor_timer.timeout.connect(self.check_running_tasks)
+        self.task_monitor_timer.start(500)
+
+    def check_running_tasks(self) -> None:
+        """检查是否有后台任务运行，动态更新'关闭项目'按钮状态"""
+        # 如果没有加载项目，按钮本身就是隐藏的（由 update_navigation_status 控制），无需处理
+        if not StorageContext.get().is_loaded():
+            return
+
+        btn_widget = self.navigationInterface.widget("close_project_button")
+        if not btn_widget:
+            return
+
+        # 检查是否繁忙：Engine 状态非 IDLE 或 有后台任务线程
+        is_busy = (
+            Engine.get().get_status() != Base.TaskStatus.IDLE
+            or Engine.get().get_running_task_count() > 0
+        )
+
+        # 状态变更时更新
+        if btn_widget.isEnabled() == is_busy:
+            btn_widget.setEnabled(not is_busy)
+            if is_busy:
+                btn_widget.setToolTip(Localizer.get().engine_task_running)
+            else:
+                btn_widget.setToolTip(Localizer.get().app_close_project_btn)
 
     def switchTo(self, interface: QWidget):
         """切换页面"""
