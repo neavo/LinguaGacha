@@ -4,8 +4,10 @@ from pathlib import Path
 from base.Base import Base
 from module.Config import Config
 from module.File.FileManager import FileManager
+from module.Localizer.Localizer import Localizer
 from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
+
 
 # 进度回调类型：callback(current, total, message)
 ProgressCallback = Callable[[int, int, str], None]
@@ -70,17 +72,25 @@ class ProjectStore(Base):
         source_files = self.collect_source_files(source_path)
         total_files = len(source_files)
 
-        self.report_progress(0, total_files, "正在收纳资产...")
+        self.report_progress(
+            0, total_files, Localizer.get().project_store_ingesting_assets
+        )
 
         # 收纳资产
         for i, file_path in enumerate(source_files):
             self.ingest_asset(db, source_path, file_path)
             self.report_progress(
-                i + 1, total_files, f"正在收纳: {Path(file_path).name}"
+                i + 1,
+                total_files,
+                Localizer.get().project_store_ingesting_file.format(
+                    NAME=Path(file_path).name
+                ),
             )
 
         # 解析翻译条目
-        self.report_progress(total_files, total_files, "正在解析翻译条目...")
+        self.report_progress(
+            total_files, total_files, Localizer.get().project_store_parsing_items
+        )
 
         # 构造 Config 对象指向源目录
         config = Config().load()
@@ -104,7 +114,9 @@ class ProjectStore(Base):
             }
             db.set_meta("translation_extras", extras)
 
-        self.report_progress(total_files, total_files, "工程创建完成")
+        self.report_progress(
+            total_files, total_files, Localizer.get().project_store_created
+        )
 
         return db
 
@@ -151,8 +163,11 @@ class ProjectStore(Base):
         用于在工作台中显示项目详情。
         """
         if not Path(lg_path).exists():
-            raise FileNotFoundError(f"工程文件不存在: {lg_path}")
+            raise FileNotFoundError(
+                Localizer.get().project_store_file_not_found.format(PATH=lg_path)
+            )
 
         # 使用短连接模式（不调用 open()）
+
         db = DataStore(lg_path)
         return db.get_project_summary()
