@@ -82,6 +82,11 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260122 v0.50.2
+  - 调整 - 交互逻辑优化
+  - 修正 - WOLFXLSX 不能正确导出的问题
+  - 修正 - 术语表等质量规则不能正确生效的问题
+
 - 20260121 v0.50.1
   - 重新设计了翻译工程的整个流程
     - 单个 `.lg` 工程文件即包含所有项目数据

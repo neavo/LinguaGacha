@@ -85,6 +85,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260122 v0.50.2
+  - ADJ - Interaction logic optimization
+  - Fix - Issue where `WOLFXLSX` could not be exported correctly
+  - Fix - Issue where `Quality Rules` such as the glossary did not take effect correctly
+
 - 20260121 v0.50.1
   - Redesigned the entire workflow of translation projects
     - A single `.lg` project file contains all project data
