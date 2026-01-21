@@ -116,6 +116,9 @@ class AppFluentWindow(FluentWindow, Base):
         self.task_monitor_timer.timeout.connect(self.check_running_tasks)
         self.task_monitor_timer.start(500)
 
+        # 记录用户在未加载工程时的页面跳转意图
+        self.pending_target_interface: QWidget | None = None
+
     def check_running_tasks(self) -> None:
         """检查是否有后台任务运行，动态更新'关闭项目'按钮状态"""
         # 如果没有加载项目，按钮本身就是隐藏的（由 update_navigation_status 控制），无需处理
@@ -145,7 +148,12 @@ class AppFluentWindow(FluentWindow, Base):
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工作台
         if not StorageContext.get().is_loaded() and interface != self.workbench_page:
             if self.is_project_dependent(interface):
+                # 记录用户的原始意图，以便加载后跳转
+                self.pending_target_interface = interface
                 interface = self.workbench_page
+            else:
+                # 切换到非项目页面（如设置），清除之前的跳转意图
+                self.pending_target_interface = None
 
         super().switchTo(interface)
         # 页面切换后同步更新侧边栏状态（确保在特殊跳转后状态正确）
@@ -642,7 +650,14 @@ class AppFluentWindow(FluentWindow, Base):
         """工程加载后切换到翻译页面"""
         # 更新侧边栏状态
         self.update_navigation_status()
-        self.switchTo(self.translation_page)
+
+        # 优先跳转到用户之前想要访问的页面
+        if self.pending_target_interface:
+            self.switchTo(self.pending_target_interface)
+            self.pending_target_interface = None
+        else:
+            self.switchTo(self.translation_page)
+
         # 刷新工作台最近打开列表
         self.workbench_page.refresh_recent_list()
 
