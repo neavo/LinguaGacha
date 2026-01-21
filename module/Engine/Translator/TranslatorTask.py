@@ -115,7 +115,7 @@ class TranslatorTask(Base):
         )
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
-        if skip == True:
+        if skip:
             return {
                 "row_count": 0,
                 "input_tokens": 0,
@@ -136,7 +136,7 @@ class TranslatorTask(Base):
 
             # 当任务失败且是单条目任务时，更新重试次数
             if (
-                any(v != ResponseChecker.Error.NONE for v in checks) != None
+                any(v != ResponseChecker.Error.NONE for v in checks) is not None
                 and len(self.items) == 1
             ):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
@@ -221,9 +221,9 @@ class TranslatorTask(Base):
         self, glossary_list: list[dict[str, str]], last_save_time: float
     ) -> float:
         # 有效性检查
-        if QualityRuleManager.get().get_glossary_enable() == False:
+        if not QualityRuleManager.get().get_glossary_enable():
             return last_save_time
-        if self.config.auto_glossary_enable == False:
+        if not self.config.auto_glossary_enable:
             return last_save_time
 
         # 提取现有术语表的原文列表
@@ -264,17 +264,17 @@ class TranslatorTask(Base):
                         }
                     )
 
-        if (
-            changed == True
-            and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
-        ):
-            # 更新术语表
-            QualityRuleManager.get().set_glossary(data)
+        if changed == True:
+            # 判断是否满足保存间隔
+            save_to_db = time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
 
-            # 术语表刷新事件
-            self.emit(Base.Event.GLOSSARY_REFRESH, {})
+            # 更新术语表（更新缓存，根据 save_to_db 决定是否写库）
+            QualityRuleManager.get().set_glossary(data, save=save_to_db)
 
-            return time.time()
+            if save_to_db:
+                # 术语表刷新事件
+                self.emit(Base.Event.GLOSSARY_REFRESH, {})
+                return time.time()
 
         # 返回原始值
         return last_save_time
@@ -368,7 +368,7 @@ class TranslatorTask(Base):
         # 原文译文对比
         pair = ""
         for src, dst in itertools.zip_longest(srcs, dsts, fillvalue=""):
-            if console == False:
+            if not console:
                 pair = pair + "\n" + f"{src} --> {dst}"
             else:
                 pair = (
