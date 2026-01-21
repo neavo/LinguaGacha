@@ -95,7 +95,16 @@ class FileDisplayCard(CardWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(8)
 
+        # 通用关闭按钮
+        self.close_btn = TransparentToolButton(FluentIcon.CLOSE, self)
+        self.close_btn.setFixedSize(30, 30)
+        self.close_btn.hide()
+
         self.update_style()
+
+    def resizeEvent(self, event):
+        self.close_btn.move(self.width() - 38, 8)
+        super().resizeEvent(event)
 
     def update_style(self):
         """更新样式，适配亮/暗色主题"""
@@ -137,6 +146,7 @@ class DropZone(FileDisplayCard):
 
     fileDropped = pyqtSignal(str)  # 文件/目录拖入信号
     clicked = pyqtSignal()  # 点击信号
+    clear_clicked = pyqtSignal()  # 清除信号
 
     def __init__(
         self, icon: FluentIcon, title: str, subtitle: str, parent=None
@@ -162,9 +172,14 @@ class DropZone(FileDisplayCard):
             self.subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter
         )
 
+        # 关闭按钮
+        self.close_btn.clicked.connect(self.clear_clicked)
+
         # 初始状态下如果为空则隐藏
         if not subtitle:
             self.subtitle_label.hide()
+        else:
+            self.close_btn.show()
 
     def set_text(self, title: str, subtitle: str) -> None:
         self.title_label.setText(title)
@@ -172,8 +187,10 @@ class DropZone(FileDisplayCard):
 
         if subtitle:
             self.subtitle_label.show()
+            self.close_btn.show()
         else:
             self.subtitle_label.hide()
+            self.close_btn.hide()
 
     def set_icon(self, icon: FluentIcon) -> None:
         self.icon_widget.setIcon(icon)
@@ -190,6 +207,7 @@ class SelectedFileDisplay(FileDisplayCard):
 
     clicked = pyqtSignal()
     fileDropped = pyqtSignal(str)
+    clear_clicked = pyqtSignal()  # 清除信号
 
     def __init__(self, file_name: str, is_ready: bool = True, parent=None) -> None:
         super().__init__(parent)
@@ -213,6 +231,10 @@ class SelectedFileDisplay(FileDisplayCard):
         )
         status_label = CaptionLabel(status_text, self)
         self.main_layout.addWidget(status_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # 关闭按钮
+        self.close_btn.clicked.connect(self.clear_clicked)
+        self.close_btn.show()
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
@@ -486,6 +508,9 @@ class WorkbenchPage(ScrollArea, Base):
         self.open_project_card = self.create_open_project_card()
         main_layout.addWidget(self.open_project_card)
 
+        # 订阅事件
+        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+
     def create_header(
         self, title_text: str, subtitle_text: str, color: str
     ) -> QHBoxLayout:
@@ -547,6 +572,7 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.new_drop_zone.clicked.connect(self.on_select_source)
         self.new_drop_zone.fileDropped.connect(self.on_source_dropped)
+        self.new_drop_zone.clear_clicked.connect(self.reset_new_project_state)
         layout.addWidget(self.new_drop_zone)
 
         # 特性与格式区域
@@ -745,6 +771,30 @@ class WorkbenchPage(ScrollArea, Base):
         config.save()
         self.refresh_recent_list()
 
+    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        """项目加载完成后清空选中状态"""
+        self.reset_new_project_state()
+        self.reset_open_project_state()
+
+    def reset_open_project_state(self) -> None:
+        """重置打开工程的选中状态"""
+        self.selected_lg_path = None
+        self.open_btn.setEnabled(False)
+
+        # 移除详情面板
+        if self.project_info_panel:
+            self.project_info_panel.deleteLater()
+            self.project_info_panel = None
+
+        # 移除选中文件显示
+        if self.selected_file_display:
+            self.selected_file_display.deleteLater()
+            self.selected_file_display = None
+
+        # 显示初始状态
+        self.open_drop_zone.setVisible(True)
+        self.recent_projects_container.setVisible(True)
+
     def on_select_source(self) -> None:
         """点击选择源文件/目录"""
         menu = RoundMenu(parent=self)
@@ -887,6 +937,7 @@ class WorkbenchPage(ScrollArea, Base):
         )
         self.selected_file_display.clicked.connect(self.on_select_lg)
         self.selected_file_display.fileDropped.connect(self.on_lg_dropped)
+        self.selected_file_display.clear_clicked.connect(self.reset_open_project_state)
         self.open_project_card.layout().insertWidget(
             1, self.selected_file_display
         )  # 插入到 drop_zone 位置 (index 1 after header)
