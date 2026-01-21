@@ -5,6 +5,7 @@ from base.Base import Base
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
 
@@ -67,6 +68,9 @@ class ProjectStore(Base):
         # 创建数据库
         project_name = Path(source_path).name
         db = DataStore.create(output_path, project_name)
+
+        # 初始化质量规则
+        QualityRuleManager.get().initialize_project_rules(db)
 
         # 收集源文件
         source_files = self.collect_source_files(source_path)

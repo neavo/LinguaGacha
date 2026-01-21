@@ -25,6 +25,7 @@ from qfluentwidgets import TransparentPushButton
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
@@ -62,29 +63,19 @@ class GlossaryPage(QWidget, Base):
 
     # 获取术语表数据
     def _get_glossary_data(self) -> list[dict[str, str]]:
-        db = StorageContext.get().get_db()
-        if db is None:
-            return []
-        return db.get_rules(DataStore.RuleType.GLOSSARY)
+        return QualityRuleManager.get().get_glossary()
 
     # 保存术语表数据
     def _set_glossary_data(self, data: list[dict[str, str]]) -> None:
-        db = StorageContext.get().get_db()
-        if db is not None:
-            db.set_rules(DataStore.RuleType.GLOSSARY, data)
+        QualityRuleManager.get().set_glossary(data)
 
     # 获取术语表启用状态
     def _get_glossary_enable(self) -> bool:
-        db = StorageContext.get().get_db()
-        if db is not None:
-            return db.get_meta("glossary_enable", True)
-        return True
+        return QualityRuleManager.get().get_glossary_enable()
 
     # 设置术语表启用状态
     def _set_glossary_enable(self, enable: bool) -> None:
-        db = StorageContext.get().get_db()
-        if db is not None:
-            db.set_meta("glossary_enable", enable)
+        QualityRuleManager.get().set_glossary_enable(enable)
 
     # 术语表刷新事件
     def glossary_refresh(self, event: Base.Event, data: dict) -> None:
@@ -401,7 +392,7 @@ class GlossaryPage(QWidget, Base):
 
             # 重置数据
             self.table_manager.reset()
-            self.table_manager.set_data(Config().glossary_data or [])
+            self.table_manager.set_data([])
             self.table_manager.sync()
 
             # 保存数据

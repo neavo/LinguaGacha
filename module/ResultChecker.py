@@ -6,6 +6,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.QualityRuleManager import QualityRuleManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
@@ -37,10 +38,12 @@ class ResultChecker(Base):
 
     def _prepare_glossary_data(self) -> list[dict]:
         """预处理术语表数据，根据繁简设置转换译文"""
-        if not self.config.glossary_enable or not self.config.glossary_data:
+        glossary_data = QualityRuleManager.get().get_glossary()
+        if not QualityRuleManager.get().get_glossary_enable() or not glossary_data:
             return []
 
         # 根据繁体输出设置转换术语表译文
+
         converter = (
             ResultChecker.OPENCCS2T
             if self.config.traditional_chinese_enable
@@ -51,7 +54,7 @@ class ResultChecker(Base):
                 "src": v.get("src", ""),
                 "dst": converter.convert(v.get("dst", "")),
             }
-            for v in self.config.glossary_data
+            for v in glossary_data
         ]
 
     # =========================================
@@ -64,19 +67,21 @@ class ResultChecker(Base):
         dst = item.get_dst()
 
         # 译前替换
+        pre_replacement_data = QualityRuleManager.get().get_pre_replacement()
         if (
-            self.config.pre_translation_replacement_enable
-            and self.config.pre_translation_replacement_data
+            QualityRuleManager.get().get_pre_replacement_enable()
+            and pre_replacement_data
         ):
-            for v in self.config.pre_translation_replacement_data:
+            for v in pre_replacement_data:
                 src = src.replace(v.get("src", ""), v.get("dst", ""))
 
         # 译后逆替换（还原）
+        post_replacement_data = QualityRuleManager.get().get_post_replacement()
         if (
-            self.config.post_translation_replacement_enable
-            and self.config.post_translation_replacement_data
+            QualityRuleManager.get().get_post_replacement_enable()
+            and post_replacement_data
         ):
-            for v in self.config.post_translation_replacement_data:
+            for v in post_replacement_data:
                 dst = dst.replace(v.get("dst", ""), v.get("src", ""))
 
         return src, dst
