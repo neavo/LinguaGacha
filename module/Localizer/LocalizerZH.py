@@ -254,6 +254,7 @@ class LocalizerZH:
     workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
     workbench_msg_file_not_found_title: str = "文件不存在"
     workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除？"
+    workbench_msg_close_confirm: str = "确定要关闭当前工程吗？"
     workbench_progress_creating: str = "正在创建工程 …"
     workbench_progress_loading: str = "正在加载工程 …"
     workbench_toast_create_fail: str = "创建工程失败：{ERROR}"

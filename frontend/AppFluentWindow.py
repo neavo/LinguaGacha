@@ -32,6 +32,7 @@ from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
 from frontend.Model.ModelPage import ModelPage
+from frontend.Proofreading import ProofreadingPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.GlossaryPage import GlossaryPage
 from frontend.Quality.TextPreservePage import TextPreservePage
@@ -369,14 +370,24 @@ class AppFluentWindow(FluentWindow, Base):
     # 关闭当前项目
     def close_current_project(self) -> None:
         if StorageContext.get().is_loaded():
-            StorageContext.get().unload()
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().project_closed_toast,
-                },
+            # 二次确认
+            box = MessageBox(
+                Localizer.get().warning,
+                Localizer.get().workbench_msg_close_confirm,
+                self,
             )
+            box.yesButton.setText(Localizer.get().confirm)
+            box.cancelButton.setText(Localizer.get().cancel)
+
+            if box.exec():
+                StorageContext.get().unload()
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().project_closed_toast,
+                    },
+                )
 
     # 打开主页
     def open_project_page(self) -> None:
@@ -492,6 +503,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
+        # 翻译任务
         self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
             self.translation_page,
@@ -501,8 +513,6 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 校对任务
-        from frontend.Proofreading import ProofreadingPage
-
         self.proofreading_page = ProofreadingPage("proofreading_page", self)
         self.addSubInterface(
             self.proofreading_page,

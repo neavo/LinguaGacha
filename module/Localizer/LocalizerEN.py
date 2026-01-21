@@ -254,6 +254,7 @@ class LocalizerEN(LocalizerZH):
     workbench_toast_invalid_lg: str = "Please select a .lg project file"
     workbench_msg_file_not_found_title: str = "File Not Found"
     workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
+    workbench_msg_close_confirm: str = "Are you sure you want to close the current project?"
     workbench_progress_creating: str = "Creating project …"
     workbench_progress_loading: str = "Loading project …"
     workbench_toast_create_fail: str = "Failed to create project: {ERROR}"
