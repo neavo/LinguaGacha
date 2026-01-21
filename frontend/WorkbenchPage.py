@@ -364,7 +364,7 @@ class ProjectInfoPanel(SimpleCardWidget):
 class EmptyRecentProjectState(QWidget):
     """最近项目列表为空时的占位显示"""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.v_layout = QVBoxLayout(self)
         self.v_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -743,6 +743,15 @@ class WorkbenchPage(ScrollArea, Base):
         if path:
             self.on_source_dropped(path)
 
+    def reset_new_project_state(self) -> None:
+        """重置新建工程的选中状态"""
+        self.selected_source_path = None
+        self.new_btn.setEnabled(False)
+        self.new_drop_zone.set_icon(FluentIcon.ADD)
+        self.new_drop_zone.set_text(
+            Localizer.get().workbench_drop_zone_source_title, ""
+        )
+
     def on_source_dropped(self, path: str) -> None:
         """源文件/目录拖入"""
         if not os.path.exists(path):
@@ -760,13 +769,7 @@ class WorkbenchPage(ScrollArea, Base):
                     "message": Localizer.get().workbench_toast_no_valid_file,
                 },
             )
-            # 重置状态
-            self.selected_source_path = None
-            self.new_btn.setEnabled(False)
-            self.new_drop_zone.set_icon(FluentIcon.ADD)
-            self.new_drop_zone.set_text(
-                Localizer.get().workbench_drop_zone_source_title, ""
-            )
+            self.reset_new_project_state()
             return
 
         self.selected_source_path = path
@@ -906,13 +909,7 @@ class WorkbenchPage(ScrollArea, Base):
             # 加载工程
             StorageContext.get().load(path)
 
-            # 重置选中状态
-            self.selected_source_path = None
-            self.new_btn.setEnabled(False)
-            self.new_drop_zone.set_icon(FluentIcon.ADD)
-            self.new_drop_zone.set_text(
-                Localizer.get().workbench_drop_zone_source_title, ""
-            )
+            self.reset_new_project_state()
         except Exception as e:
             self.emit(
                 Base.Event.TOAST,
