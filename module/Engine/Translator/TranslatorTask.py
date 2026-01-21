@@ -18,19 +18,29 @@ from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.QualityRuleManager import QualityRuleManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
-class TranslatorTask(Base):
 
+class TranslatorTask(Base):
     # 自动术语表
     GLOSSARY_SAVE_LOCK: threading.Lock = threading.Lock()
     GLOSSARY_SAVE_TIME: float = time.time()
     GLOSSARY_SAVE_INTERVAL: int = 15
 
-    def __init__(self, config: Config, model: dict, local_flag: bool, items: list[Item], precedings: list[Item], skip_glossary_merge: bool = False, skip_response_check: bool = False) -> None:
+    def __init__(
+        self,
+        config: Config,
+        model: dict,
+        local_flag: bool,
+        items: list[Item],
+        precedings: list[Item],
+        skip_glossary_merge: bool = False,
+        skip_response_check: bool = False,
+    ) -> None:
         super().__init__()
 
         # 初始化
@@ -44,14 +54,24 @@ class TranslatorTask(Base):
         self.skip_response_check = skip_response_check
         self.prompt_builder = PromptBuilder(self.config)
         # 跳过响应校验时不需要初始化 ResponseChecker
-        self.response_checker = None if skip_response_check else ResponseChecker(self.config, items)
+        self.response_checker = (
+            None if skip_response_check else ResponseChecker(self.config, items)
+        )
 
     # 启动任务
     def start(self) -> dict[str, str]:
-        return self.request(self.items, self.processors, self.precedings, self.local_flag)
+        return self.request(
+            self.items, self.processors, self.precedings, self.local_flag
+        )
 
     # 请求
-    def request(self, items: list[Item], processors: list[TextProcessor], precedings: list[Item], local_flag: bool) -> dict[str, str]:
+    def request(
+        self,
+        items: list[Item],
+        processors: list[TextProcessor],
+        precedings: list[Item],
+        local_flag: bool,
+    ) -> dict[str, str]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -80,13 +100,19 @@ class TranslatorTask(Base):
         # 生成请求提示词
         api_format = self.model.get("api_format", "OpenAI")
         if api_format != Base.APIFormat.SAKURALLM:
-            self.messages, console_log = self.prompt_builder.generate_prompt(srcs, samples, precedings, local_flag)
+            self.messages, console_log = self.prompt_builder.generate_prompt(
+                srcs, samples, precedings, local_flag
+            )
         else:
-            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
+            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(
+                srcs
+            )
 
         # 发起请求
         requester = TaskRequester(self.config, self.model)
-        skip, response_think, response_result, input_tokens, output_tokens = requester.request(self.messages)
+        skip, response_think, response_result, input_tokens, output_tokens = (
+            requester.request(self.messages)
+        )
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip == True:
@@ -104,21 +130,34 @@ class TranslatorTask(Base):
             checks = [ResponseChecker.Error.NONE] * len(dsts)
         else:
             # TODO - 当前逻辑下任务不会跨文件，所以一个任务的 TextType 都是一样的，有效，但是十分的 UGLY
-            checks = self.response_checker.check(srcs, dsts, self.items[0].get_text_type())
+            checks = self.response_checker.check(
+                srcs, dsts, self.items[0].get_text_type()
+            )
 
             # 当任务失败且是单条目任务时，更新重试次数
-            if any(v != ResponseChecker.Error.NONE for v in checks) != None and len(self.items) == 1:
+            if (
+                any(v != ResponseChecker.Error.NONE for v in checks) != None
+                and len(self.items) == 1
+            ):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         # 模型回复日志
         # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
         file_log = console_log.copy()
         if response_think != "":
-            file_log.append(Localizer.get().engine_response_think + "\n" + response_think)
-            console_log.append(Localizer.get().engine_response_think + "\n" + response_think)
+            file_log.append(
+                Localizer.get().engine_response_think + "\n" + response_think
+            )
+            console_log.append(
+                Localizer.get().engine_response_think + "\n" + response_think
+            )
         if response_result != "":
-            file_log.append(Localizer.get().engine_response_result + "\n" + response_result)
-            console_log.append(Localizer.get().engine_response_result + "\n" + response_result) if LogManager.get().is_expert_mode() else None
+            file_log.append(
+                Localizer.get().engine_response_result + "\n" + response_result
+            )
+            console_log.append(
+                Localizer.get().engine_response_result + "\n" + response_result
+            ) if LogManager.get().is_expert_mode() else None
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
@@ -126,7 +165,9 @@ class TranslatorTask(Base):
             # 更新术语表（单条翻译场景跳过此步骤）
             if not self.skip_glossary_merge:
                 with __class__.GLOSSARY_SAVE_LOCK:
-                    __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(glossarys, __class__.GLOSSARY_SAVE_TIME)
+                    __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(
+                        glossarys, __class__.GLOSSARY_SAVE_TIME
+                    )
 
             # 更新缓存数据
             dsts_cp = dsts.copy()
@@ -134,7 +175,9 @@ class TranslatorTask(Base):
             if len(srcs) > len(dsts_cp):
                 dsts_cp.extend([""] * (len(srcs) - len(dsts_cp)))
             if len(srcs) > len(checks_cp):
-                checks_cp.extend([ResponseChecker.Error.NONE] * (len(srcs) - len(checks_cp)))
+                checks_cp.extend(
+                    [ResponseChecker.Error.NONE] * (len(srcs) - len(checks_cp))
+                )
             for item, processor in zip(items, processors):
                 length = len(processor.srcs)
                 dsts_ex = [dsts_cp.pop(0) for _ in range(length)]
@@ -156,7 +199,7 @@ class TranslatorTask(Base):
             [line.strip() for line in srcs],
             [line.strip() for line in dsts],
             file_log,
-            console_log
+            console_log,
         )
 
         # 返回任务结果
@@ -174,15 +217,17 @@ class TranslatorTask(Base):
             }
 
     # 合并术语表
-    def merge_glossary(self, glossary_list: list[dict[str, str]], last_save_time: float) -> float:
+    def merge_glossary(
+        self, glossary_list: list[dict[str, str]], last_save_time: float
+    ) -> float:
         # 有效性检查
-        if self.config.glossary_enable == False:
+        if QualityRuleManager.get().get_glossary_enable() == False:
             return last_save_time
         if self.config.auto_glossary_enable == False:
             return last_save_time
 
         # 提取现有术语表的原文列表
-        data: list[dict] = self.config.glossary_data
+        data: list[dict] = QualityRuleManager.get().get_glossary()
         keys = {item.get("src", "") for item in data}
 
         # 合并去重后的术语表
@@ -197,8 +242,8 @@ class TranslatorTask(Base):
                 continue
 
             # 将原文和译文都按标点切分
-            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space = True)
-            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space = True)
+            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space=True)
+            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space=True)
             if len(srcs) != len(dsts):
                 srcs = [src]
                 dsts = [dst]
@@ -211,17 +256,20 @@ class TranslatorTask(Base):
                 if not any(key == src for key in keys):
                     changed = True
                     keys.add(src)
-                    data.append({
-                        "src": src,
-                        "dst": dst,
-                        "info": info,
-                    })
+                    data.append(
+                        {
+                            "src": src,
+                            "dst": dst,
+                            "info": info,
+                        }
+                    )
 
-        if changed == True and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL:
-            # 更新配置文件
-            config = Config().load()
-            config.glossary_data = data
-            config.save()
+        if (
+            changed == True
+            and time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
+        ):
+            # 更新术语表
+            QualityRuleManager.get().set_glossary(data)
 
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
@@ -232,16 +280,29 @@ class TranslatorTask(Base):
         return last_save_time
 
     # 打印日志表格
-    def print_log_table(self, checks: list[str], start: int, pt: int, ct: int, srcs: list[str], dsts: list[str], file_log: list[str], console_log: list[str]) -> None:
+    def print_log_table(
+        self,
+        checks: list[str],
+        start: int,
+        pt: int,
+        ct: int,
+        srcs: list[str],
+        dsts: list[str],
+        file_log: list[str],
+        console_log: list[str],
+    ) -> None:
         # 拼接错误原因文本
         reason: str = ""
         if any(v != ResponseChecker.Error.NONE for v in checks):
-            reason = f"（{"、".join(
-                {
-                    __class__.get_error_text(v) for v in checks
-                    if v != ResponseChecker.Error.NONE
-                }
-            )}）"
+            reason = f"（{
+                '、'.join(
+                    {
+                        __class__.get_error_text(v)
+                        for v in checks
+                        if v != ResponseChecker.Error.NONE
+                    }
+                )
+            }）"
 
         if all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
@@ -265,7 +326,9 @@ class TranslatorTask(Base):
             log_func = self.warning
         else:
             style = "green"
-            message = Localizer.get().engine_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
+            message = Localizer.get().engine_task_success.replace(
+                "{TIME}", f"{(time.time() - start):.2f}"
+            )
             message = message.replace("{LINES}", f"{len(srcs)}")
             message = message.replace("{PT}", f"{pt}")
             message = message.replace("{CT}", f"{ct}")
@@ -276,8 +339,8 @@ class TranslatorTask(Base):
         console_log.insert(0, message)
 
         # 写入日志到文件
-        file_rows = self.generate_log_rows(srcs, dsts, file_log, console = False)
-        log_func("\n" + "\n\n".join(file_rows) + "\n", file = True, console = False)
+        file_rows = self.generate_log_rows(srcs, dsts, file_log, console=False)
+        log_func("\n" + "\n\n".join(file_rows) + "\n", file=True, console=False)
 
         # 根据线程数判断是否需要打印表格
         if Engine.get().get_running_task_count() > 32:
@@ -287,13 +350,15 @@ class TranslatorTask(Base):
         else:
             rich.get_console().print(
                 self.generate_log_table(
-                    self.generate_log_rows(srcs, dsts, console_log, console = True),
+                    self.generate_log_rows(srcs, dsts, console_log, console=True),
                     style,
                 )
             )
 
     # 生成日志行
-    def generate_log_rows(self, srcs: list[str], dsts: list[str], extra: list[str], console: bool) -> tuple[list[str], str]:
+    def generate_log_rows(
+        self, srcs: list[str], dsts: list[str], extra: list[str], console: bool
+    ) -> tuple[list[str], str]:
         rows = []
 
         # 添加额外日志
@@ -302,11 +367,15 @@ class TranslatorTask(Base):
 
         # 原文译文对比
         pair = ""
-        for src, dst in itertools.zip_longest(srcs, dsts, fillvalue = ""):
+        for src, dst in itertools.zip_longest(srcs, dsts, fillvalue=""):
             if console == False:
                 pair = pair + "\n" + f"{src} --> {dst}"
             else:
-                pair = pair + "\n" + f"{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}"
+                pair = (
+                    pair
+                    + "\n"
+                    + f"{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}"
+                )
         rows.append(pair.strip())
 
         return rows
@@ -314,18 +383,18 @@ class TranslatorTask(Base):
     # 生成日志表格
     def generate_log_table(self, rows: list, style: str) -> Table:
         table = Table(
-            box = box.ASCII2,
-            expand = True,
-            title = " ",
-            caption = " ",
-            highlight = True,
-            show_lines = True,
-            show_header = False,
-            show_footer = False,
-            collapse_padding = True,
-            border_style = style,
+            box=box.ASCII2,
+            expand=True,
+            title=" ",
+            caption=" ",
+            highlight=True,
+            show_lines=True,
+            show_header=False,
+            show_footer=False,
+            collapse_padding=True,
+            border_style=style,
         )
-        table.add_column("", style = "white", ratio = 1, overflow = "fold")
+        table.add_column("", style="white", ratio=1, overflow="fold")
 
         for row in rows:
             if isinstance(row, str):
@@ -336,7 +405,7 @@ class TranslatorTask(Base):
         return table
 
     @classmethod
-    @lru_cache(maxsize = None)
+    @lru_cache(maxsize=None)
     def get_error_text(cls, error: ResponseChecker.Error) -> str:
         if error == ResponseChecker.Error.FAIL_DATA:
             return Localizer.get().response_checker_fail_data
@@ -357,9 +426,7 @@ class TranslatorTask(Base):
 
     @staticmethod
     def translate_single(
-        item: Item,
-        config: Config,
-        callback: Callable[[Item, bool], None]
+        item: Item, config: Config, callback: Callable[[Item, bool], None]
     ) -> None:
         """
         单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
@@ -369,6 +436,7 @@ class TranslatorTask(Base):
             config: 翻译配置
             callback: 翻译完成后的回调函数，签名为 (item, success) -> None
         """
+
         def task() -> None:
             success = False
             try:
@@ -379,11 +447,14 @@ class TranslatorTask(Base):
 
                 # 判断是否为本地模型
                 api_url = model.get("api_url", "")
-                local_flag = re.search(
-                    r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-                    api_url,
-                    flags=re.IGNORECASE,
-                ) is not None
+                local_flag = (
+                    re.search(
+                        r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
+                        api_url,
+                        flags=re.IGNORECASE,
+                    )
+                    is not None
+                )
 
                 # 创建翻译任务（跳过术语表合并和响应校验）
                 translator_task = TranslatorTask(
@@ -407,8 +478,5 @@ class TranslatorTask(Base):
                     callback(item, success)
 
         # 启动后台线程
-        thread = threading.Thread(
-            target=task,
-            name=f"{Engine.TASK_PREFIX}SINGLE"
-        )
+        thread = threading.Thread(target=task, name=f"{Engine.TASK_PREFIX}SINGLE")
         thread.start()

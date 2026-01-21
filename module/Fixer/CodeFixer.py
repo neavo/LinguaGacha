@@ -5,8 +5,8 @@ from rich import print
 from model.Item import Item
 from module.Config import Config
 
-class CodeFixer():
 
+class CodeFixer:
     def __init__(self) -> None:
         super().__init__()
 
@@ -14,16 +14,22 @@ class CodeFixer():
     @classmethod
     def fix(cls, src: str, dst: str, text_type: str, config: Config) -> str:
         from module.TextProcessor import TextProcessor
+        from module.QualityRuleManager import QualityRuleManager
 
         src_codes: list[str] = []
         dst_codes: list[str] = []
         rule: re.Pattern = TextProcessor(config, None).get_re_sample(
-            custom = config.text_preserve_enable,
-            text_type = text_type,
+            custom=QualityRuleManager.get().get_text_preserve_enable(),
+            text_type=text_type,
         )
+
         if rule is not None:
-            src_codes = [v.group(0) for v in rule.finditer(src) if v.group(0).strip() != ""]
-            dst_codes = [v.group(0) for v in rule.finditer(dst) if v.group(0).strip() != ""]
+            src_codes = [
+                v.group(0) for v in rule.finditer(src) if v.group(0).strip() != ""
+            ]
+            dst_codes = [
+                v.group(0) for v in rule.finditer(dst) if v.group(0).strip() != ""
+            ]
 
         if src_codes == dst_codes:
             return dst

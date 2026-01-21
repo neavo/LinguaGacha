@@ -25,7 +25,7 @@ class Config:
 
     # ModelPage - 模型管理系统
     activate_model_id: str = ""
-    models: list[dict[str, Any]] = None
+    models: list[dict[str, Any]] | None = None
 
     # AppSettingsPage
     expert_mode: bool = False
@@ -33,9 +33,6 @@ class Config:
     proxy_enable: bool = False
     font_hinting: bool = True
     scale_factor: str = ""
-
-    request_timeout: int = 120
-    max_round: int = 16
 
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
@@ -51,34 +48,8 @@ class Config:
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
-
-    # GlossaryPage
-    glossary_enable: bool = True
-    glossary_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
-
-    # TextPreservePage
-    text_preserve_enable: bool = False
-    text_preserve_data: list[dict[str, str]] = dataclasses.field(default_factory=list)
-
-    # PreTranslationReplacementPage
-    pre_translation_replacement_enable: bool = True
-    pre_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
-        default_factory=list
-    )
-
-    # PostTranslationReplacementPage
-    post_translation_replacement_enable: bool = True
-    post_translation_replacement_data: list[dict[str, str]] = dataclasses.field(
-        default_factory=list
-    )
-
-    # CustomPromptZHPage
-    custom_prompt_zh_enable: bool = False
-    custom_prompt_zh_data: str = None
-
-    # CustomPromptENPage
-    custom_prompt_en_enable: bool = False
-    custom_prompt_en_data: str = None
+    request_timeout: int = 120
+    max_round: int = 16
 
     # LaboratoryPage
     auto_glossary_enable: bool = False
@@ -101,7 +72,7 @@ class Config:
         # 默认：使用应用目录下的 resource/config.json
         return os.path.join(app_dir or ".", "resource", "config.json")
 
-    def load(self, path: str = None) -> Self:
+    def load(self, path: str | None = None) -> Self:
         if path is None:
             path = __class__.get_config_path()
 
@@ -119,7 +90,7 @@ class Config:
 
         return self
 
-    def save(self, path: str = None) -> Self:
+    def save(self, path: str | None = None) -> Self:
         if path is None:
             path = __class__.get_config_path()
 
@@ -162,10 +133,6 @@ class Config:
         self.deduplication_in_bilingual: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
-
-        # TextPreservePage
-        self.text_preserve_enable: bool = False
-        self.text_preserve_data: list[Any] = []
 
     # 初始化模型管理器
     def initialize_models(self) -> int:
@@ -233,7 +200,6 @@ class Config:
         self.activate_model_id = manager.activate_model_id
 
     # ========== 最近打开的工程 ==========
-
     def add_recent_project(self, path: str, name: str) -> None:
         """添加最近打开的工程"""
         from datetime import datetime
