@@ -1,4 +1,5 @@
 import re
+import threading
 from typing import Any
 
 from PyQt5.QtCore import QPoint
@@ -27,11 +28,16 @@ from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
 
+
 class NameFieldExtractionPage(QWidget, Base):
     BASE: str = "name_field_extraction"
 
     # 定义信号用于跨线程更新 UI
     update_signal = pyqtSignal(int)
+    progress_updated = pyqtSignal(
+        str, int, int
+    )  # 进度更新信号 (content, current, total)
+    progress_finished = pyqtSignal()  # 进度完成信号
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -55,10 +61,12 @@ class NameFieldExtractionPage(QWidget, Base):
         self.add_widget_foot(self.root, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
         self.update_signal.connect(self.update_row)
+        self.progress_updated.connect(self.on_progress_updated)
+        self.progress_finished.connect(self.on_progress_finished)
 
     # 头部
     def add_widget_head(
@@ -258,6 +266,41 @@ class NameFieldExtractionPage(QWidget, Base):
         )
 
     # ================= 业务逻辑 =================
+
+    def on_progress_updated(self, content: str, current: int, total: int) -> None:
+        """进度更新的 UI 处理（主线程）"""
+        self.update_progress_toast(content, current, total)
+
+    def on_progress_finished(self) -> None:
+        """进度完成的 UI 处理（主线程）"""
+        self.hide_indeterminate_toast()
+
+    def show_progress_toast(self, msg: str, current: int = 0, total: int = 0) -> None:
+        """显示确定进度指示器"""
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": msg,
+                "indeterminate": False,
+                "current": current,
+                "total": total,
+            },
+        )
+
+    def update_progress_toast(self, msg: str, current: int, total: int) -> None:
+        """更新进度"""
+        self.emit(
+            Base.Event.PROGRESS_TOAST_UPDATE,
+            {
+                "message": msg,
+                "current": current,
+                "total": total,
+            },
+        )
+
+    def hide_indeterminate_toast(self) -> None:
+        """隐藏 loading 指示器"""
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
     def extract_names(self) -> None:
         """从工程中提取名字，并智能匹配最佳上下文"""
@@ -465,60 +508,106 @@ class NameFieldExtractionPage(QWidget, Base):
                 item_status.setText(Localizer.get().translation_page_status_translating)
         self.table.blockSignals(False)
 
-        # 启动翻译任务
-        for i in indices_to_translate:
-            self.start_single_translation(i, config)
+        count = len(indices_to_translate)
+        # 显示进度 Toast
+        self.show_progress_toast(
+            Localizer.get()
+            .task_batch_translation_progress.replace("{CURRENT}", "1")
+            .replace("{TOTAL}", str(count)),
+            1,
+            count,
+        )
 
-    def start_single_translation(self, index: int, config: Config) -> None:
-        item_data = self.items[index]
-        src_name = item_data["src"]
-        context = item_data["context"]
+        def batch_translate_task() -> None:
+            success_count = 0
+            fail_count = 0
+            total = len(indices_to_translate)
 
-        # 构造 prompt: "【名字】\n参考台词"
-        # 这样模型能看到名字在对话中的用法
-        prompt_src = f"【{src_name}】\n{context}"
-
-        # 构造临时 Item
-        temp_item = Item()
-        temp_item.set_src(prompt_src)
-        # 使用 NONE 类型，避免特殊正则处理干扰，或者使用 TXT
-        temp_item.set_file_type(Item.FileType.TXT)
-        temp_item.set_text_type(Item.TextType.NONE)
-
-        # 回调函数
-        def callback(result_item: Item, success: bool) -> None:
-            if success:
-                raw_dst = result_item.get_dst()
-                # 尝试提取 【】 中的内容
-                match = re.search(r"【(.*?)】", raw_dst)
-                if match:
-                    final_name = match.group(1)
-                else:
-                    # 如果没有匹配到括号，可能模型直接输出了名字，也可能输出了整句
-                    # 这是一个 fallback。如果结果太长，可能是有问题的
-                    if len(raw_dst) < len(src_name) * 3 + 10:  # 简单启发式
-                        final_name = raw_dst
-                    else:
-                        # 翻译失败或格式错误，保持原样或标记错误
-                        final_name = ""
-
-                # 更新内存数据 (检查用户是否在翻译期间修改了)
-                if not self.items[index]["dst"]:
-                    self.items[index]["dst"] = final_name
-
-                self.items[index]["status"] = (
-                    Localizer.get().proofreading_page_status_processed
-                    if self.items[index]["dst"]
-                    else "Format Error"
+            for idx, item_idx in enumerate(indices_to_translate):
+                # 更新进度
+                current = idx + 1
+                self.progress_updated.emit(
+                    Localizer.get()
+                    .task_batch_translation_progress.replace("{CURRENT}", str(current))
+                    .replace("{TOTAL}", str(total)),
+                    current,
+                    total,
                 )
-            else:
-                self.items[index]["status"] = "Network Error"
 
-            # 通知主线程刷新
-            self.update_signal.emit(index)
+                item_data = self.items[item_idx]
+                src_name = item_data["src"]
+                context = item_data["context"]
 
-        # 发送请求
-        Engine.get().translate_single_item(temp_item, config, callback)
+                # 构造 prompt
+                prompt_src = f"【{src_name}】\n{context}"
+
+                # 构造临时 Item
+                temp_item = Item()
+                temp_item.set_src(prompt_src)
+                temp_item.set_file_type(Item.FileType.TXT)
+                temp_item.set_text_type(Item.TextType.NONE)
+
+                # 同步翻译
+                complete_event = threading.Event()
+                result_container = {"success": False, "item": None}
+
+                def callback(result_item: Item, success: bool) -> None:
+                    result_container["success"] = success
+                    result_container["item"] = result_item
+                    complete_event.set()
+
+                Engine.get().translate_single_item(temp_item, config, callback)
+
+                # 阻塞等待
+                complete_event.wait()
+
+                success = result_container["success"]
+                result_item = result_container["item"]
+
+                if success and result_item:
+                    raw_dst = result_item.get_dst()
+                    match = re.search(r"【(.*?)】", raw_dst)
+                    if match:
+                        final_name = match.group(1)
+                    else:
+                        if len(raw_dst) < len(src_name) * 3 + 10:
+                            final_name = raw_dst
+                        else:
+                            final_name = ""
+
+                    if not self.items[item_idx]["dst"]:
+                        self.items[item_idx]["dst"] = final_name
+
+                    self.items[item_idx]["status"] = (
+                        Localizer.get().proofreading_page_status_processed
+                        if self.items[item_idx]["dst"]
+                        else "Format Error"
+                    )
+                    success_count += 1
+                else:
+                    self.items[item_idx]["status"] = "Network Error"
+                    fail_count += 1
+
+                # 通知主线程刷新单行
+                self.update_signal.emit(item_idx)
+
+            self.progress_finished.emit()
+
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS
+                    if fail_count == 0
+                    else Base.ToastType.WARNING,
+                    "message": Localizer.get()
+                    .task_batch_translation_success.replace(
+                        "{SUCCESS}", str(success_count)
+                    )
+                    .replace("{FAILED}", str(fail_count)),
+                },
+            )
+
+        threading.Thread(target=batch_translate_task, daemon=True).start()
 
     def update_row(self, row: int) -> None:
         """信号槽：更新指定行的 UI"""
@@ -687,7 +776,7 @@ class NameFieldExtractionPage(QWidget, Base):
             },
         )
 
-    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""
         self.items = []
         self.refresh_table()
