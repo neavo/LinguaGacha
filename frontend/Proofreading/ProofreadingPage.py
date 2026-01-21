@@ -73,33 +73,33 @@ class ProofreadingPage(QWidget, Base):
         self.add_widget_foot(self.root, window)
 
         # 注册事件
-        self.subscribe(Base.Event.TRANSLATION_RUN, self._on_engine_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_UPDATE, self._on_engine_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_DONE, self._on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_RUN, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.on_engine_status_changed)
         self.subscribe(
-            Base.Event.TRANSLATION_REQUIRE_STOP, self._on_engine_status_changed
+            Base.Event.TRANSLATION_REQUIRE_STOP, self.on_engine_status_changed
         )
-        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
-        self.items_loaded.connect(self._on_items_loaded_ui)
-        self.translate_done.connect(self._on_translate_done_ui)
-        self.save_done.connect(self._on_save_done_ui)
-        self.export_done.connect(self._on_export_done_ui)
-        self.progress_updated.connect(self._on_progress_updated_ui)
-        self.progress_finished.connect(self._on_progress_finished_ui)
+        self.items_loaded.connect(self.on_items_loaded_ui)
+        self.translate_done.connect(self.on_translate_done_ui)
+        self.save_done.connect(self.on_save_done_ui)
+        self.export_done.connect(self.on_export_done_ui)
+        self.progress_updated.connect(self.on_progress_updated_ui)
+        self.progress_finished.connect(self.on_progress_finished_ui)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
         """添加主体控件"""
         self.table_widget = ProofreadingTableWidget()
-        self.table_widget.cell_edited.connect(self._on_cell_edited)
-        self.table_widget.retranslate_clicked.connect(self._on_retranslate_clicked)
+        self.table_widget.cell_edited.connect(self.on_cell_edited)
+        self.table_widget.retranslate_clicked.connect(self.on_retranslate_clicked)
         self.table_widget.batch_retranslate_clicked.connect(
-            self._on_batch_retranslate_clicked
+            self.on_batch_retranslate_clicked
         )
-        self.table_widget.copy_src_clicked.connect(self._on_copy_src_clicked)
-        self.table_widget.copy_dst_clicked.connect(self._on_copy_dst_clicked)
+        self.table_widget.copy_src_clicked.connect(self.on_copy_src_clicked)
+        self.table_widget.copy_dst_clicked.connect(self.on_copy_dst_clicked)
         self.table_widget.set_items([], {})
 
         parent.addWidget(self.table_widget, 1)
@@ -113,10 +113,10 @@ class ProofreadingPage(QWidget, Base):
         parent.addWidget(self.search_card)
 
         # 绑定搜索回调
-        self.search_card.on_back_clicked(lambda w: self._on_search_back_clicked())
-        self.search_card.on_prev_clicked(lambda w: self._on_search_prev_clicked())
-        self.search_card.on_next_clicked(lambda w: self._on_search_next_clicked())
-        self.search_card.on_search_triggered(lambda w: self._do_search())
+        self.search_card.on_back_clicked(lambda w: self.on_search_back_clicked())
+        self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
+        self.search_card.on_next_clicked(lambda w: self.on_search_next_clicked())
+        self.search_card.on_search_triggered(lambda w: self.do_search())
 
         # 命令栏
         self.command_bar_card = CommandBarCard()
@@ -129,7 +129,7 @@ class ProofreadingPage(QWidget, Base):
             Action(
                 FluentIcon.DOWNLOAD,
                 Localizer.get().proofreading_page_load,
-                triggered=self._on_load_clicked,
+                triggered=self.on_load_clicked,
             )
         )
 
@@ -137,7 +137,7 @@ class ProofreadingPage(QWidget, Base):
         action_save = Action(
             FluentIcon.SAVE,
             Localizer.get().proofreading_page_save,
-            triggered=self._on_save_clicked,
+            triggered=self.on_save_clicked,
         )
         action_save.setShortcut("Ctrl+S")
         self.btn_save = self.command_bar_card.add_action(action_save)
@@ -153,7 +153,7 @@ class ProofreadingPage(QWidget, Base):
             Action(
                 FluentIcon.SHARE,
                 Localizer.get().proofreading_page_export,
-                triggered=self._on_export_clicked,
+                triggered=self.on_export_clicked,
             )
         )
         self.btn_export.installEventFilter(
@@ -167,7 +167,7 @@ class ProofreadingPage(QWidget, Base):
             Action(
                 FluentIcon.SEARCH,
                 Localizer.get().proofreading_page_search,
-                triggered=self._on_search_clicked,
+                triggered=self.on_search_clicked,
             )
         )
         self.btn_search.setEnabled(False)
@@ -176,7 +176,7 @@ class ProofreadingPage(QWidget, Base):
             Action(
                 FluentIcon.FILTER,
                 Localizer.get().proofreading_page_filter,
-                triggered=self._on_filter_clicked,
+                triggered=self.on_filter_clicked,
             )
         )
         self.btn_filter.setEnabled(False)
@@ -185,11 +185,11 @@ class ProofreadingPage(QWidget, Base):
         # 使用 add_widget 添加到 hbox，而非 command_bar 内部，使 stretch 能正确生效
         self.command_bar_card.add_stretch(1)
         self.pagination_bar = PaginationBar()
-        self.pagination_bar.page_changed.connect(self._on_page_changed)
+        self.pagination_bar.page_changed.connect(self.on_page_changed)
         self.command_bar_card.add_widget(self.pagination_bar)
 
     # ========== 加载功能 ==========
-    def _on_load_clicked(self) -> None:
+    def on_load_clicked(self) -> None:
         """加载按钮点击"""
         # 显示 loading 指示器
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
@@ -252,22 +252,22 @@ class ProofreadingPage(QWidget, Base):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _on_items_loaded_ui(self, items: list[Item]) -> None:
+    def on_items_loaded_ui(self, items: list[Item]) -> None:
         """数据加载完成的 UI 更新（主线程）"""
         # 隐藏 loading 指示器
         self.indeterminate_hide()
 
         if items:
-            self._apply_filter()
+            self.apply_filter()
         else:
             # 清空数据并显示占位符
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
 
-        self._check_engine_status()
+        self.check_engine_status()
 
     # ========== 筛选功能 ==========
-    def _on_filter_clicked(self) -> None:
+    def on_filter_clicked(self) -> None:
         """筛选按钮点击"""
         if not self.items or not self.result_checker:
             self.emit(
@@ -289,9 +289,9 @@ class ProofreadingPage(QWidget, Base):
 
         if dialog.exec():
             self.filter_options = dialog.get_filter_options()
-            self._apply_filter()
+            self.apply_filter()
 
-    def _apply_filter(self) -> None:
+    def apply_filter(self) -> None:
         """应用筛选条件"""
         warning_types = self.filter_options.get(FilterDialog.KEY_WARNING_TYPES)
         statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
@@ -341,7 +341,7 @@ class ProofreadingPage(QWidget, Base):
         self.filtered_items = filtered
         self.pagination_bar.set_total(len(filtered))
         self.pagination_bar.set_page(1)
-        self._render_page(1)
+        self.render_page(1)
 
         # 筛选后清空搜索状态，因为 filtered_items 已变化
         self.search_match_indices = []
@@ -349,14 +349,14 @@ class ProofreadingPage(QWidget, Base):
         self.search_card.clear_match_info()
 
     # ========== 搜索功能 ==========
-    def _on_search_clicked(self) -> None:
+    def on_search_clicked(self) -> None:
         """搜索按钮点击"""
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
         # 聚焦到输入框
         self.search_card.get_line_edit().setFocus()
 
-    def _on_search_back_clicked(self) -> None:
+    def on_search_back_clicked(self) -> None:
         """搜索栏返回点击，清除搜索状态"""
         self.search_keyword = ""
         self.search_is_regex = False
@@ -366,7 +366,7 @@ class ProofreadingPage(QWidget, Base):
         self.search_card.setVisible(False)
         self.command_bar_card.setVisible(True)
 
-    def _do_search(self) -> None:
+    def do_search(self) -> None:
         """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
         keyword = self.search_card.get_keyword()
         if not keyword:
@@ -394,7 +394,7 @@ class ProofreadingPage(QWidget, Base):
         self.search_is_regex = is_regex
 
         # 构建匹配索引列表
-        self._build_match_indices()
+        self.build_match_indices()
 
         if not self.search_match_indices:
             self.search_card.set_match_info(0, 0)
@@ -409,9 +409,9 @@ class ProofreadingPage(QWidget, Base):
 
         # 跳转到第一个匹配项
         self.search_current_match = 0
-        self._jump_to_match()
+        self.jump_to_match()
 
-    def _build_match_indices(self) -> None:
+    def build_match_indices(self) -> None:
         """构建匹配项索引列表"""
         self.search_match_indices = []
 
@@ -442,33 +442,33 @@ class ProofreadingPage(QWidget, Base):
                 if keyword_lower in src.lower() or keyword_lower in dst.lower():
                     self.search_match_indices.append(idx)
 
-    def _on_search_prev_clicked(self) -> None:
+    def on_search_prev_clicked(self) -> None:
         """上一个匹配项"""
         if not self.search_match_indices:
             # 如果没有匹配结果，先执行搜索
-            self._do_search()
+            self.do_search()
             return
 
         # 循环跳转到上一个
         self.search_current_match -= 1
         if self.search_current_match < 0:
             self.search_current_match = len(self.search_match_indices) - 1
-        self._jump_to_match()
+        self.jump_to_match()
 
-    def _on_search_next_clicked(self) -> None:
+    def on_search_next_clicked(self) -> None:
         """下一个匹配项"""
         if not self.search_match_indices:
             # 如果没有匹配结果，先执行搜索
-            self._do_search()
+            self.do_search()
             return
 
         # 循环跳转到下一个
         self.search_current_match += 1
         if self.search_current_match >= len(self.search_match_indices):
             self.search_current_match = 0
-        self._jump_to_match()
+        self.jump_to_match()
 
-    def _jump_to_match(self) -> None:
+    def jump_to_match(self) -> None:
         """跳转到当前匹配项"""
         if not self.search_match_indices or self.search_current_match < 0:
             return
@@ -487,18 +487,18 @@ class ProofreadingPage(QWidget, Base):
         current_page = self.pagination_bar.get_page()
         if target_page != current_page:
             self.pagination_bar.set_page(target_page)
-            self._render_page(target_page)
+            self.render_page(target_page)
 
         # 在表格中选中该行
         row_in_page = item_index % page_size
         self.table_widget.select_row(row_in_page)
 
     # ========== 分页渲染 ==========
-    def _on_page_changed(self, page: int) -> None:
+    def on_page_changed(self, page: int) -> None:
         """页码变化"""
-        self._render_page(page)
+        self.render_page(page)
 
-    def _render_page(self, page_num: int) -> None:
+    def render_page(self, page_num: int) -> None:
         """渲染指定页的数据"""
         page_size = self.pagination_bar.get_page_size()
         start_idx = (page_num - 1) * page_size
@@ -512,7 +512,7 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget.set_items(page_items, page_warning_map)
 
     # ========== 编辑功能 ==========
-    def _on_cell_edited(self, item: Item, new_dst: str) -> None:
+    def on_cell_edited(self, item: Item, new_dst: str) -> None:
         """单元格编辑完成"""
         if self.is_readonly:
             return
@@ -528,9 +528,9 @@ class ProofreadingPage(QWidget, Base):
         ):
             item.set_status(Base.ProjectStatus.PROCESSED)
 
-        self._recheck_item(item)
+        self.recheck_item(item)
 
-    def _recheck_item(self, item: Item) -> None:
+    def recheck_item(self, item: Item) -> None:
         """重新检查单个条目"""
         if not self.config:
             return
@@ -547,7 +547,7 @@ class ProofreadingPage(QWidget, Base):
         if row >= 0:
             self.table_widget.update_row_status(row, warnings)
 
-    def _on_copy_src_clicked(self, item: Item) -> None:
+    def on_copy_src_clicked(self, item: Item) -> None:
         """复制原文到剪贴板"""
         clipboard = QApplication.clipboard()
         clipboard.setText(item.get_src())
@@ -560,7 +560,7 @@ class ProofreadingPage(QWidget, Base):
             },
         )
 
-    def _on_copy_dst_clicked(self, item: Item) -> None:
+    def on_copy_dst_clicked(self, item: Item) -> None:
         """复制译文到剪贴板"""
         clipboard = QApplication.clipboard()
         clipboard.setText(item.get_dst())
@@ -574,7 +574,7 @@ class ProofreadingPage(QWidget, Base):
         )
 
     # ========== 重新翻译功能 ==========
-    def _on_retranslate_clicked(self, item: Item) -> None:
+    def on_retranslate_clicked(self, item: Item) -> None:
         """重新翻译按钮点击 - 单条翻译也使用批量翻译流程"""
         if self.is_readonly or not self.config:
             return
@@ -591,9 +591,9 @@ class ProofreadingPage(QWidget, Base):
             return
 
         # 使用统一的批量翻译流程（单条也走这个逻辑）
-        self._do_batch_retranslate([item])
+        self.do_batch_retranslate([item])
 
-    def _on_batch_retranslate_clicked(self, items: list[Item]) -> None:
+    def on_batch_retranslate_clicked(self, items: list[Item]) -> None:
         """批量重新翻译按钮点击"""
         if self.is_readonly or not self.config or not items:
             return
@@ -613,9 +613,9 @@ class ProofreadingPage(QWidget, Base):
         if not message_box.exec():
             return
 
-        self._do_batch_retranslate(items)
+        self.do_batch_retranslate(items)
 
-    def _do_batch_retranslate(self, items: list[Item]) -> None:
+    def do_batch_retranslate(self, items: list[Item]) -> None:
         """执行批量翻译（单条和多条统一入口）"""
         count = len(items)
         # 使用最新配置，而非缓存的 self.config
@@ -624,7 +624,7 @@ class ProofreadingPage(QWidget, Base):
         # 显示进度 Toast（初始显示"正在处理第 1 个"）
         self.progress_show(
             Localizer.get()
-            .proofreading_page_batch_retranslate_progress.replace("{CURRENT}", "1")
+            .task_batch_translation_progress.replace("{CURRENT}", "1")
             .replace("{TOTAL}", str(count)),
             1,
             count,
@@ -640,9 +640,7 @@ class ProofreadingPage(QWidget, Base):
                 current = idx + 1
                 self.progress_updated.emit(
                     Localizer.get()
-                    .proofreading_page_batch_retranslate_progress.replace(
-                        "{CURRENT}", str(current)
-                    )
+                    .task_batch_translation_progress.replace("{CURRENT}", str(current))
                     .replace("{TOTAL}", str(total)),
                     current,
                     total,
@@ -686,7 +684,7 @@ class ProofreadingPage(QWidget, Base):
                     if fail_count == 0
                     else Base.ToastType.WARNING,
                     "message": Localizer.get()
-                    .proofreading_page_batch_retranslate_success.replace(
+                    .task_batch_translation_success.replace(
                         "{SUCCESS}", str(success_count)
                     )
                     .replace("{FAILED}", str(fail_count)),
@@ -695,11 +693,11 @@ class ProofreadingPage(QWidget, Base):
 
         threading.Thread(target=batch_translate_task, daemon=True).start()
 
-    def _on_translate_done_ui(self, item: Item, success: bool) -> None:
+    def on_translate_done_ui(self, item: Item, success: bool) -> None:
         """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
         # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
         if success:
-            self._recheck_item(item)
+            self.recheck_item(item)
 
         # 2. 如果条目在当前页可见，更新 UI 显示
         row = self.table_widget.find_row_by_item(item)
@@ -710,17 +708,17 @@ class ProofreadingPage(QWidget, Base):
             else:
                 item.set_status(Base.ProjectStatus.PROCESSED)
 
-    def _on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
+    def on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
         """进度更新的 UI 处理（主线程）"""
         self.progress_update(content, current, total)
 
-    def _on_progress_finished_ui(self) -> None:
+    def on_progress_finished_ui(self) -> None:
         """进度完成的 UI 处理（主线程）"""
         self.indeterminate_hide()
-        # 逐条刷新已在 _on_translate_done_ui 中完成，无需再次刷新
+        # 逐条刷新已在 on_translate_done_ui 中完成，无需再次刷新
 
     # ========== 保存功能 ==========
-    def _on_save_clicked(self) -> None:
+    def on_save_clicked(self) -> None:
         """保存按钮点击"""
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
         self.save_data()
@@ -750,7 +748,7 @@ class ProofreadingPage(QWidget, Base):
         threading.Thread(target=task, daemon=True).start()
 
     # ========== 导出功能 ==========
-    def _on_export_clicked(self) -> None:
+    def on_export_clicked(self) -> None:
         """导出按钮点击"""
         # 弹框让用户确认
         message_box = MessageBox(
@@ -769,7 +767,7 @@ class ProofreadingPage(QWidget, Base):
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
         self.save_data()
 
-    def _on_save_done_ui(self, success: bool) -> None:
+    def on_save_done_ui(self, success: bool) -> None:
         """保存完成的 UI 更新（主线程）"""
         # 检查是否有待处理的导出操作
         pending_export = getattr(self, "_pending_export", False)
@@ -823,7 +821,7 @@ class ProofreadingPage(QWidget, Base):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _on_export_done_ui(self, success: bool, error_msg: str) -> None:
+    def on_export_done_ui(self, success: bool, error_msg: str) -> None:
         """导出完成的 UI 更新（主线程）"""
         # 成功时直接隐藏进度条，失败时弹出错误提示
         self.indeterminate_hide()
@@ -838,11 +836,11 @@ class ProofreadingPage(QWidget, Base):
             )
 
     # ========== 只读模式控制 ==========
-    def _on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
+    def on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
         """Engine 状态变更事件"""
-        self._check_engine_status()
+        self.check_engine_status()
 
-    def _check_engine_status(self) -> None:
+    def check_engine_status(self) -> None:
         """检查并更新只读模式"""
         # 获取全局引擎状态，确保 UI 状态与后台任务一致
         engine_status = Engine.get().get_status()
@@ -879,7 +877,7 @@ class ProofreadingPage(QWidget, Base):
     def showEvent(self, event: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(event)
-        self._check_engine_status()
+        self.check_engine_status()
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
@@ -919,7 +917,7 @@ class ProofreadingPage(QWidget, Base):
         """隐藏 loading 指示器"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
-    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""
         # 清空数据
         self.items = []

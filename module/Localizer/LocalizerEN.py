@@ -49,9 +49,11 @@ class LocalizerEN(LocalizerZH):
     search_match_info: str = "Item {current} of {total}"
     search_no_result: str = "No results"
     current_status: str = "Current Status: "
+    task_batch_translation_progress: str = "Translating, item {CURRENT} of {TOTAL} …"
+    task_batch_translation_success: str = "Translation completed, {SUCCESS} successful, {FAILED} failed …"
 
     # 主页面
-    app_close_message_box: str = "Are you sure you want to exit the application … ?"
+    app_close_message_box: str = "Are you sure you want to exit the application …?"
     app_exit_countdown: str = "Exiting … {SECONDS} …"
     app_new_version: str = "Download New Version!"
     app_new_version_toast: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
@@ -283,7 +285,7 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_token_output: str = "Output Tokens"
     translation_page_card_token_tooltip: str = "Click to toggle Input/Output"
     translation_page_card_task: str = "Real Time Tasks"
-    translation_page_alert_pause: str = "Stopped tasks can be resumed at any time. Confirm to stop the task … ?"
+    translation_page_alert_pause: str = "Stopped tasks can be resumed at any time. Confirm to stop the task …?"
     translation_page_continue: str = "Continue"
     translation_page_export: str = "Export"
     translation_page_export_confirm: str = "Confirm to export the translation file?"
@@ -338,8 +340,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_exporting: str = "Exporting data …"
     proofreading_page_batch_retranslate: str = "Retranslate selected"
     proofreading_page_batch_retranslate_confirm: str = "Confirm to re-translate all {COUNT} selected items?"
-    proofreading_page_batch_retranslate_progress: str = "Re-translating, item {CURRENT} of {TOTAL} …"
-    proofreading_page_batch_retranslate_success: str = "Re-translation completed, {SUCCESS} successful, {FAILED} failed …"
 
     # 基础设置
     basic_settings_page_source_language_title: str = "Source Language"
@@ -414,7 +414,7 @@ class LocalizerEN(LocalizerZH):
     quality_preset: str = "Preset"
     quality_reset: str = "Reset"
     quality_reset_toast: str = "Data reset …"
-    quality_reset_alert: str = "Confirm reset to default data … ?"
+    quality_reset_alert: str = "Confirm reset to default data …?"
     quality_select_file: str = "Select File"
     quality_select_file_type: str = "Supported Formats (*.json *.xlsx)"
     quality_delete_row: str = "Delete Row"
