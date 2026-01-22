@@ -366,7 +366,7 @@ class GlossaryPage(QWidget, Base):
 
             try:
                 for _, _, filenames in os.walk(
-                    f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}"
+                    f"resource/preset/{__class__.BASE}/{Localizer.get_app_language().lower()}"
                 ):
                     filenames = [
                         v.lower().removesuffix(".json")
@@ -374,7 +374,7 @@ class GlossaryPage(QWidget, Base):
                         if v.lower().endswith(".json")
                     ]
             except Exception as e:
-                print(f"Error loading preset: {e}")
+                self.error("Error loading preset", e)
 
             return filenames
 
@@ -406,7 +406,7 @@ class GlossaryPage(QWidget, Base):
             )
 
         def apply_preset(filename: str) -> None:
-            path: str = f"resource/{__class__.BASE}_preset/{Localizer.get_app_language().lower()}/{filename}.json"
+            path: str = f"resource/preset/{__class__.BASE}/{Localizer.get_app_language().lower()}/{filename}.json"
 
             # 从文件加载数据
             data = self.table_manager.get_data()
@@ -427,6 +427,31 @@ class GlossaryPage(QWidget, Base):
                 },
             )
 
+        def save_preset() -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                window,
+                Localizer.get().quality_save_preset_title,
+                f"resource/preset/{__class__.BASE}/{Localizer.get_app_language().lower()}/",
+                "JSON (*.json)",
+            )
+            if not isinstance(path, str) or path == "":
+                return
+
+            try:
+                data = self.table_manager.get_data()
+                with open(path, "w", encoding="utf-8") as writer:
+                    writer.write(json.dumps(data, indent=4, ensure_ascii=False))
+
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().quality_save_preset_success,
+                    },
+                )
+            except Exception as e:
+                self.error("Failed to save preset", e)
+
         def triggered() -> None:
             menu = RoundMenu("", widget)
             menu.addAction(
@@ -436,6 +461,14 @@ class GlossaryPage(QWidget, Base):
                     triggered=reset,
                 )
             )
+            menu.addAction(
+                Action(
+                    FluentIcon.SAVE,
+                    Localizer.get().quality_save_preset,
+                    triggered=save_preset,
+                )
+            )
+            menu.addSeparator()
             for v in load_preset():
                 menu.addAction(
                     Action(
