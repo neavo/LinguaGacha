@@ -30,6 +30,8 @@ class ProofreadingTableWidget(TableWidget):
     cell_edited = pyqtSignal(object, str)  # (item, new_dst) 单元格编辑完成
     retranslate_clicked = pyqtSignal(object)  # (item) 重新翻译
     batch_retranslate_clicked = pyqtSignal(list)  # (items) 批量重新翻译
+    reset_translation_clicked = pyqtSignal(object)  # (item) 重置翻译
+    batch_reset_translation_clicked = pyqtSignal(list)  # (items) 批量重置翻译
     copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到译文
     copy_dst_clicked = pyqtSignal(object)  # (item) 复制译文到剪贴板
 
@@ -252,15 +254,6 @@ class ProofreadingTableWidget(TableWidget):
         def show_menu() -> None:
             menu = RoundMenu(parent=btn_action)
 
-            # 重新翻译
-            menu.addAction(
-                Action(
-                    FluentIcon.SYNC,
-                    Localizer.get().proofreading_page_retranslate,
-                    triggered=lambda checked: self.retranslate_clicked.emit(item),
-                )
-            )
-
             # 复制原文到译文
             menu.addAction(
                 Action(
@@ -276,6 +269,24 @@ class ProofreadingTableWidget(TableWidget):
                     FluentIcon.COPY,
                     Localizer.get().proofreading_page_copy_dst,
                     triggered=lambda checked: self.copy_dst_clicked.emit(item),
+                )
+            )
+
+            # 重新翻译
+            menu.addAction(
+                Action(
+                    FluentIcon.SYNC,
+                    Localizer.get().proofreading_page_retranslate,
+                    triggered=lambda checked: self.retranslate_clicked.emit(item),
+                )
+            )
+
+            # 重置翻译状态
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().proofreading_page_reset_translation,
+                    triggered=lambda checked: self.reset_translation_clicked.emit(item),
                 )
             )
 
@@ -426,6 +437,17 @@ class ProofreadingTableWidget(TableWidget):
                 FluentIcon.SYNC,
                 Localizer.get().proofreading_page_batch_retranslate,
                 triggered=lambda checked: self.batch_retranslate_clicked.emit(
+                    selected_items
+                ),
+            )
+        )
+
+        # 批量重置
+        menu.addAction(
+            Action(
+                FluentIcon.DELETE,
+                Localizer.get().proofreading_page_batch_reset_translation,
+                triggered=lambda checked: self.batch_reset_translation_clicked.emit(
                     selected_items
                 ),
             )
