@@ -717,6 +717,10 @@ class Translator(Base):
                 new["time"] = time.time() - self.extras.get("start_time", 0)
                 self.extras = new
 
+            # 保存翻译进度额外数据到数据库（确保进度实时同步）
+            if StorageContext.get().is_loaded():
+                StorageContext.get().set_translation_extras(self.extras)
+
             # 日志
             progress.update(
                 pid,
