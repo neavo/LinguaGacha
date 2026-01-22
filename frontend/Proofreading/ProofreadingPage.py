@@ -98,6 +98,12 @@ class ProofreadingPage(QWidget, Base):
         self.table_widget.batch_retranslate_clicked.connect(
             self.on_batch_retranslate_clicked
         )
+        self.table_widget.reset_translation_clicked.connect(
+            self.on_reset_translation_clicked
+        )
+        self.table_widget.batch_reset_translation_clicked.connect(
+            self.on_batch_reset_translation_clicked
+        )
         self.table_widget.copy_src_clicked.connect(self.on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self.on_copy_dst_clicked)
         self.table_widget.set_items([], {})
@@ -572,6 +578,59 @@ class ProofreadingPage(QWidget, Base):
                 "message": Localizer.get().proofreading_page_copy_dst_done,
             },
         )
+
+    # ========== 重置翻译功能 ==========
+    def on_reset_translation_clicked(self, item: Item) -> None:
+        """重置翻译按钮点击"""
+        if self.is_readonly:
+            return
+
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_reset_translation_confirm,
+            self.window,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+
+        if not message_box.exec():
+            return
+
+        self.do_batch_reset_translation([item])
+
+    def on_batch_reset_translation_clicked(self, items: list[Item]) -> None:
+        """批量重置翻译按钮点击"""
+        if self.is_readonly or not items:
+            return
+
+        count = len(items)
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_batch_reset_translation_confirm.replace(
+                "{COUNT}", str(count)
+            ),
+            self.window,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+
+        if not message_box.exec():
+            return
+
+        self.do_batch_reset_translation(items)
+
+    def do_batch_reset_translation(self, items: list[Item]) -> None:
+        """执行批量重置"""
+        for item in items:
+            item.set_dst("")
+            item.set_status(Base.ProjectStatus.NONE)
+            item.set_retry_count(0)
+
+            # 更新 UI 和检查结果
+            self.recheck_item(item)
+            row = self.table_widget.find_row_by_item(item)
+            if row >= 0:
+                self.table_widget.update_row_dst(row, "")
 
     # ========== 重新翻译功能 ==========
     def on_retranslate_clicked(self, item: Item) -> None:

@@ -18,8 +18,6 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.QualityRuleManager import QualityRuleManager
-from module.Storage.DataStore import DataStore
-from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard

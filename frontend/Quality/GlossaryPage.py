@@ -26,8 +26,6 @@ from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.QualityRuleManager import QualityRuleManager
-from module.Storage.DataStore import DataStore
-from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
