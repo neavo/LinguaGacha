@@ -1,4 +1,6 @@
 from collections import Counter
+from datetime import datetime
+from pathlib import Path
 
 from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import QPointF
@@ -18,6 +20,8 @@ from qfluentwidgets import BodyLabel
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
+from qfluentwidgets import InfoBar
+from qfluentwidgets import InfoBarPosition
 from qfluentwidgets import ListItemDelegate
 from qfluentwidgets import ListWidget
 from qfluentwidgets import MessageBoxBase
@@ -29,10 +33,12 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
+from module.Storage.StorageContext import StorageContext
 from widget.CustomLineEdit import CustomSearchLineEdit
 
 
@@ -45,13 +51,13 @@ class FilterListItemWidget(QWidget):
         # 启用鼠标追踪以接收 enterEvent/leaveEvent
         self.setMouseTracking(True)
 
-        self._checked = True
-        self._count = 0
-        self._hovered = False
+        self.checked = True
+        self.count = 0
+        self.hovered = False
 
         # 布局参数
-        self._checkbox_size = 18
-        self._left_padding = 12
+        self.checkbox_size = 18
+        self.left_padding = 12
 
         # 使用 CaptionLabel 显示文本（12px 字体，QFluentWidgets 内置控件处理好渲染）
         self.text_label = CaptionLabel(text, self)
@@ -66,25 +72,23 @@ class FilterListItemWidget(QWidget):
 
         # 布局
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(
-            self._left_padding + self._checkbox_size + 8, 0, 12, 0
-        )
+        layout.setContentsMargins(self.left_padding + self.checkbox_size + 8, 0, 12, 0)
         layout.addWidget(self.text_label, 1)
         layout.addWidget(self.count_label)
 
     def set_checked(self, checked: bool) -> None:
-        self._checked = checked
+        self.checked = checked
         self.update()
 
     def is_checked(self) -> bool:
-        return self._checked
+        return self.checked
 
     def set_count(self, count: int) -> None:
-        self._count = count
+        self.count = count
         self.count_label.setText(str(count))
 
     def get_count(self) -> int:
-        return self._count
+        return self.count
 
     def set_tooltip(self, tooltip: str) -> None:
         """使用 QFluentWidgets 的 ToolTipFilter 设置 tooltip（300ms 延迟）"""
@@ -93,17 +97,17 @@ class FilterListItemWidget(QWidget):
 
     def enterEvent(self, event) -> None:
         """鼠标进入时设置悬浮状态"""
-        self._hovered = True
+        self.hovered = True
         self.update()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         """鼠标离开时取消悬浮状态"""
-        self._hovered = False
+        self.hovered = False
         self.update()
         super().leaveEvent(event)
 
-    def _get_check_color(self) -> QColor:
+    def get_check_color(self) -> QColor:
         if not isDarkTheme():
             return QColor(255, 255, 255)
 
@@ -117,7 +121,7 @@ class FilterListItemWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
 
         # 1. 绘制悬浮背景（Fluent 风格圆角矩形）
-        if self._hovered:
+        if self.hovered:
             hover_color = (
                 QColor(255, 255, 255, 20) if isDarkTheme() else QColor(0, 0, 0, 10)
             )
@@ -130,26 +134,26 @@ class FilterListItemWidget(QWidget):
         # 2. Checkbox 垂直居中
         cy = self.height() // 2
         checkbox_rect = QRect(
-            self._left_padding,
-            cy - self._checkbox_size // 2,
-            self._checkbox_size,
-            self._checkbox_size,
+            self.left_padding,
+            cy - self.checkbox_size // 2,
+            self.checkbox_size,
+            self.checkbox_size,
         )
 
-        if self._checked:
+        if self.checked:
             # 选中状态：主题色背景 + 白色勾
             painter.setBrush(themeColor())
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(checkbox_rect, 5, 5)
 
             # 绘制白色对勾
-            check_pen = QPen(self._get_check_color(), 2)
+            check_pen = QPen(self.get_check_color(), 2)
             check_pen.setCapStyle(Qt.RoundCap)
             check_pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(check_pen)
 
             origin = checkbox_rect.topLeft()
-            w = self._checkbox_size
+            w = self.checkbox_size
             p1 = origin + QPointF(w * 0.27, w * 0.5)
             p2 = origin + QPointF(w * 0.44, w * 0.68)
             p3 = origin + QPointF(w * 0.75, w * 0.34)
@@ -235,18 +239,160 @@ class FilterDialog(MessageBoxBase):
 
         # 预计算术语错误明细：{ (src, dst): [item, ...] }
         self.glossary_error_map: dict[tuple[str, str], list[Item]] = {}
-        self._build_glossary_error_map()
+        self.build_glossary_error_map()
 
         # 持久化保存术语选中状态，初始化为全选
-        self._term_checked_state: set[tuple[str, str]] = set(
+        self.term_checked_state: set[tuple[str, str]] = set(
             self.glossary_error_map.keys()
         )
 
-        self._init_ui()
+        self.init_ui()
         # 初始化后刷新一次联动数据
-        self._refresh_all()
+        self.refresh_all()
 
-    def _build_glossary_error_map(self) -> None:
+    def export_error_report(self) -> None:
+        """导出错误报告"""
+        # 1. 获取当前筛选结果中的错误条目
+        items = self.get_current_filtered_items()
+        error_items = [i for i in items if self.warning_map.get(id(i))]
+
+        if not error_items:
+            InfoBar.warning(
+                title=Localizer.get().alert,
+                content=Localizer.get().alert_no_data,
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self.window(),
+            )
+            return
+
+        # 2. 准备导出路径
+        lg_path = StorageContext.get().get_lg_path()
+        if not lg_path:
+            return
+
+        project_path = Path(lg_path)
+        project_name = project_path.stem
+        # 输出文件名: [工程名]_结果检查.txt
+        output_name = f"{project_name}_结果检查.txt"
+        output_path = project_path.parent / output_name
+
+        # 3. 准备警告类型名称映射
+        warning_labels = {
+            WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
+            WarningType.HANGEUL: Localizer.get().proofreading_page_warning_hangeul,
+            WarningType.TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
+            WarningType.SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
+            WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
+            WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
+        }
+
+        # 4. 生成内容
+        content_lines = []
+        separator_line = "=" * 60
+        section_separator = "-" * 60
+
+        # 4.1 报告头
+        content_lines.append(separator_line)
+        content_lines.append(
+            f"{Localizer.get().proofreading_page_filter_report_title}".center(60)
+        )
+        content_lines.append(separator_line)
+        content_lines.append(
+            f"{Localizer.get().proofreading_page_filter_report_project}: {project_name}"
+        )
+        content_lines.append(
+            f"{Localizer.get().proofreading_page_filter_report_time}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        content_lines.append(
+            f"{Localizer.get().proofreading_page_filter_report_total}: {len(error_items)}"
+        )
+
+        # 警告筛选 (只列结果检查，忽略文件范围)
+        valid_warning_buttons = {
+            w: b for w, b in self.warning_buttons.items() if w != self.NO_WARNING_TAG
+        }
+
+        selected_warnings = {
+            w for w, b in valid_warning_buttons.items() if b.isChecked()
+        }
+
+        # 只要有选中的警告类型（正常情况下导出时肯定有，否则列表为空），就显示筛选条件
+        if selected_warnings:
+            # 无论是否全选，都列出所有选中的项
+            warning_names = [
+                valid_warning_buttons[w].text().split(" • ")[0]
+                for w in valid_warning_buttons  # 保持定义顺序
+                if w in selected_warnings
+            ]
+            filter_text = ", ".join(warning_names)
+
+            content_lines.append(
+                f"{Localizer.get().proofreading_page_filter_report_filter}: {filter_text}"
+            )
+
+        content_lines.append(separator_line)
+        # 报告头与第一个条目之间 3 个空行
+        content_lines.append("")
+        content_lines.append("")
+        content_lines.append("")
+
+        # 4.2 错误条目
+        for i, item in enumerate(error_items, 1):
+            warnings = self.warning_map.get(id(item), [])
+            warning_strs = [warning_labels.get(w, w) for w in warnings]
+            warning_line = " | ".join(warning_strs)
+
+            # Item Header
+            content_lines.append(f"No. {i}  [{warning_line}]")
+            content_lines.append(f"File: {item.get_file_path()}")
+            content_lines.append(section_separator)
+
+            # Content
+            content_lines.append(item.get_src())
+            content_lines.append("▽")
+            content_lines.append("▽")
+            content_lines.append("▽")
+            content_lines.append(item.get_dst())
+
+            # Item Footer
+            content_lines.append(separator_line)
+
+            # 条目之间 3 个空行
+            content_lines.append("")
+            content_lines.append("")
+            content_lines.append("")
+
+        # 5. 写入文件
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(content_lines))
+
+            # Toast 显示在父窗口，位置更合理
+            InfoBar.success(
+                title=Localizer.get().task_success,
+                content="",
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self.window(),  # 使用 window() 获取顶层窗口作为父组件
+            )
+        except Exception as e:
+            LogManager.get().error("", e)
+            InfoBar.error(
+                title=Localizer.get().task_failed,
+                content="",
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self.window(),
+            )
+
+    def build_glossary_error_map(self) -> None:
         """构建术语错误明细映射"""
         for item in self.items:
             if WarningType.GLOSSARY not in self.warning_map.get(id(item), []):
@@ -257,7 +403,7 @@ class FilterDialog(MessageBoxBase):
                     self.glossary_error_map[term] = []
                 self.glossary_error_map[term].append(item)
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
         """初始化双栏布局 UI"""
         self.widget.setMinimumWidth(900)
         self.viewLayout.setSpacing(16)
@@ -274,11 +420,11 @@ class FilterDialog(MessageBoxBase):
         left_layout.setSpacing(12)
         left_layout.setAlignment(Qt.AlignTop)
 
-        left_layout.addWidget(self._create_status_card())
-        left_layout.addWidget(self._create_warning_card())
-        left_layout.addWidget(self._create_left_panel(), 1)
+        left_layout.addWidget(self.create_status_card())
+        left_layout.addWidget(self.create_warning_card())
+        left_layout.addWidget(self.create_left_panel(), 1)
 
-        self.term_card = self._create_term_card()
+        self.term_card = self.create_term_card()
         self.term_card.setFixedWidth(360)
 
         body_layout.addWidget(left_container, 1)
@@ -290,20 +436,20 @@ class FilterDialog(MessageBoxBase):
         self.yesButton.setText(Localizer.get().confirm)
         self.cancelButton.setText(Localizer.get().cancel)
 
-    def _setup_small_button(self, btn: QWidget) -> None:
+    def setup_small_button(self, btn: QWidget) -> None:
         btn.setFixedHeight(26)
         font = btn.font()
         font.setPixelSize(12)
         btn.setFont(font)
 
-    def _setup_filter_list_widget(self, list_widget: ListWidget) -> None:
+    def setup_filter_list_widget(self, list_widget: ListWidget) -> None:
         list_widget.setSelectionMode(QAbstractItemView.NoSelection)
         list_widget.setItemDelegate(FilterListDelegate(list_widget))
         list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         list_widget.setResizeMode(ListWidget.Adjust)
         list_widget.setStyleSheet(self.LIST_STYLE)
 
-    def _create_left_panel(self) -> CardWidget:
+    def create_left_panel(self) -> CardWidget:
         """创建左栏：文件范围选择"""
         card = CardWidget(self.widget)
         card.setBorderRadius(4)
@@ -324,10 +470,10 @@ class FilterDialog(MessageBoxBase):
         btn_clear = PushButton(Localizer.get().proofreading_page_filter_clear)
 
         for btn in (btn_select_all, btn_clear):
-            self._setup_small_button(btn)
+            self.setup_small_button(btn)
 
-        btn_select_all.clicked.connect(self._select_all_files)
-        btn_clear.clicked.connect(self._deselect_all_files)
+        btn_select_all.clicked.connect(self.select_all_files)
+        btn_clear.clicked.connect(self.deselect_all_files)
         title_row.addWidget(btn_select_all)
         title_row.addWidget(btn_clear)
         layout.addLayout(title_row)
@@ -338,7 +484,7 @@ class FilterDialog(MessageBoxBase):
         self.file_search.setPlaceholderText(
             Localizer.get().proofreading_page_filter_search_file
         )
-        self.file_search.textChanged.connect(self._filter_file_list)
+        self.file_search.textChanged.connect(self.filter_file_list)
         layout.addWidget(self.file_search)
 
         layout.addSpacing(8)
@@ -346,8 +492,8 @@ class FilterDialog(MessageBoxBase):
         # 文件列表
         self.file_list = ListWidget()
         self.file_list.setMinimumHeight(240)
-        self._setup_filter_list_widget(self.file_list)
-        self.file_list.itemClicked.connect(self._on_file_item_clicked)
+        self.setup_filter_list_widget(self.file_list)
+        self.file_list.itemClicked.connect(self.on_file_item_clicked)
 
         # 统计每个文件的条目数，按路径排序
         file_item_counts = Counter(item.get_file_path() for item in self.items)
@@ -379,7 +525,7 @@ class FilterDialog(MessageBoxBase):
 
         return card
 
-    def _create_status_card(self) -> CardWidget:
+    def create_status_card(self) -> CardWidget:
         """创建翻译状态卡片"""
         card = CardWidget(self.widget)
         card.setBorderRadius(4)
@@ -412,8 +558,8 @@ class FilterDialog(MessageBoxBase):
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
-            self._setup_small_button(btn)
-            btn.clicked.connect(self._on_filter_changed)
+            self.setup_small_button(btn)
+            btn.clicked.connect(self.on_filter_changed)
             self.status_buttons[status] = btn
             status_row.addWidget(btn)
 
@@ -421,7 +567,7 @@ class FilterDialog(MessageBoxBase):
 
         return card
 
-    def _create_warning_card(self) -> CardWidget:
+    def create_warning_card(self) -> CardWidget:
         """创建质量检查卡片"""
         card = CardWidget(self.widget)
         card.setBorderRadius(4)
@@ -430,9 +576,30 @@ class FilterDialog(MessageBoxBase):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(0)
 
-        layout.addWidget(
+        # 标题栏：标题 + 导出按钮
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
+
+        title_row.addWidget(
             BodyLabel(Localizer.get().proofreading_page_filter_warning_type)
         )
+        title_row.addStretch(1)
+
+        self.btn_export = PushButton(
+            Localizer.get().proofreading_page_filter_export_btn
+        )
+        self.setup_small_button(self.btn_export)
+        self.btn_export.installEventFilter(
+            ToolTipFilter(self.btn_export, 300, ToolTipPosition.TOP)
+        )
+        self.btn_export.setToolTip(
+            Localizer.get().proofreading_page_filter_export_tooltip
+        )
+        self.btn_export.clicked.connect(self.export_error_report)
+        title_row.addWidget(self.btn_export)
+
+        layout.addLayout(title_row)
         layout.addSpacing(6)
 
         warning_row = FlowLayout(needAni=False)
@@ -463,8 +630,8 @@ class FilterDialog(MessageBoxBase):
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
             btn.setChecked(True)
-            self._setup_small_button(btn)
-            btn.clicked.connect(self._on_filter_changed)
+            self.setup_small_button(btn)
+            btn.clicked.connect(self.on_filter_changed)
             self.warning_buttons[warning_type] = btn
             warning_row.addWidget(btn)
 
@@ -472,7 +639,7 @@ class FilterDialog(MessageBoxBase):
 
         return card
 
-    def _create_term_card(self) -> CardWidget:
+    def create_term_card(self) -> CardWidget:
         """创建术语明细卡片（常驻显示）"""
         card = CardWidget(self.widget)
         card.setBorderRadius(4)
@@ -499,10 +666,10 @@ class FilterDialog(MessageBoxBase):
         )
 
         for btn in (self.btn_select_all_terms, self.btn_clear_terms):
-            self._setup_small_button(btn)
+            self.setup_small_button(btn)
 
-        self.btn_select_all_terms.clicked.connect(self._select_all_terms)
-        self.btn_clear_terms.clicked.connect(self._deselect_all_terms)
+        self.btn_select_all_terms.clicked.connect(self.select_all_terms)
+        self.btn_clear_terms.clicked.connect(self.deselect_all_terms)
         title_row.addWidget(self.btn_select_all_terms)
         title_row.addWidget(self.btn_clear_terms)
         layout.addLayout(title_row)
@@ -513,15 +680,15 @@ class FilterDialog(MessageBoxBase):
         self.term_search.setPlaceholderText(
             Localizer.get().proofreading_page_filter_search_term
         )
-        self.term_search.textChanged.connect(self._filter_term_list)
+        self.term_search.textChanged.connect(self.filter_term_list)
         layout.addWidget(self.term_search)
 
         layout.addSpacing(8)
 
         # 术语列表
         self.term_list = ListWidget()
-        self._setup_filter_list_widget(self.term_list)
-        self.term_list.itemClicked.connect(self._on_term_item_clicked)
+        self.setup_filter_list_widget(self.term_list)
+        self.term_list.itemClicked.connect(self.on_term_item_clicked)
         layout.addWidget(self.term_list, 1)
 
         # 空状态/禁用状态提示
@@ -541,31 +708,31 @@ class FilterDialog(MessageBoxBase):
     # 事件处理
     # =========================================
 
-    def _on_file_item_clicked(self, item: QListWidgetItem) -> None:
+    def on_file_item_clicked(self, item: QListWidgetItem) -> None:
         """处理文件列表项点击：切换激活状态，刷新列表"""
         widget = self.file_list.itemWidget(item)
         if isinstance(widget, FilterListItemWidget):
             widget.set_checked(not widget.is_checked())
-        self._refresh_all()
+        self.refresh_all()
 
-    def _on_term_item_clicked(self, item: QListWidgetItem) -> None:
+    def on_term_item_clicked(self, item: QListWidgetItem) -> None:
         """处理术语列表项点击：切换激活状态，刷新信息"""
         widget = self.term_list.itemWidget(item)
         if isinstance(widget, FilterListItemWidget):
             widget.set_checked(not widget.is_checked())
 
-    def _on_filter_changed(self) -> None:
+    def on_filter_changed(self) -> None:
         """任意筛选条件变化时触发全局联动刷新"""
-        self._refresh_all()
+        self.refresh_all()
 
-    def _filter_file_list(self, keyword: str) -> None:
+    def filter_file_list(self, keyword: str) -> None:
         """过滤文件列表"""
         keyword = keyword.lower()
         for path, list_item in self.file_list_items.items():
             visible = keyword in path.lower()
             list_item.setHidden(not visible)
 
-    def _filter_term_list(self, keyword: str) -> None:
+    def filter_term_list(self, keyword: str) -> None:
         """过滤术语列表"""
         keyword = keyword.lower()
         for term, list_item in self.term_list_items.items():
@@ -573,21 +740,21 @@ class FilterDialog(MessageBoxBase):
             visible = keyword in src.lower() or keyword in dst.lower()
             list_item.setHidden(not visible)
 
-    def _select_all_files(self) -> None:
+    def select_all_files(self) -> None:
         for widget in self.file_list_widgets.values():
             widget.set_checked(True)
-        self._refresh_all()
+        self.refresh_all()
 
-    def _deselect_all_files(self) -> None:
+    def deselect_all_files(self) -> None:
         for widget in self.file_list_widgets.values():
             widget.set_checked(False)
-        self._refresh_all()
+        self.refresh_all()
 
-    def _select_all_terms(self) -> None:
+    def select_all_terms(self) -> None:
         for widget in getattr(self, "term_list_widgets", {}).values():
             widget.set_checked(True)
 
-    def _deselect_all_terms(self) -> None:
+    def deselect_all_terms(self) -> None:
         for widget in getattr(self, "term_list_widgets", {}).values():
             widget.set_checked(False)
 
@@ -595,7 +762,7 @@ class FilterDialog(MessageBoxBase):
     # 全量联动刷新
     # =========================================
 
-    def _get_current_filtered_items(self) -> list[Item]:
+    def get_current_filtered_items(self) -> list[Item]:
         """根据当前所有筛选条件获取符合条件的条目列表"""
         # 根据 widget 的选中状态判断文件是否激活
         selected_files = {
@@ -630,9 +797,9 @@ class FilterDialog(MessageBoxBase):
             result.append(item)
         return result
 
-    def _refresh_all(self) -> None:
+    def refresh_all(self) -> None:
         """全量联动刷新：所有模块的计数都基于当前筛选结果"""
-        filtered_items = self._get_current_filtered_items()
+        filtered_items = self.get_current_filtered_items()
 
         # 更新文件列表计数
         file_counts = Counter(item.get_file_path() for item in filtered_items)
@@ -670,23 +837,23 @@ class FilterDialog(MessageBoxBase):
 
         # 更新术语明细
         glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
-        self._refresh_term_list(filtered_items, glossary_active)
+        self.refresh_term_list(filtered_items, glossary_active)
 
-    def _sync_term_widgets_to_state(self) -> None:
+    def sync_term_widgets_to_state(self) -> None:
         """将当前可见 widget 的状态同步到持久化存储（增量更新）"""
         current_widgets = getattr(self, "term_list_widgets", {})
         if current_widgets:
             for term, widget in current_widgets.items():
                 if widget.is_checked():
-                    self._term_checked_state.add(term)
+                    self.term_checked_state.add(term)
                 else:
-                    self._term_checked_state.discard(term)
+                    self.term_checked_state.discard(term)
 
-    def _refresh_term_list(self, filtered_items: list[Item], active: bool) -> None:
+    def refresh_term_list(self, filtered_items: list[Item], active: bool) -> None:
         """刷新术语明细列表"""
 
         # 先同步当前状态
-        self._sync_term_widgets_to_state()
+        self.sync_term_widgets_to_state()
 
         self.term_list.clear()
         self.term_list_items.clear()
@@ -743,7 +910,7 @@ class FilterDialog(MessageBoxBase):
             # 创建自定义 widget 并设置
             item_widget = FilterListItemWidget(display_text, self.term_list)
             # 从持久化状态恢复选中
-            item_widget.set_checked(term in self._term_checked_state)
+            item_widget.set_checked(term in self.term_checked_state)
             item_widget.set_count(count)
             item_widget.set_tooltip(display_text)
             self.term_list.setItemWidget(list_item, item_widget)
@@ -757,7 +924,7 @@ class FilterDialog(MessageBoxBase):
 
     def get_filter_options(self) -> dict:
         # 强制同步当前可见 widget 的状态到持久化存储，以防最后的操作没有触发刷新
-        self._sync_term_widgets_to_state()
+        self.sync_term_widgets_to_state()
 
         selected_warnings = {
             w for w, btn in self.warning_buttons.items() if btn.isChecked()
@@ -774,8 +941,8 @@ class FilterDialog(MessageBoxBase):
         selected_terms = None
         if WarningType.GLOSSARY in selected_warnings:
             # 只有当选中项少于总项数时才返回具体集合
-            if len(self._term_checked_state) < len(self.glossary_error_map):
-                selected_terms = self._term_checked_state
+            if len(self.term_checked_state) < len(self.glossary_error_map):
+                selected_terms = self.term_checked_state
 
         return {
             self.KEY_WARNING_TYPES: selected_warnings
@@ -803,13 +970,13 @@ class FilterDialog(MessageBoxBase):
         for path, widget in self.file_list_widgets.items():
             widget.set_checked(file_paths is None or path in file_paths)
 
-        # 在 _refresh_all 前预设术语持久化状态
+        # 在 refresh_all 前预设术语持久化状态
         # 如果传入 None，保持默认的全选状态（已经在 __init__ 中处理）
         glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
         if glossary_terms is not None:
-            self._term_checked_state = set(glossary_terms)
+            self.term_checked_state = set(glossary_terms)
             # 关键修复：设置了新状态后，必须清空旧的 widget 引用
-            # 防止随后的 _refresh_all -> _sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
+            # 防止随后的 refresh_all -> sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
             self.term_list_widgets = {}
 
-        self._refresh_all()
+        self.refresh_all()
