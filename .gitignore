@@ -7,7 +7,6 @@ __pycache__
 /*output*
 
 *.lg
-*.json
-*.xlsx
-*译文*
+/*.xlsx
+/*.json
 /resource/config.json
