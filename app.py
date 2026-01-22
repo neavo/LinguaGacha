@@ -89,10 +89,6 @@ if __name__ == "__main__":
     # 工作目录保持在 app_dir 以便访问资源文件（version.txt, resource/ 等）
     os.chdir(app_dir)
 
-    # 创建文件夹
-    os.makedirs(os.path.join(data_dir, "input"), exist_ok=True)
-    os.makedirs(os.path.join(data_dir, "output"), exist_ok=True)
-
     # 载入并保存默认配置
     config = Config().load()
 

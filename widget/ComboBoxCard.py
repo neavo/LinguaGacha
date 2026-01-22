@@ -8,15 +8,22 @@ from qfluentwidgets import ComboBox
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
-class ComboBoxCard(CardWidget):
 
-    def __init__(self, title: str, description: str, items: list, init: Callable = None, current_changed: Callable = None) -> None:
+class ComboBoxCard(CardWidget):
+    def __init__(
+        self,
+        title: str,
+        description: str,
+        items: list,
+        init: Callable = None,
+        current_changed: Callable = None,
+    ) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.hbox = QHBoxLayout(self)
-        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.hbox.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()
@@ -45,3 +52,6 @@ class ComboBoxCard(CardWidget):
 
     def get_combo_box(self) -> ComboBox:
         return self.combo_box
+
+    def set_description(self, description: str) -> None:
+        self.description_label.setText(description)

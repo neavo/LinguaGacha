@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 from module.Localizer.Localizer import Localizer
@@ -12,6 +14,19 @@ class PathStore:
     - 双语对照目录：{工程文件所在目录}/{译文_双语对照}/
     """
 
+    timestamp_suffix: str = ""
+
+    @staticmethod
+    @contextmanager
+    def timestamp_suffix_context():
+        """上下文管理器：为输出目录添加时间戳后缀"""
+        old_suffix = PathStore.timestamp_suffix
+        PathStore.timestamp_suffix = datetime.now().strftime("_%Y%m%d_%H%M%S")
+        try:
+            yield
+        finally:
+            PathStore.timestamp_suffix = old_suffix
+
     @staticmethod
     def get_translated_path() -> str:
         """获取译文输出目录路径"""
@@ -21,7 +36,8 @@ class PathStore:
             raise RuntimeError("工程未加载，无法获取输出路径")
 
         project_dir = Path(lg_path).parent
-        return str(project_dir / Localizer.get().path_translated)
+        folder_name = Localizer.get().path_translated + PathStore.timestamp_suffix
+        return str(project_dir / folder_name)
 
     @staticmethod
     def get_bilingual_path() -> str:
@@ -32,7 +48,10 @@ class PathStore:
             raise RuntimeError("工程未加载，无法获取输出路径")
 
         project_dir = Path(lg_path).parent
-        return str(project_dir / Localizer.get().path_translated_bilingual)
+        folder_name = (
+            Localizer.get().path_translated_bilingual + PathStore.timestamp_suffix
+        )
+        return str(project_dir / folder_name)
 
     @staticmethod
     def ensure_translated_path() -> str:

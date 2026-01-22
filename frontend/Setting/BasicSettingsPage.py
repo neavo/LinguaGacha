@@ -1,4 +1,5 @@
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -52,6 +53,7 @@ class BasicSettingsPage(QWidget, Base):
         self.root.addWidget(scroll_area)
 
         # 添加控件
+        self.add_widget_project_save_mode(scroll_area_vbox, config, window)
         self.add_widget_source_language(scroll_area_vbox, config, window)
         self.add_widget_target_language(scroll_area_vbox, config, window)
         self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
@@ -61,6 +63,83 @@ class BasicSettingsPage(QWidget, Base):
 
         # 填充
         scroll_area_vbox.addStretch(1)
+
+    # 工程文件保存位置
+    def add_widget_project_save_mode(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        items = [
+            Localizer.get().basic_settings_page_project_save_mode_manual,
+            Localizer.get().basic_settings_page_project_save_mode_fixed,
+            Localizer.get().basic_settings_page_project_save_mode_source,
+        ]
+
+        def get_description(mode: str, path: str) -> str:
+            if mode == Config.ProjectSaveMode.FIXED and path:
+                return Localizer.get().basic_settings_page_project_save_mode_content_fixed.replace(
+                    "{PATH}", path
+                )
+            return Localizer.get().basic_settings_page_project_save_mode_content
+
+        def init(widget: ComboBoxCard) -> None:
+            # 查找当前索引：0=MANUAL, 1=FIXED, 2=SOURCE
+            index = 0
+            if config.project_save_mode == Config.ProjectSaveMode.FIXED:
+                index = 1
+            elif config.project_save_mode == Config.ProjectSaveMode.SOURCE:
+                index = 2
+
+            widget.get_combo_box().setCurrentIndex(index)
+            widget.set_description(
+                get_description(config.project_save_mode, config.project_fixed_path)
+            )
+
+        def current_changed(widget: ComboBoxCard) -> None:
+            config = Config().load()
+            index = widget.get_combo_box().currentIndex()
+            old_mode = config.project_save_mode
+
+            # 索引映射：0=MANUAL, 1=FIXED, 2=SOURCE
+            new_mode = Config.ProjectSaveMode.MANUAL
+            if index == 1:
+                new_mode = Config.ProjectSaveMode.FIXED
+
+                # 切换到固定路径时弹出文件夹选择对话框
+                dir_path = QFileDialog.getExistingDirectory(
+                    self,
+                    Localizer.get().select_folder,
+                    config.project_fixed_path or "",
+                )
+
+                if dir_path:
+                    config.project_fixed_path = dir_path
+                else:
+                    # 用户取消选择，回退到之前的模式
+                    old_index = 0
+                    if old_mode == Config.ProjectSaveMode.FIXED:
+                        old_index = 1
+                    elif old_mode == Config.ProjectSaveMode.SOURCE:
+                        old_index = 2
+                    widget.get_combo_box().setCurrentIndex(old_index)
+                    return
+            elif index == 2:
+                new_mode = Config.ProjectSaveMode.SOURCE
+
+            config.project_save_mode = new_mode
+            config.save()
+
+            # 更新描述
+            widget.set_description(get_description(new_mode, config.project_fixed_path))
+
+        parent.addWidget(
+            ComboBoxCard(
+                title=Localizer.get().basic_settings_page_project_save_mode_title,
+                description=Localizer.get().basic_settings_page_project_save_mode_content,
+                items=items,
+                init=init,
+                current_changed=current_changed,
+            )
+        )
 
     # 原文语言
     def add_widget_source_language(

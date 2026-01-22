@@ -24,7 +24,6 @@ from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.QualityRuleManager import QualityRuleManager
-from module.Storage.PathStore import PathStore
 from module.Storage.StorageContext import StorageContext
 from module.TextProcessor import TextProcessor
 
@@ -658,12 +657,9 @@ class Translator(Base):
             # 术语表刷新事件
             self.emit(Base.Event.GLOSSARY_REFRESH, {})
 
-        # 写入文件
-        FileManager(self.config).write_to_path(items)
+        # 写入文件并获取实际输出路径（带时间戳）
+        output_path = FileManager(self.config).write_to_path(items)
         self.print("")
-
-        # 获取输出目录路径
-        output_path = PathStore.get_translated_path()
 
         self.info(Localizer.get().engine_task_save_done.replace("{PATH}", output_path))
         self.print("")
