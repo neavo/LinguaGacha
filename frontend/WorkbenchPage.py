@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QGridLayout
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
@@ -31,6 +32,8 @@ from qfluentwidgets import ScrollArea
 from qfluentwidgets import SimpleCardWidget
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import TitleLabel
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import TransparentToolButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
@@ -254,6 +257,13 @@ class RecentProjectItem(QFrame):
         self.path = path
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+        # 设置条目本身的尺寸策略，允许被压缩
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+
+        # 统一路径分隔符为当前系统规范
+        display_path = os.path.normpath(path)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 12, 10, 12)  # 增加垂直间距
         layout.setSpacing(12)
@@ -272,14 +282,16 @@ class RecentProjectItem(QFrame):
         name_label = StrongBodyLabel(name, self)
         text_layout.addWidget(name_label)
 
-        path_label = CaptionLabel(path, self)
-        path_label.setTextColor(
+        self.path_label = CaptionLabel(display_path, self)
+        self.path_label.setTextColor(
             QColor(96, 96, 96), QColor(160, 160, 160)
         )  # 参考 ModelSelectorPage 的灰色
-        text_layout.addWidget(path_label)
+        text_layout.addWidget(self.path_label)
 
-        layout.addLayout(text_layout)
-        layout.addStretch()
+        # 保存完整路径用于截断显示
+        self.display_path = display_path
+
+        layout.addLayout(text_layout, 1)
 
         # 删除按钮
         self.remove_btn = TransparentToolButton(FluentIcon.CLOSE, self)
@@ -287,6 +299,21 @@ class RecentProjectItem(QFrame):
         self.remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.path))
         self.remove_btn.hide()  # 默认隐藏，hover 时显示
         layout.addWidget(self.remove_btn)
+
+        # 整个条目的 tooltip 显示完整路径
+        self.setToolTip(display_path)
+        self.installEventFilter(ToolTipFilter(self, 300, ToolTipPosition.TOP))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # 根据可用宽度截断路径文本
+        available_width = self.path_label.width()
+        if available_width > 0:
+            metrics = self.path_label.fontMetrics()
+            elided = metrics.elidedText(
+                self.display_path, Qt.TextElideMode.ElideRight, available_width
+            )
+            self.path_label.setText(elided)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -964,14 +991,51 @@ class WorkbenchPage(ScrollArea, Base):
         if not self.selected_source_path:
             return
 
-        # 弹出另存为对话框
-        default_name = Path(self.selected_source_path).name + ".lg"
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            Localizer.get().workbench_save_project_title,
-            default_name,
-            Localizer.get().workbench_file_filter_lg,
-        )
+        config = Config().load()
+        mode = config.project_save_mode
+        path = ""
+
+        if mode == Config.ProjectSaveMode.MANUAL:
+            # 弹出另存为对话框
+            default_name = Path(self.selected_source_path).name + ".lg"
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                Localizer.get().workbench_save_project_title,
+                default_name,
+                Localizer.get().workbench_file_filter_lg,
+            )
+        else:
+            # 自动生成文件名
+            # 获取源名称（如果是文件则去后缀，如果是目录则保留）
+            if os.path.isfile(self.selected_source_path):
+                base_name = Path(self.selected_source_path).stem
+                parent_dir = str(Path(self.selected_source_path).parent)
+            else:
+                base_name = Path(self.selected_source_path).name
+                parent_dir = str(Path(self.selected_source_path).parent)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{base_name}_{timestamp}.lg"
+
+            target_dir = ""
+            if mode == Config.ProjectSaveMode.SOURCE:
+                target_dir = parent_dir
+            elif mode == Config.ProjectSaveMode.FIXED:
+                target_dir = config.project_fixed_path
+                # 如果固定目录无效，回退到手动选择或提示
+                if not target_dir or not os.path.exists(target_dir):
+                    # 尝试请求用户选择
+                    target_dir = QFileDialog.getExistingDirectory(
+                        self, Localizer.get().select_folder, ""
+                    )
+                    if target_dir:
+                        config.project_fixed_path = target_dir
+                        config.save()
+                    else:
+                        # 用户取消，终止
+                        return
+
+            path = os.path.join(target_dir, filename)
 
         if not path:
             return

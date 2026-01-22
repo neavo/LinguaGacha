@@ -18,6 +18,7 @@ from module.File.TXT import TXT
 from module.File.WOLFXLSX import WOLFXLSX
 from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
+from module.Storage.PathStore import PathStore
 
 
 class FileManager(Base):
@@ -127,18 +128,27 @@ class FileManager(Base):
         return project, items
 
     # 写
-    def write_to_path(self, items: list[Item]) -> None:
+    def write_to_path(self, items: list[Item]) -> str:
+        """写入翻译结果到文件，返回实际输出目录路径（带时间戳）"""
+        output_path = ""
+
         try:
-            MD(self.config).write_to_path(items)
-            TXT(self.config).write_to_path(items)
-            ASS(self.config).write_to_path(items)
-            SRT(self.config).write_to_path(items)
-            EPUB(self.config).write_to_path(items)
-            XLSX(self.config).write_to_path(items)
-            WOLFXLSX(self.config).write_to_path(items)
-            RENPY(self.config).write_to_path(items)
-            TRANS(self.config).write_to_path(items)
-            KVJSON(self.config).write_to_path(items)
-            MESSAGEJSON(self.config).write_to_path(items)
+            with PathStore.timestamp_suffix_context():
+                MD(self.config).write_to_path(items)
+                TXT(self.config).write_to_path(items)
+                ASS(self.config).write_to_path(items)
+                SRT(self.config).write_to_path(items)
+                EPUB(self.config).write_to_path(items)
+                XLSX(self.config).write_to_path(items)
+                WOLFXLSX(self.config).write_to_path(items)
+                RENPY(self.config).write_to_path(items)
+                TRANS(self.config).write_to_path(items)
+                KVJSON(self.config).write_to_path(items)
+                MESSAGEJSON(self.config).write_to_path(items)
+
+                # 在上下文内获取路径，确保包含时间戳后缀
+                output_path = PathStore.get_translated_path()
         except Exception as e:
             self.error(f"{Localizer.get().log_write_file_fail}", e)
+
+        return output_path

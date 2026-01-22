@@ -44,8 +44,15 @@ class Config:
     auto_process_prefix_suffix_preserved_text: bool = True
 
     # BasicSettingsPage
+    class ProjectSaveMode(StrEnum):
+        MANUAL = "MANUAL"
+        SOURCE = "SOURCE"
+        FIXED = "FIXED"
+
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
+    project_save_mode: str = ProjectSaveMode.MANUAL
+    project_fixed_path: str = ""
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
     request_timeout: int = 120

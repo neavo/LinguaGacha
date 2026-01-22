@@ -355,6 +355,12 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_batch_reset_translation_confirm: str = "Confirm to reset translation status for all {COUNT} selected items …?\nTranslation will be cleared and status will be reset to Untranslated …"
 
     # 基础设置
+    basic_settings_page_project_save_mode_title: str = "Project File Save Location"
+    basic_settings_page_project_save_mode_content: str = "Set the save location for project files when creating a new project"
+    basic_settings_page_project_save_mode_content_fixed: str = "Set the save location for project files when creating a new project, currently {PATH}"
+    basic_settings_page_project_save_mode_manual: str = "Manual Save"
+    basic_settings_page_project_save_mode_fixed: str = "Fixed Path"
+    basic_settings_page_project_save_mode_source: str = "Source File Path"
     basic_settings_page_source_language_title: str = "Source Language"
     basic_settings_page_source_language_content: str = "Set the language of the input text in the current project"
     basic_settings_page_target_language_title: str = "Target Language"
@@ -562,4 +568,3 @@ class LocalizerEN(LocalizerZH):
     project_store_parsing_items: str = "Parsing translation items …"
     project_store_created: str = "Project creation completed …"
     project_store_file_not_found: str = "Project file not found: {PATH}"
-

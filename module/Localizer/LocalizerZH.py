@@ -355,6 +355,12 @@ class LocalizerZH:
     proofreading_page_batch_reset_translation_confirm: str = "确定要重置全部 {COUNT} 个已选条目的翻译状态吗 …?\n重置后，译文将被清空，状态将变更为未翻译 …"
 
     # 基础设置
+    basic_settings_page_project_save_mode_title: str = "工程文件保存位置"
+    basic_settings_page_project_save_mode_content: str = "设置新建工程时，工程文件的保存位置"
+    basic_settings_page_project_save_mode_content_fixed: str = "设置新建工程时，工程文件的保存位置，当前为 {PATH}"
+    basic_settings_page_project_save_mode_manual: str = "手动保存"
+    basic_settings_page_project_save_mode_fixed: str = "固定路径"
+    basic_settings_page_project_save_mode_source: str = "源文件路径"
     basic_settings_page_source_language_title: str = "原文语言"
     basic_settings_page_source_language_content: str = "设置当前项目中输入文本的语言"
     basic_settings_page_target_language_title: str = "译文语言"
@@ -562,4 +568,3 @@ class LocalizerZH:
     project_store_parsing_items: str = "正在解析翻译条目 …"
     project_store_created: str = "工程创建完成 …"
     project_store_file_not_found: str = "工程文件不存在: {PATH}"
-
