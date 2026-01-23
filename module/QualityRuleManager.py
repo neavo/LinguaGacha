@@ -32,7 +32,7 @@ class QualityRuleManager(Base):
     def __init__(self) -> None:
         super().__init__()
         # 缓存结构: { RuleType: list[dict] | dict }
-        self._cache: dict[str, Any] = {}
+        self.cache: dict[str, Any] = {}
 
         # 监听项目加载/卸载事件，用于清理缓存
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_changed)
@@ -55,7 +55,7 @@ class QualityRuleManager(Base):
 
     def clear_cache(self) -> None:
         """清空所有内存缓存"""
-        self._cache.clear()
+        self.cache.clear()
 
     # ========== 核心业务接口 ==========
 
@@ -167,9 +167,9 @@ class QualityRuleManager(Base):
     def get_rules_cached(self, rule_type: DataStore.RuleType) -> list[dict[str, Any]]:
         """从缓存或 DB 获取列表类规则"""
         # 1. 查缓存
-        if rule_type in self._cache:
+        if rule_type in self.cache:
             # 返回副本以确保线程安全（避免迭代时被修改）
-            return list(self._cache[rule_type])
+            return list(self.cache[rule_type])
 
         # 2. 查 DB
         db = self.get_db()
@@ -179,7 +179,7 @@ class QualityRuleManager(Base):
         data = db.get_rules(rule_type)
 
         # 3. 写缓存
-        self._cache[rule_type] = data
+        self.cache[rule_type] = data
 
         # 返回副本
         return list(data)
@@ -198,13 +198,13 @@ class QualityRuleManager(Base):
                 db.set_rules(rule_type, data)
 
         # 2. 更新缓存
-        self._cache[rule_type] = data
+        self.cache[rule_type] = data
 
     def get_rule_text_cached(self, rule_type: DataStore.RuleType) -> str:
         """从缓存或 DB 获取文本类规则"""
         # 1. 查缓存
-        if rule_type in self._cache:
-            return self._cache[rule_type]
+        if rule_type in self.cache:
+            return self.cache[rule_type]
 
         # 2. 查 DB
         db = self.get_db()
@@ -214,7 +214,7 @@ class QualityRuleManager(Base):
         text = db.get_rule_text(rule_type)
 
         # 3. 写缓存
-        self._cache[rule_type] = text
+        self.cache[rule_type] = text
         return text
 
     def set_rule_text_cached(self, rule_type: DataStore.RuleType, text: str) -> None:
@@ -225,13 +225,13 @@ class QualityRuleManager(Base):
             db.set_rule_text(rule_type, text)
 
         # 2. 更新缓存
-        self._cache[rule_type] = text
+        self.cache[rule_type] = text
 
     def get_meta_cached(self, key: str, default: Any) -> Any:
         """从缓存或 DB 获取元数据"""
         # 1. 查缓存
-        if key in self._cache:
-            value = self._cache[key]
+        if key in self.cache:
+            value = self.cache[key]
             return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
         # 2. 查 DB
@@ -242,7 +242,7 @@ class QualityRuleManager(Base):
         value = db.get_meta(key, default)
 
         # 3. 写缓存
-        self._cache[key] = value
+        self.cache[key] = value
 
         return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
@@ -254,7 +254,7 @@ class QualityRuleManager(Base):
             db.set_meta(key, value)
 
         # 2. 更新缓存
-        self._cache[key] = value
+        self.cache[key] = value
 
     # ========== 初始化逻辑 ==========
     def initialize_project_rules(self, db: DataStore) -> None:
