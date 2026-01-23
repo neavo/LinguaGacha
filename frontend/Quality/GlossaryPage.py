@@ -166,12 +166,24 @@ class GlossaryPage(QWidget, Base):
             )
 
         def custom_context_menu_requested(position: QPoint) -> None:
+            def delete_row_with_save() -> None:
+                self.table_manager.delete_row()
+                self.table_manager.sync()
+                self.set_glossary_data(self.table_manager.get_data())
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().quality_save_toast,
+                    },
+                )
+
             menu = RoundMenu("", self.table)
             menu.addAction(
                 Action(
                     FluentIcon.DELETE,
                     Localizer.get().quality_delete_row,
-                    triggered=self.table_manager.delete_row,
+                    triggered=delete_row_with_save,
                 )
             )
             menu.exec(self.table.mapToGlobal(position))
