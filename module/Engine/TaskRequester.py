@@ -13,7 +13,6 @@ from base.Base import Base
 from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
 
 
 class TaskRequester(Base):
@@ -205,7 +204,9 @@ class TaskRequester(Base):
             "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
         }
 
-    def request(self, messages: list[dict]) -> tuple[bool, str, str, int, int]:
+    def request(
+        self, messages: list[dict]
+    ) -> tuple[Exception | None, str, str, int, int]:
         """发起请求"""
         # 构建生成参数
         args: dict[str, float] = {}
@@ -250,7 +251,7 @@ class TaskRequester(Base):
 
     def request_sakura(
         self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[bool, str, str, int, int]:
+    ) -> tuple[Exception | None, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
@@ -268,8 +269,7 @@ class TaskRequester(Base):
 
             response_result = response.choices[0].message.content
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
         # 获取 Token 消耗
         try:
@@ -292,7 +292,7 @@ class TaskRequester(Base):
             ensure_ascii=False,
         )
 
-        return False, "", response_result, input_tokens, output_tokens
+        return None, "", response_result, input_tokens, output_tokens
 
     # ========== OpenAI 请求 ==========
 
@@ -345,7 +345,7 @@ class TaskRequester(Base):
 
     def request_openai(
         self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[bool, str, str, int, int]:
+    ) -> tuple[Exception | None, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
@@ -380,8 +380,7 @@ class TaskRequester(Base):
                 response_think = ""
                 response_result = message.content.strip()
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
         # 获取 Token 消耗
         try:
@@ -394,7 +393,7 @@ class TaskRequester(Base):
         except Exception:
             output_tokens = 0
 
-        return False, response_think, response_result, input_tokens, output_tokens
+        return None, response_think, response_result, input_tokens, output_tokens
 
     # ========== Google 请求 ==========
 
@@ -504,7 +503,7 @@ class TaskRequester(Base):
 
     def request_google(
         self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[bool, str, str, int, int]:
+    ) -> tuple[Exception | None, str, str, int, int]:
         try:
             # 将 custom_headers 转换为 tuple 以支持 lru_cache
             extra_headers_tuple = (
@@ -540,8 +539,7 @@ class TaskRequester(Base):
                 if len(result_messages) > 0:
                     response_result = result_messages[-1].text.strip()
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
         # 获取 Token 消耗
         try:
@@ -556,7 +554,7 @@ class TaskRequester(Base):
         except Exception:
             output_tokens = 0
 
-        return False, response_think, response_result, input_tokens, output_tokens
+        return None, response_think, response_result, input_tokens, output_tokens
 
     # ========== Anthropic 请求 ==========
 
@@ -610,7 +608,7 @@ class TaskRequester(Base):
 
     def request_anthropic(
         self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[bool, str, str, int, int]:
+    ) -> tuple[Exception | None, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: anthropic.Anthropic = __class__.get_client(
@@ -648,8 +646,7 @@ class TaskRequester(Base):
             else:
                 response_think = ""
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
         # 获取 Token 消耗
         try:
@@ -662,4 +659,4 @@ class TaskRequester(Base):
         except Exception:
             output_tokens = 0
 
-        return False, response_think, response_result, input_tokens, output_tokens
+        return None, response_think, response_result, input_tokens, output_tokens

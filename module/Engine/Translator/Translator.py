@@ -187,8 +187,14 @@ class Translator(Base):
                 # 继续翻译：恢复进度
                 self.extras = ctx.get_translation_extras()
                 self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-                self.extras["line"] = self.get_item_count_by_status(
+                self.extras["processed_line"] = self.get_item_count_by_status(
                     Base.ProjectStatus.PROCESSED
+                )
+                self.extras["error_line"] = self.get_item_count_by_status(
+                    Base.ProjectStatus.ERROR
+                )
+                self.extras["line"] = (
+                    self.extras["processed_line"] + self.extras["error_line"]
                 )
             else:
                 # 新翻译：重置所有条目状态
@@ -200,6 +206,8 @@ class Translator(Base):
                     "start_time": time.time(),
                     "total_line": 0,
                     "line": 0,
+                    "processed_line": 0,
+                    "error_line": 0,
                     "total_tokens": 0,
                     "total_input_tokens": 0,
                     "total_output_tokens": 0,
@@ -273,12 +281,11 @@ class Translator(Base):
                             break
 
                         try:
-                            # 尝试从队列获取任务 (非阻塞，配合 should_stop 使用)
-                            if self.task_queue.empty():
-                                time.sleep(0.1)
+                            # 尝试从队列获取任务 (阻塞式等待，提升响应性能)
+                            try:
+                                queue_item = self.task_queue.get(timeout=0.1)
+                            except Exception:
                                 continue
-
-                            queue_item = self.task_queue.get_nowait()
 
                             # 流量限制
                             if not task_limiter.acquire(
@@ -654,8 +661,13 @@ class Translator(Base):
         queue_item: PriorityQueueItem,
     ) -> None:
         try:
-            # 获取结果
-            result = future.result()
+            # 获取结果 (防御性处理，确保异常被捕获)
+            try:
+                result = future.result()
+            except Exception as e:
+                self.error("任务执行异常", e)
+                result = {"row_count": 0, "input_tokens": 0, "output_tokens": 0}
+
             task = queue_item.task
             if task is None:
                 return
@@ -667,38 +679,44 @@ class Translator(Base):
             ]
             if unprocessed_items:
                 # 构造一个仅包含未处理条目的临时 Context 进行重试处理
-                # 注意：这里我们直接复用 handle_failed_task，但它需要处理这种 item 减少的情况
                 new_tasks = self.scheduler.handle_failed_task(queue_item, result)
                 for item in new_tasks:
                     self.task_queue.put(item)
-
-                # 如果没有产生新任务，说明剩余条目已强制接受
-                if not new_tasks:
-                    progress.update(pid, advance=len(unprocessed_items))
-
-                # 如果部分成功，还需要更新已完成的进度
-                if result.get("row_count", 0) > 0:
-                    progress.update(pid, advance=result.get("row_count", 0))
             else:
                 # 全量成功的路径
                 pass
 
-            # 即时写入已翻译的条目到数据库（支持断点续译）
-
-            translated_items = [
+            # 即时写入已翻译或标记错误的条目到数据库（支持断点续译）
+            finalized_items = [
                 item
                 for item in task.items
-                if item.get_status() == Base.ProjectStatus.PROCESSED
+                if item.get_status()
+                in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
             ]
-            if translated_items:
-                self.save_items_batch(translated_items)
+            if finalized_items:
+                self.save_items_batch(finalized_items)
+
+            # 统计本次完成的行数
+            processed_count = len(
+                [
+                    i
+                    for i in task.items
+                    if i.get_status() == Base.ProjectStatus.PROCESSED
+                ]
+            )
+            error_count = len(
+                [i for i in task.items if i.get_status() == Base.ProjectStatus.ERROR]
+            )
 
             # 记录数据
             with self.data_lock:
-                new = {}
-                new["start_time"] = self.extras.get("start_time", 0)
-                new["total_line"] = self.extras.get("total_line", 0)
-                new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
+                new = self.extras.copy()
+                new["processed_line"] = (
+                    self.extras.get("processed_line", 0) + processed_count
+                )
+                new["error_line"] = self.extras.get("error_line", 0) + error_count
+                new["line"] = new["processed_line"] + new["error_line"]
+
                 new["total_tokens"] = (
                     self.extras.get("total_tokens", 0)
                     + result.get("input_tokens", 0)
@@ -719,15 +737,11 @@ class Translator(Base):
                 # 同步更新项目状态为进行中，防止异常退出导致状态丢失
                 StorageContext.get().set_project_status(Base.ProjectStatus.PROCESSING)
 
-            # 日志
-            progress.update(
-                pid,
-                total=self.extras.get("total_line", 0),
-                completed=self.extras.get("line", 0),
-            )
+            # 进度更新由 UI 层的 update_ui_tick 自动处理，此处移除冗余调用以保持逻辑一致
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
+
         except concurrent.futures.CancelledError:
             # 任务取消是正常流程，无需记录错误
             pass

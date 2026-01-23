@@ -295,7 +295,11 @@ class LocalizerEN(LocalizerZH):
     translation_page_card_token_input: str = "Input Tokens"
     translation_page_card_token_output: str = "Output Tokens"
     translation_page_card_token_tooltip: str = "Click to toggle Input/Output"
+    translation_page_card_line_processed: str = "Completed"
+    translation_page_card_line_error: str = "Failed"
+    translation_page_card_line_tooltip: str = "Click to toggle Completed/Failed"
     translation_page_card_task: str = "Real Time Tasks"
+
     translation_page_alert_pause: str = "Stopped tasks can be resumed at any time. Confirm to stop the task …?"
     translation_page_continue: str = "Continue"
     translation_page_export: str = "Export"
@@ -327,8 +331,10 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_filter_warning_type: str = "Result Check"
     proofreading_page_filter_status: str = "Translation Status"
     proofreading_page_status_none: str = "Untranslated"
-    proofreading_page_status_processed: str = "Completed"
+    proofreading_page_status_processed: str = "Translation Completed"
+    proofreading_page_status_error: str = "Translation Failed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
+
     proofreading_page_page_info: str = "Page {CURRENT} / {TOTAL}"
     proofreading_page_warning_kana: str = "Kana Residue"
     proofreading_page_warning_hangeul: str = "Hangeul Residue"

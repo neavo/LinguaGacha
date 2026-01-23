@@ -205,11 +205,14 @@ class TaskScheduler(Base):
         return task
 
     def force_accept(self, item: Item) -> None:
-        """强制接受任务"""
-        if item.get_status() != Base.ProjectStatus.PROCESSED:
+        """强制接受任务（由于多次重试失败）"""
+        if item.get_status() not in (
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.ERROR,
+        ):
             if not item.get_dst():
                 item.set_dst(item.get_src())
-            item.set_status(Base.ProjectStatus.PROCESSED)
+            item.set_status(Base.ProjectStatus.ERROR)
 
     def should_stop(self, task_queue: PriorityQueue, running_count: int) -> bool:
         """判断是否应该停止生产新任务"""

@@ -541,6 +541,10 @@ class FilterDialog(MessageBoxBase):
                 Localizer.get().proofreading_page_status_processed,
             ),
             (
+                Base.ProjectStatus.ERROR,
+                Localizer.get().proofreading_page_status_error,
+            ),
+            (
                 Base.ProjectStatus.PROCESSED_IN_PAST,
                 Localizer.get().proofreading_page_status_processed_in_past,
             ),

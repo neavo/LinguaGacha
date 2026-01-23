@@ -67,9 +67,18 @@ class TranslatorTask(Base):
 
     # 启动任务
     def start(self) -> dict[str, int]:
-        return self.request(
-            self.items, self.processors, self.precedings, self.local_flag
-        )
+        try:
+            return self.request(
+                self.items, self.processors, self.precedings, self.local_flag
+            )
+        except Exception as e:
+            # 最终兜底，确保任务不会由于未捕获异常而彻底丢失回调
+            self.error(f"{Localizer.get().log_task_fail}", e)
+            return {
+                "row_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
 
     # 请求
     def request(
@@ -117,22 +126,19 @@ class TranslatorTask(Base):
 
         # 发起请求
         requester = TaskRequester(self.config, self.model)
-        skip, response_think, response_result, input_tokens, output_tokens = (
+        exception, response_think, response_result, input_tokens, output_tokens = (
             requester.request(self.messages)
         )
 
-        # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
-        if skip:
-            if self.is_sub_task:
-                msg = (
-                    Localizer.get()
-                    .translator_task_status_info.replace(
-                        "{SPLIT}", str(self.split_count)
-                    )
-                    .replace("{RETRY}", str(self.retry_count))
-                    .replace("{THRESHOLD}", str(self.token_threshold))
-                )
-                self.warning(f"{Localizer.get().log_task_fail}\n{msg}")
+        # 如果请求发生异常，则记录日志并跳过本次循环
+        if exception:
+            msg = (
+                Localizer.get()
+                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .replace("{RETRY}", str(self.retry_count))
+                .replace("{THRESHOLD}", str(self.token_threshold))
+            )
+            self.error(f"{Localizer.get().log_task_fail}\n{msg}", exception)
             return {
                 "row_count": 0,
                 "input_tokens": 0,

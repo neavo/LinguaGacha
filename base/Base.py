@@ -73,6 +73,7 @@ class Base:
         PROCESSED_IN_PAST = "PROCESSED_IN_PAST"  # 过去已处理
         EXCLUDED = "EXCLUDED"  # 已排除
         DUPLICATED = "DUPLICATED"  # 重复条目
+        ERROR = "ERROR"  # 处理出错/重试失败
 
     # 构造函数
     def __init__(self) -> None:
