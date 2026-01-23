@@ -13,15 +13,16 @@ from qfluentwidgets import TableWidget
 
 from widget.RuleWidget import RuleWidget
 
-class TableManager():
 
+class TableManager:
     class Type(StrEnum):
-
         GLOSSARY = "GLOSSARY"
         REPLACEMENT = "REPLACEMENT"
         TEXT_PRESERVE = "TEXT_PRESERVE"
 
-    def __init__(self, type: str, data: list[dict[str, str]], table: TableWidget) -> None:
+    def __init__(
+        self, type: str, data: list[dict[str, str]], table: TableWidget
+    ) -> None:
         super().__init__()
 
         # 初始化
@@ -44,21 +45,31 @@ class TableManager():
         self.set_updating(True)
 
         # 去重
-        dels: set[int] = set()
+        duplicate_indices: set[int] = set()
         for i in range(len(self.data)):
             for k in range(i + 1, len(self.data)):
                 x = self.data[i]
                 y = self.data[k]
                 if x.get("src") == y.get("src"):
                     if x.get("dst") != "" and y.get("dst") == "":
-                        dels.add(k)
-                    elif x.get("dst") == "" and y.get("dst") == "" and x.get("info") != "" and y.get("info") == "":
-                        dels.add(k)
-                    elif x.get("dst") == "" and y.get("dst") == "" and x.get("regex") != "" and y.get("regex") == "":
-                        dels.add(k)
+                        duplicate_indices.add(k)
+                    elif (
+                        x.get("dst") == ""
+                        and y.get("dst") == ""
+                        and x.get("info") != ""
+                        and y.get("info") == ""
+                    ):
+                        duplicate_indices.add(k)
+                    elif (
+                        x.get("dst") == ""
+                        and y.get("dst") == ""
+                        and x.get("regex") != ""
+                        and y.get("regex") == ""
+                    ):
+                        duplicate_indices.add(k)
                     else:
-                        dels.add(i)
-        self.data = [v for i, v in enumerate(self.data) if i not in dels]
+                        duplicate_indices.add(i)
+        self.data = [v for i, v in enumerate(self.data) if i not in duplicate_indices]
 
         # 填充表格
         self.table.setRowCount(max(20, len(self.data) + 8))
@@ -85,7 +96,7 @@ class TableManager():
                             show_regex=False,
                             show_case_sensitive=True,
                             case_sensitive_enabled=v.get("case_sensitive", False),
-                            on_changed=partial(self._on_rule_changed, row, v),
+                            on_changed=partial(self.on_rule_changed, row, v),
                         )
                         self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.REPLACEMENT:
@@ -101,7 +112,7 @@ class TableManager():
                             show_case_sensitive=True,
                             regex_enabled=v.get("regex", False),
                             case_sensitive_enabled=v.get("case_sensitive", False),
-                            on_changed=partial(self._on_rule_changed, row, v),
+                            on_changed=partial(self.on_rule_changed, row, v),
                         )
                         self.table.setCellWidget(row, col, rule_widget)
         elif self.type == __class__.Type.TEXT_PRESERVE:
@@ -139,14 +150,16 @@ class TableManager():
             TableManager.set_cell_value(sheet, row + 2, 2, item.get("dst", ""), 10)
             TableManager.set_cell_value(sheet, row + 2, 3, item.get("info", ""), 10)
             TableManager.set_cell_value(sheet, row + 2, 4, item.get("regex", ""), 10)
-            TableManager.set_cell_value(sheet, row + 2, 5, item.get("case_sensitive", ""), 10)
+            TableManager.set_cell_value(
+                sheet, row + 2, 5, item.get("case_sensitive", ""), 10
+            )
 
         # 保存工作簿
         book.save(f"{path}.xlsx")
 
         # 保存为 JSON
-        with open(f"{path}.json", "w", encoding = "utf-8") as writer:
-            writer.write(json.dumps(self.data, indent = 4, ensure_ascii = False))
+        with open(f"{path}.json", "w", encoding="utf-8") as writer:
+            writer.write(json.dumps(self.data, indent=4, ensure_ascii=False))
 
     # 搜索
     def search(self, keyword: str, start: int) -> int:
@@ -166,7 +179,9 @@ class TableManager():
             for i, entry in enumerate(self.data):
                 if i > start:
                     continue
-                if any(keyword in v.lower() for v in entry.values() if isinstance(v, str)):
+                if any(
+                    keyword in v.lower() for v in entry.values() if isinstance(v, str)
+                ):
                     result = i
                     break
 
@@ -189,7 +204,13 @@ class TableManager():
         self.updating = updating
 
     # 规则变更回调
-    def _on_rule_changed(self, row: int, data_ref: dict[str, str | bool], regex: bool, case_sensitive: bool) -> None:
+    def on_rule_changed(
+        self,
+        row: int,
+        data_ref: dict[str, str | bool],
+        regex: bool,
+        case_sensitive: bool,
+    ) -> None:
         if self.type == __class__.Type.REPLACEMENT:
             data_ref["regex"] = regex
 
@@ -221,22 +242,23 @@ class TableManager():
         selected_index = self.table.selectedIndexes()
 
         # 有效性检验
-        if selected_index == None or len(selected_index) == 0:
+        if selected_index is None or len(selected_index) == 0:
             return
 
         # 逆序删除并去重以避免索引错误
-        for row in sorted({item.row() for item in selected_index}, reverse = True):
+        for row in sorted({item.row() for item in selected_index}, reverse=True):
             self.table.removeRow(row)
 
-        # 删除行不会触发 itemChanged 事件，所以手动触发一下
-        self.table.itemChanged.emit(QTableWidgetItem())
+        # 删除行后同步数据
+        self.set_data([])
+        self.append_data_from_table()
 
     # 切换正则事件
     def switch_regex(self) -> None:
         selected_index: list[QModelIndex] = self.table.selectedIndexes()
 
         # 有效性检验
-        if selected_index == None or len(selected_index) == 0:
+        if selected_index is None or len(selected_index) == 0:
             return
 
         # 切换正则模式
@@ -253,38 +275,63 @@ class TableManager():
     # 获取行数据
     def get_entry_by_row(self, row: int) -> dict[str, str | bool]:
         items: list[QTableWidgetItem] = [
-            self.table.item(row, col)
-            for col in range(self.table.columnCount())
+            self.table.item(row, col) for col in range(self.table.columnCount())
         ]
 
         if self.type == __class__.Type.GLOSSARY:
             # 从规则列的 RuleWidget 获取 case_sensitive 状态
             rule_widget = self.table.cellWidget(row, 3)
-            case_sensitive = rule_widget.get_case_sensitive_enabled() if isinstance(rule_widget, RuleWidget) else False
+            case_sensitive = (
+                rule_widget.get_case_sensitive_enabled()
+                if isinstance(rule_widget, RuleWidget)
+                else False
+            )
 
             return {
-                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
-                "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
-                "info": items[2].text().strip() if isinstance(items[2], QTableWidgetItem) else "",
+                "src": items[0].text().strip()
+                if isinstance(items[0], QTableWidgetItem)
+                else "",
+                "dst": items[1].text().strip()
+                if isinstance(items[1], QTableWidgetItem)
+                else "",
+                "info": items[2].text().strip()
+                if isinstance(items[2], QTableWidgetItem)
+                else "",
                 "case_sensitive": case_sensitive,
             }
         elif self.type == __class__.Type.REPLACEMENT:
             # 从规则列的 RuleWidget 获取 regex 和 case_sensitive 状态
             rule_widget = self.table.cellWidget(row, 2)
-            regex = rule_widget.get_regex_enabled() if isinstance(rule_widget, RuleWidget) else False
-            case_sensitive = rule_widget.get_case_sensitive_enabled() if isinstance(rule_widget, RuleWidget) else False
+            regex = (
+                rule_widget.get_regex_enabled()
+                if isinstance(rule_widget, RuleWidget)
+                else False
+            )
+            case_sensitive = (
+                rule_widget.get_case_sensitive_enabled()
+                if isinstance(rule_widget, RuleWidget)
+                else False
+            )
 
             return {
-                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
-                "dst": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "src": items[0].text().strip()
+                if isinstance(items[0], QTableWidgetItem)
+                else "",
+                "dst": items[1].text().strip()
+                if isinstance(items[1], QTableWidgetItem)
+                else "",
                 "info": "",
                 "regex": regex,
                 "case_sensitive": case_sensitive,
             }
         elif self.type == __class__.Type.TEXT_PRESERVE:
             return {
-                "src": items[0].text().strip() if isinstance(items[0], QTableWidgetItem) else "",
-                "info": items[1].text().strip() if isinstance(items[1], QTableWidgetItem) else "",
+                "src": items[0].text().strip()
+                if isinstance(items[0], QTableWidgetItem)
+                else "",
+                "info": items[1].text().strip()
+                if isinstance(items[1], QTableWidgetItem)
+                else "",
             }
 
     # 从表格加载数据
@@ -309,126 +356,126 @@ class TableManager():
 
     # 从 json 文件加载数据
     def load_from_json_file(self, path: str) -> list[dict[str, str]]:
-            result: list[dict[str, str]] = []
+        result: list[dict[str, str]] = []
 
-            # 读取文件
-            inputs = []
-            with open(path, "r", encoding = "utf-8-sig") as reader:
-                inputs: dict[str, str] | list[dict[str, str]] = json.load(reader)
+        # 读取文件
+        inputs = []
+        with open(path, "r", encoding="utf-8-sig") as reader:
+            inputs: dict[str, str] | list[dict[str, str]] = json.load(reader)
 
-            # 标准字典列表
-            # [
-            #     {
-            #         "key": "value",
-            #         "key": "value",
-            #         "key": "value",
-            #     }
-            # ]
-            if isinstance(inputs, list):
-                for entry in inputs:
-                    # 格式校验
-                    if isinstance(entry, dict) == False:
-                        continue
-                    if "src" not in entry:
-                        continue
+        # 标准字典列表
+        # [
+        #     {
+        #         "key": "value",
+        #         "key": "value",
+        #         "key": "value",
+        #     }
+        # ]
+        if isinstance(inputs, list):
+            for entry in inputs:
+                # 格式校验
+                if not isinstance(entry, dict):
+                    continue
+                if "src" not in entry:
+                    continue
 
-                    src: str = entry.get("src", "").strip()
-                    if src != "":
-                        result.append(
-                            {
-                                "src": src,
-                                "dst": entry.get("dst", "").strip(),
-                                "info": entry.get("info", "").strip(),
-                                "regex": entry.get("regex", False),
-                                "case_sensitive": entry.get("case_sensitive", False),
-                            }
-                        )
+                src: str = entry.get("src", "").strip()
+                if src != "":
+                    result.append(
+                        {
+                            "src": src,
+                            "dst": entry.get("dst", "").strip(),
+                            "info": entry.get("info", "").strip(),
+                            "regex": entry.get("regex", False),
+                            "case_sensitive": entry.get("case_sensitive", False),
+                        }
+                    )
 
-            # Actors.json
-            # [
-            #     null,
-            #     {
-            #         "id": 1,
-            #         "name": "レナリス",
-            #         "nickname": "ローズ娼館の娼婦",
-            #     },
-            # ]
-            if isinstance(inputs, list):
-                for entry in inputs:
-                    # 格式校验
-                    if isinstance(entry, dict) == False:
-                        continue
-                    if isinstance(entry.get("id"), int) == False:
-                        continue
+        # Actors.json
+        # [
+        #     null,
+        #     {
+        #         "id": 1,
+        #         "name": "レナリス",
+        #         "nickname": "ローズ娼館の娼婦",
+        #     },
+        # ]
+        if isinstance(inputs, list):
+            for entry in inputs:
+                # 格式校验
+                if not isinstance(entry, dict):
+                    continue
+                if not isinstance(entry.get("id"), int):
+                    continue
 
-                    id: int = entry.get("id", -1)
-                    name: str = entry.get("name", "").strip()
-                    nickname: str = entry.get("nickname", "").strip()
+                id: int = entry.get("id", -1)
+                name: str = entry.get("name", "").strip()
+                nickname: str = entry.get("nickname", "").strip()
 
-                    # 添加数据
-                    if name != "":
-                        result.append(
-                            {
-                                "src": f"\\n[{id}]",
-                                "dst": name,
-                                "info": "",
-                                "regex": False,
-                                "case_sensitive": False,
-                            }
-                        )
-                        result.append(
-                            {
-                                "src": f"\\N[{id}]",
-                                "dst": name,
-                                "info": "",
-                                "regex": False,
-                                "case_sensitive": False,
-                            }
-                        )
-                    if nickname != "":
-                        result.append(
-                            {
-                                "src": f"\\nn[{id}]",
-                                "dst": name,
-                                "info": "",
-                                "regex": False,
-                                "case_sensitive": False,
-                            }
-                        )
-                        result.append(
-                            {
-                                "src": f"\\NN[{id}]",
-                                "dst": name,
-                                "info": "",
-                                "regex": False,
-                                "case_sensitive": False,
-                            }
-                        )
+                # 添加数据
+                if name != "":
+                    result.append(
+                        {
+                            "src": f"\\n[{id}]",
+                            "dst": name,
+                            "info": "",
+                            "regex": False,
+                            "case_sensitive": False,
+                        }
+                    )
+                    result.append(
+                        {
+                            "src": f"\\N[{id}]",
+                            "dst": name,
+                            "info": "",
+                            "regex": False,
+                            "case_sensitive": False,
+                        }
+                    )
+                if nickname != "":
+                    result.append(
+                        {
+                            "src": f"\\nn[{id}]",
+                            "dst": name,
+                            "info": "",
+                            "regex": False,
+                            "case_sensitive": False,
+                        }
+                    )
+                    result.append(
+                        {
+                            "src": f"\\NN[{id}]",
+                            "dst": name,
+                            "info": "",
+                            "regex": False,
+                            "case_sensitive": False,
+                        }
+                    )
 
-            # 标准 KV 字典
-            # {
-            #     "ダリヤ": "达莉雅"
-            # }
-            if isinstance(inputs, dict):
-                for k, v in inputs.items():
-                    # 格式校验
-                    if not isinstance(k, str):
-                        continue
+        # 标准 KV 字典
+        # {
+        #     "ダリヤ": "达莉雅"
+        # }
+        if isinstance(inputs, dict):
+            for k, v in inputs.items():
+                # 格式校验
+                if not isinstance(k, str):
+                    continue
 
-                    src: str = k.strip()
-                    dst: str = str(v).strip() if v is not None else ""
-                    if src != "":
-                        result.append(
-                            {
-                                "src": src,
-                                "dst": dst,
-                                "info": "",
-                                "regex": False,
-                                "case_sensitive": False,
-                            }
-                        )
+                src: str = k.strip()
+                dst: str = str(v).strip() if v is not None else ""
+                if src != "":
+                    result.append(
+                        {
+                            "src": src,
+                            "dst": dst,
+                            "info": "",
+                            "regex": False,
+                            "case_sensitive": False,
+                        }
+                    )
 
-            return result
+        return result
 
     # 从 xlsx 文件加载数据
     def load_from_xlsx_file(self, path: str) -> list[dict]:
@@ -438,8 +485,7 @@ class TableManager():
         for row in range(1, sheet.max_row + 1):
             # 读取每一行的数据
             data: list[str] = [
-                __class__.get_cell_value(sheet, row, col)
-                for col in range(1, 6)
+                __class__.get_cell_value(sheet, row, col) for col in range(1, 6)
             ]
 
             # 格式校验
@@ -471,8 +517,10 @@ class TableManager():
 
     # 设置单元格值
     @classmethod
-    def get_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int) -> str:
-        value = sheet.cell(row = row, column = column).value
+    def get_cell_value(
+        cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int
+    ) -> str:
+        value = sheet.cell(row=row, column=column).value
 
         # 强制转换为字符串
         if value is None:
@@ -484,13 +532,22 @@ class TableManager():
 
     # 设置单元格值
     @classmethod
-    def set_cell_value(cls, sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int, value: Any, font_size: int = 9) -> None:
+    def set_cell_value(
+        cls,
+        sheet: openpyxl.worksheet.worksheet.Worksheet,
+        row: int,
+        column: int,
+        value: Any,
+        font_size: int = 9,
+    ) -> None:
         if value is None:
             value = ""
         # 如果单元格内容以单引号 ' 开头，Excel 会将其视为普通文本而不是公式
-        elif isinstance(value, str) and value.startswith("=") == True:
+        elif isinstance(value, str) and value.startswith("="):
             value = "'" + value
 
-        sheet.cell(row = row, column = column).value = value
-        sheet.cell(row = row, column = column).font = openpyxl.styles.Font(size = font_size)
-        sheet.cell(row = row, column = column).alignment  = openpyxl.styles.Alignment(wrap_text = True, vertical = "center", horizontal = "left")
+        sheet.cell(row=row, column=column).value = value
+        sheet.cell(row=row, column=column).font = openpyxl.styles.Font(size=font_size)
+        sheet.cell(row=row, column=column).alignment = openpyxl.styles.Alignment(
+            wrap_text=True, vertical="center", horizontal="left"
+        )
