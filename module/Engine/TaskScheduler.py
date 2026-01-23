@@ -8,6 +8,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.ChunkGenerator import ChunkGenerator
+from module.Localizer.Localizer import Localizer
 from module.Engine.Translator.TranslatorTask import TranslatorTask
 
 
@@ -208,10 +209,6 @@ class TaskScheduler(Base):
         if item.get_status() != Base.ProjectStatus.PROCESSED:
             if not item.get_dst():
                 item.set_dst(item.get_src())
-                self.warning(f"强制接受 [FALLBACK_TO_SOURCE]: {item.get_src()[:50]}...")
-            else:
-                self.warning(f"强制接受 [LAST_RESPONSE]: {item.get_dst()[:50]}...")
-
             item.set_status(Base.ProjectStatus.PROCESSED)
 
     def should_stop(self, task_queue: PriorityQueue, running_count: int) -> bool:
@@ -233,7 +230,9 @@ class TaskScheduler(Base):
         ]
         if untranslated:
             self.warning(
-                f"任务调度器停止，但仍有 {len(untranslated)} 个未翻译条目（可能因异常丢失）"
+                Localizer.get().engine_task_scheduler_stop_with_untranslated.replace(
+                    "{COUNT}", str(len(untranslated))
+                )
             )
 
         return True

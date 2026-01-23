@@ -323,7 +323,33 @@ class TranslatorTask(Base):
             if self.retry_count > 0:
                 sub_info += f" | 单条重试: {self.retry_count}"
 
-        if all(v == ResponseChecker.Error.UNKNOWN for v in checks):
+        # 检查是否为强制接受（重试达到上限）
+        force_accept_msg = ""
+        if self.is_sub_task and len(srcs) == 1 and self.retry_count >= 3:
+            # 单条任务重试3次后失败，强制接受
+            item = self.items[0]
+            text = item.get_dst() if item.get_dst() else item.get_src()
+            if not item.get_dst():
+                # 没有译文，使用原文
+                force_accept_msg = (
+                    Localizer.get().engine_task_scheduler_force_accept_source.replace(
+                        "{TEXT}", f"{text[:50]}..."
+                    )
+                )
+            else:
+                # 已有译文，强制接受
+                force_accept_msg = (
+                    Localizer.get().engine_task_scheduler_force_accept_last.replace(
+                        "{TEXT}", f"{text[:50]}..."
+                    )
+                )
+
+        # 如果是强制接受，使用黄色警告样式
+        if force_accept_msg:
+            style = "yellow"
+            message = force_accept_msg
+            log_func = self.warning
+        elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
             message = f"{Localizer.get().translator_response_check_fail} {reason}"
             log_func = self.error
@@ -357,9 +383,17 @@ class TranslatorTask(Base):
         file_log.insert(0, message)
         if sub_info:
             file_log.insert(1, sub_info)
+        if force_accept_msg and sub_info:
+            file_log.insert(2, force_accept_msg)
+        elif force_accept_msg:
+            file_log.insert(1, force_accept_msg)
         console_log.insert(0, message)
         if sub_info:
             console_log.insert(1, sub_info)
+        if force_accept_msg and sub_info:
+            console_log.insert(2, force_accept_msg)
+        elif force_accept_msg:
+            console_log.insert(1, force_accept_msg)
 
         # 写入日志到文件
         file_rows = self.generate_log_rows(srcs, dsts, file_log, console=False)
@@ -370,6 +404,8 @@ class TranslatorTask(Base):
             display_msg = message
             if sub_info:
                 display_msg += f"\n{sub_info}"
+            if force_accept_msg:
+                display_msg += f"\n{force_accept_msg}"
             rich.get_console().print(
                 Localizer.get().engine_task_too_many + "\n" + display_msg + "\n"
             )
