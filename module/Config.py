@@ -47,7 +47,6 @@ class Config:
     output_folder_open_on_finish: bool = False
     traditional_chinese_enable: bool = False
     request_timeout: int = 120
-    max_round: int = 16
 
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0

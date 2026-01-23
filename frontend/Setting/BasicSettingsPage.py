@@ -59,7 +59,6 @@ class BasicSettingsPage(QWidget, Base):
         self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
         self.add_widget_traditional_chinese(scroll_area_vbox, config, window)
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
-        self.add_widget_max_round(scroll_area_vbox, config, window)
 
         # 填充
         scroll_area_vbox.addStretch(1)
@@ -256,28 +255,6 @@ class BasicSettingsPage(QWidget, Base):
             SpinCard(
                 title=Localizer.get().basic_settings_page_request_timeout_title,
                 description=Localizer.get().basic_settings_page_request_timeout_content,
-                init=init,
-                value_changed=value_changed,
-            )
-        )
-
-    # 翻译流程最大轮次
-    def add_widget_max_round(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        def init(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(config.max_round)
-
-        def value_changed(widget: SpinCard) -> None:
-            config = Config().load()
-            config.max_round = widget.get_spin_box().value()
-            config.save()
-
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().basic_settings_page_max_round_title,
-                description=Localizer.get().basic_settings_page_max_round_content,
                 init=init,
                 value_changed=value_changed,
             )
