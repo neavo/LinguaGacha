@@ -263,7 +263,7 @@ class CustomPromptPage(QWidget, Base):
             menu = RoundMenu("", widget)
             menu.addAction(
                 Action(
-                    FluentIcon.CLEAR_SELECTION,
+                    FluentIcon.DELETE,
                     Localizer.get().quality_reset,
                     triggered=reset,
                 )
@@ -271,7 +271,7 @@ class CustomPromptPage(QWidget, Base):
             for v in load_preset():
                 menu.addAction(
                     Action(
-                        FluentIcon.EDIT,
+                        FluentIcon.DOWNLOAD,
                         v,
                         triggered=partial(apply_preset, v),
                     )
