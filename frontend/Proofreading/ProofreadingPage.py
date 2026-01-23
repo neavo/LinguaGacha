@@ -799,6 +799,41 @@ class ProofreadingPage(QWidget, Base):
                     self.save_done.emit(False)
                     return
                 db.set_items([item.to_dict() for item in items])
+
+                # 保存条目后，同步更新项目级别元数据
+                ctx = StorageContext.get()
+                if ctx.is_loaded():
+                    # 统计 NONE 状态的条目数量（排除 EXCLUDED 和 DUPLICATED）
+                    none_count = sum(
+                        1
+                        for item in items
+                        if item.get_status() == Base.ProjectStatus.NONE
+                    )
+
+                    # 确定项目状态
+                    project_status = (
+                        Base.ProjectStatus.PROCESSING
+                        if none_count > 0
+                        else Base.ProjectStatus.PROCESSED
+                    )
+                    ctx.set_project_status(project_status)
+
+                    # 重新计算翻译进度
+                    extras = ctx.get_translation_extras()
+                    # 统计已翻译的条目数量（状态为 PROCESSED 或 PROCESSED_IN_PAST）
+                    translated_count = sum(
+                        1
+                        for item in items
+                        if item.get_status()
+                        in (
+                            Base.ProjectStatus.PROCESSED,
+                            Base.ProjectStatus.PROCESSED_IN_PAST,
+                        )
+                    )
+                    # 更新已翻译行数（其他字段如 Token 统计保持不变）
+                    extras["line"] = translated_count
+                    ctx.set_translation_extras(extras)
+
                 self.save_done.emit(True)
             except Exception as e:
                 self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
@@ -822,15 +857,15 @@ class ProofreadingPage(QWidget, Base):
             return
 
         # 先保存数据再导出，保证译文文件与缓存数据一致
-        self._pending_export = True
+        self.pending_export = True
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
         self.save_data()
 
     def on_save_done_ui(self, success: bool) -> None:
         """保存完成的 UI 更新（主线程）"""
         # 检查是否有待处理的导出操作
-        pending_export = getattr(self, "_pending_export", False)
-        self._pending_export = False
+        pending_export = getattr(self, "pending_export", False)
+        self.pending_export = False
 
         if pending_export:
             # 导出流程中的保存
@@ -849,9 +884,12 @@ class ProofreadingPage(QWidget, Base):
                     },
                 )
         else:
-            # 普通保存流程：成功时直接隐藏进度条，失败时弹出错误提示
+            # 普通保存流程：成功时触发项目状态检查，失败时弹出错误提示
             self.indeterminate_hide()
-            if not success:
+            if success:
+                # 通知翻译页更新按钮状态
+                self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            else:
                 self.emit(
                     Base.Event.TOAST,
                     {
