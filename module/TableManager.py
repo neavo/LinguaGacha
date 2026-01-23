@@ -177,7 +177,7 @@ class TableManager:
         # 如果未找到则从头开始搜索
         if result == -1:
             for i, entry in enumerate(self.data):
-                if i > start:
+                if i >= start:
                     continue
                 if any(
                     keyword in v.lower() for v in entry.values() if isinstance(v, str)
