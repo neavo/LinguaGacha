@@ -6,7 +6,6 @@ from pathlib import Path
 from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QCursor
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
@@ -15,9 +14,9 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import CommandButton
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
@@ -379,10 +378,11 @@ class GlossaryPage(QWidget, Base):
             if os.path.exists(builtin_dir):
                 for f in os.listdir(builtin_dir):
                     if f.lower().endswith(".json"):
+                        path = os.path.join(builtin_dir, f).replace("\\", "/")
                         builtin_presets.append(
                             {
                                 "name": f[:-5],
-                                "path": os.path.join(builtin_dir, f),
+                                "path": path,
                                 "type": "builtin",
                             }
                         )
@@ -393,15 +393,38 @@ class GlossaryPage(QWidget, Base):
 
             for f in os.listdir(user_dir):
                 if f.lower().endswith(".json"):
+                    path = os.path.join(user_dir, f).replace("\\", "/")
                     user_presets.append(
                         {
                             "name": f[:-5],
-                            "path": os.path.join(user_dir, f),
+                            "path": path,
                             "type": "user",
                         }
                     )
 
             return builtin_presets, user_presets
+
+        def set_default_preset(item: dict) -> None:
+            config.glossary_default_preset = item["path"]
+            config.save()
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_set_default_preset_success,
+                },
+            )
+
+        def cancel_default_preset() -> None:
+            config.glossary_default_preset = ""
+            config.save()
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_cancel_default_preset_success,
+                },
+            )
 
         def reset() -> None:
             message_box = MessageBox(
@@ -556,7 +579,7 @@ class GlossaryPage(QWidget, Base):
             # 重置
             menu.addAction(
                 Action(
-                    FluentIcon.DELETE,
+                    FluentIcon.ERASE_TOOL,
                     Localizer.get().quality_reset,
                     triggered=reset,
                 )
@@ -578,7 +601,7 @@ class GlossaryPage(QWidget, Base):
             # 内置预设
             for item in builtin_presets:
                 sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.ROBOT)
+                sub_menu.setIcon(FluentIcon.FOLDER)
                 sub_menu.addAction(
                     Action(
                         FluentIcon.DOWNLOAD,
@@ -586,6 +609,27 @@ class GlossaryPage(QWidget, Base):
                         triggered=partial(apply_preset, item["path"]),
                     )
                 )
+
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                if config.glossary_default_preset == item["path"]:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.FLAG,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.TAG,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
                 menu.addMenu(sub_menu)
 
             # 如果需要分隔符
@@ -595,7 +639,7 @@ class GlossaryPage(QWidget, Base):
             # 用户预设
             for item in user_presets:
                 sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.PEOPLE)
+                sub_menu.setIcon(FluentIcon.FOLDER_ADD)
 
                 # 应用
                 sub_menu.addAction(
@@ -624,9 +668,37 @@ class GlossaryPage(QWidget, Base):
                     )
                 )
 
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                if config.glossary_default_preset == item["path"]:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.CLEAR_SELECTION,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.CERTIFICATE,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
                 menu.addMenu(sub_menu)
 
-            menu.exec(QCursor.pos())
+            # 计算弹出位置（向上弹出）
+            # 1. 获取按钮全局坐标 (左上角)
+            global_pos = widget.mapToGlobal(QPoint(0, 0))
+
+            # 2. 向上弹出动画
+            # 使用 PULL_UP 动画类型，并传入按钮顶部坐标作为基准点
+            # 库会自动计算菜单位置：y = pos.y() - h + 13
+            # 我们稍微调整基准点以避免菜单覆盖按钮
+            menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
 
         widget = parent.add_action(
             Action(

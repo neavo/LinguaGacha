@@ -62,6 +62,9 @@ class Config:
     auto_glossary_enable: bool = False
     mtool_optimizer_enable: bool = False
 
+    # GlossaryPage
+    glossary_default_preset: str = ""
+
     # 最近打开的工程列表 [{"path": "...", "name": "...", "updated_at": "..."}]
     recent_projects: list[dict[str, str]] = dataclasses.field(default_factory=list)
 

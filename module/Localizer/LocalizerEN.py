@@ -447,6 +447,11 @@ class LocalizerEN(LocalizerZH):
     quality_save_preset: str = "Save Preset"
     quality_save_preset_title: str = "Save as Preset"
     quality_save_preset_success: str = "Preset saved …"
+    quality_set_as_default_preset: str = "Set as Default Preset"
+    quality_cancel_default_preset: str = "Cancel Default Preset"
+    quality_set_default_preset_success: str = "Default preset set …"
+    quality_cancel_default_preset_success: str = "Default preset cancelled …"
+    quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
 
     # 规则列
     rule_regex: str = "Regular Expression"

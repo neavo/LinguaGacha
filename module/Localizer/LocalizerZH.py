@@ -447,6 +447,11 @@ class LocalizerZH:
     quality_save_preset: str = "保存预设"
     quality_save_preset_title: str = "保存为预设"
     quality_save_preset_success: str = "预设已保存 …"
+    quality_set_as_default_preset: str = "设为默认预设"
+    quality_cancel_default_preset: str = "取消默认预设"
+    quality_set_default_preset_success: str = "已设置为默认预设 …"
+    quality_cancel_default_preset_success: str = "已取消默认预设 …"
+    quality_default_preset_loaded_toast: str = "已自动加载默认预设：{NAME} …"
 
     # 规则列
     rule_regex: str = "正则表达式"

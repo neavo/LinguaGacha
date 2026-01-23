@@ -1,8 +1,13 @@
+import json
+import os
 import threading
 from typing import Any
 from typing import ClassVar
 
 from base.Base import Base
+from base.LogManager import LogManager
+from module.Config import Config
+from module.Localizer.Localizer import Localizer
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
 
@@ -252,6 +257,36 @@ class QualityRuleManager(Base):
     def initialize_project_rules(self, db: DataStore) -> None:
         """
         初始化项目规则 (用于新项目创建时)
-        默认为空，无需预加载
+        如果配置了默认预设，则自动加载
         """
-        pass
+        config = Config().load()
+        default_preset = config.glossary_default_preset
+
+        if not default_preset or not os.path.exists(default_preset):
+            return
+
+        try:
+            with open(default_preset, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # 写入术语表数据
+            db.set_rules(DataStore.RuleType.GLOSSARY, data)
+            # 启用术语表
+            db.set_meta("glossary_enable", True)
+
+            # 弹出 Toast 提示（需要通过 EventManager，因为此时 ProjectStore 可能还在运行）
+            # 注意：ProjectStore.create 是同步调用的，但通常在一个线程中。
+            # 这里我们使用 self.emit，因为 QualityRuleManager 继承自 Base
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_default_preset_loaded_toast.format(
+                        NAME=os.path.basename(default_preset)
+                    ),
+                },
+            )
+        except Exception as e:
+            LogManager.get().error(
+                f"Failed to load default glossary preset: {default_preset}", e
+            )
