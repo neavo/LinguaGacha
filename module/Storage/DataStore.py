@@ -376,6 +376,13 @@ class DataStore(Base):
             if isinstance(extras, dict) and "line" in extras and "total_line" in extras:
                 translated_items = extras["line"]
                 total_items = extras["total_line"]
+
+                # 临时处理：如果项目从未运行过翻译（total_line 为 0）
+                # 回退使用物理总行数，确保工作台列表能显示工程规模
+                if total_items == 0:
+                    total_items = (
+                        conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] or 0
+                    )
             else:
                 # 兼容旧版本：未开始翻译的项目视为 0 进度
                 total_items = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]

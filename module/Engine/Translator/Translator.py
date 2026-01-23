@@ -57,13 +57,21 @@ class Translator(Base):
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         def task(event: str, data: dict) -> None:
+            ctx = StorageContext.get()
+            extras = {}
+
             if Engine.get().get_status() != Base.TaskStatus.IDLE:
-                status = Base.ProjectStatus.NONE
-            else:
-                # 从 StorageContext 获取工程状态
-                ctx = StorageContext.get()
+                # 引擎忙碌时，依然从数据库获取真实状态和进度，避免 UI 按钮被错误禁用
                 if ctx.is_loaded():
                     status = ctx.get_project_status()
+                    extras = ctx.get_translation_extras()
+                else:
+                    status = Base.ProjectStatus.NONE
+            else:
+                # 引擎空闲，获取工程状态和进度
+                if ctx.is_loaded():
+                    status = ctx.get_project_status()
+                    extras = ctx.get_translation_extras()
                 else:
                     status = Base.ProjectStatus.NONE
 
@@ -71,6 +79,7 @@ class Translator(Base):
                 Base.Event.PROJECT_CHECK_DONE,
                 {
                     "status": status,
+                    "extras": extras,
                 },
             )
 
@@ -707,6 +716,8 @@ class Translator(Base):
             # 保存翻译进度额外数据到数据库（确保进度实时同步）
             if StorageContext.get().is_loaded():
                 StorageContext.get().set_translation_extras(self.extras)
+                # 同步更新项目状态为进行中，防止异常退出导致状态丢失
+                StorageContext.get().set_project_status(Base.ProjectStatus.PROCESSING)
 
             # 日志
             progress.update(

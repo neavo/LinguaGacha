@@ -92,6 +92,10 @@ class TranslationPage(QWidget, Base):
     def update_button_status(self, event: Base.Event, data: dict) -> None:
         status = Engine.get().get_status()
 
+        # 如果是状态检查返回，同步更新进度数据
+        if event == Base.Event.PROJECT_CHECK_DONE and data.get("extras"):
+            self.data = data.get("extras")
+
         if status == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
@@ -132,16 +136,28 @@ class TranslationPage(QWidget, Base):
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        if Engine.get().get_status() not in (
-            Base.TaskStatus.STOPPING,
-            Base.TaskStatus.TRANSLATING,
+        # 如果既没有运行任务，也没有历史进度数据，则跳过
+        if (
+            Engine.get().get_status()
+            not in (
+                Base.TaskStatus.STOPPING,
+                Base.TaskStatus.TRANSLATING,
+            )
+            and not self.data
         ):
             return None
 
-        if self.data.get("start_time", 0) == 0:
-            total_time = 0
+        # 如果正在翻译，计算实时耗时；否则使用最后保存的累计耗时
+        if Engine.get().get_status() in (
+            Base.TaskStatus.STOPPING,
+            Base.TaskStatus.TRANSLATING,
+        ):
+            if self.data.get("start_time", 0) == 0:
+                total_time = 0
+            else:
+                total_time = int(time.time() - self.data.get("start_time", 0))
         else:
-            total_time = int(time.time() - self.data.get("start_time", 0))
+            total_time = int(self.data.get("time", 0))
 
         if total_time < 60:
             self.time.set_unit("S")
@@ -170,9 +186,14 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        if Engine.get().get_status() not in (
-            Base.TaskStatus.STOPPING,
-            Base.TaskStatus.TRANSLATING,
+        # 如果既没有运行任务，也没有历史进度数据，则跳过
+        if (
+            Engine.get().get_status()
+            not in (
+                Base.TaskStatus.STOPPING,
+                Base.TaskStatus.TRANSLATING,
+            )
+            and not self.data
         ):
             return None
 
@@ -210,6 +231,17 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
+        # 如果既没有运行任务，也没有历史进度数据，则跳过
+        if (
+            Engine.get().get_status()
+            not in (
+                Base.TaskStatus.STOPPING,
+                Base.TaskStatus.TRANSLATING,
+            )
+            and not self.data
+        ):
+            return None
+
         # 根据显示模式选择要展示的 Token 数量
         display_mode = getattr(self, "token_display_mode", self.TokenDisplayMode.OUTPUT)
         if display_mode == self.TokenDisplayMode.OUTPUT:
@@ -233,22 +265,20 @@ class TranslationPage(QWidget, Base):
             self.token.set_value(f"{(token / 1000 / 1000):.2f}")
 
         # 速度计算仅在翻译/停止状态下更新，避免空闲时干扰波形图
-        if Engine.get().get_status() not in (
+        if Engine.get().get_status() in (
             Base.TaskStatus.STOPPING,
             Base.TaskStatus.TRANSLATING,
         ):
-            return None
-
-        speed = self.data.get("total_output_tokens", 0) / max(
-            1, time.time() - self.data.get("start_time", 0)
-        )
-        self.waveform.add_value(speed)
-        if speed < 1000:
-            self.speed.set_unit("T/S")
-            self.speed.set_value(f"{speed:.2f}")
-        else:
-            self.speed.set_unit("KT/S")
-            self.speed.set_value(f"{(speed / 1000):.2f}")
+            speed = self.data.get("total_output_tokens", 0) / max(
+                1, time.time() - self.data.get("start_time", 0)
+            )
+            self.waveform.add_value(speed)
+            if speed < 1000:
+                self.speed.set_unit("T/S")
+                self.speed.set_value(f"{speed:.2f}")
+            else:
+                self.speed.set_unit("KT/S")
+                self.speed.set_value(f"{(speed / 1000):.2f}")
 
     # 更新进度环
     def update_status(self, data: dict) -> None:
@@ -263,6 +293,13 @@ class TranslationPage(QWidget, Base):
             self.ring.setValue(int(percent * 10000))
             self.ring.setFormat(
                 f"{Localizer.get().translation_page_status_translating}\n{percent * 100:.2f}%"
+            )
+        elif self.data:
+            # 即使在空闲状态，如果存在进度数据，也要显示最终的进度百分比
+            percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
+            self.ring.setValue(int(percent * 10000))
+            self.ring.setFormat(
+                f"{Localizer.get().translation_page_status_idle}\n{percent * 100:.2f}%"
             )
         else:
             self.ring.setValue(0)
