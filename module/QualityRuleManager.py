@@ -1,8 +1,14 @@
+import copy
+import json
+import os
 import threading
 from typing import Any
 from typing import ClassVar
 
 from base.Base import Base
+from base.LogManager import LogManager
+from module.Config import Config
+from module.Localizer.Localizer import Localizer
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
 
@@ -26,7 +32,7 @@ class QualityRuleManager(Base):
     def __init__(self) -> None:
         super().__init__()
         # 缓存结构: { RuleType: list[dict] | dict }
-        self._cache: dict[str, Any] = {}
+        self.cache: dict[str, Any] = {}
 
         # 监听项目加载/卸载事件，用于清理缓存
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_changed)
@@ -49,7 +55,7 @@ class QualityRuleManager(Base):
 
     def clear_cache(self) -> None:
         """清空所有内存缓存"""
-        self._cache.clear()
+        self.cache.clear()
 
     # ========== 核心业务接口 ==========
 
@@ -161,9 +167,9 @@ class QualityRuleManager(Base):
     def get_rules_cached(self, rule_type: DataStore.RuleType) -> list[dict[str, Any]]:
         """从缓存或 DB 获取列表类规则"""
         # 1. 查缓存
-        if rule_type in self._cache:
+        if rule_type in self.cache:
             # 返回副本以确保线程安全（避免迭代时被修改）
-            return list(self._cache[rule_type])
+            return list(self.cache[rule_type])
 
         # 2. 查 DB
         db = self.get_db()
@@ -173,7 +179,7 @@ class QualityRuleManager(Base):
         data = db.get_rules(rule_type)
 
         # 3. 写缓存
-        self._cache[rule_type] = data
+        self.cache[rule_type] = data
 
         # 返回副本
         return list(data)
@@ -192,13 +198,13 @@ class QualityRuleManager(Base):
                 db.set_rules(rule_type, data)
 
         # 2. 更新缓存
-        self._cache[rule_type] = data
+        self.cache[rule_type] = data
 
     def get_rule_text_cached(self, rule_type: DataStore.RuleType) -> str:
         """从缓存或 DB 获取文本类规则"""
         # 1. 查缓存
-        if rule_type in self._cache:
-            return self._cache[rule_type]
+        if rule_type in self.cache:
+            return self.cache[rule_type]
 
         # 2. 查 DB
         db = self.get_db()
@@ -208,7 +214,7 @@ class QualityRuleManager(Base):
         text = db.get_rule_text(rule_type)
 
         # 3. 写缓存
-        self._cache[rule_type] = text
+        self.cache[rule_type] = text
         return text
 
     def set_rule_text_cached(self, rule_type: DataStore.RuleType, text: str) -> None:
@@ -219,13 +225,14 @@ class QualityRuleManager(Base):
             db.set_rule_text(rule_type, text)
 
         # 2. 更新缓存
-        self._cache[rule_type] = text
+        self.cache[rule_type] = text
 
     def get_meta_cached(self, key: str, default: Any) -> Any:
         """从缓存或 DB 获取元数据"""
         # 1. 查缓存
-        if key in self._cache:
-            return self._cache[key]
+        if key in self.cache:
+            value = self.cache[key]
+            return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
         # 2. 查 DB
         db = self.get_db()
@@ -235,8 +242,9 @@ class QualityRuleManager(Base):
         value = db.get_meta(key, default)
 
         # 3. 写缓存
-        self._cache[key] = value
-        return value
+        self.cache[key] = value
+
+        return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
     def set_meta_cached(self, key: str, value: Any) -> None:
         """写入 DB 并更新缓存"""
@@ -246,12 +254,138 @@ class QualityRuleManager(Base):
             db.set_meta(key, value)
 
         # 2. 更新缓存
-        self._cache[key] = value
+        self.cache[key] = value
 
     # ========== 初始化逻辑 ==========
     def initialize_project_rules(self, db: DataStore) -> None:
         """
         初始化项目规则 (用于新项目创建时)
-        默认为空，无需预加载
+        如果配置了默认预设，则自动加载
         """
-        pass
+        config = Config().load()
+        loaded_presets = []
+
+        # 1. 术语表
+        if config.glossary_default_preset and os.path.exists(
+            config.glossary_default_preset
+        ):
+            try:
+                with open(config.glossary_default_preset, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.GLOSSARY, data)
+                db.set_meta("glossary_enable", True)
+                loaded_presets.append(Localizer.get().app_glossary_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default glossary preset: {config.glossary_default_preset}",
+                    e,
+                )
+
+        # 2. 文本保护
+        if config.text_preserve_default_preset and os.path.exists(
+            config.text_preserve_default_preset
+        ):
+            try:
+                with open(
+                    config.text_preserve_default_preset, "r", encoding="utf-8"
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
+                db.set_meta("text_preserve_enable", True)
+                loaded_presets.append(Localizer.get().app_text_preserve_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default text preserve preset: {config.text_preserve_default_preset}",
+                    e,
+                )
+
+        # 3. 译前替换
+        if config.pre_translation_replacement_default_preset and os.path.exists(
+            config.pre_translation_replacement_default_preset
+        ):
+            try:
+                with open(
+                    config.pre_translation_replacement_default_preset,
+                    "r",
+                    encoding="utf-8",
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.PRE_REPLACEMENT, data)
+                db.set_meta("pre_translation_replacement_enable", True)
+                loaded_presets.append(
+                    Localizer.get().app_pre_translation_replacement_page
+                )
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default pre-translation replacement preset: {config.pre_translation_replacement_default_preset}",
+                    e,
+                )
+
+        # 4. 译后替换
+        if config.post_translation_replacement_default_preset and os.path.exists(
+            config.post_translation_replacement_default_preset
+        ):
+            try:
+                with open(
+                    config.post_translation_replacement_default_preset,
+                    "r",
+                    encoding="utf-8",
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.POST_REPLACEMENT, data)
+                db.set_meta("post_translation_replacement_enable", True)
+                loaded_presets.append(
+                    Localizer.get().app_post_translation_replacement_page
+                )
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default post-translation replacement preset: {config.post_translation_replacement_default_preset}",
+                    e,
+                )
+
+        # 5. 自定义提示词 (中文)
+        if config.custom_prompt_zh_default_preset and os.path.exists(
+            config.custom_prompt_zh_default_preset
+        ):
+            try:
+                with open(
+                    config.custom_prompt_zh_default_preset, "r", encoding="utf-8-sig"
+                ) as f:
+                    text = f.read().strip()
+                db.set_rule_text(DataStore.RuleType.CUSTOM_PROMPT_ZH, text)
+                db.set_meta("custom_prompt_zh_enable", True)
+                loaded_presets.append(Localizer.get().app_custom_prompt_zh_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default custom prompt (ZH) preset: {config.custom_prompt_zh_default_preset}",
+                    e,
+                )
+
+        # 6. 自定义提示词 (英文)
+        if config.custom_prompt_en_default_preset and os.path.exists(
+            config.custom_prompt_en_default_preset
+        ):
+            try:
+                with open(
+                    config.custom_prompt_en_default_preset, "r", encoding="utf-8-sig"
+                ) as f:
+                    text = f.read().strip()
+                db.set_rule_text(DataStore.RuleType.CUSTOM_PROMPT_EN, text)
+                db.set_meta("custom_prompt_en_enable", True)
+                loaded_presets.append(Localizer.get().app_custom_prompt_en_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default custom prompt (EN) preset: {config.custom_prompt_en_default_preset}",
+                    e,
+                )
+
+        if loaded_presets:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_default_preset_loaded_toast.format(
+                        NAME=" | ".join(loaded_presets)
+                    ),
+                },
+            )

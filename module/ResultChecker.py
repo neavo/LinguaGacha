@@ -206,6 +206,9 @@ class ResultChecker(Base):
         if not item.get_dst():
             return warnings
 
+        # 重新准备术语表数据，确保使用最新数据
+        self._prepared_glossary_data = self._prepare_glossary_data()
+
         # 获取替换后的文本
         src_repl, dst_repl = self._get_repl_texts(item)
 
