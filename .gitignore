@@ -10,4 +10,4 @@ __pycache__
 /*.xlsx
 /*.json
 /resource/config.json
-/resource/preset/glossary/user/
+/resource/preset/*/user/

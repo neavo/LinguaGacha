@@ -19,6 +19,11 @@ class Config:
         DARK = "DARK"
         LIGHT = "LIGHT"
 
+    class ProjectSaveMode(StrEnum):
+        MANUAL = "MANUAL"
+        SOURCE = "SOURCE"
+        FIXED = "FIXED"
+
     # Application
     theme: str = Theme.LIGHT
     app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
@@ -34,21 +39,7 @@ class Config:
     font_hinting: bool = True
     scale_factor: str = ""
 
-    # ExpertSettingsPage
-    preceding_lines_threshold: int = 0
-    enable_preceding_on_local: bool = False
-    clean_ruby: bool = False
-    deduplication_in_trans: bool = True
-    deduplication_in_bilingual: bool = True
-    write_translated_name_fields_to_file: bool = True
-    auto_process_prefix_suffix_preserved_text: bool = True
-
     # BasicSettingsPage
-    class ProjectSaveMode(StrEnum):
-        MANUAL = "MANUAL"
-        SOURCE = "SOURCE"
-        FIXED = "FIXED"
-
     source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
     target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
     project_save_mode: str = ProjectSaveMode.MANUAL
@@ -58,12 +49,32 @@ class Config:
     request_timeout: int = 120
     max_round: int = 16
 
+    # ExpertSettingsPage
+    preceding_lines_threshold: int = 0
+    enable_preceding_on_local: bool = False
+    clean_ruby: bool = False
+    deduplication_in_trans: bool = True
+    deduplication_in_bilingual: bool = True
+    write_translated_name_fields_to_file: bool = True
+    auto_process_prefix_suffix_preserved_text: bool = True
+
     # LaboratoryPage
     auto_glossary_enable: bool = False
     mtool_optimizer_enable: bool = False
 
     # GlossaryPage
     glossary_default_preset: str = ""
+
+    # TextPreservePage
+    text_preserve_default_preset: str = ""
+
+    # TextReplacementPage
+    pre_translation_replacement_default_preset: str = ""
+    post_translation_replacement_default_preset: str = ""
+
+    # CustomPromptPage
+    custom_prompt_zh_default_preset: str = ""
+    custom_prompt_en_default_preset: str = ""
 
     # 最近打开的工程列表 [{"path": "...", "name": "...", "updated_at": "..."}]
     recent_projects: list[dict[str, str]] = dataclasses.field(default_factory=list)

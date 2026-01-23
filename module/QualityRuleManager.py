@@ -260,33 +260,129 @@ class QualityRuleManager(Base):
         如果配置了默认预设，则自动加载
         """
         config = Config().load()
-        default_preset = config.glossary_default_preset
+        loaded_presets = []
 
-        if not default_preset or not os.path.exists(default_preset):
-            return
+        # 1. 术语表
+        if config.glossary_default_preset and os.path.exists(
+            config.glossary_default_preset
+        ):
+            try:
+                with open(config.glossary_default_preset, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.GLOSSARY, data)
+                db.set_meta("glossary_enable", True)
+                loaded_presets.append(Localizer.get().app_glossary_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default glossary preset: {config.glossary_default_preset}",
+                    e,
+                )
 
-        try:
-            with open(default_preset, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        # 2. 文本保护
+        if config.text_preserve_default_preset and os.path.exists(
+            config.text_preserve_default_preset
+        ):
+            try:
+                with open(
+                    config.text_preserve_default_preset, "r", encoding="utf-8"
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.TEXT_PRESERVE, data)
+                db.set_meta("text_preserve_enable", True)
+                loaded_presets.append(Localizer.get().app_text_preserve_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default text preserve preset: {config.text_preserve_default_preset}",
+                    e,
+                )
 
-            # 写入术语表数据
-            db.set_rules(DataStore.RuleType.GLOSSARY, data)
-            # 启用术语表
-            db.set_meta("glossary_enable", True)
+        # 3. 译前替换
+        if config.pre_translation_replacement_default_preset and os.path.exists(
+            config.pre_translation_replacement_default_preset
+        ):
+            try:
+                with open(
+                    config.pre_translation_replacement_default_preset,
+                    "r",
+                    encoding="utf-8",
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.PRE_REPLACEMENT, data)
+                db.set_meta("pre_translation_replacement_enable", True)
+                loaded_presets.append(
+                    Localizer.get().app_pre_translation_replacement_page
+                )
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default pre-translation replacement preset: {config.pre_translation_replacement_default_preset}",
+                    e,
+                )
 
-            # 弹出 Toast 提示（需要通过 EventManager，因为此时 ProjectStore 可能还在运行）
-            # 注意：ProjectStore.create 是同步调用的，但通常在一个线程中。
-            # 这里我们使用 self.emit，因为 QualityRuleManager 继承自 Base
+        # 4. 译后替换
+        if config.post_translation_replacement_default_preset and os.path.exists(
+            config.post_translation_replacement_default_preset
+        ):
+            try:
+                with open(
+                    config.post_translation_replacement_default_preset,
+                    "r",
+                    encoding="utf-8",
+                ) as f:
+                    data = json.load(f)
+                db.set_rules(DataStore.RuleType.POST_REPLACEMENT, data)
+                db.set_meta("post_translation_replacement_enable", True)
+                loaded_presets.append(
+                    Localizer.get().app_post_translation_replacement_page
+                )
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default post-translation replacement preset: {config.post_translation_replacement_default_preset}",
+                    e,
+                )
+
+        # 5. 自定义提示词 (中文)
+        if config.custom_prompt_zh_default_preset and os.path.exists(
+            config.custom_prompt_zh_default_preset
+        ):
+            try:
+                with open(
+                    config.custom_prompt_zh_default_preset, "r", encoding="utf-8-sig"
+                ) as f:
+                    text = f.read().strip()
+                db.set_rule_text(DataStore.RuleType.CUSTOM_PROMPT_ZH, text)
+                db.set_meta("custom_prompt_zh_enable", True)
+                loaded_presets.append(Localizer.get().app_custom_prompt_zh_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default custom prompt (ZH) preset: {config.custom_prompt_zh_default_preset}",
+                    e,
+                )
+
+        # 6. 自定义提示词 (英文)
+        if config.custom_prompt_en_default_preset and os.path.exists(
+            config.custom_prompt_en_default_preset
+        ):
+            try:
+                with open(
+                    config.custom_prompt_en_default_preset, "r", encoding="utf-8-sig"
+                ) as f:
+                    text = f.read().strip()
+                db.set_rule_text(DataStore.RuleType.CUSTOM_PROMPT_EN, text)
+                db.set_meta("custom_prompt_en_enable", True)
+                loaded_presets.append(Localizer.get().app_custom_prompt_en_page)
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to load default custom prompt (EN) preset: {config.custom_prompt_en_default_preset}",
+                    e,
+                )
+
+        if loaded_presets:
             self.emit(
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
                     "message": Localizer.get().quality_default_preset_loaded_toast.format(
-                        NAME=os.path.basename(default_preset)
+                        NAME=" | ".join(loaded_presets)
                     ),
                 },
-            )
-        except Exception as e:
-            LogManager.get().error(
-                f"Failed to load default glossary preset: {default_preset}", e
             )

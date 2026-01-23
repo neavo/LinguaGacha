@@ -405,8 +405,14 @@ class GlossaryPage(QWidget, Base):
             return builtin_presets, user_presets
 
         def set_default_preset(item: dict) -> None:
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            current_config.glossary_default_preset = item["path"]
+            current_config.save()
+
+            # 更新当前页面的配置对象
             config.glossary_default_preset = item["path"]
-            config.save()
+
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -416,8 +422,14 @@ class GlossaryPage(QWidget, Base):
             )
 
         def cancel_default_preset() -> None:
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            current_config.glossary_default_preset = ""
+            current_config.save()
+
+            # 更新当前页面的配置对象
             config.glossary_default_preset = ""
-            config.save()
+
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -563,6 +575,15 @@ class GlossaryPage(QWidget, Base):
             if message_box.exec():
                 try:
                     os.remove(item["path"])
+
+                    # 如果删除的是默认预设，则清除配置
+                    current_config = Config().load()
+                    if current_config.glossary_default_preset == item["path"]:
+                        current_config.glossary_default_preset = ""
+                        current_config.save()
+                        # 更新当前页面的配置对象
+                        config.glossary_default_preset = ""
+
                     self.emit(
                         Base.Event.TOAST,
                         {
@@ -614,6 +635,7 @@ class GlossaryPage(QWidget, Base):
 
                 # 默认预设控制
                 if config.glossary_default_preset == item["path"]:
+                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
                     sub_menu.addAction(
                         Action(
                             FluentIcon.FLAG,
@@ -672,6 +694,7 @@ class GlossaryPage(QWidget, Base):
 
                 # 默认预设控制
                 if config.glossary_default_preset == item["path"]:
+                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
                     sub_menu.addAction(
                         Action(
                             FluentIcon.CLEAR_SELECTION,
