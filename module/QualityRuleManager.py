@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import threading
@@ -230,7 +231,8 @@ class QualityRuleManager(Base):
         """从缓存或 DB 获取元数据"""
         # 1. 查缓存
         if key in self._cache:
-            return self._cache[key]
+            value = self._cache[key]
+            return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
         # 2. 查 DB
         db = self.get_db()
@@ -241,7 +243,8 @@ class QualityRuleManager(Base):
 
         # 3. 写缓存
         self._cache[key] = value
-        return value
+
+        return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
     def set_meta_cached(self, key: str, value: Any) -> None:
         """写入 DB 并更新缓存"""
