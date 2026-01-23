@@ -159,7 +159,7 @@ class TranslatorTask(Base):
 
             # 当任务失败且是单条目任务时，更新重试次数
             if (
-                any(v != ResponseChecker.Error.NONE for v in checks) is not None
+                any(v != ResponseChecker.Error.NONE for v in checks)
                 and len(self.items) == 1
             ):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)

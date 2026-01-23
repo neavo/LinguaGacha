@@ -226,6 +226,9 @@ class Translator(Base):
             # MTool 优化器预处理
             self.mtool_optimizer_preprocess(self.items_cache)
 
+            # 持久化初始化后的状态（包括过滤掉的条目）
+            db.set_items([item.to_dict() for item in self.items_cache])
+
             # 初始化任务调度器
             self.scheduler = TaskScheduler(self.config, self.model, self.items_cache)
             self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
@@ -445,11 +448,6 @@ class Translator(Base):
         ctx = StorageContext.get()
         if not ctx.is_loaded() or self.items_cache is None:
             return
-
-        db = ctx.get_db()
-
-        # 保存所有条目（更新 items 表）
-        db.set_items([item.to_dict() for item in self.items_cache])
 
         # 保存翻译进度额外数据（仅当存在时）
         if self.extras:
@@ -680,8 +678,8 @@ class Translator(Base):
             if unprocessed_items:
                 # 构造一个仅包含未处理条目的临时 Context 进行重试处理
                 new_tasks = self.scheduler.handle_failed_task(queue_item, result)
-                for item in new_tasks:
-                    self.task_queue.put(item)
+                for new_queue_item in new_tasks:
+                    self.task_queue.put(new_queue_item)
             else:
                 # 全量成功的路径
                 pass

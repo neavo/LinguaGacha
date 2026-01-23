@@ -239,17 +239,26 @@ class DataStore(Base):
             return int(item_id)
 
     def set_items(self, items: list[dict[str, Any]]) -> list[int]:
-        """批量保存翻译条目（清空后重新写入）"""
+        """批量保存翻译条目（清空后重新写入，并保留原始 ID）"""
         with self.connection() as conn:
             conn.execute("DELETE FROM items")
             ids = []
             for item in items:
+                item_id = item.get("id")
                 data = {k: v for k, v in item.items() if k != "id"}
                 data_json = json.dumps(data, ensure_ascii=False)
-                cursor = conn.execute(
-                    "INSERT INTO items (data) VALUES (?)", (data_json,)
-                )
-                ids.append(cursor.lastrowid)
+
+                if item_id is not None:
+                    conn.execute(
+                        "INSERT INTO items (id, data) VALUES (?, ?)",
+                        (item_id, data_json),
+                    )
+                    ids.append(item_id)
+                else:
+                    cursor = conn.execute(
+                        "INSERT INTO items (data) VALUES (?)", (data_json,)
+                    )
+                    ids.append(cursor.lastrowid)
             conn.commit()
             return ids
 
@@ -265,7 +274,12 @@ class DataStore(Base):
         Args:
             status: 状态字符串（如 "NONE", "PROCESSED", "EXCLUDED" 等）
         """
-        return sum(1 for item in self.get_all_items() if item.get("status") == status)
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM items WHERE json_extract(data, '$.status') = ?",
+                (status,),
+            )
+            return cursor.fetchone()[0]
 
     def update_item(self, item: dict[str, Any]) -> None:
         """更新单个翻译条目（仅更新，不新增）
