@@ -38,6 +38,7 @@ class TranslatorTask(Base):
         local_flag: bool,
         items: list[Item],
         precedings: list[Item],
+        is_sub_task: bool = False,
         skip_glossary_merge: bool = False,
         skip_response_check: bool = False,
     ) -> None:
@@ -50,16 +51,22 @@ class TranslatorTask(Base):
         self.config = config
         self.model = model  # 新模型数据结构
         self.local_flag = local_flag
+        self.is_sub_task = is_sub_task  # 是否为拆分后的子任务或重试任务
+        self.split_count = 0
+        self.token_threshold = 0
+        self.retry_count = 0
         self.skip_glossary_merge = skip_glossary_merge
+
         self.skip_response_check = skip_response_check
         self.prompt_builder = PromptBuilder(self.config)
+
         # 跳过响应校验时不需要初始化 ResponseChecker
         self.response_checker = (
             None if skip_response_check else ResponseChecker(self.config, items)
         )
 
     # 启动任务
-    def start(self) -> dict[str, str]:
+    def start(self) -> dict[str, int]:
         return self.request(
             self.items, self.processors, self.precedings, self.local_flag
         )
@@ -71,7 +78,7 @@ class TranslatorTask(Base):
         processors: list[TextProcessor],
         precedings: list[Item],
         local_flag: bool,
-    ) -> dict[str, str]:
+    ) -> dict[str, int]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -116,6 +123,11 @@ class TranslatorTask(Base):
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip:
+            if self.is_sub_task:
+                msg = f"正在拆分重试，拆分次数: {self.split_count} | 当前阈值: {self.token_threshold}"
+                if self.retry_count > 0:
+                    msg += f" | 单条重试: {self.retry_count}"
+                self.warning(f"{Localizer.get().log_task_fail}\n{msg}")
             return {
                 "row_count": 0,
                 "input_tokens": 0,
@@ -264,7 +276,7 @@ class TranslatorTask(Base):
                         }
                     )
 
-        if changed == True:
+        if changed:
             # 判断是否满足保存间隔
             save_to_db = time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
 
@@ -283,7 +295,7 @@ class TranslatorTask(Base):
     def print_log_table(
         self,
         checks: list[str],
-        start: int,
+        start: float,
         pt: int,
         ct: int,
         srcs: list[str],
@@ -303,6 +315,13 @@ class TranslatorTask(Base):
                     }
                 )
             }）"
+
+        # 检查是否为拆分或重试的任务
+        sub_info = ""
+        if self.is_sub_task:
+            sub_info = f"正在拆分重试，拆分次数: {self.split_count} | 当前阈值: {self.token_threshold}"
+            if self.retry_count > 0:
+                sub_info += f" | 单条重试: {self.retry_count}"
 
         if all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
@@ -336,7 +355,11 @@ class TranslatorTask(Base):
 
         # 添加日志
         file_log.insert(0, message)
+        if sub_info:
+            file_log.insert(1, sub_info)
         console_log.insert(0, message)
+        if sub_info:
+            console_log.insert(1, sub_info)
 
         # 写入日志到文件
         file_rows = self.generate_log_rows(srcs, dsts, file_log, console=False)
@@ -344,8 +367,11 @@ class TranslatorTask(Base):
 
         # 根据线程数判断是否需要打印表格
         if Engine.get().get_running_task_count() > 32:
+            display_msg = message
+            if sub_info:
+                display_msg += f"\n{sub_info}"
             rich.get_console().print(
-                Localizer.get().engine_task_too_many + "\n" + message + "\n"
+                Localizer.get().engine_task_too_many + "\n" + display_msg + "\n"
             )
         else:
             rich.get_console().print(
@@ -358,7 +384,7 @@ class TranslatorTask(Base):
     # 生成日志行
     def generate_log_rows(
         self, srcs: list[str], dsts: list[str], extra: list[str], console: bool
-    ) -> tuple[list[str], str]:
+    ) -> list[str]:
         rows = []
 
         # 添加额外日志
@@ -397,10 +423,7 @@ class TranslatorTask(Base):
         table.add_column("", style="white", ratio=1, overflow="fold")
 
         for row in rows:
-            if isinstance(row, str):
-                table.add_row(row)
-            else:
-                table.add_row(*row)
+            table.add_row(row)
 
         return table
 

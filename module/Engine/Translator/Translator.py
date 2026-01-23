@@ -5,18 +5,19 @@ import threading
 import time
 import webbrowser
 from itertools import zip_longest
+from queue import PriorityQueue
 
 import httpx
 from rich.progress import TaskID
 
 from base.Base import Base
 from model.Item import Item
-from module.ChunkGenerator import ChunkGenerator
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
-from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.Engine.TaskScheduler import PriorityQueueItem
+from module.Engine.TaskScheduler import TaskScheduler
 from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
@@ -34,10 +35,13 @@ class Translator(Base):
         super().__init__()
 
         # 翻译过程中的 items 缓存（内存中维护，避免频繁读写数据库）
-        self._items_cache: list[Item] | None = None
+        self.items_cache: list[Item] | None = None
 
         # 翻译进度额外数据
         self.extras: dict = {}
+
+        # 正在执行的任务计数器（用于精准判断任务结束）
+        self.active_task_count: int = 0
 
         # 线程锁
         self.data_lock = threading.Lock()
@@ -93,53 +97,15 @@ class Translator(Base):
         # 更新运行状态
         Engine.get().set_status(Base.TaskStatus.STOPPING)
 
-        def start(event: str, data: dict) -> None:
-            while True:
-                time.sleep(0.5)
-
-                if Engine.get().get_running_task_count() == 0:
-                    # 等待回调执行完毕
-                    time.sleep(1.0)
-
-                    # 保存翻译进度到 .lg 文件
-                    self._save_translation_state()
-
-                    # 关闭长连接（WAL 文件将被清理）
-                    self._close_db_connection()
-
-                    # 日志
-                    self.print("")
-                    self.info(Localizer.get().engine_task_stop)
-                    self.print("")
-
-                    # 通知
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.SUCCESS,
-                            "message": Localizer.get().engine_task_stop,
-                        },
-                    )
-
-                    # 更新运行状态
-                    Engine.get().set_status(Base.TaskStatus.IDLE)
-
-                    # 清理缓存
-                    self._items_cache = None
-
-                    self.emit(Base.Event.TRANSLATION_DONE, {})
-                    break
-
-        threading.Thread(target=start, args=(event, data)).start()
-
     # 翻译结果手动导出事件
+
     def translation_export(self, event: Base.Event, data: dict) -> None:
         if Engine.get().get_status() != Base.TaskStatus.TRANSLATING:
             return None
 
         # 复制一份以避免影响原始数据
         def start(event: str, data: dict) -> None:
-            items = self._copy_items()
+            items = self.copy_items()
             self.mtool_optimizer_postprocess(items)
             self.check_and_wirte_result(items)
 
@@ -147,161 +113,123 @@ class Translator(Base):
 
     # 实际的翻译流程
     def start(self, event: Base.Event, data: dict) -> None:
-        config: Base.ProjectStatus = data.get("config")
-        status: Base.ProjectStatus = data.get("status")
+        try:
+            config: Base.ProjectStatus = data.get("config")
+            status: Base.ProjectStatus = data.get("status")
 
-        # 更新运行状态
-        Engine.get().set_status(Base.TaskStatus.TRANSLATING)
+            # 更新运行状态
+            Engine.get().set_status(Base.TaskStatus.TRANSLATING)
 
-        # 初始化
-        self.config = config if isinstance(config, Config) else Config().load()
+            # 初始化
+            self.config = config if isinstance(config, Config) else Config().load()
 
-        # 检查工程是否已加载
-        ctx = StorageContext.get()
-        if not ctx.is_loaded():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": "请先加载工程文件",
-                },
-            )
-            self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
-            return None
-
-        db = ctx.get_db()
-
-        # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
-        db.open()
-
-        # 从新模型系统获取激活模型
-        self.model = self.config.get_active_model()
-        if self.model is None:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": "未找到激活的模型配置",
-                },
-            )
-            self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
-            return None
-
-        local_flag = self.initialize_local_flag()
-        max_workers, rpm_threshold = self.initialize_max_workers()
-        input_token_threshold = self.model.get("threshold", {}).get(
-            "input_token_limit", 512
-        )
-
-        # 重置
-        TextProcessor.reset()
-        TaskRequester.reset()
-        PromptBuilder.reset()
-
-        # 从 .lg 文件加载条目到内存缓存
-        self._items_cache = [Item.from_dict(d) for d in db.get_all_items()]
-
-        # 检查数据是否为空
-        if len(self._items_cache) == 0:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().engine_no_items,
-                },
-            )
-            self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
-            return None
-
-        # 加载进度数据
-        if status == Base.ProjectStatus.PROCESSING:
-            # 继续翻译：恢复进度
-            self.extras = ctx.get_translation_extras()
-            self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-            self.extras["line"] = self._get_item_count_by_status(
-                Base.ProjectStatus.PROCESSED
-            )
-        else:
-            # 新翻译：重置所有条目状态
-            for item in self._items_cache:
-                if item.get_status() not in (Base.ProjectStatus.EXCLUDED,):
-                    item.set_status(Base.ProjectStatus.NONE)
-
-            self.extras = {
-                "start_time": time.time(),
-                "total_line": 0,
-                "line": 0,
-                "total_tokens": 0,
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
-                "time": 0,
-            }
-
-        # 更新翻译进度
-        self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
-
-        # 规则过滤
-        self.rule_filter(self._items_cache)
-
-        # 语言过滤
-        self.language_filter(self._items_cache)
-
-        # MTool 优化器预处理
-        self.mtool_optimizer_preprocess(self._items_cache)
-
-        # 开始循环
-        for current_round in range(self.config.max_round):
-            # 检测是否需要停止任务
-            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+            # 检查工程是否已加载
+            ctx = StorageContext.get()
+            if not ctx.is_loaded():
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": "请先加载工程文件",
+                    },
+                )
                 return None
 
-            # 第一轮时更新任务的总行数
-            if current_round == 0:
-                remaining_count = self._get_item_count_by_status(
-                    Base.ProjectStatus.NONE
+            db = ctx.get_db()
+
+            # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
+            db.open()
+
+            # 从新模型系统获取激活模型
+            self.model = self.config.get_active_model()
+            if self.model is None:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": "未找到激活的模型配置",
+                    },
                 )
-                self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
+                return None
 
-            # 第二轮开始切分
-            if current_round > 0:
-                input_token_threshold = max(1, int(input_token_threshold / 3))
+            max_workers, rpm_threshold = self.initialize_max_workers()
 
-            # 生成缓存数据条目片段
-            chunks, precedings = ChunkGenerator.generate_item_chunks(
-                items=self._items_cache,
-                input_token_threshold=input_token_threshold,
-                preceding_lines_threshold=self.config.preceding_lines_threshold,
-            )
+            # 重置
+            TextProcessor.reset()
+            TaskRequester.reset()
+            PromptBuilder.reset()
 
-            # 仅在第一轮启用参考上文功能
-            if current_round > 0:
-                precedings = [[] for _ in range(len(precedings))]
+            # 从 .lg 文件加载条目到内存缓存
+            self.items_cache = [Item.from_dict(d) for d in db.get_all_items()]
 
-            # 生成翻译任务
-            self.print("")
-            tasks: list[TranslatorTask] = []
-            with ProgressBar(transient=False) as progress:
-                pid = progress.new()
-                for items, precedings in zip(chunks, precedings):
-                    progress.update(pid, advance=1, total=len(chunks))
-                    tasks.append(
-                        TranslatorTask(
-                            self.config, self.model, local_flag, items, precedings
-                        )
-                    )
+            # 检查数据是否为空
+            if len(self.items_cache) == 0:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().engine_no_items,
+                    },
+                )
+                return None
+
+            # 加载进度数据
+            if status == Base.ProjectStatus.PROCESSING:
+                # 继续翻译：恢复进度
+                self.extras = ctx.get_translation_extras()
+                self.extras["start_time"] = time.time() - self.extras.get("time", 0)
+                self.extras["line"] = self.get_item_count_by_status(
+                    Base.ProjectStatus.PROCESSED
+                )
+            else:
+                # 新翻译：重置所有条目状态
+                for item in self.items_cache:
+                    if item.get_status() not in (Base.ProjectStatus.EXCLUDED,):
+                        item.set_status(Base.ProjectStatus.NONE)
+
+                self.extras = {
+                    "start_time": time.time(),
+                    "total_line": 0,
+                    "line": 0,
+                    "total_tokens": 0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "time": 0,
+                }
+
+            # 更新翻译进度
+            self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
+
+            # 规则过滤
+            self.rule_filter(self.items_cache)
+
+            # 语言过滤
+            self.language_filter(self.items_cache)
+
+            # MTool 优化器预处理
+            self.mtool_optimizer_preprocess(self.items_cache)
+
+            # 初始化任务调度器
+            self.scheduler = TaskScheduler(self.config, self.model, self.items_cache)
+            self.task_queue: PriorityQueue[PriorityQueueItem] = PriorityQueue()
+
+            # 生成初始任务并加入队列
+            initial_tasks = self.scheduler.generate_initial_tasks()
+            for item in initial_tasks:
+                self.task_queue.put(item)
+
+            # 更新任务的总行数
+            remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
+            self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
             # 打印日志
             self.info(
                 Localizer.get().engine_task_generation.replace(
-                    "{COUNT}", str(len(chunks))
+                    "{COUNT}", str(len(initial_tasks))
                 )
             )
 
             # 输出开始翻译的日志
-            self.print("")
-            self.print("")
-            self.info(f"{Localizer.get().engine_current_round} - {current_round + 1}")
-            self.info(f"{Localizer.get().engine_max_round} - {self.config.max_round}")
             self.print("")
             self.info(
                 f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
@@ -317,42 +245,65 @@ class Translator(Base):
                 self.info(PromptBuilder(self.config).build_main())
                 self.print("")
 
-            # 开始执行翻译任务
+            # 启动消费者线程池
             task_limiter = TaskLimiter(
                 rps=max_workers, rpm=rpm_threshold, max_concurrency=max_workers
             )
+
             with ProgressBar(transient=True) as progress:
+                pid = progress.new()
                 with concurrent.futures.ThreadPoolExecutor(
                     max_workers=max_workers, thread_name_prefix=Engine.TASK_PREFIX
                 ) as executor:
-                    futures = []
-                    pid = progress.new()
-                    for task in tasks:
-                        # 限制队列大小，避免堆积过多任务导致停止缓慢
-                        if not task_limiter.acquire(
-                            lambda: Engine.get().get_status()
-                            == Base.TaskStatus.STOPPING
-                        ):
-                            return None
+                    # 消费者循环
+                    while not self.scheduler.should_stop(
+                        self.task_queue, self.active_task_count
+                    ):
+                        # 检测是否需要停止任务
+                        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                            break
 
-                        if not task_limiter.wait(
-                            lambda: Engine.get().get_status()
-                            == Base.TaskStatus.STOPPING
-                        ):
-                            return None
+                        try:
+                            # 尝试从队列获取任务 (非阻塞，配合 should_stop 使用)
+                            if self.task_queue.empty():
+                                time.sleep(0.1)
+                                continue
 
-                        future = executor.submit(task.start)
-                        future.add_done_callback(task_limiter.release)
-                        # 传递 task 对象以便回调中进行即时写入
-                        future.add_done_callback(
-                            lambda future, t=task: self.task_done_callback(
-                                future, pid, progress, t
+                            queue_item = self.task_queue.get_nowait()
+
+                            # 流量限制
+                            if not task_limiter.acquire(
+                                lambda: Engine.get().get_status()
+                                == Base.TaskStatus.STOPPING
+                            ):
+                                break
+
+                            if not task_limiter.wait(
+                                lambda: Engine.get().get_status()
+                                == Base.TaskStatus.STOPPING
+                            ):
+                                break
+
+                            # 提交任务
+                            if queue_item.task is None:
+                                continue
+
+                            with self.data_lock:
+                                self.active_task_count += 1
+
+                            future = executor.submit(queue_item.task.start)
+                            future.add_done_callback(task_limiter.release)
+                            future.add_done_callback(
+                                lambda future, item=queue_item: self.task_done_callback(
+                                    future, pid, progress, item
+                                )
                             )
-                        )
-                        futures.append(future)
+                        except Exception:
+                            time.sleep(0.1)
+                            continue
 
-            # 判断是否需要继续翻译
-            if self._get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
+            # 判断翻译是否完成
+            if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
                 # 日志
                 self.print("")
                 self.info(Localizer.get().engine_task_done)
@@ -367,14 +318,14 @@ class Translator(Base):
                         "message": Localizer.get().engine_task_done,
                     },
                 )
-                break
-
-            # 检查是否达到最大轮次
-            if current_round >= self.config.max_round - 1:
-                # 日志
+            else:
+                # 停止翻译（可能是主动停止，也可能是其他原因未完成）
                 self.print("")
-                self.warning(Localizer.get().engine_task_fail)
-                self.warning(Localizer.get().engine_task_save)
+                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                    self.info(Localizer.get().engine_task_stop)
+                else:
+                    self.warning(Localizer.get().engine_task_fail)
+                self.info(Localizer.get().engine_task_save)
                 self.print("")
 
                 # 通知
@@ -382,57 +333,62 @@ class Translator(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_fail,
+                        "message": Localizer.get().engine_task_stop
+                        if Engine.get().get_status() == Base.TaskStatus.STOPPING
+                        else Localizer.get().engine_task_fail,
                     },
                 )
-                break
+        except Exception as e:
+            self.error(f"{Localizer.get().log_task_fail}", e)
+        finally:
+            # 等待最后的回调执行完毕
+            time.sleep(1.0)
 
-        # 等待回调执行完毕
-        time.sleep(1.0)
+            # MTool 优化器后处理
+            if self.items_cache:
+                self.mtool_optimizer_postprocess(self.items_cache)
 
-        # MTool 优化器后处理
-        self.mtool_optimizer_postprocess(self._items_cache)
+            # 确定最终项目状态
+            final_status = (
+                Base.ProjectStatus.PROCESSED
+                if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0
+                else Base.ProjectStatus.PROCESSING
+            )
 
-        # 确定最终项目状态
-        final_status = (
-            Base.ProjectStatus.PROCESSED
-            if self._get_item_count_by_status(Base.ProjectStatus.NONE) == 0
-            else Base.ProjectStatus.PROCESSING
-        )
+            # 保存翻译结果到 .lg 文件
+            self.save_translation_state(final_status)
 
-        # 保存翻译结果到 .lg 文件
-        self._save_translation_state(final_status)
+            # 关闭长连接（WAL 文件将被清理）
+            self.close_db_connection()
 
-        # 关闭长连接（WAL 文件将被清理）
-        self._close_db_connection()
+            # 检查结果并写入文件
+            if self.items_cache:
+                self.check_and_wirte_result(self.items_cache)
 
-        # 检查结果并写入文件
-        self.check_and_wirte_result(self._items_cache)
+            # 重置内部状态（正常完成翻译）
+            Engine.get().set_status(Base.TaskStatus.IDLE)
 
-        # 重置内部状态（正常完成翻译）
-        Engine.get().set_status(Base.TaskStatus.IDLE)
+            # 清理缓存
+            self.items_cache = None
 
-        # 清理缓存
-        self._items_cache = None
-
-        # 触发翻译停止完成的事件
-        self.emit(Base.Event.TRANSLATION_DONE, {})
+            # 触发翻译停止完成的事件
+            self.emit(Base.Event.TRANSLATION_DONE, {})
 
     # ========== 辅助方法 ==========
 
-    def _get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
+    def get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
         """按状态统计缓存中的条目数量"""
-        if self._items_cache is None:
+        if self.items_cache is None:
             return 0
-        return len([item for item in self._items_cache if item.get_status() == status])
+        return len([item for item in self.items_cache if item.get_status() == status])
 
-    def _copy_items(self) -> list[Item]:
+    def copy_items(self) -> list[Item]:
         """深拷贝缓存中的条目列表"""
-        if self._items_cache is None:
+        if self.items_cache is None:
             return []
-        return [Item.from_dict(item.to_dict()) for item in self._items_cache]
+        return [Item.from_dict(item.to_dict()) for item in self.items_cache]
 
-    def _close_db_connection(self) -> None:
+    def close_db_connection(self) -> None:
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
         ctx = StorageContext.get()
         if ctx.is_loaded():
@@ -440,7 +396,7 @@ class Translator(Base):
             if db is not None:
                 db.close()
 
-    def _save_items_batch(self, items: list[Item]) -> None:
+    def save_items_batch(self, items: list[Item]) -> None:
         """批量保存条目到数据库（即时写入，用于断点续译）"""
         ctx = StorageContext.get()
         if not ctx.is_loaded():
@@ -454,18 +410,18 @@ class Translator(Base):
         for item in items:
             db.update_item(item.to_dict())
 
-    def _save_translation_state(
+    def save_translation_state(
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
     ) -> None:
         """保存翻译状态到 .lg 文件"""
         ctx = StorageContext.get()
-        if not ctx.is_loaded() or self._items_cache is None:
+        if not ctx.is_loaded() or self.items_cache is None:
             return
 
         db = ctx.get_db()
 
         # 保存所有条目（更新 items 表）
-        db.set_items([item.to_dict() for item in self._items_cache])
+        db.set_items([item.to_dict() for item in self.items_cache])
 
         # 保存翻译进度额外数据（仅当存在时）
         if self.extras:
@@ -674,24 +630,47 @@ class Translator(Base):
         future: concurrent.futures.Future,
         pid: TaskID,
         progress: ProgressBar,
-        task: "TranslatorTask",
+        queue_item: PriorityQueueItem,
     ) -> None:
         try:
             # 获取结果
             result = future.result()
-
-            # 结果为空则跳过后续的更新步骤
-            if not isinstance(result, dict) or len(result) == 0:
+            task = queue_item.task
+            if task is None:
                 return
 
+            # 处理失败或部分失败的任务
+            # 只要还有 NONE 状态的条目，就说明该任务未完全成功，需要重试或切分
+            unprocessed_items = [
+                i for i in task.items if i.get_status() == Base.ProjectStatus.NONE
+            ]
+            if unprocessed_items:
+                # 构造一个仅包含未处理条目的临时 Context 进行重试处理
+                # 注意：这里我们直接复用 handle_failed_task，但它需要处理这种 item 减少的情况
+                new_tasks = self.scheduler.handle_failed_task(queue_item, result)
+                for item in new_tasks:
+                    self.task_queue.put(item)
+
+                # 如果没有产生新任务，说明剩余条目已强制接受
+                if not new_tasks:
+                    progress.update(pid, advance=len(unprocessed_items))
+
+                # 如果部分成功，还需要更新已完成的进度
+                if result.get("row_count", 0) > 0:
+                    progress.update(pid, advance=result.get("row_count", 0))
+            else:
+                # 全量成功的路径
+                pass
+
             # 即时写入已翻译的条目到数据库（支持断点续译）
+
             translated_items = [
                 item
                 for item in task.items
                 if item.get_status() == Base.ProjectStatus.PROCESSED
             ]
             if translated_items:
-                self._save_items_batch(translated_items)
+                self.save_items_batch(translated_items)
 
             # 记录数据
             with self.data_lock:
@@ -731,3 +710,6 @@ class Translator(Base):
             pass
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)
+        finally:
+            with self.data_lock:
+                self.active_task_count -= 1
