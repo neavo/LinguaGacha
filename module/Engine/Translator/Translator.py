@@ -114,8 +114,8 @@ class Translator(Base):
     # 实际的翻译流程
     def start(self, event: Base.Event, data: dict) -> None:
         try:
-            config: Base.ProjectStatus = data.get("config")
-            status: Base.ProjectStatus = data.get("status")
+            config: Config | None = data.get("config")
+            status: Base.ProjectStatus | None = data.get("status")
 
             # 更新运行状态
             Engine.get().set_status(Base.TaskStatus.TRANSLATING)
@@ -211,7 +211,7 @@ class Translator(Base):
 
             # 初始化任务调度器
             self.scheduler = TaskScheduler(self.config, self.model, self.items_cache)
-            self.task_queue: PriorityQueue[PriorityQueueItem] = PriorityQueue()
+            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
 
             # 生成初始任务并加入队列
             initial_tasks = self.scheduler.generate_initial_tasks()
@@ -284,6 +284,10 @@ class Translator(Base):
                             ):
                                 break
 
+                            # 等待限流后再次检查停止状态，避免提交即将被取消的任务
+                            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                                break
+
                             # 提交任务
                             if queue_item.task is None:
                                 continue
@@ -291,13 +295,21 @@ class Translator(Base):
                             with self.data_lock:
                                 self.active_task_count += 1
 
-                            future = executor.submit(queue_item.task.start)
-                            future.add_done_callback(task_limiter.release)
-                            future.add_done_callback(
-                                lambda future, item=queue_item: self.task_done_callback(
-                                    future, pid, progress, item
+                            try:
+                                future = executor.submit(queue_item.task.start)
+                                future.add_done_callback(task_limiter.release)
+                                future.add_done_callback(
+                                    lambda future,
+                                    item=queue_item: self.task_done_callback(
+                                        future, pid, progress, item
+                                    )
                                 )
-                            )
+                            except Exception as e:
+                                # 提交失败时，必须减少计数器，否则会导致死锁
+                                with self.data_lock:
+                                    self.active_task_count -= 1
+                                self.error("提交任务失败", e)
+                                task_limiter.release(None)  # 释放限流锁
                         except Exception:
                             time.sleep(0.1)
                             continue

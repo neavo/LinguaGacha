@@ -226,11 +226,15 @@ class TaskScheduler(Base):
         if running_count > 0:
             return False
 
+        # 如果队列为空且没有正在执行的任务，强制停止
+        # 检查是否还有残留的未翻译条目（可能是被异常丢弃的任务）
         untranslated = [
             i for i in self.items if i.get_status() == Base.ProjectStatus.NONE
         ]
         if untranslated:
-            return False
+            self.warning(
+                f"任务调度器停止，但仍有 {len(untranslated)} 个未翻译条目（可能因异常丢失）"
+            )
 
         return True
 

@@ -15,6 +15,7 @@ from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 
+
 class TaskRequester(Base):
     """
     任务请求器 - 负责向各种 LLM API 发送请求
@@ -26,7 +27,9 @@ class TaskRequester(Base):
 
     # Gemini
     RE_GEMINI_2_5_PRO: re.Pattern = re.compile(r"gemini-2\.5-pro", flags=re.IGNORECASE)
-    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags=re.IGNORECASE)
+    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(
+        r"gemini-2\.5-flash", flags=re.IGNORECASE
+    )
     RE_GEMINI_3_PRO: re.Pattern = re.compile(r"gemini-3-pro", flags=re.IGNORECASE)
     RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
 
@@ -48,9 +51,7 @@ class TaskRequester(Base):
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
     )
-    RE_DEEPSEEK: tuple[re.Pattern] = (
-        re.compile(r"deepseek", flags=re.IGNORECASE),
-    )
+    RE_DEEPSEEK: tuple[re.Pattern] = (re.compile(r"deepseek", flags=re.IGNORECASE),)
     RE_OPENAI: tuple[re.Pattern] = (
         re.compile(r"gpt-\d", flags=re.IGNORECASE),
         re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
@@ -81,17 +82,29 @@ class TaskRequester(Base):
 
         # 解析 API 密钥列表
         api_keys_str = str(model.get("api_key", ""))
-        self.api_keys: list[str] = [k.strip() for k in api_keys_str.split("\n") if k.strip()]
+        self.api_keys: list[str] = [
+            k.strip() for k in api_keys_str.split("\n") if k.strip()
+        ]
 
         # 提取阈值配置
-        self.output_token_limit: int = model.get("threshold", {}).get("output_token_limit", 4096)
+        self.output_token_limit: int = model.get("threshold", {}).get(
+            "output_token_limit", 4096
+        )
 
         # 提取请求配置（根据开关状态决定是否使用）
         request_config = model.get("request", {})
-        extra_headers_custom_enable = request_config.get("extra_headers_custom_enable", False)
+        extra_headers_custom_enable = request_config.get(
+            "extra_headers_custom_enable", False
+        )
         extra_body_custom_enable = request_config.get("extra_body_custom_enable", False)
-        self.extra_headers: dict = request_config.get("extra_headers", {}) if extra_headers_custom_enable else {}
-        self.extra_body: dict = request_config.get("extra_body", {}) if extra_body_custom_enable else {}
+        self.extra_headers: dict = (
+            request_config.get("extra_headers", {})
+            if extra_headers_custom_enable
+            else {}
+        )
+        self.extra_body: dict = (
+            request_config.get("extra_body", {}) if extra_body_custom_enable else {}
+        )
 
         # 解析思考挡位
         thinking_config = model.get("thinking", {})
@@ -136,13 +149,22 @@ class TaskRequester(Base):
 
     @classmethod
     @lru_cache(maxsize=None)
-    def get_client(cls, url: str, key: str, api_format: str, timeout: int, extra_headers_tuple: tuple = ()) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
+    def get_client(
+        cls,
+        url: str,
+        key: str,
+        api_format: str,
+        timeout: int,
+        extra_headers_tuple: tuple = (),
+    ) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
         # extra_headers_tuple 用于 Google API，格式为 ((k1, v1), (k2, v2), ...)，可作为缓存 key
         if api_format == Base.APIFormat.SAKURALLM:
             return openai.OpenAI(
                 base_url=url,
                 api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
+                timeout=httpx.Timeout(
+                    read=timeout, pool=8.00, write=8.00, connect=8.00
+                ),
                 max_retries=0,
             )
         elif api_format == Base.APIFormat.GOOGLE:
@@ -161,14 +183,18 @@ class TaskRequester(Base):
             return anthropic.Anthropic(
                 base_url=url,
                 api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
+                timeout=httpx.Timeout(
+                    read=timeout, pool=8.00, write=8.00, connect=8.00
+                ),
                 max_retries=0,
             )
         else:
             return openai.OpenAI(
                 base_url=url,
                 api_key=key,
-                timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
+                timeout=httpx.Timeout(
+                    read=timeout, pool=8.00, write=8.00, connect=8.00
+                ),
                 max_retries=0,
             )
 
@@ -210,7 +236,9 @@ class TaskRequester(Base):
 
     # ========== Sakura 请求 ==========
 
-    def generate_sakura_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
+    def generate_sakura_args(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> dict:
         result = args | {
             "model": self.model_id,
             "messages": messages,
@@ -220,7 +248,9 @@ class TaskRequester(Base):
         }
         return result
 
-    def request_sakura(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_sakura(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> tuple[bool, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
@@ -230,8 +260,10 @@ class TaskRequester(Base):
                     timeout=self.config.request_timeout,
                 )
 
-            response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_sakura_args(messages, args)
+            response: openai.types.completion.Completion = (
+                client.chat.completions.create(
+                    **self.generate_sakura_args(messages, args)
+                )
             )
 
             response_result = response.choices[0].message.content
@@ -252,7 +284,10 @@ class TaskRequester(Base):
 
         # Sakura 返回的内容多行文本，将其转换为 JSON 字符串
         response_result = json.dumps(
-            {str(i): line.strip() for i, line in enumerate(response_result.strip().splitlines())},
+            {
+                str(i): line.strip()
+                for i, line in enumerate(response_result.strip().splitlines())
+            },
             indent=None,
             ensure_ascii=False,
         )
@@ -261,7 +296,9 @@ class TaskRequester(Base):
 
     # ========== OpenAI 请求 ==========
 
-    def generate_openai_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
+    def generate_openai_args(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> dict:
         result = args | {
             "model": self.model_id,
             "messages": messages,
@@ -270,9 +307,8 @@ class TaskRequester(Base):
         }
 
         # 为 OpenAI 平台设置 max_completion_tokens
-        if (
-            self.api_url.startswith("https://api.openai.com")
-            or any(v.search(self.model_id) is not None for v in __class__.RE_OPENAI)
+        if self.api_url.startswith("https://api.openai.com") or any(
+            v.search(self.model_id) is not None for v in __class__.RE_OPENAI
         ):
             result.pop("max_tokens", None)
             result["max_completion_tokens"] = self.output_token_limit
@@ -282,7 +318,9 @@ class TaskRequester(Base):
 
         # GLM
         if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
-            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            thinking_type = (
+                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            )
             extra_body["thinking"] = {"type": thinking_type}
         # Doubao
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
@@ -294,7 +332,9 @@ class TaskRequester(Base):
                 extra_body["thinking"] = {"type": "enabled"}
         # DeepSeek
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DEEPSEEK):
-            thinking_type = "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            thinking_type = (
+                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            )
             extra_body["thinking"] = {"type": thinking_type}
 
         # 用户配置覆盖内置值
@@ -303,7 +343,9 @@ class TaskRequester(Base):
 
         return result
 
-    def request_openai(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_openai(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> tuple[bool, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: openai.OpenAI = __class__.get_client(
@@ -313,18 +355,26 @@ class TaskRequester(Base):
                     timeout=self.config.request_timeout,
                 )
 
-            response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_openai_args(messages, args)
+            response: openai.types.completion.Completion = (
+                client.chat.completions.create(
+                    **self.generate_openai_args(messages, args)
+                )
             )
 
             # 提取回复内容
             message = response.choices[0].message
-            if hasattr(message, "reasoning_content") and isinstance(message.reasoning_content, str):
-                response_think = __class__.RE_LINE_BREAK.sub("\n", message.reasoning_content.strip())
+            if hasattr(message, "reasoning_content") and isinstance(
+                message.reasoning_content, str
+            ):
+                response_think = __class__.RE_LINE_BREAK.sub(
+                    "\n", message.reasoning_content.strip()
+                )
                 response_result = message.content.strip()
             elif "</think>" in message.content:
                 splited = message.content.split("</think>")
-                response_think = __class__.RE_LINE_BREAK.sub("\n", splited[0].removeprefix("<think>").strip())
+                response_think = __class__.RE_LINE_BREAK.sub(
+                    "\n", splited[0].removeprefix("<think>").strip()
+                )
                 response_result = splited[-1].strip()
             else:
                 response_think = ""
@@ -348,29 +398,43 @@ class TaskRequester(Base):
 
     # ========== Google 请求 ==========
 
-    def generate_google_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
+    def generate_google_args(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> dict:
         config_args = args | {
             "max_output_tokens": self.output_token_limit,
             "safety_settings": (
-                types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
+                ),
             ),
         }
 
         # Gemini 3 Pro
         if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
-            if self.thinking_level in (ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM):
+            if self.thinking_level in (
+                ThinkingLevel.OFF,
+                ThinkingLevel.LOW,
+                ThinkingLevel.MEDIUM,
+            ):
                 config_args["thinking_config"] = types.ThinkingConfig(
-                        thinking_level="low",
-                        include_thoughts=True,
-                    )
+                    thinking_level="low",
+                    include_thoughts=True,
+                )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level="high",
                     include_thoughts=True,
-            )
+                )
         # Gemini 3 Flash
         elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
@@ -426,7 +490,7 @@ class TaskRequester(Base):
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinkingBudget=2048,
                     include_thoughts=True,
-            )
+                )
 
         # Custom Body
         if self.extra_body:
@@ -438,10 +502,14 @@ class TaskRequester(Base):
             "config": types.GenerateContentConfig(**config_args),
         }
 
-    def request_google(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_google(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> tuple[bool, str, str, int, int]:
         try:
             # 将 custom_headers 转换为 tuple 以支持 lru_cache
-            extra_headers_tuple = tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
+            extra_headers_tuple = (
+                tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
+            )
             with __class__.LOCK:
                 client: genai.Client = __class__.get_client(
                     url=__class__.get_url(self.api_url, self.api_format),
@@ -458,12 +526,17 @@ class TaskRequester(Base):
             # 提取回复内容
             response_think = ""
             response_result = ""
-            if len(response.candidates) > 0 and len(response.candidates[-1].content.parts) > 0:
+            if (
+                len(response.candidates) > 0
+                and len(response.candidates[-1].content.parts) > 0
+            ):
                 parts = response.candidates[-1].content.parts
-                think_messages = [v for v in parts if v.thought == True]
+                think_messages = [v for v in parts if v.thought]
                 if len(think_messages) > 0:
-                    response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].text.strip())
-                result_messages = [v for v in parts if v.thought != True]
+                    response_think = __class__.RE_LINE_BREAK.sub(
+                        "\n", think_messages[-1].text.strip()
+                    )
+                result_messages = [v for v in parts if not v.thought]
                 if len(result_messages) > 0:
                     response_result = result_messages[-1].text.strip()
         except Exception as e:
@@ -487,7 +560,9 @@ class TaskRequester(Base):
 
     # ========== Anthropic 请求 ==========
 
-    def generate_anthropic_args(self, messages: list[dict[str, str]], args: dict[str, float]) -> dict:
+    def generate_anthropic_args(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> dict:
         result = args | {
             "model": self.model_id,
             "messages": messages,
@@ -510,22 +585,22 @@ class TaskRequester(Base):
                     "type": "enabled",
                     "budget_tokens": 1024,
                 }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
+                result.pop("top_p", None)  # 思考模式下不支持调整
+                result.pop("temperature", None)  # 思考模式下不支持调整
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 result["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 1536,
                 }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
+                result.pop("top_p", None)  # 思考模式下不支持调整
+                result.pop("temperature", None)  # 思考模式下不支持调整
             elif self.thinking_level == ThinkingLevel.HIGH:
                 result["thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 2048,
                 }
-                result.pop("top_p", None)           # 思考模式下不支持调整
-                result.pop("temperature", None)     # 思考模式下不支持调整
+                result.pop("top_p", None)  # 思考模式下不支持调整
+                result.pop("temperature", None)  # 思考模式下不支持调整
 
         # 用户配置覆盖内置值
         if self.extra_body:
@@ -533,7 +608,9 @@ class TaskRequester(Base):
 
         return result
 
-    def request_anthropic(self, messages: list[dict[str, str]], args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+    def request_anthropic(
+        self, messages: list[dict[str, str]], args: dict[str, float]
+    ) -> tuple[bool, str, str, int, int]:
         try:
             with __class__.LOCK:
                 client: anthropic.Anthropic = __class__.get_client(
@@ -548,8 +625,16 @@ class TaskRequester(Base):
             )
 
             # 提取回复内容
-            text_messages = [msg for msg in response.content if hasattr(msg, "text") and isinstance(msg.text, str)]
-            think_messages = [msg for msg in response.content if hasattr(msg, "thinking") and isinstance(msg.thinking, str)]
+            text_messages = [
+                msg
+                for msg in response.content
+                if hasattr(msg, "text") and isinstance(msg.text, str)
+            ]
+            think_messages = [
+                msg
+                for msg in response.content
+                if hasattr(msg, "thinking") and isinstance(msg.thinking, str)
+            ]
 
             if text_messages:
                 response_result = text_messages[-1].text.strip()
@@ -557,7 +642,9 @@ class TaskRequester(Base):
                 response_result = ""
 
             if think_messages:
-                response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
+                response_think = __class__.RE_LINE_BREAK.sub(
+                    "\n", think_messages[-1].thinking.strip()
+                )
             else:
                 response_think = ""
         except Exception as e:
