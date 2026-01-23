@@ -111,7 +111,7 @@ class PromptBuilder(Base):
                 base = __class__.get_base(prompt_language)
 
             # 后缀
-            if self.config.auto_glossary_enable == False:
+            if not self.config.auto_glossary_enable:
                 suffix = __class__.get_suffix(prompt_language)
             else:
                 suffix = __class__.get_suffix_glossary(prompt_language)
@@ -125,7 +125,7 @@ class PromptBuilder(Base):
 
     # 构造参考上文
     def build_preceding(self, precedings: list[Item]) -> str:
-        if len(precedings) == 0:
+        if not precedings:
             return ""
         elif self.config.target_language == BaseLanguage.Enum.ZH:
             return (
@@ -180,9 +180,10 @@ class PromptBuilder(Base):
                 result.append(f"{src} -> {dst} #{info}")
 
         # 返回结果
-        if result == []:
+        if not result:
             return ""
-        elif self.config.target_language == BaseLanguage.Enum.ZH:
+
+        if self.config.target_language == BaseLanguage.Enum.ZH:
             return (
                 "术语表 <术语原文> -> <术语译文> #<术语信息>:"
                 + "\n"
@@ -231,16 +232,17 @@ class PromptBuilder(Base):
                 result.append(f"{src}->{dst} #{info}")
 
         # 返回结果
-        if result == []:
+        if not result:
             return ""
-        else:
-            return "\n".join(result)
+
+        return "\n".join(result)
 
     # 构建控制字符示例
     def build_control_characters_samples(self, main: str, samples: list[str]) -> str:
-        samples = {v.strip() for v in samples if v.strip() != ""}
+        # 去重并过滤空字符串
+        unique_samples = {v.strip() for v in samples if v.strip()}
 
-        if len(samples) == 0:
+        if not unique_samples:
             return ""
 
         if (
@@ -255,7 +257,7 @@ class PromptBuilder(Base):
         else:
             prefix: str = "Control Characters Samples:"
 
-        return prefix + "\n" + f"{', '.join(samples)}"
+        return prefix + "\n" + f"{', '.join(unique_samples)}"
 
     # 构建输入
     def build_inputs(self, srcs: list[str]) -> str:
@@ -285,14 +287,14 @@ class PromptBuilder(Base):
         content = self.build_main()
 
         # 参考上文
-        if local_flag == False or self.config.enable_preceding_on_local == True:
+        if not local_flag or self.config.enable_preceding_on_local:
             result = self.build_preceding(precedings)
             if result != "":
                 content = content + "\n" + result
                 console_log.append(result)
 
         # 术语表
-        if QualityRuleManager.get().get_glossary_enable() == True:
+        if QualityRuleManager.get().get_glossary_enable():
             result = self.build_glossary(srcs)
             if result != "":
                 content = content + "\n" + result
@@ -336,7 +338,7 @@ class PromptBuilder(Base):
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(srcs)
-        if QualityRuleManager.get().get_glossary_enable() == True:
+        if QualityRuleManager.get().get_glossary_enable():
             result = self.build_glossary_sakura(srcs)
             if result != "":
                 content = (

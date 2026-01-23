@@ -371,6 +371,7 @@ class FilterDialog(MessageBoxBase):
                 f.write("\n".join(content_lines))
 
             # Toast 显示在父窗口，位置更合理
+            # content 留空，仅显示 title 即可，避免信息冗余
             InfoBar.success(
                 title=Localizer.get().task_success,
                 content="",
@@ -382,15 +383,6 @@ class FilterDialog(MessageBoxBase):
             )
         except Exception as e:
             LogManager.get().error("", e)
-            InfoBar.error(
-                title=Localizer.get().task_failed,
-                content="",
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=3000,
-                parent=self.window(),
-            )
 
     def build_glossary_error_map(self) -> None:
         """构建术语错误明细映射"""
