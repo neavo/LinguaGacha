@@ -14,7 +14,7 @@
 - **运行应用**: `uv run app.py`
 
 ### 质量控制 (强制)
-结束任务前必须对有变更的文件进行检查和修复：
+结束任务前**必须且仅对有实际业务逻辑变化的文件**进行检查和修复：
 - **Lint & Fix**: `uv run ruff check --fix`
 - **Format**: `uv run ruff format`
 
@@ -60,7 +60,7 @@
 ### 日志管理 (`base/LogManager.py`)
 - **唯一入口**: **严禁** 使用 `print()`，必须通过 `LogManager.get()` 输出
 - **异常处理**: 捕获异常时，必须将 `Exception` 对象传递给 `error()` 或 `debug()` 以记录堆栈信息
-  - ✅ `LogManager.get().error("Message", e)`
+  - ✅ `self.error("Message", e)` `LogManager.get().error("Message", e)`
 - **等级**:
   - `debug`: 仅在专家模式 (Expert Mode) 可见
   - `info`: 常规用户提示
