@@ -470,9 +470,9 @@ class EmptyRecentProjectState(QWidget):
         )
         self.v_layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self._update_style()
+        self.update_style()
 
-    def _update_style(self):
+    def update_style(self):
         is_dark = isDarkTheme()
         icon_color = "rgba(255, 255, 255, 0.1)" if is_dark else "rgba(0, 0, 0, 0.1)"
         text_color = "rgba(255, 255, 255, 0.4)" if is_dark else "rgba(0, 0, 0, 0.4)"
@@ -830,19 +830,19 @@ class WorkbenchPage(ScrollArea, Base):
         select_file_action = Action(
             FluentIcon.DOCUMENT, Localizer.get().select_file, self
         )
-        select_file_action.triggered.connect(self._select_source_file)
+        select_file_action.triggered.connect(self.select_source_file)
         menu.addAction(select_file_action)
 
         # 选择文件夹
         select_folder_action = Action(
             FluentIcon.FOLDER, Localizer.get().select_folder, self
         )
-        select_folder_action.triggered.connect(self._select_source_folder)
+        select_folder_action.triggered.connect(self.select_source_folder)
         menu.addAction(select_folder_action)
 
         menu.exec(QCursor.pos())
 
-    def _select_source_folder(self):
+    def select_source_folder(self):
         """选择源目录"""
         path = QFileDialog.getExistingDirectory(
             self, Localizer.get().workbench_select_source_dir_title
@@ -850,7 +850,7 @@ class WorkbenchPage(ScrollArea, Base):
         if path:
             self.on_source_dropped(path)
 
-    def _select_source_file(self):
+    def select_source_file(self):
         """选择源文件"""
         extensions = [f"*{ext}" for ext in ProjectStore.SUPPORTED_EXTENSIONS]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(extensions)})"

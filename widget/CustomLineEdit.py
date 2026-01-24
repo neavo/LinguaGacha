@@ -35,25 +35,25 @@ class LineEditStyleMixin:
         "sans-serif"
     )
 
-    def _init_style_mixin(self, widget_class_name: str) -> None:
+    def init_style_mixin(self, widget_class_name: str) -> None:
         """初始化样式混入，需要在子类 __init__ 中调用"""
         self._widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
 
         # 初始样式
-        self._update_line_edit_style()
+        self.update_line_edit_style()
 
         # 监听主题变化
-        qconfig.themeChanged.connect(self._update_line_edit_style)
-        self.destroyed.connect(self._disconnect_style_signals)
+        qconfig.themeChanged.connect(self.update_line_edit_style)
+        self.destroyed.connect(self.disconnect_style_signals)
 
-    def _disconnect_style_signals(self) -> None:
+    def disconnect_style_signals(self) -> None:
         """断开全局信号连接，避免内存泄漏"""
         try:
-            qconfig.themeChanged.disconnect(self._update_line_edit_style)
+            qconfig.themeChanged.disconnect(self.update_line_edit_style)
         except (TypeError, RuntimeError):
             pass
 
-    def _update_line_edit_style(self) -> None:
+    def update_line_edit_style(self) -> None:
         """更新输入框样式"""
         is_dark = isDarkTheme()
         theme_color = themeColor().name()
@@ -106,7 +106,7 @@ class CustomLineEdit(LineEdit, LineEditStyleMixin):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._init_style_mixin("CustomLineEdit")
+        self.init_style_mixin("CustomLineEdit")
 
 
 class CustomSearchLineEdit(SearchLineEdit, LineEditStyleMixin):
@@ -122,4 +122,4 @@ class CustomSearchLineEdit(SearchLineEdit, LineEditStyleMixin):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._init_style_mixin("CustomSearchLineEdit")
+        self.init_style_mixin("CustomSearchLineEdit")

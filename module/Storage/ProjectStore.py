@@ -96,11 +96,11 @@ class ProjectStore(Base):
             total_files, total_files, Localizer.get().project_store_parsing_items
         )
 
-        # 构造 Config 对象指向源目录
+        # 使用 FileManager 解析翻译条目（直接从刚存入数据库的资产中解析）
         config = Config().load()
-
-        # 使用 FileManager 读取翻译条目
-        _, items = FileManager(config).read_from_path(source_path)
+        items = FileManager(config).get_items_for_translation(
+            Base.TranslationMode.NEW, db=db
+        )
 
         # 将条目保存到数据库
         if items:

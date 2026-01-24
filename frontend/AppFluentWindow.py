@@ -140,10 +140,6 @@ class AppFluentWindow(FluentWindow, Base):
         # 状态变更时更新
         if btn_widget.isEnabled() == is_busy:
             btn_widget.setEnabled(not is_busy)
-            if is_busy:
-                btn_widget.setToolTip(Localizer.get().engine_task_running)
-            else:
-                btn_widget.setToolTip(Localizer.get().app_close_project_btn)
 
     def switchTo(self, interface: QWidget):
         """切换页面"""
@@ -327,7 +323,7 @@ class AppFluentWindow(FluentWindow, Base):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self.progress_toast.isVisible():
-            self.progress_toast._update_position()
+            self.progress_toast.update_position()
 
     # 切换主题
     def switch_theme(self) -> None:
@@ -448,21 +444,23 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_extra_pages()
 
         # 主题切换按钮
+        theme_navigation_button = NavigationPushButton(
+            FluentIcon.CONSTRACT, Localizer.get().app_theme_btn, False
+        )
         self.navigationInterface.addWidget(
             routeKey="theme_navigation_button",
-            widget=NavigationPushButton(
-                FluentIcon.CONSTRACT, Localizer.get().app_theme_btn, False
-            ),
+            widget=theme_navigation_button,
             onClick=self.switch_theme,
             position=NavigationItemPosition.BOTTOM,
         )
 
         # 语言切换按钮
+        language_navigation_button = NavigationPushButton(
+            FluentIcon.LANGUAGE, Localizer.get().app_language_btn, False
+        )
         self.navigationInterface.addWidget(
             routeKey="language_navigation_button",
-            widget=NavigationPushButton(
-                FluentIcon.LANGUAGE, Localizer.get().app_language_btn, False
-            ),
+            widget=language_navigation_button,
             onClick=self.switch_language,
             position=NavigationItemPosition.BOTTOM,
         )
@@ -524,11 +522,12 @@ class AppFluentWindow(FluentWindow, Base):
         )
 
         # 关闭项目按钮
+        close_project_button = NavigationPushButton(
+            FluentIcon.POWER_BUTTON, Localizer.get().app_close_project_btn, False
+        )
         self.navigationInterface.addWidget(
             routeKey="close_project_button",
-            widget=NavigationPushButton(
-                FluentIcon.POWER_BUTTON, Localizer.get().app_close_project_btn, False
-            ),
+            widget=close_project_button,
             onClick=self.close_current_project,
             position=NavigationItemPosition.SCROLL,
         )

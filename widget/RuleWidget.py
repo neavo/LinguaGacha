@@ -11,6 +11,7 @@ from qfluentwidgets import ToolTipPosition
 
 from module.Localizer.Localizer import Localizer
 
+
 class RuleWidget(QWidget):
     """规则切换按钮组件，包含正则和大小写敏感两个切换按钮"""
 
@@ -54,11 +55,11 @@ class RuleWidget(QWidget):
             self.regex_button.setIconSize(QSize(14, 14))
             self.regex_button.setFixedSize(28, 28)
             self.regex_button.setChecked(regex_enabled)
-            self.regex_button.toggled.connect(self._on_regex_toggled)
+            self.regex_button.toggled.connect(self.on_regex_toggled)
             self.layout.addWidget(self.regex_button)
             # 安装 ToolTipFilter
             self.regex_button.installEventFilter(ToolTipFilter(self.regex_button, 300, ToolTipPosition.TOP))
-            self._update_regex_tooltip()
+            self.update_regex_tooltip()
 
         # 创建大小写敏感按钮
         if show_case_sensitive:
@@ -66,23 +67,23 @@ class RuleWidget(QWidget):
             self.case_button.setIconSize(QSize(16, 16))
             self.case_button.setFixedSize(28, 28)
             self.case_button.setChecked(case_sensitive_enabled)
-            self.case_button.toggled.connect(self._on_case_toggled)
+            self.case_button.toggled.connect(self.on_case_toggled)
             self.layout.addWidget(self.case_button)
             # 安装 ToolTipFilter
             self.case_button.installEventFilter(ToolTipFilter(self.case_button, 300, ToolTipPosition.TOP))
-            self._update_case_tooltip()
+            self.update_case_tooltip()
 
-    def _on_regex_toggled(self, checked: bool) -> None:
+    def on_regex_toggled(self, checked: bool) -> None:
         """正则按钮切换事件"""
-        self._update_regex_tooltip()
-        self._trigger_callback()
+        self.update_regex_tooltip()
+        self.trigger_callback()
 
-    def _on_case_toggled(self, checked: bool) -> None:
+    def on_case_toggled(self, checked: bool) -> None:
         """大小写敏感按钮切换事件"""
-        self._update_case_tooltip()
-        self._trigger_callback()
+        self.update_case_tooltip()
+        self.trigger_callback()
 
-    def _update_regex_tooltip(self) -> None:
+    def update_regex_tooltip(self) -> None:
         """更新正则按钮 tooltip"""
         if self.regex_button is None:
             return
@@ -93,7 +94,7 @@ class RuleWidget(QWidget):
         )
         self.regex_button.setToolTip(tooltip_text)
 
-    def _update_case_tooltip(self) -> None:
+    def update_case_tooltip(self) -> None:
         """更新大小写敏感按钮 tooltip"""
         if self.case_button is None:
             return
@@ -104,7 +105,7 @@ class RuleWidget(QWidget):
         )
         self.case_button.setToolTip(tooltip_text)
 
-    def _trigger_callback(self) -> None:
+    def trigger_callback(self) -> None:
         """触发状态改变回调"""
         if callable(self.on_changed_callback):
             self.on_changed_callback(self.get_regex_enabled(), self.get_case_sensitive_enabled())

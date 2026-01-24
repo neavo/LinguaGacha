@@ -9,6 +9,7 @@ from qfluentwidgets import TransparentToolButton
 
 from module.Localizer.Localizer import Localizer
 
+
 class PaginationBar(QWidget):
     """简化版分页控件"""
 
@@ -26,9 +27,9 @@ class PaginationBar(QWidget):
         self._total_pages: int = 1
         self._total_items: int = 0
 
-        self._init_ui()
+        self.init_ui()
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
         """初始化 UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -38,7 +39,7 @@ class PaginationBar(QWidget):
         # 上一页按钮（使用扁平透明按钮）
         self.btn_prev = TransparentToolButton(FluentIcon.CARE_LEFT_SOLID, self)
         self.btn_prev.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
-        self.btn_prev.clicked.connect(self._on_prev_clicked)
+        self.btn_prev.clicked.connect(self.on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
         # 页码信息标签
@@ -51,7 +52,7 @@ class PaginationBar(QWidget):
         # 下一页按钮（使用扁平透明按钮）
         self.btn_next = TransparentToolButton(FluentIcon.CARE_RIGHT_SOLID, self)
         self.btn_next.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
-        self.btn_next.clicked.connect(self._on_next_clicked)
+        self.btn_next.clicked.connect(self.on_next_clicked)
         layout.addWidget(self.btn_next)
 
         # 设置尺寸策略，确保控件不占用额外空间
@@ -59,23 +60,23 @@ class PaginationBar(QWidget):
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
 
         # 更新显示
-        self._update_display()
+        self.update_display()
 
-    def _on_prev_clicked(self) -> None:
+    def on_prev_clicked(self) -> None:
         """上一页按钮点击"""
         if self._current_page > 1:
             self._current_page -= 1
-            self._update_display()
+            self.update_display()
             self.page_changed.emit(self._current_page)
 
-    def _on_next_clicked(self) -> None:
+    def on_next_clicked(self) -> None:
         """下一页按钮点击"""
         if self._current_page < self._total_pages:
             self._current_page += 1
-            self._update_display()
+            self.update_display()
             self.page_changed.emit(self._current_page)
 
-    def _update_display(self) -> None:
+    def update_display(self) -> None:
         """更新显示状态"""
         # 更新按钮状态
         self.btn_prev.setEnabled(self._current_page > 1)
@@ -92,13 +93,13 @@ class PaginationBar(QWidget):
         self._total_items = total
         self._total_pages = max(1, (total + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
         self._current_page = min(self._current_page, self._total_pages)
-        self._update_display()
+        self.update_display()
 
     def set_page(self, page: int) -> None:
         """设置当前页码"""
         if 1 <= page <= self._total_pages:
             self._current_page = page
-            self._update_display()
+            self.update_display()
 
     def get_page(self) -> int:
         """获取当前页码"""
@@ -117,4 +118,4 @@ class PaginationBar(QWidget):
         self._current_page = 1
         self._total_pages = 1
         self._total_items = 0
-        self._update_display()
+        self.update_display()

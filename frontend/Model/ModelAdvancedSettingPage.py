@@ -18,6 +18,7 @@ from widget.CustomTextEdit import CustomTextEdit
 from widget.GroupCard import GroupCard
 from widget.SliderCard import SliderCard
 
+
 class ModelAdvancedSettingPage(MessageBoxBase, Base):
 
     TOP_P_DEFAULT: float = 0.95
@@ -264,7 +265,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             # 空内容视为有效的空对象
             if not text:
                 plain_text_edit.set_error(False)
-                self._save_request_field("extra_headers", {})
+                self.save_request_field("extra_headers", {})
                 return True
 
             try:
@@ -274,7 +275,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                     plain_text_edit.set_error(True)
                     return False
                 plain_text_edit.set_error(False)
-                self._save_request_field("extra_headers", parsed)
+                self.save_request_field("extra_headers", parsed)
                 return True
             except json.JSONDecodeError:
                 plain_text_edit.set_error(True)
@@ -351,7 +352,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             # 空内容视为有效的空对象
             if not text:
                 plain_text_edit.set_error(False)
-                self._save_request_field("extra_body", {})
+                self.save_request_field("extra_body", {})
                 return True
 
             try:
@@ -361,7 +362,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                     plain_text_edit.set_error(True)
                     return False
                 plain_text_edit.set_error(False)
-                self._save_request_field("extra_body", parsed)
+                self.save_request_field("extra_body", parsed)
                 return True
             except json.JSONDecodeError:
                 plain_text_edit.set_error(True)
@@ -421,7 +422,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             )
         )
 
-    def _save_request_field(self, field: str, value: dict) -> None:
+    def save_request_field(self, field: str, value: dict) -> None:
         """ 保存请求配置字段 """
         config = Config().load()
         if "request" not in self.model:

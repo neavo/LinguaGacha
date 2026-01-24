@@ -75,7 +75,11 @@ class LogManager:
         return self.expert_mode
 
     def print(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         msg_e: str = f"{msg}\n{e}" if msg != "" else f"{e}"
         if e is None:
@@ -95,7 +99,11 @@ class LogManager:
             ) if console else None
 
     def debug(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         msg_e: str = f"{msg}\n{e}" if msg != "" else f"{e}"
         if e is None:
@@ -115,7 +123,11 @@ class LogManager:
             ) if console else None
 
     def info(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         msg_e: str = f"{msg}\n{e}" if msg != "" else f"{e}"
         if e is None:
@@ -135,7 +147,11 @@ class LogManager:
             ) if console else None
 
     def error(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         msg_e: str = f"{msg}\n{e}" if msg != "" else f"{e}"
         if e is None:
@@ -155,7 +171,11 @@ class LogManager:
             ) if console else None
 
     def warning(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         msg_e: str = f"{msg}\n{e}" if msg != "" else f"{e}"
         if e is None:

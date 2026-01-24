@@ -103,7 +103,7 @@ class ProofreadingTableWidget(TableWidget):
         self._loading_rows: set[int] = set()
 
         # 双击弹出编辑对话框
-        self.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        self.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
     def set_items(
         self, items: list[Item], warning_map: dict[int, list[WarningType]]
@@ -113,7 +113,7 @@ class ProofreadingTableWidget(TableWidget):
         self.setUpdatesEnabled(False)
 
         # 先移除所有 cell widgets，避免 qfluentwidgets styleSheetManager 迭代问题
-        self._clear_cell_widgets()
+        self.clear_cell_widgets()
 
         self.clearContents()
         if not items:
@@ -128,12 +128,12 @@ class ProofreadingTableWidget(TableWidget):
         else:
             self.setRowCount(len(items))
             for row, item in enumerate(items):
-                self._set_row_data(row, item, warning_map.get(id(item), []))
+                self.set_row_data(row, item, warning_map.get(id(item), []))
 
         self.setUpdatesEnabled(True)
         self.blockSignals(False)
 
-    def _clear_cell_widgets(self) -> None:
+    def clear_cell_widgets(self) -> None:
         """移除所有 cell widgets"""
         for row in range(self.rowCount()):
             # 移除状态列和操作列的 cell widgets
@@ -143,7 +143,7 @@ class ProofreadingTableWidget(TableWidget):
                     self.removeCellWidget(row, col)
                     widget.deleteLater()
 
-    def _set_row_data(self, row: int, item: Item, warnings: list[WarningType]) -> None:
+    def set_row_data(self, row: int, item: Item, warnings: list[WarningType]) -> None:
         """设置单行数据"""
         src_text = item.get_src()
         dst_text = item.get_dst()
@@ -173,12 +173,12 @@ class ProofreadingTableWidget(TableWidget):
         self.setItem(row, self.COL_DST, dst_item)
 
         # 状态列
-        self._create_status_widget(row, item, warnings)
+        self.create_status_widget(row, item, warnings)
 
         # 操作列
-        self._create_action_widget(row, item)
+        self.create_action_widget(row, item)
 
-    def _create_status_widget(
+    def create_status_widget(
         self, row: int, item: Item, warnings: list[WarningType]
     ) -> None:
         """创建状态显示组件"""
@@ -200,7 +200,7 @@ class ProofreadingTableWidget(TableWidget):
             status_icon.installEventFilter(
                 ToolTipFilter(status_icon, 300, ToolTipPosition.TOP)
             )
-            status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self._get_status_text(status)}"
+            status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self.get_status_text(status)}"
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
@@ -208,7 +208,7 @@ class ProofreadingTableWidget(TableWidget):
         if warnings:
             warning_icon = IconWidget(FluentIcon.VPN)
             warning_icon.setFixedSize(16, 16)
-            warning_texts = [self._get_warning_text(e) for e in warnings]
+            warning_texts = [self.get_warning_text(e) for e in warnings]
             warning_icon.installEventFilter(
                 ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP)
             )
@@ -218,7 +218,7 @@ class ProofreadingTableWidget(TableWidget):
 
         self.setCellWidget(row, self.COL_STATUS, widget)
 
-    def _get_status_text(self, status: Base.ProjectStatus) -> str:
+    def get_status_text(self, status: Base.ProjectStatus) -> str:
         """获取翻译状态的本地化文本"""
         status_texts = {
             Base.ProjectStatus.NONE: Localizer.get().proofreading_page_status_none,
@@ -228,7 +228,7 @@ class ProofreadingTableWidget(TableWidget):
         }
         return status_texts.get(status, str(status))
 
-    def _get_warning_text(self, error: WarningType) -> str:
+    def get_warning_text(self, error: WarningType) -> str:
         """获取警告类型的本地化文本"""
         warning_texts = {
             WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
@@ -240,7 +240,7 @@ class ProofreadingTableWidget(TableWidget):
         }
         return warning_texts.get(error, str(error))
 
-    def _create_action_widget(self, row: int, item: Item) -> None:
+    def create_action_widget(self, row: int, item: Item) -> None:
         """创建操作按钮"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
@@ -310,7 +310,7 @@ class ProofreadingTableWidget(TableWidget):
         """更新指定行的状态"""
         item = self.get_item_at_row(row)
         if item:
-            self._create_status_widget(row, item, warnings)
+            self.create_status_widget(row, item, warnings)
 
     def set_row_loading(self, row: int, loading: bool) -> None:
         """设置指定行为加载中状态"""
@@ -343,7 +343,7 @@ class ProofreadingTableWidget(TableWidget):
                 for btn in widget.findChildren(PillToolButton):
                     btn.setEnabled(not readonly and row not in self._loading_rows)
 
-    def _on_cell_double_clicked(self, row: int, column: int) -> None:
+    def on_cell_double_clicked(self, row: int, column: int) -> None:
         """双击弹出编辑对话框"""
         # 只处理原文列和译文列的双击
         if column not in (self.COL_SRC, self.COL_DST):

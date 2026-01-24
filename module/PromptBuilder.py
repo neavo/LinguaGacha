@@ -67,14 +67,14 @@ class PromptBuilder(Base):
             return reader.read().strip()
 
     # 获取自定义提示词数据
-    def _get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
+    def get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
         if language == BaseLanguage.Enum.ZH:
             return QualityRuleManager.get().get_custom_prompt_zh()
         else:
             return QualityRuleManager.get().get_custom_prompt_en()
 
     # 获取自定义提示词启用状态
-    def _get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
+    def get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
         if language == BaseLanguage.Enum.ZH:
             return QualityRuleManager.get().get_custom_prompt_zh_enable()
         else:
@@ -99,14 +99,14 @@ class PromptBuilder(Base):
             # 基本（从工程读取自定义提示词）
             if (
                 prompt_language == BaseLanguage.Enum.ZH
-                and self._get_custom_prompt_enable(BaseLanguage.Enum.ZH)
+                and self.get_custom_prompt_enable(BaseLanguage.Enum.ZH)
             ):
-                base = self._get_custom_prompt_data(BaseLanguage.Enum.ZH)
+                base = self.get_custom_prompt_data(BaseLanguage.Enum.ZH)
             elif (
                 prompt_language == BaseLanguage.Enum.EN
-                and self._get_custom_prompt_enable(BaseLanguage.Enum.EN)
+                and self.get_custom_prompt_enable(BaseLanguage.Enum.EN)
             ):
-                base = self._get_custom_prompt_data(BaseLanguage.Enum.EN)
+                base = self.get_custom_prompt_data(BaseLanguage.Enum.EN)
             else:
                 base = __class__.get_base(prompt_language)
 

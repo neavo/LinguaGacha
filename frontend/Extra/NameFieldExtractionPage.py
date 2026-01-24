@@ -61,6 +61,7 @@ class NameFieldExtractionPage(QWidget, Base):
         self.add_widget_foot(self.root, config, window)
 
         # 注册事件
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
