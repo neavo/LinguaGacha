@@ -47,7 +47,7 @@ class TranslationPage(QWidget, Base):
 
         # 初始化
         self.data = {}
-        self._timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
+        self.timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -70,7 +70,8 @@ class TranslationPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self.update_button_status)
-        self.subscribe(Base.Event.PROJECT_UNLOADED, self._on_project_unloaded)
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 定时器
         self.ui_update_timer = QTimer(self)
@@ -78,11 +79,8 @@ class TranslationPage(QWidget, Base):
         self.ui_update_timer.start(250)
 
     # 页面显示事件
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-
-        # 重置 frontend 状态
-        self.action_continue.setEnabled(False)
+    def showEvent(self, a0) -> None:
+        super().showEvent(a0)
 
         # 触发事件
         self.emit(Base.Event.PROJECT_CHECK_RUN, {})
@@ -98,39 +96,47 @@ class TranslationPage(QWidget, Base):
         status = Engine.get().get_status()
 
         # 如果是状态检查返回，同步更新进度数据
-        if event == Base.Event.PROJECT_CHECK_DONE and data.get("extras"):
-            self.data = data.get("extras")
+        if event == Base.Event.PROJECT_CHECK_DONE:
+            self.data = data.get("extras", {})
+            # 如果进度被清空，主动重置 UI 卡片显示
+            if not self.data:
+                self.clear_ui_cards()
+
+        # 判定是否有进度
+        has_progress = (
+            self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+        )
+
+        # 更新开始按钮图标和文案
+        if has_progress:
+            self.action_start.setText(Localizer.get().translation_page_continue)
+            self.action_start.setIcon(FluentIcon.ROTATE)
+        else:
+            self.action_start.setText(Localizer.get().start)
+            self.action_start.setIcon(FluentIcon.PLAY)
 
         if status == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
-            self.action_export.setEnabled(False)
+            self.action_reset.setEnabled(True)
             self.action_timer.setEnabled(True)
         elif status == Base.TaskStatus.TESTING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
-            self.action_export.setEnabled(False)
+            self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
         elif status == Base.TaskStatus.TRANSLATING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
-            self.action_export.setEnabled(True)
+            self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
-            self._reset_timer()  # 翻译开始后自动取消定时器
+            self.reset_timer()  # 翻译开始后自动取消定时器
         elif status == Base.TaskStatus.STOPPING:
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
-            self.action_export.setEnabled(False)
+            self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
-
-        if (
-            status == Base.TaskStatus.IDLE
-            and data.get("status") == Base.ProjectStatus.PROCESSING
-        ):
-            self.action_continue.setEnabled(True)
-        else:
-            self.action_continue.setEnabled(False)
 
     def translation_done(self, event: Base.Event, data: dict) -> None:
         self.update_button_status(event, data)
@@ -141,17 +147,6 @@ class TranslationPage(QWidget, Base):
 
     # 更新时间
     def update_time(self, data: dict) -> None:
-        # 如果既没有运行任务，也没有历史进度数据，则跳过
-        if (
-            Engine.get().get_status()
-            not in (
-                Base.TaskStatus.STOPPING,
-                Base.TaskStatus.TRANSLATING,
-            )
-            and not self.data
-        ):
-            return None
-
         # 如果正在翻译，计算实时耗时；否则使用最后保存的累计耗时
         if Engine.get().get_status() in (
             Base.TaskStatus.STOPPING,
@@ -191,21 +186,11 @@ class TranslationPage(QWidget, Base):
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        # 如果既没有运行任务，也没有历史进度数据，则跳过
-        if (
-            Engine.get().get_status()
-            not in (
-                Base.TaskStatus.STOPPING,
-                Base.TaskStatus.TRANSLATING,
-            )
-            and not self.data
-        ):
-            return None
-
         # 根据显示模式获取行数
         display_mode = getattr(
             self, "line_display_mode", self.LineDisplayMode.PROCESSED
         )
+
         if display_mode == self.LineDisplayMode.PROCESSED:
             line = self.data.get("processed_line", self.data.get("line", 0))
         else:
@@ -245,19 +230,9 @@ class TranslationPage(QWidget, Base):
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
-        # 如果既没有运行任务，也没有历史进度数据，则跳过
-        if (
-            Engine.get().get_status()
-            not in (
-                Base.TaskStatus.STOPPING,
-                Base.TaskStatus.TRANSLATING,
-            )
-            and not self.data
-        ):
-            return None
-
         # 根据显示模式选择要展示的 Token 数量
         display_mode = getattr(self, "token_display_mode", self.TokenDisplayMode.OUTPUT)
+
         if display_mode == self.TokenDisplayMode.OUTPUT:
             token = self.data.get("total_output_tokens", 0)
         else:
@@ -376,7 +351,8 @@ class TranslationPage(QWidget, Base):
 
         self.container.addWidget(self.flow_container, 1)
 
-    # 底部
+        # 底部
+
     def add_widget_foot(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
@@ -388,9 +364,9 @@ class TranslationPage(QWidget, Base):
         self.add_command_bar_action_start(self.command_bar_card, config, window)
         self.add_command_bar_action_stop(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_continue(self.command_bar_card, config, window)
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_reset(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_timer(self.command_bar_card, config, window)
 
@@ -415,8 +391,8 @@ class TranslationPage(QWidget, Base):
         self.time = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_time,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="S",
         )
         self.time.setFixedSize(204, 204)
         parent.addWidget(self.time)
@@ -428,8 +404,8 @@ class TranslationPage(QWidget, Base):
         self.remaining_time = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_remaining_time,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="S",
         )
         self.remaining_time.setFixedSize(204, 204)
         parent.addWidget(self.remaining_time)
@@ -455,15 +431,16 @@ class TranslationPage(QWidget, Base):
                 )
 
             # 应用动效
-            self._animate_line_card_switch()
+            self.animate_line_card_switch()
 
         self.line_card = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_line_processed,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="Line",
             clicked=on_line_card_clicked,
         )
+
         self.line_card.setFixedSize(204, 204)
         self.line_card.setCursor(Qt.CursorShape.PointingHandCursor)
         self.line_card.installEventFilter(
@@ -472,7 +449,7 @@ class TranslationPage(QWidget, Base):
         self.line_card.setToolTip(Localizer.get().translation_page_card_line_tooltip)
         parent.addWidget(self.line_card)
 
-    def _animate_line_card_switch(self) -> None:
+    def animate_line_card_switch(self) -> None:
         """为处理行数卡片的数值标签执行淡入淡出动效"""
         from PyQt5.QtCore import QEasingCurve
         from PyQt5.QtCore import QPropertyAnimation
@@ -482,38 +459,38 @@ class TranslationPage(QWidget, Base):
         unit_label = self.line_card.unit_label
 
         if (
-            not hasattr(self, "_line_value_opacity_effect")
-            or self._line_value_opacity_effect is None
+            not hasattr(self, "line_value_opacity_effect")
+            or self.line_value_opacity_effect is None
         ):
-            self._line_value_opacity_effect = QGraphicsOpacityEffect(value_label)
-            value_label.setGraphicsEffect(self._line_value_opacity_effect)
+            self.line_value_opacity_effect = QGraphicsOpacityEffect(value_label)
+            value_label.setGraphicsEffect(self.line_value_opacity_effect)
 
         if (
-            not hasattr(self, "_line_unit_opacity_effect")
-            or self._line_unit_opacity_effect is None
+            not hasattr(self, "line_unit_opacity_effect")
+            or self.line_unit_opacity_effect is None
         ):
-            self._line_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
-            unit_label.setGraphicsEffect(self._line_unit_opacity_effect)
+            self.line_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
+            unit_label.setGraphicsEffect(self.line_unit_opacity_effect)
 
-        fade_out = QPropertyAnimation(self._line_value_opacity_effect, b"opacity")
+        fade_out = QPropertyAnimation(self.line_value_opacity_effect, b"opacity")
         fade_out.setDuration(100)
         fade_out.setStartValue(1.0)
         fade_out.setEndValue(0.3)
         fade_out.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-        fade_out_unit = QPropertyAnimation(self._line_unit_opacity_effect, b"opacity")
+        fade_out_unit = QPropertyAnimation(self.line_unit_opacity_effect, b"opacity")
         fade_out_unit.setDuration(100)
         fade_out_unit.setStartValue(1.0)
         fade_out_unit.setEndValue(0.3)
         fade_out_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-        fade_in = QPropertyAnimation(self._line_value_opacity_effect, b"opacity")
+        fade_in = QPropertyAnimation(self.line_value_opacity_effect, b"opacity")
         fade_in.setDuration(100)
         fade_in.setStartValue(0.3)
         fade_in.setEndValue(1.0)
         fade_in.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-        fade_in_unit = QPropertyAnimation(self._line_unit_opacity_effect, b"opacity")
+        fade_in_unit = QPropertyAnimation(self.line_unit_opacity_effect, b"opacity")
         fade_in_unit.setDuration(100)
         fade_in_unit.setStartValue(0.3)
         fade_in_unit.setEndValue(1.0)
@@ -528,10 +505,10 @@ class TranslationPage(QWidget, Base):
         fade_out.start()
         fade_out_unit.start()
 
-        self._line_fade_out_anim = fade_out
-        self._line_fade_out_unit_anim = fade_out_unit
-        self._line_fade_in_anim = fade_in
-        self._line_fade_in_unit_anim = fade_in_unit
+        self.line_fade_out_anim = fade_out
+        self.line_fade_out_unit_anim = fade_out_unit
+        self.line_fade_in_anim = fade_in
+        self.line_fade_in_unit_anim = fade_in_unit
 
     # 剩余行数
     def add_remaining_line_card(
@@ -540,8 +517,8 @@ class TranslationPage(QWidget, Base):
         self.remaining_line = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_remaining_line,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="Line",
         )
         self.remaining_line.setFixedSize(204, 204)
         parent.addWidget(self.remaining_line)
@@ -553,8 +530,8 @@ class TranslationPage(QWidget, Base):
         self.speed = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_speed,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="T/S",
         )
         self.speed.setFixedSize(204, 204)
         parent.addWidget(self.speed)
@@ -580,13 +557,13 @@ class TranslationPage(QWidget, Base):
                 )
 
             # 应用淡入淡出动效
-            self._animate_token_card_switch()
+            self.animate_token_card_switch()
 
         self.token = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_token_output,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="Token",
             clicked=on_token_card_clicked,
         )
         self.token.setFixedSize(204, 204)
@@ -597,7 +574,7 @@ class TranslationPage(QWidget, Base):
         self.token.setToolTip(Localizer.get().translation_page_card_token_tooltip)
         parent.addWidget(self.token)
 
-    def _animate_token_card_switch(self) -> None:
+    def animate_token_card_switch(self) -> None:
         """为累计消耗卡片的数值标签执行淡入淡出动效"""
         from PyQt5.QtCore import QEasingCurve
         from PyQt5.QtCore import QPropertyAnimation
@@ -608,40 +585,40 @@ class TranslationPage(QWidget, Base):
 
         # 为标签添加透明度效果（如果还没有的话）
         if (
-            not hasattr(self, "_token_value_opacity_effect")
-            or self._token_value_opacity_effect is None
+            not hasattr(self, "token_value_opacity_effect")
+            or self.token_value_opacity_effect is None
         ):
-            self._token_value_opacity_effect = QGraphicsOpacityEffect(value_label)
-            value_label.setGraphicsEffect(self._token_value_opacity_effect)
+            self.token_value_opacity_effect = QGraphicsOpacityEffect(value_label)
+            value_label.setGraphicsEffect(self.token_value_opacity_effect)
 
         if (
-            not hasattr(self, "_token_unit_opacity_effect")
-            or self._token_unit_opacity_effect is None
+            not hasattr(self, "token_unit_opacity_effect")
+            or self.token_unit_opacity_effect is None
         ):
-            self._token_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
-            unit_label.setGraphicsEffect(self._token_unit_opacity_effect)
+            self.token_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
+            unit_label.setGraphicsEffect(self.token_unit_opacity_effect)
 
         # 创建淡出动画
-        fade_out = QPropertyAnimation(self._token_value_opacity_effect, b"opacity")
+        fade_out = QPropertyAnimation(self.token_value_opacity_effect, b"opacity")
         fade_out.setDuration(100)
         fade_out.setStartValue(1.0)
         fade_out.setEndValue(0.3)
         fade_out.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-        fade_out_unit = QPropertyAnimation(self._token_unit_opacity_effect, b"opacity")
+        fade_out_unit = QPropertyAnimation(self.token_unit_opacity_effect, b"opacity")
         fade_out_unit.setDuration(100)
         fade_out_unit.setStartValue(1.0)
         fade_out_unit.setEndValue(0.3)
         fade_out_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
         # 创建淡入动画
-        fade_in = QPropertyAnimation(self._token_value_opacity_effect, b"opacity")
+        fade_in = QPropertyAnimation(self.token_value_opacity_effect, b"opacity")
         fade_in.setDuration(100)
         fade_in.setStartValue(0.3)
         fade_in.setEndValue(1.0)
         fade_in.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-        fade_in_unit = QPropertyAnimation(self._token_unit_opacity_effect, b"opacity")
+        fade_in_unit = QPropertyAnimation(self.token_unit_opacity_effect, b"opacity")
         fade_in_unit.setDuration(100)
         fade_in_unit.setStartValue(0.3)
         fade_in_unit.setEndValue(1.0)
@@ -658,10 +635,10 @@ class TranslationPage(QWidget, Base):
         fade_out_unit.start()
 
         # 保持动画引用避免被垃圾回收
-        self._token_fade_out_anim = fade_out
-        self._token_fade_out_unit_anim = fade_out_unit
-        self._token_fade_in_anim = fade_in
-        self._token_fade_in_unit_anim = fade_in_unit
+        self.token_fade_out_anim = fade_out
+        self.token_fade_out_unit_anim = fade_out_unit
+        self.token_fade_in_anim = fade_in
+        self.token_fade_in_unit_anim = fade_in_unit
 
     # 并行任务
     def add_task_card(
@@ -670,8 +647,8 @@ class TranslationPage(QWidget, Base):
         self.task = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_task,
-            value=Localizer.get().none,
-            unit="",
+            value="0",
+            unit="Task",
         )
         self.task.setFixedSize(204, 204)
         parent.addWidget(self.task)
@@ -681,27 +658,16 @@ class TranslationPage(QWidget, Base):
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
-            # 判定当前是否为“重置”行为：如果“继续翻译”按钮可用，说明已有进度
-            is_reset = self.action_continue.isEnabled()
-
-            if is_reset:
-                message_box = MessageBox(
-                    Localizer.get().alert,
-                    Localizer.get().alert_reset_translation,
-                    window,
-                )
-                message_box.yesButton.setText(Localizer.get().confirm)
-                message_box.cancelButton.setText(Localizer.get().cancel)
-
-                # 点击取消，则不触发开始翻译事件
-                if not message_box.exec():
-                    return
+            # 根据是否有进度决定模式：有进度则 CONTINUE，无进度则 NEW
+            has_progress = (
+                self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+            )
 
             self.emit(
                 Base.Event.TRANSLATION_RUN,
                 {
-                    "mode": Base.TranslationMode.RESET
-                    if is_reset
+                    "mode": Base.TranslationMode.CONTINUE
+                    if has_progress
                     else Base.TranslationMode.NEW,
                 },
             )
@@ -740,33 +706,26 @@ class TranslationPage(QWidget, Base):
         )
         self.action_stop.setEnabled(False)
 
-    # 继续翻译
-    def add_command_bar_action_continue(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
-    ) -> None:
-        def triggered() -> None:
-            self.emit(
-                Base.Event.TRANSLATION_RUN,
-                {
-                    "mode": Base.TranslationMode.CONTINUE,
-                },
-            )
-
-        self.action_continue = parent.add_action(
-            Action(
-                FluentIcon.ROTATE,
-                Localizer.get().translation_page_continue,
-                parent,
-                triggered=triggered,
-            ),
-        )
-        self.action_continue.setEnabled(False)
-
     # 导出已完成的内容
     def add_command_bar_action_export(
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
+            # 校验是否有进度
+            has_progress = (
+                self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+            )
+
+            if not has_progress:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().translation_page_export_no_progress,
+                    },
+                )
+                return
+
             # 弹框让用户确认
             message_box = MessageBox(
                 Localizer.get().confirm,
@@ -779,7 +738,7 @@ class TranslationPage(QWidget, Base):
             if not message_box.exec():
                 return
 
-            self._do_export()
+            self.do_export()
 
         self.action_export = parent.add_action(
             Action(
@@ -793,9 +752,9 @@ class TranslationPage(QWidget, Base):
             ToolTipFilter(self.action_export, 300, ToolTipPosition.TOP)
         )
         self.action_export.setToolTip(Localizer.get().translation_page_export_tooltip)
-        self.action_export.setEnabled(False)
+        self.action_export.setEnabled(True)  # 导出按钮始终启用，逻辑在点击时校验
 
-    def _do_export(self) -> None:
+    def do_export(self) -> None:
         """执行导出操作"""
         self.emit(Base.Event.TRANSLATION_EXPORT, {})
         self.emit(
@@ -806,11 +765,37 @@ class TranslationPage(QWidget, Base):
             },
         )
 
+    # 重置翻译进度
+    def add_command_bar_action_reset(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def triggered() -> None:
+            message_box = MessageBox(
+                Localizer.get().alert,
+                Localizer.get().translation_page_alert_reset,
+                window,
+            )
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
+
+            if message_box.exec():
+                self.emit(Base.Event.TRANSLATION_RESET, {})
+
+        self.action_reset = parent.add_action(
+            Action(
+                FluentIcon.DELETE,
+                Localizer.get().translation_page_reset,
+                parent,
+                triggered=triggered,
+            ),
+        )
+        self.action_reset.setEnabled(False)
+
     # 重置定时器状态
-    def _reset_timer(self) -> None:
+    def reset_timer(self) -> None:
         """清除定时器倒计时状态"""
-        if self._timer_delay_time is not None:
-            self._timer_delay_time = None
+        if self.timer_delay_time is not None:
+            self.timer_delay_time = None
             self.action_timer.setText(Localizer.get().timer)
 
     # 定时器
@@ -827,12 +812,12 @@ class TranslationPage(QWidget, Base):
             return f"{hours:02}:{minutes:02}:{seconds:02}"
 
         def timer_interval() -> None:
-            if self._timer_delay_time is None:
+            if self.timer_delay_time is None:
                 return None
 
-            if self._timer_delay_time > 0:
-                self._timer_delay_time = self._timer_delay_time - interval
-                self.action_timer.setText(format_time(self._timer_delay_time))
+            if self.timer_delay_time > 0:
+                self.timer_delay_time = self.timer_delay_time - interval
+                self.action_timer.setText(format_time(self.timer_delay_time))
             else:
                 self.emit(
                     Base.Event.TRANSLATION_RUN,
@@ -840,17 +825,17 @@ class TranslationPage(QWidget, Base):
                         "status": Base.ProjectStatus.NONE,
                     },
                 )
-                self._reset_timer()
+                self.reset_timer()
 
         def message_box_close(widget: TimerMessageBox, input_time: QTime) -> None:
-            self._timer_delay_time = (
+            self.timer_delay_time = (
                 input_time.hour() * 3600
                 + input_time.minute() * 60
                 + input_time.second()
             )
 
         def triggered() -> None:
-            if self._timer_delay_time is None:
+            if self.timer_delay_time is None:
                 TimerMessageBox(
                     parent=window,
                     title=Localizer.get().translation_page_timer,
@@ -867,7 +852,7 @@ class TranslationPage(QWidget, Base):
                 if not message_box.exec():
                     return
 
-                self._reset_timer()
+                self.reset_timer()
 
         self.action_timer = parent.add_action(
             Action(
@@ -893,24 +878,35 @@ class TranslationPage(QWidget, Base):
         self.info_label.hide()
         self.info_label.setText("")
 
-    def _on_project_unloaded(self, event: Base.Event, data: dict) -> None:
-        """工程卸载后清理数据"""
+    def clear_ui_cards(self) -> None:
+        """清理所有 UI 卡片和进度显示"""
         self.data = {}
         self.waveform.clear()
         self.ring.setValue(0)
         self.ring.setFormat(Localizer.get().translation_page_status_idle)
 
         # 重置卡片数据
-        self.time.set_value(Localizer.get().none)
-        self.remaining_time.set_value(Localizer.get().none)
-        self.line_card.set_value(Localizer.get().none)
-        self.remaining_line.set_value(Localizer.get().none)
-        self.speed.set_value(Localizer.get().none)
-        self.token.set_value(Localizer.get().none)
-        self.task.set_value(Localizer.get().none)
+        self.time.set_value("0")
+        self.time.set_unit("S")
+        self.remaining_time.set_value("0")
+        self.remaining_time.set_unit("S")
+        self.line_card.set_value("0")
+        self.line_card.set_unit("Line")
+        self.remaining_line.set_value("0")
+        self.remaining_line.set_unit("Line")
+        self.speed.set_value("0")
+        self.speed.set_unit("T/S")
+        self.token.set_value("0")
+        self.token.set_unit("Token")
+        self.task.set_value("0")
+        self.task.set_unit("Task")
+
+    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        """工程卸载后清理数据"""
+        self.clear_ui_cards()
 
         # 重置按钮状态
         self.update_button_status(event, {"status": Base.ProjectStatus.NONE})
 
         # 重置定时器
-        self._reset_timer()
+        self.reset_timer()

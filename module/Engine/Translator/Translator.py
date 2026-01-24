@@ -47,10 +47,14 @@ class Translator(Base):
         # 线程锁
         self.data_lock = threading.Lock()
 
+        # 配置
+        self.config = Config().load()
+
         # 注册事件
         self.subscribe(Base.Event.PROJECT_CHECK_RUN, self.project_check_run)
         self.subscribe(Base.Event.TRANSLATION_RUN, self.translation_run)
         self.subscribe(Base.Event.TRANSLATION_EXPORT, self.translation_export)
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.translation_reset)
         self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self.translation_require_stop
         )
@@ -107,15 +111,70 @@ class Translator(Base):
         # 更新运行状态
         Engine.get().set_status(Base.TaskStatus.STOPPING)
 
+    # 翻译重置事件
+    def translation_reset(self, event: Base.Event, data: dict) -> None:
+        def task() -> None:
+            ctx = StorageContext.get()
+            if not ctx.is_loaded():
+                return
+
+            db = ctx.get_db()
+            if db is None:
+                return
+
+            # 1. 重新解析资产以获取初始状态的条目
+            # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
+            items = FileManager(self.config).get_items_for_translation(
+                Base.TranslationMode.RESET
+            )
+
+            # 2. 清空并重新写入条目到数据库
+            db.set_items([item.to_dict() for item in items])
+
+            # 3. 清除元数据中的进度信息
+            ctx.set_translation_extras({})
+
+            # 4. 设置项目状态为 NONE
+            ctx.set_project_status(Base.ProjectStatus.NONE)
+
+            # 5. 更新本地缓存
+            self.extras = ctx.get_translation_extras()
+
+            # 触发状态检查以同步 UI
+            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_reset_toast,
+                },
+            )
+
+        threading.Thread(target=task).start()
+
     # 翻译结果手动导出事件
 
     def translation_export(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() != Base.TaskStatus.TRANSLATING:
+        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
             return None
 
         # 复制一份以避免影响原始数据
         def start_export(event_name: str, task_data: dict) -> None:
-            items = self.copy_items()
+            # 如果正在翻译，从缓存获取数据以保证实时性；否则从数据库加载
+            if self.items_cache is not None:
+                items = self.copy_items()
+            else:
+                ctx = StorageContext.get()
+                if not ctx.is_loaded():
+                    return
+                db = ctx.get_db()
+                if db is None:
+                    return
+                items = [Item.from_dict(d) for d in db.get_all_items()]
+
+            if not items:
+                return
+
             self.mtool_optimizer_postprocess(items)
             self.check_and_wirte_result(items)
 
@@ -399,7 +458,10 @@ class Translator(Base):
             self.close_db_connection()
 
             # 检查结果并写入文件
-            if self.items_cache:
+            if (
+                self.items_cache
+                and Engine.get().get_status() != Base.TaskStatus.STOPPING
+            ):
                 self.check_and_wirte_result(self.items_cache)
 
             # 重置内部状态（正常完成翻译）

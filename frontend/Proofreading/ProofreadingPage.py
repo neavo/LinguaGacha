@@ -79,6 +79,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self.on_engine_status_changed
         )
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
@@ -971,9 +972,9 @@ class ProofreadingPage(QWidget, Base):
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
 
-    def showEvent(self, event: QShowEvent) -> None:
+    def showEvent(self, a0: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
-        super().showEvent(event)
+        super().showEvent(a0)
         self.check_engine_status()
 
     # ========== Loading 指示器 ==========
@@ -1014,14 +1015,22 @@ class ProofreadingPage(QWidget, Base):
         """隐藏 loading 指示器"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
+    def on_translation_reset(self, event: Base.Event, data: dict) -> None:
+        """响应翻译重置事件"""
+        self.clear_all_data()
+
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""
+        self.clear_all_data()
+        self.config = None
+
+    def clear_all_data(self) -> None:
+        """彻底清理页面所有数据和 UI 状态"""
         # 清空数据
         self.items = []
         self.filtered_items = []
         self.warning_map = {}
         self.result_checker = None
-        self.config = None
         self.filter_options = {}
 
         # 清空搜索状态

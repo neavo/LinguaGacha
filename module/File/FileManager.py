@@ -211,8 +211,6 @@ class FileManager(Base):
         if current_db is None:
             return []
 
-        project_status = ctx.get_project_status()
-
         # CONTINUE 模式：直接从数据库缓存加载
         if mode == Base.TranslationMode.CONTINUE:
             return [Item.from_dict(d) for d in current_db.get_all_items()]
