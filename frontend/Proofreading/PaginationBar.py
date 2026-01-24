@@ -1,7 +1,7 @@
-from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentIcon
@@ -37,8 +37,7 @@ class PaginationBar(QWidget):
         layout.setAlignment(Qt.AlignLeft)  # 左对齐而非居中
 
         # 上一页按钮（使用扁平透明按钮）
-        self.btn_prev = TransparentToolButton(FluentIcon.CARE_LEFT_SOLID, self)
-        self.btn_prev.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
+        self.btn_prev = TransparentToolButton(FluentIcon.PAGE_LEFT, self)
         self.btn_prev.clicked.connect(self.on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
@@ -50,13 +49,11 @@ class PaginationBar(QWidget):
         layout.addWidget(self.page_info_label)
 
         # 下一页按钮（使用扁平透明按钮）
-        self.btn_next = TransparentToolButton(FluentIcon.CARE_RIGHT_SOLID, self)
-        self.btn_next.setIconSize(QSize(14, 14))  # 稍微增大图标以匹配命令栏
+        self.btn_next = TransparentToolButton(FluentIcon.PAGE_RIGHT, self)
         self.btn_next.clicked.connect(self.on_next_clicked)
         layout.addWidget(self.btn_next)
 
         # 设置尺寸策略，确保控件不占用额外空间
-        from PyQt5.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
 
         # 更新显示
