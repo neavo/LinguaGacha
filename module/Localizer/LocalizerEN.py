@@ -309,9 +309,8 @@ class LocalizerEN(LocalizerZH):
     translation_page_export_confirm: str = "Confirm to generate the translation file?"
     translation_page_export_no_progress: str = "No translation progress currently, cannot generate …"
     translation_page_export_tooltip: str = "Generate translation file"
-
     translation_page_reset: str = "Reset"
-    translation_page_alert_reset: str = "Are you sure you want to reset the current translation progress? This action cannot be undone …"
+    translation_page_alert_reset: str = "Confirm to reset the current translation progress …?"
     translation_page_timer: str = "Waiting time before delayed startup"
 
     # 校对任务

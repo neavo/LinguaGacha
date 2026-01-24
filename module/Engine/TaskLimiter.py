@@ -3,13 +3,14 @@ import time
 from typing import Callable
 from typing import Optional
 
+
 class TaskLimiter:
 
     def __init__(self, rps: int, rpm: int, max_concurrency: int = 0) -> None:
         self.rps = rps
         self.rpm = rpm
-        self.max_capacity = self._calculate_max_capacity()
-        self.rate_per_second = self._calculate_stricter_rate()
+        self.max_capacity = self.calculate_max_capacity()
+        self.rate_per_second = self.calculate_stricter_rate()
         self.current_capacity = self.max_capacity
         self.last_request_time = time.time()
 
@@ -17,14 +18,14 @@ class TaskLimiter:
         self.semaphore = threading.BoundedSemaphore(max_concurrency) if max_concurrency > 0 else None
 
     # 计算最大容量
-    def _calculate_max_capacity(self) -> float:
+    def calculate_max_capacity(self) -> float:
         return min(
             self.rps if self.rps > 0 else float("inf"),
             self.rpm / 60 if self.rpm > 0 else float("inf"),
         )
 
     # 计算每秒恢复的请求额度
-    def _calculate_stricter_rate(self) -> float:
+    def calculate_stricter_rate(self) -> float:
         return min(
             self.rps if self.rps > 0 else float("inf"),
             self.rpm / 60 if self.rpm > 0 else float("inf"),

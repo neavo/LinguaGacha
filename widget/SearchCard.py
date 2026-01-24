@@ -16,6 +16,7 @@ from qfluentwidgets import VerticalSeparator
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomSearchLineEdit
 
+
 class SearchCard(CardWidget):
     """搜索卡片组件，支持普通/正则搜索模式及上下跳转"""
 
@@ -34,10 +35,10 @@ class SearchCard(CardWidget):
         # 1. 正则模式切换按钮
         self.regex_btn = PillPushButton(Localizer.get().search_regex_btn, self)
         self.regex_btn.setCheckable(True)
-        self.regex_btn.clicked.connect(self._on_regex_toggle)
+        self.regex_btn.clicked.connect(self.on_regex_toggle)
         # 启用 ToolTip 显示，延时 300ms 触发
         self.regex_btn.installEventFilter(ToolTipFilter(self.regex_btn, 300, ToolTipPosition.TOP))
-        self._update_regex_tooltip()
+        self.update_regex_tooltip()
         self.root.addWidget(self.regex_btn)
 
         self.root.addWidget(VerticalSeparator())
@@ -79,12 +80,12 @@ class SearchCard(CardWidget):
         self.back.setText(Localizer.get().back)
         self.root.addWidget(self.back)
 
-    def _on_regex_toggle(self) -> None:
+    def on_regex_toggle(self) -> None:
         """正则模式切换逻辑"""
         self._regex_mode = self.regex_btn.isChecked()
-        self._update_regex_tooltip()
+        self.update_regex_tooltip()
 
-    def _update_regex_tooltip(self) -> None:
+    def update_regex_tooltip(self) -> None:
         """根据当前模式更新正则按钮的 ToolTip"""
         tooltip = Localizer.get().search_regex_on if self._regex_mode else Localizer.get().search_regex_off
         self.regex_btn.setToolTip(tooltip)

@@ -336,7 +336,10 @@ class Translator(Base):
             )
 
             with ProgressBar(transient=True) as progress:
-                pid = progress.new()
+                pid = progress.new(
+                    total=self.extras.get("total_line", 0),
+                    completed=self.extras.get("line", 0),
+                )
                 with concurrent.futures.ThreadPoolExecutor(
                     max_workers=max_workers, thread_name_prefix=Engine.TASK_PREFIX
                 ) as executor:
@@ -812,6 +815,13 @@ class Translator(Base):
                 StorageContext.get().set_project_status(Base.ProjectStatus.PROCESSING)
 
             # 进度更新由 UI 层的 update_ui_tick 自动处理，此处移除冗余调用以保持逻辑一致
+
+            # 更新终端进度条
+            progress.update(
+                pid,
+                completed=self.extras.get("line", 0),
+                total=self.extras.get("total_line", 0),
+            )
 
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)

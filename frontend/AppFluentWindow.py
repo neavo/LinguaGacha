@@ -323,7 +323,7 @@ class AppFluentWindow(FluentWindow, Base):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self.progress_toast.isVisible():
-            self.progress_toast._update_position()
+            self.progress_toast.update_position()
 
     # 切换主题
     def switch_theme(self) -> None:

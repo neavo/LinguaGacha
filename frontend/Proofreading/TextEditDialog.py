@@ -22,9 +22,9 @@ class TextEditDialog(MessageBoxBase):
         self.src_text = src_text
         self.dst_text = dst_text
         self.file_path = file_path
-        self._init_ui()
+        self.init_ui()
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
         """初始化 UI"""
         # 略微减小尺寸以提升动画性能
         self.widget.setMinimumWidth(768)

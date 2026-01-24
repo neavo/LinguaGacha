@@ -309,9 +309,8 @@ class LocalizerZH:
     translation_page_export_confirm: str = "确定要生成译文文件吗 …?"
     translation_page_export_no_progress: str = "当前暂无翻译进度，无法生成 …"
     translation_page_export_tooltip: str = "生成译文文件"
-
     translation_page_reset: str = "重置"
-    translation_page_alert_reset: str = "确定要重置当前翻译进度吗？该操作不可撤销 …"
+    translation_page_alert_reset: str = "确定要重置当前翻译进度吗 …?"
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 校对任务

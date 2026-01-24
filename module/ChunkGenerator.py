@@ -62,7 +62,7 @@ class ChunkGenerator:
             ):
                 chunks.append(chunk)
                 preceding_chunks.append(
-                    cls._generate_preceding_chunk(
+                    cls.generate_preceding_chunk(
                         items, chunk, i, skip, preceding_lines_threshold
                     )
                 )
@@ -80,7 +80,7 @@ class ChunkGenerator:
         if len(chunk) > 0:
             chunks.append(chunk)
             preceding_chunks.append(
-                cls._generate_preceding_chunk(
+                cls.generate_preceding_chunk(
                     items, chunk, len(items), skip, preceding_lines_threshold
                 )
             )
@@ -88,7 +88,7 @@ class ChunkGenerator:
         return chunks, preceding_chunks
 
     @classmethod
-    def _generate_preceding_chunk(
+    def generate_preceding_chunk(
         cls,
         items: list[Item],
         chunk: list[Item],

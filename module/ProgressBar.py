@@ -10,8 +10,8 @@ from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 from rich.progress import TimeRemainingColumn
 
-class ProgressBar():
 
+class ProgressBar:
     # 类变量
     progress: Progress | None = None
 
@@ -25,44 +25,63 @@ class ProgressBar():
     def __enter__(self) -> Self:
         if not isinstance(__class__.progress, Progress):
             __class__.progress = Progress(
-                TextColumn(datetime.now().strftime("[%H:%M:%S]"), style = "log.time"),
-                TextColumn("INFO    ", style = "logging.level.info"),
-                BarColumn(bar_width = None),
+                TextColumn(datetime.now().strftime("[%H:%M:%S]"), style="log.time"),
+                TextColumn("INFO    ", style="logging.level.info"),
+                BarColumn(bar_width=None),
                 "•",
-                TextColumn("{task.completed}/{task.total}", justify = "right"),
+                TextColumn("{task.completed}/{task.total}", justify="right"),
                 "•",
                 TimeElapsedColumn(),
                 "/",
                 TimeRemainingColumn(),
-                transient = self.transient,
+                transient=self.transient,
             )
             __class__.progress.start()
 
         return self
 
-    def __exit__(self, exc_type: BaseException, exc_val: BaseException, exc_tb: TracebackType) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        progress = __class__.progress
+        if progress is None:
+            return
+
         for id, attr in self.tasks.items():
             attr["running"] = False
-            __class__.progress.stop_task(id)
-            __class__.progress.remove_task(id) if self.transient == True else None
+            progress.stop_task(id)
+            if self.transient:
+                progress.remove_task(id)
 
-        task_ids: set[TaskID] = {k for k, v in self.tasks.items() if v.get("running") == False}
-        if all(v in task_ids for v in __class__.progress.task_ids):
-            __class__.progress.stop()
+        task_ids: set[TaskID] = {
+            k for k, v in self.tasks.items() if not v.get("running")
+        }
+        if all(v in task_ids for v in progress.task_ids):
+            progress.stop()
             __class__.progress = None
 
-    def new(self) -> TaskID:
-        if __class__.progress is None:
-            return None
-        else:
-            id = __class__.progress.add_task("", total = None)
-            self.tasks[id] = {
-                "running": True,
-            }
-            return id
+    def new(self, total: int | None = None, completed: int = 0) -> TaskID:
+        progress = __class__.progress
+        if progress is None:
+            raise RuntimeError("Progress is not started")
 
-    def update(self, id: TaskID, *, total: int = None, advance: int = None, completed: int = None) -> None:
-        if __class__.progress is None:
-            pass
-        else:
-            __class__.progress.update(id, total = total, advance = advance, completed = completed)
+        id = progress.add_task("", total=total, completed=completed)
+        self.tasks[id] = {
+            "running": True,
+        }
+        return id
+
+    def update(
+        self,
+        id: TaskID,
+        *,
+        total: int | None = None,
+        advance: int | None = None,
+        completed: int | None = None,
+    ) -> None:
+        progress = __class__.progress
+        if progress is not None:
+            progress.update(id, total=total, advance=advance, completed=completed)
