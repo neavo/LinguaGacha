@@ -170,30 +170,18 @@ class NameFieldExtractionPage(QWidget, Base):
 
         # 创建命令栏
         self.command_bar_card = CommandBarCard()
+        self.command_bar_card.set_minimum_width(640)
         parent.addWidget(self.command_bar_card)
 
-        self.command_bar_card.set_minimum_width(640)
-
-        # 提取按钮
+        # 添加命令栏操作
         self.add_command_bar_action_extract(self.command_bar_card)
-        # 翻译按钮
         self.add_command_bar_action_translate(self.command_bar_card)
-
         self.command_bar_card.add_separator()
-
-        # 搜索按钮
         self.add_command_bar_action_search(self.command_bar_card)
-
         self.command_bar_card.add_separator()
-
-        # 重置按钮
         self.add_command_bar_action_reset(self.command_bar_card)
-
         self.command_bar_card.add_separator()
-
-        # 导入按钮
-
-        self.add_command_bar_action_save(self.command_bar_card)
+        self.add_command_bar_action_import(self.command_bar_card)
 
     # 提取操作
     def add_command_bar_action_extract(self, parent: CommandBarCard) -> None:
@@ -202,7 +190,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.SYNC,
+                FluentIcon.FINGERPRINT,
                 Localizer.get().name_field_extraction_action_extract,
                 parent,
                 triggered=triggered,
@@ -216,36 +204,8 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.LANGUAGE,
+                FluentIcon.MICROPHONE,
                 Localizer.get().name_field_extraction_action_translate,
-                parent,
-                triggered=triggered,
-            ),
-        )
-
-    # 重置操作
-    def add_command_bar_action_reset(self, parent: CommandBarCard) -> None:
-        def triggered() -> None:
-            self.reset_table()
-
-        parent.add_action(
-            Action(
-                FluentIcon.DELETE,
-                Localizer.get().quality_reset,
-                parent,
-                triggered=triggered,
-            ),
-        )
-
-    # 保存操作
-    def add_command_bar_action_save(self, parent: CommandBarCard) -> None:
-        def triggered() -> None:
-            self.save_to_glossary()
-
-        parent.add_action(
-            Action(
-                FluentIcon.SAVE,
-                Localizer.get().name_field_extraction_action_import,
                 parent,
                 triggered=triggered,
             ),
@@ -266,6 +226,33 @@ class NameFieldExtractionPage(QWidget, Base):
             ),
         )
 
+    # 重置操作
+    def add_command_bar_action_reset(self, parent: CommandBarCard) -> None:
+        def triggered() -> None:
+            self.reset_table()
+
+        parent.add_action(
+            Action(
+                FluentIcon.ERASE_TOOL,
+                Localizer.get().quality_reset,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    # 导入到术语表
+    def add_command_bar_action_import(self, parent: CommandBarCard) -> None:
+        def triggered() -> None:
+            self.save_to_glossary()
+
+        parent.add_action(
+            Action(
+                FluentIcon.DOWNLOAD,
+                Localizer.get().name_field_extraction_action_import,
+                parent,
+                triggered=triggered,
+            ),
+        )
     # ================= 业务逻辑 =================
 
     def on_progress_updated(self, content: str, current: int, total: int) -> None:

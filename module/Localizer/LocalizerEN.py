@@ -589,7 +589,7 @@ class LocalizerEN(LocalizerZH):
     )
     name_field_extraction_action_extract: str = "Extract"
     name_field_extraction_action_translate: str = "Translate"
-    name_field_extraction_action_import: str = "Import to Glossary"
+    name_field_extraction_action_import: str = "Import To Glossary"
     name_field_extraction_context: str = "Context"
 
     # 百宝箱 - 繁简转换

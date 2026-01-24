@@ -322,7 +322,7 @@ class AppFluentWindow(FluentWindow, Base):
     # 重写窗口大小变化事件，更新进度 Toast 位置
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if self.progress_toast.isVisible():
+        if self.progress_toast.is_visible():
             self.progress_toast.update_position()
 
     # 切换主题
