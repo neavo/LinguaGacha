@@ -4,8 +4,6 @@ import threading
 from enum import StrEnum
 from functools import lru_cache
 
-import opencc
-
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
@@ -33,9 +31,7 @@ class TextProcessor(Base):
     # - 提取姓名
     # - 自动修复
     # - 译后替换
-    # - 繁体输出
     # - 文本保护
-
     # 注意预处理和后处理的顺序应该镜像颠倒
 
     class RuleType(StrEnum):
@@ -43,10 +39,6 @@ class TextProcessor(Base):
         SAMPLE = "SAMPLE"
         PREFIX = "PREFIX"
         SUFFIX = "SUFFIX"
-
-    # 类变量
-    OPENCCT2S = opencc.OpenCC("t2s")
-    OPENCCS2T = opencc.OpenCC("s2tw")
 
     # 正则表达式
     RE_NAME = re.compile(r"^[\[【](.*?)[\]】]\s*", flags=re.IGNORECASE)
@@ -83,7 +75,7 @@ class TextProcessor(Base):
         language: BaseLanguage.Enum,
     ) -> re.Pattern[str]:
         data: list[dict[str, str]] = []
-        if custom == True:
+        if custom:
             data = custom_data
         else:
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
@@ -117,7 +109,7 @@ class TextProcessor(Base):
                         if v.get("src") != ""
                     ]
                 )
-                if custom == True
+                if custom
                 else None,
                 rule_type=__class__.RuleType.CHECK,
                 text_type=text_type,
@@ -135,7 +127,7 @@ class TextProcessor(Base):
                         if v.get("src") != ""
                     ]
                 )
-                if custom == True
+                if custom
                 else None,
                 rule_type=__class__.RuleType.SAMPLE,
                 text_type=text_type,
@@ -153,7 +145,7 @@ class TextProcessor(Base):
                         if v.get("src") != ""
                     ]
                 )
-                if custom == True
+                if custom
                 else None,
                 rule_type=__class__.RuleType.PREFIX,
                 text_type=text_type,
@@ -171,7 +163,7 @@ class TextProcessor(Base):
                         if v.get("src") != ""
                     ]
                 )
-                if custom == True
+                if custom
                 else None,
                 rule_type=__class__.RuleType.SUFFIX,
                 text_type=text_type,
@@ -196,7 +188,7 @@ class TextProcessor(Base):
 
     # 清理注音
     def clean_ruby(self, src: str) -> str:
-        if self.config.clean_ruby == False:
+        if not self.config.clean_ruby:
             return src
         else:
             return RubyCleaner.clean(src, self.item.get_text_type())
@@ -254,7 +246,7 @@ class TextProcessor(Base):
 
     # 译前替换
     def replace_pre_translation(self, src: str) -> str:
-        if QualityRuleManager.get().get_pre_replacement_enable() == False:
+        if not QualityRuleManager.get().get_pre_replacement_enable():
             return src
 
         pre_replacement_data = QualityRuleManager.get().get_pre_replacement()
@@ -284,7 +276,7 @@ class TextProcessor(Base):
 
     # 译后替换
     def replace_post_translation(self, dst: str) -> str:
-        if QualityRuleManager.get().get_post_replacement_enable() == False:
+        if not QualityRuleManager.get().get_post_replacement_enable():
             return dst
 
         post_replacement_data = QualityRuleManager.get().get_post_replacement()
@@ -312,20 +304,10 @@ class TextProcessor(Base):
 
         return dst
 
-    # 中文字型转换
-    def convert_chinese_character_form(self, dst: str) -> str:
-        if self.config.target_language != BaseLanguage.Enum.ZH:
-            return dst
-
-        if self.config.traditional_chinese_enable == True:
-            return __class__.OPENCCS2T.convert(dst)
-        else:
-            return __class__.OPENCCT2S.convert(dst)
-
     # 处理前后缀代码段
     def prefix_suffix_process(self, i: int, src: str, text_type: Item.TextType) -> str:
         # 如果未启用自动移除前后缀代码段，直接返回原始文本
-        if self.config.auto_process_prefix_suffix_preserved_text == False:
+        if not self.config.auto_process_prefix_suffix_preserved_text:
             return src
 
         rule: re.Pattern = self.get_re_prefix(
@@ -415,9 +397,6 @@ class TextProcessor(Base):
 
                 # 译后替换
                 dst = self.replace_post_translation(dst)
-
-                # 繁体输出
-                dst = self.convert_chinese_character_form(dst)
 
                 if i in self.prefix_codes:
                     dst = "".join(self.prefix_codes.get(i)) + dst
