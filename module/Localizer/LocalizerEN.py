@@ -99,7 +99,6 @@ class LocalizerEN(LocalizerZH):
     log_proxy: str = "Network proxy enabled …"
     log_expert_mode: str = "Expert Mode Enabled …"
     log_api_test_fail: str = "API test failed … "
-    task_failed: str = "Task failed …"
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
     cli_verify_language: str = "parameter error: invalid language …"
