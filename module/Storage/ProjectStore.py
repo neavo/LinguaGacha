@@ -107,15 +107,17 @@ class ProjectStore(Base):
             db.set_items([item.to_dict() for item in items])
 
             # 初始化翻译进度元数据
-            # 这样在未开始翻译前也能显示正确的进度（0%），且无需遍历所有条目
+            # 将 total_line 设为 0，标记该工程尚未进行翻译扫描
+            # 这样在翻译页初始化时，剩余行数会显示为 0，直到第一次翻译运行完成过滤
             extras = {
-                "total_line": len(items),
+                "total_line": 0,
                 "line": 0,
                 "total_tokens": 0,
                 "total_input_tokens": 0,
                 "total_output_tokens": 0,
                 "time": 0,
             }
+
             db.set_meta("translation_extras", extras)
 
         self.report_progress(
