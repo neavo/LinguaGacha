@@ -7,6 +7,7 @@ from module.Config import Config
 from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
+
 class TXT(Base):
     def __init__(self, config: Config) -> None:
         super().__init__()
@@ -35,23 +36,35 @@ class TXT(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path=abs_path, add_sig_to_utf8=True)
-
             # 数据处理
-            with open(abs_path, "r", encoding=encoding) as reader:
-                for line in [line.removesuffix("\n") for line in reader.readlines()]:
-                    items.append(
-                        Item.from_dict(
-                            {
-                                "src": line,
-                                "dst": line,
-                                "row": len(items),
-                                "file_type": Item.FileType.TXT,
-                                "file_path": rel_path,
-                            }
-                        )
-                    )
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
+
+        return items
+
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        text = content.decode(encoding)
+        for line in [
+            line.removesuffix("\r").removesuffix("\n") for line in text.splitlines()
+        ]:
+            items.append(
+                Item.from_dict(
+                    {
+                        "src": line,
+                        "dst": line,
+                        "row": len(items),
+                        "file_type": Item.FileType.TXT,
+                        "file_path": rel_path,
+                    }
+                )
+            )
 
         return items
 
@@ -65,26 +78,26 @@ class TXT(Base):
         target = [item for item in items if item.get_file_type() == Item.FileType.TXT]
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(self.insert_target(abs_path), "w", encoding="utf-8") as writer:
-                writer.write("\n".join([item.get_dst() for item in items]))
+                writer.write("\n".join([item.get_dst() for item in group_items]))
 
         # 分别处理每个文件（双语）
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             abs_path = os.path.join(bilingual_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(
                 self.insert_source_target(abs_path), "w", encoding="utf-8"
             ) as writer:
                 result: list[str] = []
-                for item in items:
+                for item in group_items:
                     if (
                         self.config.deduplication_in_bilingual
                         and item.get_src() == item.get_dst()

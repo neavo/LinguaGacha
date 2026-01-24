@@ -8,6 +8,7 @@ from module.Config import Config
 from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
+
 class MD(Base):
     # 添加图片匹配的正则表达式
     IMAGE_PATTERN = re.compile(r"!\[.*?\]\(.*?\)")
@@ -40,47 +41,59 @@ class MD(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path=abs_path, add_sig_to_utf8=True)
-
             # 数据处理
-            with open(abs_path, "r", encoding=encoding) as reader:
-                lines = [line.removesuffix("\n") for line in reader.readlines()]
-                in_code_block = False  # 跟踪是否在代码块内
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                for line in lines:
-                    # 检查是否进入或退出代码块
-                    if line.strip().startswith("```"):
-                        in_code_block = not in_code_block
+        return items
 
-                    # 如果是图片行或在代码块内，设置状态为 EXCLUDED
-                    if MD.IMAGE_PATTERN.search(line) or in_code_block:
-                        items.append(
-                            Item.from_dict(
-                                {
-                                    "src": line,
-                                    "dst": line,
-                                    "row": len(items),
-                                    "file_type": Item.FileType.MD,
-                                    "file_path": rel_path,
-                                    "text_type": Item.TextType.MD,
-                                    "status": Base.ProjectStatus.EXCLUDED,
-                                }
-                            )
-                        )
-                    else:
-                        items.append(
-                            Item.from_dict(
-                                {
-                                    "src": line,
-                                    "dst": line,
-                                    "row": len(items),
-                                    "file_type": Item.FileType.MD,
-                                    "file_path": rel_path,
-                                    "text_type": Item.TextType.MD,
-                                }
-                            )
-                        )
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 获取编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        text = content.decode(encoding)
+        lines = [
+            line.removesuffix("\r").removesuffix("\n") for line in text.splitlines()
+        ]
+        in_code_block = False  # 跟踪是否在代码块内
+
+        for line in lines:
+            # 检查是否进入或退出代码块
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+
+            # 如果是图片行或在代码块内，设置状态为 EXCLUDED
+            if MD.IMAGE_PATTERN.search(line) or in_code_block:
+                items.append(
+                    Item.from_dict(
+                        {
+                            "src": line,
+                            "dst": line,
+                            "row": len(items),
+                            "file_type": Item.FileType.MD,
+                            "file_path": rel_path,
+                            "text_type": Item.TextType.MD,
+                            "status": Base.ProjectStatus.EXCLUDED,
+                        }
+                    )
+                )
+            else:
+                items.append(
+                    Item.from_dict(
+                        {
+                            "src": line,
+                            "dst": line,
+                            "row": len(items),
+                            "file_type": Item.FileType.MD,
+                            "file_path": rel_path,
+                            "text_type": Item.TextType.MD,
+                        }
+                    )
+                )
 
         return items
 
@@ -93,13 +106,13 @@ class MD(Base):
         target = [item for item in items if item.get_file_type() == Item.FileType.MD]
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(self.insert_target(abs_path), "w", encoding="utf-8") as writer:
-                writer.write("\n".join([item.get_dst() for item in items]))
+                writer.write("\n".join([item.get_dst() for item in group_items]))

@@ -7,6 +7,7 @@ from module.Config import Config
 from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
+
 class ASS(Base):
     # [Script Info]
     # ; This is an Advanced Sub Station Alpha v4+ script.
@@ -52,50 +53,60 @@ class ASS(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path=abs_path, add_sig_to_utf8=True)
-
             # 数据处理
-            with open(abs_path, "r", encoding=encoding) as reader:
-                lines = [line.strip() for line in reader.readlines()]
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                # 格式字段的数量
-                in_event = False
-                format_field_num = -1
-                for line in lines:
-                    # 判断是否进入事件块
-                    if line == "[Events]":
-                        in_event = True
-                    # 在事件块中寻找格式字段
-                    if in_event and line.startswith("Format:"):
-                        format_field_num = len(line.split(",")) - 1
-                        break
+        return items
 
-                for line in lines:
-                    content = (
-                        ",".join(line.split(",")[format_field_num:])
-                        if line.startswith("Dialogue:")
-                        else ""
-                    )
-                    extra_field = (
-                        line.replace(f"{content}", "{{CONTENT}}")
-                        if content != ""
-                        else line
-                    )
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
 
-                    # 添加数据
-                    items.append(
-                        Item.from_dict(
-                            {
-                                "src": content.replace("\\N", "\n"),
-                                "dst": content.replace("\\N", "\n"),
-                                "extra_field": extra_field,
-                                "row": len(items),
-                                "file_type": Item.FileType.ASS,
-                                "file_path": rel_path,
-                            }
-                        )
-                    )
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        text = content.decode(encoding)
+        lines = [line.strip() for line in text.splitlines()]
+
+        # 格式字段的数量
+        in_event = False
+        format_field_num = -1
+        for line in lines:
+            # 判断是否进入事件块
+            if line == "[Events]":
+                in_event = True
+            # 在事件块中寻找格式字段
+            if in_event and line.startswith("Format:"):
+                format_field_num = len(line.split(",")) - 1
+                break
+
+        for line in lines:
+            content_val = (
+                ",".join(line.split(",")[format_field_num:])
+                if line.startswith("Dialogue:")
+                else ""
+            )
+            extra_field = (
+                line.replace(f"{content_val}", "{{CONTENT}}")
+                if content_val != ""
+                else line
+            )
+
+            # 添加数据
+            items.append(
+                Item.from_dict(
+                    {
+                        "src": content_val.replace("\\N", "\n"),
+                        "dst": content_val.replace("\\N", "\n"),
+                        "extra_field": extra_field,
+                        "row": len(items),
+                        "file_type": Item.FileType.ASS,
+                        "file_path": rel_path,
+                    }
+                )
+            )
 
         return items
 
@@ -109,19 +120,23 @@ class ASS(Base):
         target = [item for item in items if item.get_file_type() == Item.FileType.ASS]
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             result: list[str] = []
-            for item in items:
+            for item in group_items:
+                extra_field_raw = item.get_extra_field()
+                extra_field: str = (
+                    extra_field_raw if isinstance(extra_field_raw, str) else ""
+                )
                 result.append(
-                    item.get_extra_field().replace(
+                    extra_field.replace(
                         "{{CONTENT}}", item.get_dst().replace("\n", "\\N")
                     )
                 )
@@ -130,14 +145,18 @@ class ASS(Base):
                 writer.write("\n".join(result))
 
         # 分别处理每个文件（双语）
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             result: list[str] = []
-            for item in items:
+            for item in group_items:
+                extra_field_raw = item.get_extra_field()
+                extra_field: str = (
+                    extra_field_raw if isinstance(extra_field_raw, str) else ""
+                )
                 if (
                     self.config.deduplication_in_bilingual
                     and item.get_src() == item.get_dst()
                 ):
-                    line = item.get_extra_field().replace(
+                    line = extra_field.replace(
                         "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
                     )
                     line = line.replace(
@@ -145,7 +164,7 @@ class ASS(Base):
                     )
                     result.append(line)
                 else:
-                    line = item.get_extra_field().replace(
+                    line = extra_field.replace(
                         "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
                     )
                     line = line.replace(

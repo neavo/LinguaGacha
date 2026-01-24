@@ -6,6 +6,7 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 from qfluentwidgets import themeColor
 
+
 class CustomTextEdit(PlainTextEdit):
     """
     自定义样式的文本编辑框
@@ -71,9 +72,9 @@ class CustomTextEdit(PlainTextEdit):
 
         # 监听主题变化，控件销毁时自动断开
         qconfig.themeChanged.connect(self.update_style)
-        self.destroyed.connect(self._disconnect_signals)
+        self.destroyed.connect(self.disconnect_signals)
 
-    def _disconnect_signals(self) -> None:
+    def disconnect_signals(self) -> None:
         """断开全局信号连接，避免内存泄漏"""
         try:
             qconfig.themeChanged.disconnect(self.update_style)

@@ -6,6 +6,7 @@ from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
 from qfluentwidgets import ProgressRing
 
+
 class ProgressToast:
     """基于 InfoBar 的进度提示组件，左侧显示 loading 圆环"""
 
@@ -17,7 +18,7 @@ class ProgressToast:
         self._is_indeterminate = True
         self._bottom_offset = 80
 
-    def _create_info_bar(self, content: str, is_indeterminate: bool) -> InfoBar:
+    def create_info_bar(self, content: str, is_indeterminate: bool) -> InfoBar:
         """创建 InfoBar 实例"""
         # 关闭已存在的
         if self._info_bar:
@@ -72,17 +73,17 @@ class ProgressToast:
 
     def show_indeterminate(self, content: str) -> None:
         """显示不定进度模式"""
-        self._info_bar = self._create_info_bar(content, True)
+        self._info_bar = self.create_info_bar(content, True)
         self._info_bar.show()
-        QTimer.singleShot(0, self._update_position)
+        QTimer.singleShot(0, self.update_position)
 
     def show_progress(self, content: str, current: int = 0, total: int = 0) -> None:
         """显示确定进度模式"""
         if not self._info_bar or self._is_indeterminate:
             # 需要创建新的确定进度 InfoBar
-            self._info_bar = self._create_info_bar(content, False)
+            self._info_bar = self.create_info_bar(content, False)
             self._info_bar.show()
-            QTimer.singleShot(0, self._update_position)
+            QTimer.singleShot(0, self.update_position)
 
         self.set_content(content)
         self.set_progress(current, total)
@@ -108,7 +109,7 @@ class ProgressToast:
         """是否可见"""
         return self._info_bar is not None and self._info_bar.isVisible()
 
-    def _update_position(self) -> None:
+    def update_position(self) -> None:
         """更新位置到父窗口底部中间"""
         if not self._info_bar or not self._parent:
             return
