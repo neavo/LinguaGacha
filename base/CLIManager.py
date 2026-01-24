@@ -62,6 +62,15 @@ class CLIManager(Base):
             type=str,
             help="Input source directory or file for project creation",
         )
+        parser.add_argument(
+            "--continue",
+            dest="cont",
+            action="store_true",
+            help="Continue translation",
+        )
+        parser.add_argument(
+            "--reset", action="store_true", help="Reset and restart translation"
+        )
 
         args = parser.parse_args()
 
@@ -133,11 +142,26 @@ class CLIManager(Base):
             self.error(f"--target_language {Localizer.get().cli_verify_language}")
             self.exit()
 
+        # Determine Translation Mode
+        mode = Base.TranslationMode.NEW
+        project_status = StorageContext.get().get_project_status()
+
+        if args.reset:
+            mode = Base.TranslationMode.RESET
+        elif args.cont:
+            mode = Base.TranslationMode.CONTINUE
+        elif project_status != Base.ProjectStatus.NONE:
+            # If project has progress and no flag specified, default to CONTINUE
+            mode = Base.TranslationMode.CONTINUE
+        else:
+            # Fresh project
+            mode = Base.TranslationMode.NEW
+
         self.emit(
             Base.Event.TRANSLATION_RUN,
             {
                 "config": config,
-                "mode": Base.TranslationMode.NEW,
+                "mode": mode,
             },
         )
 

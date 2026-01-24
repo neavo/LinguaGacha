@@ -681,7 +681,10 @@ class TranslationPage(QWidget, Base):
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
-            if self.action_continue.isEnabled():
+            # 判定当前是否为“重置”行为：如果“继续翻译”按钮可用，说明已有进度
+            is_reset = self.action_continue.isEnabled()
+
+            if is_reset:
                 message_box = MessageBox(
                     Localizer.get().alert,
                     Localizer.get().alert_reset_translation,
@@ -697,7 +700,9 @@ class TranslationPage(QWidget, Base):
             self.emit(
                 Base.Event.TRANSLATION_RUN,
                 {
-                    "mode": Base.TranslationMode.RESET,
+                    "mode": Base.TranslationMode.RESET
+                    if is_reset
+                    else Base.TranslationMode.NEW,
                 },
             )
 

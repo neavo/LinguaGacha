@@ -221,13 +221,12 @@ class FileManager(Base):
         if mode == Base.TranslationMode.RESET:
             return self.read_from_storage(current_db)
 
-        # NEW 模式：智能判定
-        if project_status == Base.ProjectStatus.NONE:
-            # 新项目第一次翻译：直接使用数据库中的初始解析结果
+        # NEW 模式：直接使用数据库中的初始解析结果（由创建工程时解析产生）
+        if mode == Base.TranslationMode.NEW:
             return [Item.from_dict(d) for d in current_db.get_all_items()]
 
-        # 如果项目已经有进度但用户选择了 NEW，视为重置
-        return self.read_from_storage(current_db)
+        # 兜底：读缓存
+        return [Item.from_dict(d) for d in current_db.get_all_items()]
 
     # 写
     def write_to_path(self, items: list[Item]) -> str:
