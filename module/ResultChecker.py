@@ -26,22 +26,22 @@ class ResultChecker(Base):
         super().__init__()
 
         self.config: Config = config
-        self.text_processor: TextProcessor = TextProcessor(config, None)
+        self.text_processor: TextProcessor = TextProcessor(config, Item())
         # 预处理术语表数据（用于单条检查时复用）
-        self._prepared_glossary_data: list[dict] = self.prepare_glossary_data()
+        self.prepared_glossary_data: list[dict] = self.prepare_glossary_data()
 
     def prepare_glossary_data(self) -> list[dict]:
         """预处理术语表数据"""
-        glossary_data = QualityRuleManager.get().get_glossary()
-        if not QualityRuleManager.get().get_glossary_enable() or not glossary_data:
+        glossary_items = QualityRuleManager.get().get_glossary()
+        if not QualityRuleManager.get().get_glossary_enable() or not glossary_items:
             return []
 
         return [
             {
-                "src": v.get("src", ""),
-                "dst": v.get("dst", ""),
+                "src": term.get("src", ""),
+                "dst": term.get("dst", ""),
             }
-            for v in glossary_data
+            for term in glossary_items
         ]
 
     # 单条目检查的私有方法
@@ -56,8 +56,10 @@ class ResultChecker(Base):
             QualityRuleManager.get().get_pre_replacement_enable()
             and pre_replacement_data
         ):
-            for v in pre_replacement_data:
-                src = src.replace(v.get("src", ""), v.get("dst", ""))
+            for replacement in pre_replacement_data:
+                src = src.replace(
+                    replacement.get("src", ""), replacement.get("dst", "")
+                )
 
         # 译后逆替换（还原）
         post_replacement_data = QualityRuleManager.get().get_post_replacement()
@@ -65,8 +67,10 @@ class ResultChecker(Base):
             QualityRuleManager.get().get_post_replacement_enable()
             and post_replacement_data
         ):
-            for v in post_replacement_data:
-                dst = dst.replace(v.get("dst", ""), v.get("src", ""))
+            for replacement in post_replacement_data:
+                dst = dst.replace(
+                    replacement.get("dst", ""), replacement.get("src", "")
+                )
 
         return src, dst
 
@@ -83,9 +87,7 @@ class ResultChecker(Base):
             return False
         return TextHelper.KO.any_hangeul(item.get_dst())
 
-    def has_text_preserve_error(
-        self, item: Item, src_repl: str, dst_repl: str
-    ) -> bool:
+    def has_text_preserve_error(self, item: Item, src_repl: str, dst_repl: str) -> bool:
         """检查文本保护是否失效"""
         return not self.text_processor.check(src_repl, dst_repl, item.get_text_type())
 
@@ -102,12 +104,12 @@ class ResultChecker(Base):
 
     def has_glossary_error(self, src_repl: str, dst_repl: str) -> bool:
         """检查术语表是否未生效"""
-        if not self._prepared_glossary_data:
+        if not self.prepared_glossary_data:
             return False
 
-        for v in self._prepared_glossary_data:
-            glossary_src = v.get("src", "")
-            glossary_dst = v.get("dst", "")
+        for term in self.prepared_glossary_data:
+            glossary_src = term.get("src", "")
+            glossary_dst = term.get("dst", "")
             # 原文包含术语原文，但译文不包含术语译文
             if (
                 glossary_src
@@ -119,15 +121,15 @@ class ResultChecker(Base):
 
     def get_failed_glossary_terms(self, item: Item) -> list[tuple[str, str]]:
         """获取单个条目中未生效的术语列表，返回 (src, dst) 元组列表"""
-        if not self._prepared_glossary_data:
+        if not self.prepared_glossary_data:
             return []
 
         src_repl, dst_repl = self.get_repl_texts(item)
         failed_terms: list[tuple[str, str]] = []
 
-        for v in self._prepared_glossary_data:
-            glossary_src = v.get("src", "")
-            glossary_dst = v.get("dst", "")
+        for term in self.prepared_glossary_data:
+            glossary_src = term.get("src", "")
+            glossary_dst = term.get("dst", "")
             # 原文包含术语原文，但译文不包含术语译文
             if (
                 glossary_src
@@ -191,7 +193,7 @@ class ResultChecker(Base):
             return warnings
 
         # 重新准备术语表数据，确保使用最新数据
-        self._prepared_glossary_data = self.prepare_glossary_data()
+        self.prepared_glossary_data = self.prepare_glossary_data()
 
         # 获取替换后的文本
         src_repl, dst_repl = self.get_repl_texts(item)

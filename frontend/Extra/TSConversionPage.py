@@ -144,8 +144,8 @@ class TSConversionPage(QWidget, Base):
         )
 
     def start_conversion(self) -> None:
-        db = StorageContext.get().get_db()
-        if db is None:
+        database = StorageContext.get().get_db()
+        if database is None:
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -156,12 +156,12 @@ class TSConversionPage(QWidget, Base):
             return
 
         # 确认弹窗
-        w = MessageBox(
+        message_box = MessageBox(
             Localizer.get().alert,
             Localizer.get().ts_conversion_action_start + "?",
             self.window(),
         )
-        if not w.exec():
+        if not message_box.exec():
             return
 
         # 获取当前配置
@@ -182,12 +182,12 @@ class TSConversionPage(QWidget, Base):
 
         def conversion_task() -> None:
             try:
-                db = StorageContext.get().get_db()
-                if db is None:
+                database = StorageContext.get().get_db()
+                if database is None:
                     self.progress_finished.emit("")
                     return
 
-                items_data = db.get_all_items()
+                items_data = database.get_all_items()
                 total = len(items_data)
                 if total == 0:
                     self.progress_finished.emit("")
@@ -195,7 +195,7 @@ class TSConversionPage(QWidget, Base):
 
                 config = Config().load()
                 # 临时创建一个 TextProcessor 用于获取保护规则
-                tp = TextProcessor(config, Item())
+                text_processor = TextProcessor(config, Item())
 
                 # 准备转换器 (使用 opencc-pyo3)
                 # s2tw: 简体 -> 台湾繁体
@@ -204,15 +204,19 @@ class TSConversionPage(QWidget, Base):
                 suffix = "_S2T" if is_to_traditional else "_T2S"
 
                 items_to_export = []
-                for i, data in enumerate(items_data):
-                    item = Item.from_dict(data)
+                for index, item_data in enumerate(items_data):
+                    item = Item.from_dict(item_data)
                     dst = item.get_dst()
 
                     # 转换译文
                     if dst:
                         item.set_dst(
                             self.convert_text(
-                                dst, converter, tp, item.get_text_type(), preserve_text
+                                dst,
+                                converter,
+                                text_processor,
+                                item.get_text_type(),
+                                preserve_text,
                             )
                         )
 
@@ -224,7 +228,7 @@ class TSConversionPage(QWidget, Base):
                                 self.convert_text(
                                     name_dst,
                                     converter,
-                                    tp,
+                                    text_processor,
                                     item.get_text_type(),
                                     preserve_text,
                                 )
@@ -232,30 +236,30 @@ class TSConversionPage(QWidget, Base):
                         elif isinstance(name_dst, list):
                             new_names = [
                                 self.convert_text(
-                                    n,
+                                    name,
                                     converter,
-                                    tp,
+                                    text_processor,
                                     item.get_text_type(),
                                     preserve_text,
                                 )
-                                for n in name_dst
+                                for name in name_dst
                             ]
                             item.set_name_dst(new_names)
 
                     items_to_export.append(item)
 
                     # 每 100 条更新一次进度，或者到最后一条
-                    if (i + 1) % 100 == 0 or (i + 1) == total:
+                    if (index + 1) % 100 == 0 or (index + 1) == total:
                         self.progress_updated.emit(
-                            Localizer.get().ts_conversion_action_start, i + 1, total
+                            Localizer.get().ts_conversion_action_start, index + 1, total
                         )
 
                 # 直接执行导出逻辑
                 # 设置临时后缀
                 PathStore.custom_suffix = suffix
                 try:
-                    fm = FileManager(config)
-                    output_path = fm.write_to_path(items_to_export)
+                    file_manager = FileManager(config)
+                    output_path = file_manager.write_to_path(items_to_export)
                 finally:
                     # 恢复后缀
                     PathStore.custom_suffix = ""
@@ -276,7 +280,7 @@ class TSConversionPage(QWidget, Base):
         self,
         text: str,
         converter: Any,
-        tp: TextProcessor,
+        text_processor: TextProcessor,
         text_type: Item.TextType,
         preserve: bool,
     ) -> str:
@@ -289,7 +293,7 @@ class TSConversionPage(QWidget, Base):
 
         # 获取保护规则，逻辑与 TextProcessor 保持一致
         # 根据全局“文本保护”开关决定使用自定义规则还是预置规则
-        rule = tp.get_re_check(
+        rule = text_processor.get_re_check(
             custom=QualityRuleManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
