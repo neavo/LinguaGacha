@@ -73,7 +73,7 @@ class TranslatorTask(Base):
             )
         except Exception as e:
             # 最终兜底，确保任务不会由于未捕获异常而彻底丢失回调
-            self.error(f"{Localizer.get().log_task_fail}", e)
+            self.error(f"{Localizer.get().task_failed}", e)
             return {
                 "row_count": 0,
                 "input_tokens": 0,
@@ -138,7 +138,7 @@ class TranslatorTask(Base):
                 .replace("{RETRY}", str(self.retry_count))
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
-            self.error(f"{Localizer.get().log_task_fail}\n{msg}", exception)
+            self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
             return {
                 "row_count": 0,
                 "input_tokens": 0,

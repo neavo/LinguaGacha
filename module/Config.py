@@ -45,7 +45,6 @@ class Config:
     project_save_mode: str = ProjectSaveMode.MANUAL
     project_fixed_path: str = ""
     output_folder_open_on_finish: bool = False
-    traditional_chinese_enable: bool = False
     request_timeout: int = 120
 
     # ExpertSettingsPage

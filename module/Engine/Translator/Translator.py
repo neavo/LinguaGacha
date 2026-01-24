@@ -370,7 +370,7 @@ class Translator(Base):
                     },
                 )
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
+            self.error(f"{Localizer.get().task_failed}", e)
         finally:
             # 等待最后的回调执行完毕
             time.sleep(1.0)
@@ -744,7 +744,7 @@ class Translator(Base):
             # 任务取消是正常流程，无需记录错误
             pass
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
+            self.error(f"{Localizer.get().task_failed}", e)
         finally:
             with self.data_lock:
                 self.active_task_count -= 1

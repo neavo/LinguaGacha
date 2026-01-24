@@ -95,6 +95,7 @@ class ToolBoxPage(QWidget, Base):
 
         # 添加控件
         self.add_name_field_extraction(self.flow_layout, config, window)
+        self.add_ts_conversion(self.flow_layout, config, window)
 
     # 姓名字段提取
     def add_name_field_extraction(
@@ -108,6 +109,23 @@ class ToolBoxPage(QWidget, Base):
                 parent=self,
                 title=Localizer.get().tool_box_page_name_field_extraction,
                 description=Localizer.get().tool_box_page_name_field_extraction_desc,
+                init=None,
+                clicked=clicked,
+            )
+        )
+
+    # 繁简转换
+    def add_ts_conversion(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        def clicked(widget: ItemCard) -> None:
+            window.switchTo(window.ts_conversion_page)
+
+        parent.addWidget(
+            ItemCard(
+                parent=self,
+                title=Localizer.get().tool_box_page_ts_conversion,
+                description=Localizer.get().tool_box_page_ts_conversion_desc,
                 init=None,
                 clicked=clicked,
             )

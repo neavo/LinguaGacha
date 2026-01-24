@@ -57,7 +57,6 @@ class BasicSettingsPage(QWidget, Base):
         self.add_widget_source_language(scroll_area_vbox, config, window)
         self.add_widget_target_language(scroll_area_vbox, config, window)
         self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
-        self.add_widget_traditional_chinese(scroll_area_vbox, config, window)
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
 
         # 填充
@@ -211,28 +210,6 @@ class BasicSettingsPage(QWidget, Base):
             SwitchButtonCard(
                 title=Localizer.get().basic_settings_page_output_folder_open_on_finish_title,
                 description=Localizer.get().basic_settings_page_output_folder_open_on_finish_content,
-                init=init,
-                checked_changed=checked_changed,
-            )
-        )
-
-    # 繁体输出
-    def add_widget_traditional_chinese(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.traditional_chinese_enable)
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            # 更新并保存配置
-            config = Config().load()
-            config.traditional_chinese_enable = widget.get_switch_button().isChecked()
-            config.save()
-
-        parent.addWidget(
-            SwitchButtonCard(
-                Localizer.get().basic_settings_page_traditional_chinese_title,
-                Localizer.get().basic_settings_page_traditional_chinese_content,
                 init=init,
                 checked_changed=checked_changed,
             )

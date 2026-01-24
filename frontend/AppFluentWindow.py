@@ -31,6 +31,7 @@ from frontend.EmptyPage import EmptyPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
 from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
+from frontend.Extra.TSConversionPage import TSConversionPage
 from frontend.Model.ModelPage import ModelPage
 from frontend.Proofreading import ProofreadingPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
@@ -100,7 +101,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
         self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
         self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
-        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide_handler)
+        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
@@ -218,6 +219,7 @@ class AppFluentWindow(FluentWindow, Base):
             "custom_prompt_en_page",
             "laboratory_page",
             "tool_box_page",
+            "ts_conversion_page",
         ]
 
     # 重写窗口关闭函数
@@ -297,7 +299,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.progress_toast.set_progress(current, total)
 
     # 响应隐藏进度 Toast 事件
-    def progress_toast_hide_handler(self, event: Base.Event, data: dict) -> None:
+    def progress_toast_hide(self, event: Base.Event, data: dict) -> None:
         # 未显示时直接返回
         if self.progress_start_time == 0.0:
             return
@@ -659,6 +661,10 @@ class AppFluentWindow(FluentWindow, Base):
             "name_field_extraction_page", self
         )
         self.stackedWidget.addWidget(self.name_field_extraction_page)
+
+        # 百宝箱 - 繁简转换
+        self.ts_conversion_page = TSConversionPage("ts_conversion_page", self)
+        self.stackedWidget.addWidget(self.ts_conversion_page)
 
     # 工程加载后的处理
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:

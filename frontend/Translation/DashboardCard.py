@@ -76,7 +76,7 @@ class DashboardCard(CardWidget):
         self.body_hbox.addStretch(1)
         self.root.addWidget(self.body_hbox_container, 1)
 
-        # 如果是可点击卡片，添加一个切换提示图标（放在右下角）
+        # 如果是可点击卡片，添加一个切换提示图标（采用绝对定位，不占用布局空间）
         if callable(clicked):
             self.footer_hbox_container = QWidget(self)
             self.footer_hbox = QHBoxLayout(self.footer_hbox_container)
@@ -91,13 +91,23 @@ class DashboardCard(CardWidget):
             self.switch_icon.setGraphicsEffect(self.opacity_effect)
 
             self.footer_hbox.addWidget(self.switch_icon)
-            self.root.addWidget(self.footer_hbox_container)
+            self.footer_hbox_container.setFixedSize(14, 14)
 
         if callable(init):
             init(self)
 
         if callable(clicked):
             self.clicked.connect(lambda: clicked(self))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # 将切换图标固定在右下角
+        if hasattr(self, "footer_hbox_container"):
+            margin = 16
+            self.footer_hbox_container.move(
+                self.width() - self.footer_hbox_container.width() - margin,
+                self.height() - self.footer_hbox_container.height() - margin,
+            )
 
     def set_unit(self, unit: str) -> None:
         self.unit_label.setText(unit)
