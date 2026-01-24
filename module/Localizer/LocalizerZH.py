@@ -99,11 +99,8 @@ class LocalizerZH:
     log_proxy: str = "网络代理已启用 …"
     log_expert_mode: str = "专家模式已启用 …"
     log_api_test_fail: str = "接口测试失败 … "
-    log_task_fail: str = "任务失败 …"
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
-    log_ts_conversion_success: str = "繁简转换完成并导出至: {PATH}"
-    log_ts_conversion_fail: str = "繁简转换任务出错"
     cli_verify_language: str = "参数发生错误：无效的语言 …"
 
     # 引擎
@@ -593,14 +590,19 @@ class LocalizerZH:
 
     # 百宝箱 - 繁简转换
     ts_conversion_page: str = "繁简转换"
-    ts_conversion_page_desc: str = (
-        "您可以将当前项目中的所有译文或角色名称转换为简体中文或繁体中文，转换过程会自动应用文本保护规则以避免破坏标签"
+    ts_conversion_page_desc: str = "将项目中的译文在简体中文和繁体中文之间转换"
+    ts_conversion_direction: str = "转换模式"
+    ts_conversion_direction_desc: str = "简繁转换功能由 OpenCC 实现，简体到繁体使用 S2TW 规则，繁体到简体使用 T2S 规则"
+    ts_conversion_to_traditional: str = "简体到繁体"
+    ts_conversion_to_simplified: str = "繁体到简体"
+    ts_conversion_target_name: str = "转换姓名字段译文"
+    ts_conversion_target_name_desc: str = (
+        "部分 <font color='darkgoldenrod'><b>GalGame</b></font> 中，姓名字段数据与立绘、配音等资源文件绑定，翻译后会报错，此时可以关闭该功能，默认启用"
+        ""
+        ""
     )
-    ts_conversion_direction: str = "转换方向"
-    ts_conversion_to_simplified: str = "转换为简体中文 (t2s)"
-    ts_conversion_to_traditional: str = "转换为繁体中文 (s2tw)"
-    ts_conversion_options: str = "转换选项"
-    ts_conversion_target_name: str = "同时转换角色名称 (name_dst)"
-    ts_conversion_preserve_text: str = "遵循文本保护规则 (保持标签不被破坏)"
+    ts_conversion_preserve_text: str = "遵循文本保护规则"
+    ts_conversion_preserve_text_desc: str = "遵循文本保护规则，避免翻译过程中破坏游戏文本中的代码段"
     ts_conversion_action_start: str = "开始转换"
-    ts_conversion_success: str = "繁简转换完成"
+    ts_conversion_action_confirm: str = "是否开始执行简繁转换 …?"
+    ts_conversion_action_progress: str = "正在执行简繁转换，第 {CURRENT} 项，共 {TOTAL} 项 …"

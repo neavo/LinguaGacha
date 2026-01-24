@@ -101,7 +101,7 @@ class AppFluentWindow(FluentWindow, Base):
         )
         self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
         self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
-        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide_handler)
+        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
@@ -299,7 +299,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.progress_toast.set_progress(current, total)
 
     # 响应隐藏进度 Toast 事件
-    def progress_toast_hide_handler(self, event: Base.Event, data: dict) -> None:
+    def progress_toast_hide(self, event: Base.Event, data: dict) -> None:
         # 未显示时直接返回
         if self.progress_start_time == 0.0:
             return

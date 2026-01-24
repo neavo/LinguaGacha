@@ -99,11 +99,9 @@ class LocalizerEN(LocalizerZH):
     log_proxy: str = "Network proxy enabled …"
     log_expert_mode: str = "Expert Mode Enabled …"
     log_api_test_fail: str = "API test failed … "
-    log_task_fail: str = "Task failed …"
+    task_failed: str = "Task failed …"
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
-    log_ts_conversion_success: str = "TS conversion completed and exported to: {PATH}"
-    log_ts_conversion_fail: str = "TS conversion task error"
     cli_verify_language: str = "parameter error: invalid language …"
 
     # 引擎
@@ -592,15 +590,20 @@ class LocalizerEN(LocalizerZH):
     name_field_extraction_context: str = "Context"
 
     # 百宝箱 - 繁简转换
-    ts_conversion_page: str = "TS Conversion"
-    ts_conversion_page_desc: str = (
-        "You can convert all translations or character names in the current project to Simplified or Traditional Chinese. The conversion process automatically applies text protection rules to avoid breaking tags"
+    ts_conversion_page: str = "Traditional-Simplified Conversion"
+    ts_conversion_page_desc: str = "Convert translated text in the project between Simplified Chinese and Traditional Chinese"
+    ts_conversion_direction: str = "Conversion Mode"
+    ts_conversion_direction_desc: str = "Conversion is implemented by OpenCC, Simplified to Traditional uses S2TW rules, Traditional to Simplified uses T2S rules"
+    ts_conversion_to_traditional: str = "Simplified to Traditional"
+    ts_conversion_to_simplified: str = "Traditional to Simplified"
+    ts_conversion_target_name: str = "Convert Name Field Translations"
+    ts_conversion_target_name_desc: str = (
+        "In some <font color='darkgoldenrod'><b>GalGame</b></font>, name field data is bound to resource files such as image or voice files"
+        "<br>"
+        "Translating these name fields can cause errors. In such cases, this feature can be disabled, enabled by default"
     )
-    ts_conversion_direction: str = "Conversion Direction"
-    ts_conversion_to_simplified: str = "Convert to Simplified Chinese (t2s)"
-    ts_conversion_to_traditional: str = "Convert to Traditional Chinese (s2tw)"
-    ts_conversion_options: str = "Conversion Options"
-    ts_conversion_target_name: str = "Convert character names (name_dst)"
-    ts_conversion_preserve_text: str = "Follow text protection rules (keep tags intact)"
+    ts_conversion_preserve_text: str = "Follow Text Protection Rules"
+    ts_conversion_preserve_text_desc: str = "Follow text protection rules to avoid damaging code segments in the game text during the conversion process"
     ts_conversion_action_start: str = "Start Conversion"
-    ts_conversion_success: str = "TS conversion completed"
+    ts_conversion_action_confirm: str = "Start Traditional-Simplified conversion …?"
+    ts_conversion_action_progress: str = "Converting Traditional-Simplified, item {CURRENT} of {TOTAL} …"

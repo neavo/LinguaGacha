@@ -23,7 +23,6 @@ from module.TextProcessor import TextProcessor
 from widget.ComboBoxCard import ComboBoxCard
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
-from widget.GroupCard import GroupCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
@@ -71,7 +70,7 @@ class TSConversionPage(QWidget, Base):
         # 转换方向设置
         self.direction_card = ComboBoxCard(
             title=Localizer.get().ts_conversion_direction,
-            description="",
+            description=Localizer.get().ts_conversion_direction_desc,
             items=[
                 Localizer.get().ts_conversion_to_simplified,
                 Localizer.get().ts_conversion_to_traditional,
@@ -80,29 +79,23 @@ class TSConversionPage(QWidget, Base):
         )
         parent.addWidget(self.direction_card)
 
-        # 转换选项
-        self.options_group = GroupCard(
-            parent=self,
-            title=Localizer.get().ts_conversion_options,
+        # 文本保护选项
+        self.preserve_text_card = SwitchButtonCard(
+            title=Localizer.get().ts_conversion_preserve_text,
+            description=Localizer.get().ts_conversion_preserve_text_desc,
+            init=lambda w: w.get_switch_button().setChecked(True),
         )
-        parent.addWidget(self.options_group)
+        parent.addWidget(self.preserve_text_card)
 
         # 角色名称选项
         self.target_name_card = SwitchButtonCard(
             title=Localizer.get().ts_conversion_target_name,
-            description="",
+            description=Localizer.get().ts_conversion_target_name_desc,
             init=lambda w: w.get_switch_button().setChecked(True),
         )
-        self.options_group.add_widget(self.target_name_card)
+        parent.addWidget(self.target_name_card)
 
-        # 文本保护选项
-        self.preserve_text_card = SwitchButtonCard(
-            title=Localizer.get().ts_conversion_preserve_text,
-            description="",
-            init=lambda w: w.get_switch_button().setChecked(True),
-        )
-        self.options_group.add_widget(self.preserve_text_card)
-
+        # 填充剩余空间
         parent.addStretch(1)
 
     # 底部
@@ -134,12 +127,11 @@ class TSConversionPage(QWidget, Base):
 
     def on_progress_finished(self, output_path: str) -> None:
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-
         self.emit(
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().ts_conversion_success,
+                "message": Localizer.get().task_success,
             },
         )
 
@@ -158,7 +150,7 @@ class TSConversionPage(QWidget, Base):
         # 确认弹窗
         message_box = MessageBox(
             Localizer.get().alert,
-            Localizer.get().ts_conversion_action_start + "?",
+            Localizer.get().ts_conversion_action_confirm,
             self.window(),
         )
         if not message_box.exec():
@@ -169,32 +161,35 @@ class TSConversionPage(QWidget, Base):
         convert_name = self.target_name_card.get_switch_button().isChecked()
         preserve_text = self.preserve_text_card.get_switch_button().isChecked()
 
+        # 获取数据总量以显示进度
+        items_data = database.get_all_items()
+        total = len(items_data)
+        if total == 0:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_no_data,
+                },
+            )
+            return
+
         # 显示进度
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "message": Localizer.get().ts_conversion_action_start,
+                "message": Localizer.get()
+                .ts_conversion_action_progress.replace("{CURRENT}", "1")
+                .replace("{TOTAL}", str(total)),
                 "indeterminate": False,
-                "current": 0,
-                "total": 100,
+                "current": 1,
+                "total": total,
             },
         )
 
         def conversion_task() -> None:
             try:
-                database = StorageContext.get().get_db()
-                if database is None:
-                    self.progress_finished.emit("")
-                    return
-
-                items_data = database.get_all_items()
-                total = len(items_data)
-                if total == 0:
-                    self.progress_finished.emit("")
-                    return
-
                 config = Config().load()
-                # 临时创建一个 TextProcessor 用于获取保护规则
                 text_processor = TextProcessor(config, Item())
 
                 # 准备转换器 (使用 opencc-pyo3)
@@ -251,7 +246,13 @@ class TSConversionPage(QWidget, Base):
                     # 每 100 条更新一次进度，或者到最后一条
                     if (index + 1) % 100 == 0 or (index + 1) == total:
                         self.progress_updated.emit(
-                            Localizer.get().ts_conversion_action_start, index + 1, total
+                            Localizer.get()
+                            .ts_conversion_action_progress.replace(
+                                "{CURRENT}", str(index + 1)
+                            )
+                            .replace("{TOTAL}", str(total)),
+                            index + 1,
+                            total,
                         )
 
                 # 直接执行导出逻辑
@@ -264,14 +265,10 @@ class TSConversionPage(QWidget, Base):
                     # 恢复后缀
                     PathStore.custom_suffix = ""
 
-                # 输出日志
-                LogManager.get().info(
-                    Localizer.get().log_ts_conversion_success.format(PATH=output_path)
-                )
+                # 通知结束
                 self.progress_finished.emit(output_path)
-
             except Exception as e:
-                LogManager.get().error(Localizer.get().log_ts_conversion_fail, e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.progress_finished.emit("")
 
         threading.Thread(target=conversion_task, daemon=True).start()
