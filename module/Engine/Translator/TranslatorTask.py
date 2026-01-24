@@ -38,6 +38,7 @@ class TranslatorTask(Base):
         local_flag: bool,
         items: list[Item],
         precedings: list[Item],
+        is_sub_task: bool = False,
         skip_glossary_merge: bool = False,
         skip_response_check: bool = False,
     ) -> None:
@@ -50,19 +51,34 @@ class TranslatorTask(Base):
         self.config = config
         self.model = model  # 新模型数据结构
         self.local_flag = local_flag
+        self.is_sub_task = is_sub_task  # 是否为拆分后的子任务或重试任务
+        self.split_count = 0
+        self.token_threshold = 0
+        self.retry_count = 0
         self.skip_glossary_merge = skip_glossary_merge
+
         self.skip_response_check = skip_response_check
         self.prompt_builder = PromptBuilder(self.config)
+
         # 跳过响应校验时不需要初始化 ResponseChecker
         self.response_checker = (
             None if skip_response_check else ResponseChecker(self.config, items)
         )
 
     # 启动任务
-    def start(self) -> dict[str, str]:
-        return self.request(
-            self.items, self.processors, self.precedings, self.local_flag
-        )
+    def start(self) -> dict[str, int]:
+        try:
+            return self.request(
+                self.items, self.processors, self.precedings, self.local_flag
+            )
+        except Exception as e:
+            # 最终兜底，确保任务不会由于未捕获异常而彻底丢失回调
+            self.error(f"{Localizer.get().log_task_fail}", e)
+            return {
+                "row_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
 
     # 请求
     def request(
@@ -71,7 +87,7 @@ class TranslatorTask(Base):
         processors: list[TextProcessor],
         precedings: list[Item],
         local_flag: bool,
-    ) -> dict[str, str]:
+    ) -> dict[str, int]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -110,12 +126,19 @@ class TranslatorTask(Base):
 
         # 发起请求
         requester = TaskRequester(self.config, self.model)
-        skip, response_think, response_result, input_tokens, output_tokens = (
+        exception, response_think, response_result, input_tokens, output_tokens = (
             requester.request(self.messages)
         )
 
-        # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
-        if skip:
+        # 如果请求发生异常，则记录日志并跳过本次循环
+        if exception:
+            msg = (
+                Localizer.get()
+                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .replace("{RETRY}", str(self.retry_count))
+                .replace("{THRESHOLD}", str(self.token_threshold))
+            )
+            self.error(f"{Localizer.get().log_task_fail}\n{msg}", exception)
             return {
                 "row_count": 0,
                 "input_tokens": 0,
@@ -136,7 +159,7 @@ class TranslatorTask(Base):
 
             # 当任务失败且是单条目任务时，更新重试次数
             if (
-                any(v != ResponseChecker.Error.NONE for v in checks) is not None
+                any(v != ResponseChecker.Error.NONE for v in checks)
                 and len(self.items) == 1
             ):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
@@ -264,7 +287,7 @@ class TranslatorTask(Base):
                         }
                     )
 
-        if changed == True:
+        if changed:
             # 判断是否满足保存间隔
             save_to_db = time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
 
@@ -283,7 +306,7 @@ class TranslatorTask(Base):
     def print_log_table(
         self,
         checks: list[str],
-        start: int,
+        start: float,
         pt: int,
         ct: int,
         srcs: list[str],
@@ -294,49 +317,91 @@ class TranslatorTask(Base):
         # 拼接错误原因文本
         reason: str = ""
         if any(v != ResponseChecker.Error.NONE for v in checks):
-            reason = f"（{
-                '、'.join(
-                    {
-                        __class__.get_error_text(v)
-                        for v in checks
-                        if v != ResponseChecker.Error.NONE
-                    }
-                )
-            }）"
+            reason = "、".join(
+                {
+                    __class__.get_error_text(v)
+                    for v in checks
+                    if v != ResponseChecker.Error.NONE
+                }
+            )
 
-        if all(v == ResponseChecker.Error.UNKNOWN for v in checks):
+        # 检查是否为子任务，构建状态信息
+        sub_info = ""
+        is_force_accept = False
+        if self.is_sub_task:
+            sub_info = (
+                Localizer.get()
+                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .replace("{RETRY}", str(self.retry_count))
+                .replace("{THRESHOLD}", str(self.token_threshold))
+            )
+
+            # 检查是否为强制接受（重试达到上限）
+            if len(srcs) == 1 and self.retry_count >= 3:
+                is_force_accept = True
+                sub_info += Localizer.get().translator_task_force_accept_info.replace(
+                    "{REASON}", reason if reason else "未知原因"
+                )
+
+        # 统计信息
+        stats_info = (
+            Localizer.get()
+            .engine_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
+            .replace("{LINES}", f"{len(srcs)}")
+            .replace("{PT}", f"{pt}")
+            .replace("{CT}", f"{ct}")
+        )
+
+        # 确定日志样式和消息
+        if is_force_accept:
+            style = "#9ACD32"
+            message = Localizer.get().translator_response_check_fail_force
+            log_func = self.warning
+        elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = Localizer.get().translator_response_check_fail.replace(
+                "{REASON}", reason
+            )
             log_func = self.error
         elif all(v == ResponseChecker.Error.FAIL_DATA for v in checks):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = Localizer.get().translator_response_check_fail.replace(
+                "{REASON}", reason
+            )
             log_func = self.error
         elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in checks):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail} {reason}"
+            message = Localizer.get().translator_response_check_fail.replace(
+                "{REASON}", reason
+            )
             log_func = self.error
         elif all(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "red"
-            message = f"{Localizer.get().translator_response_check_fail_all} {reason}"
+            message = Localizer.get().translator_response_check_fail_all.replace(
+                "{REASON}", reason
+            )
             log_func = self.error
         elif any(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "yellow"
-            message = f"{Localizer.get().translator_response_check_fail_part} {reason}"
+            message = Localizer.get().translator_response_check_fail_part.replace(
+                "{REASON}", reason
+            )
             log_func = self.warning
         else:
             style = "green"
-            message = Localizer.get().engine_task_success.replace(
-                "{TIME}", f"{(time.time() - start):.2f}"
-            )
-            message = message.replace("{LINES}", f"{len(srcs)}")
-            message = message.replace("{PT}", f"{pt}")
-            message = message.replace("{CT}", f"{ct}")
+            message = stats_info
             log_func = self.info
 
-        # 添加日志
-        file_log.insert(0, message)
-        console_log.insert(0, message)
+        # 添加日志 (按顺序：统计信息 -> 状态消息 -> 子任务信息)
+        header_logs = [stats_info]
+        if message != stats_info:
+            header_logs.append(message)
+        if sub_info:
+            header_logs.append(sub_info)
+
+        for i, log in enumerate(header_logs):
+            file_log.insert(i, log)
+            console_log.insert(i, log)
 
         # 写入日志到文件
         file_rows = self.generate_log_rows(srcs, dsts, file_log, console=False)
@@ -344,9 +409,28 @@ class TranslatorTask(Base):
 
         # 根据线程数判断是否需要打印表格
         if Engine.get().get_running_task_count() > 32:
-            rich.get_console().print(
-                Localizer.get().engine_task_too_many + "\n" + message + "\n"
+            # 简略模式下的状态文本
+            status_text = (
+                message if message != stats_info else Localizer.get().task_success
             )
+
+            # 构建三行简略日志
+            # 第一行：染色前缀 + 状态
+            prefix = (
+                f"[{style}][{Localizer.get().translator_simple_log_prefix}][/{style}]"
+            )
+            line1 = f"{prefix} {status_text}"
+
+            # 第二行：统计信息
+            line2 = stats_info
+
+            # 组合日志
+            display_msg = line1 + "\n" + line2
+            if sub_info:
+                # 第三行：子任务信息
+                display_msg += "\n" + sub_info
+
+            rich.get_console().print("\n" + display_msg + "\n")
         else:
             rich.get_console().print(
                 self.generate_log_table(
@@ -358,7 +442,7 @@ class TranslatorTask(Base):
     # 生成日志行
     def generate_log_rows(
         self, srcs: list[str], dsts: list[str], extra: list[str], console: bool
-    ) -> tuple[list[str], str]:
+    ) -> list[str]:
         rows = []
 
         # 添加额外日志
@@ -397,10 +481,7 @@ class TranslatorTask(Base):
         table.add_column("", style="white", ratio=1, overflow="fold")
 
         for row in rows:
-            if isinstance(row, str):
-                table.add_row(row)
-            else:
-                table.add_row(*row)
+            table.add_row(row)
 
         return table
 

@@ -53,6 +53,7 @@ class ProofreadingTableWidget(TableWidget):
     STATUS_ICONS = {
         Base.ProjectStatus.PROCESSED: FluentIcon.COMPLETED,
         Base.ProjectStatus.PROCESSED_IN_PAST: FluentIcon.HISTORY,
+        Base.ProjectStatus.ERROR: FluentIcon.INFO,
     }
 
     def __init__(self, parent: QWidget = None) -> None:
@@ -223,6 +224,7 @@ class ProofreadingTableWidget(TableWidget):
             Base.ProjectStatus.NONE: Localizer.get().proofreading_page_status_none,
             Base.ProjectStatus.PROCESSED: Localizer.get().proofreading_page_status_processed,
             Base.ProjectStatus.PROCESSED_IN_PAST: Localizer.get().proofreading_page_status_processed_in_past,
+            Base.ProjectStatus.ERROR: Localizer.get().proofreading_page_status_error,
         }
         return status_texts.get(status, str(status))
 
