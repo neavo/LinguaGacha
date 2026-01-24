@@ -102,6 +102,8 @@ class LocalizerZH:
     log_task_fail: str = "任务失败 …"
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
+    log_ts_conversion_success: str = "繁简转换完成并导出至: {PATH}"
+    log_ts_conversion_fail: str = "繁简转换任务出错"
     cli_verify_language: str = "参数发生错误：无效的语言 …"
 
     # 引擎
@@ -118,6 +120,7 @@ class LocalizerZH:
     engine_task_scheduler_stop_with_untranslated: str = "任务调度器停止，但仍有 {COUNT} 个未翻译条目（可能因异常丢失）"
     translator_task_status_info: str = "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}"
     translator_task_force_accept_info: str = " | 已强制放行：{REASON}"
+    translator_simple_log_prefix: str = "简略日志"
     engine_api_url: str = "接口地址"
     engine_api_name: str = "接口名称"
     engine_api_model: str = "接口模型"
@@ -125,7 +128,6 @@ class LocalizerZH:
     engine_response_result: str = "模型回复内容："
     engine_task_success: str = "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens"
     engine_task_too_many: str = "实时任务较多，暂时停止显示详细结果以提升性能 …"
-    translator_simple_log_prefix: str = "简略日志"
     api_tester_key: str = "正在测试密钥："
     api_tester_messages: str = "任务提示词："
     api_tester_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
@@ -144,6 +146,11 @@ class LocalizerZH:
     response_checker_line_error_empty_line: str = "存在空行"
     response_checker_line_error_similarity: str = "较高相似度"
     response_checker_line_error_degradation: str = "发生退化现象"
+    project_store_ingesting_assets: str = "正在收纳资产 …"
+    project_store_ingesting_file: str = "正在收纳: {NAME}"
+    project_store_parsing_items: str = "正在解析翻译条目 …"
+    project_store_created: str = "工程创建完成 …"
+    project_store_file_not_found: str = "工程文件不存在: {PATH}"
 
     # 应用设置
     app_settings_page_expert_title: str = "专家模式"
@@ -382,8 +389,6 @@ class LocalizerZH:
     basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
     basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
     basic_settings_page_output_folder_open_on_finish_content: str = "启用此功能后，将在任务完成时自动打开输出文件夹"
-    basic_settings_page_traditional_chinese_title: str = "使用繁体输出中文"
-    basic_settings_page_traditional_chinese_content: str = "启用此功能后，在译文语言设置为中文时，将使用繁体字形输出中文文本"
     basic_settings_page_request_timeout_title: str = "超时时间阈值"
     basic_settings_page_request_timeout_content: str = (
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复，则会判断为任务失败"
@@ -565,6 +570,8 @@ class LocalizerZH:
         "提取 <font color='darkgoldenrod'><b>RenPy</b></font> 和 <font color='darkgoldenrod'><b>GalGame</b></font> 游戏文本中的角色姓名字段数据，"
         "自动生成对应的术语表数据，方便后续进行翻译"
     )
+    tool_box_page_ts_conversion: str = "繁简转换"
+    tool_box_page_ts_conversion_desc: str = "对当前项目的译文或角色名称进行批量繁简转换，支持文本保护"
 
     # 百宝箱 - 姓名字段提取
     name_field_extraction_page: str = "姓名字段提取"
@@ -584,9 +591,16 @@ class LocalizerZH:
     name_field_extraction_action_import: str = "导入到术语表"
     name_field_extraction_context: str = "上下文"
 
-    # ProjectStore
-    project_store_ingesting_assets: str = "正在收纳资产 …"
-    project_store_ingesting_file: str = "正在收纳: {NAME}"
-    project_store_parsing_items: str = "正在解析翻译条目 …"
-    project_store_created: str = "工程创建完成 …"
-    project_store_file_not_found: str = "工程文件不存在: {PATH}"
+    # 百宝箱 - 繁简转换
+    ts_conversion_page: str = "繁简转换"
+    ts_conversion_page_desc: str = (
+        "您可以将当前项目中的所有译文或角色名称转换为简体中文或繁体中文，转换过程会自动应用文本保护规则以避免破坏标签"
+    )
+    ts_conversion_direction: str = "转换方向"
+    ts_conversion_to_simplified: str = "转换为简体中文 (t2s)"
+    ts_conversion_to_traditional: str = "转换为繁体中文 (s2tw)"
+    ts_conversion_options: str = "转换选项"
+    ts_conversion_target_name: str = "同时转换角色名称 (name_dst)"
+    ts_conversion_preserve_text: str = "遵循文本保护规则 (保持标签不被破坏)"
+    ts_conversion_action_start: str = "开始转换"
+    ts_conversion_success: str = "繁简转换完成"

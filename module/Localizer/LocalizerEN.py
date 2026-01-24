@@ -102,6 +102,8 @@ class LocalizerEN(LocalizerZH):
     log_task_fail: str = "Task failed …"
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
+    log_ts_conversion_success: str = "TS conversion completed and exported to: {PATH}"
+    log_ts_conversion_fail: str = "TS conversion task error"
     cli_verify_language: str = "parameter error: invalid language …"
 
     # 引擎
@@ -118,6 +120,7 @@ class LocalizerEN(LocalizerZH):
     engine_task_scheduler_stop_with_untranslated: str = "Task scheduler stopped, but {COUNT} items remain untranslated (potentially lost due to exceptions)"
     translator_task_status_info: str = "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}"
     translator_task_force_accept_info: str = " | Forced Accept: {REASON}"
+    translator_simple_log_prefix: str = "Simple Log"
     engine_api_url: str = "API URL"
     engine_api_name: str = "API Name"
     engine_api_model: str = "API Model"
@@ -125,7 +128,6 @@ class LocalizerEN(LocalizerZH):
     engine_response_result: str = "Model Response:"
     engine_task_success: str = "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}"
     engine_task_too_many: str = "Too many real-time tasks, details hidden for performance …"
-    translator_simple_log_prefix: str = "Simple Log"
     api_tester_key: str = "Testing Key:"
     api_tester_messages: str = "Task Prompts:"
     api_tester_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
@@ -144,6 +146,11 @@ class LocalizerEN(LocalizerZH):
     response_checker_line_error_empty_line: str = "Empty Line"
     response_checker_line_error_similarity: str = "High Similarity"
     response_checker_line_error_degradation: str = "Degradation Occurred"
+    project_store_ingesting_assets: str = "Ingesting assets …"
+    project_store_ingesting_file: str = "Ingesting: {NAME}"
+    project_store_parsing_items: str = "Parsing translation items …"
+    project_store_created: str = "Project creation completed …"
+    project_store_file_not_found: str = "Project file not found: {PATH}"
 
     # 应用设置
     app_settings_page_expert_title: str = "Expert Mode"
@@ -382,8 +389,6 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
     basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"
     basic_settings_page_output_folder_open_on_finish_content: str = "When enabled, the output folder will be automatically opened upon task completion"
-    basic_settings_page_traditional_chinese_title: str = "Output Chinese in Traditional Characters"
-    basic_settings_page_traditional_chinese_content: str = "When enabled, Chinese text will be output in Traditional characters if the target language is set to Chinese"
     basic_settings_page_request_timeout_title: str = "Request Timeout"
     basic_settings_page_request_timeout_content: str = (
         "The maximum time (seconds) to wait for the model's response when making a request"
@@ -565,6 +570,8 @@ class LocalizerEN(LocalizerZH):
         "Extract character name field data from <font color='darkgoldenrod'><b>RenPy</b></font> and <font color='darkgoldenrod'><b>GalGame</b></font> game text, "
         "and automatically generate corresponding glossary data to facilitate subsequent translation"
     )
+    tool_box_page_ts_conversion: str = "TS Conversion"
+    tool_box_page_ts_conversion_desc: str = "Batch convert the target text or character names between Traditional and Simplified Chinese with text protection"
 
     # 百宝箱 - 姓名字段提取
     name_field_extraction_page: str = "Name-Field Extraction"
@@ -584,9 +591,16 @@ class LocalizerEN(LocalizerZH):
     name_field_extraction_action_import: str = "Import to Glossary"
     name_field_extraction_context: str = "Context"
 
-    # ProjectStore
-    project_store_ingesting_assets: str = "Ingesting assets …"
-    project_store_ingesting_file: str = "Ingesting: {NAME}"
-    project_store_parsing_items: str = "Parsing translation items …"
-    project_store_created: str = "Project creation completed …"
-    project_store_file_not_found: str = "Project file not found: {PATH}"
+    # 百宝箱 - 繁简转换
+    ts_conversion_page: str = "TS Conversion"
+    ts_conversion_page_desc: str = (
+        "You can convert all translations or character names in the current project to Simplified or Traditional Chinese. The conversion process automatically applies text protection rules to avoid breaking tags"
+    )
+    ts_conversion_direction: str = "Conversion Direction"
+    ts_conversion_to_simplified: str = "Convert to Simplified Chinese (t2s)"
+    ts_conversion_to_traditional: str = "Convert to Traditional Chinese (s2tw)"
+    ts_conversion_options: str = "Conversion Options"
+    ts_conversion_target_name: str = "Convert character names (name_dst)"
+    ts_conversion_preserve_text: str = "Follow text protection rules (keep tags intact)"
+    ts_conversion_action_start: str = "Start Conversion"
+    ts_conversion_success: str = "TS conversion completed"
