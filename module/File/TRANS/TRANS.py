@@ -33,77 +33,92 @@ class TRANS(Base):
             rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
-            with open(abs_path, "r", encoding="utf-8-sig") as reader:
-                json_data = json.load(reader)
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                # 有效性校验
-                if not isinstance(json_data, dict):
-                    continue
+        return items
 
-                # 获取项目信息
-                project: dict = json_data.get("project", {})
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
 
-                # 获取处理实体
-                processor: NONE = self.get_processor(project)
-                processor.pre_process()
+        # 数据处理
+        # .trans 文件固定使用 utf-8-sig
+        json_data = json.loads(content.decode("utf-8-sig"))
 
-                # 处理数据
-                path: str = ""
-                entry: dict = {}
-                files: dict = project.get("files", {})
-                for path, entry in files.items():
-                    for tag, data, context, parameter in itertools.zip_longest(
-                        entry.get("tags", []),
-                        entry.get("data", []),
-                        entry.get("context", []),
-                        entry.get("parameters", []),
-                        fillvalue=None,
-                    ):
-                        # 处理可能为 None 的情况
-                        tag: list[str] = tag if tag is not None else []
-                        data: list[str] = data if data is not None else []
-                        context: list[str] = context if context is not None else []
-                        parameter: list[str] = (
-                            parameter if parameter is not None else []
-                        )
+        # 有效性校验
+        if not isinstance(json_data, dict):
+            return items
 
-                        # 检查并添加数据
-                        src, dst, tag, status, skip_internal_filter = processor.check(
-                            path, data, tag, context
-                        )
-                        items.append(
-                            Item.from_dict(
-                                {
-                                    "src": src,
-                                    "dst": dst,
-                                    "extra_field": {
-                                        "tag": tag,
-                                        "context": context,
-                                        "parameter": parameter,
-                                    },
-                                    "tag": path,
-                                    "row": len(items),
-                                    "file_type": Item.FileType.TRANS,
-                                    "file_path": rel_path,
-                                    "text_type": processor.TEXT_TYPE,
-                                    "status": status,
-                                    "skip_internal_filter": skip_internal_filter,
-                                }
-                            )
-                        )
+        # 获取项目信息
+        project: dict = json_data.get("project", {})
 
-            # 去重
-            if self.config.deduplication_in_trans:
-                translation: dict[str, str] = {}
-                for item in [
-                    v for v in items if v.get_status() == Base.ProjectStatus.NONE
-                ]:
-                    src = item.get_src()
-                    dst = item.get_dst()
-                    if src not in translation:
-                        translation[src] = dst
-                    else:
-                        item.set_status(Base.ProjectStatus.DUPLICATED)
+        # 获取处理实体
+        processor: NONE = self.get_processor(project)
+        processor.pre_process()
+
+        # 处理数据
+        path: str = ""
+        entry: dict = {}
+        files_raw = project.get("files", {})
+        if not isinstance(files_raw, dict):
+            return items
+
+        files: dict[str, dict] = files_raw
+        for path, entry in files.items():
+            tags_list = entry.get("tags", [])
+            data_list = entry.get("data", [])
+            context_list = entry.get("context", [])
+            parameters_list = entry.get("parameters", [])
+
+            for tag, data, context, parameter in itertools.zip_longest(
+                tags_list if tags_list is not None else [],
+                data_list if data_list is not None else [],
+                context_list if context_list is not None else [],
+                parameters_list if parameters_list is not None else [],
+                fillvalue=None,
+            ):
+                # 处理可能为 None 的情况
+                tag_item: list[str] = tag if tag is not None else []
+                data_item: list[str] = data if data is not None else []
+                context_item: list[str] = context if context is not None else []
+                parameter_item: list[str] = parameter if parameter is not None else []
+
+                # 检查并添加数据
+                src, dst, tag_final, status, skip_internal_filter = processor.check(
+                    path, data_item, tag_item, context_item
+                )
+                items.append(
+                    Item.from_dict(
+                        {
+                            "src": src,
+                            "dst": dst,
+                            "extra_field": {
+                                "tag": tag_final,
+                                "context": context_item,
+                                "parameter": parameter_item,
+                            },
+                            "tag": path,
+                            "row": len(items),
+                            "file_type": Item.FileType.TRANS,
+                            "file_path": rel_path,
+                            "text_type": processor.TEXT_TYPE,
+                            "status": status,
+                            "skip_internal_filter": skip_internal_filter,
+                        }
+                    )
+                )
+
+        # 去重
+        if self.config.deduplication_in_trans:
+            translation: dict[str, str] = {}
+            for item in [v for v in items if v.get_status() == Base.ProjectStatus.NONE]:
+                src = item.get_src()
+                dst = item.get_dst()
+                if src not in translation:
+                    translation[src] = dst
+                else:
+                    item.set_status(Base.ProjectStatus.DUPLICATED)
 
         return items
 
@@ -113,18 +128,18 @@ class TRANS(Base):
         target = [item for item in items if item.get_file_type() == Item.FileType.TRANS]
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             # 按行号排序
-            items = sorted(items, key=lambda x: x.get_row())
+            sorted_items = sorted(group_items, key=lambda x: x.get_row())
 
             # 预先构建 tag -> items 的索引以优化查找速度
             tag_group: dict[str, list[Item]] = {}
-            for item in items:
+            for item in sorted_items:
                 tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
@@ -162,7 +177,7 @@ class TRANS(Base):
                     translation: dict[str, str] = {}
                     for item in [
                         v
-                        for v in items
+                        for v in sorted_items
                         if v.get_status() == Base.ProjectStatus.PROCESSED
                     ]:
                         src = item.get_src()
@@ -171,7 +186,7 @@ class TRANS(Base):
                             translation[src] = dst
                     for item in [
                         v
-                        for v in items
+                        for v in sorted_items
                         if v.get_status() == Base.ProjectStatus.DUPLICATED
                     ]:
                         src = item.get_src()
@@ -182,26 +197,29 @@ class TRANS(Base):
                 # 处理数据
                 path: str = ""
                 for path in files.keys():
-                    tags: list[list[str]] = []
-                    data: list[list[str]] = []
-                    context: list[list[str]] = []
-                    parameters: list[dict[str, str]] = []
+                    tags_out: list[list[str]] = []
+                    data_out: list[list[str]] = []
+                    context_out: list[list[str]] = []
+                    parameters_out: list[list[str]] = []
                     for item in tag_group.get(path, []):
-                        data.append((item.get_src(), item.get_dst()))
+                        data_out.append([item.get_src(), item.get_dst()])
 
-                        extra_field: dict[str, list[str]] = item.get_extra_field()
-                        tags.append(extra_field.get("tag", []))
-                        context.append(extra_field.get("context", []))
+                        extra_field_raw = item.get_extra_field()
+                        extra_field: dict = (
+                            extra_field_raw if isinstance(extra_field_raw, dict) else {}
+                        )
+                        tags_out.append(extra_field.get("tag", []))
+                        context_out.append(extra_field.get("context", []))
 
                         # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
                         if item.get_status() in (
                             Base.ProjectStatus.EXCLUDED,
                             Base.ProjectStatus.PROCESSED_IN_PAST,
                         ):
-                            parameters.append(extra_field.get("parameter", []))
+                            parameters_out.append(extra_field.get("parameter", []))
                         # 否则，判断与计算分区翻译功能参数
                         else:
-                            parameters.append(
+                            parameters_out.append(
                                 processor.generate_parameter(
                                     src=item.get_src(),
                                     context=extra_field.get("context", []),
@@ -209,23 +227,23 @@ class TRANS(Base):
                                     block=processor.filter(
                                         src=item.get_src(),
                                         path=path,
-                                        tag=extra_field.get("tags", []),
+                                        tag=extra_field.get("tag", []),
                                         context=extra_field.get("context", []),
                                     ),
                                 )
                             )
 
                     # 清理
-                    if all(v is None or len(v) == 0 for v in tags):
-                        tags = []
-                    if all(v is None or len(v) == 0 for v in parameters):
-                        parameters = []
+                    if all(v is None or len(v) == 0 for v in tags_out):
+                        tags_out = []
+                    if all(v is None or len(v) == 0 for v in parameters_out):
+                        parameters_out = []
 
                     # 赋值
-                    json_data["project"]["files"][path]["tags"] = tags
-                    json_data["project"]["files"][path]["data"] = data
-                    json_data["project"]["files"][path]["context"] = context
-                    json_data["project"]["files"][path]["parameters"] = parameters
+                    json_data["project"]["files"][path]["tags"] = tags_out
+                    json_data["project"]["files"][path]["data"] = data_out
+                    json_data["project"]["files"][path]["context"] = context_out
+                    json_data["project"]["files"][path]["parameters"] = parameters_out
 
                 # 写入文件
                 json.dump(json_data, writer, indent=None, ensure_ascii=False)

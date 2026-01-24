@@ -75,37 +75,63 @@ class Base:
         DUPLICATED = "DUPLICATED"  # 重复条目
         ERROR = "ERROR"  # 处理出错/重试失败
 
+    # 翻译模式 (用户意图)
+    class TranslationMode(StrEnum):
+        NEW = "NEW"  # 新任务 (自动判定读缓存或重解析)
+        CONTINUE = "CONTINUE"  # 继续翻译 (读缓存)
+        RESET = "RESET"  # 重置任务 (强制重解析 Assets)
+
     # 构造函数
     def __init__(self) -> None:
         pass
 
     # PRINT
     def print(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         LogManager.get().print(msg, e, file, console)
 
     # DEBUG
     def debug(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         LogManager.get().debug(msg, e, file, console)
 
     # INFO
     def info(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         LogManager.get().info(msg, e, file, console)
 
     # ERROR
     def error(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         LogManager.get().error(msg, e, file, console)
 
     # WARNING
     def warning(
-        self, msg: str, e: Exception = None, file: bool = True, console: bool = True
+        self,
+        msg: str,
+        e: Exception | None = None,
+        file: bool = True,
+        console: bool = True,
     ) -> None:
         LogManager.get().warning(msg, e, file, console)
 

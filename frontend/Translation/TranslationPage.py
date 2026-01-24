@@ -697,7 +697,7 @@ class TranslationPage(QWidget, Base):
             self.emit(
                 Base.Event.TRANSLATION_RUN,
                 {
-                    "status": Base.ProjectStatus.NONE,
+                    "mode": Base.TranslationMode.RESET,
                 },
             )
 
@@ -743,7 +743,7 @@ class TranslationPage(QWidget, Base):
             self.emit(
                 Base.Event.TRANSLATION_RUN,
                 {
-                    "status": Base.ProjectStatus.PROCESSING,
+                    "mode": Base.TranslationMode.CONTINUE,
                 },
             )
 

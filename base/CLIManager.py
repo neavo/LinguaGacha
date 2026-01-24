@@ -137,9 +137,10 @@ class CLIManager(Base):
             Base.Event.TRANSLATION_RUN,
             {
                 "config": config,
-                "status": Base.ProjectStatus.NONE,
+                "mode": Base.TranslationMode.NEW,
             },
         )
+
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
 
         return True

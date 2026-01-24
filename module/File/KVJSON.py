@@ -8,6 +8,7 @@ from module.Config import Config
 from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
+
 class KVJSON(Base):
     # {
     #     "「あ・・」": "「あ・・」",
@@ -30,61 +31,70 @@ class KVJSON(Base):
             # 获取相对路径
             rel_path = os.path.relpath(abs_path, input_path)
 
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path=abs_path, add_sig_to_utf8=True)
-
             # 数据处理
-            with open(abs_path, "r", encoding=encoding) as reader:
-                json_data: dict[str, str] = json.load(reader)
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                # 格式校验
-                if not isinstance(json_data, dict):
-                    continue
+        return items
 
-                # 读取数据
-                for k, v in json_data.items():
-                    if isinstance(k, str) and isinstance(v, str):
-                        src = k
-                        dst = v
-                        if src == "":
-                            items.append(
-                                Item.from_dict(
-                                    {
-                                        "src": src,
-                                        "dst": dst,
-                                        "row": len(items),
-                                        "file_type": Item.FileType.KVJSON,
-                                        "file_path": rel_path,
-                                        "status": Base.ProjectStatus.EXCLUDED,
-                                    }
-                                )
-                            )
-                        elif dst != "" and src != dst:
-                            items.append(
-                                Item.from_dict(
-                                    {
-                                        "src": src,
-                                        "dst": dst,
-                                        "row": len(items),
-                                        "file_type": Item.FileType.KVJSON,
-                                        "file_path": rel_path,
-                                        "status": Base.ProjectStatus.PROCESSED_IN_PAST,
-                                    }
-                                )
-                            )
-                        else:
-                            items.append(
-                                Item.from_dict(
-                                    {
-                                        "src": src,
-                                        "dst": dst,
-                                        "row": len(items),
-                                        "file_type": Item.FileType.KVJSON,
-                                        "file_path": rel_path,
-                                        "status": Base.ProjectStatus.NONE,
-                                    }
-                                )
-                            )
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        json_data: dict[str, str] = json.loads(content.decode(encoding))
+
+        # 格式校验
+        if not isinstance(json_data, dict):
+            return items
+
+        # 读取数据
+        for k, v in json_data.items():
+            if isinstance(k, str) and isinstance(v, str):
+                src = k
+                dst = v
+                if src == "":
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.EXCLUDED,
+                            }
+                        )
+                    )
+                elif dst != "" and src != dst:
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+                            }
+                        )
+                    )
+                else:
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.NONE,
+                            }
+                        )
+                    )
 
         return items
 
@@ -97,17 +107,17 @@ class KVJSON(Base):
             item for item in items if item.get_file_type() == Item.FileType.KVJSON
         ]
 
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(abs_path, "w", encoding="utf-8") as writer:
                 writer.write(
                     json.dumps(
-                        {item.get_src(): item.get_dst() for item in items},
+                        {item.get_src(): item.get_dst() for item in group_items},
                         indent=4,
                         ensure_ascii=False,
                     )

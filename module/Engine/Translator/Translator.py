@@ -6,6 +6,7 @@ import time
 import webbrowser
 from itertools import zip_longest
 from queue import PriorityQueue
+from typing import Optional
 
 import httpx
 from rich.progress import TaskID
@@ -35,7 +36,7 @@ class Translator(Base):
         super().__init__()
 
         # 翻译过程中的 items 缓存（内存中维护，避免频繁读写数据库）
-        self.items_cache: list[Item] | None = None
+        self.items_cache: Optional[list[Item]] = None
 
         # 翻译进度额外数据
         self.extras: dict = {}
@@ -56,7 +57,7 @@ class Translator(Base):
 
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
-        def task(event: str, data: dict) -> None:
+        def task(event_name: str, task_data: dict) -> None:
             ctx = StorageContext.get()
             extras = {}
 
@@ -113,18 +114,23 @@ class Translator(Base):
             return None
 
         # 复制一份以避免影响原始数据
-        def start(event: str, data: dict) -> None:
+        def start_export(event_name: str, task_data: dict) -> None:
             items = self.copy_items()
             self.mtool_optimizer_postprocess(items)
             self.check_and_wirte_result(items)
 
-        threading.Thread(target=start, args=(event, data)).start()
+        threading.Thread(target=start_export, args=(event, data)).start()
 
     # 实际的翻译流程
     def start(self, event: Base.Event, data: dict) -> None:
         try:
             config: Config | None = data.get("config")
-            status: Base.ProjectStatus | None = data.get("status")
+            mode_raw = data.get("mode")
+            mode: Base.TranslationMode = (
+                mode_raw
+                if isinstance(mode_raw, Base.TranslationMode)
+                else Base.TranslationMode.NEW
+            )
 
             # 更新运行状态
             Engine.get().set_status(Base.TaskStatus.TRANSLATING)
@@ -145,6 +151,8 @@ class Translator(Base):
                 return None
 
             db = ctx.get_db()
+            if db is None:
+                return None
 
             # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
             db.open()
@@ -168,8 +176,9 @@ class Translator(Base):
             TaskRequester.reset()
             PromptBuilder.reset()
 
-            # 从 .lg 文件加载条目到内存缓存
-            self.items_cache = [Item.from_dict(d) for d in db.get_all_items()]
+            # 1. 获取数据 (交给文件管理器，翻译器不再关心是读缓存还是重解析)
+            # 文件管理器会根据 mode 自动决定是从 DataStore 还是 Assets 加载
+            self.items_cache = FileManager(self.config).get_items_for_translation(mode)
 
             # 检查数据是否为空
             if len(self.items_cache) == 0:
@@ -182,8 +191,8 @@ class Translator(Base):
                 )
                 return None
 
-            # 加载进度数据
-            if status == Base.ProjectStatus.PROCESSING:
+            # 2. 进度管理与初始化
+            if mode == Base.TranslationMode.CONTINUE:
                 # 继续翻译：恢复进度
                 self.extras = ctx.get_translation_extras()
                 self.extras["start_time"] = time.time() - self.extras.get("time", 0)
@@ -197,11 +206,7 @@ class Translator(Base):
                     self.extras["processed_line"] + self.extras["error_line"]
                 )
             else:
-                # 新翻译：重置所有条目状态
-                for item in self.items_cache:
-                    if item.get_status() not in (Base.ProjectStatus.EXCLUDED,):
-                        item.set_status(Base.ProjectStatus.NONE)
-
+                # 新翻译或重置翻译：初始化全新的进度数据
                 self.extras = {
                     "start_time": time.time(),
                     "total_line": 0,
@@ -217,6 +222,7 @@ class Translator(Base):
             # 更新翻译进度
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
 
+            # 3. 过滤与预处理 (核心业务逻辑保留在翻译器)
             # 规则过滤
             self.rule_filter(self.items_cache)
 
@@ -235,8 +241,8 @@ class Translator(Base):
 
             # 生成初始任务并加入队列
             initial_tasks = self.scheduler.generate_initial_tasks()
-            for item in initial_tasks:
-                self.task_queue.put(item)
+            for task_item in initial_tasks:
+                self.task_queue.put(task_item)
 
             # 更新任务的总行数
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
@@ -318,9 +324,9 @@ class Translator(Base):
                                 future = executor.submit(queue_item.task.start)
                                 future.add_done_callback(task_limiter.release)
                                 future.add_done_callback(
-                                    lambda future,
-                                    item=queue_item: self.task_done_callback(
-                                        future, pid, progress, item
+                                    lambda fut,
+                                    q_item=queue_item: self.task_done_callback(
+                                        fut, pid, progress, q_item
                                     )
                                 )
                             except Exception as e:
@@ -458,6 +464,8 @@ class Translator(Base):
 
     # 初始化本地标识
     def initialize_local_flag(self) -> bool:
+        if not hasattr(self, "model") or self.model is None:
+            return False
         api_url = self.model.get("api_url", "")
         return (
             re.search(
@@ -471,6 +479,8 @@ class Translator(Base):
     # 初始化速度控制器
     def initialize_max_workers(self) -> tuple[int, int]:
         # 从模型的 threshold 读取
+        if not hasattr(self, "model") or self.model is None:
+            return 8, 0
         threshold = self.model.get("threshold", {})
         max_workers: int = threshold.get("concurrency_limit", 0)
         rpm_threshold: int = threshold.get("rpm_limit", 0)
@@ -499,7 +509,7 @@ class Translator(Base):
 
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
-        if len(items) == 0:
+        if items is None or len(items) == 0:
             return None
 
         # 筛选
@@ -520,7 +530,7 @@ class Translator(Base):
 
     # 语言过滤
     def language_filter(self, items: list[Item]) -> None:
-        if len(items) == 0:
+        if items is None or len(items) == 0:
             return None
 
         # 筛选
@@ -541,7 +551,7 @@ class Translator(Base):
 
     # MTool 优化器预处理
     def mtool_optimizer_preprocess(self, items: list[Item]) -> None:
-        if len(items) == 0 or not self.config.mtool_optimizer_enable:
+        if items is None or len(items) == 0 or not self.config.mtool_optimizer_enable:
             return None
 
         # 筛选
@@ -590,7 +600,7 @@ class Translator(Base):
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:
-        if len(items) == 0 or not self.config.mtool_optimizer_enable:
+        if items is None or len(items) == 0 or not self.config.mtool_optimizer_enable:
             return None
 
         # 筛选
@@ -678,8 +688,8 @@ class Translator(Base):
             if unprocessed_items:
                 # 构造一个仅包含未处理条目的临时 Context 进行重试处理
                 new_tasks = self.scheduler.handle_failed_task(queue_item, result)
-                for new_queue_item in new_tasks:
-                    self.task_queue.put(new_queue_item)
+                for new_q_item in new_tasks:
+                    self.task_queue.put(new_q_item)
             else:
                 # 全量成功的路径
                 pass
@@ -708,26 +718,30 @@ class Translator(Base):
 
             # 记录数据
             with self.data_lock:
-                new = self.extras.copy()
-                new["processed_line"] = (
+                new_extras = self.extras.copy()
+                new_extras["processed_line"] = (
                     self.extras.get("processed_line", 0) + processed_count
                 )
-                new["error_line"] = self.extras.get("error_line", 0) + error_count
-                new["line"] = new["processed_line"] + new["error_line"]
+                new_extras["error_line"] = (
+                    self.extras.get("error_line", 0) + error_count
+                )
+                new_extras["line"] = (
+                    new_extras["processed_line"] + new_extras["error_line"]
+                )
 
-                new["total_tokens"] = (
+                new_extras["total_tokens"] = (
                     self.extras.get("total_tokens", 0)
                     + result.get("input_tokens", 0)
                     + result.get("output_tokens", 0)
                 )
-                new["total_input_tokens"] = self.extras.get(
+                new_extras["total_input_tokens"] = self.extras.get(
                     "total_input_tokens", 0
                 ) + result.get("input_tokens", 0)
-                new["total_output_tokens"] = self.extras.get(
+                new_extras["total_output_tokens"] = self.extras.get(
                     "total_output_tokens", 0
                 ) + result.get("output_tokens", 0)
-                new["time"] = time.time() - self.extras.get("start_time", 0)
-                self.extras = new
+                new_extras["time"] = time.time() - self.extras.get("start_time", 0)
+                self.extras = new_extras
 
             # 保存翻译进度额外数据到数据库（确保进度实时同步）
             if StorageContext.get().is_loaded():

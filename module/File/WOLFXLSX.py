@@ -1,3 +1,4 @@
+import io
 import os
 
 import openpyxl
@@ -44,9 +45,7 @@ class WOLFXLSX(Base):
         ".woff",
     )
 
-    FILL_COLOR_WHITELIST: tuple = (
-        9,  # 白色
-    )
+    FILL_COLOR_WHITELIST: tuple = (9,)  # 白色
 
     FILL_COLOR_BLACKLIST: tuple = (
         44,  # 蓝色
@@ -73,57 +72,67 @@ class WOLFXLSX(Base):
             rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
-            book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
-            sheet = book.active
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-            # Ensure it is a Worksheet
-            if not isinstance(sheet, Worksheet):
+        return items
+
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 数据处理
+        book: openpyxl.Workbook = openpyxl.load_workbook(io.BytesIO(content))
+        sheet = book.active
+
+        # Ensure it is a Worksheet
+        if not isinstance(sheet, Worksheet):
+            return items
+
+        # 跳过空表格
+        if sheet.max_row == 0 or sheet.max_column == 0:
+            return items
+
+        # 判断是否为 WOLF 翻译表格文件
+        if not self.is_wolf_xlsx(sheet):
+            return items
+
+        for row in range(2, sheet.max_row + 1):
+            src_val = sheet.cell(row=row, column=self.COL_SRC_TEXT).value
+
+            # 跳过读取失败的行
+            # 数据不存在时为 None，存在时可能是 str int float 等多种类型
+            if src_val is None:
                 continue
 
-            # 跳过空表格
-            if sheet.max_row == 0 or sheet.max_column == 0:
-                continue
+            src: str = str(src_val)
+            dst_val = sheet.cell(row=row, column=self.COL_DST_TEXT).value
+            dst: str = str(dst_val) if dst_val is not None else ""
 
-            # 判断是否为 WOLF 翻译表格文件
-            if not self.is_wolf_xlsx(sheet):
-                continue
+            status = Base.ProjectStatus.NONE
 
-            for row in range(2, sheet.max_row + 1):
-                src_val = sheet.cell(row=row, column=self.COL_SRC_TEXT).value
+            if (
+                src == ""
+                or self.get_fg_color_index(sheet, row, self.COL_SRC_TEXT)
+                not in self.FILL_COLOR_WHITELIST
+            ):
+                status = Base.ProjectStatus.EXCLUDED
+            elif dst != "" and src != dst:
+                status = Base.ProjectStatus.PROCESSED_IN_PAST
 
-                # 跳过读取失败的行
-                # 数据不存在时为 None，存在时可能是 str int float 等多种类型
-                if src_val is None:
-                    continue
-
-                src: str = str(src_val)
-                dst_val = sheet.cell(row=row, column=self.COL_DST_TEXT).value
-                dst: str = str(dst_val) if dst_val is not None else ""
-
-                status = Base.ProjectStatus.NONE
-
-                if (
-                    src == ""
-                    or self.get_fg_color_index(sheet, row, self.COL_SRC_TEXT)
-                    not in self.FILL_COLOR_WHITELIST
-                ):
-                    status = Base.ProjectStatus.EXCLUDED
-                elif dst != "" and src != dst:
-                    status = Base.ProjectStatus.PROCESSED_IN_PAST
-
-                items.append(
-                    Item.from_dict(
-                        {
-                            "src": src,
-                            "dst": dst,
-                            "row": row,
-                            "file_type": Item.FileType.WOLFXLSX,
-                            "file_path": rel_path,
-                            "text_type": Item.TextType.WOLF,
-                            "status": status,
-                        }
-                    )
+            items.append(
+                Item.from_dict(
+                    {
+                        "src": src,
+                        "dst": dst,
+                        "row": row,
+                        "file_type": Item.FileType.WOLFXLSX,
+                        "file_path": rel_path,
+                        "text_type": Item.TextType.WOLF,
+                        "status": status,
+                    }
                 )
+            )
 
         return items
 
@@ -143,9 +152,9 @@ class WOLFXLSX(Base):
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             # 按行号排序
-            items = sorted(items, key=lambda x: x.get_row())
+            sorted_items = sorted(group_items, key=lambda x: x.get_row())
 
             # 目标文件绝对路径
             abs_path = os.path.join(output_path, rel_path)
@@ -160,7 +169,7 @@ class WOLFXLSX(Base):
                     restored = True
 
             if restored:
-                # 加载恢复的文件
+                # 加劳恢复的文件
                 book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
                 sheet = book.active
             else:
@@ -176,7 +185,7 @@ class WOLFXLSX(Base):
                 continue
 
             # 将数据写入工作表
-            for item in items:
+            for item in sorted_items:
                 row: int = item.get_row()
                 TableManager.set_cell_value(
                     sheet, row, column=self.COL_SRC_TEXT, value=item.get_src()

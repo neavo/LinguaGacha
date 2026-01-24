@@ -1,6 +1,7 @@
 import os
 import random
 from datetime import datetime
+from typing import Optional
 
 from base.Base import Base
 from model.Item import Item
@@ -18,7 +19,10 @@ from module.File.TXT import TXT
 from module.File.WOLFXLSX import WOLFXLSX
 from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
+from module.Storage.AssetStore import AssetStore
+from module.Storage.DataStore import DataStore
 from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 
 
 class FileManager(Base):
@@ -29,11 +33,13 @@ class FileManager(Base):
         self.config = config
 
     # 读
-    def read_from_path(self, input_path: str = None) -> tuple[Project, list[Item]]:
+    def read_from_path(
+        self, input_path: Optional[str] = None
+    ) -> tuple[Project, list[Item]]:
         """读取文件并解析翻译条目
 
         Args:
-            input_path: 输入目录或文件路径，如果不提供则无法读取
+            input_path: 输入目录 or 文件路径，如果不提供则无法读取
         """
         project: Project = Project.from_dict(
             {
@@ -126,6 +132,102 @@ class FileManager(Base):
             self.error(f"{Localizer.get().log_read_file_fail}", e)
 
         return project, items
+
+    # 从资产读取
+    def read_from_assets(self, assets: dict[str, bytes]) -> list[Item]:
+        """从 Assets 字典读取并解析翻译条目
+
+        Args:
+            assets: 相对路径 -> 字节数据的字典
+        """
+        items: list[Item] = []
+
+        for rel_path, content in assets.items():
+            path_lower = rel_path.lower()
+            if path_lower.endswith(".md"):
+                items.extend(MD(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".txt"):
+                items.extend(TXT(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".ass"):
+                items.extend(ASS(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".srt"):
+                items.extend(SRT(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".epub"):
+                items.extend(EPUB(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".xlsx"):
+                # 先尝试 WOLF
+                wolf_items = WOLFXLSX(self.config).read_from_stream(content, rel_path)
+                if wolf_items:
+                    items.extend(wolf_items)
+                else:
+                    items.extend(XLSX(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".rpy"):
+                items.extend(RENPY(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".trans"):
+                items.extend(TRANS(self.config).read_from_stream(content, rel_path))
+            elif path_lower.endswith(".json"):
+                # 先尝试 KVJSON
+                kv_items = KVJSON(self.config).read_from_stream(content, rel_path)
+                if kv_items:
+                    items.extend(kv_items)
+                else:
+                    items.extend(
+                        MESSAGEJSON(self.config).read_from_stream(content, rel_path)
+                    )
+
+        return items
+
+    # 从工程数据库读取资产并解析
+    def read_from_storage(self, db: DataStore) -> list[Item]:
+        """从 DataStore 中读取所有 Assets 并解析为条目"""
+        asset_paths = db.get_all_asset_paths()
+        assets: dict[str, bytes] = {}
+        for path in asset_paths:
+            compressed = db.get_asset(path)
+            if compressed:
+                assets[path] = AssetStore.decompress(compressed)
+
+        return self.read_from_assets(assets)
+
+    # 获取用于翻译的条目
+    def get_items_for_translation(
+        self,
+        mode: Base.TranslationMode,
+        db: Optional[DataStore] = None,
+    ) -> list[Item]:
+        """根据翻译模式决定加载策略，并返回条目列表
+
+        Args:
+            mode: 翻译模式 (NEW, CONTINUE, RESET)
+            db: 可选的数据库实例。如果提供，则强制从该数据库的资产中解析条目。
+        """
+        if db is not None:
+            # 外部指定数据库（如 ProjectStore 创建时），强制从 Assets 解析以初始化条目
+            return self.read_from_storage(db)
+
+        # 默认从当前上下文获取数据库
+        ctx = StorageContext.get()
+        current_db = ctx.get_db()
+        if current_db is None:
+            return []
+
+        project_status = ctx.get_project_status()
+
+        # CONTINUE 模式：直接从数据库缓存加载
+        if mode == Base.TranslationMode.CONTINUE:
+            return [Item.from_dict(d) for d in current_db.get_all_items()]
+
+        # RESET 模式：强制从 Assets 重解析
+        if mode == Base.TranslationMode.RESET:
+            return self.read_from_storage(current_db)
+
+        # NEW 模式：智能判定
+        if project_status == Base.ProjectStatus.NONE:
+            # 新项目第一次翻译：直接使用数据库中的初始解析结果
+            return [Item.from_dict(d) for d in current_db.get_all_items()]
+
+        # 如果项目已经有进度但用户选择了 NEW，视为重置
+        return self.read_from_storage(current_db)
 
     # 写
     def write_to_path(self, items: list[Item]) -> str:
