@@ -1,7 +1,7 @@
 import threading
 from typing import Any
 
-import opencc
+import opencc_pyo3
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -192,10 +192,10 @@ class TSConversionPage(QWidget, Base):
                 config = Config().load()
                 text_processor = TextProcessor(config, Item())
 
-                # 准备转换器 (使用官方 opencc)
+                # 准备转换器 (使用 opencc_pyo3)
                 # s2tw: 简体 -> 台湾繁体
                 # t2s: 繁体 -> 简体
-                converter = opencc.OpenCC("s2tw" if is_to_traditional else "t2s")
+                converter = opencc_pyo3.OpenCC("s2tw" if is_to_traditional else "t2s")
                 suffix = "_S2T" if is_to_traditional else "_T2S"
 
                 items_to_export = []
