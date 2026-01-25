@@ -4,7 +4,6 @@ import threading
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
@@ -35,6 +34,7 @@ class ProofreadingPage(QWidget, Base):
 
     # 信号定义
     items_loaded = pyqtSignal(list)  # 数据加载完成信号
+    filter_done = pyqtSignal(list)  # 筛选完成信号
     translate_done = pyqtSignal(object, bool)  # 翻译完成信号
     save_done = pyqtSignal(bool)  # 保存完成信号
     export_done = pyqtSignal(bool, str)  # 导出完成信号 (success, error_msg)
@@ -48,7 +48,7 @@ class ProofreadingPage(QWidget, Base):
         self.setObjectName(text.replace(" ", "-"))
 
         # 成员变量
-        self.window = window
+        self.main_window = window
         self.items: list[Item] = []  # 全量数据
         self.filtered_items: list[Item] = []  # 筛选后数据
         self.warning_map: dict[int, list[WarningType]] = {}  # 警告映射表
@@ -84,6 +84,7 @@ class ProofreadingPage(QWidget, Base):
 
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
+        self.filter_done.connect(self.on_filter_done_ui)
         self.translate_done.connect(self.on_translate_done_ui)
         self.save_done.connect(self.on_save_done_ui)
         self.export_done.connect(self.on_export_done_ui)
@@ -91,7 +92,7 @@ class ProofreadingPage(QWidget, Base):
         self.progress_finished.connect(self.on_progress_finished_ui)
 
     # ========== 主体：表格 ==========
-    def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
+    def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
         """添加主体控件"""
         self.table_widget = ProofreadingTableWidget()
         self.table_widget.cell_edited.connect(self.on_cell_edited)
@@ -112,7 +113,7 @@ class ProofreadingPage(QWidget, Base):
         parent.addWidget(self.table_widget, 1)
 
     # ========== 底部：命令栏 ==========
-    def add_widget_foot(self, parent: QLayout, window: FluentWindow) -> None:
+    def add_widget_foot(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
         """添加底部控件"""
         # 搜索栏（默认隐藏）
         self.search_card = SearchCard(self)
@@ -237,7 +238,7 @@ class ProofreadingPage(QWidget, Base):
                     return
 
                 checker = ResultChecker(self.config)
-                warning_map = checker.get_check_results(items)
+                warning_map = checker.check_items(items)
 
                 self.items = items
                 self.warning_map = warning_map
@@ -290,7 +291,7 @@ class ProofreadingPage(QWidget, Base):
             items=self.items,
             warning_map=self.warning_map,
             result_checker=self.result_checker,
-            parent=self.window,
+            parent=self.main_window,
         )
         dialog.set_filter_options(self.filter_options)
 
@@ -299,58 +300,83 @@ class ProofreadingPage(QWidget, Base):
             self.apply_filter()
 
     def apply_filter(self) -> None:
-        """应用筛选条件"""
-        warning_types = self.filter_options.get(FilterDialog.KEY_WARNING_TYPES)
-        statuses = self.filter_options.get(FilterDialog.KEY_STATUSES)
-        file_paths = self.filter_options.get(FilterDialog.KEY_FILE_PATHS)
-        glossary_terms = self.filter_options.get(FilterDialog.KEY_GLOSSARY_TERMS)
+        """应用筛选条件 (异步执行)"""
+        # 如果正在加载，则不重复触发
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
-        filtered = []
-        for item in self.items:
-            # 排除掉 已排除 和 重复条目（通常无需校对）
-            if item.get_status() in (
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.DUPLICATED,
-            ):
-                continue
+        # 捕获当前需要的参数快照，避免竞态
+        options = self.filter_options
+        items_ref = self.items
+        warning_map_ref = self.warning_map
+        checker_ref = self.result_checker
 
-            # 警告类型筛选：如果开启了筛选，则过滤不吻合的项
-            if warning_types is not None:
-                item_warnings = self.warning_map.get(id(item), [])
-                # 逻辑展平：分别处理有警告和无警告的显示条件
-                if item_warnings and not any(e in warning_types for e in item_warnings):
-                    continue
-                if (
-                    not item_warnings
-                    and FilterDialog.NO_WARNING_TAG not in warning_types
-                ):
-                    continue
+        def filter_task() -> None:
+            try:
+                warning_types = options.get(FilterDialog.KEY_WARNING_TYPES)
+                statuses = options.get(FilterDialog.KEY_STATUSES)
+                file_paths = options.get(FilterDialog.KEY_FILE_PATHS)
+                glossary_terms = options.get(FilterDialog.KEY_GLOSSARY_TERMS)
 
-                # 术语级筛选：仅当警告包含 GLOSSARY 且指定了术语时生效
-                if (
-                    glossary_terms is not None
-                    and WarningType.GLOSSARY in item_warnings
-                    and self.result_checker
-                ):
-                    item_terms = self.result_checker.get_failed_glossary_terms(item)
-                    if not any(t in glossary_terms for t in item_terms):
+                filtered = []
+                for item in items_ref:
+                    # 排除掉 已排除 和 重复条目
+                    if item.get_status() in (
+                        Base.ProjectStatus.EXCLUDED,
+                        Base.ProjectStatus.DUPLICATED,
+                    ):
                         continue
 
-            # 翻译状态和路径筛选：使用合并判断减少嵌套
-            if statuses is not None and item.get_status() not in statuses:
-                continue
+                    # 警告类型筛选
+                    if warning_types is not None:
+                        item_warnings = warning_map_ref.get(id(item), [])
+                        if item_warnings and not any(
+                            e in warning_types for e in item_warnings
+                        ):
+                            continue
+                        if (
+                            not item_warnings
+                            and FilterDialog.NO_WARNING_TAG not in warning_types
+                        ):
+                            continue
 
-            if file_paths is not None and item.get_file_path() not in file_paths:
-                continue
+                        # 术语级筛选
+                        if (
+                            glossary_terms is not None
+                            and WarningType.GLOSSARY in item_warnings
+                            and checker_ref
+                        ):
+                            item_terms = checker_ref.get_failed_glossary_terms(item)
+                            if not any(t in glossary_terms for t in item_terms):
+                                continue
 
-            filtered.append(item)
+                    # 翻译状态和路径筛选
+                    if statuses is not None and item.get_status() not in statuses:
+                        continue
 
+                    if (
+                        file_paths is not None
+                        and item.get_file_path() not in file_paths
+                    ):
+                        continue
+
+                    filtered.append(item)
+
+                self.filter_done.emit(filtered)
+            except Exception as e:
+                self.error("Filter failed", e)
+                self.filter_done.emit([])
+
+        threading.Thread(target=filter_task, daemon=True).start()
+
+    def on_filter_done_ui(self, filtered: list[Item]) -> None:
+        """筛选完成的 UI 更新 (主线程)"""
+        self.indeterminate_hide()
         self.filtered_items = filtered
         self.pagination_bar.set_total(len(filtered))
         self.pagination_bar.set_page(1)
         self.render_page(1)
 
-        # 筛选后清空搜索状态，因为 filtered_items 已变化
+        # 筛选后清空搜索状态
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
@@ -419,7 +445,7 @@ class ProofreadingPage(QWidget, Base):
         self.jump_to_match()
 
     def build_match_indices(self) -> None:
-        """构建匹配项索引列表"""
+        """构建匹配项索引列表 (修复变量未绑定隐患)"""
         self.search_match_indices = []
 
         if not self.search_keyword:
@@ -427,8 +453,10 @@ class ProofreadingPage(QWidget, Base):
 
         keyword = self.search_keyword
         is_regex = self.search_is_regex
+        pattern = None
+        keyword_lower = None
 
-        # 编译正则（忽略大小写）
+        # 预编译正则或准备小写关键词
         if is_regex:
             try:
                 pattern = re.compile(keyword, re.IGNORECASE)
@@ -441,12 +469,13 @@ class ProofreadingPage(QWidget, Base):
             src = item.get_src()
             dst = item.get_dst()
 
-            if is_regex:
+            if is_regex and pattern:
                 if pattern.search(src) or pattern.search(dst):
                     self.search_match_indices.append(idx)
-            else:
-                # 普通搜索（忽略大小写）
-                if keyword_lower in src.lower() or keyword_lower in dst.lower():
+            elif not is_regex and keyword_lower is not None:
+                # 使用局部变量确保类型安全
+                search_term: str = keyword_lower
+                if search_term in src.lower() or search_term in dst.lower():
                     self.search_match_indices.append(idx)
 
     def on_search_prev_clicked(self) -> None:
@@ -543,7 +572,7 @@ class ProofreadingPage(QWidget, Base):
             return
 
         checker = ResultChecker(self.config)
-        warnings = checker.check_single_item(item)
+        warnings = checker.check_item(item)
 
         if warnings:
             self.warning_map[id(item)] = warnings
@@ -557,7 +586,8 @@ class ProofreadingPage(QWidget, Base):
     def on_copy_src_clicked(self, item: Item) -> None:
         """复制原文到剪贴板"""
         clipboard = QApplication.clipboard()
-        clipboard.setText(item.get_src())
+        if clipboard:
+            clipboard.setText(item.get_src())
 
         self.emit(
             Base.Event.TOAST,
@@ -570,7 +600,8 @@ class ProofreadingPage(QWidget, Base):
     def on_copy_dst_clicked(self, item: Item) -> None:
         """复制译文到剪贴板"""
         clipboard = QApplication.clipboard()
-        clipboard.setText(item.get_dst())
+        if clipboard:
+            clipboard.setText(item.get_dst())
 
         self.emit(
             Base.Event.TOAST,
@@ -589,7 +620,7 @@ class ProofreadingPage(QWidget, Base):
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_reset_translation_confirm,
-            self.window,
+            self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -610,7 +641,7 @@ class ProofreadingPage(QWidget, Base):
             Localizer.get().proofreading_page_batch_reset_translation_confirm.replace(
                 "{COUNT}", str(count)
             ),
-            self.window,
+            self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -642,7 +673,7 @@ class ProofreadingPage(QWidget, Base):
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_retranslate_confirm,
-            self.window,
+            self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -665,7 +696,7 @@ class ProofreadingPage(QWidget, Base):
             Localizer.get().proofreading_page_batch_retranslate_confirm.replace(
                 "{COUNT}", str(count)
             ),
-            self.window,
+            self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -849,7 +880,7 @@ class ProofreadingPage(QWidget, Base):
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().proofreading_page_export_confirm,
-            self.window,
+            self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -972,7 +1003,7 @@ class ProofreadingPage(QWidget, Base):
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
 
-    def showEvent(self, a0: QShowEvent) -> None:
+    def showEvent(self, a0: QShowEvent | None) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(a0)
         self.check_engine_status()
