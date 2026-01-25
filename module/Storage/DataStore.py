@@ -30,7 +30,7 @@ class DataStore(Base):
     def __init__(self, db_path: str) -> None:
         super().__init__()
         self.db_path = db_path
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.keep_alive_conn: sqlite3.Connection | None = None
 
     def open(self) -> None:
@@ -281,20 +281,54 @@ class DataStore(Base):
             )
             return cursor.fetchone()[0]
 
-    def update_item(self, item: dict[str, Any]) -> None:
-        """更新单个翻译条目（仅更新，不新增）
+    def update_batch(
+        self,
+        items: list[dict[str, Any]] | None = None,
+        rules: dict[RuleType, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """综合批量更新（在单次事务中更新条目、规则及元数据）
 
         Args:
-            item: 包含 id 字段的条目数据
+            items: 待更新的条目列表
+            rules: 待更新的规则字典 { RuleType: data }
+            meta: 待更新的元数据字典 { key: value }
         """
-        item_id = item.get("id")
-        if item_id is None:
+        if not items and not rules and not meta:
             return
 
         with self.connection() as conn:
-            data = {k: v for k, v in item.items() if k != "id"}
-            data_json = json.dumps(data, ensure_ascii=False)
-            conn.execute("UPDATE items SET data = ? WHERE id = ?", (data_json, item_id))
+            # 1. 更新条目
+            if items:
+                valid_items = []
+                for item in items:
+                    item_id = item.get("id")
+                    if item_id is not None:
+                        data = {k: v for k, v in item.items() if k != "id"}
+                        data_json = json.dumps(data, ensure_ascii=False)
+                        valid_items.append((data_json, item_id))
+                if valid_items:
+                    conn.executemany(
+                        "UPDATE items SET data = ? WHERE id = ?", valid_items
+                    )
+
+            # 2. 更新规则
+            if rules:
+                for rule_type, rule_data in rules.items():
+                    conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
+                    conn.execute(
+                        "INSERT INTO rules (type, data) VALUES (?, ?)",
+                        (rule_type, json.dumps(rule_data, ensure_ascii=False)),
+                    )
+
+            # 3. 更新元数据
+            if meta:
+                for key, value in meta.items():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                        (key, json.dumps(value, ensure_ascii=False)),
+                    )
+
             conn.commit()
 
     def copy_items(self) -> list[dict[str, Any]]:
@@ -315,17 +349,44 @@ class DataStore(Base):
             cursor = conn.execute(
                 "SELECT data FROM rules WHERE type = ? ORDER BY id", (rule_type,)
             )
-            return [json.loads(row["data"]) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+
+            if not rows:
+                return []
+
+            # 检查第一行数据结构
+            try:
+                first_data = json.loads(rows[0]["data"])
+            except Exception:
+                return []
+
+            # 如果是新格式（单行存储列表），直接返回
+            if isinstance(first_data, list):
+                return first_data
+
+            # 如果是旧格式（多行存储字典），聚合返回
+            result = []
+            for row in rows:
+                try:
+                    data = json.loads(row["data"])
+                    if isinstance(data, dict):
+                        result.append(data)
+                    elif isinstance(data, list):
+                        # 兼容性处理：如果混合了列表行
+                        result.extend(data)
+                except Exception:
+                    continue
+            return result
 
     def set_rules(self, rule_type: RuleType, rules: list[dict[str, Any]]) -> None:
-        """设置指定类型的规则（清空后重新写入）"""
+        """设置指定类型的规则（清空后重新写入，存储为单行 JSON）"""
         with self.connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
-            for rule in rules:
-                conn.execute(
-                    "INSERT INTO rules (type, data) VALUES (?, ?)",
-                    (rule_type, json.dumps(rule, ensure_ascii=False)),
-                )
+            # 将整个列表序列化为单行 JSON 存储
+            conn.execute(
+                "INSERT INTO rules (type, data) VALUES (?, ?)",
+                (rule_type, json.dumps(rules, ensure_ascii=False)),
+            )
             conn.commit()
 
     def get_rule_text(self, rule_type: RuleType) -> str:

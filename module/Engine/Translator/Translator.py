@@ -26,7 +26,9 @@ from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.QualityRuleManager import QualityRuleManager
+from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
+from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
 
@@ -45,7 +47,7 @@ class Translator(Base):
         self.active_task_count: int = 0
 
         # 线程锁
-        self.data_lock = threading.Lock()
+        self.db_lock = threading.Lock()
 
         # 配置
         self.config = Config().load()
@@ -379,7 +381,7 @@ class Translator(Base):
                             if queue_item.task is None:
                                 continue
 
-                            with self.data_lock:
+                            with self.db_lock:
                                 self.active_task_count += 1
 
                             try:
@@ -393,8 +395,9 @@ class Translator(Base):
                                 )
                             except Exception as e:
                                 # 提交失败时，必须减少计数器，否则会导致死锁
-                                with self.data_lock:
+                                with self.db_lock:
                                     self.active_task_count -= 1
+
                                 self.error("提交任务失败", e)
                                 task_limiter.release(None)  # 释放限流锁
                         except Exception:
@@ -498,19 +501,58 @@ class Translator(Base):
             if db is not None:
                 db.close()
 
-    def save_items_batch(self, items: list[Item]) -> None:
-        """批量保存条目到数据库（即时写入，用于断点续译）"""
-        ctx = StorageContext.get()
-        if not ctx.is_loaded():
-            return
+    def merge_glossary(self, glossary_list: list[dict[str, str]]) -> list[dict] | None:
+        """
+        合并术语表并更新缓存，返回待写入的数据（若无变化返回 None）
+        """
+        # 有效性检查
+        if not QualityRuleManager.get().get_glossary_enable():
+            return None
 
-        db = ctx.get_db()
-        if db is None:
-            return
+        # 提取现有术语表的原文列表
+        data: list[dict] = QualityRuleManager.get().get_glossary()
+        keys = {item.get("src", "") for item in data}
 
-        # 逐条更新（只更新已翻译的条目，不是全量替换）
-        for item in items:
-            db.update_item(item.to_dict())
+        # 合并去重后的术语表
+        changed: bool = False
+        for item in glossary_list:
+            src = item.get("src", "").strip()
+            dst = item.get("dst", "").strip()
+            info = item.get("info", "").strip()
+
+            # 有效性校验
+            if not any(x in info.lower() for x in ("男", "女", "male", "female")):
+                continue
+
+            # 将原文和译文都按标点切分
+            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space=True)
+            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space=True)
+            if len(srcs) != len(dsts):
+                srcs = [src]
+                dsts = [dst]
+
+            for src, dst in zip(srcs, dsts):
+                src = src.strip()
+                dst = dst.strip()
+                if src == dst or src == "" or dst == "":
+                    continue
+                if not any(key == src for key in keys):
+                    changed = True
+                    keys.add(src)
+                    data.append(
+                        {
+                            "src": src,
+                            "dst": dst,
+                            "info": info,
+                        }
+                    )
+
+        if changed:
+            # 更新术语表（仅更新内存缓存，待后续统一写入）
+            QualityRuleManager.get().set_glossary(data, save=False)
+            return data
+
+        return None
 
     def save_translation_state(
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
@@ -755,34 +797,39 @@ class Translator(Base):
                 new_tasks = self.scheduler.handle_failed_task(queue_item, result)
                 for new_q_item in new_tasks:
                     self.task_queue.put(new_q_item)
-            else:
-                # 全量成功的路径
-                pass
 
-            # 即时写入已翻译或标记错误的条目到数据库（支持断点续译）
-            finalized_items = [
-                item
-                for item in task.items
-                if item.get_status()
-                in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-            ]
-            if finalized_items:
-                self.save_items_batch(finalized_items)
+            # --- 合并写入事务 (锁定一次，写入一次) ---
+            with self.db_lock:
+                new_glossary_data = None
+                # 1. 尝试合并术语表（如果任务返回了术语）
+                glossaries = result.get("glossaries", [])
+                if glossaries and self.config.auto_glossary_enable:
+                    new_glossary_data = self.merge_glossary(glossaries)
 
-            # 统计本次完成的行数
-            processed_count = len(
-                [
-                    i
-                    for i in task.items
-                    if i.get_status() == Base.ProjectStatus.PROCESSED
+                # 2. 筛选待存条目
+                finalized_items = [
+                    item.to_dict()
+                    for item in task.items
+                    if item.get_status()
+                    in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
                 ]
-            )
-            error_count = len(
-                [i for i in task.items if i.get_status() == Base.ProjectStatus.ERROR]
-            )
 
-            # 记录数据
-            with self.data_lock:
+                # 3. 更新统计数据
+                processed_count = len(
+                    [
+                        i
+                        for i in task.items
+                        if i.get_status() == Base.ProjectStatus.PROCESSED
+                    ]
+                )
+                error_count = len(
+                    [
+                        i
+                        for i in task.items
+                        if i.get_status() == Base.ProjectStatus.ERROR
+                    ]
+                )
+
                 new_extras = self.extras.copy()
                 new_extras["processed_line"] = (
                     self.extras.get("processed_line", 0) + processed_count
@@ -793,7 +840,6 @@ class Translator(Base):
                 new_extras["line"] = (
                     new_extras["processed_line"] + new_extras["error_line"]
                 )
-
                 new_extras["total_tokens"] = (
                     self.extras.get("total_tokens", 0)
                     + result.get("input_tokens", 0)
@@ -808,13 +854,27 @@ class Translator(Base):
                 new_extras["time"] = time.time() - self.extras.get("start_time", 0)
                 self.extras = new_extras
 
-            # 保存翻译进度额外数据到数据库（确保进度实时同步）
-            if StorageContext.get().is_loaded():
-                StorageContext.get().set_translation_extras(self.extras)
-                # 同步更新项目状态为进行中，防止异常退出导致状态丢失
-                StorageContext.get().set_project_status(Base.ProjectStatus.PROCESSING)
+                # 4. 执行综合批量更新
+                ctx = StorageContext.get()
+                if ctx.is_loaded():
+                    db = ctx.get_db()
+                    if db:
+                        rules_map = {}
+                        if new_glossary_data is not None:
+                            rules_map[DataStore.RuleType.GLOSSARY] = new_glossary_data
 
-            # 进度更新由 UI 层的 update_ui_tick 自动处理，此处移除冗余调用以保持逻辑一致
+                        db.update_batch(
+                            items=finalized_items,
+                            rules=rules_map,
+                            meta={
+                                "translation_extras": self.extras,
+                                "project_status": Base.ProjectStatus.PROCESSING,
+                            },
+                        )
+
+            # --- 后续处理 (非锁区) ---
+            if new_glossary_data is not None:
+                self.emit(Base.Event.GLOSSARY_REFRESH, {})
 
             # 更新终端进度条
             progress.update(
@@ -832,5 +892,5 @@ class Translator(Base):
         except Exception as e:
             self.error(f"{Localizer.get().task_failed}", e)
         finally:
-            with self.data_lock:
+            with self.db_lock:
                 self.active_task_count -= 1

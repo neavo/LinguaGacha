@@ -18,18 +18,14 @@ from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.QualityRuleManager import QualityRuleManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
-from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
 
 class TranslatorTask(Base):
     # 自动术语表
-    GLOSSARY_SAVE_LOCK: threading.Lock = threading.Lock()
-    GLOSSARY_SAVE_TIME: float = time.time()
-    GLOSSARY_SAVE_INTERVAL: int = 15
+    # GLOSSARY_SAVE_LOCK: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -39,7 +35,6 @@ class TranslatorTask(Base):
         items: list[Item],
         precedings: list[Item],
         is_sub_task: bool = False,
-        skip_glossary_merge: bool = False,
         skip_response_check: bool = False,
     ) -> None:
         super().__init__()
@@ -55,9 +50,9 @@ class TranslatorTask(Base):
         self.split_count = 0
         self.token_threshold = 0
         self.retry_count = 0
-        self.skip_glossary_merge = skip_glossary_merge
 
         self.skip_response_check = skip_response_check
+
         self.prompt_builder = PromptBuilder(self.config)
 
         # 跳过响应校验时不需要初始化 ResponseChecker
@@ -66,7 +61,7 @@ class TranslatorTask(Base):
         )
 
     # 启动任务
-    def start(self) -> dict[str, int]:
+    def start(self) -> dict:
         try:
             return self.request(
                 self.items, self.processors, self.precedings, self.local_flag
@@ -78,6 +73,7 @@ class TranslatorTask(Base):
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "glossaries": [],
             }
 
     # 请求
@@ -87,7 +83,7 @@ class TranslatorTask(Base):
         processors: list[TextProcessor],
         precedings: list[Item],
         local_flag: bool,
-    ) -> dict[str, int]:
+    ) -> dict:
         # 任务开始的时间
         start_time = time.time()
 
@@ -111,6 +107,7 @@ class TranslatorTask(Base):
                 "row_count": len(items),
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "glossaries": [],
             }
 
         # 生成请求提示词
@@ -143,6 +140,7 @@ class TranslatorTask(Base):
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "glossaries": [],
             }
 
         # 提取回复内容
@@ -185,13 +183,6 @@ class TranslatorTask(Base):
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in checks):
-            # 更新术语表（单条翻译场景跳过此步骤）
-            if not self.skip_glossary_merge:
-                with __class__.GLOSSARY_SAVE_LOCK:
-                    __class__.GLOSSARY_SAVE_TIME = self.merge_glossary(
-                        glossarys, __class__.GLOSSARY_SAVE_TIME
-                    )
-
             # 更新缓存数据
             dsts_cp = dsts.copy()
             checks_cp = checks.copy()
@@ -231,78 +222,18 @@ class TranslatorTask(Base):
                 "row_count": updated_count,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "glossaries": glossarys,
             }
         else:
             return {
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "glossaries": [],
             }
 
-    # 合并术语表
-    def merge_glossary(
-        self, glossary_list: list[dict[str, str]], last_save_time: float
-    ) -> float:
-        # 有效性检查
-        if not QualityRuleManager.get().get_glossary_enable():
-            return last_save_time
-        if not self.config.auto_glossary_enable:
-            return last_save_time
-
-        # 提取现有术语表的原文列表
-        data: list[dict] = QualityRuleManager.get().get_glossary()
-        keys = {item.get("src", "") for item in data}
-
-        # 合并去重后的术语表
-        changed: bool = False
-        for item in glossary_list:
-            src = item.get("src", "").strip()
-            dst = item.get("dst", "").strip()
-            info = item.get("info", "").strip()
-
-            # 有效性校验
-            if not any(x in info.lower() for x in ("男", "女", "male", "female")):
-                continue
-
-            # 将原文和译文都按标点切分
-            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space=True)
-            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space=True)
-            if len(srcs) != len(dsts):
-                srcs = [src]
-                dsts = [dst]
-
-            for src, dst in zip(srcs, dsts):
-                src = src.strip()
-                dst = dst.strip()
-                if src == dst or src == "" or dst == "":
-                    continue
-                if not any(key == src for key in keys):
-                    changed = True
-                    keys.add(src)
-                    data.append(
-                        {
-                            "src": src,
-                            "dst": dst,
-                            "info": info,
-                        }
-                    )
-
-        if changed:
-            # 判断是否满足保存间隔
-            save_to_db = time.time() - last_save_time > __class__.GLOSSARY_SAVE_INTERVAL
-
-            # 更新术语表（更新缓存，根据 save_to_db 决定是否写库）
-            QualityRuleManager.get().set_glossary(data, save=save_to_db)
-
-            if save_to_db:
-                # 术语表刷新事件
-                self.emit(Base.Event.GLOSSARY_REFRESH, {})
-                return time.time()
-
-        # 返回原始值
-        return last_save_time
-
     # 打印日志表格
+
     def print_log_table(
         self,
         checks: list[str],
@@ -544,7 +475,6 @@ class TranslatorTask(Base):
                     local_flag=local_flag,
                     items=[item],
                     precedings=[],
-                    skip_glossary_merge=True,
                     skip_response_check=True,
                 )
 
