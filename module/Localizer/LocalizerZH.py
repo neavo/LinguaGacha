@@ -164,6 +164,7 @@ class LocalizerZH:
     # 模型管理
     model_page_activate: str = "激活模型"
     model_page_basic_setting: str = "基础设置"
+    model_page_task_setting: str = "任务设置"
     model_page_advanced_setting: str = "高级设置"
     model_page_test: str = "测试模型"
     model_page_delete: str = "删除模型"
