@@ -1,82 +1,142 @@
 [
     {
         "src": "<.+?:.+?>",
-        "info": "示例 - <sample:123>"
+        "dst": "",
+        "info": "示例 - <sample:123>",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "示例 - en(!s[123]) en(v[123] >= 1)"
+        "dst": "",
+        "info": "示例 - en(!s[123]) en(v[123] >= 1)",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "示例 - if(!s[123]) if(v[123] >= 1)"
+        "dst": "",
+        "info": "示例 - if(!s[123]) if(v[123] >= 1)",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}",
-        "info": "示例 - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】"
+        "dst": "",
+        "info": "示例 - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "%\\d+",
-        "info": "示例 - %1 %2"
+        "dst": "",
+        "info": "示例 - %1 %2",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "@\\d+",
-        "info": "WOLF 角色 ID"
+        "dst": "",
+        "info": "WOLF 角色 ID",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[cus]db\\[.+?:.+?:.+?\\]",
-        "info": "WOLF 数据库变量"
+        "dst": "",
+        "info": "WOLF 数据库变量",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\f[rbi]",
-        "info": "文本 - 重置、加粗、倾斜"
+        "dst": "",
+        "info": "文本 - 重置、加粗、倾斜",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[\\{\\}]",
-        "info": "字体 - 放大、缩小"
+        "dst": "",
+        "info": "字体 - 放大、缩小",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\$",
-        "info": "打开金币框"
+        "dst": "",
+        "info": "打开金币框",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\.",
-        "info": "等待 0.25 秒"
+        "dst": "",
+        "info": "等待 0.25 秒",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\|",
-        "info": "等待 1.00 秒"
+        "dst": "",
+        "info": "等待 1.00 秒",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\!",
-        "info": "等待按钮按下"
+        "dst": "",
+        "info": "等待按钮按下",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\>",
-        "info": "在同一行显示文字"
+        "dst": "",
+        "info": "在同一行显示文字",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\<",
-        "info": "取消显示所有文字"
+        "dst": "",
+        "info": "取消显示所有文字",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\^",
-        "info": "显示文本后不需要等待"
+        "dst": "",
+        "info": "显示文本后不需要等待",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])",
-        "info": "/C<> \\FS<> /C[] \\FS[] 中 <> [] 前的部分"
+        "dst": "",
+        "info": "/C<> \\FS<> /C[] \\FS[] 中 <> [] 前的部分",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[a-z](?=[^a-z<>\\[\\]])",
-        "info": "单字母转义符 - \\n \\e \\I"
+        "dst": "",
+        "info": "单字母转义符 - \\n \\e \\I",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "<br>",
-        "info": "换行符"
+        "dst": "",
+        "info": "换行符",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\s",
-        "info": "空白字符"
+        "dst": "",
+        "info": "空白字符",
+        "regex": false,
+        "case_sensitive": false
     }
 ]

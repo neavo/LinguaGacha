@@ -1,6 +1,9 @@
 [
     {
         "src": "…。",
-        "dst": "…"
+        "dst": "…",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     }
 ]

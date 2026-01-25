@@ -3,24 +3,28 @@
         "src": "\\{[^\\{\\u4E00-\\u9FFF\\u3400-\\u4DBF\\U00020000-\\U0002A6DF\\U0002A700-\\U0002B73F\\U0002B740-\\U0002B81F\\U0002B820-\\U0002CEAF\\u1100-\\u11FF\\uA960-\\uA97F\\uD7B0-\\uD7FF\\uAC00-\\uD7AF\\u3130-\\u318F\\u3040-\\u309F\\u30A0-\\u30FF\\uFF65-\\uFF9F\\u31F0-\\u31FF]*?\\}",
         "dst": "",
         "info": "Example - {=2.3}",
-        "regex": false
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\[[^\\[\\u4E00-\\u9FFF\\u3400-\\u4DBF\\U00020000-\\U0002A6DF\\U0002A700-\\U0002B73F\\U0002B740-\\U0002B81F\\U0002B820-\\U0002CEAF\\u1100-\\u11FF\\uA960-\\uA97F\\uD7B0-\\uD7FF\\uAC00-\\uD7AF\\u3130-\\u318F\\u3040-\\u309F\\u30A0-\\u30FF\\uFF65-\\uFF9F\\u31F0-\\u31FF]*?\\]",
         "dst": "",
         "info": "Example - [renpy.version_only]",
-        "regex": false
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "<br>",
         "dst": "",
         "info": "Line break - <br>",
-        "regex": false
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\s",
         "dst": "",
         "info": "Whitespace - \\t \\n \\r \\f \\v",
-        "regex": false
+        "regex": false,
+        "case_sensitive": false
     }
 ]

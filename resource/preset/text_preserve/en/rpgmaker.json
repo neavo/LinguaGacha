@@ -1,82 +1,142 @@
 [
     {
         "src": "<.+?:.+?>",
-        "info": "Example - <sample:123>"
+        "dst": "",
+        "info": "Example - <sample:123>",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "Example - en(!s[123]) en(v[123] >= 1)"
+        "dst": "",
+        "info": "Example - en(!s[123]) en(v[123] >= 1)",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "if\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
-        "info": "Example - if(!s[123]) if(v[123] >= 1)"
+        "dst": "",
+        "info": "Example - if(!s[123]) if(v[123] >= 1)",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "[<【]{0,1}[/\\\\][a-z]{1,8}[<\\[][a-z\\d]{0,16}[>\\]][>】]{0,1}",
-        "info": "Example - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】"
+        "dst": "",
+        "info": "Example - /c[xy123] \\bc[xy123] <\\bc[xy123]>【/c[xy123]】",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "%\\d+",
-        "info": "Example - %1 %2"
+        "dst": "",
+        "info": "Example - %1 %2",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "@\\d+",
-        "info": "WOLF Character ID"
+        "dst": "",
+        "info": "WOLF Character ID",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[cus]db\\[.+?:.+?:.+?\\]",
-        "info": "WOLF Database Variable"
+        "dst": "",
+        "info": "WOLF Database Variable",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\f[rbi]",
-        "info": "Text - Reset, Bold, Italicize "
+        "dst": "",
+        "info": "Text - Reset, Bold, Italicize ",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[\\{\\}]",
-        "info": "Font - Enlarge, Shrink"
+        "dst": "",
+        "info": "Font - Enlarge, Shrink",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\$",
-        "info": "Open gold window"
+        "dst": "",
+        "info": "Open gold window",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\.",
-        "info": "Wait 0.25 seconds"
+        "dst": "",
+        "info": "Wait 0.25 seconds",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\|",
-        "info": "Wait 1 second"
+        "dst": "",
+        "info": "Wait 1 second",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\!",
-        "info": "Wait for button press"
+        "dst": "",
+        "info": "Wait for button press",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\>",
-        "info": "Display text on the same line"
+        "dst": "",
+        "info": "Display text on the same line",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\<",
-        "info": "Cancel display of all text"
+        "dst": "",
+        "info": "Cancel display of all text",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\\\^",
-        "info": "No wait after displaying text"
+        "dst": "",
+        "info": "No wait after displaying text",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "[/\\\\][a-z]{1,8}(?=<.{0,16}>|\\[.{0,16}\\])",
-        "info": "Part before <> [] in /C<> \\FS<> /C[] \\FS[]"
+        "dst": "",
+        "info": "Part before <> [] in /C<> \\FS<> /C[] \\FS[]",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\\\[a-z](?=[^a-z<>\\[\\]])",
-        "info": "Single letter escape character - \\n \\e \\I"
+        "dst": "",
+        "info": "Single letter escape character - \\n \\e \\I",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "<br>",
-        "info": "Line break"
+        "dst": "",
+        "info": "Line break",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "\\s",
-        "info": "Whitespace character"
+        "dst": "",
+        "info": "Whitespace character",
+        "regex": false,
+        "case_sensitive": false
     }
 ]

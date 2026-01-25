@@ -2,20 +2,22 @@
     {
         "src": "ダリヤ",
         "dst": "达莉雅",
-        "info": "女性"
+        "info": "女性",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "コリウス",
         "dst": "科尔维斯",
-        "info": "名字"
+        "info": "名字",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "エルギア",
         "dst": "埃尔迦",
-        "info": "地点"
-    },
-    {
-        "src": "",
-        "dst": ""
+        "info": "地点",
+        "regex": false,
+        "case_sensitive": false
     }
 ]
