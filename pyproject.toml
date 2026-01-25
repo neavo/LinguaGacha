@@ -14,7 +14,7 @@ dependencies = [
     "tiktoken",
 
     # Tools
-    "rich==14.2.0",
+    "rich",
     "zstd",
     "opencc",
     "openpyxl",
