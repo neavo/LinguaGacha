@@ -45,28 +45,48 @@ class ResultChecker(Base):
         ]
 
     # 单条目检查的私有方法
-    def get_repl_texts(self, item: Item) -> tuple[str, str]:
-        """获取单条目的替换后原文和替换前译文"""
+    def get_replaced_text(
+        self,
+        item: Item,
+        pre_rules: list[dict] | None = None,
+        post_rules: list[dict] | None = None,
+    ) -> tuple[str, str]:
+        """获取单条目的替换后原文和替换前译文
+
+        Args:
+            item: 条目对象
+            pre_rules: 可选的预热规则
+            post_rules: 可选的预热规则
+        """
         src = item.get_src()
         dst = item.get_dst()
 
-        # 译前替换
-        pre_replacement_data = QualityRuleManager.get().get_pre_replacement()
-        if (
-            QualityRuleManager.get().get_pre_replacement_enable()
-            and pre_replacement_data
-        ):
+        # 优先使用传入的预热规则，否则从管理器实时获取
+        pre_replacement_data = (
+            pre_rules
+            if pre_rules is not None
+            else (
+                QualityRuleManager.get().get_pre_replacement()
+                if QualityRuleManager.get().get_pre_replacement_enable()
+                else []
+            )
+        )
+        if pre_replacement_data:
             for replacement in pre_replacement_data:
                 src = src.replace(
                     replacement.get("src", ""), replacement.get("dst", "")
                 )
 
-        # 译后逆替换（还原）
-        post_replacement_data = QualityRuleManager.get().get_post_replacement()
-        if (
-            QualityRuleManager.get().get_post_replacement_enable()
-            and post_replacement_data
-        ):
+        post_replacement_data = (
+            post_rules
+            if post_rules is not None
+            else (
+                QualityRuleManager.get().get_post_replacement()
+                if QualityRuleManager.get().get_post_replacement_enable()
+                else []
+            )
+        )
+        if post_replacement_data:
             for replacement in post_replacement_data:
                 dst = dst.replace(
                     replacement.get("dst", ""), replacement.get("src", "")
@@ -124,7 +144,7 @@ class ResultChecker(Base):
         if not self.prepared_glossary_data:
             return []
 
-        src_repl, dst_repl = self.get_repl_texts(item)
+        src_repl, dst_repl = self.get_replaced_text(item)
         failed_terms: list[tuple[str, str]] = []
 
         for term in self.prepared_glossary_data:
@@ -152,73 +172,90 @@ class ResultChecker(Base):
     # 公共接口方法
     # =========================================
 
-    def get_check_results(self, items: list[Item]) -> dict[int, list[WarningType]]:
+    def check_items(self, items: list[Item]) -> dict[int, list[WarningType]]:
         """
         对全量数据进行内存检查，返回警告映射表。
-
-        Args:
-            items: 待检查的 Item 列表
-
-        Returns:
-            以 id(item) 为 Key，警告类型列表为 Value 的字典
-            示例: { 140234567890: [WarningType.KANA, WarningType.SIMILARITY], ... }
+        通过一次性提取规则缓存，将复杂度从 O(N*M) 降至 O(N+M)。
         """
         warning_map: dict[int, list[WarningType]] = {}
 
+        # 1. 在循环外部一次性准备所有规则数据
+        prepared_glossary = self.prepare_glossary_data()
+        pre_rules = (
+            QualityRuleManager.get().get_pre_replacement()
+            if QualityRuleManager.get().get_pre_replacement_enable()
+            else []
+        )
+        post_rules = (
+            QualityRuleManager.get().get_post_replacement()
+            if QualityRuleManager.get().get_post_replacement_enable()
+            else []
+        )
+
+        # 2. 紧凑循环处理
         for item in items:
-            warnings = self.check_single_item(item)
+            warnings = self.check_item(
+                item,
+                glossary=prepared_glossary,
+                pre_rules=pre_rules,
+                post_rules=post_rules,
+            )
             if warnings:
                 warning_map[id(item)] = warnings
 
         return warning_map
 
-    def check_single_item(self, item: Item) -> list[WarningType]:
+    def check_item(
+        self,
+        item: Item,
+        glossary: list[dict] | None = None,
+        pre_rules: list[dict] | None = None,
+        post_rules: list[dict] | None = None,
+    ) -> list[WarningType]:
         """
         对单个条目进行纯内存检查。
 
         Args:
-            item: 待检查 of Item 对象
-
-        Returns:
-            该条目存在的警告类型列表
+            item: 待检查的 Item 对象
+            glossary: 可选预热术语表
+            pre_rules: 可选预热预替换规则
+            post_rules: 可选预热后替换规则
         """
         warnings: list[WarningType] = []
 
-        # 跳过未翻译的条目
+        # 1. 快速过滤
         if item.get_status() == Base.ProjectStatus.NONE:
             return warnings
 
-        # 跳过空译文
         if not item.get_dst():
             return warnings
 
-        # 重新准备术语表数据，确保使用最新数据
-        self.prepared_glossary_data = self.prepare_glossary_data()
+        # 2. 准备本次检查使用的术语表数据（优先使用传入的缓存）
+        self.prepared_glossary_data = (
+            glossary if glossary is not None else self.prepare_glossary_data()
+        )
 
-        # 获取替换后的文本
-        src_repl, dst_repl = self.get_repl_texts(item)
+        # 3. 获取替换后的文本
+        src_repl, dst_repl = self.get_replaced_text(
+            item, pre_rules=pre_rules, post_rules=post_rules
+        )
 
-        # 假名残留检查
+        # 4. 执行各项原子检查
         if self.has_kana_error(item):
             warnings.append(WarningType.KANA)
 
-        # 谚文残留检查
         if self.has_hangeul_error(item):
             warnings.append(WarningType.HANGEUL)
 
-        # 文本保护检查
         if self.has_text_preserve_error(item, src_repl, dst_repl):
             warnings.append(WarningType.TEXT_PRESERVE)
 
-        # 相似度检查
         if self.has_similarity_error(src_repl, dst_repl):
             warnings.append(WarningType.SIMILARITY)
 
-        # 术语表检查
         if self.has_glossary_error(src_repl, dst_repl):
             warnings.append(WarningType.GLOSSARY)
 
-        # 重试次数阈值检查
         if self.has_retry_threshold_error(item):
             warnings.append(WarningType.RETRY_THRESHOLD)
 
