@@ -3,7 +3,7 @@
 
 ## 1. 项目背景
 - **简介**: 基于 LLM 的次世代视觉小说、电子书及字幕翻译工具
-- **技术栈**: Python 3.14, PyQt5, PyQt-Fluent-Widgets
+- **技术栈**: Python 3.12, PyQt5, PyQt-Fluent-Widgets
 - **包管理**: `uv` (Python package and project manager)
 - **语言规则**: **所有** 注释、思考过程及沟通 **必须使用简体中文**
 

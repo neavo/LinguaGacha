@@ -3,7 +3,7 @@ name = "linguagacha"
 version = "0.50.4"
 description = "Add your description here"
 readme = "README.md"
-requires-python = "==3.14.*"
+requires-python = "==3.12.*"
 dependencies = [
     # System
     "PyQt-Fluent-Widgets[full]",
@@ -15,9 +15,10 @@ dependencies = [
 
     # Tools
     "rich",
+    "zstd",
+    "opencc",
     "openpyxl",
     "json-repair",
-    "opencc-pyo3",
     "lxml",
     "beautifulsoup4",
     "charset-normalizer",
