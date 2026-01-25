@@ -62,7 +62,6 @@
 - **动态获取**: 使用 `Localizer.get().your_variable_name` 获取当前语言的文本
 ### 文件处理 (`module/File`)
 - **FileManager**: 统一的文件读写入口
-- **解析器**: 各类文件格式（如 `XLSX.py`, `EPUB.py`）应继承自 `module.File.TRANS.TRANS` 或相应的基类，并实现 `read` 和 `write` 方法
 
 ## 6. 任务流程指南 (Workflow)
 1. **理解需求**: 阅读任务描述，搜索相关逻辑或 UI 页面
