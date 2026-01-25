@@ -2,21 +2,22 @@
     {
         "src": "ダリヤ",
         "dst": "Daria",
-        "info": "female"
+        "info": "female",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "コリウス",
         "dst": "Kelvis",
-        "info": "name"
+        "info": "name",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "エルギア",
         "dst": "Eerga",
-        "info": "location"
-    },
-    {
-        "src": "",
-        "dst": "",
-        "info": ""
+        "info": "location",
+        "regex": false,
+        "case_sensitive": false
     }
 ]

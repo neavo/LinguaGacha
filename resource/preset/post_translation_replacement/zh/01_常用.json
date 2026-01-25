@@ -1,22 +1,37 @@
 [
     {
         "src": "…。",
-        "dst": "…"
+        "dst": "…",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "学长",
-        "dst": "前辈"
+        "dst": "前辈",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "学姐",
-        "dst": "前辈"
+        "dst": "前辈",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "学弟",
-        "dst": "后辈"
+        "dst": "后辈",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     },
     {
         "src": "学妹",
-        "dst": "后辈"
+        "dst": "后辈",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
     }
 ]

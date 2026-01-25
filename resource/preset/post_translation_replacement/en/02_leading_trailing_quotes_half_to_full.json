@@ -3,12 +3,14 @@
         "src": "^\"",
         "dst": "「",
         "info": "",
-        "regex": true
+        "regex": true,
+        "case_sensitive": false
     },
     {
         "src": "\"$",
         "dst": "」",
         "info": "",
-        "regex": true
+        "regex": true,
+        "case_sensitive": false
     }
 ]

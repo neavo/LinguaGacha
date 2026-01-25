@@ -7,6 +7,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
 
+
 class ModelManager:
     """
     模型管理器
@@ -17,7 +18,7 @@ class ModelManager:
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
     # 预设文件名
-    PRESET_BUILD_IN_FILENAME: str = "preset_model_build_in.json"
+    PRESET_BUILTIN_FILENAME: str = "preset_model_builtin.json"
     PRESET_CUSTOM_GOOGLE_FILENAME: str = "preset_model_custom_google.json"
     PRESET_CUSTOM_OPENAI_FILENAME: str = "preset_model_custom_openai.json"
     PRESET_CUSTOM_ANTHROPIC_FILENAME: str = "preset_model_custom_anthropic.json"
@@ -56,7 +57,7 @@ class ModelManager:
 
     def load_preset_models(self) -> list[dict]:
         """从 preset_models.json 加载预设模型数据"""
-        preset_path = os.path.join(self.get_preset_dir(), self.PRESET_BUILD_IN_FILENAME)
+        preset_path = os.path.join(self.get_preset_dir(), self.PRESET_BUILTIN_FILENAME)
         try:
             with open(preset_path, "r", encoding="utf-8-sig") as reader:
                 return json.load(reader)
@@ -72,7 +73,9 @@ class ModelManager:
         elif model_type == ModelType.CUSTOM_OPENAI:
             template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_OPENAI_FILENAME)
         elif model_type == ModelType.CUSTOM_ANTHROPIC:
-            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_ANTHROPIC_FILENAME)
+            template_path = os.path.join(
+                preset_dir, self.PRESET_CUSTOM_ANTHROPIC_FILENAME
+            )
         else:
             return {}
 
@@ -97,7 +100,10 @@ class ModelManager:
         if existing_models:
             for model in existing_models:
                 # 仅处理标记为 PRESET 但 ID 已不在最新预设列表中的模型
-                if model.get("type") == ModelType.PRESET.value and model.get("id") not in preset_ids:
+                if (
+                    model.get("type") == ModelType.PRESET.value
+                    and model.get("id") not in preset_ids
+                ):
                     api_format = model.get("api_format", "")
 
                     if api_format == "Google":
@@ -121,7 +127,11 @@ class ModelManager:
                 existing_models.append(preset)
 
         # 3. 检查自定义分类，如果为空则生成默认条目
-        custom_types = [ModelType.CUSTOM_GOOGLE, ModelType.CUSTOM_OPENAI, ModelType.CUSTOM_ANTHROPIC]
+        custom_types = [
+            ModelType.CUSTOM_GOOGLE,
+            ModelType.CUSTOM_OPENAI,
+            ModelType.CUSTOM_ANTHROPIC,
+        ]
 
         for model_type in custom_types:
             # 检查列表中是否已存在该类型的模型
