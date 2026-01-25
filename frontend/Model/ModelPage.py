@@ -16,6 +16,7 @@ from qfluentwidgets import SingleDirectionScrollArea
 from base.Base import Base
 from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from frontend.Model.ModelBasicSettingPage import ModelBasicSettingPage
+from frontend.Model.ModelTaskSettingPage import ModelTaskSettingPage
 from model.Model import ModelType
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
@@ -240,6 +241,16 @@ class ModelPage(QWidget, Base):
             )
             menu.addSeparator()
 
+            # 任务设置
+            menu.addAction(
+                Action(
+                    FluentIcon.BOOK_SHELF,
+                    Localizer.get().model_page_task_setting,
+                    triggered=partial(self.show_model_task_setting_page, model_id),
+                )
+            )
+            menu.addSeparator()
+
             # 高级设置
             menu.addAction(
                 Action(
@@ -361,8 +372,15 @@ class ModelPage(QWidget, Base):
         self.refresh_all_categories()
 
     def show_model_basic_setting_page(self, model_id: str) -> None:
-        """显示编辑模型对话框"""
+        """显示基础设置对话框"""
         ModelBasicSettingPage(model_id, self.window).exec()
+
+        # 刷新显示
+        self.refresh_all_categories()
+
+    def show_model_task_setting_page(self, model_id: str) -> None:
+        """显示任务设置对话框"""
+        ModelTaskSettingPage(model_id, self.window).exec()
 
         # 刷新显示
         self.refresh_all_categories()

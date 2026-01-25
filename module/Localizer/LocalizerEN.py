@@ -164,6 +164,7 @@ class LocalizerEN(LocalizerZH):
     # 模型管理
     model_page_activate: str = "Activate Model"
     model_page_basic_setting: str = "Basic Settings"
+    model_page_task_setting: str = "Task Settings"
     model_page_advanced_setting: str = "Advanced Settings"
     model_page_test: str = "Test Model"
     model_page_delete: str = "Delete Model"
