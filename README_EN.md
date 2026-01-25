@@ -85,12 +85,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260125 v0.50.5
+- 20260126 v0.50.6
   - perf - Significantly improved translation speed
   - perf - Significantly improved data loading speed on the proofreading page
   - feat - Traditional/Simplified conversion is now a Toolbox feature
   - Optimized and fixed a large number of issues in interaction logic and data processing workflows
-    - #267 #328 #341 #347
+    - #267 #328 #341 #347 #358 #359
 
 - 20260123 v0.50.4
   - Extensive interaction logic optimizations
