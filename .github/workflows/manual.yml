@@ -16,7 +16,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -31,7 +31,6 @@ jobs:
       - name: Generate requirements.txt
         shell: cmd
         run: |
-          python -m pip install tomli
           python .\buildtools\generate_deps.py
 
       - name: Install Requirements
@@ -82,7 +81,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -95,7 +94,6 @@ jobs:
 
       - name: Generate requirements.txt
         run: |
-          python -m pip install tomli
           python ./buildtools/generate_deps.py
 
       - name: Install Requirements
@@ -154,7 +152,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -172,7 +170,6 @@ jobs:
 
       - name: Generate requirements.txt
         run: |
-          python -m pip install tomli
           python ./buildtools/generate_deps.py
 
       - name: Install Requirements
