@@ -11,12 +11,8 @@ is_windows = sys.platform == "win32" or os.name == "nt"
 # 公共配置
 common_args = [
     "--collect-all=rich",
+    "--collect-all=opencc_pyo3",
 ]
-
-# 添加资源文件
-sep = ";" if is_windows else ":"
-common_args.append(f"--add-data=version.txt{sep}.")
-common_args.append(f"--add-data=resource{sep}resource")
 
 if is_macos:
     # macOS：创建 .app 应用包
@@ -45,14 +41,12 @@ else:
     # Windows：创建单文件可执行程序
     cmd = [
         "./app.py",
-        "--name=LinguaGacha",
         "--icon=./resource/icon.ico",
         "--clean",
         "--onefile",
         "--noconfirm",
         "--distpath=./dist/LinguaGacha",
     ] + common_args
-
 
 # 从 requirements.txt 添加隐式依赖
 if os.path.exists("./requirements.txt"):
