@@ -24,9 +24,6 @@ from module.TextProcessor import TextProcessor
 
 
 class TranslatorTask(Base):
-    # 自动术语表
-    # GLOSSARY_SAVE_LOCK: threading.Lock = threading.Lock()
-
     def __init__(
         self,
         config: Config,
@@ -147,10 +144,9 @@ class TranslatorTask(Base):
         dsts, glossarys = ResponseDecoder().decode(response_result)
 
         # 检查回复内容（跳过响应校验时，直接将所有结果视为有效）
-        if self.skip_response_check:
-            checks = [ResponseChecker.Error.NONE] * len(dsts)
+        if self.skip_response_check or self.response_checker is None:
+            checks: list[str] = [ResponseChecker.Error.NONE] * len(dsts)
         else:
-            # TODO - 当前逻辑下任务不会跨文件，所以一个任务的 TextType 都是一样的，有效，但是十分的 UGLY
             checks = self.response_checker.check(
                 srcs, dsts, self.items[0].get_text_type()
             )
@@ -233,7 +229,6 @@ class TranslatorTask(Base):
             }
 
     # 打印日志表格
-
     def print_log_table(
         self,
         checks: list[str],

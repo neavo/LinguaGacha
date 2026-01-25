@@ -1,9 +1,9 @@
 import contextlib
-import copy
 import json
 import sqlite3
 import threading
 from datetime import datetime
+
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Generator
@@ -193,17 +193,6 @@ class DataStore(Base):
 
     # ========== 翻译条目操作 ==========
 
-    def get_item(self, item_id: int) -> dict[str, Any] | None:
-        """获取单个翻译条目"""
-        with self.connection() as conn:
-            cursor = conn.execute("SELECT id, data FROM items WHERE id = ?", (item_id,))
-            row = cursor.fetchone()
-            if row is None:
-                return None
-            data = json.loads(row["data"])
-            data["id"] = row["id"]
-            return data
-
     def get_all_items(self) -> list[dict[str, Any]]:
         """获取所有翻译条目"""
         with self.connection() as conn:
@@ -262,25 +251,6 @@ class DataStore(Base):
             conn.commit()
             return ids
 
-    def get_item_count(self) -> int:
-        """获取翻译条目数量"""
-        with self.connection() as conn:
-            cursor = conn.execute("SELECT COUNT(*) FROM items")
-            return cursor.fetchone()[0]
-
-    def get_item_count_by_status(self, status: str) -> int:
-        """按状态统计翻译条目数量
-
-        Args:
-            status: 状态字符串（如 "NONE", "PROCESSED", "EXCLUDED" 等）
-        """
-        with self.connection() as conn:
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM items WHERE json_extract(data, '$.status') = ?",
-                (status,),
-            )
-            return cursor.fetchone()[0]
-
     def update_batch(
         self,
         items: list[dict[str, Any]] | None = None,
@@ -300,17 +270,19 @@ class DataStore(Base):
         with self.connection() as conn:
             # 1. 更新条目
             if items:
-                valid_items = []
-                for item in items:
-                    item_id = item.get("id")
-                    if item_id is not None:
-                        data = {k: v for k, v in item.items() if k != "id"}
-                        data_json = json.dumps(data, ensure_ascii=False)
-                        valid_items.append((data_json, item_id))
-                if valid_items:
-                    conn.executemany(
-                        "UPDATE items SET data = ? WHERE id = ?", valid_items
+                params = [
+                    (
+                        json.dumps(
+                            {k: v for k, v in item.items() if k != "id"},
+                            ensure_ascii=False,
+                        ),
+                        item["id"],
                     )
+                    for item in items
+                    if "id" in item
+                ]
+                if params:
+                    conn.executemany("UPDATE items SET data = ? WHERE id = ?", params)
 
             # 2. 更新规则
             if rules:
@@ -323,22 +295,14 @@ class DataStore(Base):
 
             # 3. 更新元数据
             if meta:
-                for key, value in meta.items():
-                    conn.execute(
-                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                        (key, json.dumps(value, ensure_ascii=False)),
-                    )
+                meta_params = [
+                    (k, json.dumps(v, ensure_ascii=False)) for k, v in meta.items()
+                ]
+                conn.executemany(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                    meta_params,
+                )
 
-            conn.commit()
-
-    def copy_items(self) -> list[dict[str, Any]]:
-        """深拷贝所有条目"""
-        return copy.deepcopy(self.get_all_items())
-
-    def clear_items(self) -> None:
-        """清空所有翻译条目"""
-        with self.connection() as conn:
-            conn.execute("DELETE FROM items")
             conn.commit()
 
     # ========== 规则操作 ==========

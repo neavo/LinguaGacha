@@ -787,90 +787,78 @@ class Translator(Base):
             if task is None:
                 return
 
-            # 处理失败或部分失败的任务
-            # 只要还有 NONE 状态的条目，就说明该任务未完全成功，需要重试或切分
-            unprocessed_items = [
-                i for i in task.items if i.get_status() == Base.ProjectStatus.NONE
-            ]
-            if unprocessed_items:
-                # 构造一个仅包含未处理条目的临时 Context 进行重试处理
+            # --- 预处理 (锁外执行以减少阻塞) ---
+            # 处理失败或部分失败的任务 (重试或切分)
+            if any(i.get_status() == Base.ProjectStatus.NONE for i in task.items):
                 new_tasks = self.scheduler.handle_failed_task(queue_item, result)
                 for new_q_item in new_tasks:
                     self.task_queue.put(new_q_item)
 
+            # 1. 提取待存条目
+            finalized_items = [
+                item.to_dict()
+                for item in task.items
+                if item.get_status()
+                in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
+            ]
+
+            # 2. 统计数据
+            processed_count = sum(
+                1 for i in task.items if i.get_status() == Base.ProjectStatus.PROCESSED
+            )
+            error_count = sum(
+                1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
+            )
+
+            # 3. 提取术语
+            glossaries = result.get("glossaries")
+            if not isinstance(glossaries, list):
+                glossaries = []
+
             # --- 合并写入事务 (锁定一次，写入一次) ---
             with self.db_lock:
                 new_glossary_data = None
-                # 1. 尝试合并术语表（如果任务返回了术语）
-                glossaries = result.get("glossaries", [])
+
+                # 合并术语表
                 if glossaries and self.config.auto_glossary_enable:
                     new_glossary_data = self.merge_glossary(glossaries)
 
-                # 2. 筛选待存条目
-                finalized_items = [
-                    item.to_dict()
-                    for item in task.items
-                    if item.get_status()
-                    in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-                ]
-
-                # 3. 更新统计数据
-                processed_count = len(
-                    [
-                        i
-                        for i in task.items
-                        if i.get_status() == Base.ProjectStatus.PROCESSED
-                    ]
+                # 更新统计数据
+                self.extras.update(
+                    {
+                        "processed_line": self.extras.get("processed_line", 0)
+                        + processed_count,
+                        "error_line": self.extras.get("error_line", 0) + error_count,
+                        "total_tokens": self.extras.get("total_tokens", 0)
+                        + result.get("input_tokens", 0)
+                        + result.get("output_tokens", 0),
+                        "total_input_tokens": self.extras.get("total_input_tokens", 0)
+                        + result.get("input_tokens", 0),
+                        "total_output_tokens": self.extras.get("total_output_tokens", 0)
+                        + result.get("output_tokens", 0),
+                        "time": time.time() - self.extras.get("start_time", 0),
+                    }
                 )
-                error_count = len(
-                    [
-                        i
-                        for i in task.items
-                        if i.get_status() == Base.ProjectStatus.ERROR
-                    ]
+                self.extras["line"] = (
+                    self.extras["processed_line"] + self.extras["error_line"]
                 )
 
-                new_extras = self.extras.copy()
-                new_extras["processed_line"] = (
-                    self.extras.get("processed_line", 0) + processed_count
-                )
-                new_extras["error_line"] = (
-                    self.extras.get("error_line", 0) + error_count
-                )
-                new_extras["line"] = (
-                    new_extras["processed_line"] + new_extras["error_line"]
-                )
-                new_extras["total_tokens"] = (
-                    self.extras.get("total_tokens", 0)
-                    + result.get("input_tokens", 0)
-                    + result.get("output_tokens", 0)
-                )
-                new_extras["total_input_tokens"] = self.extras.get(
-                    "total_input_tokens", 0
-                ) + result.get("input_tokens", 0)
-                new_extras["total_output_tokens"] = self.extras.get(
-                    "total_output_tokens", 0
-                ) + result.get("output_tokens", 0)
-                new_extras["time"] = time.time() - self.extras.get("start_time", 0)
-                self.extras = new_extras
-
-                # 4. 执行综合批量更新
+                # 执行综合批量更新
                 ctx = StorageContext.get()
-                if ctx.is_loaded():
-                    db = ctx.get_db()
-                    if db:
-                        rules_map = {}
-                        if new_glossary_data is not None:
-                            rules_map[DataStore.RuleType.GLOSSARY] = new_glossary_data
-
-                        db.update_batch(
-                            items=finalized_items,
-                            rules=rules_map,
-                            meta={
-                                "translation_extras": self.extras,
-                                "project_status": Base.ProjectStatus.PROCESSING,
-                            },
-                        )
+                if ctx.is_loaded() and (db := ctx.get_db()):
+                    rules_map = (
+                        {DataStore.RuleType.GLOSSARY: new_glossary_data}
+                        if new_glossary_data
+                        else {}
+                    )
+                    db.update_batch(
+                        items=finalized_items,
+                        rules=rules_map,
+                        meta={
+                            "translation_extras": self.extras,
+                            "project_status": Base.ProjectStatus.PROCESSING,
+                        },
+                    )
 
             # --- 后续处理 (非锁区) ---
             if new_glossary_data is not None:
