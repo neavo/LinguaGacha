@@ -1,5 +1,4 @@
-from compression.zstd import ZstdCompressor
-from compression.zstd import ZstdDecompressor
+import compression.zstd
 from pathlib import Path
 
 
@@ -12,14 +11,12 @@ class AssetStore:
     @classmethod
     def compress(cls, data: bytes) -> bytes:
         """压缩数据"""
-        compressor = ZstdCompressor(level=cls.COMPRESSION_LEVEL)
-        return compressor.compress(data)
+        return compression.zstd.compress(data, level=cls.COMPRESSION_LEVEL)
 
     @classmethod
     def decompress(cls, data: bytes) -> bytes:
         """解压数据"""
-        decompressor = ZstdDecompressor()
-        return decompressor.decompress(data)
+        return compression.zstd.decompress(data)
 
     @classmethod
     def compress_file(cls, file_path: str) -> tuple[bytes, int]:
