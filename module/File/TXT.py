@@ -51,9 +51,7 @@ class TXT(Base):
 
         # 数据处理
         text = content.decode(encoding)
-        for line in [
-            line.removesuffix("\r").removesuffix("\n") for line in text.splitlines()
-        ]:
+        for line in text.splitlines():
             items.append(
                 Item.from_dict(
                     {

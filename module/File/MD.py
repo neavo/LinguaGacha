@@ -56,9 +56,7 @@ class MD(Base):
 
         # 数据处理
         text = content.decode(encoding)
-        lines = [
-            line.removesuffix("\r").removesuffix("\n") for line in text.splitlines()
-        ]
+        lines = text.splitlines()
         in_code_block = False  # 跟踪是否在代码块内
 
         for line in lines:

@@ -1062,12 +1062,13 @@ class WorkbenchPage(ScrollArea, Base):
         self.create_thread.finished_signal.connect(
             lambda success, result: self.on_create_finished(path, success, result)
         )
+        # 确保线程完全退出后再由 Qt 回收对象，避免 QThread: Destroyed while thread is still running
+        self.create_thread.finished.connect(self.create_thread.deleteLater)
         self.create_thread.start()
 
     def on_create_finished(self, path: str, success: bool, result: object) -> None:
         """创建工程完成回调"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-        self.create_thread = None
 
         if success:
             try:
