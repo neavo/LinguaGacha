@@ -224,7 +224,13 @@ class ResultChecker(Base):
         warnings: list[WarningType] = []
 
         # 1. 快速过滤
-        if item.get_status() == Base.ProjectStatus.NONE:
+        if item.get_status() in (
+            Base.ProjectStatus.NONE,
+            Base.ProjectStatus.RULE_SKIPPED,
+            Base.ProjectStatus.LANGUAGE_SKIPPED,
+            Base.ProjectStatus.EXCLUDED,
+            Base.ProjectStatus.DUPLICATED,
+        ):
             return warnings
 
         if not item.get_dst():

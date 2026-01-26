@@ -1,8 +1,9 @@
 from base.BaseLanguage import BaseLanguage
 from module.Text.TextHelper import TextHelper
 
-class LanguageFilter():
 
+class LanguageFilter:
+    @staticmethod
     def filter(src: str, source_language: BaseLanguage.Enum) -> bool:
         # 获取语言判断函数
         if source_language == BaseLanguage.Enum.ZH:

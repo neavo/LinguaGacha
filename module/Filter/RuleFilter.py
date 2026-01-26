@@ -2,9 +2,9 @@ import re
 
 from module.Text.TextHelper import TextHelper
 
-class RuleFilter():
 
-    PREFIX: tuple[str] = (
+class RuleFilter:
+    PREFIX: tuple[str, ...] = (
         "MapData/".lower(),
         "SE/".lower(),
         "BGS".lower(),
@@ -13,21 +13,43 @@ class RuleFilter():
         "FIcon/".lower(),
     )
 
-    SUFFIX: tuple[str] = (
-        ".mp3", ".wav", ".ogg", "mid",
-        ".png", ".jpg", ".jpeg", ".gif", ".psd", ".webp", ".heif", ".heic",
-        ".avi", ".mp4", ".webm",
-        ".txt", ".7z", ".gz", ".rar", ".zip", ".json",
-        ".sav", ".mps", ".ttf", ".otf", ".woff",
+    SUFFIX: tuple[str, ...] = (
+        ".mp3",
+        ".wav",
+        ".ogg",
+        "mid",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".psd",
+        ".webp",
+        ".heif",
+        ".heic",
+        ".avi",
+        ".mp4",
+        ".webm",
+        ".txt",
+        ".7z",
+        ".gz",
+        ".rar",
+        ".zip",
+        ".json",
+        ".sav",
+        ".mps",
+        ".ttf",
+        ".otf",
+        ".woff",
     )
 
-    RE_ALL: tuple[re.Pattern] = (
-        re.compile(r"^EV\d+$", flags = re.IGNORECASE),
-        re.compile(r"^DejaVu Sans$", flags = re.IGNORECASE),                        # RenPy 默认字体名称
-        re.compile(r"^Opendyslexic$", flags = re.IGNORECASE),                       # RenPy 默认字体名称
-        re.compile(r"^\{#file_time\}", flags = re.IGNORECASE),                      # RenPy 存档时间
+    RE_ALL: tuple[re.Pattern[str], ...] = (
+        re.compile(r"^EV\d+$", flags=re.IGNORECASE),
+        re.compile(r"^DejaVu Sans$", flags=re.IGNORECASE),  # RenPy 默认字体名称
+        re.compile(r"^Opendyslexic$", flags=re.IGNORECASE),  # RenPy 默认字体名称
+        re.compile(r"^\{#file_time\}", flags=re.IGNORECASE),  # RenPy 存档时间
     )
 
+    @staticmethod
     def filter(src: str) -> bool:
         flags = []
         for line in src.splitlines():
@@ -46,7 +68,10 @@ class RuleFilter():
             # isnumeric
             # 字符串中的字符是否表示任何类型的数字，包括整数、分数、数字字符的变种（比如上标、下标）以及其他可以被认为是数字的字符（如中文数字）。
             # 仅包含空白符、数字字符、标点符号
-            if all(c.isspace() or c.isnumeric() or TextHelper.is_punctuation(c) for c in line):
+            if all(
+                c.isspace() or c.isnumeric() or TextHelper.is_punctuation(c)
+                for c in line
+            ):
                 flags.append(True)
                 continue
 

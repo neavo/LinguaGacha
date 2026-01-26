@@ -10,12 +10,11 @@ from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
 
 
-# 进度回调类型：callback(current, total, message)
-ProgressCallback = Callable[[int, int, str], None]
-
-
 class ProjectStore(Base):
     """工程存储管理器"""
+
+    # 进度回调类型：callback(current, total, message)
+    ProgressCallback = Callable[[int, int, str], None]
 
     # 支持的文件扩展名
     SUPPORTED_EXTENSIONS = {
@@ -32,9 +31,11 @@ class ProjectStore(Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self.progress_callback: ProgressCallback | None = None
+        self.progress_callback: ProjectStore.ProgressCallback | None = None
 
-    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+    def set_progress_callback(
+        self, callback: ProjectStore.ProgressCallback | None
+    ) -> None:
         """设置进度回调函数 callback(current, total, message)"""
         self.progress_callback = callback
 
@@ -68,6 +69,11 @@ class ProjectStore(Base):
         # 创建数据库
         project_name = Path(source_path).name
         db = DataStore.create(output_path, project_name)
+
+        # WHY: 新工程默认是最新过滤逻辑，避免首次翻译走 legacy 迁移并触发误导提示
+        from module.Engine.Translator.Translator import Translator
+
+        db.set_meta("filtering_version", Translator.FILTERING_VERSION)
 
         # 初始化质量规则
         QualityRuleManager.get().initialize_project_rules(db)
