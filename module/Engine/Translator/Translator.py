@@ -34,8 +34,6 @@ from module.TextProcessor import TextProcessor
 
 # 翻译器
 class Translator(Base):
-    FILTERING_VERSION = 1
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -307,9 +305,6 @@ class Translator(Base):
 
             # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
             db.open()
-
-            # 兼容旧工程：重建条目并合并已完成结果
-            self.migrate_legacy_items(db)
 
             # 从新模型系统获取激活模型
             self.model = self.config.get_active_model()
@@ -734,85 +729,6 @@ class Translator(Base):
             max_workers = 8192
 
         return max_workers, rpm_threshold
-
-    def build_item_merge_key(
-        self, item: Item
-    ) -> tuple[str, int, str, Item.TextType, Item.FileType]:
-        return (
-            item.get_file_path(),
-            item.get_row(),
-            item.get_src(),
-            item.get_text_type(),
-            item.get_file_type(),
-        )
-
-    def migrate_legacy_items(self, db: DataStore) -> None:
-        current_version = db.get_meta("filtering_version", 0)
-        if (
-            isinstance(current_version, int)
-            and current_version >= self.FILTERING_VERSION
-        ):
-            return
-
-        items_old = [Item.from_dict(d) for d in db.get_all_items()]
-        items_new = FileManager(self.config).read_from_storage(db)
-        if not items_new:
-            db.set_meta("filtering_version", self.FILTERING_VERSION)
-            return
-
-        merge_candidates: dict[
-            tuple[str, int, str, Item.TextType, Item.FileType], Item
-        ] = {}
-        for item in items_old:
-            if item.get_status() in (
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.PROCESSED_IN_PAST,
-                Base.ProjectStatus.ERROR,
-                Base.ProjectStatus.DUPLICATED,
-            ):
-                merge_candidates[self.build_item_merge_key(item)] = item
-
-        for item in items_new:
-            if item.get_status() == Base.ProjectStatus.EXCLUDED:
-                continue
-
-            key = self.build_item_merge_key(item)
-            old_item = merge_candidates.get(key)
-            if old_item is None:
-                continue
-
-            item.set_dst(old_item.get_dst())
-            item.set_status(old_item.get_status())
-            item.set_retry_count(old_item.get_retry_count())
-            item.set_name_dst(old_item.get_name_dst())
-
-        db.set_items([item.to_dict() for item in items_new])
-
-        extras = db.get_meta("translation_extras", {})
-        if not isinstance(extras, dict):
-            extras = {}
-
-        processed_count = sum(
-            1 for item in items_new if item.get_status() == Base.ProjectStatus.PROCESSED
-        )
-        error_count = sum(
-            1 for item in items_new if item.get_status() == Base.ProjectStatus.ERROR
-        )
-
-        extras["processed_line"] = processed_count
-        extras["error_line"] = error_count
-        extras["line"] = processed_count + error_count
-        extras["total_line"] = 0
-        db.set_meta("translation_extras", extras)
-        db.set_meta("filtering_version", self.FILTERING_VERSION)
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.INFO,
-                "message": Localizer.get().engine_task_legacy_filter_migrated,
-            },
-        )
 
     def reset_recalculable_status(self, items: list[Item]) -> None:
         for item in items:

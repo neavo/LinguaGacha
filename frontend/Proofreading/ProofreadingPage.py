@@ -49,7 +49,8 @@ class ProofreadingPage(QWidget, Base):
 
         # 成员变量
         self.main_window = window
-        self.items: list[Item] = []  # 全量数据
+        self.items_all: list[Item] = []  # 全量数据（含结构行）
+        self.items: list[Item] = []  # 可校对数据
         self.filtered_items: list[Item] = []  # 筛选后数据
         self.warning_map: dict[int, list[WarningType]] = {}  # 警告映射表
         self.result_checker: ResultChecker | None = None  # 结果检查器
@@ -214,6 +215,12 @@ class ProofreadingPage(QWidget, Base):
                 # 从工程数据库读取所有条目
                 db = StorageContext.get().get_db()
                 if db is None:
+                    self.items_all = []
+                    self.items = []
+                    self.filtered_items = []
+                    self.warning_map = {}
+                    self.result_checker = None
+                    self.filter_options = {}
                     self.emit(
                         Base.Event.TOAST,
                         {
@@ -223,16 +230,38 @@ class ProofreadingPage(QWidget, Base):
                     )
                     self.items_loaded.emit([])
                     return
-                items = [Item.from_dict(d) for d in db.get_all_items()]
-                # 过滤掉原文为空的条目
-                items = [i for i in items if i.get_src().strip()]
+                items_all = [Item.from_dict(d) for d in db.get_all_items()]
+                items = self.build_review_items(items_all)
 
-                if not items:
+                if not items_all:
+                    self.items_all = []
+                    self.items = []
+                    self.filtered_items = []
+                    self.warning_map = {}
+                    self.result_checker = None
+                    self.filter_options = {}
                     self.emit(
                         Base.Event.TOAST,
                         {
                             "type": Base.ToastType.WARNING,
                             "message": Localizer.get().proofreading_page_no_cache,
+                        },
+                    )
+                    self.items_loaded.emit([])
+                    return
+
+                if not items:
+                    self.items_all = items_all
+                    self.items = []
+                    self.filtered_items = []
+                    self.warning_map = {}
+                    self.result_checker = None
+                    self.filter_options = {}
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().proofreading_page_no_review_items,
                         },
                     )
                     self.items_loaded.emit([])
@@ -241,6 +270,7 @@ class ProofreadingPage(QWidget, Base):
                 checker = ResultChecker(self.config)
                 warning_map = checker.check_items(items)
 
+                self.items_all = items_all
                 self.items = items
                 self.warning_map = warning_map
                 self.result_checker = checker
@@ -436,6 +466,22 @@ class ProofreadingPage(QWidget, Base):
             FilterDialog.KEY_FILE_PATHS: file_paths,
             FilterDialog.KEY_GLOSSARY_TERMS: glossary_terms,
         }
+
+    def build_review_items(self, items: list[Item]) -> list[Item]:
+        """构建可校对条目列表，避免结构行进入 UI。"""
+        review_items = []
+        for item in items:
+            # WHY: 结构行需要保留用于导出，但不应进入校对列表
+            if not item.get_src().strip():
+                continue
+            if item.get_status() in (
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.DUPLICATED,
+                Base.ProjectStatus.RULE_SKIPPED,
+            ):
+                continue
+            review_items.append(item)
+        return review_items
 
     # ========== 搜索功能 ==========
     def on_search_clicked(self) -> None:
@@ -872,12 +918,13 @@ class ProofreadingPage(QWidget, Base):
 
     def save_data(self) -> None:
         """保存数据到缓存文件（异步执行）"""
-        if self.is_readonly or not self.config or not self.items:
+        if self.is_readonly or not self.config or not self.items_all:
             self.indeterminate_hide()
             return
 
         # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
-        items = self.items
+        items_all = self.items_all
+        review_items = self.items
 
         def task() -> None:
             try:
@@ -886,7 +933,7 @@ class ProofreadingPage(QWidget, Base):
                 if db is None:
                     self.save_done.emit(False)
                     return
-                db.set_items([item.to_dict() for item in items])
+                db.set_items([item.to_dict() for item in items_all])
 
                 # 保存条目后，同步更新项目级别元数据
                 ctx = StorageContext.get()
@@ -894,7 +941,7 @@ class ProofreadingPage(QWidget, Base):
                     # 统计 NONE 状态的条目数量（排除 EXCLUDED 和 DUPLICATED）
                     none_count = sum(
                         1
-                        for item in items
+                        for item in review_items
                         if item.get_status() == Base.ProjectStatus.NONE
                     )
 
@@ -911,7 +958,7 @@ class ProofreadingPage(QWidget, Base):
                     # 统计已翻译的条目数量（状态为 PROCESSED 或 PROCESSED_IN_PAST）
                     translated_count = sum(
                         1
-                        for item in items
+                        for item in review_items
                         if item.get_status()
                         in (
                             Base.ProjectStatus.PROCESSED,
@@ -988,17 +1035,17 @@ class ProofreadingPage(QWidget, Base):
 
     def export_data(self) -> None:
         """导出数据（异步执行）"""
-        if not self.config or not self.items:
+        if not self.config or not self.items_all:
             self.export_done.emit(False, "")
             return
 
         # 捕获当前状态的引用，避免子线程中访问 self 时产生竞态
         config = self.config
-        items = self.items
+        items_all = self.items_all
 
         def task() -> None:
             try:
-                FileManager(config).write_to_path(items)
+                FileManager(config).write_to_path(items_all)
                 self.export_done.emit(True, "")
             except Exception as e:
                 self.error("Export failed", e)
@@ -1035,7 +1082,8 @@ class ProofreadingPage(QWidget, Base):
         )
 
         # 1. 如果处于翻译中/停止中，清空页面数据
-        if is_busy and self.items:
+        if is_busy and (self.items or self.items_all):
+            self.items_all = []
             self.items = []
             self.filtered_items = []
             self.warning_map = {}
@@ -1043,17 +1091,19 @@ class ProofreadingPage(QWidget, Base):
             self.pagination_bar.reset()
 
         # 2. 更新按钮状态
+        has_items_all = bool(self.items_all)
         has_items = bool(self.items)
 
         # 加载按钮在繁忙时禁用
         self.btn_load.setEnabled(not is_busy)
 
         # 其他按钮只有在不繁忙且有数据时启用
-        can_operate = not is_busy and has_items
-        self.btn_save.setEnabled(can_operate)
-        self.btn_export.setEnabled(can_operate)
-        self.btn_search.setEnabled(can_operate)
-        self.btn_filter.setEnabled(can_operate)
+        can_operate_export = not is_busy and has_items_all
+        can_operate_review = not is_busy and has_items
+        self.btn_save.setEnabled(can_operate_export)
+        self.btn_export.setEnabled(can_operate_export)
+        self.btn_search.setEnabled(can_operate_review)
+        self.btn_filter.setEnabled(can_operate_review)
 
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy
@@ -1114,6 +1164,7 @@ class ProofreadingPage(QWidget, Base):
     def clear_all_data(self) -> None:
         """彻底清理页面所有数据和 UI 状态"""
         # 清空数据
+        self.items_all = []
         self.items = []
         self.filtered_items = []
         self.warning_map = {}
