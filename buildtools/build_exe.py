@@ -1,5 +1,7 @@
+import importlib.util
 import os
 import sys
+from pathlib import Path
 
 import PyInstaller.__main__
 
@@ -7,6 +9,32 @@ import PyInstaller.__main__
 is_macos = sys.platform == "darwin"
 is_linux = sys.platform == "linux"
 is_windows = sys.platform == "win32" or os.name == "nt"
+
+
+# Patch opencc_pyo3 before PyInstaller packages it (must modify source before build)
+# The library unconditionally imports pdfium_helper which fails if pdfium is missing
+def patch_opencc_init() -> tuple[Path, str] | None:
+    spec = importlib.util.find_spec("opencc_pyo3")
+    if spec is None or spec.origin is None:
+        return None
+    init_path = Path(spec.origin)
+    if not init_path.exists():
+        return None
+    original = init_path.read_text(encoding="utf-8")
+    old_import = "from .pdfium_helper import extract_pdf_pages_with_callback_pdfium"
+    new_import = "extract_pdf_pages_with_callback_pdfium = None  # pdfium not needed"
+    if old_import in original:
+        init_path.write_text(original.replace(old_import, new_import), encoding="utf-8")
+        return (init_path, original)
+    return None
+
+
+def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
+    if backup:
+        backup[0].write_text(backup[1], encoding="utf-8")
+
+
+backup = patch_opencc_init()
 
 # 公共配置
 common_args = [
@@ -57,3 +85,5 @@ if os.path.exists("./requirements.txt"):
                 cmd.append("--hidden-import=" + line)
 
 PyInstaller.__main__.run(cmd)
+
+restore_opencc_init(backup)
