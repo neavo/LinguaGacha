@@ -38,6 +38,8 @@ class NameFieldExtractionPage(QWidget, Base):
         str, int, int
     )  # 进度更新信号 (content, current, total)
     progress_finished = pyqtSignal()  # 进度完成信号
+    extract_finished = pyqtSignal(list)
+    extract_failed = pyqtSignal()
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -68,6 +70,10 @@ class NameFieldExtractionPage(QWidget, Base):
         self.update_signal.connect(self.update_row)
         self.progress_updated.connect(self.on_progress_updated)
         self.progress_finished.connect(self.on_progress_finished)
+        self.extract_finished.connect(self.on_extract_finished)
+        self.extract_failed.connect(self.on_extract_failed)
+
+        self.is_extracting = False
 
     # 头部
     def add_widget_head(
@@ -253,6 +259,7 @@ class NameFieldExtractionPage(QWidget, Base):
                 triggered=triggered,
             ),
         )
+
     # ================= 业务逻辑 =================
 
     def on_progress_updated(self, content: str, current: int, total: int) -> None:
@@ -290,77 +297,98 @@ class NameFieldExtractionPage(QWidget, Base):
         """隐藏 loading 指示器"""
         self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
-    def extract_names(self) -> None:
-        """从工程中提取名字，并智能匹配最佳上下文"""
-        db = StorageContext.get().get_db()
-        if db is None:
-            self.show_toast(Base.ToastType.ERROR, Localizer.get().alert_no_data)
-            return
-
-        # 获取所有 Items
-        items = [Item.from_dict(d) for d in db.get_all_items()]
+    def on_extract_finished(self, items: list[dict[str, Any]]) -> None:
+        self.hide_indeterminate_toast()
+        self.is_extracting = False
 
         if not items:
             self.show_toast(Base.ToastType.WARNING, Localizer.get().alert_no_data)
             return
 
-        # 获取现有术语表用于预填
-        glossary_rules = db.get_rules(DataStore.RuleType.GLOSSARY)
-
-        glossary_map = {rule["src"]: rule["dst"] for rule in glossary_rules}
-
-        # 临时存储：name -> context list
-        name_contexts: dict[str, list[str]] = {}
-
-        # 扫描工程
-        for item in items:
-            name_src = item.get_name_src()
-            names_to_process = []
-
-            if isinstance(name_src, str):
-                names_to_process.append(name_src)
-            elif isinstance(name_src, list):
-                names_to_process.extend(name_src)
-
-            # 只有当该条目也有正文时，才将其正文作为上下文
-            context = item.get_src()
-            if not context:
-                continue
-
-            for name in names_to_process:
-                if not name:
-                    continue
-                if name not in name_contexts:
-                    name_contexts[name] = []
-                name_contexts[name].append(context)
-
-        # 构建最终列表
-        new_items: list[dict] = []
-
-        for name, contexts in name_contexts.items():
-            # 上下文选择策略：选择长度最长的一条台词，通常语义更完整
-            best_context = max(contexts, key=len) if contexts else ""
-
-            # 预填现有翻译
-            dst = glossary_map.get(name, "")
-
-            new_items.append(
-                {
-                    "src": name,
-                    "dst": dst,
-                    "context": best_context,
-                    "status": Localizer.get().proofreading_page_status_processed
-                    if dst
-                    else Localizer.get().proofreading_page_status_none,
-                }
-            )
-
-        # 按原文排序
-        new_items.sort(key=lambda x: x["src"])
-        self.items = new_items
-
+        self.items = items
         self.refresh_table()
         self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
+
+    def on_extract_failed(self) -> None:
+        self.hide_indeterminate_toast()
+        self.is_extracting = False
+        self.show_toast(Base.ToastType.ERROR, Localizer.get().task_failed)
+
+    def extract_names(self) -> None:
+        """从工程中提取名字，并智能匹配最佳上下文"""
+        if self.is_extracting:
+            self.show_toast(Base.ToastType.WARNING, Localizer.get().engine_task_running)
+            return
+
+        db = StorageContext.get().get_db()
+        if db is None:
+            self.show_toast(Base.ToastType.ERROR, Localizer.get().alert_no_data)
+            return
+
+        self.is_extracting = True
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().name_field_extraction_action_progress,
+                "indeterminate": True,
+            },
+        )
+
+        def extract_task() -> None:
+            try:
+                # WHY: 扫描全量条目是重操作，放到后台线程避免 UI 假死
+                items = [Item.from_dict(d) for d in db.get_all_items()]
+                if not items:
+                    self.extract_finished.emit([])
+                    return
+
+                glossary_rules = db.get_rules(DataStore.RuleType.GLOSSARY)
+                glossary_map = {rule["src"]: rule["dst"] for rule in glossary_rules}
+
+                name_contexts: dict[str, list[str]] = {}
+                for item in items:
+                    name_src = item.get_name_src()
+                    names_to_process = []
+
+                    if isinstance(name_src, str):
+                        names_to_process.append(name_src)
+                    elif isinstance(name_src, list):
+                        names_to_process.extend(name_src)
+
+                    context = item.get_src()
+                    if not context:
+                        continue
+
+                    for name in names_to_process:
+                        if not name:
+                            continue
+                        if name not in name_contexts:
+                            name_contexts[name] = []
+                        name_contexts[name].append(context)
+
+                new_items: list[dict] = []
+                for name, contexts in name_contexts.items():
+                    best_context = max(contexts, key=len) if contexts else ""
+                    dst = glossary_map.get(name, "")
+
+                    new_items.append(
+                        {
+                            "src": name,
+                            "dst": dst,
+                            "context": best_context,
+                            "status": Localizer.get().proofreading_page_status_processed
+                            if dst
+                            else Localizer.get().proofreading_page_status_none,
+                        }
+                    )
+
+                new_items.sort(key=lambda x: x["src"])
+                self.extract_finished.emit(new_items)
+            except Exception as e:
+                self.error(Localizer.get().task_failed, e)
+                self.extract_failed.emit()
+
+        threading.Thread(target=extract_task, daemon=True).start()
 
     def reset_table(self) -> None:
         """重置表格（清空列表）"""

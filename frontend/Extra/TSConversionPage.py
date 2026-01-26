@@ -29,6 +29,7 @@ from widget.SwitchButtonCard import SwitchButtonCard
 class TSConversionPage(QWidget, Base):
     # 定义信号用于进度更新
     progress_updated = pyqtSignal(str, int, int)  # (message, current, total)
+    progress_show = pyqtSignal(str, int, int)  # (message, current, total)
     progress_finished = pyqtSignal(str)  # 导出目录路径
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -50,7 +51,10 @@ class TSConversionPage(QWidget, Base):
 
         # 连接信号
         self.progress_updated.connect(self.on_progress_updated)
+        self.progress_show.connect(self.on_progress_show)
         self.progress_finished.connect(self.on_progress_finished)
+
+        self.is_converting = False
 
     # 头部
     def add_widget_head(
@@ -125,17 +129,48 @@ class TSConversionPage(QWidget, Base):
             {"message": message, "current": current, "total": total},
         )
 
-    def on_progress_finished(self, output_path: str) -> None:
-        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+    def on_progress_show(self, message: str, current: int, total: int) -> None:
         self.emit(
-            Base.Event.TOAST,
+            Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().task_success,
+                "message": message,
+                "indeterminate": False,
+                "current": current,
+                "total": total,
             },
         )
 
+    def on_progress_finished(self, output_path: str) -> None:
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        if output_path:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().task_success,
+                },
+            )
+        else:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+        self.is_converting = False
+
     def start_conversion(self) -> None:
+        if self.is_converting:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().engine_task_running,
+                },
+            )
+            return
+
         database = StorageContext.get().get_db()
         if database is None:
             self.emit(
@@ -161,29 +196,12 @@ class TSConversionPage(QWidget, Base):
         convert_name = self.target_name_card.get_switch_button().isChecked()
         preserve_text = self.preserve_text_card.get_switch_button().isChecked()
 
-        # 获取数据总量以显示进度
-        items_data = database.get_all_items()
-        total = len(items_data)
-        if total == 0:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().alert_no_data,
-                },
-            )
-            return
-
-        # 显示进度
+        self.is_converting = True
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "message": Localizer.get()
-                .ts_conversion_action_progress.replace("{CURRENT}", "1")
-                .replace("{TOTAL}", str(total)),
-                "indeterminate": False,
-                "current": 1,
-                "total": total,
+                "message": Localizer.get().ts_conversion_action_preparing,
+                "indeterminate": True,
             },
         )
 
@@ -191,6 +209,27 @@ class TSConversionPage(QWidget, Base):
             try:
                 config = Config().load()
                 text_processor = TextProcessor(config, Item())
+
+                items_data = database.get_all_items()
+                total = len(items_data)
+                if total == 0:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().alert_no_data,
+                        },
+                    )
+                    self.progress_finished.emit("")
+                    return
+
+                self.progress_show.emit(
+                    Localizer.get()
+                    .ts_conversion_action_progress.replace("{CURRENT}", "1")
+                    .replace("{TOTAL}", str(total)),
+                    1,
+                    total,
+                )
 
                 # 准备转换器 (使用 opencc_pyo3)
                 # s2tw: 简体 -> 台湾繁体

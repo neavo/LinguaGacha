@@ -599,6 +599,7 @@ class LocalizerZH:
     name_field_extraction_action_extract: str = "提取"
     name_field_extraction_action_translate: str = "翻译"
     name_field_extraction_action_import: str = "导入到术语表"
+    name_field_extraction_action_progress: str = "正在提取姓名字段 …"
     name_field_extraction_context: str = "上下文"
 
     # 百宝箱 - 繁简转换
@@ -619,3 +620,4 @@ class LocalizerZH:
     ts_conversion_action_start: str = "开始转换"
     ts_conversion_action_confirm: str = "是否开始执行简繁转换 …?"
     ts_conversion_action_progress: str = "正在执行简繁转换，第 {CURRENT} 项，共 {TOTAL} 项 …"
+    ts_conversion_action_preparing: str = "正在准备简繁转换数据 …"

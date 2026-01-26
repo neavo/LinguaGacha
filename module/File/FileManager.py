@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -26,6 +27,8 @@ from module.Storage.StorageContext import StorageContext
 
 
 class FileManager(Base):
+    YIELD_EVERY = 64
+
     def __init__(self, config: Config) -> None:
         super().__init__()
 
@@ -133,6 +136,43 @@ class FileManager(Base):
 
         return project, items
 
+    def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+        """解析单个资产内容"""
+        items: list[Item] = []
+        path_lower = rel_path.lower()
+        if path_lower.endswith(".md"):
+            items.extend(MD(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".txt"):
+            items.extend(TXT(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".ass"):
+            items.extend(ASS(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".srt"):
+            items.extend(SRT(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".epub"):
+            items.extend(EPUB(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".xlsx"):
+            # 先尝试 WOLF
+            wolf_items = WOLFXLSX(self.config).read_from_stream(content, rel_path)
+            if wolf_items:
+                items.extend(wolf_items)
+            else:
+                items.extend(XLSX(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".rpy"):
+            items.extend(RENPY(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".trans"):
+            items.extend(TRANS(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".json"):
+            # 先尝试 KVJSON
+            kv_items = KVJSON(self.config).read_from_stream(content, rel_path)
+            if kv_items:
+                items.extend(kv_items)
+            else:
+                items.extend(
+                    MESSAGEJSON(self.config).read_from_stream(content, rel_path)
+                )
+
+        return items
+
     # 从资产读取
     def read_from_assets(self, assets: dict[str, bytes]) -> list[Item]:
         """从 Assets 字典读取并解析翻译条目
@@ -141,39 +181,8 @@ class FileManager(Base):
             assets: 相对路径 -> 字节数据的字典
         """
         items: list[Item] = []
-
         for rel_path, content in assets.items():
-            path_lower = rel_path.lower()
-            if path_lower.endswith(".md"):
-                items.extend(MD(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".txt"):
-                items.extend(TXT(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".ass"):
-                items.extend(ASS(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".srt"):
-                items.extend(SRT(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".epub"):
-                items.extend(EPUB(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".xlsx"):
-                # 先尝试 WOLF
-                wolf_items = WOLFXLSX(self.config).read_from_stream(content, rel_path)
-                if wolf_items:
-                    items.extend(wolf_items)
-                else:
-                    items.extend(XLSX(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".rpy"):
-                items.extend(RENPY(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".trans"):
-                items.extend(TRANS(self.config).read_from_stream(content, rel_path))
-            elif path_lower.endswith(".json"):
-                # 先尝试 KVJSON
-                kv_items = KVJSON(self.config).read_from_stream(content, rel_path)
-                if kv_items:
-                    items.extend(kv_items)
-                else:
-                    items.extend(
-                        MESSAGEJSON(self.config).read_from_stream(content, rel_path)
-                    )
+            items.extend(self.parse_asset(rel_path, content))
 
         return items
 
@@ -181,13 +190,20 @@ class FileManager(Base):
     def read_from_storage(self, db: DataStore) -> list[Item]:
         """从 DataStore 中读取所有 Assets 并解析为条目"""
         asset_paths = db.get_all_asset_paths()
-        assets: dict[str, bytes] = {}
+        items: list[Item] = []
+        yield_every = self.YIELD_EVERY
+        parsed_assets = 0
+
         for path in asset_paths:
             compressed = db.get_asset(path)
             if compressed:
-                assets[path] = AssetStore.decompress(compressed)
+                items.extend(self.parse_asset(path, AssetStore.decompress(compressed)))
+                parsed_assets += 1
+                if yield_every > 0 and parsed_assets % yield_every == 0:
+                    # WHY: 释放 GIL，避免批量解析资产时 UI 假死
+                    time.sleep(0)
 
-        return self.read_from_assets(assets)
+        return items
 
     # 获取用于翻译的条目
     def get_items_for_translation(
