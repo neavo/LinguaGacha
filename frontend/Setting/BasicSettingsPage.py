@@ -53,14 +53,68 @@ class BasicSettingsPage(QWidget, Base):
         self.root.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_project_save_mode(scroll_area_vbox, config, window)
         self.add_widget_source_language(scroll_area_vbox, config, window)
         self.add_widget_target_language(scroll_area_vbox, config, window)
+        self.add_widget_project_save_mode(scroll_area_vbox, config, window)
         self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
 
         # 填充
         scroll_area_vbox.addStretch(1)
+
+    # 原文语言
+    def add_widget_source_language(
+        self, parent: QLayout, config: Config, windows: FluentWindow
+    ) -> None:
+        def init(widget: ComboBoxCard) -> None:
+            if config.source_language in BaseLanguage.get_languages():
+                widget.get_combo_box().setCurrentIndex(
+                    BaseLanguage.get_languages().index(config.source_language)
+                )
+
+        def current_changed(widget: ComboBoxCard) -> None:
+            config = Config().load()
+            config.source_language = BaseLanguage.get_languages()[
+                widget.get_combo_box().currentIndex()
+            ]
+            config.save()
+
+        parent.addWidget(
+            ComboBoxCard(
+                Localizer.get().basic_settings_page_source_language_title,
+                Localizer.get().basic_settings_page_source_language_content,
+                items=self.languages,
+                init=init,
+                current_changed=current_changed,
+            )
+        )
+
+    # 译文语言
+    def add_widget_target_language(
+        self, parent: QLayout, config: Config, windows: FluentWindow
+    ) -> None:
+        def init(widget: ComboBoxCard) -> None:
+            if config.target_language in BaseLanguage.get_languages():
+                widget.get_combo_box().setCurrentIndex(
+                    BaseLanguage.get_languages().index(config.target_language)
+                )
+
+        def current_changed(widget: ComboBoxCard) -> None:
+            config = Config().load()
+            config.target_language = BaseLanguage.get_languages()[
+                widget.get_combo_box().currentIndex()
+            ]
+            config.save()
+
+        parent.addWidget(
+            ComboBoxCard(
+                Localizer.get().basic_settings_page_target_language_title,
+                Localizer.get().basic_settings_page_target_language_content,
+                items=self.languages,
+                init=init,
+                current_changed=current_changed,
+            )
+        )
 
     # 工程文件保存位置
     def add_widget_project_save_mode(
@@ -134,60 +188,6 @@ class BasicSettingsPage(QWidget, Base):
                 title=Localizer.get().basic_settings_page_project_save_mode_title,
                 description=Localizer.get().basic_settings_page_project_save_mode_content,
                 items=items,
-                init=init,
-                current_changed=current_changed,
-            )
-        )
-
-    # 原文语言
-    def add_widget_source_language(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            if config.source_language in BaseLanguage.get_languages():
-                widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.source_language)
-                )
-
-        def current_changed(widget: ComboBoxCard) -> None:
-            config = Config().load()
-            config.source_language = BaseLanguage.get_languages()[
-                widget.get_combo_box().currentIndex()
-            ]
-            config.save()
-
-        parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_source_language_title,
-                Localizer.get().basic_settings_page_source_language_content,
-                items=self.languages,
-                init=init,
-                current_changed=current_changed,
-            )
-        )
-
-    # 译文语言
-    def add_widget_target_language(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            if config.target_language in BaseLanguage.get_languages():
-                widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.target_language)
-                )
-
-        def current_changed(widget: ComboBoxCard) -> None:
-            config = Config().load()
-            config.target_language = BaseLanguage.get_languages()[
-                widget.get_combo_box().currentIndex()
-            ]
-            config.save()
-
-        parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_target_language_title,
-                Localizer.get().basic_settings_page_target_language_content,
-                items=self.languages,
                 init=init,
                 current_changed=current_changed,
             )
