@@ -85,6 +85,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260126 v0.51.0
+  - feat - Reset failed entries (Translation page)
+  - feat - Dynamically calculate target entries to adapt to changes in filtering rules #345 #357
+  - Performance and interaction optimization
+
 - 20260126 v0.50.6
   - perf - Significantly improved translation speed
   - perf - Significantly improved data loading speed on the proofreading page
@@ -98,33 +103,6 @@
     - Export proofreading filter results to file #336
     - Reset translation status for specified data entries #334
     - Set default quality rules such as `Glossary` when creating new projects #338
-
-- 20260122 v0.50.2
-  - ADJ - Interaction logic optimization
-  - Fix - Issue where `WOLFXLSX` could not be exported correctly
-  - Fix - Issue where `Quality Rules` such as the glossary did not take effect correctly
-
-- 20260121 v0.50.1
-  - Redesigned the entire workflow of translation projects
-    - A single `.lg` project file contains all project data
-    - Rules such as `Glossary`, `Pre-translation Replacement`, and `Post-translation Replacement` are independent for each project
-    - Progress is written to the project file in real-time, allowing work to resume at any time
-    - Generating `Translated Files` no longer requires `Source Files`
-    - … …
-  - Redesigned the `Name Field Extraction` feature
-  - Removed - `Partial Re-translation` feature (can be achieved via `Proofreading Tasks`)
-
-- 20260118 v0.41.0
-  - ADD - `Model Management` feature
-    - Replaces the original `Interface Management` feature, need to be reconfigured
-    - Added support for `Custom Request Headers` and `Custom Request Body`
-    - Parameters such as `Reasoning Level`, `Task Length`, and `Request Speed` can now be set individually for each model
-  - ADJ - Proofreading tasks now support secondary filtering for `Ineffective Glossaries`
-
-- 20260116 v0.40.2
-  - ADJ - Visual and interaction improvements
-  - ADJ - EPUB compatibility optimization
-  - From now on, `macOS`, `Linux` and `Windows` platforms will be released simultaneously
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
