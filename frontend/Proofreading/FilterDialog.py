@@ -227,12 +227,16 @@ class FilterDialog(MessageBoxBase):
     ) -> None:
         super().__init__(parent)
 
-        # 仅针对可见状态进行筛选
+        # WHY: 规则跳过条目无需校对；非目标原文语言可由用户选择显示
         self.items = [
             i
             for i in items
             if i.get_status()
-            not in (Base.ProjectStatus.EXCLUDED, Base.ProjectStatus.DUPLICATED)
+            not in (
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.DUPLICATED,
+                Base.ProjectStatus.RULE_SKIPPED,
+            )
         ]
         self.warning_map = warning_map
         self.result_checker = result_checker
@@ -548,12 +552,16 @@ class FilterDialog(MessageBoxBase):
                 Base.ProjectStatus.PROCESSED_IN_PAST,
                 Localizer.get().proofreading_page_status_processed_in_past,
             ),
+            (
+                Base.ProjectStatus.LANGUAGE_SKIPPED,
+                Localizer.get().proofreading_page_status_non_target_source_language,
+            ),
         ]
 
         for status, label in status_types:
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
-            btn.setChecked(True)
+            btn.setChecked(status != Base.ProjectStatus.LANGUAGE_SKIPPED)
             self.setup_small_button(btn)
             btn.clicked.connect(self.on_filter_changed)
             self.status_buttons[status] = btn
@@ -934,45 +942,47 @@ class FilterDialog(MessageBoxBase):
             if widget.is_checked()
         }
 
-        selected_terms = None
+        selected_terms: set[tuple[str, str]] = set()
         if WarningType.GLOSSARY in selected_warnings:
-            # 只有当选中项少于总项数时才返回具体集合
-            if len(self.term_checked_state) < len(self.glossary_error_map):
-                selected_terms = self.term_checked_state
+            selected_terms = set(self.term_checked_state)
 
         return {
-            self.KEY_WARNING_TYPES: selected_warnings
-            if len(selected_warnings) < len(self.warning_buttons)
-            else None,
-            self.KEY_STATUSES: selected_statuses
-            if len(selected_statuses) < len(self.status_buttons)
-            else None,
-            self.KEY_FILE_PATHS: selected_files
-            if len(selected_files) < len(self.file_list_items)
-            else None,
+            self.KEY_WARNING_TYPES: selected_warnings,
+            self.KEY_STATUSES: selected_statuses,
+            self.KEY_FILE_PATHS: selected_files,
             self.KEY_GLOSSARY_TERMS: selected_terms,
         }
 
     def set_filter_options(self, options: dict) -> None:
         warning_types = options.get(self.KEY_WARNING_TYPES)
+        if warning_types is None:
+            warning_types = set(self.warning_buttons.keys())
         for warning_type, btn in self.warning_buttons.items():
-            btn.setChecked(warning_types is None or warning_type in warning_types)
+            btn.setChecked(warning_type in warning_types)
 
         statuses = options.get(self.KEY_STATUSES)
+        if statuses is None:
+            statuses = {
+                status
+                for status in self.status_buttons
+                if status != Base.ProjectStatus.LANGUAGE_SKIPPED
+            }
         for status, btn in self.status_buttons.items():
-            btn.setChecked(statuses is None or status in statuses)
+            btn.setChecked(status in statuses)
 
         file_paths = options.get(self.KEY_FILE_PATHS)
+        if file_paths is None:
+            file_paths = set(self.file_list_items.keys())
         for path, widget in self.file_list_widgets.items():
-            widget.set_checked(file_paths is None or path in file_paths)
+            widget.set_checked(path in file_paths)
 
         # 在 refresh_all 前预设术语持久化状态
-        # 如果传入 None，保持默认的全选状态（已经在 __init__ 中处理）
         glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
-        if glossary_terms is not None:
-            self.term_checked_state = set(glossary_terms)
-            # 关键修复：设置了新状态后，必须清空旧的 widget 引用
-            # 防止随后的 refresh_all -> sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
-            self.term_list_widgets = {}
+        if glossary_terms is None:
+            glossary_terms = set(self.glossary_error_map.keys())
+        self.term_checked_state = set(glossary_terms)
+        # 关键修复：设置了新状态后，必须清空旧的 widget 引用
+        # 防止随后的 refresh_all -> sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
+        self.term_list_widgets = {}
 
         self.refresh_all()

@@ -113,7 +113,9 @@ class LocalizerZH:
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
     engine_task_generation: str = "任务生成已完成，共生成 {COUNT} 个任务 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
-    engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个不包含目标语言的条目 …"
+    engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个非目标原文语言条目 …"
+    engine_task_filter_changed: str = "过滤结果与上次不同：规则跳过 {RULE} 条，非目标原文语言 {LANGUAGE} 条 …"
+    engine_task_legacy_filter_migrated: str = "已重建条目以应用最新过滤逻辑 …"
     engine_task_scheduler_stop_with_untranslated: str = "任务调度器停止，但仍有 {COUNT} 个未翻译条目（可能因异常丢失）"
     translator_task_status_info: str = "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}"
     translator_task_force_accept_info: str = " | 已强制放行：{REASON}"
@@ -347,6 +349,7 @@ class LocalizerZH:
     proofreading_page_status_processed: str = "翻译完成"
     proofreading_page_status_error: str = "翻译失败"
     proofreading_page_status_processed_in_past: str = "历史完成"
+    proofreading_page_status_non_target_source_language: str = "非目标原文语言"
 
     proofreading_page_page_info: str = "第 {CURRENT} / {TOTAL} 页"
     proofreading_page_warning_kana: str = "假名残留"

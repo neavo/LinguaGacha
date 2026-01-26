@@ -244,7 +244,9 @@ class ProofreadingPage(QWidget, Base):
                 self.items = items
                 self.warning_map = warning_map
                 self.result_checker = checker
-                self.filter_options = {}
+                self.filter_options = self.build_default_filter_options(
+                    items, warning_map, checker
+                )
 
                 self.items_loaded.emit(items)
 
@@ -313,51 +315,73 @@ class ProofreadingPage(QWidget, Base):
 
         def filter_task() -> None:
             try:
-                warning_types = options.get(FilterDialog.KEY_WARNING_TYPES)
+                warning_types: set[WarningType | str] | None = options.get(
+                    FilterDialog.KEY_WARNING_TYPES
+                )
                 statuses = options.get(FilterDialog.KEY_STATUSES)
                 file_paths = options.get(FilterDialog.KEY_FILE_PATHS)
                 glossary_terms = options.get(FilterDialog.KEY_GLOSSARY_TERMS)
 
+                if warning_types is None:
+                    warning_types = set(WarningType)
+                    warning_types.add(FilterDialog.NO_WARNING_TAG)
+
+                default_statuses = {
+                    Base.ProjectStatus.NONE,
+                    Base.ProjectStatus.PROCESSED,
+                    Base.ProjectStatus.ERROR,
+                    Base.ProjectStatus.PROCESSED_IN_PAST,
+                }
+                if statuses is None:
+                    statuses = default_statuses
+
+                if file_paths is None:
+                    file_paths = {item.get_file_path() for item in items_ref}
+
+                if glossary_terms is None:
+                    glossary_terms = set()
+
                 filtered = []
                 for item in items_ref:
-                    # 排除掉 已排除 和 重复条目
+                    # WHY: 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过
                     if item.get_status() in (
                         Base.ProjectStatus.EXCLUDED,
                         Base.ProjectStatus.DUPLICATED,
+                        Base.ProjectStatus.RULE_SKIPPED,
                     ):
                         continue
 
                     # 警告类型筛选
-                    if warning_types is not None:
-                        item_warnings = warning_map_ref.get(id(item), [])
-                        if item_warnings and not any(
-                            e in warning_types for e in item_warnings
-                        ):
-                            continue
-                        if (
-                            not item_warnings
-                            and FilterDialog.NO_WARNING_TAG not in warning_types
-                        ):
-                            continue
-
-                        # 术语级筛选
-                        if (
-                            glossary_terms is not None
-                            and WarningType.GLOSSARY in item_warnings
-                            and checker_ref
-                        ):
-                            item_terms = checker_ref.get_failed_glossary_terms(item)
-                            if not any(t in glossary_terms for t in item_terms):
-                                continue
-
-                    # 翻译状态和路径筛选
-                    if statuses is not None and item.get_status() not in statuses:
+                    item_warnings = warning_map_ref.get(id(item), [])
+                    if item_warnings and not any(
+                        e in warning_types for e in item_warnings
+                    ):
+                        continue
+                    if (
+                        not item_warnings
+                        and FilterDialog.NO_WARNING_TAG not in warning_types
+                    ):
                         continue
 
+                    # 术语级筛选
                     if (
-                        file_paths is not None
-                        and item.get_file_path() not in file_paths
+                        WarningType.GLOSSARY in item_warnings
+                        and WarningType.GLOSSARY in warning_types
+                        and checker_ref
                     ):
+                        item_terms = checker_ref.get_failed_glossary_terms(item)
+                        if glossary_terms and not any(
+                            t in glossary_terms for t in item_terms
+                        ):
+                            continue
+                        if not glossary_terms:
+                            continue
+
+                    # 翻译状态和路径筛选
+                    if item.get_status() not in statuses:
+                        continue
+
+                    if item.get_file_path() not in file_paths:
                         continue
 
                     filtered.append(item)
@@ -381,6 +405,37 @@ class ProofreadingPage(QWidget, Base):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
+
+    def build_default_filter_options(
+        self,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        checker: ResultChecker | None,
+    ) -> dict:
+        warning_types: set[WarningType | str] = set(WarningType)
+        warning_types.add(FilterDialog.NO_WARNING_TAG)
+
+        statuses = {
+            Base.ProjectStatus.NONE,
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.ERROR,
+            Base.ProjectStatus.PROCESSED_IN_PAST,
+        }
+
+        file_paths = {item.get_file_path() for item in items}
+
+        glossary_terms: set[tuple[str, str]] = set()
+        if checker:
+            for item in items:
+                if WarningType.GLOSSARY in warning_map.get(id(item), []):
+                    glossary_terms.update(checker.get_failed_glossary_terms(item))
+
+        return {
+            FilterDialog.KEY_WARNING_TYPES: warning_types,
+            FilterDialog.KEY_STATUSES: statuses,
+            FilterDialog.KEY_FILE_PATHS: file_paths,
+            FilterDialog.KEY_GLOSSARY_TERMS: glossary_terms,
+        }
 
     # ========== 搜索功能 ==========
     def on_search_clicked(self) -> None:
