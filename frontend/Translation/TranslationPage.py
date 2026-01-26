@@ -1,6 +1,7 @@
 import time
 from enum import StrEnum
 
+from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTime
 from PyQt5.QtCore import QTimer
@@ -15,8 +16,10 @@ from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
+from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import ProgressRing
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
@@ -36,10 +39,10 @@ class TranslationPage(QWidget, Base):
         INPUT = "INPUT"
         OUTPUT = "OUTPUT"
 
-    # 行数显示模式
-    class LineDisplayMode(StrEnum):
-        PROCESSED = "PROCESSED"
-        ERROR = "ERROR"
+    # 时间显示模式
+    class TimeDisplayMode(StrEnum):
+        REMAINING = "REMAINING"
+        ELAPSED = "ELAPSED"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -159,52 +162,53 @@ class TranslationPage(QWidget, Base):
         else:
             total_time = int(self.data.get("time", 0))
 
-        if total_time < 60:
-            self.time.set_unit("S")
-            self.time.set_value(f"{total_time}")
-        elif total_time < 60 * 60:
-            self.time.set_unit("M")
-            self.time.set_value(f"{(total_time / 60):.2f}")
-        else:
-            self.time.set_unit("H")
-            self.time.set_value(f"{(total_time / 60 / 60):.2f}")
-
         remaining_time = int(
             total_time
             / max(1, self.data.get("line", 0))
             * (self.data.get("total_line", 0) - self.data.get("line", 0))
         )
-        if remaining_time < 60:
-            self.remaining_time.set_unit("S")
-            self.remaining_time.set_value(f"{remaining_time}")
-        elif remaining_time < 60 * 60:
-            self.remaining_time.set_unit("M")
-            self.remaining_time.set_value(f"{(remaining_time / 60):.2f}")
+
+        display_mode = getattr(
+            self, "time_display_mode", self.TimeDisplayMode.REMAINING
+        )
+        display_value = remaining_time
+        if display_mode == self.TimeDisplayMode.ELAPSED:
+            display_value = total_time
+
+        if display_value < 60:
+            self.time.set_unit("S")
+            self.time.set_value(f"{display_value}")
+        elif display_value < 60 * 60:
+            self.time.set_unit("M")
+            self.time.set_value(f"{(display_value / 60):.2f}")
         else:
-            self.remaining_time.set_unit("H")
-            self.remaining_time.set_value(f"{(remaining_time / 60 / 60):.2f}")
+            self.time.set_unit("H")
+            self.time.set_value(f"{(display_value / 60 / 60):.2f}")
 
     # 更新行数
     def update_line(self, data: dict) -> None:
-        # 根据显示模式获取行数
-        display_mode = getattr(
-            self, "line_display_mode", self.LineDisplayMode.PROCESSED
-        )
+        processed_line = self.data.get("processed_line", self.data.get("line", 0))
+        error_line = self.data.get("error_line", 0)
 
-        if display_mode == self.LineDisplayMode.PROCESSED:
-            line = self.data.get("processed_line", self.data.get("line", 0))
+        if processed_line < 1000:
+            self.processed_line_card.set_unit("Line")
+            self.processed_line_card.set_value(f"{processed_line}")
+        elif processed_line < 1000 * 1000:
+            self.processed_line_card.set_unit("KLine")
+            self.processed_line_card.set_value(f"{(processed_line / 1000):.2f}")
         else:
-            line = self.data.get("error_line", 0)
+            self.processed_line_card.set_unit("MLine")
+            self.processed_line_card.set_value(f"{(processed_line / 1000 / 1000):.2f}")
 
-        if line < 1000:
-            self.line_card.set_unit("Line")
-            self.line_card.set_value(f"{line}")
-        elif line < 1000 * 1000:
-            self.line_card.set_unit("KLine")
-            self.line_card.set_value(f"{(line / 1000):.2f}")
+        if error_line < 1000:
+            self.error_line_card.set_unit("Line")
+            self.error_line_card.set_value(f"{error_line}")
+        elif error_line < 1000 * 1000:
+            self.error_line_card.set_unit("KLine")
+            self.error_line_card.set_value(f"{(error_line / 1000):.2f}")
         else:
-            self.line_card.set_unit("MLine")
-            self.line_card.set_value(f"{(line / 1000 / 1000):.2f}")
+            self.error_line_card.set_unit("MLine")
+            self.error_line_card.set_value(f"{(error_line / 1000 / 1000):.2f}")
 
         remaining_line = self.data.get("total_line", 0) - self.data.get("line", 0)
 
@@ -342,7 +346,6 @@ class TranslationPage(QWidget, Base):
         self.flow_layout.setContentsMargins(0, 0, 0, 0)
 
         self.add_time_card(self.flow_layout, config, window)
-        self.add_remaining_time_card(self.flow_layout, config, window)
         self.add_line_card(self.flow_layout, config, window)
         self.add_remaining_line_card(self.flow_layout, config, window)
         self.add_speed_card(self.flow_layout, config, window)
@@ -388,127 +391,60 @@ class TranslationPage(QWidget, Base):
     def add_time_card(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        self.time = DashboardCard(
-            parent=self,
-            title=Localizer.get().translation_page_card_time,
-            value="0",
-            unit="S",
-        )
-        self.time.setFixedSize(204, 204)
-        parent.addWidget(self.time)
+        self.time_display_mode = self.TimeDisplayMode.REMAINING
 
-    # 剩余时间
-    def add_remaining_time_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        self.remaining_time = DashboardCard(
+        def on_time_card_clicked(card: DashboardCard) -> None:
+            if self.time_display_mode == self.TimeDisplayMode.REMAINING:
+                self.time_display_mode = self.TimeDisplayMode.ELAPSED
+                card.title_label.setText(Localizer.get().translation_page_card_time)
+            else:
+                self.time_display_mode = self.TimeDisplayMode.REMAINING
+                card.title_label.setText(
+                    Localizer.get().translation_page_card_remaining_time
+                )
+
+            self.update_time(self.data)
+
+        self.time = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_remaining_time,
             value="0",
             unit="S",
+            clicked=on_time_card_clicked,
         )
-        self.remaining_time.setFixedSize(204, 204)
-        parent.addWidget(self.remaining_time)
+        self.time.setFixedSize(204, 204)
+        self.time.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.time.installEventFilter(ToolTipFilter(self.time, 300, ToolTipPosition.TOP))
+        self.time.setToolTip(Localizer.get().translation_page_card_time_tooltip)
+        parent.addWidget(self.time)
 
     # 翻译行数
     def add_line_card(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        # 默认显示完成行数
-        self.line_display_mode = self.LineDisplayMode.PROCESSED
-
-        def on_line_card_clicked(card: DashboardCard) -> None:
-            # 切换显示模式
-            if self.line_display_mode == self.LineDisplayMode.PROCESSED:
-                self.line_display_mode = self.LineDisplayMode.ERROR
-                card.title_label.setText(
-                    Localizer.get().translation_page_card_line_error
-                )
-            else:
-                self.line_display_mode = self.LineDisplayMode.PROCESSED
-                card.title_label.setText(
-                    Localizer.get().translation_page_card_line_processed
-                )
-
-            # 应用动效
-            self.animate_line_card_switch()
-
-        self.line_card = DashboardCard(
+        self.processed_line_card = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_line_processed,
             value="0",
             unit="Line",
-            clicked=on_line_card_clicked,
         )
+        self.processed_line_card.setFixedSize(204, 204)
+        parent.addWidget(self.processed_line_card)
 
-        self.line_card.setFixedSize(204, 204)
-        self.line_card.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.line_card.installEventFilter(
-            ToolTipFilter(self.line_card, 300, ToolTipPosition.TOP)
+        self.error_line_card = DashboardCard(
+            parent=self,
+            title=Localizer.get().translation_page_card_line_error,
+            value="0",
+            unit="Line",
         )
-        self.line_card.setToolTip(Localizer.get().translation_page_card_line_tooltip)
-        parent.addWidget(self.line_card)
-
-    def animate_line_card_switch(self) -> None:
-        """为处理行数卡片的数值标签执行淡入淡出动效"""
-        from PyQt5.QtCore import QEasingCurve
-        from PyQt5.QtCore import QPropertyAnimation
-        from PyQt5.QtWidgets import QGraphicsOpacityEffect
-
-        value_label = self.line_card.value_label
-        unit_label = self.line_card.unit_label
-
-        if (
-            not hasattr(self, "line_value_opacity_effect")
-            or self.line_value_opacity_effect is None
-        ):
-            self.line_value_opacity_effect = QGraphicsOpacityEffect(value_label)
-            value_label.setGraphicsEffect(self.line_value_opacity_effect)
-
-        if (
-            not hasattr(self, "line_unit_opacity_effect")
-            or self.line_unit_opacity_effect is None
-        ):
-            self.line_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
-            unit_label.setGraphicsEffect(self.line_unit_opacity_effect)
-
-        fade_out = QPropertyAnimation(self.line_value_opacity_effect, b"opacity")
-        fade_out.setDuration(100)
-        fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.3)
-        fade_out.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        fade_out_unit = QPropertyAnimation(self.line_unit_opacity_effect, b"opacity")
-        fade_out_unit.setDuration(100)
-        fade_out_unit.setStartValue(1.0)
-        fade_out_unit.setEndValue(0.3)
-        fade_out_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        fade_in = QPropertyAnimation(self.line_value_opacity_effect, b"opacity")
-        fade_in.setDuration(100)
-        fade_in.setStartValue(0.3)
-        fade_in.setEndValue(1.0)
-        fade_in.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        fade_in_unit = QPropertyAnimation(self.line_unit_opacity_effect, b"opacity")
-        fade_in_unit.setDuration(100)
-        fade_in_unit.setStartValue(0.3)
-        fade_in_unit.setEndValue(1.0)
-        fade_in_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        def on_fade_out_finished() -> None:
-            self.update_line(self.data)
-            fade_in.start()
-            fade_in_unit.start()
-
-        fade_out.finished.connect(on_fade_out_finished)
-        fade_out.start()
-        fade_out_unit.start()
-
-        self.line_fade_out_anim = fade_out
-        self.line_fade_out_unit_anim = fade_out_unit
-        self.line_fade_in_anim = fade_in
-        self.line_fade_in_unit_anim = fade_in_unit
+        self.error_line_card.setFixedSize(204, 204)
+        self.error_line_card.installEventFilter(
+            ToolTipFilter(self.error_line_card, 300, ToolTipPosition.TOP)
+        )
+        self.error_line_card.setToolTip(
+            Localizer.get().translation_page_card_line_error_tooltip
+        )
+        parent.addWidget(self.error_line_card)
 
     # 剩余行数
     def add_remaining_line_card(
@@ -770,25 +706,50 @@ class TranslationPage(QWidget, Base):
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
-            message_box = MessageBox(
-                Localizer.get().alert,
-                Localizer.get().translation_page_alert_reset,
-                window,
-            )
-            message_box.yesButton.setText(Localizer.get().confirm)
-            message_box.cancelButton.setText(Localizer.get().cancel)
+            def confirm_and_emit(message: str, event: Base.Event) -> None:
+                message_box = MessageBox(Localizer.get().alert, message, window)
+                message_box.yesButton.setText(Localizer.get().confirm)
+                message_box.cancelButton.setText(Localizer.get().cancel)
 
-            if message_box.exec():
-                self.emit(Base.Event.TRANSLATION_RESET, {})
+                if message_box.exec():
+                    self.emit(event, {})
+
+            menu = RoundMenu("", self.action_reset)
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().translation_page_reset_failed,
+                    triggered=lambda: confirm_and_emit(
+                        Localizer.get().translation_page_alert_reset_failed,
+                        Base.Event.TRANSLATION_RESET_FAILED,
+                    ),
+                )
+            )
+            menu.addAction(
+                Action(
+                    FluentIcon.ERASE_TOOL,
+                    Localizer.get().translation_page_reset_all,
+                    triggered=lambda: confirm_and_emit(
+                        Localizer.get().translation_page_alert_reset_all,
+                        Base.Event.TRANSLATION_RESET,
+                    ),
+                )
+            )
+            global_pos = self.action_reset.mapToGlobal(QPoint(0, 0))
+            menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
 
         self.action_reset = parent.add_action(
             Action(
-                FluentIcon.DELETE,
+                FluentIcon.ERASE_TOOL,
                 Localizer.get().translation_page_reset,
                 parent,
                 triggered=triggered,
             ),
         )
+        self.action_reset.installEventFilter(
+            ToolTipFilter(self.action_reset, 300, ToolTipPosition.TOP)
+        )
+        self.action_reset.setToolTip(Localizer.get().translation_page_reset_tooltip)
         self.action_reset.setEnabled(False)
 
     # 重置定时器状态
@@ -886,12 +847,16 @@ class TranslationPage(QWidget, Base):
         self.ring.setFormat(Localizer.get().translation_page_status_idle)
 
         # 重置卡片数据
+        self.time_display_mode = self.TimeDisplayMode.REMAINING
+        self.time.title_label.setText(
+            Localizer.get().translation_page_card_remaining_time
+        )
         self.time.set_value("0")
         self.time.set_unit("S")
-        self.remaining_time.set_value("0")
-        self.remaining_time.set_unit("S")
-        self.line_card.set_value("0")
-        self.line_card.set_unit("Line")
+        self.processed_line_card.set_value("0")
+        self.processed_line_card.set_unit("Line")
+        self.error_line_card.set_value("0")
+        self.error_line_card.set_unit("Line")
         self.remaining_line.set_value("0")
         self.remaining_line.set_unit("Line")
         self.speed.set_value("0")

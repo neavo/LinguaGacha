@@ -46,6 +46,9 @@ class Translator(Base):
         # 正在执行的任务计数器（用于精准判断任务结束）
         self.active_task_count: int = 0
 
+        # 停止请求标记（用于避免手动停止后自动生成译文）
+        self.stop_requested: bool = False
+
         # 线程锁
         self.db_lock = threading.Lock()
 
@@ -57,6 +60,9 @@ class Translator(Base):
         self.subscribe(Base.Event.TRANSLATION_RUN, self.translation_run)
         self.subscribe(Base.Event.TRANSLATION_EXPORT, self.translation_export)
         self.subscribe(Base.Event.TRANSLATION_RESET, self.translation_reset)
+        self.subscribe(
+            Base.Event.TRANSLATION_RESET_FAILED, self.translation_reset_failed
+        )
         self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self.translation_require_stop
         )
@@ -95,6 +101,7 @@ class Translator(Base):
     # 翻译开始事件
     def translation_run(self, event: Base.Event, data: dict) -> None:
         if Engine.get().get_status() == Base.TaskStatus.IDLE:
+            self.stop_requested = False
             threading.Thread(
                 target=self.start,
                 args=(event, data),
@@ -111,6 +118,7 @@ class Translator(Base):
     # 翻译停止事件
     def translation_require_stop(self, event: Base.Event, data: dict) -> None:
         # 更新运行状态
+        self.stop_requested = True
         Engine.get().set_status(Base.TaskStatus.STOPPING)
 
     # 翻译重置事件
@@ -143,6 +151,86 @@ class Translator(Base):
             self.extras = ctx.get_translation_extras()
 
             # 触发状态检查以同步 UI
+            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_reset_toast,
+                },
+            )
+
+        threading.Thread(target=task).start()
+
+    def translation_reset_failed(self, event: Base.Event, data: dict) -> None:
+        def task() -> None:
+            if Engine.get().get_status() != Base.TaskStatus.IDLE:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().engine_task_running,
+                    },
+                )
+                return
+
+            ctx = StorageContext.get()
+            if not ctx.is_loaded():
+                return
+
+            db = ctx.get_db()
+            if db is None:
+                return
+
+            items = [Item.from_dict(d) for d in db.get_all_items()]
+            if not items:
+                return
+
+            updated = False
+            for item in items:
+                if item.get_status() == Base.ProjectStatus.ERROR:
+                    item.set_dst("")
+                    item.set_status(Base.ProjectStatus.NONE)
+                    item.set_retry_count(0)
+                    updated = True
+
+            if updated:
+                db.set_items([item.to_dict() for item in items])
+
+            processed_line = sum(
+                1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
+            )
+            error_line = sum(
+                1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
+            )
+            total_line = sum(
+                1
+                for item in items
+                if item.get_status()
+                in (
+                    Base.ProjectStatus.NONE,
+                    Base.ProjectStatus.PROCESSED,
+                    Base.ProjectStatus.ERROR,
+                )
+            )
+
+            extras = ctx.get_translation_extras()
+            if not isinstance(extras, dict):
+                extras = {}
+            extras["processed_line"] = processed_line
+            extras["error_line"] = error_line
+            extras["line"] = processed_line + error_line
+            extras["total_line"] = total_line
+            ctx.set_translation_extras(extras)
+
+            project_status = (
+                Base.ProjectStatus.PROCESSING
+                if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
+                else Base.ProjectStatus.PROCESSED
+            )
+            ctx.set_project_status(project_status)
+            self.extras = extras
+
             self.emit(Base.Event.PROJECT_CHECK_RUN, {})
             self.emit(
                 Base.Event.TOAST,
@@ -466,6 +554,7 @@ class Translator(Base):
             # 检查结果并写入文件
             if (
                 self.items_cache
+                and not self.stop_requested
                 and Engine.get().get_status() != Base.TaskStatus.STOPPING
             ):
                 self.check_and_wirte_result(self.items_cache)
