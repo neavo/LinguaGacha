@@ -113,7 +113,9 @@ class LocalizerEN(LocalizerZH):
     engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
     engine_task_generation: str = "Task generation completed, {COUNT} tasks generated in total …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
-    engine_task_language_filter: str = "Language filtering completed, {COUNT} entries not containing the target language were filtered in total …"
+    engine_task_language_filter: str = "Language filtering completed, {COUNT} non-target source language entries were skipped in total …"
+    engine_task_filter_changed: str = "Filter results changed since last run: {RULE} rule-skipped, {LANGUAGE} non-target source language …"
+    engine_task_legacy_filter_migrated: str = "Project items were rebuilt to apply the latest filtering logic …"
     engine_task_scheduler_stop_with_untranslated: str = "Task scheduler stopped, but {COUNT} items remain untranslated (potentially lost due to exceptions)"
     translator_task_status_info: str = "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}"
     translator_task_force_accept_info: str = " | Forced Accept: {REASON}"
@@ -347,6 +349,7 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_status_processed: str = "Translation Completed"
     proofreading_page_status_error: str = "Translation Failed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
+    proofreading_page_status_non_target_source_language: str = "Non-target source language"
 
     proofreading_page_page_info: str = "Page {CURRENT} / {TOTAL}"
     proofreading_page_warning_kana: str = "Kana Residue"

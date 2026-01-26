@@ -102,8 +102,12 @@ class ChunkGenerator:
         for i in range(start - skip - len(chunk) - 1, -1, -1):
             item = items[i]
 
-            # 跳过 已排除 的数据
-            if item.get_status() == Base.ProjectStatus.EXCLUDED:
+            # 跳过不可参与上下文的数据
+            if item.get_status() in (
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.RULE_SKIPPED,
+                Base.ProjectStatus.LANGUAGE_SKIPPED,
+            ):
                 continue
 
             # 跳过空数据

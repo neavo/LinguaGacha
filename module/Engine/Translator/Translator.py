@@ -34,6 +34,8 @@ from module.TextProcessor import TextProcessor
 
 # 翻译器
 class Translator(Base):
+    FILTERING_VERSION = 1
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -306,6 +308,9 @@ class Translator(Base):
             # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
             db.open()
 
+            # 兼容旧工程：重建条目并合并已完成结果
+            self.migrate_legacy_items(db)
+
             # 从新模型系统获取激活模型
             self.model = self.config.get_active_model()
             if self.model is None:
@@ -372,6 +377,8 @@ class Translator(Base):
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
 
             # 3. 过滤与预处理 (核心业务逻辑保留在翻译器)
+            self.reset_recalculable_status(self.items_cache)
+
             # 规则过滤
             self.rule_filter(self.items_cache)
 
@@ -380,6 +387,31 @@ class Translator(Base):
 
             # MTool 优化器预处理
             self.mtool_optimizer_preprocess(self.items_cache)
+
+            filter_snapshot = self.get_filter_snapshot(self.items_cache)
+            previous_snapshot = db.get_meta("filter_snapshot", {})
+            if (
+                isinstance(previous_snapshot, dict)
+                and previous_snapshot
+                and previous_snapshot != filter_snapshot
+            ):
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.INFO,
+                        "message": Localizer.get()
+                        .engine_task_filter_changed.replace(
+                            "{RULE}", str(filter_snapshot["rule_skipped"])
+                        )
+                        .replace(
+                            "{LANGUAGE}", str(filter_snapshot["language_skipped"])
+                        ),
+                    },
+                )
+
+            db.set_meta("filter_snapshot", filter_snapshot)
+            db.set_meta("source_language", self.config.source_language)
+            db.set_meta("target_language", self.config.target_language)
 
             # 持久化初始化后的状态（包括过滤掉的条目）
             db.set_items([item.to_dict() for item in self.items_cache])
@@ -703,6 +735,110 @@ class Translator(Base):
 
         return max_workers, rpm_threshold
 
+    def build_item_merge_key(
+        self, item: Item
+    ) -> tuple[str, int, str, Item.TextType, Item.FileType]:
+        return (
+            item.get_file_path(),
+            item.get_row(),
+            item.get_src(),
+            item.get_text_type(),
+            item.get_file_type(),
+        )
+
+    def migrate_legacy_items(self, db: DataStore) -> None:
+        current_version = db.get_meta("filtering_version", 0)
+        if (
+            isinstance(current_version, int)
+            and current_version >= self.FILTERING_VERSION
+        ):
+            return
+
+        items_old = [Item.from_dict(d) for d in db.get_all_items()]
+        items_new = FileManager(self.config).read_from_storage(db)
+        if not items_new:
+            db.set_meta("filtering_version", self.FILTERING_VERSION)
+            return
+
+        merge_candidates: dict[
+            tuple[str, int, str, Item.TextType, Item.FileType], Item
+        ] = {}
+        for item in items_old:
+            if item.get_status() in (
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+                Base.ProjectStatus.ERROR,
+                Base.ProjectStatus.DUPLICATED,
+            ):
+                merge_candidates[self.build_item_merge_key(item)] = item
+
+        for item in items_new:
+            if item.get_status() == Base.ProjectStatus.EXCLUDED:
+                continue
+
+            key = self.build_item_merge_key(item)
+            old_item = merge_candidates.get(key)
+            if old_item is None:
+                continue
+
+            item.set_dst(old_item.get_dst())
+            item.set_status(old_item.get_status())
+            item.set_retry_count(old_item.get_retry_count())
+            item.set_name_dst(old_item.get_name_dst())
+
+        db.set_items([item.to_dict() for item in items_new])
+
+        extras = db.get_meta("translation_extras", {})
+        if not isinstance(extras, dict):
+            extras = {}
+
+        processed_count = sum(
+            1 for item in items_new if item.get_status() == Base.ProjectStatus.PROCESSED
+        )
+        error_count = sum(
+            1 for item in items_new if item.get_status() == Base.ProjectStatus.ERROR
+        )
+
+        extras["processed_line"] = processed_count
+        extras["error_line"] = error_count
+        extras["line"] = processed_count + error_count
+        extras["total_line"] = 0
+        db.set_meta("translation_extras", extras)
+        db.set_meta("filtering_version", self.FILTERING_VERSION)
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.INFO,
+                "message": Localizer.get().engine_task_legacy_filter_migrated,
+            },
+        )
+
+    def reset_recalculable_status(self, items: list[Item]) -> None:
+        for item in items:
+            if item.get_status() in (
+                Base.ProjectStatus.RULE_SKIPPED,
+                Base.ProjectStatus.LANGUAGE_SKIPPED,
+            ):
+                item.set_status(Base.ProjectStatus.NONE)
+
+    def get_filter_snapshot(self, items: list[Item]) -> dict[str, int | str]:
+        rule_skipped = sum(
+            1 for item in items if item.get_status() == Base.ProjectStatus.RULE_SKIPPED
+        )
+        language_skipped = sum(
+            1
+            for item in items
+            if item.get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
+        )
+
+        return {
+            "rule_skipped": rule_skipped,
+            "language_skipped": language_skipped,
+            "source_language": self.config.source_language,
+            "target_language": self.config.target_language,
+        }
+
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
         if items is None or len(items) == 0:
@@ -715,9 +851,11 @@ class Translator(Base):
             pid = progress.new()
             for item in items:
                 progress.update(pid, advance=1, total=len(items))
+                if item.get_status() != Base.ProjectStatus.NONE:
+                    continue
                 if RuleFilter.filter(item.get_src()):
                     count = count + 1
-                    item.set_status(Base.ProjectStatus.EXCLUDED)
+                    item.set_status(Base.ProjectStatus.RULE_SKIPPED)
 
         # 打印日志
         self.info(
@@ -736,9 +874,11 @@ class Translator(Base):
             pid = progress.new()
             for item in items:
                 progress.update(pid, advance=1, total=len(items))
+                if item.get_status() != Base.ProjectStatus.NONE:
+                    continue
                 if LanguageFilter.filter(item.get_src(), self.config.source_language):
                     count = count + 1
-                    item.set_status(Base.ProjectStatus.EXCLUDED)
+                    item.set_status(Base.ProjectStatus.LANGUAGE_SKIPPED)
 
         # 打印日志
         self.info(
@@ -783,9 +923,11 @@ class Translator(Base):
 
             # 移除子句
             for item in items_by_file_path:
+                if item.get_status() != Base.ProjectStatus.NONE:
+                    continue
                 if item.get_src() in target:
                     count = count + 1
-                    item.set_status(Base.ProjectStatus.EXCLUDED)
+                    item.set_status(Base.ProjectStatus.RULE_SKIPPED)
 
         # 打印日志
         self.info(

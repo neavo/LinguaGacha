@@ -74,6 +74,8 @@ class Base:
         PROCESSED = "PROCESSED"  # 已处理
         PROCESSED_IN_PAST = "PROCESSED_IN_PAST"  # 过去已处理
         EXCLUDED = "EXCLUDED"  # 已排除
+        RULE_SKIPPED = "RULE_SKIPPED"  # 规则跳过
+        LANGUAGE_SKIPPED = "LANGUAGE_SKIPPED"  # 非目标原文语言
         DUPLICATED = "DUPLICATED"  # 重复条目
         ERROR = "ERROR"  # 处理出错/重试失败
 
