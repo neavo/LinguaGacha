@@ -70,11 +70,6 @@ class ProjectStore(Base):
         project_name = Path(source_path).name
         db = DataStore.create(output_path, project_name)
 
-        # WHY: 新工程默认是最新过滤逻辑，避免首次翻译走 legacy 迁移并触发误导提示
-        from module.Engine.Translator.Translator import Translator
-
-        db.set_meta("filtering_version", Translator.FILTERING_VERSION)
-
         # 初始化质量规则
         QualityRuleManager.get().initialize_project_rules(db)
 
