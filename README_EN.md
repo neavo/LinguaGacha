@@ -85,9 +85,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260126 v0.51.0
+- 20260127 v0.51.1
   - feat - Reset failed entries (Translation page)
   - feat - Dynamically calculate target entries to adapt to changes in filtering rules #345 #357
+  - fix - Issue where the proofreading function could lead to project corruption
   - Performance and interaction optimization
 
 - 20260126 v0.50.6
