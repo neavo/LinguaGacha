@@ -1,6 +1,7 @@
 import itertools
 import json
 import os
+import time
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -17,6 +18,8 @@ from module.Storage.StorageContext import StorageContext
 
 
 class TRANS(Base):
+    YIELD_EVERY = 512
+
     def __init__(self, config: Config) -> None:
         super().__init__()
 
@@ -65,6 +68,8 @@ class TRANS(Base):
             return items
 
         files: dict[str, dict] = files_raw
+        yield_every = self.YIELD_EVERY
+        parsed_count = 0
         for path, entry in files.items():
             tags_list = entry.get("tags", [])
             data_list = entry.get("data", [])
@@ -108,10 +113,15 @@ class TRANS(Base):
                         }
                     )
                 )
+                parsed_count += 1
+                if yield_every > 0 and parsed_count % yield_every == 0:
+                    # WHY: 释放 GIL，避免大文件解析时 UI 假死
+                    time.sleep(0)
 
         # 去重
         if self.config.deduplication_in_trans:
             translation: dict[str, str] = {}
+            dedup_count = 0
             for item in [v for v in items if v.get_status() == Base.ProjectStatus.NONE]:
                 src = item.get_src()
                 dst = item.get_dst()
@@ -119,6 +129,10 @@ class TRANS(Base):
                     translation[src] = dst
                 else:
                     item.set_status(Base.ProjectStatus.DUPLICATED)
+                dedup_count += 1
+                if yield_every > 0 and dedup_count % yield_every == 0:
+                    # WHY: 释放 GIL，避免去重阶段阻塞 UI
+                    time.sleep(0)
 
         return items
 

@@ -599,6 +599,7 @@ class LocalizerEN(LocalizerZH):
     name_field_extraction_action_extract: str = "Extract"
     name_field_extraction_action_translate: str = "Translate"
     name_field_extraction_action_import: str = "Import To Glossary"
+    name_field_extraction_action_progress: str = "Extracting name fields …"
     name_field_extraction_context: str = "Context"
 
     # 百宝箱 - 繁简转换
@@ -619,3 +620,4 @@ class LocalizerEN(LocalizerZH):
     ts_conversion_action_start: str = "Start Conversion"
     ts_conversion_action_confirm: str = "Start Traditional-Simplified conversion …?"
     ts_conversion_action_progress: str = "Converting Traditional-Simplified, item {CURRENT} of {TOTAL} …"
+    ts_conversion_action_preparing: str = "Preparing conversion data …"
