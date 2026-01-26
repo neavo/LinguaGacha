@@ -80,6 +80,7 @@ class ProofreadingPage(QWidget, Base):
             Base.Event.TRANSLATION_REQUIRE_STOP, self.on_engine_status_changed
         )
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
+        self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
