@@ -92,13 +92,21 @@ self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
 ## 6. 任务流程指南 (Workflow)
 1. 理解需求：定位相关逻辑或 UI 页面
 2. 分析上下文：查看继承关系（通常继承自 `Base`）与事件监听
-3. 实施变更：
-  - 修改业务逻辑后，检查是否需要同步更新 `Localizer`
-  - 修改 UI 后，确保在亮/暗主题下显示正常
-4. 验证：手动测试或补充脚本测试核心算法
-5. 收尾（仅对有业务变更的文件）：
-  - `uv run ruff check --fix <file_path>`
-  - `uv run ruff format <file_path>`
+3. 制定计划：在实际执行代码变更前，必须在 `plan/todo.md` 中生成具体的任务表格
+- **表格格式要求**：必须包含 `状态` 列（使用 `[ ]` / `[x]`）
+- **示例**：
+  | 状态 | 任务描述 | 备注 |
+  | :--: | :--- | :--- |
+  | [ ] | 创建 UI 组件 | ... |
+  | [x] | 实现事件监听 | ... |
+4. 实施变更：
+- 修改业务逻辑后，检查是否需要同步更新 `Localizer`
+- 修改 UI 后，确保在亮/暗主题下显示正常
+- **同步进度**：每完成一项，立即更新 `plan/todo.md` 表格状态
+5. 验证：手动测试或补充脚本测试核心算法
+6. 收尾（仅对有业务变更的文件）：
+- `uv run ruff check --fix <file_path>`
+- `uv run ruff format <file_path>`
 
 ## 7. 常用文件路径
 - `app.py`: 应用入口
