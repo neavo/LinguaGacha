@@ -1,9 +1,11 @@
 import re
 import threading
+from typing import Callable
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
@@ -16,6 +18,7 @@ from qfluentwidgets import ToolTipPosition
 from base.Base import Base
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
+from frontend.Proofreading.ProofreadingEditPanel import ProofreadingEditPanel
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
 from module.Config import Config
@@ -38,6 +41,7 @@ class ProofreadingPage(QWidget, Base):
     translate_done = pyqtSignal(object, bool)  # 翻译完成信号
     save_done = pyqtSignal(bool)  # 保存完成信号
     export_done = pyqtSignal(bool, str)  # 导出完成信号 (success, error_msg)
+    item_saved = pyqtSignal(object, bool)  # 单条保存完成信号
     progress_updated = pyqtSignal(
         str, int, int
     )  # 进度更新信号 (content, current, total)
@@ -65,6 +69,14 @@ class ProofreadingPage(QWidget, Base):
             -1
         )  # 当前匹配项索引（在 search_match_indices 中的位置）
         self.pending_selected_item: Item | None = None
+        self.current_item: Item | None = None
+        self.current_row_in_page: int = -1
+        self.current_page_start_index: int = 0
+        self.current_page: int = 1
+        self.block_selection_change: bool = False
+        self.block_page_change: bool = False
+        self.pending_action: Callable[[], None] | None = None
+        self.pending_revert: Callable[[], None] | None = None
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -92,14 +104,21 @@ class ProofreadingPage(QWidget, Base):
         self.translate_done.connect(self.on_translate_done_ui)
         self.save_done.connect(self.on_save_done_ui)
         self.export_done.connect(self.on_export_done_ui)
+        self.item_saved.connect(self.on_item_saved_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
         """添加主体控件"""
-        self.table_widget = ProofreadingTableWidget()
-        self.table_widget.cell_edited.connect(self.on_cell_edited)
+        body_widget = QWidget(self)
+        body_layout = QHBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(8)
+
+        # WHY: qfluentwidgets 的样式管理依赖 widget 的父子关系，首次进入页面时若无父对象
+        # 可能出现 TableWidget 使用 Qt 原生样式，直到主题切换触发全局刷新才恢复。
+        self.table_widget = ProofreadingTableWidget(body_widget)
         self.table_widget.retranslate_clicked.connect(self.on_retranslate_clicked)
         self.table_widget.batch_retranslate_clicked.connect(
             self.on_batch_retranslate_clicked
@@ -112,9 +131,16 @@ class ProofreadingPage(QWidget, Base):
         )
         self.table_widget.copy_src_clicked.connect(self.on_copy_src_clicked)
         self.table_widget.copy_dst_clicked.connect(self.on_copy_dst_clicked)
+        self.table_widget.itemSelectionChanged.connect(self.on_table_selection_changed)
         self.table_widget.set_items([], {})
 
-        parent.addWidget(self.table_widget, 1)
+        self.edit_panel = ProofreadingEditPanel(self)
+        self.edit_panel.save_requested.connect(self.on_edit_save_requested)
+        self.edit_panel.restore_requested.connect(self.on_edit_restore_requested)
+
+        body_layout.addWidget(self.table_widget, 7)
+        body_layout.addWidget(self.edit_panel, 3)
+        parent.addWidget(body_widget, 1)
 
     # ========== 底部：命令栏 ==========
     def add_widget_foot(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
@@ -303,12 +329,17 @@ class ProofreadingPage(QWidget, Base):
         # 隐藏 loading 指示器
         self.indeterminate_hide()
 
+        self.edit_panel.set_result_checker(self.result_checker)
+
         if items:
-            self.apply_filter()
+            self.apply_filter(False)
         else:
             # 清空数据并显示占位符
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
+            self.current_item = None
+            self.current_row_in_page = -1
+            self.edit_panel.clear()
 
         self.check_engine_status()
 
@@ -334,12 +365,20 @@ class ProofreadingPage(QWidget, Base):
         dialog.set_filter_options(self.filter_options)
 
         if dialog.exec():
-            self.filter_options = dialog.get_filter_options()
-            self.pending_selected_item = None
-            self.apply_filter()
+            new_options = dialog.get_filter_options()
 
-    def apply_filter(self) -> None:
+            def action() -> None:
+                self.filter_options = new_options
+                self.pending_selected_item = None
+                self.apply_filter(False)
+
+            self.run_with_unsaved_guard(action)
+
+    def apply_filter(self, guard: bool = True) -> None:
         """应用筛选条件 (异步执行)"""
+        if guard:
+            self.run_with_unsaved_guard(lambda: self.apply_filter(False))
+            return
         # 如果正在加载，则不重复触发
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
@@ -553,17 +592,21 @@ class ProofreadingPage(QWidget, Base):
 
     def on_search_back_clicked(self) -> None:
         """搜索栏返回点击，清除搜索状态"""
-        self.search_keyword = ""
-        self.search_is_regex = False
-        self.search_match_indices = []
-        self.search_current_match = -1
-        self.search_card.clear_match_info()
-        if self.search_filter_mode:
-            self.pending_selected_item = None
-            self.apply_filter()
-        self.search_card.setVisible(False)
-        self.attach_pagination_to_command_bar()
-        self.command_bar_card.setVisible(True)
+
+        def action() -> None:
+            self.search_keyword = ""
+            self.search_is_regex = False
+            self.search_match_indices = []
+            self.search_current_match = -1
+            self.search_card.clear_match_info()
+            if self.search_filter_mode:
+                self.pending_selected_item = None
+                self.apply_filter(False)
+            self.search_card.setVisible(False)
+            self.attach_pagination_to_command_bar()
+            self.command_bar_card.setVisible(True)
+
+        self.run_with_unsaved_guard(action)
 
     def do_search(self) -> None:
         """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
@@ -598,8 +641,12 @@ class ProofreadingPage(QWidget, Base):
         self.search_is_regex = is_regex
 
         if self.search_filter_mode:
-            self.pending_selected_item = None
-            self.apply_filter()
+
+            def action() -> None:
+                self.pending_selected_item = None
+                self.apply_filter(False)
+
+            self.run_with_unsaved_guard(action)
             return
 
         # 构建匹配索引列表
@@ -621,34 +668,37 @@ class ProofreadingPage(QWidget, Base):
         self.jump_to_match()
 
     def on_search_mode_changed(self) -> None:
-        self.search_filter_mode = self.search_card.is_filter_mode()
-        self.search_keyword = self.search_card.get_keyword()
-        self.search_is_regex = self.search_card.is_regex_mode()
+        def action() -> None:
+            self.search_filter_mode = self.search_card.is_filter_mode()
+            self.search_keyword = self.search_card.get_keyword()
+            self.search_is_regex = self.search_card.is_regex_mode()
 
-        if self.search_filter_mode and self.search_keyword and self.search_is_regex:
-            is_valid, error_msg = self.search_card.validate_regex()
-            if not is_valid:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
-                    },
-                )
+            if self.search_filter_mode and self.search_keyword and self.search_is_regex:
+                is_valid, error_msg = self.search_card.validate_regex()
+                if not is_valid:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                        },
+                    )
+                    return
+
+            selected_items = self.table_widget.get_selected_items()
+            self.pending_selected_item = selected_items[0] if selected_items else None
+
+            if self.search_filter_mode:
+                if not self.search_keyword:
+                    self.search_match_indices = []
+                    self.search_current_match = -1
+                    self.search_card.clear_match_info()
+                self.apply_filter(False)
                 return
 
-        selected_items = self.table_widget.get_selected_items()
-        self.pending_selected_item = selected_items[0] if selected_items else None
+            self.apply_filter(False)
 
-        if self.search_filter_mode:
-            if not self.search_keyword:
-                self.search_match_indices = []
-                self.search_current_match = -1
-                self.search_card.clear_match_info()
-            self.apply_filter()
-            return
-
-        self.apply_filter()
+        self.run_with_unsaved_guard(action)
 
     def build_match_indices(self) -> None:
         """构建匹配项索引列表 (修复变量未绑定隐患)"""
@@ -811,7 +861,18 @@ class ProofreadingPage(QWidget, Base):
     # ========== 分页渲染 ==========
     def on_page_changed(self, page: int) -> None:
         """页码变化"""
-        self.render_page(page)
+        if self.block_page_change:
+            return
+
+        def action() -> None:
+            self.render_page(page)
+
+        def revert() -> None:
+            self.block_page_change = True
+            self.pagination_bar.set_page(self.current_page)
+            self.block_page_change = False
+
+        self.run_with_unsaved_guard(action, revert)
 
     def render_page(self, page_num: int) -> None:
         """渲染指定页的数据"""
@@ -825,30 +886,171 @@ class ProofreadingPage(QWidget, Base):
         }
 
         self.table_widget.set_items(page_items, page_warning_map, start_idx)
+        self.current_page_start_index = start_idx
+        self.current_page = page_num
 
-    # ========== 编辑功能 ==========
-    def on_cell_edited(self, item: Item, new_dst: str) -> None:
-        """单元格编辑完成"""
+        if not page_items:
+            self.current_item = None
+            self.current_row_in_page = -1
+            self.edit_panel.clear()
+            return
+
+        if self.current_item in page_items:
+            row = page_items.index(self.current_item)
+        else:
+            row = 0
+
+        self.block_selection_change = True
+        self.table_widget.selectRow(row)
+        self.block_selection_change = False
+        self.apply_selection(page_items[row], row)
+
+    def on_table_selection_changed(self) -> None:
+        if self.block_selection_change:
+            return
+
+        row = self.table_widget.get_selected_row()
+        if row < 0:
+            self.current_item = None
+            self.current_row_in_page = -1
+            self.edit_panel.clear()
+            return
+
+        item = self.table_widget.get_item_at_row(row)
+        if not item:
+            return
+
+        def action() -> None:
+            self.apply_selection(item, row)
+
+        def revert() -> None:
+            if self.current_row_in_page < 0:
+                return
+            self.block_selection_change = True
+            self.table_widget.selectRow(self.current_row_in_page)
+            self.block_selection_change = False
+
+        self.run_with_unsaved_guard(action, revert)
+
+    def apply_selection(self, item: Item, row: int) -> None:
+        self.current_item = item
+        self.current_row_in_page = row
+        warnings = self.warning_map.get(id(item), [])
+        index = self.current_page_start_index + row + 1
+        self.edit_panel.bind_item(item, index, warnings)
+        self.edit_panel.set_readonly(self.is_readonly)
+
+    def run_with_unsaved_guard(
+        self, action: Callable[[], None], on_cancel: Callable[[], None] | None = None
+    ) -> None:
+        if not self.edit_panel.has_unsaved_changes():
+            action()
+            return
+
+        dialog = MessageBox(
+            Localizer.get().proofreading_page_unsaved_title,
+            Localizer.get().proofreading_page_unsaved_message,
+            self.main_window,
+        )
+        dialog.yesButton.setText(Localizer.get().proofreading_page_unsaved_save)
+        dialog.cancelButton.setText(Localizer.get().proofreading_page_unsaved_cancel)
+
+        if not dialog.exec():
+            if on_cancel:
+                on_cancel()
+            return
+
+        self.pending_action = action
+        self.pending_revert = on_cancel
+        self.save_current_item()
+
+    def save_current_item(self) -> None:
+        if self.is_readonly or not self.current_item:
+            return
+        self.on_edit_save_requested(
+            self.current_item, self.edit_panel.get_current_text()
+        )
+
+    def on_edit_save_requested(self, item: Item, new_dst: str) -> None:
         if self.is_readonly:
             return
 
-        # 始终更新和检查，确保状态一致
-        item.set_dst(new_dst)
+        if new_dst == item.get_dst():
+            self.edit_panel.apply_saved_state()
+            if self.pending_action:
+                action = self.pending_action
+                self.pending_action = None
+                self.pending_revert = None
+                action()
+            return
 
-        # 如果译文不为空，且当前状态不是已处理状态，则强制更新为 PROCESSED
-        # 这确保了手工修改的 排重/已排除 条目在导出时被视为有效翻译
-        if new_dst and item.get_status() not in (
+        old_dst = item.get_dst()
+        old_status = item.get_status()
+        if new_dst and old_status not in (
             Base.ProjectStatus.PROCESSED,
             Base.ProjectStatus.PROCESSED_IN_PAST,
         ):
             item.set_status(Base.ProjectStatus.PROCESSED)
 
-        self.recheck_item(item)
+        item.set_dst(new_dst)
 
-    def recheck_item(self, item: Item) -> None:
+        def task() -> None:
+            success = False
+            try:
+                db = StorageContext.get().get_db()
+                if db is None:
+                    raise RuntimeError("db not ready")
+                db.set_item(item.to_dict())
+                success = True
+            except Exception as e:
+                self.error("Save item failed", e)
+                item.set_dst(old_dst)
+                item.set_status(old_status)
+
+            self.item_saved.emit(item, success)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def on_edit_restore_requested(self) -> None:
+        if self.current_item is None:
+            return
+
+    def on_item_saved_ui(self, item: Item, success: bool) -> None:
+        if not success:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().proofreading_page_save_failed,
+                },
+            )
+            if self.pending_revert:
+                self.pending_revert()
+            self.pending_action = None
+            self.pending_revert = None
+            return
+
+        self.edit_panel.apply_saved_state()
+        warnings = self.recheck_item(item)
+        row = self.table_widget.find_row_by_item(item)
+        if row >= 0:
+            self.table_widget.update_row_dst(row, item.get_dst())
+            self.table_widget.update_row_status(row, warnings)
+        if self.current_item is item:
+            self.edit_panel.refresh_status_tags(item, warnings)
+
+        self.update_project_status_after_save()
+
+        if self.pending_action:
+            action = self.pending_action
+            self.pending_action = None
+            self.pending_revert = None
+            action()
+
+    def recheck_item(self, item: Item) -> list[WarningType]:
         """重新检查单个条目"""
         if not self.config:
-            return
+            return []
 
         checker = ResultChecker(self.config)
         warnings = checker.check_item(item)
@@ -861,6 +1063,8 @@ class ProofreadingPage(QWidget, Base):
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             self.table_widget.update_row_status(row, warnings)
+
+        return warnings
 
     def on_copy_src_clicked(self, item: Item) -> None:
         """复制原文到剪贴板"""
@@ -942,6 +1146,11 @@ class ProofreadingPage(QWidget, Base):
             row = self.table_widget.find_row_by_item(item)
             if row >= 0:
                 self.table_widget.update_row_dst(row, "")
+            if self.current_item is item:
+                warnings = self.warning_map.get(id(item), [])
+                index = self.current_page_start_index + self.current_row_in_page + 1
+                self.edit_panel.bind_item(item, index, warnings)
+                self.edit_panel.set_readonly(self.is_readonly)
 
     # ========== 重新翻译功能 ==========
     def on_retranslate_clicked(self, item: Item) -> None:
@@ -1072,11 +1281,15 @@ class ProofreadingPage(QWidget, Base):
         # 2. 如果条目在当前页可见，更新 UI 显示
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
-            self.table_widget.set_row_loading(row, False)
             if success:
                 self.table_widget.update_row_dst(row, item.get_dst())
             else:
                 item.set_status(Base.ProjectStatus.PROCESSED)
+        if self.current_item is item:
+            warnings = self.warning_map.get(id(item), [])
+            index = self.current_page_start_index + self.current_row_in_page + 1
+            self.edit_panel.bind_item(item, index, warnings)
+            self.edit_panel.set_readonly(self.is_readonly)
 
     def on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
         """进度更新的 UI 处理（主线程）"""
@@ -1101,7 +1314,6 @@ class ProofreadingPage(QWidget, Base):
 
         # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
         items_all = self.items_all
-        review_items = self.items
 
         def task() -> None:
             try:
@@ -1111,40 +1323,7 @@ class ProofreadingPage(QWidget, Base):
                     self.save_done.emit(False)
                     return
                 db.set_items([item.to_dict() for item in items_all])
-
-                # 保存条目后，同步更新项目级别元数据
-                ctx = StorageContext.get()
-                if ctx.is_loaded():
-                    # 统计 NONE 状态的条目数量（排除 EXCLUDED 和 DUPLICATED）
-                    none_count = sum(
-                        1
-                        for item in review_items
-                        if item.get_status() == Base.ProjectStatus.NONE
-                    )
-
-                    # 确定项目状态
-                    project_status = (
-                        Base.ProjectStatus.PROCESSING
-                        if none_count > 0
-                        else Base.ProjectStatus.PROCESSED
-                    )
-                    ctx.set_project_status(project_status)
-
-                    # 重新计算翻译进度
-                    extras = ctx.get_translation_extras()
-                    # 统计已翻译的条目数量（状态为 PROCESSED 或 PROCESSED_IN_PAST）
-                    translated_count = sum(
-                        1
-                        for item in review_items
-                        if item.get_status()
-                        in (
-                            Base.ProjectStatus.PROCESSED,
-                            Base.ProjectStatus.PROCESSED_IN_PAST,
-                        )
-                    )
-                    # 更新已翻译行数（其他字段如 Token 统计保持不变）
-                    extras["line"] = translated_count
-                    ctx.set_translation_extras(extras)
+                self.update_project_status_after_save()
 
                 self.save_done.emit(True)
             except Exception as e:
@@ -1152,6 +1331,35 @@ class ProofreadingPage(QWidget, Base):
                 self.save_done.emit(False)
 
         threading.Thread(target=task, daemon=True).start()
+
+    def update_project_status_after_save(self) -> None:
+        ctx = StorageContext.get()
+        if not ctx.is_loaded():
+            return
+
+        review_items = self.items
+        none_count = sum(
+            1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
+        )
+        project_status = (
+            Base.ProjectStatus.PROCESSING
+            if none_count > 0
+            else Base.ProjectStatus.PROCESSED
+        )
+        ctx.set_project_status(project_status)
+
+        extras = ctx.get_translation_extras()
+        translated_count = sum(
+            1
+            for item in review_items
+            if item.get_status()
+            in (
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+            )
+        )
+        extras["line"] = translated_count
+        ctx.set_translation_extras(extras)
 
     # ========== 导出功能 ==========
     def on_export_clicked(self) -> None:
@@ -1266,6 +1474,7 @@ class ProofreadingPage(QWidget, Base):
             self.warning_map = {}
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
+            self.edit_panel.clear()
 
         # 2. 更新按钮状态
         has_items_all = bool(self.items_all)
@@ -1285,6 +1494,8 @@ class ProofreadingPage(QWidget, Base):
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
+            if self.current_item is not None:
+                self.edit_panel.set_readonly(is_busy)
 
     def showEvent(self, a0: QShowEvent | None) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
@@ -1347,6 +1558,10 @@ class ProofreadingPage(QWidget, Base):
         self.warning_map = {}
         self.result_checker = None
         self.filter_options = {}
+        self.current_item = None
+        self.current_row_in_page = -1
+        self.current_page_start_index = 0
+        self.current_page = 1
 
         # 清空搜索状态
         self.search_keyword = ""
@@ -1361,6 +1576,8 @@ class ProofreadingPage(QWidget, Base):
         # 重置表格和分页
         self.table_widget.set_items([], {})
         self.pagination_bar.reset()
+        self.edit_panel.set_result_checker(None)
+        self.edit_panel.clear()
 
         # 重置按钮状态
         self.btn_save.setEnabled(False)

@@ -1,6 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtGui import QFocusEvent
+from PyQt5.QtCore import QEvent
+from PyQt5.QtCore import QObject
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QTextOption
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
@@ -66,9 +69,15 @@ class CustomTextEdit(PlainTextEdit):
 
         # 默认自动换行
         self.setLineWrapMode(PlainTextEdit.LineWrapMode.WidgetWidth)
+        # WHY: 即使启用了自动换行，仍可能因长 token 出现横向滚动条，这里彻底关闭。
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        option = self.document().defaultTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.document().setDefaultTextOption(option)
 
         # 初始样式
         self.update_style()
+        self.installEventFilter(self)
 
         # 监听主题变化，控件销毁时自动断开
         qconfig.themeChanged.connect(self.update_style)
@@ -81,9 +90,9 @@ class CustomTextEdit(PlainTextEdit):
         except (TypeError, RuntimeError):
             pass
 
-    def setReadOnly(self, read_only: bool) -> None:
-        self._is_read_only = read_only
-        super().setReadOnly(read_only)
+    def setReadOnly(self, ro: bool) -> None:
+        self._is_read_only = ro
+        super().setReadOnly(ro)
         self.update_style()
 
     def set_error(self, has_error: bool) -> None:
@@ -96,16 +105,20 @@ class CustomTextEdit(PlainTextEdit):
         """设置失去焦点时的回调函数"""
         self._on_focus_out = callback
 
-    def focusOutEvent(self, event: QFocusEvent) -> None:
-        """重写失去焦点事件，触发回调"""
-        super().focusOutEvent(event)
-        if self._on_focus_out:
-            self._on_focus_out()
+    def eventFilter(self, a0: QObject, a1: QEvent) -> bool:
+        if a0 is self:
+            if a1.type() == QEvent.Type.FocusOut and self._on_focus_out:
+                self._on_focus_out()
+            if a1.type() == QEvent.Type.Show:
+                # WHY: 页面创建早于主题加载时，确保显示时样式同步
+                self.update_style()
+        return super().eventFilter(a0, a1)
 
     def update_style(self) -> None:
         is_dark = isDarkTheme()
         theme_color = themeColor().name()
         font_family = self.FONT_MONOSPACE if self._monospace else self.FONT_DEFAULT
+        padding = 6 if bool(self.property("compact")) else 10
 
         if self._is_read_only:
             if is_dark:
@@ -117,6 +130,7 @@ class CustomTextEdit(PlainTextEdit):
                 border = "1px solid transparent"
                 color = self.LIGHT_TEXT_READONLY
             focus_border = border
+            focus_border_bottom = "1px solid transparent"
         else:
             if is_dark:
                 bg_color = self.DARK_BG_EDITABLE
@@ -128,29 +142,40 @@ class CustomTextEdit(PlainTextEdit):
                 color = self.LIGHT_TEXT_EDITABLE
             # 编辑模式下焦点时显示主题色边框
             focus_border = f"1px solid {theme_color}"
+            focus_border_bottom = f"1px solid {theme_color}"
 
         # 错误状态覆盖边框颜色
         if self._has_error and not self._is_read_only:
             border = f"1px solid {self.ERROR_BORDER}"
             focus_border = f"1px solid {self.ERROR_BORDER}"
+            focus_border_bottom = f"1px solid {self.ERROR_BORDER}"
 
         self.setStyleSheet(f"""
-            CustomTextEdit {{
+            CustomTextEdit,
+            CustomTextEdit PlainTextEdit,
+            CustomTextEdit QPlainTextEdit {{
                 background-color: {bg_color};
                 border: {border};
-                border-radius: 6px;
-                color: {color};
-                font-family: {font_family};
-                padding: 10px;
-                selection-background-color: {theme_color};
+                 border-radius: 6px;
+                 color: {color};
+                 font-family: {font_family};
+                 padding: {padding}px;
+                 selection-background-color: {theme_color};
+             }}
+            CustomTextEdit QPlainTextEdit::viewport {{
+                background-color: {bg_color};
             }}
-            CustomTextEdit:hover {{
+            CustomTextEdit:hover,
+            CustomTextEdit PlainTextEdit:hover,
+            CustomTextEdit QPlainTextEdit:hover {{
                 border: {border};
                 background-color: {bg_color};
             }}
-            CustomTextEdit:focus {{
+            CustomTextEdit:focus,
+            CustomTextEdit PlainTextEdit:focus,
+            CustomTextEdit QPlainTextEdit:focus {{
                 border: {focus_border};
-                border-bottom: 1px solid {theme_color};
+                border-bottom: {focus_border_bottom};
                 background-color: {bg_color};
             }}
         """)
