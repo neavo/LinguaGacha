@@ -4,6 +4,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QPaintEvent
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QTextCharFormat
 from PyQt5.QtGui import QTextCursor
@@ -36,7 +37,7 @@ from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
 
 
-def paint_status_pill(pill: PillPushButton, e) -> None:
+def paint_status_pill(pill: PillPushButton, e: QPaintEvent) -> None:
     painter = QPainter(pill)
     painter.setRenderHints(QPainter.Antialiasing)
 
@@ -411,7 +412,7 @@ class ProofreadingEditPanel(QWidget):
         pill.setCheckable(False)
         pill.setCursor(Qt.CursorShape.ArrowCursor)
         pill.setProperty("kind", kind)
-        pill.paintEvent = MethodType(lambda s, e: paint_status_pill(s, e), pill)
+        pill.paintEvent = MethodType(paint_status_pill, pill)
         return pill
 
     def set_pill_layout_visible(self, pill: PillPushButton, visible: bool) -> None:
@@ -545,12 +546,13 @@ class ProofreadingEditPanel(QWidget):
         terms: list[str],
         failed_terms: set[tuple[str, str]],
         highlight_failed: bool,
-    ) -> list:
-        selections = []
+    ) -> list[QPlainTextEdit.ExtraSelection]:
+        selections: list[QPlainTextEdit.ExtraSelection] = []
+        failed_src_terms = {src for src, _dst in failed_terms}
         for term in terms:
             if not term:
                 continue
-            is_failed = highlight_failed and any(term == t[0] for t in failed_terms)
+            is_failed = highlight_failed and term in failed_src_terms
             start = 0
             while True:
                 idx = text.find(term, start)

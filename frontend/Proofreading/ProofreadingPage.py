@@ -77,6 +77,7 @@ class ProofreadingPage(QWidget, Base):
         self.block_page_change: bool = False
         self.pending_action: Callable[[], None] | None = None
         self.pending_revert: Callable[[], None] | None = None
+        self.pending_export: bool = False
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -519,7 +520,10 @@ class ProofreadingPage(QWidget, Base):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
-        if self.search_filter_mode and self.search_keyword:
+        should_build_match_indices = self.search_filter_mode and bool(
+            self.search_keyword
+        )
+        if should_build_match_indices:
             self.build_match_indices()
             if not self.search_match_indices:
                 self.search_card.set_match_info(0, 0)
@@ -530,9 +534,8 @@ class ProofreadingPage(QWidget, Base):
                         "message": Localizer.get().search_no_match,
                     },
                 )
-            self.restore_selected_item()
-        else:
-            self.restore_selected_item()
+
+        self.restore_selected_item()
 
     def build_default_filter_options(
         self,
@@ -1338,12 +1341,12 @@ class ProofreadingPage(QWidget, Base):
             return
 
         review_items = self.items
-        none_count = sum(
+        untranslated_count = sum(
             1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
         )
         project_status = (
             Base.ProjectStatus.PROCESSING
-            if none_count > 0
+            if untranslated_count > 0
             else Base.ProjectStatus.PROCESSED
         )
         ctx.set_project_status(project_status)
@@ -1384,7 +1387,7 @@ class ProofreadingPage(QWidget, Base):
     def on_save_done_ui(self, success: bool) -> None:
         """保存完成的 UI 更新（主线程）"""
         # 检查是否有待处理的导出操作
-        pending_export = getattr(self, "pending_export", False)
+        pending_export = self.pending_export
         self.pending_export = False
 
         if pending_export:

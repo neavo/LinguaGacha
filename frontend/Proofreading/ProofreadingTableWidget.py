@@ -32,7 +32,7 @@ class ProofreadingTableWidget(TableWidget):
     batch_retranslate_clicked = pyqtSignal(list)  # (items) 批量重新翻译
     reset_translation_clicked = pyqtSignal(object)  # (item) 重置翻译
     batch_reset_translation_clicked = pyqtSignal(list)  # (items) 批量重置翻译
-    copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到译文
+    copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到剪贴板
     copy_dst_clicked = pyqtSignal(object)  # (item) 复制译文到剪贴板
 
     # 列索引常量
@@ -55,7 +55,7 @@ class ProofreadingTableWidget(TableWidget):
         Base.ProjectStatus.LANGUAGE_SKIPPED: FluentIcon.REMOVE_FROM,
     }
 
-    def __init__(self, parent: QWidget = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         # 设置列头
@@ -261,7 +261,10 @@ class ProofreadingTableWidget(TableWidget):
             status_icon.installEventFilter(
                 ToolTipFilter(status_icon, 300, ToolTipPosition.TOP)
             )
-            status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self.get_status_text(status)}"
+            status_tooltip = (
+                f"{Localizer.get().proofreading_page_filter_status}\n"
+                f"{Localizer.get().current_status}{self.get_status_text(status)}"
+            )
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
@@ -272,7 +275,10 @@ class ProofreadingTableWidget(TableWidget):
             warning_icon.installEventFilter(
                 ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP)
             )
-            warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
+            warning_tooltip = (
+                f"{Localizer.get().proofreading_page_warning_tooltip_title}\n"
+                f"{Localizer.get().current_status}{' | '.join(warning_texts)}"
+            )
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
 
@@ -289,7 +295,7 @@ class ProofreadingTableWidget(TableWidget):
         }
         return status_texts.get(status, str(status))
 
-    def get_warning_text(self, error: WarningType) -> str:
+    def get_warning_text(self, warning: WarningType) -> str:
         """获取警告类型的本地化文本"""
         warning_texts = {
             WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
@@ -299,7 +305,7 @@ class ProofreadingTableWidget(TableWidget):
             WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
             WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
         }
-        return warning_texts.get(error, str(error))
+        return warning_texts.get(warning, str(warning))
 
     def get_item_at_row(self, row: int) -> Item | None:
         """获取指定行绑定的 Item 对象"""
