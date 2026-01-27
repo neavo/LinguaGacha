@@ -1,6 +1,5 @@
 import importlib.util
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -33,14 +32,6 @@ def patch_opencc_init() -> tuple[Path, str] | None:
 def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
     if backup:
         backup[0].write_text(backup[1], encoding="utf-8")
-
-
-def stage_runtime_files(output_dir: Path) -> None:
-    # Why: 运行时依赖 resource/ 与 version.txt，必须与可执行文件同目录，否则 .app/便携包会启动即崩溃。
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    shutil.copy2("./version.txt", output_dir / "version.txt")
-    shutil.copytree("./resource", output_dir / "resource", dirs_exist_ok=True)
 
 
 backup = patch_opencc_init()
@@ -96,10 +87,3 @@ if os.path.exists("./requirements.txt"):
 PyInstaller.__main__.run(cmd)
 
 restore_opencc_init(backup)
-
-if is_macos:
-    stage_runtime_files(Path("./dist/LinguaGacha.app/Contents/MacOS"))
-elif is_linux:
-    stage_runtime_files(Path("./dist/LinguaGacha"))
-else:
-    stage_runtime_files(Path("./dist/LinguaGacha"))
