@@ -232,6 +232,8 @@ class ProofreadingEditPanel(QWidget):
         self.set_save_state("")
         self.refresh_status_tags(item, warnings)
         self.schedule_status_height_refresh()
+        # 先隐藏术语状态 pill，等异步计算完成后再显示，避免短暂显示旧状态
+        self.set_pill_layout_visible(self.glossary_status_pill, False)
         self.schedule_glossary_status_refresh()
 
     def clear(self) -> None:
@@ -483,23 +485,34 @@ class ProofreadingEditPanel(QWidget):
             glossary_dst = term.get("dst", "")
             if not glossary_src or glossary_src not in src_repl:
                 continue
+            # 与 ResultChecker 保持一致：空 dst 条目不参与判断
+            if not glossary_dst:
+                continue
 
-            if glossary_dst and glossary_dst in dst_repl:
+            if glossary_dst in dst_repl:
                 applied.append((glossary_src, glossary_dst))
             else:
                 failed.append((glossary_src, glossary_dst))
 
         if not applied and not failed:
-            self.clear_glossary_status()
-            self.set_pill_layout_visible(self.glossary_status_pill, True)
+            # 没有命中任何术语条目，不显示 pill
+            self.set_pill_layout_visible(self.glossary_status_pill, False)
             return
 
-        if failed:
+        if failed and not applied:
+            # 全部未生效
+            self.glossary_status_pill.setText(
+                Localizer.get().proofreading_page_glossary_miss
+            )
+            self.glossary_status_pill.set_kind(StatusPillKind.ERROR)
+        elif failed:
+            # 部分生效
             self.glossary_status_pill.setText(
                 Localizer.get().proofreading_page_glossary_partial
             )
             self.glossary_status_pill.set_kind(StatusPillKind.WARNING)
         else:
+            # 全部生效
             self.glossary_status_pill.setText(
                 Localizer.get().proofreading_page_glossary_ok
             )
