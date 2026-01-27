@@ -393,13 +393,27 @@ class LocalizerZH:
     proofreading_page_indeterminate_exporting: str = "生成译文中 …"
 
     proofreading_page_retranslate: str = "重新翻译"
-    proofreading_page_retranslate_confirm: str = "确定要重新翻译此条目吗 …?"
+    proofreading_page_retranslate_confirm: str = (
+        "确定要重新翻译此条目吗 …?\n"
+        "注意：当前编辑框内未保存的修改将会被丢弃 …"
+    )
     proofreading_page_batch_retranslate: str = "重新翻译已选条目"
-    proofreading_page_batch_retranslate_confirm: str = "确定要重新翻译全部 {COUNT} 个已选条目吗 …?"
+    proofreading_page_batch_retranslate_confirm: str = (
+        "确定要重新翻译全部 {COUNT} 个已选条目吗 …?\n"
+        "注意：当前编辑框内未保存的修改将会被丢弃 …"
+    )
     proofreading_page_reset_translation: str = "重置翻译状态"
-    proofreading_page_reset_translation_confirm: str = "确定要重置此条目的翻译状态吗 …?\n重置后，译文将被清空，状态将变更为未翻译 …"
+    proofreading_page_reset_translation_confirm: str = (
+        "确定要重置此条目的翻译状态吗 …?\n"
+        "重置后，译文将被清空，状态将变更为未翻译 …\n"
+        "注意：当前编辑框内未保存的修改将会被丢弃 …"
+    )
     proofreading_page_batch_reset_translation: str = "重置已选条目翻译状态"
-    proofreading_page_batch_reset_translation_confirm: str = "确定要重置全部 {COUNT} 个已选条目的翻译状态吗 …?\n重置后，译文将被清空，状态将变更为未翻译 …"
+    proofreading_page_batch_reset_translation_confirm: str = (
+        "确定要重置全部 {COUNT} 个已选条目的翻译状态吗 …?\n"
+        "重置后，译文将被清空，状态将变更为未翻译 …\n"
+        "注意：当前编辑框内未保存的修改将会被丢弃 …"
+    )
 
     # 基础设置
     basic_settings_page_project_save_mode_title: str = "工程文件保存位置"

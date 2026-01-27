@@ -1126,7 +1126,11 @@ class ProofreadingPage(QWidget, Base):
         """复制译文到剪贴板"""
         clipboard = QApplication.clipboard()
         if clipboard:
-            clipboard.setText(item.get_dst())
+            text = item.get_dst()
+            # WHY: 右侧编辑面板的“复制译文”应复制当前编辑框内容（可能未保存）。
+            if self.sender() is self.edit_panel and self.current_item is item:
+                text = self.edit_panel.get_current_text()
+            clipboard.setText(text)
 
         self.emit(
             Base.Event.TOAST,
