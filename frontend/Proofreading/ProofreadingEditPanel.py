@@ -1,11 +1,7 @@
-from types import MethodType
-
-from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QPaintEvent
-from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QTextCharFormat
 from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import QFrame
@@ -19,11 +15,9 @@ from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
-from qfluentwidgets import PillPushButton
 from qfluentwidgets import PrimaryPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
-from qfluentwidgets import TogglePushButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 from qfluentwidgets import themeColor
@@ -35,61 +29,18 @@ from module.QualityRuleManager import QualityRuleManager
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
-
-
-def paint_status_pill(pill: PillPushButton, e: QPaintEvent) -> None:
-    painter = QPainter(pill)
-    painter.setRenderHints(QPainter.Antialiasing)
-
-    is_dark = isDarkTheme()
-    kind = str(pill.property("kind") or "neutral")
-
-    palette: dict[str, tuple[QColor, QColor, QColor, QColor]] = {
-        "success": (
-            QColor(16, 185, 129, 41),
-            QColor(167, 243, 208),
-            QColor(6, 95, 70),
-            QColor(209, 250, 229),
-        ),
-        "warn": (
-            QColor(245, 158, 11, 41),
-            QColor(253, 230, 138),
-            QColor(146, 64, 14),
-            QColor(254, 243, 199),
-        ),
-        "danger": (
-            QColor(239, 68, 68, 41),
-            QColor(254, 202, 202),
-            QColor(127, 29, 29),
-            QColor(254, 226, 226),
-        ),
-        "neutral": (
-            QColor(148, 163, 184, 46),
-            QColor(226, 232, 240),
-            QColor(71, 85, 105),
-            QColor(241, 245, 249),
-        ),
-    }
-
-    bg, border, light_color, dark_color = palette.get(kind, palette["neutral"])
-    text_color = dark_color if is_dark else light_color
-
-    rect = pill.rect().adjusted(1, 1, -1, -1)
-    r = rect.height() / 2
-    painter.setPen(border)
-    painter.setBrush(bg)
-    painter.drawRoundedRect(rect, r, r)
-
-    # WHY: 背景由我们绘制；文字/图标绘制复用库实现，减少维护。
-    pill.setStyleSheet(
-        "PillPushButton { background: transparent; border: none; }"
-        f"PillPushButton {{ color: {text_color.name()}; font-size: 12px; padding: 2px 8px; }}"
-    )
-    TogglePushButton.paintEvent(pill, e)
+from widget.StatusPillButton import StatusPillButton
+from widget.StatusPillButton import StatusPillKind
 
 
 class ProofreadingEditPanel(QWidget):
     """校对任务右侧编辑面板"""
+
+    HIGHLIGHT_DELAY_MS = 120
+    PILL_FONT_SIZE_PX = 12
+    STATUS_SCROLL_EXTRA_PADDING_PX = 4
+    STATUS_SCROLL_MAX_LINES = 2
+    TEXT_MIN_HEIGHT_PX = 84
 
     save_requested = pyqtSignal(object, str)
     restore_requested = pyqtSignal()
@@ -177,14 +128,14 @@ class ProofreadingEditPanel(QWidget):
 
         # WHY: 状态 pill 的种类是有限的，直接预创建并通过 show/hide 控制。
         # 编辑状态放最前面，满足“从左到右”的语义顺序。
-        self.edit_state_pill = self.create_status_pill("", "neutral")
+        self.edit_state_pill = self.create_status_pill("", StatusPillKind.INFO)
         self.edit_state_pill.hide()
         self.status_flow.addWidget(self.edit_state_pill)
 
-        self.translation_status_pill = self.create_status_pill("", "neutral")
+        self.translation_status_pill = self.create_status_pill("", StatusPillKind.INFO)
         self.status_flow.addWidget(self.translation_status_pill)
 
-        self.warning_pills: dict[WarningType, PillPushButton] = {}
+        self.warning_pills: dict[WarningType, StatusPillButton] = {}
         for warning in (
             WarningType.KANA,
             WarningType.HANGEUL,
@@ -193,13 +144,14 @@ class ProofreadingEditPanel(QWidget):
             WarningType.GLOSSARY,
             WarningType.RETRY_THRESHOLD,
         ):
-            pill = self.create_status_pill("", "neutral")
+            pill = self.create_status_pill("", StatusPillKind.INFO)
             pill.hide()
             self.warning_pills[warning] = pill
             self.status_flow.addWidget(pill)
 
         self.no_warning_pill = self.create_status_pill(
-            Localizer.get().proofreading_page_filter_no_warning, "neutral"
+            Localizer.get().proofreading_page_filter_no_warning,
+            StatusPillKind.INFO,
         )
         self.no_warning_pill.hide()
         self.status_flow.addWidget(self.no_warning_pill)
@@ -209,7 +161,7 @@ class ProofreadingEditPanel(QWidget):
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
         # WHY: 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
-        self.src_text.setMinimumHeight(84)
+        self.src_text.setMinimumHeight(self.TEXT_MIN_HEIGHT_PX)
         self.src_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.src_text.setProperty("compact", True)
         editor_layout.addWidget(self.src_text, 1)
@@ -217,7 +169,7 @@ class ProofreadingEditPanel(QWidget):
         editor_layout.addWidget(self.build_divider(self.editor_card))
 
         self.dst_text = CustomTextEdit(self.editor_card)
-        self.dst_text.setMinimumHeight(84)
+        self.dst_text.setMinimumHeight(self.TEXT_MIN_HEIGHT_PX)
         self.dst_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.dst_text.setProperty("compact", True)
         self.dst_text.textChanged.connect(self.on_dst_text_changed)
@@ -253,6 +205,9 @@ class ProofreadingEditPanel(QWidget):
         self.result_checker = checker
 
     def bind_item(self, item: Item, index: int, warnings: list[WarningType]) -> None:
+        # WHY: 兼容外部回调签名，面板只关心当前 item。
+        del index
+
         self.current_item = item
         self.saved_text = item.get_dst()
         self.set_enabled_state(True)
@@ -310,9 +265,7 @@ class ProofreadingEditPanel(QWidget):
         return self.dst_text.toPlainText()
 
     def has_unsaved_changes(self) -> bool:
-        if not self.current_item:
-            return False
-        return self.get_current_text() != self.saved_text
+        return bool(self.current_item) and self.get_current_text() != self.saved_text
 
     def apply_saved_state(self) -> None:
         self.saved_text = self.get_current_text()
@@ -324,16 +277,17 @@ class ProofreadingEditPanel(QWidget):
             return
         self.edit_state_pill.setText(text)
         self.edit_state_pill.setProperty("state", state or "")
-        self.edit_state_pill.setProperty("kind", self.get_kind_by_state(state))
-        self.edit_state_pill.update()
+        self.edit_state_pill.set_kind(self.get_kind_by_state(state))
         self.set_pill_layout_visible(self.edit_state_pill, True)
         self.schedule_status_height_refresh()
 
     def on_dst_text_changed(self) -> None:
         if not self.current_item:
             return
+
+        current_text = self.get_current_text()
         # WHY: 用户输入时仅标记未保存，不直接改写已保存版本
-        if self.get_current_text() != self.saved_text:
+        if current_text != self.saved_text:
             self.set_save_state(
                 Localizer.get().proofreading_page_unsaved, state="unsaved"
             )
@@ -361,9 +315,8 @@ class ProofreadingEditPanel(QWidget):
 
         status_text, status_kind = self.get_status_tag(item.get_status())
         self.translation_status_pill.setText(status_text)
-        self.translation_status_pill.setProperty("kind", status_kind)
+        self.translation_status_pill.set_kind(status_kind)
         self.set_pill_layout_visible(self.translation_status_pill, True)
-        self.translation_status_pill.update()
 
         if warnings:
             self.set_pill_layout_visible(self.no_warning_pill, False)
@@ -373,9 +326,8 @@ class ProofreadingEditPanel(QWidget):
                     continue
                 text, kind = self.get_warning_tag(warning)
                 pill.setText(text)
-                pill.setProperty("kind", kind)
+                pill.set_kind(kind)
                 self.set_pill_layout_visible(pill, True)
-                pill.update()
         else:
             for pill in self.warning_pills.values():
                 self.set_pill_layout_visible(pill, False)
@@ -395,27 +347,27 @@ class ProofreadingEditPanel(QWidget):
 
     def refresh_status_scroll_height(self) -> None:
         # WHY: FlowLayout(heightForWidth) 会按当前宽度计算实际高度，且 tight 模式会跳过隐藏控件。
-        probe = self.create_status_pill("A", "neutral")
+        probe = self.create_status_pill("A", StatusPillKind.INFO)
         line_height = max(1, probe.sizeHint().height())
         probe.deleteLater()
 
         spacing = self.status_flow.spacing()
-        two_lines_height = line_height * 2 + spacing
-        max_height = two_lines_height + 4
+        max_lines = self.STATUS_SCROLL_MAX_LINES
+        max_height = (
+            line_height * max_lines
+            + spacing * max(0, max_lines - 1)
+            + self.STATUS_SCROLL_EXTRA_PADDING_PX
+        )
 
         # 预留 2 行空间，视觉上不显得拥挤；超过 2 行时由滚动区域内部处理。
         self.status_scroll.setFixedHeight(max_height)
 
-    def create_status_pill(self, text: str, kind: str) -> PillPushButton:
-        pill = PillPushButton(text, self)
-        pill.setEnabled(False)
-        pill.setCheckable(False)
-        pill.setCursor(Qt.CursorShape.ArrowCursor)
-        pill.setProperty("kind", kind)
-        pill.paintEvent = MethodType(paint_status_pill, pill)
+    def create_status_pill(self, text: str, kind: StatusPillKind) -> StatusPillButton:
+        pill = StatusPillButton(text=text, kind=kind, parent=self)
+        pill.set_font_size_px(self.PILL_FONT_SIZE_PX)
         return pill
 
-    def set_pill_layout_visible(self, pill: PillPushButton, visible: bool) -> None:
+    def set_pill_layout_visible(self, pill: StatusPillButton, visible: bool) -> None:
         """隐藏/显示状态 pill。
 
         WHY: FlowLayout 使用 tight 模式时会自动跳过隐藏控件，不需要额外篡改尺寸。
@@ -423,93 +375,80 @@ class ProofreadingEditPanel(QWidget):
 
         pill.setVisible(visible)
 
-    def get_kind_by_state(self, state: str | None) -> str:
+    def get_kind_by_state(self, state: str | None) -> StatusPillKind:
         if state == "saved":
-            return "success"
+            return StatusPillKind.SUCCESS
         if state == "unsaved":
-            return "danger"
-        return "neutral"
+            return StatusPillKind.ERROR
+        return StatusPillKind.INFO
 
-    def get_status_tag(self, status: Base.ProjectStatus) -> tuple[str, str]:
+    def get_status_tag(self, status: Base.ProjectStatus) -> tuple[str, StatusPillKind]:
         mapping = {
             Base.ProjectStatus.NONE: (
                 Localizer.get().proofreading_page_status_none,
-                "neutral",
+                StatusPillKind.INFO,
             ),
             Base.ProjectStatus.PROCESSED: (
                 Localizer.get().proofreading_page_status_processed,
-                "success",
+                StatusPillKind.SUCCESS,
             ),
             Base.ProjectStatus.PROCESSED_IN_PAST: (
                 Localizer.get().proofreading_page_status_processed_in_past,
-                "neutral",
+                StatusPillKind.INFO,
             ),
             Base.ProjectStatus.ERROR: (
                 Localizer.get().proofreading_page_status_error,
-                "danger",
+                StatusPillKind.ERROR,
             ),
             Base.ProjectStatus.LANGUAGE_SKIPPED: (
                 Localizer.get().proofreading_page_status_non_target_source_language,
-                "neutral",
+                StatusPillKind.INFO,
             ),
         }
-        return mapping.get(status, (str(status), "neutral"))
+        return mapping.get(status, (str(status), StatusPillKind.INFO))
 
-    def get_warning_tag(self, warning: WarningType) -> tuple[str, str]:
+    def get_warning_tag(self, warning: WarningType) -> tuple[str, StatusPillKind]:
         mapping = {
             WarningType.KANA: (
                 Localizer.get().proofreading_page_warning_kana,
-                "warn",
+                StatusPillKind.WARNING,
             ),
             WarningType.HANGEUL: (
                 Localizer.get().proofreading_page_warning_hangeul,
-                "warn",
+                StatusPillKind.WARNING,
             ),
             WarningType.TEXT_PRESERVE: (
                 Localizer.get().proofreading_page_warning_text_preserve,
-                "warn",
+                StatusPillKind.WARNING,
             ),
             WarningType.SIMILARITY: (
                 Localizer.get().proofreading_page_warning_similarity,
-                "danger",
+                StatusPillKind.ERROR,
             ),
             WarningType.GLOSSARY: (
                 Localizer.get().proofreading_page_warning_glossary,
-                "warn",
+                StatusPillKind.WARNING,
             ),
             WarningType.RETRY_THRESHOLD: (
                 Localizer.get().proofreading_page_warning_retry,
-                "warn",
+                StatusPillKind.WARNING,
             ),
         }
-        return mapping.get(warning, (str(warning), "neutral"))
+        return mapping.get(warning, (str(warning), StatusPillKind.INFO))
 
     def schedule_highlight_refresh(self) -> None:
-        self.highlight_timer.start(120)
+        self.highlight_timer.start(self.HIGHLIGHT_DELAY_MS)
 
     def clear_highlight(self) -> None:
         self.src_text.setExtraSelections([])
         self.dst_text.setExtraSelections([])
 
     def apply_glossary_highlight(self) -> None:
-        if not self.current_item:
+        if not self.current_item or not QualityRuleManager.get().get_glossary_enable():
             self.clear_highlight()
             return
 
-        if not QualityRuleManager.get().get_glossary_enable():
-            self.clear_highlight()
-            return
-
-        glossary_data = []
-        if self.result_checker:
-            glossary_data = self.result_checker.prepared_glossary_data
-        if not glossary_data:
-            glossary_items = QualityRuleManager.get().get_glossary()
-            glossary_data = [
-                {"src": term.get("src", ""), "dst": term.get("dst", "")}
-                for term in glossary_items
-            ]
-
+        glossary_data = self.get_glossary_data()
         if not glossary_data:
             self.clear_highlight()
             return
@@ -517,38 +456,60 @@ class ProofreadingEditPanel(QWidget):
         src_text = self.src_text.toPlainText()
         dst_text = self.dst_text.toPlainText()
 
-        temp_item = Item()
-        temp_item.set_src(src_text)
-        temp_item.set_dst(dst_text)
-
-        failed_terms = set()
-        if self.result_checker:
-            failed_terms = set(self.result_checker.get_failed_glossary_terms(temp_item))
+        failed_src_terms = self.get_failed_glossary_src_terms(src_text, dst_text)
 
         src_terms = [term.get("src", "") for term in glossary_data]
         dst_terms = [term.get("dst", "") for term in glossary_data]
 
         self.src_text.setExtraSelections(
             self.build_highlight_selections(
-                self.src_text, src_text, src_terms, failed_terms, highlight_failed=True
+                self.src_text,
+                src_text,
+                src_terms,
+                failed_src_terms,
+                highlight_failed=True,
             )
         )
         self.dst_text.setExtraSelections(
             self.build_highlight_selections(
-                self.dst_text, dst_text, dst_terms, failed_terms, highlight_failed=False
+                self.dst_text,
+                dst_text,
+                dst_terms,
+                failed_src_terms,
+                highlight_failed=False,
             )
         )
+
+    def get_glossary_data(self) -> list[dict[str, str]]:
+        if self.result_checker and self.result_checker.prepared_glossary_data:
+            return self.result_checker.prepared_glossary_data
+
+        glossary_items = QualityRuleManager.get().get_glossary()
+        return [
+            {"src": term.get("src", ""), "dst": term.get("dst", "")}
+            for term in glossary_items
+        ]
+
+    def get_failed_glossary_src_terms(self, src_text: str, dst_text: str) -> set[str]:
+        if not self.result_checker:
+            return set()
+
+        temp_item = Item()
+        temp_item.set_src(src_text)
+        temp_item.set_dst(dst_text)
+
+        failed_terms = self.result_checker.get_failed_glossary_terms(temp_item)
+        return {src for src, _dst in failed_terms}
 
     def build_highlight_selections(
         self,
         editor: CustomTextEdit,
         text: str,
         terms: list[str],
-        failed_terms: set[tuple[str, str]],
+        failed_src_terms: set[str],
         highlight_failed: bool,
     ) -> list[QPlainTextEdit.ExtraSelection]:
         selections: list[QPlainTextEdit.ExtraSelection] = []
-        failed_src_terms = {src for src, _dst in failed_terms}
         for term in terms:
             if not term:
                 continue

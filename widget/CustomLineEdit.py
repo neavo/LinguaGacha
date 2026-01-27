@@ -37,7 +37,7 @@ class LineEditStyleMixin:
 
     def init_style_mixin(self, widget_class_name: str) -> None:
         """初始化样式混入，需要在子类 __init__ 中调用"""
-        self._widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
+        self.widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
 
         # 初始样式
         self.update_line_edit_style()
@@ -70,7 +70,7 @@ class LineEditStyleMixin:
             border_color = self.LIGHT_BORDER
 
         # 使用动态类名生成 QSS
-        cls = self._widget_class_name
+        cls = self.widget_class_name
 
         self.setStyleSheet(f"""
             {cls} {{

@@ -97,7 +97,7 @@ class ProofreadingTableWidget(TableWidget):
         header.setDefaultAlignment(Qt.AlignCenter)
 
         # 只读模式标志
-        self._readonly = False
+        self.readonly = False
 
         self.setAlternatingRowColors(True)
 
@@ -229,7 +229,7 @@ class ProofreadingTableWidget(TableWidget):
         # 译文列：拼接多行文本后单行显示
         dst_item = QTableWidgetItem(dst_text)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        if self._readonly:
+        if self.readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
         self.setItem(row, self.COL_DST, dst_item)
 
@@ -322,7 +322,7 @@ class ProofreadingTableWidget(TableWidget):
 
     def set_readonly(self, readonly: bool) -> None:
         """设置表格只读模式"""
-        self._readonly = readonly
+        self.readonly = readonly
 
         for row in range(self.rowCount()):
             dst_cell = self.item(row, self.COL_DST)
@@ -385,7 +385,7 @@ class ProofreadingTableWidget(TableWidget):
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """右键菜单事件"""
-        if self._readonly:
+        if self.readonly:
             return
 
         # 获取点击位置的 item

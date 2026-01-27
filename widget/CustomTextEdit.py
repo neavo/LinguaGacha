@@ -62,10 +62,10 @@ class CustomTextEdit(PlainTextEdit):
     def __init__(self, parent=None, monospace: bool = False):
         super().__init__(parent)
 
-        self._is_read_only = False
-        self._monospace = monospace
-        self._has_error = False
-        self._on_focus_out: Callable[[], None] | None = None
+        self.read_only = False
+        self.monospace = monospace
+        self.has_error = False
+        self.on_focus_out: Callable[[], None] | None = None
 
         # 默认自动换行
         self.setLineWrapMode(PlainTextEdit.LineWrapMode.WidgetWidth)
@@ -91,24 +91,24 @@ class CustomTextEdit(PlainTextEdit):
             pass
 
     def setReadOnly(self, ro: bool) -> None:
-        self._is_read_only = ro
+        self.read_only = ro
         super().setReadOnly(ro)
         self.update_style()
 
     def set_error(self, has_error: bool) -> None:
         """设置错误状态，显示红色边框"""
-        if self._has_error != has_error:
-            self._has_error = has_error
+        if self.has_error != has_error:
+            self.has_error = has_error
             self.update_style()
 
     def set_on_focus_out(self, callback: Callable[[], None]) -> None:
         """设置失去焦点时的回调函数"""
-        self._on_focus_out = callback
+        self.on_focus_out = callback
 
     def eventFilter(self, a0: QObject, a1: QEvent) -> bool:
         if a0 is self:
-            if a1.type() == QEvent.Type.FocusOut and self._on_focus_out:
-                self._on_focus_out()
+            if a1.type() == QEvent.Type.FocusOut and self.on_focus_out:
+                self.on_focus_out()
             if a1.type() == QEvent.Type.Show:
                 # WHY: 页面创建早于主题加载时，确保显示时样式同步
                 self.update_style()
@@ -117,10 +117,10 @@ class CustomTextEdit(PlainTextEdit):
     def update_style(self) -> None:
         is_dark = isDarkTheme()
         theme_color = themeColor().name()
-        font_family = self.FONT_MONOSPACE if self._monospace else self.FONT_DEFAULT
+        font_family = self.FONT_MONOSPACE if self.monospace else self.FONT_DEFAULT
         padding = 6 if bool(self.property("compact")) else 10
 
-        if self._is_read_only:
+        if self.read_only:
             if is_dark:
                 bg_color = self.DARK_BG_READONLY
                 border = "1px solid transparent"
@@ -145,7 +145,7 @@ class CustomTextEdit(PlainTextEdit):
             focus_border_bottom = f"1px solid {theme_color}"
 
         # 错误状态覆盖边框颜色
-        if self._has_error and not self._is_read_only:
+        if self.has_error and not self.read_only:
             border = f"1px solid {self.ERROR_BORDER}"
             focus_border = f"1px solid {self.ERROR_BORDER}"
             focus_border_bottom = f"1px solid {self.ERROR_BORDER}"
