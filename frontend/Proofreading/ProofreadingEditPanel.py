@@ -7,13 +7,16 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
+from qfluentwidgets import PillToolButton
 from qfluentwidgets import PrimaryPushButton
 from qfluentwidgets import PushButton
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
@@ -42,6 +45,10 @@ class ProofreadingEditPanel(QWidget):
 
     save_requested = pyqtSignal(object, str)
     restore_requested = pyqtSignal()
+    copy_src_requested = pyqtSignal(object)
+    copy_dst_requested = pyqtSignal(object)
+    retranslate_requested = pyqtSignal(object)
+    reset_translation_requested = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -87,6 +94,14 @@ class ProofreadingEditPanel(QWidget):
         self.file_path_label.setMinimumWidth(1)
         self.file_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         file_layout.addWidget(self.file_path_label, 1)
+
+        self.more_button = PillToolButton(FluentIcon.MORE, self.file_card)
+        # WHY: 仅作为菜单入口按钮，不需要“点亮/选中”的切换效果。
+        self.more_button.setCheckable(False)
+        self.more_button.setFixedSize(28, 28)
+        self.more_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.more_button.clicked.connect(self.on_more_clicked)
+        file_layout.addWidget(self.more_button, alignment=Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.file_card)
 
         # 合并卡片：状态(最多2行) + 原文 + 译文
@@ -221,6 +236,7 @@ class ProofreadingEditPanel(QWidget):
         self.set_enabled_state(True)
 
         self.file_path_label.setText(item.get_file_path())
+        self.more_button.setEnabled(True)
 
         self.src_text.blockSignals(True)
         self.dst_text.blockSignals(True)
@@ -241,6 +257,7 @@ class ProofreadingEditPanel(QWidget):
         self.saved_text = ""
         self.set_enabled_state(False)
         self.file_path_label.setText("")
+        self.more_button.setEnabled(False)
         self.src_text.setPlainText("")
         self.dst_text.setPlainText("")
         self.clear_status_tags()
@@ -252,6 +269,46 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.setReadOnly(readonly)
         self.btn_save.setEnabled(not readonly)
         self.btn_restore.setEnabled(not readonly)
+
+    def on_more_clicked(self) -> None:
+        item = self.current_item
+        if item is None:
+            return
+
+        menu = RoundMenu("", self.more_button)
+        menu.addAction(
+            Action(
+                FluentIcon.PASTE,
+                Localizer.get().proofreading_page_copy_src,
+                triggered=lambda: self.copy_src_requested.emit(item),
+            )
+        )
+        menu.addAction(
+            Action(
+                FluentIcon.COPY,
+                Localizer.get().proofreading_page_copy_dst,
+                triggered=lambda: self.copy_dst_requested.emit(item),
+            )
+        )
+
+        action_retranslate = Action(
+            FluentIcon.SYNC,
+            Localizer.get().proofreading_page_retranslate,
+            triggered=lambda: self.retranslate_requested.emit(item),
+        )
+        action_retranslate.setEnabled(not self.dst_text.isReadOnly())
+        menu.addAction(action_retranslate)
+
+        action_reset = Action(
+            FluentIcon.DELETE,
+            Localizer.get().proofreading_page_reset_translation,
+            triggered=lambda: self.reset_translation_requested.emit(item),
+        )
+        action_reset.setEnabled(not self.dst_text.isReadOnly())
+        menu.addAction(action_reset)
+
+        global_pos = self.more_button.mapToGlobal(self.more_button.rect().bottomLeft())
+        menu.exec(global_pos)
 
     def set_enabled_state(self, enabled: bool) -> None:
         self.content_widget.setVisible(enabled)

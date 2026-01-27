@@ -171,6 +171,12 @@ class ProofreadingPage(QWidget, Base):
         self.edit_panel = ProofreadingEditPanel(self)
         self.edit_panel.save_requested.connect(self.on_edit_save_requested)
         self.edit_panel.restore_requested.connect(self.on_edit_restore_requested)
+        self.edit_panel.copy_src_requested.connect(self.on_copy_src_clicked)
+        self.edit_panel.copy_dst_requested.connect(self.on_copy_dst_clicked)
+        self.edit_panel.retranslate_requested.connect(self.on_retranslate_clicked)
+        self.edit_panel.reset_translation_requested.connect(
+            self.on_reset_translation_clicked
+        )
 
         body_layout.addWidget(self.table_widget, 7)
         body_layout.addWidget(self.edit_panel, 3)

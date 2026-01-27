@@ -15,8 +15,6 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
-from qfluentwidgets import isDarkTheme
-from qfluentwidgets import qconfig
 
 from base.Base import Base
 from model.Item import Item
@@ -100,48 +98,6 @@ class ProofreadingTableWidget(TableWidget):
         self.readonly = False
 
         self.setAlternatingRowColors(True)
-
-        # 补齐表头右上角区域，避免深色主题下“被截断”的观感
-        self.header_corner = QWidget(self)
-        self.setCornerWidget(self.header_corner)
-        self.update_header_style()
-        qconfig.themeChanged.connect(self.update_header_style)
-
-    def update_header_style(self) -> None:
-        is_dark = isDarkTheme()
-        if is_dark:
-            border = "rgba(255, 255, 255, 0.10)"
-            header_bg = "rgba(255, 255, 255, 0.03)"
-        else:
-            border = "rgba(0, 0, 0, 0.08)"
-            header_bg = "rgba(0, 0, 0, 0.02)"
-
-        header_qss = "\n".join(
-            [
-                "QHeaderView::section {",
-                f"  background-color: {header_bg};",
-                f"  border-right: 1px solid {border};",
-                f"  border-bottom: 1px solid {border};",
-                "}",
-            ]
-        )
-
-        # WHY: 不能在 TableWidget 上直接 setStyleSheet，否则会覆盖 qfluentwidgets 注入的
-        # Fluent 样式，导致首次进入页面时退回 Qt 原生观感；主题切换后刷新才“恢复”。
-        self.horizontalHeader().setStyleSheet(header_qss)
-        self.verticalHeader().setStyleSheet(header_qss)
-
-        self.header_corner.setStyleSheet(
-            "\n".join(
-                [
-                    "QWidget {",
-                    f"  background-color: {header_bg};",
-                    f"  border-left: 1px solid {border};",
-                    f"  border-bottom: 1px solid {border};",
-                    "}",
-                ]
-            )
-        )
 
     def set_items(
         self,
