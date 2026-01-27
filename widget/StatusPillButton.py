@@ -20,22 +20,22 @@ class StatusPillKind(StrEnum):
 DARK_PALETTE: dict[StatusPillKind, tuple[QColor, QColor, QColor]] = {
     StatusPillKind.INFO: (
         QColor(39, 39, 39),
-        QColor(29, 29, 29),
+        QColor(255, 255, 255, 46),
         QColor(255, 255, 255),
     ),
     StatusPillKind.SUCCESS: (
         QColor(57, 61, 27),
-        QColor(29, 29, 29),
+        QColor(255, 255, 255, 46),
         QColor(255, 255, 255),
     ),
     StatusPillKind.WARNING: (
         QColor(67, 53, 25),
-        QColor(29, 29, 29),
+        QColor(255, 255, 255, 46),
         QColor(255, 255, 255),
     ),
     StatusPillKind.ERROR: (
         QColor(68, 39, 38),
-        QColor(29, 29, 29),
+        QColor(255, 255, 255, 46),
         QColor(255, 255, 255),
     ),
 }

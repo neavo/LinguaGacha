@@ -2,11 +2,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QTextCharFormat
-from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QPlainTextEdit
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -18,9 +15,10 @@ from qfluentwidgets import IconWidget
 from qfluentwidgets import PrimaryPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
-from qfluentwidgets import themeColor
 
 from base.Base import Base
 from model.Item import Item
@@ -36,7 +34,7 @@ from widget.StatusPillButton import StatusPillKind
 class ProofreadingEditPanel(QWidget):
     """校对任务右侧编辑面板"""
 
-    HIGHLIGHT_DELAY_MS = 120
+    GLOSSARY_STATUS_DELAY_MS = 120
     PILL_FONT_SIZE_PX = 12
     STATUS_SCROLL_EXTRA_PADDING_PX = 4
     STATUS_SCROLL_MAX_LINES = 2
@@ -50,9 +48,9 @@ class ProofreadingEditPanel(QWidget):
         self.current_item: Item | None = None
         self.saved_text = ""
         self.result_checker: ResultChecker | None = None
-        self.highlight_timer = QTimer(self)
-        self.highlight_timer.setSingleShot(True)
-        self.highlight_timer.timeout.connect(self.apply_glossary_highlight)
+        self.glossary_status_timer = QTimer(self)
+        self.glossary_status_timer.setSingleShot(True)
+        self.glossary_status_timer.timeout.connect(self.update_glossary_status)
         self.init_ui()
 
     def init_ui(self) -> None:
@@ -135,13 +133,22 @@ class ProofreadingEditPanel(QWidget):
         self.translation_status_pill = self.create_status_pill("", StatusPillKind.INFO)
         self.status_flow.addWidget(self.translation_status_pill)
 
+        self.glossary_status_pill = self.create_status_pill("", StatusPillKind.INFO)
+        # WHY: 状态 pill 需要稳定的 hover 才能展示 tooltip，但默认禁用。
+        # 这里单独启用该 pill，且不绑定点击行为。
+        self.glossary_status_pill.setEnabled(True)
+        self.glossary_status_pill.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.glossary_status_pill.installEventFilter(
+            ToolTipFilter(self.glossary_status_pill, 300, ToolTipPosition.TOP)
+        )
+        self.status_flow.addWidget(self.glossary_status_pill)
+
         self.warning_pills: dict[WarningType, StatusPillButton] = {}
         for warning in (
             WarningType.KANA,
             WarningType.HANGEUL,
             WarningType.TEXT_PRESERVE,
             WarningType.SIMILARITY,
-            WarningType.GLOSSARY,
             WarningType.RETRY_THRESHOLD,
         ):
             pill = self.create_status_pill("", StatusPillKind.INFO)
@@ -203,6 +210,7 @@ class ProofreadingEditPanel(QWidget):
 
     def set_result_checker(self, checker: ResultChecker | None) -> None:
         self.result_checker = checker
+        self.schedule_glossary_status_refresh()
 
     def bind_item(self, item: Item, index: int, warnings: list[WarningType]) -> None:
         # WHY: 兼容外部回调签名，面板只关心当前 item。
@@ -224,7 +232,7 @@ class ProofreadingEditPanel(QWidget):
         self.set_save_state("")
         self.refresh_status_tags(item, warnings)
         self.schedule_status_height_refresh()
-        self.schedule_highlight_refresh()
+        self.schedule_glossary_status_refresh()
 
     def clear(self) -> None:
         self.current_item = None
@@ -235,7 +243,7 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.setPlainText("")
         self.clear_status_tags()
         self.schedule_status_height_refresh()
-        self.clear_highlight()
+        self.clear_glossary_status()
         self.set_save_state("")
 
     def set_readonly(self, readonly: bool) -> None:
@@ -293,7 +301,7 @@ class ProofreadingEditPanel(QWidget):
             )
         else:
             self.set_save_state("")
-        self.schedule_highlight_refresh()
+        self.schedule_glossary_status_refresh()
 
     def on_restore_clicked(self) -> None:
         if not self.current_item:
@@ -302,7 +310,7 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.setPlainText(self.saved_text)
         self.dst_text.blockSignals(False)
         self.set_save_state("")
-        self.schedule_highlight_refresh()
+        self.schedule_glossary_status_refresh()
         self.restore_requested.emit()
 
     def on_save_clicked(self) -> None:
@@ -334,6 +342,9 @@ class ProofreadingEditPanel(QWidget):
             self.set_pill_layout_visible(self.no_warning_pill, True)
 
         self.schedule_status_height_refresh()
+
+        # 术语状态不依赖 warning_map，实时基于面板文本计算。
+        self.schedule_glossary_status_refresh()
 
     def clear_status_tags(self) -> None:
         # WHY: pill 统一预创建，这里只负责隐藏“动态部分”，不做增删。
@@ -436,108 +447,72 @@ class ProofreadingEditPanel(QWidget):
         }
         return mapping.get(warning, (str(warning), StatusPillKind.INFO))
 
-    def schedule_highlight_refresh(self) -> None:
-        self.highlight_timer.start(self.HIGHLIGHT_DELAY_MS)
+    def schedule_glossary_status_refresh(self) -> None:
+        self.glossary_status_timer.start(self.GLOSSARY_STATUS_DELAY_MS)
 
-    def clear_highlight(self) -> None:
-        self.src_text.setExtraSelections([])
-        self.dst_text.setExtraSelections([])
+    def clear_glossary_status(self) -> None:
+        self.glossary_status_pill.setText(
+            Localizer.get().proofreading_page_glossary_none
+        )
+        self.glossary_status_pill.set_kind(StatusPillKind.INFO)
+        self.glossary_status_pill.setToolTip("")
 
-    def apply_glossary_highlight(self) -> None:
+    def update_glossary_status(self) -> None:
+        # 关闭术语表功能时，按“无术语”处理。
         if not self.current_item or not QualityRuleManager.get().get_glossary_enable():
-            self.clear_highlight()
+            self.clear_glossary_status()
+            self.set_pill_layout_visible(self.glossary_status_pill, True)
             return
 
-        glossary_data = self.get_glossary_data()
-        if not glossary_data:
-            self.clear_highlight()
+        checker = self.result_checker
+        if checker is None or not checker.prepared_glossary_data:
+            self.clear_glossary_status()
+            self.set_pill_layout_visible(self.glossary_status_pill, True)
             return
-
-        src_text = self.src_text.toPlainText()
-        dst_text = self.dst_text.toPlainText()
-
-        failed_src_terms = self.get_failed_glossary_src_terms(src_text, dst_text)
-
-        src_terms = [term.get("src", "") for term in glossary_data]
-        dst_terms = [term.get("dst", "") for term in glossary_data]
-
-        self.src_text.setExtraSelections(
-            self.build_highlight_selections(
-                self.src_text,
-                src_text,
-                src_terms,
-                failed_src_terms,
-                highlight_failed=True,
-            )
-        )
-        self.dst_text.setExtraSelections(
-            self.build_highlight_selections(
-                self.dst_text,
-                dst_text,
-                dst_terms,
-                failed_src_terms,
-                highlight_failed=False,
-            )
-        )
-
-    def get_glossary_data(self) -> list[dict[str, str]]:
-        if self.result_checker and self.result_checker.prepared_glossary_data:
-            return self.result_checker.prepared_glossary_data
-
-        glossary_items = QualityRuleManager.get().get_glossary()
-        return [
-            {"src": term.get("src", ""), "dst": term.get("dst", "")}
-            for term in glossary_items
-        ]
-
-    def get_failed_glossary_src_terms(self, src_text: str, dst_text: str) -> set[str]:
-        if not self.result_checker:
-            return set()
 
         temp_item = Item()
-        temp_item.set_src(src_text)
-        temp_item.set_dst(dst_text)
+        temp_item.set_src(self.src_text.toPlainText())
+        temp_item.set_dst(self.dst_text.toPlainText())
 
-        failed_terms = self.result_checker.get_failed_glossary_terms(temp_item)
-        return {src for src, _dst in failed_terms}
+        src_repl, dst_repl = checker.get_replaced_text(temp_item)
+        applied: list[tuple[str, str]] = []
+        failed: list[tuple[str, str]] = []
 
-    def build_highlight_selections(
-        self,
-        editor: CustomTextEdit,
-        text: str,
-        terms: list[str],
-        failed_src_terms: set[str],
-        highlight_failed: bool,
-    ) -> list[QPlainTextEdit.ExtraSelection]:
-        selections: list[QPlainTextEdit.ExtraSelection] = []
-        for term in terms:
-            if not term:
+        for term in checker.prepared_glossary_data:
+            glossary_src = term.get("src", "")
+            glossary_dst = term.get("dst", "")
+            if not glossary_src or glossary_src not in src_repl:
                 continue
-            is_failed = highlight_failed and term in failed_src_terms
-            start = 0
-            while True:
-                idx = text.find(term, start)
-                if idx < 0:
-                    break
-                cursor = QTextCursor(editor.document())
-                cursor.setPosition(idx)
-                cursor.setPosition(idx + len(term), QTextCursor.KeepAnchor)
-                selection = QPlainTextEdit.ExtraSelection()
-                selection.cursor = cursor
-                selection.format = self.get_highlight_format(is_failed)
-                selections.append(selection)
-                start = idx + len(term)
-        return selections
 
-    def get_highlight_format(self, is_failed: bool) -> QTextCharFormat:
-        fmt = QTextCharFormat()
-        accent = themeColor()
-        if isDarkTheme():
-            base = QColor(255, 255, 255, 40)
-            failed = QColor(248, 113, 113, 120)
+            if glossary_dst and glossary_dst in dst_repl:
+                applied.append((glossary_src, glossary_dst))
+            else:
+                failed.append((glossary_src, glossary_dst))
+
+        if not applied and not failed:
+            self.clear_glossary_status()
+            self.set_pill_layout_visible(self.glossary_status_pill, True)
+            return
+
+        if failed:
+            self.glossary_status_pill.setText(
+                Localizer.get().proofreading_page_glossary_partial
+            )
+            self.glossary_status_pill.set_kind(StatusPillKind.WARNING)
         else:
-            base = QColor(accent)
-            base.setAlpha(40)
-            failed = QColor(239, 68, 68, 80)
-        fmt.setBackground(failed if is_failed else base)
-        return fmt
+            self.glossary_status_pill.setText(
+                Localizer.get().proofreading_page_glossary_ok
+            )
+            self.glossary_status_pill.set_kind(StatusPillKind.SUCCESS)
+
+        tooltip = []
+        if applied:
+            tooltip.append(Localizer.get().proofreading_page_glossary_tooltip_applied)
+            tooltip.extend([f"{src} -> {dst}" for src, dst in applied])
+        if failed:
+            if tooltip:
+                tooltip.append("")
+            tooltip.append(Localizer.get().proofreading_page_glossary_tooltip_failed)
+            tooltip.extend([f"{src} -> {dst}" for src, dst in failed])
+        self.glossary_status_pill.setToolTip("\n".join(tooltip))
+        self.set_pill_layout_visible(self.glossary_status_pill, True)

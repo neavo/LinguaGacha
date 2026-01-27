@@ -46,6 +46,7 @@ class ProofreadingPage(QWidget, Base):
         str, int, int
     )  # 进度更新信号 (content, current, total)
     progress_finished = pyqtSignal()  # 进度完成信号
+    glossary_refreshed = pyqtSignal(object, dict)  # (checker, warning_map)
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -98,6 +99,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
+        self.subscribe(Base.Event.GLOSSARY_REFRESH, self.on_glossary_refresh)
 
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
@@ -108,6 +110,37 @@ class ProofreadingPage(QWidget, Base):
         self.item_saved.connect(self.on_item_saved_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
+        self.glossary_refreshed.connect(self.on_glossary_refreshed_ui)
+
+    def on_glossary_refresh(self, event: Base.Event, event_data: dict) -> None:
+        # WHY: 术语表/开关在其他页面修改后，本页的 checker 仍持有旧的 prepared_glossary_data，
+        # 会导致“术语未生效”判断和高亮都与最新规则不一致。
+        del event
+        del event_data
+
+        if not self.items:
+            return
+
+        config = self.config or Config().load()
+
+        def task() -> None:
+            try:
+                checker = ResultChecker(config)
+                warning_map = checker.check_items(self.items)
+                self.glossary_refreshed.emit(checker, warning_map)
+            except Exception as e:
+                self.error("Refresh glossary failed", e)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def on_glossary_refreshed_ui(
+        self, checker: ResultChecker, warning_map: dict[int, list[WarningType]]
+    ) -> None:
+        self.result_checker = checker
+        self.warning_map = warning_map
+        self.edit_panel.set_result_checker(self.result_checker)
+        # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新术语表。
+        self.apply_filter(False)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
