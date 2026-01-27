@@ -59,10 +59,12 @@ class ProofreadingPage(QWidget, Base):
         self.filter_options: dict = {}  # 当前筛选选项
         self.search_keyword: str = ""  # 当前搜索关键词
         self.search_is_regex: bool = False  # 是否正则搜索
+        self.search_filter_mode: bool = False  # 是否筛选模式
         self.search_match_indices: list[int] = []  # 匹配项在 filtered_items 中的索引
         self.search_current_match: int = (
             -1
         )  # 当前匹配项索引（在 search_match_indices 中的位置）
+        self.pending_selected_item: Item | None = None
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -127,10 +129,13 @@ class ProofreadingPage(QWidget, Base):
         self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
         self.search_card.on_next_clicked(lambda w: self.on_search_next_clicked())
         self.search_card.on_search_triggered(lambda w: self.do_search())
+        self.search_card.on_search_mode_changed(lambda w: self.on_search_mode_changed())
 
         # 命令栏
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
+
+        self.search_card.set_base_font(self.command_bar_card.command_bar.font())
 
         self.command_bar_card.set_minimum_width(640)
 
@@ -330,6 +335,7 @@ class ProofreadingPage(QWidget, Base):
 
         if dialog.exec():
             self.filter_options = dialog.get_filter_options()
+            self.pending_selected_item = None
             self.apply_filter()
 
     def apply_filter(self) -> None:
@@ -342,6 +348,23 @@ class ProofreadingPage(QWidget, Base):
         items_ref = self.items
         warning_map_ref = self.warning_map
         checker_ref = self.result_checker
+        keyword = self.search_keyword
+        use_regex = self.search_is_regex
+        use_search_filter = self.search_filter_mode
+
+        if use_search_filter and keyword and use_regex:
+            try:
+                re.compile(keyword)
+            except re.error as e:
+                self.indeterminate_hide()
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": f"{Localizer.get().search_regex_invalid}: {e}",
+                    },
+                )
+                return
 
         def filter_task() -> None:
             try:
@@ -372,6 +395,13 @@ class ProofreadingPage(QWidget, Base):
                     glossary_terms = set()
 
                 filtered = []
+                search_pattern = None
+                keyword_lower = ""
+                if use_search_filter and keyword:
+                    if use_regex:
+                        search_pattern = re.compile(keyword, re.IGNORECASE)
+                    else:
+                        keyword_lower = keyword.lower()
                 for item in items_ref:
                     # WHY: 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过
                     if item.get_status() in (
@@ -414,6 +444,21 @@ class ProofreadingPage(QWidget, Base):
                     if item.get_file_path() not in file_paths:
                         continue
 
+                    if use_search_filter and keyword:
+                        src = item.get_src()
+                        dst = item.get_dst()
+                        if search_pattern:
+                            if not (
+                                search_pattern.search(src) or search_pattern.search(dst)
+                            ):
+                                continue
+                        elif keyword_lower:
+                            if (
+                                keyword_lower not in src.lower()
+                                and keyword_lower not in dst.lower()
+                            ):
+                                continue
+
                     filtered.append(item)
 
                 self.filter_done.emit(filtered)
@@ -431,10 +476,24 @@ class ProofreadingPage(QWidget, Base):
         self.pagination_bar.set_page(1)
         self.render_page(1)
 
-        # 筛选后清空搜索状态
+        # 筛选后更新搜索状态
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
+        if self.search_filter_mode and self.search_keyword:
+            self.build_match_indices()
+            if not self.search_match_indices:
+                self.search_card.set_match_info(0, 0)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().search_no_match,
+                    },
+                )
+            self.restore_selected_item()
+        else:
+            self.restore_selected_item()
 
     def build_default_filter_options(
         self,
@@ -488,6 +547,7 @@ class ProofreadingPage(QWidget, Base):
         """搜索按钮点击"""
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
+        self.attach_pagination_to_search_bar()
         # 聚焦到输入框
         self.search_card.get_line_edit().setFocus()
 
@@ -498,7 +558,11 @@ class ProofreadingPage(QWidget, Base):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
+        if self.search_filter_mode:
+            self.pending_selected_item = None
+            self.apply_filter()
         self.search_card.setVisible(False)
+        self.attach_pagination_to_command_bar()
         self.command_bar_card.setVisible(True)
 
     def do_search(self) -> None:
@@ -508,6 +572,11 @@ class ProofreadingPage(QWidget, Base):
             self.search_match_indices = []
             self.search_current_match = -1
             self.search_card.clear_match_info()
+            if self.search_filter_mode:
+                self.search_keyword = ""
+                self.search_is_regex = self.search_card.is_regex_mode()
+                self.pending_selected_item = None
+                self.apply_filter()
             return
 
         is_regex = self.search_card.is_regex_mode()
@@ -528,6 +597,11 @@ class ProofreadingPage(QWidget, Base):
         self.search_keyword = keyword
         self.search_is_regex = is_regex
 
+        if self.search_filter_mode:
+            self.pending_selected_item = None
+            self.apply_filter()
+            return
+
         # 构建匹配索引列表
         self.build_match_indices()
 
@@ -545,6 +619,36 @@ class ProofreadingPage(QWidget, Base):
         # 跳转到第一个匹配项
         self.search_current_match = 0
         self.jump_to_match()
+
+    def on_search_mode_changed(self) -> None:
+        self.search_filter_mode = self.search_card.is_filter_mode()
+        self.search_keyword = self.search_card.get_keyword()
+        self.search_is_regex = self.search_card.is_regex_mode()
+
+        if self.search_filter_mode and self.search_keyword and self.search_is_regex:
+            is_valid, error_msg = self.search_card.validate_regex()
+            if not is_valid:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                    },
+                )
+                return
+
+        selected_items = self.table_widget.get_selected_items()
+        self.pending_selected_item = selected_items[0] if selected_items else None
+
+        if self.search_filter_mode:
+            if not self.search_keyword:
+                self.search_match_indices = []
+                self.search_current_match = -1
+                self.search_card.clear_match_info()
+            self.apply_filter()
+            return
+
+        self.apply_filter()
 
     def build_match_indices(self) -> None:
         """构建匹配项索引列表 (修复变量未绑定隐患)"""
@@ -580,11 +684,53 @@ class ProofreadingPage(QWidget, Base):
                 if search_term in src.lower() or search_term in dst.lower():
                     self.search_match_indices.append(idx)
 
+    def restore_selected_item(self) -> None:
+        if self.pending_selected_item is None:
+            if self.search_filter_mode and self.search_match_indices:
+                self.search_current_match = 0
+                self.jump_to_match()
+            self.pending_selected_item = None
+            return
+
+        if self.pending_selected_item not in self.filtered_items:
+            self.pending_selected_item = None
+            if self.search_filter_mode and self.search_match_indices:
+                self.search_current_match = 0
+                self.jump_to_match()
+            return
+
+        item_index = self.filtered_items.index(self.pending_selected_item)
+        if self.search_match_indices:
+            if item_index in self.search_match_indices:
+                self.search_current_match = self.search_match_indices.index(item_index)
+                self.jump_to_match()
+        else:
+            page_size = self.pagination_bar.get_page_size()
+            target_page = (item_index // page_size) + 1
+            self.pagination_bar.set_page(target_page)
+            self.render_page(target_page)
+            row_in_page = item_index % page_size
+            self.table_widget.select_row(row_in_page)
+
+        self.pending_selected_item = None
+
     def on_search_prev_clicked(self) -> None:
         """上一个匹配项"""
         if not self.search_match_indices:
             # 如果没有匹配结果，先执行搜索
             self.do_search()
+            return
+
+        selection_index = self.get_selected_item_index()
+        if selection_index >= 0:
+            prev_matches = [m for m in self.search_match_indices if m < selection_index]
+            if prev_matches:
+                self.search_current_match = self.search_match_indices.index(
+                    prev_matches[-1]
+                )
+            else:
+                self.search_current_match = len(self.search_match_indices) - 1
+            self.jump_to_match()
             return
 
         # 循环跳转到上一个
@@ -600,11 +746,42 @@ class ProofreadingPage(QWidget, Base):
             self.do_search()
             return
 
+        selection_index = self.get_selected_item_index()
+        if selection_index >= 0:
+            next_matches = [m for m in self.search_match_indices if m > selection_index]
+            if next_matches:
+                self.search_current_match = self.search_match_indices.index(
+                    next_matches[0]
+                )
+            else:
+                self.search_current_match = 0
+            self.jump_to_match()
+            return
+
         # 循环跳转到下一个
         self.search_current_match += 1
         if self.search_current_match >= len(self.search_match_indices):
             self.search_current_match = 0
         self.jump_to_match()
+
+    def get_selected_item_index(self) -> int:
+        selected_items = self.table_widget.get_selected_items()
+        if not selected_items:
+            return -1
+
+        item = selected_items[0]
+        if item not in self.filtered_items:
+            return -1
+
+        return self.filtered_items.index(item)
+
+    def attach_pagination_to_search_bar(self) -> None:
+        self.pagination_bar.setParent(self.search_card)
+        self.search_card.add_right_widget(self.pagination_bar)
+
+    def attach_pagination_to_command_bar(self) -> None:
+        self.pagination_bar.setParent(self.command_bar_card)
+        self.command_bar_card.add_widget(self.pagination_bar)
 
     def jump_to_match(self) -> None:
         """跳转到当前匹配项"""
@@ -647,7 +824,7 @@ class ProofreadingPage(QWidget, Base):
             id(item): self.warning_map.get(id(item), []) for item in page_items
         }
 
-        self.table_widget.set_items(page_items, page_warning_map)
+        self.table_widget.set_items(page_items, page_warning_map, start_idx)
 
     # ========== 编辑功能 ==========
     def on_cell_edited(self, item: Item, new_dst: str) -> None:
@@ -1178,6 +1355,7 @@ class ProofreadingPage(QWidget, Base):
         self.search_current_match = -1
         self.search_card.clear_match_info()
         self.search_card.setVisible(False)
+        self.attach_pagination_to_command_bar()
         self.command_bar_card.setVisible(True)
 
         # 重置表格和分页

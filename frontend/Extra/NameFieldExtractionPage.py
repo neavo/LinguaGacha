@@ -24,6 +24,7 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
+from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
@@ -61,6 +62,11 @@ class NameFieldExtractionPage(QWidget, Base):
         self.add_widget_head(self.root, config, window)
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
+
+        self.search_is_filter_mode: bool = False
+        self.search_last_keyword: str = ""
+        self.search_matches: list[int] = []
+        self.search_current_match: int = -1
 
         # 注册事件
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
@@ -163,21 +169,26 @@ class NameFieldExtractionPage(QWidget, Base):
         self.search_card.on_back_clicked(back_clicked)
 
         def prev_clicked(widget: SearchCard) -> None:
-            keyword: str = widget.get_line_edit().text().strip()
-            self.search(keyword, reverse=True)
+            self.run_search(reverse=True)
 
         def next_clicked(widget: SearchCard) -> None:
-            keyword: str = widget.get_line_edit().text().strip()
-            self.search(keyword, reverse=False)
+            self.run_search(reverse=False)
+
+        def search_mode_changed(widget: SearchCard) -> None:
+            self.search_is_filter_mode = widget.is_filter_mode()
+            self.apply_search_mode()
 
         self.search_card.on_prev_clicked(prev_clicked)
         self.search_card.on_next_clicked(next_clicked)
         self.search_card.on_search_triggered(next_clicked)
+        self.search_card.on_search_mode_changed(search_mode_changed)
 
         # 创建命令栏
         self.command_bar_card = CommandBarCard()
         self.command_bar_card.set_minimum_width(640)
         parent.addWidget(self.command_bar_card)
+
+        self.search_card.set_base_font(self.command_bar_card.command_bar.font())
 
         # 添加命令栏操作
         self.add_command_bar_action_extract(self.command_bar_card)
@@ -691,97 +702,148 @@ class NameFieldExtractionPage(QWidget, Base):
                 Base.ToastType.INFO, Localizer.get().task_success
             )  # 无需更新
 
-    def search(self, keyword: str, reverse: bool = False) -> None:
-        """搜索表格"""
+    def get_search_columns(self) -> tuple[int, ...]:
+        return (0, 1)
+
+    def apply_search_mode(self) -> None:
+        keyword = self.search_card.get_keyword()
+        self.search_last_keyword = keyword
+
         if not keyword:
-            self.search_card.clear_match_info()
+            self.clear_row_filter()
+            self.clear_search_matches()
             return
 
-        row_count = self.table.rowCount()
-
-        # 避免只有一行或空表时的无意义操作
-        if row_count < 1:
+        if not self.validate_search_regex():
             return
 
-        # 获取搜索配置
-        use_regex = self.search_card.is_regex_mode()
-
-        # 预编译正则
-        pattern = None
-        if use_regex:
-            try:
-                pattern = re.compile(keyword, re.IGNORECASE)
-            except re.error:
-                # 正则错误时不执行搜索
-                self.search_card.clear_match_info()
+        matches, empty_rows = TableManager.build_table_matches(
+            self.table,
+            keyword,
+            self.search_card.is_regex_mode(),
+            self.get_search_columns(),
+        )
+        if self.search_is_filter_mode:
+            self.apply_row_filter(matches, empty_rows, keyword)
+            if not matches:
                 return
+            return
 
-        # 1. 扫描所有匹配项
-        matches: list[int] = []
-        for row in range(row_count):
-            # 获取原文和译文
-            item_src = self.table.item(row, 0)
-            item_dst = self.table.item(row, 1)
+        self.clear_row_filter()
+        current_row = self.table.currentRow()
+        current_index = TableManager.find_current_match_index(matches, current_row)
+        if current_index >= 0:
+            self.update_match_selection(matches, matches[current_index])
+        else:
+            self.update_match_selection(matches, matches[0] if matches else -1)
 
-            src_text = item_src.text() if item_src else ""
-            dst_text = item_dst.text() if item_dst else ""
+    def run_search(self, reverse: bool) -> None:
+        keyword = self.search_card.get_keyword()
+        self.search_last_keyword = keyword
 
-            # 跳过空数据行
-            if not src_text and not dst_text:
-                continue
+        if not keyword:
+            self.clear_row_filter()
+            self.clear_search_matches()
+            return
 
-            is_match = False
-            if use_regex and pattern:
-                if pattern.search(src_text) or pattern.search(dst_text):
-                    is_match = True
-            else:
-                # 普通模式：不区分大小写
-                if (
-                    keyword.lower() in src_text.lower()
-                    or keyword.lower() in dst_text.lower()
-                ):
-                    is_match = True
+        if not self.validate_search_regex():
+            return
 
-            if is_match:
-                matches.append(row)
+        matches, empty_rows = TableManager.build_table_matches(
+            self.table,
+            keyword,
+            self.search_card.is_regex_mode(),
+            self.get_search_columns(),
+        )
 
-        # 2. 更新 UI 显示
-        total_matches = len(matches)
-        if total_matches == 0:
-            self.search_card.clear_match_info()
+        if self.search_is_filter_mode:
+            self.apply_row_filter(matches, empty_rows, keyword)
+
+        if not matches:
+            self.search_card.set_match_info(0, 0)
             self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
             return
 
-        # 3. 计算跳转目标
+        target_row = TableManager.pick_next_match(
+            matches,
+            self.table.currentRow(),
+            reverse,
+        )
+        self.update_match_selection(matches, target_row)
+
+    def apply_row_filter(
+        self, matches: list[int], empty_rows: set[int], keyword: str
+    ) -> None:
+        self.table.setUpdatesEnabled(False)
+        match_set = set(matches)
+        for row in range(self.table.rowCount()):
+            if not keyword:
+                self.table.setRowHidden(row, False)
+                continue
+
+            if row in empty_rows:
+                self.table.setRowHidden(row, True)
+                continue
+
+            self.table.setRowHidden(row, row not in match_set)
+        self.table.setUpdatesEnabled(True)
+
+        if not keyword:
+            self.clear_search_matches()
+            return
+
+        if not matches:
+            self.search_matches = []
+            self.search_current_match = -1
+            self.search_card.set_match_info(0, 0)
+            self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
+            return
+
         current_row = self.table.currentRow()
-        target_row = -1
+        current_index = TableManager.find_current_match_index(matches, current_row)
+        target_row = matches[0] if current_index < 0 else matches[current_index]
+        self.update_match_selection(matches, target_row)
 
-        if reverse:
-            # 向上查找：找小于 current_row 的最大值
-            prev_matches = [m for m in matches if m < current_row]
-            if prev_matches:
-                target_row = prev_matches[-1]
-            else:
-                # 循环到末尾
-                target_row = matches[-1]
-        else:
-            # 向下查找：找大于 current_row 的最小值
-            next_matches = [m for m in matches if m > current_row]
-            if next_matches:
-                target_row = next_matches[0]
-            else:
-                # 循环到开头
-                target_row = matches[0]
+    def update_match_selection(self, matches: list[int], target_row: int) -> None:
+        if target_row < 0:
+            self.clear_search_matches()
+            return
 
-        # 计算当前是第几个匹配 (1-based)
-        current_match_index = matches.index(target_row) + 1
-        self.search_card.set_match_info(current_match_index, total_matches)
-
-        # 4. 执行跳转
+        self.search_matches = matches
+        self.search_current_match = matches.index(target_row)
+        self.search_card.set_match_info(self.search_current_match + 1, len(matches))
         self.table.setCurrentCell(target_row, 0)
         item = self.table.item(target_row, 0)
         if item:
             self.table.scrollToItem(item)
+
+    def clear_search_matches(self) -> None:
+        self.search_matches = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
+
+    def clear_row_filter(self) -> None:
+        self.table.setUpdatesEnabled(False)
+        for row in range(self.table.rowCount()):
+            self.table.setRowHidden(row, False)
+        self.table.setUpdatesEnabled(True)
+        item = self.table.item(self.table.currentRow(), 0)
+        if item:
+            self.table.scrollToItem(item)
+
+    def validate_search_regex(self) -> bool:
+        if not self.search_card.is_regex_mode():
+            return True
+
+        is_valid, error_msg = self.search_card.validate_regex()
+        if is_valid:
+            return True
+
+        self.show_toast(
+            Base.ToastType.ERROR,
+            f"{Localizer.get().search_regex_invalid}: {error_msg}",
+        )
+        return False
 
     def show_toast(self, type: Base.ToastType, message: str) -> None:
         self.emit(

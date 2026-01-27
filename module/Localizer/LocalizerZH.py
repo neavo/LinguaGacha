@@ -50,6 +50,8 @@ class LocalizerZH:
     search_next_match: str = "下一个匹配项"
     search_regex_on: str = "正则模式\n当前状态：已启用"
     search_regex_off: str = "正则模式\n当前状态：未启用"
+    search_filter_on: str = "过滤模式\n当前状态：已启用"
+    search_filter_off: str = "过滤模式\n当前状态：未启用"
     search_regex_invalid: str = "正则表达式无效"
     search_no_match: str = "未找到匹配项"
     search_regex_btn: str = "正则"

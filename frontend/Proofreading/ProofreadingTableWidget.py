@@ -2,6 +2,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QContextMenuEvent
+from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
@@ -45,6 +46,7 @@ class ProofreadingTableWidget(TableWidget):
     COL_WIDTH_STATUS = 60
     COL_WIDTH_ACTION = 60
     SYMBOL_NEWLINE = " ↵ "
+    ROW_NUMBER_MIN_WIDTH = 40
 
     # Item 数据存储的角色
     ITEM_ROLE = Qt.UserRole + 1
@@ -78,6 +80,7 @@ class ProofreadingTableWidget(TableWidget):
         # 禁用默认的双击编辑，改为双击弹出对话框
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+        self.verticalHeader().setFixedWidth(self.ROW_NUMBER_MIN_WIDTH)
         self.setBorderVisible(False)
 
         # 禁用换行，超宽文本显示省略号
@@ -107,7 +110,10 @@ class ProofreadingTableWidget(TableWidget):
         self.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
     def set_items(
-        self, items: list[Item], warning_map: dict[int, list[WarningType]]
+        self,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        start_index: int = 0,
     ) -> None:
         """填充表格数据"""
         self.blockSignals(True)
@@ -126,13 +132,44 @@ class ProofreadingTableWidget(TableWidget):
                     # 设置为只读且不可选中，但保持启用状态以维持样式
                     item.setFlags(Qt.ItemIsEnabled)
                     self.setItem(row, col, item)
+            self.set_vertical_header_labels([])
+            self.update_row_number_width(0)
         else:
             self.setRowCount(len(items))
             for row, item in enumerate(items):
                 self.set_row_data(row, item, warning_map.get(id(item), []))
 
+            self.set_vertical_header_labels(
+                [str(start_index + i + 1) for i in range(len(items))]
+            )
+            self.update_row_number_width(start_index + len(items))
+
         self.setUpdatesEnabled(True)
         self.blockSignals(False)
+
+    def set_vertical_header_labels(self, labels: list[str]) -> None:
+        if not labels:
+            labels = ["" for _ in range(self.rowCount())]
+        if len(labels) < self.rowCount():
+            labels += ["" for _ in range(self.rowCount() - len(labels))]
+
+        for row in range(self.rowCount()):
+            item = self.verticalHeaderItem(row)
+            label = labels[row]
+            if item is None:
+                item = QTableWidgetItem(label)
+                self.setVerticalHeaderItem(row, item)
+            else:
+                item.setText(label)
+            item.setTextAlignment(Qt.AlignCenter)
+
+    def update_row_number_width(self, max_label_value: int) -> None:
+        digits = len(str(max(1, max_label_value)))
+        metrics = QFontMetrics(self.verticalHeader().font())
+        text_width = metrics.horizontalAdvance("9" * digits)
+        self.verticalHeader().setFixedWidth(
+            max(self.ROW_NUMBER_MIN_WIDTH, text_width + 16)
+        )
 
     def clear_cell_widgets(self) -> None:
         """移除所有 cell widgets"""

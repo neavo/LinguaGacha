@@ -1,13 +1,16 @@
 import json
+import re
 from enum import StrEnum
 from functools import partial
 from typing import Any
+from typing import Iterable
 
 import openpyxl
 import openpyxl.styles
 import openpyxl.worksheet.worksheet
 from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import TableWidget
 
@@ -19,6 +22,12 @@ class TableManager:
         GLOSSARY = "GLOSSARY"
         REPLACEMENT = "REPLACEMENT"
         TEXT_PRESERVE = "TEXT_PRESERVE"
+
+    ROW_NUMBER_WIDTHS = {
+        Type.GLOSSARY: 44,
+        Type.REPLACEMENT: 40,
+        Type.TEXT_PRESERVE: 40,
+    }
 
     def __init__(
         self, type: str, data: list[dict[str, str]], table: TableWidget
@@ -123,8 +132,27 @@ class TableManager:
                     elif col == 1:
                         self.table.item(row, col).setText(v.get("info", ""))
 
+        self.update_vertical_headers()
+
         # 更新结束
         self.set_updating(False)
+
+    def update_vertical_headers(self) -> None:
+        min_width = self.ROW_NUMBER_WIDTHS.get(self.type, 40)
+        row_count = max(self.table.rowCount(), 1)
+        digits = len(str(row_count))
+        metrics = QFontMetrics(self.table.verticalHeader().font())
+        text_width = metrics.horizontalAdvance("9" * digits)
+        self.table.verticalHeader().setFixedWidth(max(min_width, text_width + 16))
+        for row in range(self.table.rowCount()):
+            item = self.table.verticalHeaderItem(row)
+            label = str(row + 1)
+            if item is None:
+                item = QTableWidgetItem(label)
+                self.table.setVerticalHeaderItem(row, item)
+            else:
+                item.setText(label)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
     # 导出
     def export(self, path: str) -> None:
@@ -186,6 +214,74 @@ class TableManager:
                     break
 
         return result
+
+    @staticmethod
+    def build_table_matches(
+        table: TableWidget,
+        keyword: str,
+        use_regex: bool,
+        columns: Iterable[int],
+    ) -> tuple[list[int], set[int]]:
+        matches: list[int] = []
+        empty_rows: set[int] = set()
+
+        if use_regex:
+            try:
+                pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                return [], set()
+            keyword_lower = ""
+        else:
+            pattern = None
+            keyword_lower = keyword.lower()
+
+        for row in range(table.rowCount()):
+            texts = []
+            for col in columns:
+                item = table.item(row, col)
+                if not item:
+                    continue
+                text = item.text().strip()
+                if text:
+                    texts.append(text)
+
+            if not texts:
+                empty_rows.add(row)
+                continue
+
+            if not keyword:
+                continue
+
+            if pattern:
+                if any(pattern.search(text) for text in texts):
+                    matches.append(row)
+            else:
+                if any(keyword_lower in text.lower() for text in texts):
+                    matches.append(row)
+
+        return matches, empty_rows
+
+    @staticmethod
+    def find_current_match_index(matches: list[int], row: int) -> int:
+        if row in matches:
+            return matches.index(row)
+        return -1
+
+    @staticmethod
+    def pick_next_match(matches: list[int], current_row: int, reverse: bool) -> int:
+        if not matches:
+            return -1
+
+        if reverse:
+            prev_matches = [m for m in matches if m < current_row]
+            if prev_matches:
+                return prev_matches[-1]
+            return matches[-1]
+
+        next_matches = [m for m in matches if m > current_row]
+        if next_matches:
+            return next_matches[0]
+        return matches[0]
 
     # 获取数据
     def get_data(self) -> list[dict[str, str]]:

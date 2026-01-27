@@ -50,6 +50,8 @@ class LocalizerEN(LocalizerZH):
     search_next_match: str = "Next match"
     search_regex_on: str = "Regex Mode\nCurrent Status: Enabled"
     search_regex_off: str = "Regex Mode\nCurrent Status: Disabled"
+    search_filter_on: str = "Filter Mode\nCurrent Status: Enabled"
+    search_filter_off: str = "Filter Mode\nCurrent Status: Disabled"
     search_regex_invalid: str = "Invalid regular expression"
     search_no_match: str = "No matches found"
     search_regex_btn: str = "Regex"

@@ -53,6 +53,11 @@ class TextReplacementPage(QWidget, Base):
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
 
+        self.search_is_filter_mode: bool = False
+        self.search_last_keyword: str = ""
+        self.search_matches: list[int] = []
+        self.search_current_match: int = -1
+
         # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         # 工程卸载后清空数据
@@ -261,26 +266,29 @@ class TextReplacementPage(QWidget, Base):
 
         self.search_card.on_back_clicked(back_clicked)
 
+        def search_triggered(widget: SearchCard) -> None:
+            self.run_search(reverse=False)
+
+        def prev_clicked(widget: SearchCard) -> None:
+            self.run_search(reverse=True)
+
         def next_clicked(widget: SearchCard) -> None:
-            keyword: str = widget.get_line_edit().text().strip()
+            self.run_search(reverse=False)
 
-            row: int = self.table_manager.search(keyword, self.table.currentRow())
-            if row > -1:
-                self.table.setCurrentCell(row, 0)
-            else:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().alert_no_data,
-                    },
-                )
+        def search_mode_changed(widget: SearchCard) -> None:
+            self.search_is_filter_mode = widget.is_filter_mode()
+            self.apply_search_mode()
 
+        self.search_card.on_search_triggered(search_triggered)
+        self.search_card.on_prev_clicked(prev_clicked)
         self.search_card.on_next_clicked(next_clicked)
+        self.search_card.on_search_mode_changed(search_mode_changed)
 
         # 创建命令栏
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
+
+        self.search_card.set_base_font(self.command_bar_card.command_bar.font())
 
         self.command_bar_card.set_minimum_width(640)
         self.add_command_bar_action_import(self.command_bar_card, config, window)
@@ -291,6 +299,164 @@ class TextReplacementPage(QWidget, Base):
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
         self.command_bar_card.add_stretch(1)
         self.add_command_bar_action_wiki(self.command_bar_card, config, window)
+
+    def get_search_columns(self) -> tuple[int, ...]:
+        return (0, 1)
+
+    def apply_search_mode(self) -> None:
+        keyword = self.search_card.get_keyword()
+        self.search_last_keyword = keyword
+
+        if not keyword:
+            self.clear_row_filter()
+            self.clear_search_matches()
+            return
+
+        if not self.validate_search_regex():
+            return
+
+        matches, empty_rows = TableManager.build_table_matches(
+            self.table,
+            keyword,
+            self.search_card.is_regex_mode(),
+            self.get_search_columns(),
+        )
+        if self.search_is_filter_mode:
+            self.apply_row_filter(matches, empty_rows, keyword)
+            if not matches:
+                return
+            return
+
+        self.clear_row_filter()
+        current_row = self.table.currentRow()
+        current_index = TableManager.find_current_match_index(matches, current_row)
+        if current_index >= 0:
+            self.update_match_selection(matches, matches[current_index])
+        else:
+            self.update_match_selection(matches, matches[0] if matches else -1)
+
+    def run_search(self, reverse: bool) -> None:
+        keyword = self.search_card.get_keyword()
+        self.search_last_keyword = keyword
+
+        if not keyword:
+            self.clear_row_filter()
+            self.clear_search_matches()
+            return
+
+        if not self.validate_search_regex():
+            return
+
+        matches, empty_rows = TableManager.build_table_matches(
+            self.table,
+            keyword,
+            self.search_card.is_regex_mode(),
+            self.get_search_columns(),
+        )
+
+        if self.search_is_filter_mode:
+            self.apply_row_filter(matches, empty_rows, keyword)
+
+        if not matches:
+            self.search_card.set_match_info(0, 0)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().search_no_match,
+                },
+            )
+            return
+
+        target_row = TableManager.pick_next_match(
+            matches,
+            self.table.currentRow(),
+            reverse,
+        )
+        self.update_match_selection(matches, target_row)
+
+    def apply_row_filter(
+        self, matches: list[int], empty_rows: set[int], keyword: str
+    ) -> None:
+        self.table.setUpdatesEnabled(False)
+        match_set = set(matches)
+        for row in range(self.table.rowCount()):
+            if not keyword:
+                self.table.setRowHidden(row, False)
+                continue
+
+            if row in empty_rows:
+                self.table.setRowHidden(row, True)
+                continue
+
+            self.table.setRowHidden(row, row not in match_set)
+        self.table.setUpdatesEnabled(True)
+
+        if not keyword:
+            self.clear_search_matches()
+            return
+
+        if not matches:
+            self.search_matches = []
+            self.search_current_match = -1
+            self.search_card.set_match_info(0, 0)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().search_no_match,
+                },
+            )
+            return
+
+        current_row = self.table.currentRow()
+        current_index = TableManager.find_current_match_index(matches, current_row)
+        target_row = matches[0] if current_index < 0 else matches[current_index]
+        self.update_match_selection(matches, target_row)
+
+    def update_match_selection(self, matches: list[int], target_row: int) -> None:
+        if target_row < 0:
+            self.clear_search_matches()
+            return
+
+        self.search_matches = matches
+        self.search_current_match = matches.index(target_row)
+        self.search_card.set_match_info(self.search_current_match + 1, len(matches))
+        self.table.setCurrentCell(target_row, 0)
+        item = self.table.item(target_row, 0)
+        if item:
+            self.table.scrollToItem(item)
+
+    def clear_search_matches(self) -> None:
+        self.search_matches = []
+        self.search_current_match = -1
+        self.search_card.clear_match_info()
+
+    def clear_row_filter(self) -> None:
+        self.table.setUpdatesEnabled(False)
+        for row in range(self.table.rowCount()):
+            self.table.setRowHidden(row, False)
+        self.table.setUpdatesEnabled(True)
+        item = self.table.item(self.table.currentRow(), 0)
+        if item:
+            self.table.scrollToItem(item)
+
+    def validate_search_regex(self) -> bool:
+        if not self.search_card.is_regex_mode():
+            return True
+
+        is_valid, error_msg = self.search_card.validate_regex()
+        if is_valid:
+            return True
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.ERROR,
+                "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+            },
+        )
+        return False
 
     # 导入
     def add_command_bar_action_import(
