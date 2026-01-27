@@ -5,6 +5,7 @@ import re
 import zipfile
 
 from bs4 import BeautifulSoup
+from bs4 import Tag
 from lxml import etree
 
 from base.Base import Base
@@ -21,7 +22,19 @@ class EPUB(Base):
     etree
 
     # EPUB 文件中读取的标签范围
-    EPUB_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td")
+    EPUB_TAGS = (
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "div",
+        "li",
+        "td",
+        "blockquote",
+    )
 
     def __init__(self, config: Config) -> None:
         super().__init__()
@@ -30,6 +43,33 @@ class EPUB(Base):
         self.config = config
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
+
+    @staticmethod
+    def should_skip_dom(dom: Tag) -> bool:
+        # Why: 读取与写回必须使用完全一致的过滤规则，否则条目会错位导致整页串翻。
+        text = dom.get_text()
+        if text.strip() == "":
+            return True
+        if dom.find(EPUB.EPUB_TAGS) is not None:
+            return True
+
+        # Why: EPUB 常用 <blockquote> 表示目录缩进/列表/侧栏等，但代码清单也常被包成 blockquote。
+        #      代码清单一旦送去翻译会被破坏，因此需要跳过明显的“代码块”结构。
+        if dom.name != "blockquote":
+            return False
+
+        tt_count = len(dom.find_all("tt"))
+        br_count = len(dom.find_all("br"))
+        newline_count = text.count("\n")
+        code_like_count = len(dom.find_all(["pre", "code", "kbd", "samp"]))
+        if tt_count >= 4 and (br_count >= 1 or newline_count >= 1):
+            return True
+        if tt_count >= 12:
+            return True
+        if code_like_count > 0 and (br_count >= 1 or newline_count >= 1):
+            return True
+
+        return False
 
     # 在扩展名前插入文本
     def insert_target(self, path: str) -> str:
@@ -68,11 +108,7 @@ class EPUB(Base):
                             reader.read().decode("utf-8-sig"), "html.parser"
                         )
                         for dom in bs.find_all(EPUB.EPUB_TAGS):
-                            # 跳过空标签或嵌套标签
-                            if (
-                                dom.get_text().strip() == ""
-                                or dom.find(EPUB.EPUB_TAGS) is not None
-                            ):
+                            if EPUB.should_skip_dom(dom):
                                 continue
 
                             # 添加数据
@@ -230,11 +266,7 @@ class EPUB(Base):
                         dom["style"] = style_content
 
                 for dom in bs.find_all(EPUB.EPUB_TAGS):
-                    # 跳过空标签或嵌套标签
-                    if (
-                        dom.get_text().strip() == ""
-                        or dom.find(EPUB.EPUB_TAGS) is not None
-                    ):
+                    if EPUB.should_skip_dom(dom):
                         continue
 
                     # 取数据
