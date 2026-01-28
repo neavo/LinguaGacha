@@ -1,4 +1,7 @@
 from qfluentwidgets import LineEdit
+from typing import Any
+from typing import cast
+
 from qfluentwidgets import SearchLineEdit
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
@@ -35,16 +38,22 @@ class LineEditStyleMixin:
         "sans-serif"
     )
 
+    # NOTE: 该 mixin 预期与 QWidget 子类组合使用；这里声明最小接口用于类型检查。
+    destroyed: Any
+
+    def setStyleSheet(self, style: str) -> None:  # noqa: N802
+        raise NotImplementedError
+
     def init_style_mixin(self, widget_class_name: str) -> None:
         """初始化样式混入，需要在子类 __init__ 中调用"""
-        self._widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
+        self.widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
 
         # 初始样式
         self.update_line_edit_style()
 
         # 监听主题变化
         qconfig.themeChanged.connect(self.update_line_edit_style)
-        self.destroyed.connect(self.disconnect_style_signals)
+        cast(Any, self).destroyed.connect(self.disconnect_style_signals)
 
     def disconnect_style_signals(self) -> None:
         """断开全局信号连接，避免内存泄漏"""
@@ -70,9 +79,9 @@ class LineEditStyleMixin:
             border_color = self.LIGHT_BORDER
 
         # 使用动态类名生成 QSS
-        cls = self._widget_class_name
+        cls = self.widget_class_name
 
-        self.setStyleSheet(f"""
+        cast(Any, self).setStyleSheet(f"""
             {cls} {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
