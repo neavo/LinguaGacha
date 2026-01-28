@@ -2,7 +2,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QContextMenuEvent
-from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
@@ -11,8 +10,10 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
+from qfluentwidgets import getFont
 from qfluentwidgets import IconWidget
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
@@ -59,9 +60,18 @@ class ProofreadingTableWidget(TableWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.ui_font = QFont(self.font())
-        self.ui_font.setPixelSize(self.UI_FONT_PX)
-        self.setFont(self.ui_font)
+        # WHY: 使用 QFluentWidgets 的字体族生成 QFont，避免 delegate 计算/绘制的 metrics 不一致导致下伸字母被裁剪。
+        self.ui_font = getFont(self.UI_FONT_PX)
+        # WHY: 继承应用级 hinting 设置，避免出现狗牙/清晰度差异。
+        self.ui_font.setHintingPreference(self.font().hintingPreference())
+
+        # WHY: TableWidget 的默认 QSS 会用 `font: 13px --FontFamilies` 覆盖表头/序号字体；这里仅覆盖字号。
+        header_qss = (
+            "QHeaderView::section {\n"
+            f"    font: {self.UI_FONT_PX}px --FontFamilies;\n"
+            "}\n"
+        )
+        setCustomStyleSheet(self, header_qss, header_qss)
 
         # 设置列头
         self.setColumnCount(3)
@@ -72,12 +82,6 @@ class ProofreadingTableWidget(TableWidget):
                 Localizer.get().proofreading_page_col_status,
             ]
         )
-
-        # WHY: QFluentWidgets 的样式可能覆盖控件 font；通过 header item 的 FontRole 强制生效。
-        for col in range(self.columnCount()):
-            header_item = self.horizontalHeaderItem(col)
-            if header_item is not None:
-                header_item.setFont(self.ui_font)
 
         # 设置表格属性
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -101,14 +105,11 @@ class ProofreadingTableWidget(TableWidget):
 
         # 设置列宽
         header = self.horizontalHeader()
-        header.setFont(self.ui_font)
         header.setSectionResizeMode(self.COL_SRC, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_DST, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.Fixed)
         self.setColumnWidth(self.COL_STATUS, self.COL_WIDTH_STATUS)
         header.setDefaultAlignment(Qt.AlignCenter)
-
-        self.verticalHeader().setFont(self.ui_font)
 
         # 只读模式标志
         self.readonly = False
@@ -169,7 +170,6 @@ class ProofreadingTableWidget(TableWidget):
                 self.setVerticalHeaderItem(row, item)
             else:
                 item.setText(label)
-            item.setFont(self.ui_font)
             item.setTextAlignment(Qt.AlignCenter)
 
     def update_row_number_width(self, max_label_value: int) -> None:
