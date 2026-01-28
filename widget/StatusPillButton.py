@@ -1,10 +1,11 @@
 from enum import StrEnum
-
 from typing import Any
 from typing import cast
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPaintEvent
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import PillPushButton
@@ -91,6 +92,15 @@ class StatusPillButton(PillPushButton):
         # WHY: 默认与旧实现保持一致，避免 UI 体感变化。
         self.font_size_px_value: int | None = None
 
+        # WHY: 缓存颜色，避免在 paintEvent 中重复查表。
+        self.bg_color = QColor()
+        self.border_color = QColor()
+        self.text_color = QColor()
+
+        # WHY: 在初始化时捕获基础字体，避免主题切换时 self.font() 被 qfluentwidgets 修改。
+        self.base_font = QFont(self.font())
+        self.cached_font: QFont | None = None
+
         self.update_style()
         qconfig.themeChanged.connect(self.update_style)
         cast(Any, self).destroyed.connect(self.disconnect_style_signals)
@@ -102,27 +112,26 @@ class StatusPillButton(PillPushButton):
             pass
 
     def update_style(self) -> None:
-        # WHY: 避免在 paintEvent 中 setStyleSheet，减少重绘抖动与潜在递归。
         palette = DARK_PALETTE if isDarkTheme() else LIGHT_PALETTE
         bg, border, text_color = palette.get(
             self.kind_value,
             palette[StatusPillKind.INFO],
         )
 
-        font_size = self.font_size_px_value
-        font_size_qss = f"font-size: {font_size}px;" if font_size else ""
+        self.bg_color = bg
+        self.border_color = border
+        self.text_color = text_color
 
-        self.setStyleSheet(
-            "PillPushButton { border: none; }"
-            "PillPushButton {"
-            f" background-color: {bg.name(QColor.HexArgb)};"
-            f" border: 1px solid {border.name(QColor.HexArgb)};"
-            f" color: {text_color.name(QColor.HexArgb)};"
-            f" {font_size_qss}"
-            " padding: 4px 8px;"
-            " border-radius: 999px;"
-            " }"
-        )
+        # WHY: 基于初始化时捕获的 base_font 构建字体，避免主题切换导致字体变化。
+        font = QFont(self.base_font)
+        font_size = self.font_size_px_value
+        if font_size:
+            font.setPixelSize(font_size)
+        self.cached_font = font
+
+        # WHY: 清空 QSS，完全由 paintEvent 控制外观。
+        self.setStyleSheet("")
+
         self.update()
 
     def kind(self) -> StatusPillKind:
@@ -148,5 +157,22 @@ class StatusPillButton(PillPushButton):
         self.update_style()
 
     def paintEvent(self, e: QPaintEvent) -> None:
-        # WHY: 胶囊外观全部用 QSS 表达，避免自绘与 qfluentwidgets 的绘制冲突。
-        super().paintEvent(e)
+        del e
+        # WHY: 完全自绘，不调用任何父类的 paintEvent，避免 QPushButton 绘制默认灰色背景。
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+
+        painter.setPen(self.border_color)
+        painter.setBrush(self.bg_color)
+
+        # WHY: 圆角半径 = 高度的一半，实现完美药丸形状。
+        r = rect.height() / 2
+        painter.drawRoundedRect(rect, r, r)
+
+        # WHY: 自绘文本，使用缓存的字体和颜色。
+        if self.cached_font:
+            painter.setFont(self.cached_font)
+        painter.setPen(self.text_color)
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())

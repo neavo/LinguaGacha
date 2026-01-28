@@ -1191,10 +1191,16 @@ class ProofreadingPage(QWidget, Base):
 
     def do_batch_reset_translation(self, items: list[Item]) -> None:
         """执行批量重置"""
+        # WHY: 保存按钮已移至编辑区，重置操作需要自动入库
+        db = StorageContext.get().get_db()
         for item in items:
             item.set_dst("")
             item.set_status(Base.ProjectStatus.NONE)
             item.set_retry_count(0)
+
+            # 入库
+            if db is not None:
+                db.set_item(item.to_dict())
 
             # 更新 UI 和检查结果
             self.recheck_item(item)
@@ -1206,6 +1212,8 @@ class ProofreadingPage(QWidget, Base):
                 index = self.current_page_start_index + self.current_row_in_page + 1
                 self.edit_panel.bind_item(item, index, warnings)
                 self.edit_panel.set_readonly(self.is_readonly)
+
+        self.update_project_status_after_save()
 
     # ========== 重新翻译功能 ==========
     def on_retranslate_clicked(self, item: Item) -> None:
@@ -1329,6 +1337,11 @@ class ProofreadingPage(QWidget, Base):
 
     def on_translate_done_ui(self, item: Item, success: bool) -> None:
         """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
+        # WHY: 保存按钮已移至编辑区，翻译完成后需要自动入库
+        db = StorageContext.get().get_db()
+        if db is not None:
+            db.set_item(item.to_dict())
+
         # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
         if success:
             self.recheck_item(item)
@@ -1345,6 +1358,8 @@ class ProofreadingPage(QWidget, Base):
             index = self.current_page_start_index + self.current_row_in_page + 1
             self.edit_panel.bind_item(item, index, warnings)
             self.edit_panel.set_readonly(self.is_readonly)
+
+        self.update_project_status_after_save()
 
     def on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
         """进度更新的 UI 处理（主线程）"""
