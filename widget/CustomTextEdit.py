@@ -1,6 +1,7 @@
 from typing import Callable
 
 from PyQt5.QtCore import QEvent
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QObject
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QTextOption
@@ -62,7 +63,6 @@ class CustomTextEdit(PlainTextEdit):
     def __init__(self, parent=None, monospace: bool = False):
         super().__init__(parent)
 
-        self.read_only = False
         self.monospace = monospace
         self.has_error = False
         self.on_focus_out: Callable[[], None] | None = None
@@ -82,20 +82,23 @@ class CustomTextEdit(PlainTextEdit):
         self.installEventFilter(self)
 
         # 监听主题变化，控件销毁时自动断开
-        qconfig.themeChanged.connect(self.update_style)
+        qconfig.themeChangedFinished.connect(self.refresh_style)
         self.destroyed.connect(self.disconnect_signals)
 
     def disconnect_signals(self) -> None:
         """断开全局信号连接，避免内存泄漏"""
         try:
-            qconfig.themeChanged.disconnect(self.update_style)
+            qconfig.themeChangedFinished.disconnect(self.refresh_style)
         except (TypeError, RuntimeError):
             pass
 
     def setReadOnly(self, ro: bool) -> None:
-        self.read_only = ro
         super().setReadOnly(ro)
         self.update_style()
+
+    def refresh_style(self) -> None:
+        # WHY: 主题切换时可能被全局样式覆盖，延迟一帧再刷新样式。
+        QTimer.singleShot(0, self.update_style)
 
     def set_error(self, has_error: bool) -> None:
         """设置错误状态，显示红色边框"""
@@ -107,8 +110,8 @@ class CustomTextEdit(PlainTextEdit):
         """设置失去焦点时的回调函数"""
         self.on_focus_out = callback
 
-    def eventFilter(self, a0: QObject, a1: QEvent) -> bool:
-        if a0 is self:
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        if a0 is self and a1 is not None:
             if a1.type() == QEvent.Type.FocusOut and self.on_focus_out:
                 self.on_focus_out()
             if a1.type() == QEvent.Type.Show:
@@ -122,7 +125,10 @@ class CustomTextEdit(PlainTextEdit):
         font_family = self.FONT_MONOSPACE if self.monospace else self.FONT_DEFAULT
         padding = 6 if bool(self.property("compact")) else 10
 
-        if self.read_only:
+        # WHY: 使用 isReadOnly() 而非自定义变量，确保主题切换时与实际状态一致。
+        is_readonly = self.isReadOnly()
+
+        if is_readonly:
             if is_dark:
                 bg_color = self.DARK_BG_READONLY
                 border = "1px solid transparent"
@@ -132,7 +138,6 @@ class CustomTextEdit(PlainTextEdit):
                 border = "1px solid transparent"
                 color = self.LIGHT_TEXT_READONLY
             focus_border = border
-            focus_border_bottom = "1px solid transparent"
         else:
             if is_dark:
                 bg_color = self.DARK_BG_EDITABLE
@@ -144,13 +149,11 @@ class CustomTextEdit(PlainTextEdit):
                 color = self.LIGHT_TEXT_EDITABLE
             # 编辑模式下焦点时显示主题色边框
             focus_border = f"1px solid {theme_color}"
-            focus_border_bottom = f"1px solid {theme_color}"
 
         # 错误状态覆盖边框颜色
-        if self.has_error and not self.read_only:
+        if self.has_error and not is_readonly:
             border = f"1px solid {self.ERROR_BORDER}"
             focus_border = f"1px solid {self.ERROR_BORDER}"
-            focus_border_bottom = f"1px solid {self.ERROR_BORDER}"
 
         self.setStyleSheet(f"""
             CustomTextEdit,
@@ -177,7 +180,6 @@ class CustomTextEdit(PlainTextEdit):
             CustomTextEdit PlainTextEdit:focus,
             CustomTextEdit QPlainTextEdit:focus {{
                 border: {focus_border};
-                border-bottom: {focus_border_bottom};
                 background-color: {bg_color};
             }}
         """)

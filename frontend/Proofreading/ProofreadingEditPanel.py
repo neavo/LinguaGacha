@@ -32,8 +32,8 @@ from module.QualityRuleManager import QualityRuleManager
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
-from widget.StatusPillButton import StatusPillButton
-from widget.StatusPillButton import StatusPillKind
+from widget.StatusTag import StatusTag
+from widget.StatusTag import StatusPillKind
 
 
 class ProofreadingEditPanel(QWidget):
@@ -158,7 +158,7 @@ class ProofreadingEditPanel(QWidget):
         )
         self.status_flow.addWidget(self.glossary_status_pill)
 
-        self.warning_pills: dict[WarningType, StatusPillButton] = {}
+        self.warning_pills: dict[WarningType, StatusTag] = {}
         for warning in (
             WarningType.KANA,
             WarningType.HANGEUL,
@@ -196,8 +196,7 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.textChanged.connect(self.on_dst_text_changed)
         self.dst_text.set_on_focus_out(self.on_editor_focus_out)
         editor_layout.addWidget(self.dst_text, 1)
-
-        editor_layout.addWidget(self.build_divider(self.editor_card))
+        editor_layout.addSpacing(10)
         editor_layout.addWidget(self.status_scroll)
 
         # 按钮区（状态区下方，卡片内部）
@@ -302,7 +301,8 @@ class ProofreadingEditPanel(QWidget):
         self.schedule_status_height_refresh()
         # 先隐藏术语状态 pill，等异步计算完成后再显示，避免短暂显示旧状态
         self.set_pill_layout_visible(self.glossary_status_pill, False)
-        self.schedule_glossary_status_refresh()
+        self.glossary_status_timer.stop()
+        QTimer.singleShot(0, self.update_glossary_status)
 
     def clear(self) -> None:
         self.current_item = None
@@ -519,18 +519,19 @@ class ProofreadingEditPanel(QWidget):
         # 预留 2 行空间，视觉上不显得拥挤；超过 2 行时由滚动区域内部处理。
         self.status_scroll.setFixedHeight(max_height)
 
-    def create_status_pill(self, text: str, kind: StatusPillKind) -> StatusPillButton:
-        pill = StatusPillButton(text=text, kind=kind, parent=self)
+    def create_status_pill(self, text: str, kind: StatusPillKind) -> StatusTag:
+        pill = StatusTag(text=text, kind=kind, parent=self)
         pill.set_font_size_px(self.PILL_FONT_SIZE_PX)
         return pill
 
-    def set_pill_layout_visible(self, pill: StatusPillButton, visible: bool) -> None:
+    def set_pill_layout_visible(self, pill: StatusTag, visible: bool) -> None:
         """隐藏/显示状态 pill。
 
         WHY: FlowLayout 使用 tight 模式时会自动跳过隐藏控件，不需要额外篡改尺寸。
         """
-
         pill.setVisible(visible)
+        self.status_flow.invalidate()
+        self.status_widget.adjustSize()
 
     def get_status_tag(self, status: Base.ProjectStatus) -> tuple[str, StatusPillKind]:
         mapping = {

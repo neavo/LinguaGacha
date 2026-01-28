@@ -3,12 +3,15 @@ from typing import Any
 from typing import cast
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QSize
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPaintEvent
+from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import PillPushButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
@@ -22,72 +25,67 @@ class StatusPillKind(StrEnum):
 
 DARK_PALETTE: dict[StatusPillKind, tuple[QColor, QColor, QColor]] = {
     StatusPillKind.INFO: (
-        QColor(39, 39, 39),
-        QColor(255, 255, 255, 46),
-        QColor(255, 255, 255),
+        QColor(56, 139, 253, 26),  # Bg (Blue)
+        QColor(56, 139, 253, 102),  # Border
+        QColor(230, 230, 230),  # Text
     ),
     StatusPillKind.SUCCESS: (
-        QColor(57, 61, 27),
-        QColor(255, 255, 255, 46),
-        QColor(255, 255, 255),
+        QColor(46, 160, 67, 26),  # Bg (Green)
+        QColor(46, 160, 67, 102),  # Border
+        QColor(230, 230, 230),  # Text
     ),
     StatusPillKind.WARNING: (
-        QColor(67, 53, 25),
-        QColor(255, 255, 255, 46),
-        QColor(255, 255, 255),
+        QColor(187, 128, 9, 26),  # Bg (Yellow)
+        QColor(187, 128, 9, 102),  # Border
+        QColor(230, 230, 230),  # Text
     ),
     StatusPillKind.ERROR: (
-        QColor(68, 39, 38),
-        QColor(255, 255, 255, 46),
-        QColor(255, 255, 255),
+        QColor(248, 81, 73, 26),  # Bg (Red)
+        QColor(248, 81, 73, 102),  # Border
+        QColor(230, 230, 230),  # Text
     ),
 }
 
 LIGHT_PALETTE: dict[StatusPillKind, tuple[QColor, QColor, QColor]] = {
     StatusPillKind.INFO: (
-        QColor(244, 244, 244),
-        QColor(229, 229, 229),
-        QColor(0, 0, 0),
+        QColor(221, 244, 255),  # Bg (Blue)
+        QColor(84, 174, 255),  # Border
+        QColor(88, 88, 88),  # Text
     ),
     StatusPillKind.SUCCESS: (
-        QColor(223, 246, 221),
-        QColor(229, 229, 229),
-        QColor(0, 0, 0),
+        QColor(218, 251, 225),  # Bg (Green)
+        QColor(74, 194, 107),  # Border
+        QColor(88, 88, 88),  # Text
     ),
     StatusPillKind.WARNING: (
-        QColor(255, 244, 206),
-        QColor(229, 229, 229),
-        QColor(0, 0, 0),
+        QColor(255, 248, 197),  # Bg (Yellow)
+        QColor(212, 167, 44),  # Border
+        QColor(88, 88, 88),  # Text
     ),
     StatusPillKind.ERROR: (
-        QColor(253, 231, 233),
-        QColor(229, 229, 229),
-        QColor(0, 0, 0),
+        QColor(255, 235, 233),  # Bg (Red)
+        QColor(255, 129, 130),  # Border
+        QColor(88, 88, 88),  # Text
     ),
 }
 
 
-class StatusPillButton(PillPushButton):
-    """状态胶囊按钮。
+class StatusTag(QLabel):
+    """状态胶囊标签。
 
     WHY: 统一封装状态 pill 的样式与类型，避免散落的魔术字符串与 paintEvent hack。
     """
 
-    def __init__(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def __init__(
         self,
         text: str = "",
         kind: StatusPillKind = StatusPillKind.INFO,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
-        self.setText(text)
+        super().__init__(text, parent)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         self.kind_value = kind
-
-        # WHY: Status pill 是展示用的标签，不应响应点击。
-        self.setEnabled(False)
-        self.setCheckable(False)
-        self.setCursor(Qt.CursorShape.ArrowCursor)
 
         # WHY: 默认与旧实现保持一致，避免 UI 体感变化。
         self.font_size_px_value: int | None = None
@@ -128,11 +126,14 @@ class StatusPillButton(PillPushButton):
         if font_size:
             font.setPixelSize(font_size)
         self.cached_font = font
+        self.setFont(font)
 
         # WHY: 清空 QSS，完全由 paintEvent 控制外观。
         self.setStyleSheet("")
 
+        self.setFixedSize(self.sizeHint())
         self.update()
+        self.updateGeometry()
 
     def kind(self) -> StatusPillKind:
         return self.kind_value
@@ -156,9 +157,45 @@ class StatusPillButton(PillPushButton):
         self.font_size_px_value = size_px
         self.update_style()
 
-    def paintEvent(self, e: QPaintEvent) -> None:
-        del e
-        # WHY: 完全自绘，不调用任何父类的 paintEvent，避免 QPushButton 绘制默认灰色背景。
+    def setText(self, a0: str | None) -> None:
+        text = a0 or ""
+        if self.text() == text:
+            return
+        super().setText(text)
+        # WHY: 强制设置固定尺寸，确保 FlowLayout 能够正确计算布局。
+        hint = self.sizeHint()
+        self.setFixedSize(hint)
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        layout = parent.layout()
+        if layout is not None:
+            layout.invalidate()
+
+    def minimumSizeHint(self) -> QSize:
+        return self.sizeHint()
+
+    def sizeHint(self) -> QSize:
+        """计算标签的合适尺寸。
+
+        WHY: 圆角矩形，预留左右内边距。
+        """
+        fm = QFontMetrics(self.font())
+        text = self.text()
+        text_w = fm.horizontalAdvance(text)
+        text_h = fm.height()
+
+        # 垂直方向增加少量 padding
+        height = text_h + 8
+
+        # 水平方向：文本宽度 + 左右内边距 (各 8px)
+        width = text_w + 16
+
+        return QSize(width, height)
+
+    def paintEvent(self, a0: QPaintEvent | None) -> None:
+        del a0
+        # WHY: 完全自绘，避免 QLabel 默认绘制。
         painter = QPainter(self)
         painter.setRenderHints(QPainter.RenderHint.Antialiasing)
 
@@ -167,8 +204,8 @@ class StatusPillButton(PillPushButton):
         painter.setPen(self.border_color)
         painter.setBrush(self.bg_color)
 
-        # WHY: 圆角半径 = 高度的一半，实现完美药丸形状。
-        r = rect.height() / 2
+        # WHY: 固定圆角半径，实现圆角矩形。
+        r = 4
         painter.drawRoundedRect(rect, r, r)
 
         # WHY: 自绘文本，使用缓存的字体和颜色。
