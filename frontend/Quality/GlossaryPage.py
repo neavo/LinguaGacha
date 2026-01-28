@@ -26,6 +26,7 @@ from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.QualityRuleManager import QualityRuleManager
+from module.Storage.DataStore import DataStore
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -59,7 +60,7 @@ class GlossaryPage(QWidget, Base):
         self.search_current_match: int = -1
 
         # 注册事件
-        self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
+        self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.glossary_refresh)
         # 工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self.glossary_refresh)
         # 工程卸载后清空数据
@@ -78,11 +79,26 @@ class GlossaryPage(QWidget, Base):
         QualityRuleManager.get().set_glossary_enable(enable)
 
     def glossary_refresh(self, event: Base.Event, data: dict) -> None:
+        if event == Base.Event.QUALITY_RULE_UPDATE and not self.is_glossary_update(
+            data
+        ):
+            return
         self.table_manager.reset()
         self.table_manager.set_data(self.get_glossary_data())
         self.table_manager.sync()
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(self.get_glossary_enable())
+
+    def is_glossary_update(self, data: dict) -> bool:
+        # WHY: 只对术语表/开关相关变更刷新，避免无关事件触发重绘
+        if not data:
+            return True
+        rule_types: list[str] = data.get("rule_types", [])
+        meta_keys: list[str] = data.get("meta_keys", [])
+        return (
+            DataStore.RuleType.GLOSSARY.value in rule_types
+            or "glossary_enable" in meta_keys
+        )
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         self.table_manager.reset()

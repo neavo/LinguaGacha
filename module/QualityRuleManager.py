@@ -28,6 +28,14 @@ class QualityRuleManager(Base):
 
     instance: ClassVar["QualityRuleManager | None"] = None
     lock: ClassVar[threading.Lock] = threading.Lock()
+    RULE_META_KEYS: ClassVar[set[str]] = {
+        "glossary_enable",
+        "text_preserve_enable",
+        "pre_translation_replacement_enable",
+        "post_translation_replacement_enable",
+        "custom_prompt_zh_enable",
+        "custom_prompt_en_enable",
+    }
 
     def __init__(self) -> None:
         super().__init__()
@@ -200,6 +208,9 @@ class QualityRuleManager(Base):
         # 2. 更新缓存
         self.cache[rule_type] = data
 
+        if save:
+            self.emit_quality_rule_update(rule_types=[rule_type])
+
     def get_rule_text_cached(self, rule_type: DataStore.RuleType) -> str:
         """从缓存或 DB 获取文本类规则"""
         # 1. 查缓存
@@ -226,6 +237,8 @@ class QualityRuleManager(Base):
 
         # 2. 更新缓存
         self.cache[rule_type] = text
+
+        self.emit_quality_rule_update(rule_types=[rule_type])
 
     def get_meta_cached(self, key: str, default: Any) -> Any:
         """从缓存或 DB 获取元数据"""
@@ -255,6 +268,22 @@ class QualityRuleManager(Base):
 
         # 2. 更新缓存
         self.cache[key] = value
+
+        if key in self.RULE_META_KEYS:
+            self.emit_quality_rule_update(meta_keys=[key])
+
+    def emit_quality_rule_update(
+        self,
+        rule_types: list[DataStore.RuleType] | None = None,
+        meta_keys: list[str] | None = None,
+    ) -> None:
+        # WHY: 统一规则变更通知，避免组件主动拉取造成耦合
+        payload: dict[str, Any] = {}
+        if rule_types:
+            payload["rule_types"] = [rule_type.value for rule_type in rule_types]
+        if meta_keys:
+            payload["meta_keys"] = meta_keys
+        self.emit(Base.Event.QUALITY_RULE_UPDATE, payload)
 
     # ========== 初始化逻辑 ==========
     def initialize_project_rules(self, db: DataStore) -> None:

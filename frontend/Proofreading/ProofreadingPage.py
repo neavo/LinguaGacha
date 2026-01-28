@@ -3,6 +3,7 @@ import threading
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QSize
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QShowEvent
@@ -29,6 +30,7 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
+from module.Storage.DataStore import DataStore
 from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
@@ -39,6 +41,19 @@ class ProofreadingPage(QWidget, Base):
 
     UI_FONT_PX = 12
     UI_ICON_PX = 16
+    QUALITY_RULE_REFRESH_DELAY_MS: int = 200
+    QUALITY_RULE_TYPES: set[str] = {
+        DataStore.RuleType.GLOSSARY.value,
+        DataStore.RuleType.PRE_REPLACEMENT.value,
+        DataStore.RuleType.POST_REPLACEMENT.value,
+        DataStore.RuleType.TEXT_PRESERVE.value,
+    }
+    QUALITY_META_KEYS: set[str] = {
+        "glossary_enable",
+        "pre_translation_replacement_enable",
+        "post_translation_replacement_enable",
+        "text_preserve_enable",
+    }
 
     # 信号定义
     items_loaded = pyqtSignal(list)  # 数据加载完成信号
@@ -51,7 +66,7 @@ class ProofreadingPage(QWidget, Base):
         str, int, int
     )  # 进度更新信号 (content, current, total)
     progress_finished = pyqtSignal()  # 进度完成信号
-    glossary_refreshed = pyqtSignal(object, dict)  # (checker, warning_map)
+    quality_rules_refreshed = pyqtSignal(object, dict)  # (checker, warning_map)
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -85,6 +100,10 @@ class ProofreadingPage(QWidget, Base):
         self.pending_revert: Callable[[], None] | None = None
         self.pending_export: bool = False
         self.load_ok: bool = False
+        self.quality_rule_refresh_token: int = 0
+        self.quality_rule_refresh_timer: QTimer = QTimer(self)
+        self.quality_rule_refresh_timer.setSingleShot(True)
+        self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
 
         self.ui_font_px = self.UI_FONT_PX
         self.ui_icon_px = self.UI_ICON_PX
@@ -108,7 +127,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
-        self.subscribe(Base.Event.GLOSSARY_REFRESH, self.on_glossary_refresh)
+        self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
 
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
@@ -119,17 +138,33 @@ class ProofreadingPage(QWidget, Base):
         self.item_saved.connect(self.on_item_saved_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
-        self.glossary_refreshed.connect(self.on_glossary_refreshed_ui)
+        self.quality_rules_refreshed.connect(self.on_quality_rules_refreshed_ui)
 
-    def on_glossary_refresh(self, event: Base.Event, event_data: dict) -> None:
-        # WHY: 术语表/开关在其他页面修改后，本页的 checker 仍持有旧的 prepared_glossary_data，
-        # 会导致“术语未生效”判断和高亮都与最新规则不一致。
+    def on_quality_rule_update(self, event: Base.Event, event_data: dict) -> None:
         del event
-        del event_data
-
+        # WHY: 只对影响校对判定的规则变更触发重算，避免无效刷新
+        if not self.is_quality_rule_update_relevant(event_data):
+            return
         if not self.items:
             return
+        self.schedule_quality_rule_refresh()
 
+    def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
+        if not event_data:
+            return True
+        rule_types: list[str] = event_data.get("rule_types", [])
+        meta_keys: list[str] = event_data.get("meta_keys", [])
+        if any(rule_type in self.QUALITY_RULE_TYPES for rule_type in rule_types):
+            return True
+        return any(meta_key in self.QUALITY_META_KEYS for meta_key in meta_keys)
+
+    def schedule_quality_rule_refresh(self) -> None:
+        # WHY: 合并短时间内的多次规则变更，避免重复全量检查
+        self.quality_rule_refresh_timer.start(self.QUALITY_RULE_REFRESH_DELAY_MS)
+
+    def refresh_quality_rules(self) -> None:
+        self.quality_rule_refresh_token += 1
+        current_token: int = self.quality_rule_refresh_token
         config = self.config or Config().load()
         items_snapshot = list(self.items)
 
@@ -137,19 +172,21 @@ class ProofreadingPage(QWidget, Base):
             try:
                 checker = ResultChecker(config)
                 warning_map = checker.check_items(items_snapshot)
-                self.glossary_refreshed.emit(checker, warning_map)
+                if current_token != self.quality_rule_refresh_token:
+                    return
+                self.quality_rules_refreshed.emit(checker, warning_map)
             except Exception as e:
-                self.error("Refresh glossary failed", e)
+                self.error("Refresh quality rules failed", e)
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_glossary_refreshed_ui(
+    def on_quality_rules_refreshed_ui(
         self, checker: ResultChecker, warning_map: dict[int, list[WarningType]]
     ) -> None:
         self.result_checker = checker
         self.warning_map = warning_map
         self.edit_panel.set_result_checker(self.result_checker)
-        # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新术语表。
+        # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新规则。
         self.apply_filter()
 
     # ========== 主体：表格 ==========

@@ -22,7 +22,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Storage.DataStore import DataStore
+from module.QualityRuleManager import QualityRuleManager
 from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
@@ -353,8 +353,12 @@ class NameFieldExtractionPage(QWidget, Base):
                     self.extract_finished.emit([])
                     return
 
-                glossary_rules = db.get_rules(DataStore.RuleType.GLOSSARY)
-                glossary_map = {rule["src"]: rule["dst"] for rule in glossary_rules}
+                glossary_rules = QualityRuleManager.get().get_glossary()
+                glossary_map = {
+                    rule.get("src", ""): rule.get("dst", "")
+                    for rule in glossary_rules
+                    if rule.get("src")
+                }
 
                 name_contexts: dict[str, list[str]] = {}
                 for item in items:
@@ -659,8 +663,8 @@ class NameFieldExtractionPage(QWidget, Base):
             return
 
         # 获取现有 Glossary (src -> rule dict)
-        current_rules = db.get_rules(DataStore.RuleType.GLOSSARY)
-        glossary_map = {rule["src"]: rule for rule in current_rules}
+        current_rules = QualityRuleManager.get().get_glossary()
+        glossary_map = {rule.get("src", ""): rule for rule in current_rules}
 
         count = 0
         for item in self.items:
@@ -686,15 +690,11 @@ class NameFieldExtractionPage(QWidget, Base):
                 count += 1
 
         if count > 0:
-            # 写回 DB
             new_rules: list[dict[str, Any]] = list(glossary_map.values())
 
             # 简单按 src 排序
             new_rules.sort(key=lambda x: x["src"])
-            db.set_rules(DataStore.RuleType.GLOSSARY, new_rules)
-
-            # 发送全局刷新事件，通知术语表页面更新
-            self.emit(Base.Event.GLOSSARY_REFRESH, {})
+            QualityRuleManager.get().set_glossary(new_rules)
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_save_toast)
         else:

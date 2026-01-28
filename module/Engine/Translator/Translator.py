@@ -900,8 +900,10 @@ class Translator(Base):
             # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
             # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可
-            # 术语表刷新事件
-            self.emit(Base.Event.GLOSSARY_REFRESH, {})
+            self.emit(
+                Base.Event.QUALITY_RULE_UPDATE,
+                {"rule_types": [DataStore.RuleType.GLOSSARY.value]},
+            )
 
         # 写入文件并获取实际输出路径（带时间戳）
         output_path = FileManager(self.config).write_to_path(items)
@@ -1009,7 +1011,10 @@ class Translator(Base):
 
             # --- 后续处理 (非锁区) ---
             if new_glossary_data is not None:
-                self.emit(Base.Event.GLOSSARY_REFRESH, {})
+                self.emit(
+                    Base.Event.QUALITY_RULE_UPDATE,
+                    {"rule_types": [DataStore.RuleType.GLOSSARY.value]},
+                )
 
             # 更新终端进度条
             progress.update(
