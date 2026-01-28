@@ -131,11 +131,12 @@ class ProofreadingPage(QWidget, Base):
             return
 
         config = self.config or Config().load()
+        items_snapshot = list(self.items)
 
         def task() -> None:
             try:
                 checker = ResultChecker(config)
-                warning_map = checker.check_items(self.items)
+                warning_map = checker.check_items(items_snapshot)
                 self.glossary_refreshed.emit(checker, warning_map)
             except Exception as e:
                 self.error("Refresh glossary failed", e)
@@ -149,7 +150,7 @@ class ProofreadingPage(QWidget, Base):
         self.warning_map = warning_map
         self.edit_panel.set_result_checker(self.result_checker)
         # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新术语表。
-        self.apply_filter(False)
+        self.apply_filter()
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
@@ -1304,7 +1305,7 @@ class ProofreadingPage(QWidget, Base):
                     success_count += 1
                 else:
                     fail_count += 1
-                    item.set_status(Base.ProjectStatus.PROCESSED)
+                    item.set_status(Base.ProjectStatus.ERROR)
 
             # 完成后隐藏 Toast（通过信号在主线程执行）
             self.progress_finished.emit()
@@ -1338,7 +1339,7 @@ class ProofreadingPage(QWidget, Base):
             if success:
                 self.table_widget.update_row_dst(row, item.get_dst())
             else:
-                item.set_status(Base.ProjectStatus.PROCESSED)
+                item.set_status(Base.ProjectStatus.ERROR)
         if self.current_item is item:
             warnings = self.warning_map.get(id(item), [])
             index = self.current_page_start_index + self.current_row_in_page + 1

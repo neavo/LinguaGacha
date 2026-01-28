@@ -61,6 +61,7 @@ class ProofreadingEditPanel(QWidget):
         self.saved_text = ""
         self.result_checker: ResultChecker | None = None
         self.file_path_full_text = ""
+        self.dividers: list[QWidget] = []
         self.glossary_status_timer = QTimer(self)
         self.glossary_status_timer.setSingleShot(True)
         self.glossary_status_timer.timeout.connect(self.update_glossary_status)
@@ -245,7 +246,25 @@ class ProofreadingEditPanel(QWidget):
 
         self.set_enabled_state(False)
 
-        qconfig.themeChanged.connect(self.schedule_status_height_refresh)
+        qconfig.themeChanged.connect(self.on_theme_changed)
+        self.destroyed.connect(self.disconnect_theme_signals)
+
+    def disconnect_theme_signals(self) -> None:
+        try:
+            qconfig.themeChanged.disconnect(self.on_theme_changed)
+        except (TypeError, RuntimeError):
+            pass
+
+    def on_theme_changed(self) -> None:
+        self.update_all_divider_styles()
+        self.schedule_status_height_refresh()
+
+    def update_all_divider_styles(self) -> None:
+        # WHY: 避免 lambda 捕获局部 widget 导致销毁后回调；统一在面板维度刷新样式。
+        for line in list(self.dividers):
+            if line is None:
+                continue
+            self.update_divider_style(line)
 
     def apply_fixed_button_style(self, button: TransparentPushButton) -> None:
         font = QFont(button.font())
@@ -362,7 +381,7 @@ class ProofreadingEditPanel(QWidget):
         line = QWidget(parent)
         line.setFixedHeight(1)
         self.update_divider_style(line)
-        qconfig.themeChanged.connect(lambda: self.update_divider_style(line))
+        self.dividers.append(line)
         return line
 
     def build_vertical_divider(self, parent: QWidget) -> QWidget:
@@ -370,7 +389,7 @@ class ProofreadingEditPanel(QWidget):
         line.setFixedWidth(1)
         line.setFixedHeight(16)
         self.update_divider_style(line)
-        qconfig.themeChanged.connect(lambda: self.update_divider_style(line))
+        self.dividers.append(line)
         return line
 
     def update_divider_style(self, line: QWidget) -> None:
