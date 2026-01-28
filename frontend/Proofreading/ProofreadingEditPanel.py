@@ -1,7 +1,11 @@
+from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QFontMetrics
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QSizePolicy
@@ -13,7 +17,6 @@ from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
-from qfluentwidgets import PillToolButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import ToolTipFilter
@@ -37,7 +40,10 @@ class ProofreadingEditPanel(QWidget):
     """校对任务右侧编辑面板"""
 
     GLOSSARY_STATUS_DELAY_MS = 120
-    PILL_FONT_SIZE_PX = 12
+    UI_FONT_PX = 12
+    UI_ICON_PX = 16
+    UI_BTN_PX = 28
+    PILL_FONT_SIZE_PX = UI_FONT_PX
     STATUS_SCROLL_EXTRA_PADDING_PX = 4
     STATUS_SCROLL_MAX_LINES = 2
     TEXT_MIN_HEIGHT_PX = 84
@@ -54,6 +60,7 @@ class ProofreadingEditPanel(QWidget):
         self.current_item: Item | None = None
         self.saved_text = ""
         self.result_checker: ResultChecker | None = None
+        self.file_path_full_text = ""
         self.glossary_status_timer = QTimer(self)
         self.glossary_status_timer.setSingleShot(True)
         self.glossary_status_timer.timeout.connect(self.update_glossary_status)
@@ -71,6 +78,9 @@ class ProofreadingEditPanel(QWidget):
         empty_layout.addStretch(1)
         empty_label = CaptionLabel(Localizer.get().proofreading_page_no_review_items)
         empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_font = QFont(empty_label.font())
+        empty_font.setPixelSize(self.UI_FONT_PX)
+        empty_label.setFont(empty_font)
         empty_layout.addWidget(empty_label)
         empty_layout.addStretch(1)
 
@@ -86,21 +96,16 @@ class ProofreadingEditPanel(QWidget):
         file_layout.setContentsMargins(12, 8, 12, 8)
         file_layout.setSpacing(8)
         icon = IconWidget(FluentIcon.DOCUMENT)
-        icon.setFixedSize(16, 16)
+        icon.setFixedSize(self.UI_ICON_PX, self.UI_ICON_PX)
         file_layout.addWidget(icon)
         self.file_path_label = CaptionLabel("", self.file_card)
         self.file_path_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         self.file_path_label.setMinimumWidth(1)
         self.file_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        label_font = QFont(self.file_path_label.font())
+        label_font.setPixelSize(self.UI_FONT_PX)
+        self.file_path_label.setFont(label_font)
         file_layout.addWidget(self.file_path_label, 1)
-
-        self.more_button = PillToolButton(FluentIcon.MORE, self.file_card)
-        # WHY: 仅作为菜单入口按钮，不需要“点亮/选中”的切换效果。
-        self.more_button.setCheckable(False)
-        self.more_button.setFixedSize(28, 28)
-        self.more_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.more_button.clicked.connect(self.on_more_clicked)
-        file_layout.addWidget(self.more_button, alignment=Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.file_card)
 
         # 合并卡片：状态(最多2行) + 原文 + 译文
@@ -165,17 +170,13 @@ class ProofreadingEditPanel(QWidget):
             self.warning_pills[warning] = pill
             self.status_flow.addWidget(pill)
 
-        self.no_warning_pill = self.create_status_pill(
-            Localizer.get().proofreading_page_filter_no_warning,
-            StatusPillKind.INFO,
-        )
-        self.no_warning_pill.hide()
-        self.status_flow.addWidget(self.no_warning_pill)
-
         self.status_scroll.setWidget(self.status_widget)
 
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
+        src_font = QFont(self.src_text.font())
+        src_font.setPixelSize(self.UI_FONT_PX)
+        self.src_text.setFont(src_font)
         # WHY: 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
         self.src_text.setMinimumHeight(self.TEXT_MIN_HEIGHT_PX)
         self.src_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -185,6 +186,9 @@ class ProofreadingEditPanel(QWidget):
         editor_layout.addWidget(self.build_divider(self.editor_card))
 
         self.dst_text = CustomTextEdit(self.editor_card)
+        dst_font = QFont(self.dst_text.font())
+        dst_font.setPixelSize(self.UI_FONT_PX)
+        self.dst_text.setFont(dst_font)
         self.dst_text.setMinimumHeight(self.TEXT_MIN_HEIGHT_PX)
         self.dst_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.dst_text.setProperty("compact", True)
@@ -207,6 +211,7 @@ class ProofreadingEditPanel(QWidget):
         self.btn_restore.setText(Localizer.get().proofreading_page_restore)
         self.btn_restore.clicked.connect(self.on_restore_clicked)
         self.btn_restore.setEnabled(False)
+        self.apply_fixed_button_style(self.btn_restore)
         button_layout.addWidget(self.btn_restore, 1)
 
         button_layout.addWidget(self.build_vertical_divider(self.button_container))
@@ -216,7 +221,20 @@ class ProofreadingEditPanel(QWidget):
         self.btn_save.setText(Localizer.get().proofreading_page_save)
         self.btn_save.clicked.connect(self.on_save_clicked)
         self.btn_save.setEnabled(False)
+        self.apply_fixed_button_style(self.btn_save)
         button_layout.addWidget(self.btn_save, 1)
+
+        button_layout.addWidget(self.build_vertical_divider(self.button_container))
+
+        # 操作按钮（移到底部，与编辑区按钮同一尺寸体系）
+        self.more_button = TransparentPushButton(self.button_container)
+        self.more_button.setIcon(FluentIcon.MORE)
+        self.more_button.setText(Localizer.get().proofreading_page_more)
+        self.apply_fixed_button_style(self.more_button)
+        self.more_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.more_button.clicked.connect(self.on_more_clicked)
+        self.more_button.setEnabled(False)
+        button_layout.addWidget(self.more_button, 1)
 
         editor_layout.addWidget(self.button_container)
 
@@ -228,6 +246,13 @@ class ProofreadingEditPanel(QWidget):
         self.set_enabled_state(False)
 
         qconfig.themeChanged.connect(self.schedule_status_height_refresh)
+
+    def apply_fixed_button_style(self, button: TransparentPushButton) -> None:
+        font = QFont(button.font())
+        font.setPixelSize(self.UI_FONT_PX)
+        button.setFont(font)
+        button.setIconSize(QSize(self.UI_ICON_PX, self.UI_ICON_PX))
+        button.setMinimumHeight(self.UI_BTN_PX)
 
     def set_result_checker(self, checker: ResultChecker | None) -> None:
         self.result_checker = checker
@@ -241,7 +266,9 @@ class ProofreadingEditPanel(QWidget):
         self.saved_text = item.get_dst()
         self.set_enabled_state(True)
 
-        self.file_path_label.setText(item.get_file_path())
+        self.file_path_full_text = item.get_file_path()
+        self.file_path_label.setToolTip(self.file_path_full_text)
+        self.schedule_file_path_elide_refresh()
         self.more_button.setEnabled(True)
 
         self.src_text.blockSignals(True)
@@ -262,6 +289,8 @@ class ProofreadingEditPanel(QWidget):
         self.current_item = None
         self.saved_text = ""
         self.set_enabled_state(False)
+        self.file_path_full_text = ""
+        self.file_path_label.setToolTip("")
         self.file_path_label.setText("")
         self.more_button.setEnabled(False)
         self.src_text.setPlainText("")
@@ -281,20 +310,6 @@ class ProofreadingEditPanel(QWidget):
             return
 
         menu = RoundMenu("", self.more_button)
-        menu.addAction(
-            Action(
-                FluentIcon.PASTE,
-                Localizer.get().proofreading_page_copy_src,
-                triggered=lambda: self.copy_src_requested.emit(item),
-            )
-        )
-        menu.addAction(
-            Action(
-                FluentIcon.COPY,
-                Localizer.get().proofreading_page_copy_dst,
-                triggered=lambda: self.copy_dst_requested.emit(item),
-            )
-        )
 
         action_retranslate = Action(
             FluentIcon.SYNC,
@@ -314,6 +329,29 @@ class ProofreadingEditPanel(QWidget):
 
         global_pos = self.more_button.mapToGlobal(self.more_button.rect().bottomLeft())
         menu.exec(global_pos)
+
+    def schedule_file_path_elide_refresh(self) -> None:
+        QTimer.singleShot(0, self.refresh_file_path_elide)
+
+    def refresh_file_path_elide(self) -> None:
+        text = self.file_path_full_text
+        if not text:
+            self.file_path_label.setText("")
+            return
+
+        width = self.file_path_label.width()
+        if width <= 2:
+            self.file_path_label.setText(text)
+            return
+
+        metrics = QFontMetrics(self.file_path_label.font())
+        self.file_path_label.setText(
+            metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+        )
+
+    def resizeEvent(self, a0) -> None:
+        super().resizeEvent(a0)
+        self.schedule_file_path_elide_refresh()
 
     def set_enabled_state(self, enabled: bool) -> None:
         self.content_widget.setVisible(enabled)
@@ -381,12 +419,34 @@ class ProofreadingEditPanel(QWidget):
         self.save_requested.emit(self.current_item, self.get_current_text())
 
     def on_editor_focus_out(self) -> None:
-        """编辑区焦点离开时自动保存"""
+        """编辑区焦点离开时自动保存。
+
+        WHY: 不以“离开译文框”为保存条件；只在焦点切换到编辑区外部时保存。
+        Qt 的 FocusOut 往往先于按钮点击事件触发，因此延迟一帧再判断焦点最终落点。
+        """
         if not self.current_item or not self.has_unsaved_changes():
             return
         if self.dst_text.isReadOnly():
             return
-        self.save_requested.emit(self.current_item, self.get_current_text())
+
+        QTimer.singleShot(0, self.auto_save_if_focus_left_editor_area)
+
+    def auto_save_if_focus_left_editor_area(self) -> None:
+        item = self.current_item
+        if not item or not self.has_unsaved_changes():
+            return
+        if self.dst_text.isReadOnly():
+            return
+
+        # WHY: 弹出菜单仍属于编辑区交互，不应触发自动保存。
+        if QApplication.activePopupWidget() is not None:
+            return
+
+        focus_widget = QApplication.focusWidget()
+        if focus_widget is not None and self.isAncestorOf(focus_widget):
+            return
+
+        self.save_requested.emit(item, self.get_current_text())
 
     def refresh_status_tags(self, item: Item, warnings: list[WarningType]) -> None:
         self.clear_status_tags()
@@ -397,7 +457,6 @@ class ProofreadingEditPanel(QWidget):
         self.set_pill_layout_visible(self.translation_status_pill, True)
 
         if warnings:
-            self.set_pill_layout_visible(self.no_warning_pill, False)
             for warning in warnings:
                 pill = self.warning_pills.get(warning)
                 if pill is None:
@@ -409,7 +468,6 @@ class ProofreadingEditPanel(QWidget):
         else:
             for pill in self.warning_pills.values():
                 self.set_pill_layout_visible(pill, False)
-            self.set_pill_layout_visible(self.no_warning_pill, True)
 
         self.schedule_status_height_refresh()
 
@@ -421,7 +479,6 @@ class ProofreadingEditPanel(QWidget):
         self.set_pill_layout_visible(self.translation_status_pill, False)
         for pill in self.warning_pills.values():
             self.set_pill_layout_visible(pill, False)
-        self.set_pill_layout_visible(self.no_warning_pill, False)
 
     def schedule_status_height_refresh(self) -> None:
         QTimer.singleShot(0, self.refresh_status_scroll_height)

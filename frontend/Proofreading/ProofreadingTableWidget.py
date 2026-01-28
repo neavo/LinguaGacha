@@ -2,6 +2,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QContextMenuEvent
+from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
@@ -42,6 +43,8 @@ class ProofreadingTableWidget(TableWidget):
     COL_WIDTH_STATUS = 60
     ROW_NUMBER_MIN_WIDTH = 40
 
+    UI_FONT_PX = 12
+
     # Item 数据存储的角色
     ITEM_ROLE = Qt.UserRole + 1
 
@@ -56,6 +59,10 @@ class ProofreadingTableWidget(TableWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        self.ui_font = QFont(self.font())
+        self.ui_font.setPixelSize(self.UI_FONT_PX)
+        self.setFont(self.ui_font)
+
         # 设置列头
         self.setColumnCount(3)
         self.setHorizontalHeaderLabels(
@@ -65,6 +72,12 @@ class ProofreadingTableWidget(TableWidget):
                 Localizer.get().proofreading_page_col_status,
             ]
         )
+
+        # WHY: QFluentWidgets 的样式可能覆盖控件 font；通过 header item 的 FontRole 强制生效。
+        for col in range(self.columnCount()):
+            header_item = self.horizontalHeaderItem(col)
+            if header_item is not None:
+                header_item.setFont(self.ui_font)
 
         # 设置表格属性
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -88,11 +101,14 @@ class ProofreadingTableWidget(TableWidget):
 
         # 设置列宽
         header = self.horizontalHeader()
+        header.setFont(self.ui_font)
         header.setSectionResizeMode(self.COL_SRC, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_DST, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.Fixed)
         self.setColumnWidth(self.COL_STATUS, self.COL_WIDTH_STATUS)
         header.setDefaultAlignment(Qt.AlignCenter)
+
+        self.verticalHeader().setFont(self.ui_font)
 
         # 只读模式标志
         self.readonly = False
@@ -119,6 +135,7 @@ class ProofreadingTableWidget(TableWidget):
             for row in range(30):
                 for col in range(self.columnCount()):
                     item = QTableWidgetItem("")
+                    item.setFont(self.ui_font)
                     # 设置为只读且不可选中，但保持启用状态以维持样式
                     item.setFlags(Qt.ItemIsEnabled)
                     self.setItem(row, col, item)
@@ -152,11 +169,12 @@ class ProofreadingTableWidget(TableWidget):
                 self.setVerticalHeaderItem(row, item)
             else:
                 item.setText(label)
+            item.setFont(self.ui_font)
             item.setTextAlignment(Qt.AlignCenter)
 
     def update_row_number_width(self, max_label_value: int) -> None:
         digits = len(str(max(1, max_label_value)))
-        metrics = QFontMetrics(self.verticalHeader().font())
+        metrics = QFontMetrics(self.ui_font)
         text_width = metrics.horizontalAdvance("9" * digits)
         self.verticalHeader().setFixedWidth(
             max(self.ROW_NUMBER_MIN_WIDTH, text_width + 16)
@@ -177,6 +195,7 @@ class ProofreadingTableWidget(TableWidget):
 
         # 原文列：拼接多行文本后单行显示
         src_item = QTableWidgetItem(src_text)
+        src_item.setFont(self.ui_font)
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
         src_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
@@ -184,6 +203,7 @@ class ProofreadingTableWidget(TableWidget):
 
         # 译文列：拼接多行文本后单行显示
         dst_item = QTableWidgetItem(dst_text)
+        dst_item.setFont(self.ui_font)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         if self.readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
@@ -359,23 +379,6 @@ class ProofreadingTableWidget(TableWidget):
             return
 
         menu = RoundMenu(parent=self)
-
-        if len(selected_items) == 1:
-            item = selected_items[0]
-            menu.addAction(
-                Action(
-                    FluentIcon.PASTE,
-                    Localizer.get().proofreading_page_copy_src,
-                    triggered=lambda checked: self.copy_src_clicked.emit(item),
-                )
-            )
-            menu.addAction(
-                Action(
-                    FluentIcon.COPY,
-                    Localizer.get().proofreading_page_copy_dst,
-                    triggered=lambda checked: self.copy_dst_clicked.emit(item),
-                )
-            )
 
         # 统一使用批量重翻逻辑，无论单选还是多选
         menu.addAction(

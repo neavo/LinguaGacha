@@ -1,5 +1,7 @@
+from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QWidget
@@ -18,6 +20,10 @@ class PaginationBar(QWidget):
 
     # 固定每页100条
     PAGE_SIZE = 100
+
+    UI_FONT_PX = 12
+    UI_ICON_PX = 16
+    UI_BTN_PX = 28
 
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
@@ -38,11 +44,16 @@ class PaginationBar(QWidget):
 
         # 上一页按钮（使用扁平透明按钮）
         self.btn_prev = TransparentToolButton(FluentIcon.PAGE_LEFT, self)
+        self.btn_prev.setIconSize(QSize(self.UI_ICON_PX, self.UI_ICON_PX))
+        self.btn_prev.setFixedSize(self.UI_BTN_PX, self.UI_BTN_PX)
         self.btn_prev.clicked.connect(self.on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
         # 页码信息标签
         self.page_info_label = CaptionLabel()
+        font = QFont(self.page_info_label.font())
+        font.setPixelSize(self.UI_FONT_PX)
+        self.page_info_label.setFont(font)
         # 设置最小宽度以适应较长的页码文本（如"第 999 / 999 页"）
         self.page_info_label.setMinimumWidth(96)
         self.page_info_label.setAlignment(Qt.AlignCenter)
@@ -50,8 +61,16 @@ class PaginationBar(QWidget):
 
         # 下一页按钮（使用扁平透明按钮）
         self.btn_next = TransparentToolButton(FluentIcon.PAGE_RIGHT, self)
+        self.btn_next.setIconSize(QSize(self.UI_ICON_PX, self.UI_ICON_PX))
+        self.btn_next.setFixedSize(self.UI_BTN_PX, self.UI_BTN_PX)
         self.btn_next.clicked.connect(self.on_next_clicked)
         layout.addWidget(self.btn_next)
+
+        # WHY: 翻页按钮与页码文本使用同一字号，保证视觉一致。
+        btn_font = QFont(self.btn_prev.font())
+        btn_font.setPixelSize(self.UI_FONT_PX)
+        self.btn_prev.setFont(btn_font)
+        self.btn_next.setFont(btn_font)
 
         # 设置尺寸策略，确保控件不占用额外空间
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)

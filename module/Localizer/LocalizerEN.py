@@ -336,11 +336,11 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_export_failed: str = "Generation failed"
     proofreading_page_export_confirm: str = "Confirm to generate the translation file?"
     proofreading_page_export_tooltip: str = "Generate\nSave the data first, then generate the translation file"
-
     proofreading_page_col_src: str = "Source"
     proofreading_page_col_dst: str = "Translation"
     proofreading_page_col_status: str = "Status"
     proofreading_page_restore: str = "Restore"
+    proofreading_page_more: str = "More"
     proofreading_page_unsaved: str = "Unsaved"
     proofreading_page_saved: str = "Saved"
     proofreading_page_unsaved_title: str = "Unsaved Changes"
@@ -359,7 +359,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_status_error: str = "Translation Failed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
     proofreading_page_status_non_target_source_language: str = "Non-target source language"
-
     proofreading_page_page_info: str = "Page {CURRENT} / {TOTAL}"
     proofreading_page_warning_kana: str = "Kana Residue"
     proofreading_page_warning_hangeul: str = "Hangeul Residue"
@@ -391,7 +390,6 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_loading: str = "Loading data …"
     proofreading_page_indeterminate_saving: str = "Saving data …"
     proofreading_page_indeterminate_exporting: str = "Generating translation …"
-
     proofreading_page_retranslate: str = "Retranslate"
     proofreading_page_retranslate_confirm: str = "Retranslate this entry?"
     proofreading_page_batch_retranslate: str = "Retranslate selected"

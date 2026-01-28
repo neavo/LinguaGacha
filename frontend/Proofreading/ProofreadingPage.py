@@ -3,6 +3,8 @@ import threading
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QSize
+from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QHBoxLayout
@@ -34,6 +36,9 @@ from widget.SearchCard import SearchCard
 
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
+
+    UI_FONT_PX = 12
+    UI_ICON_PX = 16
 
     # 信号定义
     items_loaded = pyqtSignal(list)  # 数据加载完成信号
@@ -79,6 +84,10 @@ class ProofreadingPage(QWidget, Base):
         self.pending_action: Callable[[], None] | None = None
         self.pending_revert: Callable[[], None] | None = None
         self.pending_export: bool = False
+        self.load_ok: bool = False
+
+        self.ui_font_px = self.UI_FONT_PX
+        self.ui_icon_px = self.UI_ICON_PX
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -201,6 +210,14 @@ class ProofreadingPage(QWidget, Base):
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
+        # WHY: 本页统一写死字号与图标尺寸，避免跨平台/主题的细微差异造成视觉不一致。
+        base_font = QFont(self.command_bar_card.command_bar.font())
+        base_font.setPixelSize(self.ui_font_px)
+        self.command_bar_card.command_bar.setFont(base_font)
+        self.command_bar_card.command_bar.setIconSize(
+            QSize(self.ui_icon_px, self.ui_icon_px)
+        )
+
         self.search_card.set_base_font(self.command_bar_card.command_bar.font())
 
         self.command_bar_card.set_minimum_width(640)
@@ -213,20 +230,6 @@ class ProofreadingPage(QWidget, Base):
                 triggered=self.on_load_clicked,
             )
         )
-
-        # 保存按钮
-        action_save = Action(
-            FluentIcon.SAVE,
-            Localizer.get().proofreading_page_save,
-            triggered=self.on_save_clicked,
-        )
-        action_save.setShortcut("Ctrl+S")
-        self.btn_save = self.command_bar_card.add_action(action_save)
-        self.btn_save.installEventFilter(
-            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
-        )
-        self.btn_save.setToolTip(Localizer.get().proofreading_page_save_tooltip)
-        self.btn_save.setEnabled(False)
 
         # 分隔符与功能按钮组
         self.command_bar_card.add_separator()
@@ -279,6 +282,8 @@ class ProofreadingPage(QWidget, Base):
     def load_data(self) -> None:
         """加载缓存数据"""
 
+        self.load_ok = False
+
         def task() -> None:
             # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
@@ -286,6 +291,7 @@ class ProofreadingPage(QWidget, Base):
                 # 从工程数据库读取所有条目
                 db = StorageContext.get().get_db()
                 if db is None:
+                    self.load_ok = False
                     self.items_all = []
                     self.items = []
                     self.filtered_items = []
@@ -305,6 +311,7 @@ class ProofreadingPage(QWidget, Base):
                 items = self.build_review_items(items_all)
 
                 if not items_all:
+                    self.load_ok = False
                     self.items_all = []
                     self.items = []
                     self.filtered_items = []
@@ -322,6 +329,7 @@ class ProofreadingPage(QWidget, Base):
                     return
 
                 if not items:
+                    self.load_ok = True
                     self.items_all = items_all
                     self.items = []
                     self.filtered_items = []
@@ -349,9 +357,12 @@ class ProofreadingPage(QWidget, Base):
                     items, warning_map, checker
                 )
 
+                self.load_ok = True
+
                 self.items_loaded.emit(items)
 
             except Exception as e:
+                self.load_ok = False
                 self.error(f"{Localizer.get().proofreading_page_load_failed}", e)
                 self.emit(
                     Base.Event.TOAST,
@@ -1515,6 +1526,7 @@ class ProofreadingPage(QWidget, Base):
             self.items = []
             self.filtered_items = []
             self.warning_map = {}
+            self.load_ok = False
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
             self.edit_panel.clear()
@@ -1523,13 +1535,12 @@ class ProofreadingPage(QWidget, Base):
         has_items_all = bool(self.items_all)
         has_items = bool(self.items)
 
-        # 加载按钮在繁忙时禁用
-        self.btn_load.setEnabled(not is_busy)
+        # 加载按钮：翻译繁忙时禁用；载入成功后也保持禁用。
+        self.btn_load.setEnabled((not is_busy) and (not self.load_ok))
 
         # 其他按钮只有在不繁忙且有数据时启用
         can_operate_export = not is_busy and has_items_all
         can_operate_review = not is_busy and has_items
-        self.btn_save.setEnabled(can_operate_export)
         self.btn_export.setEnabled(can_operate_export)
         self.btn_search.setEnabled(can_operate_review)
         self.btn_filter.setEnabled(can_operate_review)
@@ -1605,6 +1616,7 @@ class ProofreadingPage(QWidget, Base):
         self.current_row_in_page = -1
         self.current_page_start_index = 0
         self.current_page = 1
+        self.load_ok = False
 
         # 清空搜索状态
         self.search_keyword = ""
@@ -1623,7 +1635,6 @@ class ProofreadingPage(QWidget, Base):
         self.edit_panel.clear()
 
         # 重置按钮状态
-        self.btn_save.setEnabled(False)
         self.btn_export.setEnabled(False)
         self.btn_search.setEnabled(False)
         self.btn_filter.setEnabled(False)

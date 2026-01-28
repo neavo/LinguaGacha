@@ -336,11 +336,11 @@ class LocalizerZH:
     proofreading_page_export_failed: str = "生成失败"
     proofreading_page_export_confirm: str = "确定要生成译文文件吗 …?"
     proofreading_page_export_tooltip: str = "生成译文\n先保存数据，然后生成译文文件"
-
     proofreading_page_col_src: str = "原文"
     proofreading_page_col_dst: str = "译文"
     proofreading_page_col_status: str = "状态"
     proofreading_page_restore: str = "恢复"
+    proofreading_page_more: str = "更多"
     proofreading_page_unsaved: str = "未保存"
     proofreading_page_saved: str = "已保存"
     proofreading_page_unsaved_title: str = "检测到未保存修改"
@@ -359,7 +359,6 @@ class LocalizerZH:
     proofreading_page_status_error: str = "翻译失败"
     proofreading_page_status_processed_in_past: str = "历史完成"
     proofreading_page_status_non_target_source_language: str = "非目标原文语言"
-
     proofreading_page_page_info: str = "第 {CURRENT} / {TOTAL} 页"
     proofreading_page_warning_kana: str = "假名残留"
     proofreading_page_warning_hangeul: str = "谚文残留"
@@ -391,7 +390,6 @@ class LocalizerZH:
     proofreading_page_indeterminate_loading: str = "加载数据中 …"
     proofreading_page_indeterminate_saving: str = "保存数据中 …"
     proofreading_page_indeterminate_exporting: str = "生成译文中 …"
-
     proofreading_page_retranslate: str = "重新翻译"
     proofreading_page_retranslate_confirm: str = "确定重新翻译此条目？"
     proofreading_page_batch_retranslate: str = "重新翻译已选条目"

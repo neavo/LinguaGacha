@@ -72,7 +72,9 @@ class CustomTextEdit(PlainTextEdit):
         # WHY: 即使启用了自动换行，仍可能因长 token 出现横向滚动条，这里彻底关闭。
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         option = self.document().defaultTextOption()
-        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        # WHY: 校对/编辑区包含长 URL、长 token 等内容时，按词语边界换行会留下大段空白。
+        # 使用硬换行（任意位置断行）保证版面稳定。
+        option.setWrapMode(QTextOption.WrapMode.WrapAnywhere)
         self.document().setDefaultTextOption(option)
 
         # 初始样式
