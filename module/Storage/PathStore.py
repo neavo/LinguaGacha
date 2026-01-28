@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from module.Localizer.Localizer import Localizer
-from module.Storage.StorageContext import StorageContext
+from module.Data.DataManager import DataManager
 
 
 class PathStore:
@@ -26,9 +26,9 @@ class PathStore:
         # 默认不使用后缀，保持导出路径简洁
         new_suffix = ""
 
-        ctx = StorageContext.get()
-        lg_path = ctx.get_lg_path()
-        if ctx.is_loaded() and lg_path:
+        dm = DataManager.get()
+        lg_path = dm.get_lg_path()
+        if dm.is_loaded() and lg_path:
             project_dir = Path(lg_path).parent
 
             # 检查不带时间戳的默认路径是否已经存在，避免覆盖已有导出结果 (Issue #341)
@@ -63,9 +63,9 @@ class PathStore:
     @staticmethod
     def get_base_folder_name(suffix: str) -> str:
         """获取基础文件夹名称（不含父目录和时间戳）"""
-        ctx = StorageContext.get()
-        lg_path = ctx.get_lg_path()
-        if not ctx.is_loaded() or not lg_path:
+        dm = DataManager.get()
+        lg_path = dm.get_lg_path()
+        if not dm.is_loaded() or not lg_path:
             raise RuntimeError("工程未加载，无法获取输出路径")
 
         project_stem = Path(lg_path).stem
@@ -74,9 +74,9 @@ class PathStore:
     @staticmethod
     def get_translated_path() -> str:
         """获取译文输出目录路径"""
-        ctx = StorageContext.get()
-        lg_path = ctx.get_lg_path()
-        if not ctx.is_loaded() or not lg_path:
+        dm = DataManager.get()
+        lg_path = dm.get_lg_path()
+        if not dm.is_loaded() or not lg_path:
             raise RuntimeError("工程未加载，无法获取输出路径")
 
         project_dir = Path(lg_path).parent
@@ -91,9 +91,9 @@ class PathStore:
     @staticmethod
     def get_bilingual_path() -> str:
         """获取双语对照输出目录路径"""
-        ctx = StorageContext.get()
-        lg_path = ctx.get_lg_path()
-        if not ctx.is_loaded() or not lg_path:
+        dm = DataManager.get()
+        lg_path = dm.get_lg_path()
+        if not dm.is_loaded() or not lg_path:
             raise RuntimeError("工程未加载，无法获取输出路径")
 
         project_dir = Path(lg_path).parent

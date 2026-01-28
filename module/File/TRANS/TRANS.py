@@ -7,14 +7,13 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.File.TRANS.KAG import KAG
 from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.Storage.AssetStore import AssetStore
 from module.Storage.PathStore import PathStore
-from module.Storage.StorageContext import StorageContext
 
 
 class TRANS(Base):
@@ -115,7 +114,7 @@ class TRANS(Base):
                 )
                 parsed_count += 1
                 if yield_every > 0 and parsed_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大文件解析时 UI 假死
+                    # 释放 GIL，避免大文件解析时 UI 假死
                     time.sleep(0)
 
         # 去重
@@ -131,7 +130,7 @@ class TRANS(Base):
                     item.set_status(Base.ProjectStatus.DUPLICATED)
                 dedup_count += 1
                 if yield_every > 0 and dedup_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免去重阶段阻塞 UI
+                    # 释放 GIL，避免去重阶段阻塞 UI
                     time.sleep(0)
 
         return items
@@ -164,13 +163,10 @@ class TRANS(Base):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
+            decompressed = DataManager.get().get_asset_decompressed(rel_path)
+            if decompressed is None:
                 continue
-            compressed = db.get_asset(rel_path)
-            if compressed is None:
-                continue
-            original_content = AssetStore.decompress(compressed).decode("utf-8-sig")
+            original_content = decompressed.decode("utf-8-sig")
             json_data = json.loads(original_content)
 
             with open(abs_path, "w", encoding="utf-8") as writer:

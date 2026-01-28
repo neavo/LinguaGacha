@@ -2,10 +2,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from base.Base import Base
+from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRuleManager import QualityRuleManager
 from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
 
@@ -71,7 +71,7 @@ class ProjectStore(Base):
         db = DataStore.create(output_path, project_name)
 
         # 初始化质量规则
-        QualityRuleManager.get().initialize_project_rules(db)
+        DataManager.get().initialize_project_rules(db)
 
         # 收集源文件
         source_files = self.collect_source_files(source_path)
@@ -99,9 +99,7 @@ class ProjectStore(Base):
 
         # 使用 FileManager 解析翻译条目（直接从刚存入数据库的资产中解析）
         config = Config().load()
-        items = FileManager(config).get_items_for_translation(
-            Base.TranslationMode.NEW, db=db
-        )
+        items = FileManager(config).read_from_storage(db)
 
         # 将条目保存到数据库
         if items:

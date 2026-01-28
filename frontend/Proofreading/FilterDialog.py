@@ -35,10 +35,10 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
-from module.Storage.StorageContext import StorageContext
 from widget.CustomLineEdit import CustomSearchLineEdit
 
 
@@ -227,7 +227,7 @@ class FilterDialog(MessageBoxBase):
     ) -> None:
         super().__init__(parent)
 
-        # WHY: 规则跳过条目无需校对；非目标原文语言可由用户选择显示
+        # 规则跳过条目无需校对；非目标原文语言可由用户选择显示
         self.items = [
             i
             for i in items
@@ -273,7 +273,7 @@ class FilterDialog(MessageBoxBase):
             return
 
         # 2. 准备导出路径
-        lg_path = StorageContext.get().get_lg_path()
+        lg_path = DataManager.get().get_lg_path()
         if not lg_path:
             return
 

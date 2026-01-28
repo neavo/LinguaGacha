@@ -13,7 +13,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Storage.AssetStore import AssetStore
 from module.Storage.PathStore import PathStore
-from module.Storage.StorageContext import StorageContext
+from module.Data.DataManager import DataManager
 
 
 class EPUB(Base):
@@ -303,10 +303,7 @@ class EPUB(Base):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
-                continue
-            compressed = db.get_asset(rel_path)
+            compressed = DataManager.get().get_asset(rel_path)
             if compressed is None:
                 continue
             original_content = AssetStore.decompress(compressed)
@@ -344,10 +341,7 @@ class EPUB(Base):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
-                continue
-            compressed = db.get_asset(rel_path)
+            compressed = DataManager.get().get_asset(rel_path)
             if compressed is None:
                 continue
             original_content = AssetStore.decompress(compressed)

@@ -41,9 +41,9 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.EventManager import EventManager
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.Storage.ProjectStore import ProjectStore
-from module.Storage.StorageContext import StorageContext
 
 
 class CreateProjectThread(QThread):
@@ -89,7 +89,7 @@ class FileDisplayCard(CardWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        # WHY: 避免工作台左右卡片整体高度略超出默认容器，产生轻微溢出。
+        # 避免工作台左右卡片整体高度略超出默认容器，产生轻微溢出。
         self.setFixedHeight(145)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAcceptDrops(True)
@@ -167,7 +167,7 @@ class DropZone(FileDisplayCard):
         # 标题
         self.display_title = title
         self.title_label = StrongBodyLabel(title, self)
-        # WHY: 允许被布局压缩，避免超长文件名撑开卡片。
+        # 允许被布局压缩，避免超长文件名撑开卡片。
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -213,7 +213,7 @@ class DropZone(FileDisplayCard):
         self.update_elided_title()
 
     def update_elided_title(self) -> None:
-        # WHY: elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
+        # elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
         # 这里不强制 setFixedWidth，避免把“期望宽度”变成布局硬约束，导致界面抖动。
         available_width = self.title_label.width()
         if available_width <= 0:
@@ -258,7 +258,7 @@ class SelectedFileDisplay(FileDisplayCard):
         # 文件名
         self.display_name = file_name
         self.name_label = StrongBodyLabel(file_name, self)
-        # WHY: 允许被布局压缩，避免超长文件名撑开卡片。
+        # 允许被布局压缩，避免超长文件名撑开卡片。
         self.name_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -284,7 +284,7 @@ class SelectedFileDisplay(FileDisplayCard):
         self.close_btn.clicked.connect(self.clear_clicked)
         self.close_btn.show()
 
-        # WHY: 右侧卡片在插入时可能先按完整文本 sizeHint 参与布局，导致“瞬间展开又缩回”。
+        # 右侧卡片在插入时可能先按完整文本 sizeHint 参与布局，导致“瞬间展开又缩回”。
         # 这里用父容器宽度提前做一次 elide，避免首次布局抖动。
         self.update_elided_name()
 
@@ -293,7 +293,7 @@ class SelectedFileDisplay(FileDisplayCard):
         self.update_elided_name()
 
     def update_elided_name(self) -> None:
-        # WHY: elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
+        # elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
         # 这里不强制 setFixedWidth，避免把“期望宽度”变成布局硬约束，导致界面抖动。
         available_width = self.name_label.width()
         if available_width <= 0:
@@ -1153,7 +1153,7 @@ class WorkbenchPage(ScrollArea, Base):
                 config.save()
 
                 # 加载工程
-                StorageContext.get().load(path)
+                DataManager.get().load_project(path)
 
                 self.reset_new_project_state()
             except Exception as e:
@@ -1197,7 +1197,7 @@ class WorkbenchPage(ScrollArea, Base):
             )
 
             # 加载工程
-            StorageContext.get().load(self.selected_lg_path)
+            DataManager.get().load_project(self.selected_lg_path)
 
             # 更新最近打开列表
             config = Config().load()

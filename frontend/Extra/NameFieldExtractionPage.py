@@ -20,10 +20,9 @@ from qfluentwidgets import TableWidget
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.QualityRuleManager import QualityRuleManager
-from module.Storage.StorageContext import StorageContext
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
@@ -331,8 +330,7 @@ class NameFieldExtractionPage(QWidget, Base):
             self.show_toast(Base.ToastType.WARNING, Localizer.get().engine_task_running)
             return
 
-        db = StorageContext.get().get_db()
-        if db is None:
+        if not DataManager.get().is_loaded():
             self.show_toast(Base.ToastType.ERROR, Localizer.get().alert_no_data)
             return
 
@@ -347,13 +345,13 @@ class NameFieldExtractionPage(QWidget, Base):
 
         def extract_task() -> None:
             try:
-                # WHY: 扫描全量条目是重操作，放到后台线程避免 UI 假死
-                items = [Item.from_dict(d) for d in db.get_all_items()]
+                # 扫描全量条目是重操作，放到后台线程避免 UI 假死
+                items = DataManager.get().get_all_items()
                 if not items:
                     self.extract_finished.emit([])
                     return
 
-                glossary_rules = QualityRuleManager.get().get_glossary()
+                glossary_rules = DataManager.get().get_glossary()
                 glossary_map = {
                     rule.get("src", ""): rule.get("dst", "")
                     for rule in glossary_rules
@@ -658,12 +656,11 @@ class NameFieldExtractionPage(QWidget, Base):
 
     def save_to_glossary(self) -> None:
         """保存到术语表"""
-        db = StorageContext.get().get_db()
-        if db is None:
+        if not DataManager.get().is_loaded():
             return
 
         # 获取现有 Glossary (src -> rule dict)
-        current_rules = QualityRuleManager.get().get_glossary()
+        current_rules = DataManager.get().get_glossary()
         glossary_map = {rule.get("src", ""): rule for rule in current_rules}
 
         count = 0
@@ -694,7 +691,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
             # 简单按 src 排序
             new_rules.sort(key=lambda x: x["src"])
-            QualityRuleManager.get().set_glossary(new_rules)
+            DataManager.get().set_glossary(new_rules)
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_save_toast)
         else:

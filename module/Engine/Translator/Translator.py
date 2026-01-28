@@ -25,9 +25,7 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.QualityRuleManager import QualityRuleManager
-from module.Storage.DataStore import DataStore
-from module.Storage.StorageContext import StorageContext
+from module.Data.DataManager import DataManager
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
@@ -70,21 +68,21 @@ class Translator(Base):
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         def task(event_name: str, task_data: dict) -> None:
-            ctx = StorageContext.get()
+            dm = DataManager.get()
             extras = {}
 
             if Engine.get().get_status() != Base.TaskStatus.IDLE:
                 # 引擎忙碌时，依然从数据库获取真实状态和进度，避免 UI 按钮被错误禁用
-                if ctx.is_loaded():
-                    status = ctx.get_project_status()
-                    extras = ctx.get_translation_extras()
+                if dm.is_loaded():
+                    status = dm.get_project_status()
+                    extras = dm.get_translation_extras()
                 else:
                     status = Base.ProjectStatus.NONE
             else:
                 # 引擎空闲，获取工程状态和进度
-                if ctx.is_loaded():
-                    status = ctx.get_project_status()
-                    extras = ctx.get_translation_extras()
+                if dm.is_loaded():
+                    status = dm.get_project_status()
+                    extras = dm.get_translation_extras()
                 else:
                     status = Base.ProjectStatus.NONE
 
@@ -124,31 +122,27 @@ class Translator(Base):
     # 翻译重置事件
     def translation_reset(self, event: Base.Event, data: dict) -> None:
         def task() -> None:
-            ctx = StorageContext.get()
-            if not ctx.is_loaded():
-                return
-
-            db = ctx.get_db()
-            if db is None:
+            dm = DataManager.get()
+            if not dm.is_loaded():
                 return
 
             # 1. 重新解析资产以获取初始状态的条目
             # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
-            items = FileManager(self.config).get_items_for_translation(
-                Base.TranslationMode.RESET
+            items = dm.get_items_for_translation(
+                self.config, Base.TranslationMode.RESET
             )
 
             # 2. 清空并重新写入条目到数据库
-            db.set_items([item.to_dict() for item in items])
+            dm.replace_all_items(items)
 
             # 3. 清除元数据中的进度信息
-            ctx.set_translation_extras({})
+            dm.set_translation_extras({})
 
             # 4. 设置项目状态为 NONE
-            ctx.set_project_status(Base.ProjectStatus.NONE)
+            dm.set_project_status(Base.ProjectStatus.NONE)
 
             # 5. 更新本地缓存
-            self.extras = ctx.get_translation_extras()
+            self.extras = dm.get_translation_extras()
 
             # 触发状态检查以同步 UI
             self.emit(Base.Event.PROJECT_CHECK_RUN, {})
@@ -173,16 +167,11 @@ class Translator(Base):
                     },
                 )
                 return
-
-            ctx = StorageContext.get()
-            if not ctx.is_loaded():
+            dm = DataManager.get()
+            if not dm.is_loaded():
                 return
 
-            db = ctx.get_db()
-            if db is None:
-                return
-
-            items = [Item.from_dict(d) for d in db.get_all_items()]
+            items = dm.get_all_items()
             if not items:
                 return
 
@@ -195,7 +184,7 @@ class Translator(Base):
                     updated = True
 
             if updated:
-                db.set_items([item.to_dict() for item in items])
+                dm.replace_all_items(items)
 
             processed_line = sum(
                 1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
@@ -214,21 +203,21 @@ class Translator(Base):
                 )
             )
 
-            extras = ctx.get_translation_extras()
+            extras = dm.get_translation_extras()
             if not isinstance(extras, dict):
                 extras = {}
             extras["processed_line"] = processed_line
             extras["error_line"] = error_line
             extras["line"] = processed_line + error_line
             extras["total_line"] = total_line
-            ctx.set_translation_extras(extras)
+            dm.set_translation_extras(extras)
 
             project_status = (
                 Base.ProjectStatus.PROCESSING
                 if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
                 else Base.ProjectStatus.PROCESSED
             )
-            ctx.set_project_status(project_status)
+            dm.set_project_status(project_status)
             self.extras = extras
 
             self.emit(Base.Event.PROJECT_CHECK_RUN, {})
@@ -254,13 +243,10 @@ class Translator(Base):
             if self.items_cache is not None:
                 items = self.copy_items()
             else:
-                ctx = StorageContext.get()
-                if not ctx.is_loaded():
+                dm = DataManager.get()
+                if not dm.is_loaded():
                     return
-                db = ctx.get_db()
-                if db is None:
-                    return
-                items = [Item.from_dict(d) for d in db.get_all_items()]
+                items = dm.get_all_items()
 
             if not items:
                 return
@@ -288,8 +274,8 @@ class Translator(Base):
             self.config = config if isinstance(config, Config) else Config().load()
 
             # 检查工程是否已加载
-            ctx = StorageContext.get()
-            if not ctx.is_loaded():
+            dm = DataManager.get()
+            if not dm.is_loaded():
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -299,12 +285,8 @@ class Translator(Base):
                 )
                 return None
 
-            db = ctx.get_db()
-            if db is None:
-                return None
-
             # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
-            db.open()
+            dm.open_db()
 
             # 从新模型系统获取激活模型
             self.model = self.config.get_active_model()
@@ -327,7 +309,7 @@ class Translator(Base):
 
             # 1. 获取数据 (交给文件管理器，翻译器不再关心是读缓存还是重解析)
             # 文件管理器会根据 mode 自动决定是从 DataStore 还是 Assets 加载
-            self.items_cache = FileManager(self.config).get_items_for_translation(mode)
+            self.items_cache = dm.get_items_for_translation(self.config, mode)
 
             # 检查数据是否为空
             if len(self.items_cache) == 0:
@@ -343,7 +325,7 @@ class Translator(Base):
             # 2. 进度管理与初始化
             if mode == Base.TranslationMode.CONTINUE:
                 # 继续翻译：恢复进度
-                self.extras = ctx.get_translation_extras()
+                self.extras = dm.get_translation_extras()
                 self.extras["start_time"] = time.time() - self.extras.get("time", 0)
                 self.extras["processed_line"] = self.get_item_count_by_status(
                     Base.ProjectStatus.PROCESSED
@@ -384,7 +366,7 @@ class Translator(Base):
             self.mtool_optimizer_preprocess(self.items_cache)
 
             filter_snapshot = self.get_filter_snapshot(self.items_cache)
-            previous_snapshot = db.get_meta("filter_snapshot", {})
+            previous_snapshot = dm.get_meta("filter_snapshot", {})
             if (
                 isinstance(previous_snapshot, dict)
                 and previous_snapshot
@@ -404,12 +386,12 @@ class Translator(Base):
                     },
                 )
 
-            db.set_meta("filter_snapshot", filter_snapshot)
-            db.set_meta("source_language", self.config.source_language)
-            db.set_meta("target_language", self.config.target_language)
+            dm.set_meta("filter_snapshot", filter_snapshot)
+            dm.set_meta("source_language", self.config.source_language)
+            dm.set_meta("target_language", self.config.target_language)
 
             # 持久化初始化后的状态（包括过滤掉的条目）
-            db.set_items([item.to_dict() for item in self.items_cache])
+            dm.replace_all_items(self.items_cache)
 
             # 初始化任务调度器
             self.scheduler = TaskScheduler(self.config, self.model, self.items_cache)
@@ -611,22 +593,18 @@ class Translator(Base):
 
     def close_db_connection(self) -> None:
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
-        ctx = StorageContext.get()
-        if ctx.is_loaded():
-            db = ctx.get_db()
-            if db is not None:
-                db.close()
+        DataManager.get().close_db()
 
     def merge_glossary(self, glossary_list: list[dict[str, str]]) -> list[dict] | None:
         """
         合并术语表并更新缓存，返回待写入的数据（若无变化返回 None）
         """
         # 有效性检查
-        if not QualityRuleManager.get().get_glossary_enable():
+        if not DataManager.get().get_glossary_enable():
             return None
 
         # 提取现有术语表的原文列表
-        data: list[dict] = QualityRuleManager.get().get_glossary()
+        data: list[dict] = DataManager.get().get_glossary()
         keys = {item.get("src", "") for item in data}
 
         # 合并去重后的术语表
@@ -665,7 +643,7 @@ class Translator(Base):
 
         if changed:
             # 更新术语表（仅更新内存缓存，待后续统一写入）
-            QualityRuleManager.get().set_glossary(data, save=False)
+            DataManager.get().set_glossary(data, save=False)
             return data
 
         return None
@@ -674,16 +652,16 @@ class Translator(Base):
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
     ) -> None:
         """保存翻译状态到 .lg 文件"""
-        ctx = StorageContext.get()
-        if not ctx.is_loaded() or self.items_cache is None:
+        dm = DataManager.get()
+        if not dm.is_loaded() or self.items_cache is None:
             return
 
         # 保存翻译进度额外数据（仅当存在时）
         if self.extras:
-            ctx.set_translation_extras(self.extras)
+            dm.set_translation_extras(self.extras)
 
         # 设置项目状态
-        ctx.set_project_status(status)
+        dm.set_project_status(status)
 
     # 初始化本地标识
     def initialize_local_flag(self) -> bool:
@@ -893,16 +871,13 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
         # 启用自动术语表的时，更新配置文件
-        if (
-            QualityRuleManager.get().get_glossary_enable()
-            and self.config.auto_glossary_enable
-        ):
+        if DataManager.get().get_glossary_enable() and self.config.auto_glossary_enable:
             # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
             # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可
             self.emit(
                 Base.Event.QUALITY_RULE_UPDATE,
-                {"rule_types": [DataStore.RuleType.GLOSSARY.value]},
+                {"rule_types": [DataManager.RuleType.GLOSSARY.value]},
             )
 
         # 写入文件并获取实际输出路径（带时间戳）
@@ -993,27 +968,18 @@ class Translator(Base):
                 )
 
                 # 执行综合批量更新
-                ctx = StorageContext.get()
-                if ctx.is_loaded() and (db := ctx.get_db()):
-                    rules_map = (
-                        {DataStore.RuleType.GLOSSARY: new_glossary_data}
-                        if new_glossary_data
-                        else {}
-                    )
-                    db.update_batch(
-                        items=finalized_items,
-                        rules=rules_map,
-                        meta={
-                            "translation_extras": self.extras,
-                            "project_status": Base.ProjectStatus.PROCESSING,
-                        },
-                    )
-
-            # --- 后续处理 (非锁区) ---
-            if new_glossary_data is not None:
-                self.emit(
-                    Base.Event.QUALITY_RULE_UPDATE,
-                    {"rule_types": [DataStore.RuleType.GLOSSARY.value]},
+                rules_map = (
+                    {DataManager.RuleType.GLOSSARY: new_glossary_data}
+                    if new_glossary_data
+                    else {}
+                )
+                DataManager.get().update_batch(
+                    items=finalized_items,
+                    rules=rules_map,
+                    meta={
+                        "translation_extras": self.extras,
+                        "project_status": Base.ProjectStatus.PROCESSING,
+                    },
                 )
 
             # 更新终端进度条

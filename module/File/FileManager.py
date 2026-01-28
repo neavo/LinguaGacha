@@ -23,7 +23,6 @@ from module.Localizer.Localizer import Localizer
 from module.Storage.AssetStore import AssetStore
 from module.Storage.DataStore import DataStore
 from module.Storage.PathStore import PathStore
-from module.Storage.StorageContext import StorageContext
 
 
 class FileManager(Base):
@@ -200,7 +199,7 @@ class FileManager(Base):
                 items.extend(self.parse_asset(path, AssetStore.decompress(compressed)))
                 parsed_assets += 1
                 if yield_every > 0 and parsed_assets % yield_every == 0:
-                    # WHY: 释放 GIL，避免批量解析资产时 UI 假死
+                    # 释放 GIL，避免批量解析资产时 UI 假死
                     time.sleep(0)
 
         return items
@@ -209,38 +208,23 @@ class FileManager(Base):
     def get_items_for_translation(
         self,
         mode: Base.TranslationMode,
-        db: Optional[DataStore] = None,
+        db: DataStore,
     ) -> list[Item]:
         """根据翻译模式决定加载策略，并返回条目列表
 
         Args:
             mode: 翻译模式 (NEW, CONTINUE, RESET)
-            db: 可选的数据库实例。如果提供，则强制从该数据库的资产中解析条目。
+            db: 数据库实例
         """
-        if db is not None:
-            # 外部指定数据库（如 ProjectStore 创建时），强制从 Assets 解析以初始化条目
-            return self.read_from_storage(db)
-
-        # 默认从当前上下文获取数据库
-        ctx = StorageContext.get()
-        current_db = ctx.get_db()
-        if current_db is None:
-            return []
-
-        # CONTINUE 模式：直接从数据库缓存加载
-        if mode == Base.TranslationMode.CONTINUE:
-            return [Item.from_dict(d) for d in current_db.get_all_items()]
+        # CONTINUE / NEW 模式：直接从 items 表读取缓存
+        if mode in (Base.TranslationMode.CONTINUE, Base.TranslationMode.NEW):
+            return [Item.from_dict(d) for d in db.get_all_items()]
 
         # RESET 模式：强制从 Assets 重解析
         if mode == Base.TranslationMode.RESET:
-            return self.read_from_storage(current_db)
+            return self.read_from_storage(db)
 
-        # NEW 模式：直接使用数据库中的初始解析结果（由创建工程时解析产生）
-        if mode == Base.TranslationMode.NEW:
-            return [Item.from_dict(d) for d in current_db.get_all_items()]
-
-        # 兜底：读缓存
-        return [Item.from_dict(d) for d in current_db.get_all_items()]
+        return [Item.from_dict(d) for d in db.get_all_items()]
 
     # 写
     def write_to_path(self, items: list[Item]) -> str:

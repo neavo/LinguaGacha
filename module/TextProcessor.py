@@ -16,7 +16,7 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
-from module.QualityRuleManager import QualityRuleManager
+from module.Data.DataManager import DataManager
 from module.RubyCleaner import RubyCleaner
 
 
@@ -105,7 +105,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in QualityRuleManager.get().get_text_preserve()
+                        for v in DataManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -123,7 +123,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in QualityRuleManager.get().get_text_preserve()
+                        for v in DataManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -141,7 +141,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in QualityRuleManager.get().get_text_preserve()
+                        for v in DataManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -159,7 +159,7 @@ class TextProcessor(Base):
                 custom_data=tuple(
                     [
                         v.get("src")
-                        for v in QualityRuleManager.get().get_text_preserve()
+                        for v in DataManager.get().get_text_preserve()
                         if v.get("src") != ""
                     ]
                 )
@@ -246,10 +246,10 @@ class TextProcessor(Base):
 
     # 译前替换
     def replace_pre_translation(self, src: str) -> str:
-        if not QualityRuleManager.get().get_pre_replacement_enable():
+        if not DataManager.get().get_pre_replacement_enable():
             return src
 
-        pre_replacement_data = QualityRuleManager.get().get_pre_replacement()
+        pre_replacement_data = DataManager.get().get_pre_replacement()
 
         for v in pre_replacement_data:
             pattern = v.get("src")
@@ -276,10 +276,10 @@ class TextProcessor(Base):
 
     # 译后替换
     def replace_post_translation(self, dst: str) -> str:
-        if not QualityRuleManager.get().get_post_replacement_enable():
+        if not DataManager.get().get_post_replacement_enable():
             return dst
 
-        post_replacement_data = QualityRuleManager.get().get_post_replacement()
+        post_replacement_data = DataManager.get().get_post_replacement()
 
         for v in post_replacement_data:
             pattern = v.get("src")
@@ -311,14 +311,14 @@ class TextProcessor(Base):
             return src
 
         rule: re.Pattern = self.get_re_prefix(
-            custom=QualityRuleManager.get().get_text_preserve_enable(),
+            custom=DataManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
         if rule is not None:
             src, self.prefix_codes[i] = self.extract(rule, src)
 
         rule: re.Pattern = self.get_re_suffix(
-            custom=QualityRuleManager.get().get_text_preserve_enable(),
+            custom=DataManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
 
@@ -355,7 +355,7 @@ class TextProcessor(Base):
 
                     # 查找控制字符示例
                     rule: re.Pattern = self.get_re_sample(
-                        custom=QualityRuleManager.get().get_text_preserve_enable(),
+                        custom=DataManager.get().get_text_preserve_enable(),
                         text_type=text_type,
                     )
 
@@ -413,7 +413,7 @@ class TextProcessor(Base):
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern = self.get_re_check(
-            custom=QualityRuleManager.get().get_text_preserve_enable(),
+            custom=DataManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
 

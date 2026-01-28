@@ -4,10 +4,10 @@ import sqlite3
 import threading
 import time
 from datetime import datetime
-
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
+from typing import Generator
 
 from base.Base import Base
 
@@ -208,7 +208,7 @@ class DataStore(Base):
                 result.append(data)
                 loaded_count += 1
                 if yield_every > 0 and loaded_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大项目读取条目时 UI 假死
+                    # 释放 GIL，避免大项目读取条目时 UI 假死
                     time.sleep(0)
             return result
 
@@ -260,7 +260,7 @@ class DataStore(Base):
                     ids.append(cursor.lastrowid)
                 saved_count += 1
                 if yield_every > 0 and saved_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大批量写入时阻塞 UI
+                    # 释放 GIL，避免大批量写入时阻塞 UI
                     time.sleep(0)
             conn.commit()
             return ids

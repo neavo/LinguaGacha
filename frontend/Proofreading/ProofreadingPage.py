@@ -2,9 +2,9 @@ import re
 import threading
 from typing import Callable
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QApplication
@@ -25,13 +25,12 @@ from frontend.Proofreading.ProofreadingEditPanel import ProofreadingEditPanel
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
-from module.Storage.DataStore import DataStore
-from module.Storage.StorageContext import StorageContext
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -43,10 +42,10 @@ class ProofreadingPage(QWidget, Base):
     UI_ICON_PX = 16
     QUALITY_RULE_REFRESH_DELAY_MS: int = 200
     QUALITY_RULE_TYPES: set[str] = {
-        DataStore.RuleType.GLOSSARY.value,
-        DataStore.RuleType.PRE_REPLACEMENT.value,
-        DataStore.RuleType.POST_REPLACEMENT.value,
-        DataStore.RuleType.TEXT_PRESERVE.value,
+        DataManager.RuleType.GLOSSARY.value,
+        DataManager.RuleType.PRE_REPLACEMENT.value,
+        DataManager.RuleType.POST_REPLACEMENT.value,
+        DataManager.RuleType.TEXT_PRESERVE.value,
     }
     QUALITY_META_KEYS: set[str] = {
         "glossary_enable",
@@ -142,7 +141,7 @@ class ProofreadingPage(QWidget, Base):
 
     def on_quality_rule_update(self, event: Base.Event, event_data: dict) -> None:
         del event
-        # WHY: 只对影响校对判定的规则变更触发重算，避免无效刷新
+        # 只对影响校对判定的规则变更触发重算，避免无效刷新
         if not self.is_quality_rule_update_relevant(event_data):
             return
         if not self.items:
@@ -159,7 +158,7 @@ class ProofreadingPage(QWidget, Base):
         return any(meta_key in self.QUALITY_META_KEYS for meta_key in meta_keys)
 
     def schedule_quality_rule_refresh(self) -> None:
-        # WHY: 合并短时间内的多次规则变更，避免重复全量检查
+        # 合并短时间内的多次规则变更，避免重复全量检查
         self.quality_rule_refresh_timer.start(self.QUALITY_RULE_REFRESH_DELAY_MS)
 
     def refresh_quality_rules(self) -> None:
@@ -197,7 +196,7 @@ class ProofreadingPage(QWidget, Base):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(8)
 
-        # WHY: qfluentwidgets 的样式管理依赖 widget 的父子关系，首次进入页面时若无父对象
+        # qfluentwidgets 的样式管理依赖 widget 的父子关系，首次进入页面时若无父对象
         # 可能出现 TableWidget 使用 Qt 原生样式，直到主题切换触发全局刷新才恢复。
         self.table_widget = ProofreadingTableWidget(body_widget)
         self.table_widget.retranslate_clicked.connect(self.on_retranslate_clicked)
@@ -248,7 +247,7 @@ class ProofreadingPage(QWidget, Base):
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
-        # WHY: 本页统一写死字号与图标尺寸，避免跨平台/主题的细微差异造成视觉不一致。
+        # 本页统一写死字号与图标尺寸，避免跨平台/主题的细微差异造成视觉不一致。
         base_font = QFont(self.command_bar_card.command_bar.font())
         base_font.setPixelSize(self.ui_font_px)
         self.command_bar_card.command_bar.setFont(base_font)
@@ -327,8 +326,8 @@ class ProofreadingPage(QWidget, Base):
             try:
                 self.config = Config().load()
                 # 从工程数据库读取所有条目
-                db = StorageContext.get().get_db()
-                if db is None:
+                dm = DataManager.get()
+                if not dm.is_loaded():
                     self.load_ok = False
                     self.items_all = []
                     self.items = []
@@ -345,7 +344,7 @@ class ProofreadingPage(QWidget, Base):
                     )
                     self.items_loaded.emit([])
                     return
-                items_all = [Item.from_dict(d) for d in db.get_all_items()]
+                items_all = dm.get_all_items()
                 items = self.build_review_items(items_all)
 
                 if not items_all:
@@ -531,7 +530,7 @@ class ProofreadingPage(QWidget, Base):
                     else:
                         keyword_lower = keyword.lower()
                 for item in items_ref:
-                    # WHY: 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过
+                    # 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过
                     if item.get_status() in (
                         Base.ProjectStatus.EXCLUDED,
                         Base.ProjectStatus.DUPLICATED,
@@ -660,7 +659,7 @@ class ProofreadingPage(QWidget, Base):
         """构建可校对条目列表，避免结构行进入 UI。"""
         review_items = []
         for item in items:
-            # WHY: 结构行需要保留用于导出，但不应进入校对列表
+            # 结构行需要保留用于导出，但不应进入校对列表
             if not item.get_src().strip():
                 continue
             if item.get_status() in (
@@ -1038,7 +1037,7 @@ class ProofreadingPage(QWidget, Base):
             action()
             return
 
-        # WHY: 直接触发保存，不再弹窗询问用户，减少操作流程中断
+        # 直接触发保存，不再弹窗询问用户，减少操作流程中断
         self.pending_action = action
         self.pending_revert = on_cancel
         self.save_current_item()
@@ -1076,10 +1075,7 @@ class ProofreadingPage(QWidget, Base):
         def task() -> None:
             success = False
             try:
-                db = StorageContext.get().get_db()
-                if db is None:
-                    raise RuntimeError("db not ready")
-                db.set_item(item.to_dict())
+                DataManager.get().save_item(item)
                 success = True
             except Exception as e:
                 self.error("Save item failed", e)
@@ -1120,7 +1116,7 @@ class ProofreadingPage(QWidget, Base):
 
         self.update_project_status_after_save()
 
-        # WHY: 自动保存成功后给用户反馈，避免用户疑惑修改是否生效
+        # 自动保存成功后给用户反馈，避免用户疑惑修改是否生效
         self.emit(
             Base.Event.TOAST,
             {
@@ -1173,7 +1169,7 @@ class ProofreadingPage(QWidget, Base):
         clipboard = QApplication.clipboard()
         if clipboard:
             text = item.get_dst()
-            # WHY: 右侧编辑面板的“复制译文”应复制当前编辑框内容（可能未保存）。
+            # 右侧编辑面板的“复制译文”应复制当前编辑框内容（可能未保存）。
             if self.sender() is self.edit_panel and self.current_item is item:
                 text = self.edit_panel.get_current_text()
             clipboard.setText(text)
@@ -1228,16 +1224,14 @@ class ProofreadingPage(QWidget, Base):
 
     def do_batch_reset_translation(self, items: list[Item]) -> None:
         """执行批量重置"""
-        # WHY: 保存按钮已移至编辑区，重置操作需要自动入库
-        db = StorageContext.get().get_db()
+        # 保存按钮已移至编辑区，重置操作需要自动入库
         for item in items:
             item.set_dst("")
             item.set_status(Base.ProjectStatus.NONE)
             item.set_retry_count(0)
 
             # 入库
-            if db is not None:
-                db.set_item(item.to_dict())
+            DataManager.get().save_item(item)
 
             # 更新 UI 和检查结果
             self.recheck_item(item)
@@ -1374,10 +1368,11 @@ class ProofreadingPage(QWidget, Base):
 
     def on_translate_done_ui(self, item: Item, success: bool) -> None:
         """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
-        # WHY: 保存按钮已移至编辑区，翻译完成后需要自动入库
-        db = StorageContext.get().get_db()
-        if db is not None:
-            db.set_item(item.to_dict())
+        # 保存按钮已移至编辑区，翻译完成后需要自动入库
+        try:
+            DataManager.get().save_item(item)
+        except Exception as e:
+            self.error("Save item failed", e)
 
         # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
         if success:
@@ -1425,11 +1420,7 @@ class ProofreadingPage(QWidget, Base):
         def task() -> None:
             try:
                 # 直接写入工程数据库
-                db = StorageContext.get().get_db()
-                if db is None:
-                    self.save_done.emit(False)
-                    return
-                db.set_items([item.to_dict() for item in items_all])
+                DataManager.get().replace_all_items(items_all)
                 self.update_project_status_after_save()
 
                 self.save_done.emit(True)
@@ -1440,8 +1431,8 @@ class ProofreadingPage(QWidget, Base):
         threading.Thread(target=task, daemon=True).start()
 
     def update_project_status_after_save(self) -> None:
-        ctx = StorageContext.get()
-        if not ctx.is_loaded():
+        dm = DataManager.get()
+        if not dm.is_loaded():
             return
 
         review_items = self.items
@@ -1453,9 +1444,9 @@ class ProofreadingPage(QWidget, Base):
             if untranslated_count > 0
             else Base.ProjectStatus.PROCESSED
         )
-        ctx.set_project_status(project_status)
+        dm.set_project_status(project_status)
 
-        extras = ctx.get_translation_extras()
+        extras = dm.get_translation_extras()
         translated_count = sum(
             1
             for item in review_items
@@ -1466,7 +1457,7 @@ class ProofreadingPage(QWidget, Base):
             )
         )
         extras["line"] = translated_count
-        ctx.set_translation_extras(extras)
+        dm.set_translation_extras(extras)
 
     # ========== 导出功能 ==========
     def on_export_clicked(self) -> None:
