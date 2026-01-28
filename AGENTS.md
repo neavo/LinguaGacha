@@ -1,6 +1,5 @@
 # LinguaGacha Agent Guidelines
-本文档用于约束在本仓库工作的 Agent（含自动化 coding agent）的行为、命令与代码风格
-目标：少踩坑、可维护、改动可验证
+本文档用于约束在本仓库工作的 Agent 的行为、命令与代码风格
 
 ## 1. 项目背景
 - **简介**: 基于 LLM 的次世代视觉小说、电子书及字幕翻译工具
@@ -9,11 +8,11 @@
 ## 2. 环境与指令
 所有指令必须通过 `uv` 执行
 ### 2.1 安装与运行
-- **安装依赖（按 lock 复现）**: `uv sync`
-- **升级依赖（仅在明确需要时）**: `uv sync -U`
+- **安装依赖**: `uv sync`
+- **升级依赖**: `uv sync -U`
 - **运行应用**: `uv run app.py`
 ### 2.2 Lint / Format (Ruff)
-本仓库用 Ruff 做 lint + format + import 排序，推荐：改哪扫哪
+用 Ruff 做 lint + format + import 排序，改哪扫哪，勿扩大范围
 - `uv run ruff check --fix <file_path>`
 - `uv run ruff format <file_path>`
 注意：
@@ -27,11 +26,10 @@
 1. **第一性原理**: 立足于第一性原理剖析问题，善用工具以提升效率
 2. **事实为准**: 即使用户建议与事实不符，也必须以事实为准，坦率指出
 3. **KISS & YAGNI**: 保持简单，拒绝过度设计，除非必要，避免防御性编程
-4. **清理**: 冗余空行、代码、注释、未使用本地化字段等应立即清理
 
 ## 4. 代码规范
 ### 4.1 注释
-关键逻辑 **必须** 写单行注释解释 **为什么** (Why)，而不是做什么 (What)
+关键逻辑 **必须** 写单行注释解释 **为什么**，而不是做什么
 ### 4.2 控制流
 避免深层嵌套，**优先使用 Early Returns**
 ### 4.3 DRY
@@ -43,17 +41,15 @@
   - ✅ `get_user_profile`, `fetch_status`, `__init__`
 - **类**: `PascalCase`（如 `AppFluentWindow`）
 - **常量**: `UPPER_SNAKE_CASE`（如 `Base.Event.PROJECT_LOADED`）
-- **拒绝魔术值**: 用常量或枚举（如 `StrEnum`）代替字符串/数字
+- **禁止魔术值**: 用常量或枚举（如 `StrEnum`）代替字符串/数字
 ### 4.5 类型提示
-所有函数参数与返回类型 **必须** 标注类型
-优先使用 Python 3.14 的现代类型语法（如 `A | None`、`list[str]`）
+变量、参数与返回值 **必须** 标注类型，优先使用现代类型语法（如 `A | None`、`list[str]`）
 ### 4.6 错误处理与日志
 - 捕获异常时必须保留堆栈：`self.error("Message", e)`
 - **严禁** 使用 `print()`；必须使用 `LogManager` 或继承自 `Base` 的日志方法
 - 不要吞异常，如需降级处理，至少记录一次 error/warning
 
 ### 4.7 Imports
-使用 Ruff isort 规则（`force-single-line = true`）
 每个 import 单独一行，示例：
 ```python
 from typing import Any
@@ -100,13 +96,13 @@ self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
   | [ ] | 创建 UI 组件 | ... |
   | [x] | 实现事件监听 | ... |
 4. 实施变更：
-- 修改业务逻辑后，检查是否需要同步更新 `Localizer`
-- 修改 UI 后，确保在亮/暗主题下显示正常
-- **同步进度**：每完成一项，立即更新 `plan/todo.md` 表格状态
-5. 验证：手动测试或补充脚本测试核心算法
-6. 收尾（仅对有业务变更的文件）：
-- `uv run ruff check --fix <file_path>`
-- `uv run ruff format <file_path>`
+- 逐一完成 `plan/todo.md` 中的任务
+- 每完成一项，立即更新 `plan/todo.md` 表格状态
+5. 格式与检查（仅对有业务变更的文件）：
+- 使用 Ruff 检查和格式化代码
+- 清理冗余的空行、代码、注释、本地化字段等
+- 检查函数、变量是否符合命名规范
+- 提醒用户测试要点，无需运行应用
 
 ## 7. 常用文件路径
 - `app.py`: 应用入口
