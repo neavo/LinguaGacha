@@ -989,19 +989,7 @@ class ProofreadingPage(QWidget, Base):
             action()
             return
 
-        dialog = MessageBox(
-            Localizer.get().proofreading_page_unsaved_title,
-            Localizer.get().proofreading_page_unsaved_message,
-            self.main_window,
-        )
-        dialog.yesButton.setText(Localizer.get().proofreading_page_unsaved_save)
-        dialog.cancelButton.setText(Localizer.get().proofreading_page_unsaved_cancel)
-
-        if not dialog.exec():
-            if on_cancel:
-                on_cancel()
-            return
-
+        # WHY: 直接触发保存，不再弹窗询问用户，减少操作流程中断
         self.pending_action = action
         self.pending_revert = on_cancel
         self.save_current_item()
@@ -1082,6 +1070,15 @@ class ProofreadingPage(QWidget, Base):
             self.edit_panel.refresh_status_tags(item, warnings)
 
         self.update_project_status_after_save()
+
+        # WHY: 自动保存成功后给用户反馈，避免用户疑惑修改是否生效
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().proofreading_page_saved,
+            },
+        )
 
         if self.pending_action:
             action = self.pending_action

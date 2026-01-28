@@ -14,12 +14,11 @@ from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
 from qfluentwidgets import PillToolButton
-from qfluentwidgets import PrimaryPushButton
-from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
+from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
@@ -140,11 +139,6 @@ class ProofreadingEditPanel(QWidget):
         self.status_layout.addLayout(self.status_flow)
 
         # WHY: 状态 pill 的种类是有限的，直接预创建并通过 show/hide 控制。
-        # 编辑状态放最前面，满足“从左到右”的语义顺序。
-        self.edit_state_pill = self.create_status_pill("", StatusPillKind.INFO)
-        self.edit_state_pill.hide()
-        self.status_flow.addWidget(self.edit_state_pill)
-
         self.translation_status_pill = self.create_status_pill("", StatusPillKind.INFO)
         self.status_flow.addWidget(self.translation_status_pill)
 
@@ -195,29 +189,41 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.dst_text.setProperty("compact", True)
         self.dst_text.textChanged.connect(self.on_dst_text_changed)
+        self.dst_text.set_on_focus_out(self.on_editor_focus_out)
         editor_layout.addWidget(self.dst_text, 1)
 
         editor_layout.addWidget(self.build_divider(self.editor_card))
         editor_layout.addWidget(self.status_scroll)
 
+        # 按钮区（状态区下方，卡片内部）
+        editor_layout.addWidget(self.build_divider(self.editor_card))
+        self.button_container = QWidget(self.editor_card)
+        button_layout = QHBoxLayout(self.button_container)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(0)
+
+        self.btn_restore = TransparentPushButton(self.button_container)
+        self.btn_restore.setIcon(FluentIcon.HISTORY)
+        self.btn_restore.setText(Localizer.get().proofreading_page_restore)
+        self.btn_restore.clicked.connect(self.on_restore_clicked)
+        self.btn_restore.setEnabled(False)
+        button_layout.addWidget(self.btn_restore, 1)
+
+        button_layout.addWidget(self.build_vertical_divider(self.button_container))
+
+        self.btn_save = TransparentPushButton(self.button_container)
+        self.btn_save.setIcon(FluentIcon.SAVE)
+        self.btn_save.setText(Localizer.get().proofreading_page_save)
+        self.btn_save.clicked.connect(self.on_save_clicked)
+        self.btn_save.setEnabled(False)
+        button_layout.addWidget(self.btn_save, 1)
+
+        editor_layout.addWidget(self.button_container)
+
         content_layout.addWidget(self.editor_card, 1)
 
         layout.addWidget(self.empty_state, 1)
         layout.addWidget(self.content_widget, 1)
-
-        # 底部按钮
-        self.footer_widget = QWidget(self)
-        footer = QHBoxLayout(self.footer_widget)
-        # WHY: 与左侧表格底部对齐，减少额外留白
-        footer.setContentsMargins(0, 0, 0, 0)
-        footer.setSpacing(8)
-        self.btn_restore = PushButton(Localizer.get().proofreading_page_restore)
-        self.btn_save = PrimaryPushButton(Localizer.get().proofreading_page_save)
-        self.btn_restore.clicked.connect(self.on_restore_clicked)
-        self.btn_save.clicked.connect(self.on_save_clicked)
-        footer.addWidget(self.btn_restore, 1)
-        footer.addWidget(self.btn_save, 1)
-        layout.addWidget(self.footer_widget)
 
         self.set_enabled_state(False)
 
@@ -245,7 +251,7 @@ class ProofreadingEditPanel(QWidget):
         self.src_text.blockSignals(False)
         self.dst_text.blockSignals(False)
 
-        self.set_save_state("")
+        self.update_button_states()
         self.refresh_status_tags(item, warnings)
         self.schedule_status_height_refresh()
         # 先隐藏术语状态 pill，等异步计算完成后再显示，避免短暂显示旧状态
@@ -263,12 +269,11 @@ class ProofreadingEditPanel(QWidget):
         self.clear_status_tags()
         self.schedule_status_height_refresh()
         self.clear_glossary_status()
-        self.set_save_state("")
+        self.update_button_states()
 
     def set_readonly(self, readonly: bool) -> None:
         self.dst_text.setReadOnly(readonly)
-        self.btn_save.setEnabled(not readonly)
-        self.btn_restore.setEnabled(not readonly)
+        self.update_button_states()
 
     def on_more_clicked(self) -> None:
         item = self.current_item
@@ -312,13 +317,20 @@ class ProofreadingEditPanel(QWidget):
 
     def set_enabled_state(self, enabled: bool) -> None:
         self.content_widget.setVisible(enabled)
-        self.footer_widget.setVisible(enabled)
         self.empty_state.setVisible(not enabled)
         self.setEnabled(enabled)
 
     def build_divider(self, parent: QWidget) -> QWidget:
         line = QWidget(parent)
         line.setFixedHeight(1)
+        self.update_divider_style(line)
+        qconfig.themeChanged.connect(lambda: self.update_divider_style(line))
+        return line
+
+    def build_vertical_divider(self, parent: QWidget) -> QWidget:
+        line = QWidget(parent)
+        line.setFixedWidth(1)
+        line.setFixedHeight(16)
         self.update_divider_style(line)
         qconfig.themeChanged.connect(lambda: self.update_divider_style(line))
         return line
@@ -336,30 +348,21 @@ class ProofreadingEditPanel(QWidget):
 
     def apply_saved_state(self) -> None:
         self.saved_text = self.get_current_text()
-        self.set_save_state(Localizer.get().proofreading_page_saved, state="saved")
+        self.update_button_states()
 
-    def set_save_state(self, text: str, state: str | None = None) -> None:
-        if not text:
-            self.set_pill_layout_visible(self.edit_state_pill, False)
-            return
-        self.edit_state_pill.setText(text)
-        self.edit_state_pill.setProperty("state", state or "")
-        self.edit_state_pill.set_kind(self.get_kind_by_state(state))
-        self.set_pill_layout_visible(self.edit_state_pill, True)
-        self.schedule_status_height_refresh()
+    def update_button_states(self) -> None:
+        """根据是否有未保存修改更新按钮启用状态"""
+        has_changes = self.has_unsaved_changes()
+        is_readonly = self.dst_text.isReadOnly()
+        # WHY: 只读模式下按钮始终禁用；非只读时根据是否有修改决定
+        self.btn_save.setEnabled(has_changes and not is_readonly)
+        self.btn_restore.setEnabled(has_changes and not is_readonly)
 
     def on_dst_text_changed(self) -> None:
         if not self.current_item:
             return
 
-        current_text = self.get_current_text()
-        # WHY: 用户输入时仅标记未保存，不直接改写已保存版本
-        if current_text != self.saved_text:
-            self.set_save_state(
-                Localizer.get().proofreading_page_unsaved, state="unsaved"
-            )
-        else:
-            self.set_save_state("")
+        self.update_button_states()
         self.schedule_glossary_status_refresh()
 
     def on_restore_clicked(self) -> None:
@@ -368,12 +371,20 @@ class ProofreadingEditPanel(QWidget):
         self.dst_text.blockSignals(True)
         self.dst_text.setPlainText(self.saved_text)
         self.dst_text.blockSignals(False)
-        self.set_save_state("")
+        self.update_button_states()
         self.schedule_glossary_status_refresh()
         self.restore_requested.emit()
 
     def on_save_clicked(self) -> None:
         if not self.current_item:
+            return
+        self.save_requested.emit(self.current_item, self.get_current_text())
+
+    def on_editor_focus_out(self) -> None:
+        """编辑区焦点离开时自动保存"""
+        if not self.current_item or not self.has_unsaved_changes():
+            return
+        if self.dst_text.isReadOnly():
             return
         self.save_requested.emit(self.current_item, self.get_current_text())
 
@@ -444,13 +455,6 @@ class ProofreadingEditPanel(QWidget):
         """
 
         pill.setVisible(visible)
-
-    def get_kind_by_state(self, state: str | None) -> StatusPillKind:
-        if state == "saved":
-            return StatusPillKind.SUCCESS
-        if state == "unsaved":
-            return StatusPillKind.ERROR
-        return StatusPillKind.INFO
 
     def get_status_tag(self, status: Base.ProjectStatus) -> tuple[str, StatusPillKind]:
         mapping = {

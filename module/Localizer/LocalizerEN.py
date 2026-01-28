@@ -393,26 +393,14 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_exporting: str = "Generating translation …"
 
     proofreading_page_retranslate: str = "Retranslate"
-    proofreading_page_retranslate_confirm: str = (
-        "Confirm to retranslate this entry …\n"
-        "Note: Unsaved changes in the editor will be discarded …"
-    )
+    proofreading_page_retranslate_confirm: str = "Retranslate this entry?"
     proofreading_page_batch_retranslate: str = "Retranslate selected"
-    proofreading_page_batch_retranslate_confirm: str = (
-        "Confirm to re-translate all {COUNT} selected items …?\n"
-        "Note: Unsaved changes in the editor will be discarded …"
-    )
+    proofreading_page_batch_retranslate_confirm: str = "Retranslate all {COUNT} entries?"
     proofreading_page_reset_translation: str = "Reset Translation"
-    proofreading_page_reset_translation_confirm: str = (
-        "Confirm to reset translation status for this item …?\n"
-        "Translation will be cleared and status will be reset to Untranslated …\n"
-        "Note: Unsaved changes in the editor will be discarded …"
-    )
+    proofreading_page_reset_translation_confirm: str = "Reset translation for this entry?"
     proofreading_page_batch_reset_translation: str = "Reset Selected"
     proofreading_page_batch_reset_translation_confirm: str = (
-        "Confirm to reset translation status for all {COUNT} selected items …?\n"
-        "Translation will be cleared and status will be reset to Untranslated …\n"
-        "Note: Unsaved changes in the editor will be discarded …"
+        "Reset translation for all {COUNT} entries?"
     )
 
     # 基础设置
