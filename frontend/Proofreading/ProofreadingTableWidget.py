@@ -10,15 +10,15 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
+from qfluentwidgets import getFont
 from qfluentwidgets import IconWidget
-from qfluentwidgets import PillToolButton
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
-from frontend.Proofreading.TextEditDialog import TextEditDialog
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import WarningType
@@ -28,25 +28,23 @@ class ProofreadingTableWidget(TableWidget):
     """校对任务专用表格组件"""
 
     # 信号定义
-    cell_edited = pyqtSignal(object, str)  # (item, new_dst) 单元格编辑完成
     retranslate_clicked = pyqtSignal(object)  # (item) 重新翻译
     batch_retranslate_clicked = pyqtSignal(list)  # (items) 批量重新翻译
     reset_translation_clicked = pyqtSignal(object)  # (item) 重置翻译
     batch_reset_translation_clicked = pyqtSignal(list)  # (items) 批量重置翻译
-    copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到译文
+    copy_src_clicked = pyqtSignal(object)  # (item) 复制原文到剪贴板
     copy_dst_clicked = pyqtSignal(object)  # (item) 复制译文到剪贴板
 
     # 列索引常量
     COL_SRC = 0
     COL_DST = 1
     COL_STATUS = 2
-    COL_ACTION = 3
 
     # 布局常量
     COL_WIDTH_STATUS = 60
-    COL_WIDTH_ACTION = 60
-    SYMBOL_NEWLINE = " ↵ "
     ROW_NUMBER_MIN_WIDTH = 40
+
+    UI_FONT_PX = 12
 
     # Item 数据存储的角色
     ITEM_ROLE = Qt.UserRole + 1
@@ -59,17 +57,29 @@ class ProofreadingTableWidget(TableWidget):
         Base.ProjectStatus.LANGUAGE_SKIPPED: FluentIcon.REMOVE_FROM,
     }
 
-    def __init__(self, parent: QWidget = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # WHY: 使用 QFluentWidgets 的字体族生成 QFont，避免 delegate 计算/绘制的 metrics 不一致导致下伸字母被裁剪。
+        self.ui_font = getFont(self.UI_FONT_PX)
+        # WHY: 继承应用级 hinting 设置，避免出现狗牙/清晰度差异。
+        self.ui_font.setHintingPreference(self.font().hintingPreference())
+
+        # WHY: TableWidget 的默认 QSS 会用 `font: 13px --FontFamilies` 覆盖表头/序号字体；这里仅覆盖字号。
+        header_qss = (
+            "QHeaderView::section {\n"
+            f"    font: {self.UI_FONT_PX}px --FontFamilies;\n"
+            "}\n"
+        )
+        setCustomStyleSheet(self, header_qss, header_qss)
+
         # 设置列头
-        self.setColumnCount(4)
+        self.setColumnCount(3)
         self.setHorizontalHeaderLabels(
             [
                 Localizer.get().proofreading_page_col_src,
                 Localizer.get().proofreading_page_col_dst,
                 Localizer.get().proofreading_page_col_status,
-                "",
             ]
         )
 
@@ -77,37 +87,34 @@ class ProofreadingTableWidget(TableWidget):
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         # 支持 Ctrl/Shift 多选和拖拽选择
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        # WHY: 校对列表允许滚轮滚动，但不显示右侧滚动条，避免视觉干扰。
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # 禁用默认的双击编辑，改为双击弹出对话框
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
         self.verticalHeader().setFixedWidth(self.ROW_NUMBER_MIN_WIDTH)
         self.setBorderVisible(False)
 
-        # 禁用换行，超宽文本显示省略号
+        # 文本拼接为单行显示
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
-        # 设置固定行高
-        self.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.verticalHeader().setDefaultSectionSize(40)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.verticalHeader().setMinimumSectionSize(40)
 
         # 设置列宽
         header = self.horizontalHeader()
         header.setSectionResizeMode(self.COL_SRC, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_DST, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.Fixed)
-        header.setSectionResizeMode(self.COL_ACTION, QHeaderView.Fixed)
         self.setColumnWidth(self.COL_STATUS, self.COL_WIDTH_STATUS)
-        # 操作列变宽
-        self.setColumnWidth(self.COL_ACTION, self.COL_WIDTH_ACTION)
+        header.setDefaultAlignment(Qt.AlignCenter)
 
         # 只读模式标志
-        self._readonly = False
+        self.readonly = False
 
-        # 加载中的行集合
-        self._loading_rows: set[int] = set()
-
-        # 双击弹出编辑对话框
-        self.cellDoubleClicked.connect(self.on_cell_double_clicked)
+        self.setAlternatingRowColors(True)
 
     def set_items(
         self,
@@ -129,6 +136,7 @@ class ProofreadingTableWidget(TableWidget):
             for row in range(30):
                 for col in range(self.columnCount()):
                     item = QTableWidgetItem("")
+                    item.setFont(self.ui_font)
                     # 设置为只读且不可选中，但保持启用状态以维持样式
                     item.setFlags(Qt.ItemIsEnabled)
                     self.setItem(row, col, item)
@@ -144,6 +152,7 @@ class ProofreadingTableWidget(TableWidget):
             )
             self.update_row_number_width(start_index + len(items))
 
+        self.resizeRowsToContents()
         self.setUpdatesEnabled(True)
         self.blockSignals(False)
 
@@ -165,7 +174,7 @@ class ProofreadingTableWidget(TableWidget):
 
     def update_row_number_width(self, max_label_value: int) -> None:
         digits = len(str(max(1, max_label_value)))
-        metrics = QFontMetrics(self.verticalHeader().font())
+        metrics = QFontMetrics(self.ui_font)
         text_width = metrics.horizontalAdvance("9" * digits)
         self.verticalHeader().setFixedWidth(
             max(self.ROW_NUMBER_MIN_WIDTH, text_width + 16)
@@ -174,52 +183,42 @@ class ProofreadingTableWidget(TableWidget):
     def clear_cell_widgets(self) -> None:
         """移除所有 cell widgets"""
         for row in range(self.rowCount()):
-            # 移除状态列和操作列的 cell widgets
-            for col in (self.COL_STATUS, self.COL_ACTION):
-                widget = self.cellWidget(row, col)
-                if widget:
-                    self.removeCellWidget(row, col)
-                    widget.deleteLater()
+            widget = self.cellWidget(row, self.COL_STATUS)
+            if widget:
+                self.removeCellWidget(row, self.COL_STATUS)
+                widget.deleteLater()
 
     def set_row_data(self, row: int, item: Item, warnings: list[WarningType]) -> None:
         """设置单行数据"""
-        src_text = item.get_src()
-        dst_text = item.get_dst()
+        src_text = self.compact_multiline_text(item.get_src())
+        dst_text = self.compact_multiline_text(item.get_dst())
 
-        # 原文列：显示换行符，超宽自动省略
-        src_display = (
-            src_text.replace("\r\n", "\n")
-            .replace("\r", "\n")
-            .replace("\n", self.SYMBOL_NEWLINE)
-        )
-        src_item = QTableWidgetItem(src_display)
+        # 原文列：拼接多行文本后单行显示
+        src_item = QTableWidgetItem(src_text)
+        src_item.setFont(self.ui_font)
         src_item.setFlags(src_item.flags() & ~Qt.ItemIsEditable)
         src_item.setData(self.ITEM_ROLE, item)
         src_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         self.setItem(row, self.COL_SRC, src_item)
 
-        # 译文列：显示换行符，超宽自动省略
-        dst_display = (
-            dst_text.replace("\r\n", "\n")
-            .replace("\r", "\n")
-            .replace("\n", self.SYMBOL_NEWLINE)
-        )
-        dst_item = QTableWidgetItem(dst_display)
+        # 译文列：拼接多行文本后单行显示
+        dst_item = QTableWidgetItem(dst_text)
+        dst_item.setFont(self.ui_font)
         dst_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        if self._readonly:
+        if self.readonly:
             dst_item.setFlags(dst_item.flags() & ~Qt.ItemIsEditable)
         self.setItem(row, self.COL_DST, dst_item)
 
         # 状态列
         self.create_status_widget(row, item, warnings)
 
-        # 操作列
-        self.create_action_widget(row, item)
-
     def create_status_widget(
-        self, row: int, item: Item, warnings: list[WarningType]
+        self,
+        row: int,
+        item: Item,
+        warnings: list[WarningType],
     ) -> None:
-        """创建状态显示组件"""
+        """创建翻译状态与结果检查显示组件"""
         widget = QWidget()
         # 固定高度与行高一致，确保 layout 能正确计算居中位置
         widget.setFixedHeight(40)
@@ -238,11 +237,13 @@ class ProofreadingTableWidget(TableWidget):
             status_icon.installEventFilter(
                 ToolTipFilter(status_icon, 300, ToolTipPosition.TOP)
             )
-            status_tooltip = f"{Localizer.get().proofreading_page_filter_status}\n{Localizer.get().current_status}{self.get_status_text(status)}"
+            status_tooltip = (
+                f"{Localizer.get().proofreading_page_filter_status}\n"
+                f"{Localizer.get().current_status}{self.get_status_text(status)}"
+            )
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
 
-        # 警告图标（有警告才显示）
         if warnings:
             warning_icon = IconWidget(FluentIcon.VPN)
             warning_icon.setFixedSize(16, 16)
@@ -250,7 +251,10 @@ class ProofreadingTableWidget(TableWidget):
             warning_icon.installEventFilter(
                 ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP)
             )
-            warning_tooltip = f"{Localizer.get().proofreading_page_warning_tooltip_title}\n{Localizer.get().current_status}{' | '.join(warning_texts)}"
+            warning_tooltip = (
+                f"{Localizer.get().proofreading_page_warning_tooltip_title}\n"
+                f"{Localizer.get().current_status}{' | '.join(warning_texts)}"
+            )
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)
 
@@ -267,7 +271,7 @@ class ProofreadingTableWidget(TableWidget):
         }
         return status_texts.get(status, str(status))
 
-    def get_warning_text(self, error: WarningType) -> str:
+    def get_warning_text(self, warning: WarningType) -> str:
         """获取警告类型的本地化文本"""
         warning_texts = {
             WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
@@ -277,66 +281,7 @@ class ProofreadingTableWidget(TableWidget):
             WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
             WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
         }
-        return warning_texts.get(error, str(error))
-
-    def create_action_widget(self, row: int, item: Item) -> None:
-        """创建操作按钮"""
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        # 右侧留更多内边距，避免与滚动条重叠
-        layout.setContentsMargins(4, 4, 16, 4)
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignCenter)
-
-        btn_action = PillToolButton(FluentIcon.MORE, widget)
-        btn_action.setCheckable(False)  # 禁用点亮切换效果
-        btn_action.setEnabled(not self._readonly and row not in self._loading_rows)
-
-        def show_menu() -> None:
-            menu = RoundMenu(parent=btn_action)
-
-            # 复制原文到译文
-            menu.addAction(
-                Action(
-                    FluentIcon.PASTE,
-                    Localizer.get().proofreading_page_copy_src,
-                    triggered=lambda checked: self.copy_src_clicked.emit(item),
-                )
-            )
-
-            # 复制译文到剪贴板
-            menu.addAction(
-                Action(
-                    FluentIcon.COPY,
-                    Localizer.get().proofreading_page_copy_dst,
-                    triggered=lambda checked: self.copy_dst_clicked.emit(item),
-                )
-            )
-
-            # 重新翻译
-            menu.addAction(
-                Action(
-                    FluentIcon.SYNC,
-                    Localizer.get().proofreading_page_retranslate,
-                    triggered=lambda checked: self.retranslate_clicked.emit(item),
-                )
-            )
-
-            # 重置翻译状态
-            menu.addAction(
-                Action(
-                    FluentIcon.DELETE,
-                    Localizer.get().proofreading_page_reset_translation,
-                    triggered=lambda checked: self.reset_translation_clicked.emit(item),
-                )
-            )
-
-            menu.exec(btn_action.mapToGlobal(btn_action.rect().bottomLeft()))
-
-        btn_action.clicked.connect(show_menu)
-        layout.addWidget(btn_action)
-
-        self.setCellWidget(row, self.COL_ACTION, widget)
+        return warning_texts.get(warning, str(warning))
 
     def get_item_at_row(self, row: int) -> Item | None:
         """获取指定行绑定的 Item 对象"""
@@ -351,21 +296,9 @@ class ProofreadingTableWidget(TableWidget):
         if item:
             self.create_status_widget(row, item, warnings)
 
-    def set_row_loading(self, row: int, loading: bool) -> None:
-        """设置指定行为加载中状态"""
-        if loading:
-            self._loading_rows.add(row)
-        else:
-            self._loading_rows.discard(row)
-
-        widget = self.cellWidget(row, self.COL_ACTION)
-        if widget:
-            for btn in widget.findChildren(PillToolButton):
-                btn.setEnabled(not loading and not self._readonly)
-
     def set_readonly(self, readonly: bool) -> None:
         """设置表格只读模式"""
-        self._readonly = readonly
+        self.readonly = readonly
 
         for row in range(self.rowCount()):
             dst_cell = self.item(row, self.COL_DST)
@@ -377,36 +310,6 @@ class ProofreadingTableWidget(TableWidget):
                     flags = flags | Qt.ItemIsEditable
                 dst_cell.setFlags(flags)
 
-            widget = self.cellWidget(row, self.COL_ACTION)
-            if widget:
-                for btn in widget.findChildren(PillToolButton):
-                    btn.setEnabled(not readonly and row not in self._loading_rows)
-
-    def on_cell_double_clicked(self, row: int, column: int) -> None:
-        """双击弹出编辑对话框"""
-        # 只处理原文列和译文列的双击
-        if column not in (self.COL_SRC, self.COL_DST):
-            return
-
-        # 只读模式下不允许编辑
-        if self._readonly:
-            return
-
-        item = self.get_item_at_row(row)
-        if not item:
-            return
-
-        # 弹出编辑对话框
-        dialog = TextEditDialog(
-            item.get_src(), item.get_dst(), item.get_file_path(), self.window()
-        )
-        if dialog.exec():
-            new_dst = dialog.get_dst_text()
-            # 只在内容变化时发出信号
-            if new_dst != item.get_dst():
-                self.update_row_dst(row, new_dst)
-                self.cell_edited.emit(item, new_dst)
-
     def find_row_by_item(self, item: Item) -> int:
         """根据 Item 对象查找行索引"""
         for row in range(self.rowCount()):
@@ -414,20 +317,20 @@ class ProofreadingTableWidget(TableWidget):
                 return row
         return -1
 
+    def compact_multiline_text(self, text: str) -> str:
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        parts = [part.strip() for part in normalized.split("\n") if part.strip()]
+        return " ↲ ".join(parts)
+
     def update_row_dst(self, row: int, new_dst: str) -> None:
         """更新指定行的译文"""
         self.blockSignals(True)
         dst_cell = self.item(row, self.COL_DST)
         if dst_cell:
-            # 显示换行符，超宽自动省略
-            dst_display = (
-                new_dst.replace("\r\n", "\n")
-                .replace("\r", "\n")
-                .replace("\n", self.SYMBOL_NEWLINE)
-            )
-            dst_cell.setText(dst_display)
+            dst_cell.setText(self.compact_multiline_text(new_dst))
 
         self.blockSignals(False)
+        self.resizeRowToContents(row)
 
     def select_row(self, row: int) -> None:
         """选中指定行并滚动到可见区域"""
@@ -451,9 +354,14 @@ class ProofreadingTableWidget(TableWidget):
                 items.append(item)
         return items
 
+    def get_selected_row(self) -> int:
+        """获取当前选中的首行索引"""
+        rows = sorted(set(index.row() for index in self.selectedIndexes()))
+        return rows[0] if rows else -1
+
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """右键菜单事件"""
-        if self._readonly:
+        if self.readonly:
             return
 
         # 获取点击位置的 item
