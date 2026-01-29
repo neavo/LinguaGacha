@@ -22,9 +22,9 @@ from qfluentwidgets import TableWidget
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.QualityRuleManager import QualityRuleManager
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -64,19 +64,19 @@ class TextPreservePage(QWidget, Base):
 
     # 获取文本保护数据
     def get_text_preserve_data(self) -> list[dict[str, str]]:
-        return QualityRuleManager.get().get_text_preserve()
+        return DataManager.get().get_text_preserve()
 
     # 保存文本保护数据
     def set_text_preserve_data(self, data: list[dict[str, str]]) -> None:
-        QualityRuleManager.get().set_text_preserve(data)
+        DataManager.get().set_text_preserve(data)
 
     # 获取启用状态
     def get_text_preserve_enable(self) -> bool:
-        return QualityRuleManager.get().get_text_preserve_enable()
+        return DataManager.get().get_text_preserve_enable()
 
     # 设置启用状态
     def set_text_preserve_enable(self, enable: bool) -> None:
-        QualityRuleManager.get().set_text_preserve_enable(enable)
+        DataManager.get().set_text_preserve_enable(enable)
 
     # 工程加载后刷新数据
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:

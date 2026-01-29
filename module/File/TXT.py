@@ -4,7 +4,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Storage.PathStore import PathStore
+from module.Data.DataManager import DataManager
 from module.Text.TextHelper import TextHelper
 
 
@@ -69,8 +69,9 @@ class TXT(Base):
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
         # 获取输出目录
-        output_path = PathStore.get_translated_path()
-        bilingual_path = PathStore.get_bilingual_path()
+        dm = DataManager.get()
+        output_path = dm.get_translated_path()
+        bilingual_path = dm.get_bilingual_path()
 
         # 筛选
         target = [item for item in items if item.get_file_type() == Item.FileType.TXT]

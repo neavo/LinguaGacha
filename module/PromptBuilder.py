@@ -6,7 +6,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.QualityRuleManager import QualityRuleManager
+from module.Data.DataManager import DataManager
 
 
 class PromptBuilder(Base):
@@ -69,16 +69,14 @@ class PromptBuilder(Base):
     # 获取自定义提示词数据
     def get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
         if language == BaseLanguage.Enum.ZH:
-            return QualityRuleManager.get().get_custom_prompt_zh()
-        else:
-            return QualityRuleManager.get().get_custom_prompt_en()
+            return DataManager.get().get_custom_prompt_zh()
+        return DataManager.get().get_custom_prompt_en()
 
     # 获取自定义提示词启用状态
     def get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
         if language == BaseLanguage.Enum.ZH:
-            return QualityRuleManager.get().get_custom_prompt_zh_enable()
-        else:
-            return QualityRuleManager.get().get_custom_prompt_en_enable()
+            return DataManager.get().get_custom_prompt_zh_enable()
+        return DataManager.get().get_custom_prompt_en_enable()
 
     # 获取主提示词
     def build_main(self) -> str:
@@ -151,7 +149,7 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        glossary_data = QualityRuleManager.get().get_glossary()
+        glossary_data = DataManager.get().get_glossary()
 
         for v in glossary_data:
             src = v.get("src", "")
@@ -203,7 +201,7 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        glossary_data = QualityRuleManager.get().get_glossary()
+        glossary_data = DataManager.get().get_glossary()
 
         for v in glossary_data:
             src = v.get("src", "")
@@ -294,7 +292,7 @@ class PromptBuilder(Base):
                 console_log.append(result)
 
         # 术语表
-        if QualityRuleManager.get().get_glossary_enable():
+        if DataManager.get().get_glossary_enable():
             result = self.build_glossary(srcs)
             if result != "":
                 content = content + "\n" + result
@@ -338,7 +336,7 @@ class PromptBuilder(Base):
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(srcs)
-        if QualityRuleManager.get().get_glossary_enable():
+        if DataManager.get().get_glossary_enable():
             result = self.build_glossary_sakura(srcs)
             if result != "":
                 content = (

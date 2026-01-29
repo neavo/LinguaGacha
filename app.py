@@ -18,9 +18,9 @@ from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Storage.StorageContext import StorageContext
 
 
 def excepthook(
@@ -151,9 +151,9 @@ if __name__ == "__main__":
 
     # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
     def cleanup_on_exit() -> None:
-        ctx = StorageContext.get()
-        if ctx.is_loaded():
-            ctx.unload()
+        dm = DataManager.get()
+        if dm.is_loaded():
+            dm.unload_project()
 
     app.aboutToQuit.connect(cleanup_on_exit)
 

@@ -10,13 +10,13 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
-from qfluentwidgets import getFont
 from qfluentwidgets import IconWidget
 from qfluentwidgets import RoundMenu
-from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets import TableWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
+from qfluentwidgets import getFont
+from qfluentwidgets import setCustomStyleSheet
 
 from base.Base import Base
 from model.Item import Item
@@ -60,12 +60,12 @@ class ProofreadingTableWidget(TableWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # WHY: 使用 QFluentWidgets 的字体族生成 QFont，避免 delegate 计算/绘制的 metrics 不一致导致下伸字母被裁剪。
+        # 使用 QFluentWidgets 的字体族生成 QFont，避免 delegate 计算/绘制的 metrics 不一致导致下伸字母被裁剪。
         self.ui_font = getFont(self.UI_FONT_PX)
-        # WHY: 继承应用级 hinting 设置，避免出现狗牙/清晰度差异。
+        # 继承应用级 hinting 设置，避免出现狗牙/清晰度差异。
         self.ui_font.setHintingPreference(self.font().hintingPreference())
 
-        # WHY: TableWidget 的默认 QSS 会用 `font: 13px --FontFamilies` 覆盖表头/序号字体；这里仅覆盖字号。
+        # TableWidget 的默认 QSS 会用 `font: 13px --FontFamilies` 覆盖表头/序号字体；这里仅覆盖字号。
         header_qss = (
             "QHeaderView::section {\n"
             f"    font: {self.UI_FONT_PX}px --FontFamilies;\n"
@@ -88,7 +88,7 @@ class ProofreadingTableWidget(TableWidget):
         # 支持 Ctrl/Shift 多选和拖拽选择
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
-        # WHY: 校对列表允许滚轮滚动，但不显示右侧滚动条，避免视觉干扰。
+        # 校对列表允许滚轮滚动，但不显示右侧滚动条，避免视觉干扰。
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # 禁用默认的双击编辑，改为双击弹出对话框

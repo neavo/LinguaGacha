@@ -66,7 +66,7 @@ class PaginationBar(QWidget):
         self.btn_next.clicked.connect(self.on_next_clicked)
         layout.addWidget(self.btn_next)
 
-        # WHY: 翻页按钮与页码文本使用同一字号，保证视觉一致。
+        # 翻页按钮与页码文本使用同一字号，保证视觉一致。
         btn_font = QFont(self.btn_prev.font())
         btn_font.setPixelSize(self.UI_FONT_PX)
         self.btn_prev.setFont(btn_font)
