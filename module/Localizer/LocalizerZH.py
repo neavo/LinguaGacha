@@ -511,6 +511,12 @@ class LocalizerZH:
         "<br>"
         "• 禁用 - 自动判断文本格式与游戏引擎，智能选择合适的保护规则，在大部分内容中都可以取得较好的效果"
     )
+    text_preserve_mode_off: str = "关闭"
+    text_preserve_mode_smart: str = "智能"
+    text_preserve_mode_custom: str = "自定义"
+    text_preserve_mode_desc_off: str = "完全关闭文本保护，不使用内置或自定义规则"
+    text_preserve_mode_desc_smart: str = "仅使用内置预置规则，适合大多数内容"
+    text_preserve_mode_desc_custom: str = "使用本页自定义规则进行保护"
     text_preserve_page_table_row_01: str = "规则"
     text_preserve_page_table_row_02: str = "备注（仅作备忘，无实际作用）"
 

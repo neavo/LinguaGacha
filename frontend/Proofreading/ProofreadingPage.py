@@ -64,6 +64,7 @@ class ProofreadingPage(QWidget, Base):
         "glossary_enable",
         "pre_translation_replacement_enable",
         "post_translation_replacement_enable",
+        "text_preserve_mode",
         "text_preserve_enable",
     }
 

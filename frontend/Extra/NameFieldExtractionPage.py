@@ -1,6 +1,7 @@
 import re
 import threading
 from typing import Any
+from typing import cast
 
 from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
@@ -23,7 +24,6 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
@@ -62,11 +62,6 @@ class NameFieldExtractionPage(QWidget, Base):
         self.add_widget_body(self.root, config, window)
         self.add_widget_foot(self.root, config, window)
 
-        self.search_is_filter_mode: bool = False
-        self.search_last_keyword: str = ""
-        self.search_matches: list[int] = []
-        self.search_current_match: int = -1
-
         # 注册事件
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
@@ -88,7 +83,6 @@ class NameFieldExtractionPage(QWidget, Base):
             EmptyCard(
                 title=Localizer.get().name_field_extraction_page,
                 description=Localizer.get().name_field_extraction_page_desc,
-                init=None,
             )
         )
 
@@ -111,7 +105,10 @@ class NameFieldExtractionPage(QWidget, Base):
                     triggered=delete_row,
                 )
             )
-            menu.exec(self.table.viewport().mapToGlobal(position))
+            viewport = self.table.viewport()
+            if viewport is None:
+                return
+            menu.exec(viewport.mapToGlobal(position))
 
         self.table = TableWidget(self)
         parent.addWidget(self.table)
@@ -121,18 +118,20 @@ class NameFieldExtractionPage(QWidget, Base):
         self.table.setBorderVisible(False)
         self.table.setSelectRightClickedRow(True)
         self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setVisible(True)
+        cast(Any, self.table.verticalHeader()).setVisible(True)
 
         # 设置表格列宽
         self.table.setColumnWidth(0, 300)
         self.table.setColumnWidth(1, 300)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setStretchLastSection(True)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
         # 设置水平表头
-        self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        v_header = self.table.verticalHeader()
+        if v_header is not None:
+            v_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
                 Localizer.get().glossary_page_table_row_01,  # 原文
@@ -146,9 +145,8 @@ class NameFieldExtractionPage(QWidget, Base):
         self.table.customContextMenuRequested.connect(custom_context_menu_requested)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Interactive
-        )
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
         self.refresh_table()
 
@@ -162,25 +160,35 @@ class NameFieldExtractionPage(QWidget, Base):
         parent.addWidget(self.search_card)
 
         def back_clicked(widget: SearchCard) -> None:
+            widget.reset_state()
             self.search_card.setVisible(False)
             self.command_bar_card.setVisible(True)
 
         self.search_card.on_back_clicked(back_clicked)
 
         def prev_clicked(widget: SearchCard) -> None:
-            self.run_search(reverse=True)
+            widget.run_table_search(reverse=True)
 
         def next_clicked(widget: SearchCard) -> None:
-            self.run_search(reverse=False)
+            widget.run_table_search(reverse=False)
 
         def search_mode_changed(widget: SearchCard) -> None:
-            self.search_is_filter_mode = widget.is_filter_mode()
-            self.apply_search_mode()
+            widget.apply_table_search()
 
         self.search_card.on_prev_clicked(prev_clicked)
         self.search_card.on_next_clicked(next_clicked)
         self.search_card.on_search_triggered(next_clicked)
         self.search_card.on_search_mode_changed(search_mode_changed)
+
+        def notify(level: str, message: str) -> None:
+            type_map = {
+                "error": Base.ToastType.ERROR,
+                "warning": Base.ToastType.WARNING,
+                "info": Base.ToastType.INFO,
+            }
+            self.show_toast(type_map.get(level, Base.ToastType.INFO), message)
+
+        self.search_card.bind_table(self.table, self.get_search_columns(), notify)
 
         # 创建命令栏
         self.command_bar_card = CommandBarCard()
@@ -449,7 +457,10 @@ class NameFieldExtractionPage(QWidget, Base):
 
             item_src.setText(src)
             item_src.setToolTip(tooltip)
-            item_src.setFlags(item_src.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 只读
+            src_flags: Qt.ItemFlags = (
+                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+            )
+            item_src.setFlags(src_flags)  # 只读
 
             # 译文
             item_dst = self.table.item(row, 1)
@@ -461,10 +472,15 @@ class NameFieldExtractionPage(QWidget, Base):
             item_dst.setText(dst)
             if not src:
                 # 如果没有原文，译文也禁止编辑，避免误操作
-                item_dst.setFlags(item_dst.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item_dst.setFlags(Qt.ItemFlag.ItemIsEnabled)
             else:
                 # 恢复可编辑状态
-                item_dst.setFlags(item_dst.flags() | Qt.ItemFlag.ItemIsEditable)
+                dst_flags: Qt.ItemFlags = (
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsEditable
+                )
+                item_dst.setFlags(dst_flags)
 
             # 状态
             item_status = self.table.item(row, 2)
@@ -474,9 +490,7 @@ class NameFieldExtractionPage(QWidget, Base):
                 self.table.setItem(row, 2, item_status)
 
             item_status.setText(status)
-            item_status.setFlags(
-                item_status.flags() & ~Qt.ItemFlag.ItemIsEditable
-            )  # 只读
+            item_status.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 只读
 
         self.table.blockSignals(False)
 
@@ -702,146 +716,6 @@ class NameFieldExtractionPage(QWidget, Base):
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1)
 
-    def apply_search_mode(self) -> None:
-        keyword = self.search_card.get_keyword()
-        self.search_last_keyword = keyword
-
-        if not keyword:
-            self.clear_row_filter()
-            self.clear_search_matches()
-            return
-
-        if not self.validate_search_regex():
-            return
-
-        matches, empty_rows = TableManager.build_table_matches(
-            self.table,
-            keyword,
-            self.search_card.is_regex_mode(),
-            self.get_search_columns(),
-        )
-        if self.search_is_filter_mode:
-            self.apply_row_filter(matches, empty_rows, keyword)
-            if not matches:
-                return
-            return
-
-        self.clear_row_filter()
-        current_row = self.table.currentRow()
-        current_index = TableManager.find_current_match_index(matches, current_row)
-        if current_index >= 0:
-            self.update_match_selection(matches, matches[current_index])
-        else:
-            self.update_match_selection(matches, matches[0] if matches else -1)
-
-    def run_search(self, reverse: bool) -> None:
-        keyword = self.search_card.get_keyword()
-        self.search_last_keyword = keyword
-
-        if not keyword:
-            self.clear_row_filter()
-            self.clear_search_matches()
-            return
-
-        if not self.validate_search_regex():
-            return
-
-        matches, empty_rows = TableManager.build_table_matches(
-            self.table,
-            keyword,
-            self.search_card.is_regex_mode(),
-            self.get_search_columns(),
-        )
-
-        if self.search_is_filter_mode:
-            self.apply_row_filter(matches, empty_rows, keyword)
-
-        if not matches:
-            self.search_card.set_match_info(0, 0)
-            self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
-            return
-
-        target_row = TableManager.pick_next_match(
-            matches,
-            self.table.currentRow(),
-            reverse,
-        )
-        self.update_match_selection(matches, target_row)
-
-    def apply_row_filter(
-        self, matches: list[int], empty_rows: set[int], keyword: str
-    ) -> None:
-        self.table.setUpdatesEnabled(False)
-        match_set = set(matches)
-        for row in range(self.table.rowCount()):
-            if not keyword:
-                self.table.setRowHidden(row, False)
-                continue
-
-            if row in empty_rows:
-                self.table.setRowHidden(row, True)
-                continue
-
-            self.table.setRowHidden(row, row not in match_set)
-        self.table.setUpdatesEnabled(True)
-
-        if not keyword:
-            self.clear_search_matches()
-            return
-
-        if not matches:
-            self.search_matches = []
-            self.search_current_match = -1
-            self.search_card.set_match_info(0, 0)
-            self.show_toast(Base.ToastType.WARNING, Localizer.get().search_no_match)
-            return
-
-        current_row = self.table.currentRow()
-        current_index = TableManager.find_current_match_index(matches, current_row)
-        target_row = matches[0] if current_index < 0 else matches[current_index]
-        self.update_match_selection(matches, target_row)
-
-    def update_match_selection(self, matches: list[int], target_row: int) -> None:
-        if target_row < 0:
-            self.clear_search_matches()
-            return
-
-        self.search_matches = matches
-        self.search_current_match = matches.index(target_row)
-        self.search_card.set_match_info(self.search_current_match + 1, len(matches))
-        self.table.setCurrentCell(target_row, 0)
-        item = self.table.item(target_row, 0)
-        if item:
-            self.table.scrollToItem(item)
-
-    def clear_search_matches(self) -> None:
-        self.search_matches = []
-        self.search_current_match = -1
-        self.search_card.clear_match_info()
-
-    def clear_row_filter(self) -> None:
-        self.table.setUpdatesEnabled(False)
-        for row in range(self.table.rowCount()):
-            self.table.setRowHidden(row, False)
-        self.table.setUpdatesEnabled(True)
-        item = self.table.item(self.table.currentRow(), 0)
-        if item:
-            self.table.scrollToItem(item)
-
-    def validate_search_regex(self) -> bool:
-        if not self.search_card.is_regex_mode():
-            return True
-
-        is_valid, error_msg = self.search_card.validate_regex()
-        if is_valid:
-            return True
-
-        self.show_toast(
-            Base.ToastType.ERROR,
-            f"{Localizer.get().search_regex_invalid}: {error_msg}",
-        )
-        return False
-
     def show_toast(self, type: Base.ToastType, message: str) -> None:
         self.emit(
             Base.Event.TOAST,
@@ -857,7 +731,6 @@ class NameFieldExtractionPage(QWidget, Base):
         self.refresh_table()
 
         # 重置搜索栏
-        self.search_card.clear_match_info()
+        self.search_card.reset_state()
         self.search_card.setVisible(False)
-        self.search_card.get_line_edit().clear()
         self.command_bar_card.setVisible(True)

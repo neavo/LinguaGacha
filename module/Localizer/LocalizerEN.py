@@ -511,6 +511,12 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• Disabled - Automatically detects text format and game engine, and applies smart preserve rules, works well for most content"
     )
+    text_preserve_mode_off: str = "Off"
+    text_preserve_mode_smart: str = "Smart"
+    text_preserve_mode_custom: str = "Custom"
+    text_preserve_mode_desc_off: str = "Turn off preserve rules entirely; no built-in or custom rules"
+    text_preserve_mode_desc_smart: str = "Use built-in presets only; recommended for most content"
+    text_preserve_mode_desc_custom: str = "Use custom rules configured on this page"
     text_preserve_page_table_row_01: str = "Rule"
     text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
 

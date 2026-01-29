@@ -10,7 +10,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.TableManager import TableManager
+from module.Data.SpreadsheetUtil import SpreadsheetUtil
 
 
 class WOLFXLSX(Base):
@@ -184,11 +184,11 @@ class WOLFXLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                TableManager.set_cell_value(
-                    sheet, row, column=self.COL_SRC_TEXT, value=item.get_src()
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=self.COL_SRC_TEXT, value=item.get_src()
                 )
-                TableManager.set_cell_value(
-                    sheet, row, column=self.COL_DST_TEXT, value=item.get_dst()
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=self.COL_DST_TEXT, value=item.get_dst()
                 )
 
             # 保存工作簿

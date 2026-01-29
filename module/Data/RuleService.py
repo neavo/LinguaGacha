@@ -77,6 +77,11 @@ class RuleService:
         config = Config().load()
         loaded_presets: list[str] = []
 
+        # 新工程默认关闭文本保护（OFF）。
+        # 兼容旧布尔键：同时写入 text_preserve_enable=False，避免默认值误判。
+        db.set_meta("text_preserve_mode", "off")
+        db.set_meta("text_preserve_enable", False)
+
         def load_json(path: str) -> list[dict[str, Any]] | None:
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -103,7 +108,6 @@ class RuleService:
             data = load_json(config.text_preserve_default_preset)
             if data is not None:
                 db.set_rules(LGDatabase.RuleType.TEXT_PRESERVE, data)
-                db.set_meta("text_preserve_enable", True)
                 loaded_presets.append(Localizer.get().app_text_preserve_page)
 
         # 3. 译前替换

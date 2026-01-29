@@ -9,7 +9,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.TableManager import TableManager
+from module.Data.SpreadsheetUtil import SpreadsheetUtil
 
 
 class XLSX(Base):
@@ -40,7 +40,7 @@ class XLSX(Base):
 
         # 数据处理
         book: openpyxl.Workbook = openpyxl.load_workbook(io.BytesIO(content))
-        sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
+        sheet = book.active
 
         # Ensure it is a Worksheet
         if not isinstance(sheet, openpyxl.worksheet.worksheet.Worksheet):
@@ -126,7 +126,10 @@ class XLSX(Base):
 
             # 新建工作表
             book: openpyxl.Workbook = openpyxl.Workbook()
-            sheet: openpyxl.worksheet.worksheet.Worksheet = book.active
+            sheet = book.active
+
+            if not isinstance(sheet, openpyxl.worksheet.worksheet.Worksheet):
+                continue
 
             # 设置表头
             sheet.column_dimensions["A"].width = 64
@@ -135,8 +138,12 @@ class XLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                TableManager.set_cell_value(sheet, row, column=1, value=item.get_src())
-                TableManager.set_cell_value(sheet, row, column=2, value=item.get_dst())
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=1, value=item.get_src()
+                )
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=2, value=item.get_dst()
+                )
 
             # 保存工作簿
             abs_path = os.path.join(output_path, rel_path)
@@ -145,19 +152,19 @@ class XLSX(Base):
 
     # 是否为 WOLF 翻译表格文件
     def is_wold_xlsx(self, sheet: openpyxl.worksheet.worksheet.Worksheet) -> bool:
-        value: str = sheet.cell(row=1, column=1).value
+        value = sheet.cell(row=1, column=1).value
         if not isinstance(value, str) or "code" not in value.lower():
             return False
 
-        value: str = sheet.cell(row=1, column=2).value
+        value = sheet.cell(row=1, column=2).value
         if not isinstance(value, str) or "flag" not in value.lower():
             return False
 
-        value: str = sheet.cell(row=1, column=3).value
+        value = sheet.cell(row=1, column=3).value
         if not isinstance(value, str) or "type" not in value.lower():
             return False
 
-        value: str = sheet.cell(row=1, column=4).value
+        value = sheet.cell(row=1, column=4).value
         if not isinstance(value, str) or "info" not in value.lower():
             return False
 
