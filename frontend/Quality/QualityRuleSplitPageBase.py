@@ -1,10 +1,12 @@
 from typing import Any
 from typing import Callable
+from typing import cast
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QLayout
+from PyQt5.QtWidgets import QBoxLayout
 from PyQt5.QtWidgets import QAbstractItemView
+from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -75,7 +77,7 @@ class QualityRuleSplitPageBase(QWidget, Base):
 
     # ==================== UI 组装（供子类调用） ====================
 
-    def setup_split_body(self, parent: QLayout) -> None:
+    def setup_split_body(self, parent: QBoxLayout) -> None:
         body_widget = QWidget(self)
         body_layout = QHBoxLayout(body_widget)
         body_layout.setContentsMargins(0, 0, 0, 0)
@@ -87,8 +89,10 @@ class QualityRuleSplitPageBase(QWidget, Base):
         self.table.setAlternatingRowColors(True)
         self.table.setColumnCount(len(self.get_list_headers()))
         self.table.setHorizontalHeaderLabels(self.get_list_headers())
-        self.table.verticalHeader().setVisible(True)
-        self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        v_header = cast(QHeaderView, self.table.verticalHeader())
+        v_header.setVisible(True)
+        v_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         # 左侧列表只读
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
@@ -97,9 +101,9 @@ class QualityRuleSplitPageBase(QWidget, Base):
 
         body_layout.addWidget(self.table, 7)
         body_layout.addWidget(self.edit_panel, 3)
-        parent.addWidget(body_widget, 1)
+        parent.addWidget(body_widget)
 
-    def setup_split_foot(self, parent: QLayout) -> None:
+    def setup_split_foot(self, parent: QBoxLayout) -> None:
         # 搜索栏（默认隐藏）
         self.search_card = SearchCard(self)
         self.search_card.setVisible(False)
@@ -151,16 +155,35 @@ class QualityRuleSplitPageBase(QWidget, Base):
         self.reload_entries()
 
     def reload_entries(self) -> None:
+        # reload 过程中尽量保持当前选中行不跳回首行：
+        # QUALITY_RULE_UPDATE 事件可能由“保存当前项”触发，如果这里固定 select_row(0)
+        # 会导致用户编辑后列表焦点回到第一条。
+        anchor_src = ""
+        anchor_index = self.current_index
+        if 0 <= self.current_index < len(self.entries):
+            anchor_src = str(self.entries[self.current_index].get("src", "")).strip()
+
         self.entries = [v for v in self.load_entries() if isinstance(v, dict)]
         self.cleanup_empty_entries()
         self.refresh_table()
         self.on_entries_reloaded()
         self.reload_pending = False
 
-        if self.entries:
-            self.select_row(0)
-        else:
+        if not self.entries:
             self.apply_selection(-1)
+            return
+
+        if anchor_src:
+            for i, v in enumerate(self.entries):
+                if str(v.get("src", "")).strip() == anchor_src:
+                    self.select_row(i)
+                    return
+
+        if anchor_index >= 0:
+            self.select_row(min(anchor_index, len(self.entries) - 1))
+            return
+
+        self.select_row(0)
 
     # ==================== 列表渲染/选择 ====================
 
@@ -191,16 +214,20 @@ class QualityRuleSplitPageBase(QWidget, Base):
                     self.table.setItem(row, col, item)
 
                 item.setText(values[col] if col < len(values) else "")
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-                )
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if editable:
-                    item.setFlags(
-                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                    )
+                    flags = item.flags()
+                    flags |= Qt.ItemFlag.ItemIsEnabled
+                    flags |= Qt.ItemFlag.ItemIsSelectable
+                    flags &= ~Qt.ItemFlag.ItemIsEditable
+                    item.setFlags(flags)
                 else:
                     # 空白行保持样式铺满，但不允许选中。
-                    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    flags = item.flags()
+                    flags |= Qt.ItemFlag.ItemIsEnabled
+                    flags &= ~Qt.ItemFlag.ItemIsSelectable
+                    flags &= ~Qt.ItemFlag.ItemIsEditable
+                    item.setFlags(flags)
 
         self.table.setUpdatesEnabled(True)
         self.table.blockSignals(False)

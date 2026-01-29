@@ -8,24 +8,26 @@ from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
-from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
-from qfluentwidgets import PillToolButton
 from qfluentwidgets import RoundMenu
-from qfluentwidgets import ToolTipFilter
-from qfluentwidgets import ToolTipPosition
+from qfluentwidgets import TableItemDelegate
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import getFont
+from qfluentwidgets import isDarkTheme
+from qfluentwidgets import qconfig
 from qfluentwidgets import setCustomStyleSheet
+from qfluentwidgets import themeColor
 
 from base.Base import Base
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
@@ -39,14 +41,95 @@ from widget.LineEditMessageBox import LineEditMessageBox
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
+class GlossaryTableItemDelegate(TableItemDelegate):
+    """在保持 QFluentWidgets 表格悬浮/选中效果的前提下，单独绘制规则列图标。"""
+
+    def __init__(self, parent, case_column_index: int, icon_size: int) -> None:
+        super().__init__(parent)
+        self.case_column_index = case_column_index
+        self.icon_size = icon_size
+
+    def paint(self, painter, option, index) -> None:
+        if index.column() != self.case_column_index:
+            super().paint(painter, option, index)
+            return
+
+        # 复制 TableItemDelegate.paint 的背景逻辑，避免覆盖 QFluentWidgets 的一体悬浮/选中效果。
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        painter.setClipping(True)
+        painter.setClipRect(option.rect)
+
+        option.rect.adjust(0, self.margin, 0, -self.margin)
+
+        is_hover = self.hoverRow == index.row()
+        is_pressed = self.pressedRow == index.row()
+        table = self.parent()
+        alternating_fn = getattr(table, "alternatingRowColors", None)
+        alternating = bool(alternating_fn()) if callable(alternating_fn) else False
+        is_alternate = index.row() % 2 == 0 and alternating
+        is_dark = isDarkTheme()
+
+        c = 255 if is_dark else 0
+        alpha = 0
+
+        if index.row() not in self.selectedRows:
+            if is_pressed:
+                alpha = 9 if is_dark else 6
+            elif is_hover:
+                alpha = 12
+            elif is_alternate:
+                alpha = 5
+        else:
+            if is_pressed:
+                alpha = 15 if is_dark else 9
+            elif is_hover:
+                alpha = 25
+            else:
+                alpha = 17
+
+        if index.data(Qt.ItemDataRole.BackgroundRole):
+            painter.setBrush(index.data(Qt.ItemDataRole.BackgroundRole))
+        else:
+            painter.setBrush(QColor(c, c, c, alpha))
+
+        self._drawBackground(painter, option, index)
+        painter.restore()
+
+        decoration = index.data(Qt.ItemDataRole.DecorationRole)
+        if not isinstance(decoration, QPixmap):
+            return
+
+        rect = option.rect
+        x = rect.x() + (rect.width() - self.icon_size) // 2
+        y = rect.y() + (rect.height() - self.icon_size) // 2
+        painter.drawPixmap(x, y, decoration)
+
+
 class GlossaryPage(QualityRuleSplitPageBase):
     BASE: str = "glossary"
+
+    CASE_COLUMN_INDEX: int = 3
+    CASE_COLUMN_WIDTH: int = 96
+    CASE_ICON_SIZE: int = 28
+    CASE_ICON_INNER_SIZE: int = 14
+    CASE_ICON_BORDER_WIDTH: int = 1
+    CASE_ICON_LUMA_THRESHOLD: float = 0.75
 
     QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.GLOSSARY.value}
     QUALITY_META_KEYS: set[str] = {"glossary_enable"}
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(text, window)
+
+        # Glossary 表格在大数据量下全量 refresh 开销很高。
+        # 保存/切换大小写时跳过一次由自身触发的 QUALITY_RULE_UPDATE，避免重复 reload+refresh。
+        self.ignore_next_quality_rule_update: bool = False
+
+        # 缓存主题下的图标 pixmap，避免频繁重绘拖慢刷新。
+        self.case_pixmap_cache: dict[tuple[bool, bool, int], QPixmap] = {}
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -56,6 +139,9 @@ class GlossaryPage(QualityRuleSplitPageBase):
         self.setup_table_columns()
         self.setup_split_foot(self.root)
         self.add_command_bar_actions(config, window)
+
+        qconfig.themeChanged.connect(self.on_theme_changed)
+        self.destroyed.connect(self.disconnect_theme_signals)
 
         # 注册事件
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
@@ -93,7 +179,7 @@ class GlossaryPage(QualityRuleSplitPageBase):
         )
 
     def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
-        # 高级规则列使用 cell widget，不需要文本
+        # 高级规则列使用图标展示，不需要文本
         return (
             str(entry.get("src", "")),
             str(entry.get("dst", "")),
@@ -116,7 +202,150 @@ class GlossaryPage(QualityRuleSplitPageBase):
         del event
         if not self.is_quality_rule_update_relevant(data):
             return
+
+        if self.ignore_next_quality_rule_update:
+            self.ignore_next_quality_rule_update = False
+            return
         self.request_reload()
+
+    def refresh_table_row(self, row: int) -> None:
+        """仅刷新单行，避免保存时全量刷新。"""
+
+        if row < 0 or row >= self.table.rowCount():
+            return
+
+        col_count = self.table.columnCount()
+        values = ("",) * col_count
+        editable = False
+        case_sensitive = False
+
+        if row < len(self.entries):
+            values = self.get_row_values(self.entries[row])
+            editable = True
+            case_sensitive = bool(self.entries[row].get("case_sensitive", False))
+
+        for col in range(col_count):
+            if col == self.CASE_COLUMN_INDEX:
+                self.update_case_cell_item(row, case_sensitive, editable)
+                continue
+
+            item = self.table.item(row, col)
+            if item is None:
+                item = QTableWidgetItem()
+                self.table.setItem(row, col, item)
+
+            item.setText(values[col] if col < len(values) else "")
+            item.setFont(self.ui_font)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if editable:
+                flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+                flags |= Qt.ItemFlag.ItemIsEnabled
+                flags |= Qt.ItemFlag.ItemIsSelectable
+                item.setFlags(flags)
+            else:
+                flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+                flags |= Qt.ItemFlag.ItemIsEnabled
+                item.setFlags(flags)
+
+    def save_current_entry(self) -> None:
+        """重写保存逻辑：大数据量下仅更新单行，避免明显卡顿。"""
+
+        if self.current_index < 0 or self.current_index >= len(self.entries):
+            return
+
+        entry = self.edit_panel.get_current_entry()
+        ok, error_msg = self.validate_entry(entry)
+        if not ok:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": error_msg,
+                },
+            )
+            if self.pending_revert:
+                self.pending_revert()
+            self.pending_action = None
+            self.pending_revert = None
+            return
+
+        before_count = len(self.entries)
+        merged, merge_toast = self.commit_entry(entry)
+        try:
+            self.cleanup_empty_entries()
+            self.save_entries(self.entries)
+            # 由 DataManager 写入触发的事件会在下一轮事件循环处理；这里标记跳过一次。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to save rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            if self.pending_revert:
+                self.pending_revert()
+            self.pending_action = None
+            self.pending_revert = None
+            return
+
+        after_count = len(self.entries)
+        needs_full_refresh = merged or after_count != before_count
+
+        if needs_full_refresh:
+            # 结构性变化会影响行数与占位行，直接全量刷新更稳妥。
+            self.refresh_table()
+            if self.current_index >= 0 and self.current_index < len(self.entries):
+                self.select_row(self.current_index)
+            else:
+                self.table.clearSelection()
+                self.apply_selection(-1)
+        else:
+            # 常见路径：只更新当前行内容与开关状态。
+            self.table.blockSignals(True)
+            self.table.setUpdatesEnabled(False)
+            self.refresh_table_row(self.current_index)
+            self.table.setUpdatesEnabled(True)
+            self.table.blockSignals(False)
+
+            if self.current_index >= 0 and self.current_index < len(self.entries):
+                self.block_selection_change = True
+                self.table.selectRow(self.current_index)
+                self.block_selection_change = False
+                self.edit_panel.bind_entry(
+                    self.entries[self.current_index], self.current_index + 1
+                )
+            else:
+                self.table.clearSelection()
+                self.apply_selection(-1)
+
+        if merged and merge_toast:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": merge_toast,
+                },
+            )
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        action = self.pending_action
+        self.pending_action = None
+        self.pending_revert = None
+        if callable(action):
+            action()
+
+        if self.reload_pending:
+            self.reload_entries()
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event
@@ -174,6 +403,15 @@ class GlossaryPage(QualityRuleSplitPageBase):
         self.table.setWordWrap(False)
         self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
 
+        self.table.setIconSize(QSize(self.CASE_ICON_SIZE, self.CASE_ICON_SIZE))
+        self.table.setItemDelegate(
+            GlossaryTableItemDelegate(
+                self.table,
+                case_column_index=self.CASE_COLUMN_INDEX,
+                icon_size=self.CASE_ICON_SIZE,
+            )
+        )
+
         # 列宽：原文/译文拉伸，描述拉伸，高级规则列固定窄宽
         header = self.table.horizontalHeader()
         if header is not None:
@@ -183,52 +421,149 @@ class GlossaryPage(QualityRuleSplitPageBase):
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
             # 高级规则列固定宽度
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-            self.table.setColumnWidth(3, 96)
+            header.setSectionResizeMode(
+                self.CASE_COLUMN_INDEX, QHeaderView.ResizeMode.Fixed
+            )
+            self.table.setColumnWidth(self.CASE_COLUMN_INDEX, self.CASE_COLUMN_WIDTH)
 
-    def clear_cell_widgets(self) -> None:
-        """移除所有 cell widgets"""
-        for row in range(self.table.rowCount()):
-            widget = self.table.cellWidget(row, 3)
-            if widget:
-                self.table.removeCellWidget(row, 3)
-                widget.deleteLater()
+    def disconnect_theme_signals(self) -> None:
+        try:
+            qconfig.themeChanged.disconnect(self.on_theme_changed)
+        except (TypeError, RuntimeError):
+            pass
 
-    def create_case_widget(self, case_sensitive: bool, show_button: bool) -> QWidget:
-        """创建高级规则列的 cell widget
+    def on_theme_changed(self) -> None:
+        self.case_pixmap_cache.clear()
+        self.refresh_table()
 
-        Args:
-            case_sensitive: 是否启用大小写敏感
-            show_button: 是否显示按钮（空白行不显示）
-        """
-        widget = QWidget()
-        widget.setFixedHeight(40)
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    def get_case_tooltip(self, case_sensitive: bool) -> str:
+        return (
+            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_on}"
+            if case_sensitive
+            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_off}"
+        )
 
-        if show_button:
-            btn = PillToolButton(FluentIcon.FONT, widget)
-            btn.setIconSize(QSize(14, 14))
-            btn.setFixedSize(28, 28)
-            btn.setCheckable(True)
-            btn.setChecked(case_sensitive)
-            # 禁用焦点以避免点击时出现焦点框
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn.installEventFilter(ToolTipFilter(btn, 300, ToolTipPosition.TOP))
-            btn.setToolTip(Localizer.get().rule_case_sensitive)
-            layout.addWidget(btn)
+    def get_case_pixmap(self, case_sensitive: bool) -> QPixmap:
+        is_dark = isDarkTheme()
+        try:
+            dpr = float(self.table.devicePixelRatioF())
+        except Exception:
+            dpr = 1.0
 
-        return widget
+        cache_key = (is_dark, case_sensitive, int(round(dpr * 100)))
+        cached = self.case_pixmap_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        pixmap = self.build_case_icon_pixmap(case_sensitive, is_dark, dpr)
+        self.case_pixmap_cache[cache_key] = pixmap
+        return pixmap
+
+    def build_case_icon_pixmap(
+        self, case_sensitive: bool, is_dark: bool, dpr: float
+    ) -> QPixmap:
+        size = self.CASE_ICON_SIZE
+        size_px = max(1, int(round(size * dpr)))
+
+        # 先用物理像素绘制，最后再设置 DPR，避免坐标系混乱导致缩放/裁切。
+        pixmap = QPixmap(size_px, size_px)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        border_px = max(1, int(round(self.CASE_ICON_BORDER_WIDTH * dpr)))
+
+        if case_sensitive:
+            rect = pixmap.rect()
+            border_color = Qt.GlobalColor.transparent
+            bg_color = QColor(themeColor())
+            bg_color.setAlpha(255)
+            icon_color = self.pick_contrast_color(bg_color)
+        else:
+            # 对齐 PillToolButton 默认未选中样式（非可交互，只绘制静态态）。
+            rect = pixmap.rect().adjusted(border_px, border_px, -border_px, -border_px)
+            border_color = QColor(255, 255, 255, 18) if is_dark else QColor(0, 0, 0, 15)
+            bg_color = (
+                QColor(255, 255, 255, 15) if is_dark else QColor(243, 243, 243, 194)
+            )
+            icon_color = QColor(255, 255, 255, 170) if is_dark else QColor(0, 0, 0, 140)
+
+        painter.setPen(border_color)
+        painter.setBrush(bg_color)
+        radius = rect.height() / 2
+        painter.drawRoundedRect(rect, radius, radius)
+
+        inner_px = max(1, int(round(self.CASE_ICON_INNER_SIZE * dpr)))
+        icon_pixmap = FluentIcon.FONT.icon().pixmap(inner_px, inner_px)
+        icon_pixmap = self.tint_pixmap(icon_pixmap, icon_color)
+        offset_px = (size_px - inner_px) // 2
+        painter.drawPixmap(offset_px, offset_px, icon_pixmap)
+        painter.end()
+
+        try:
+            pixmap.setDevicePixelRatio(dpr)
+        except Exception:
+            pass
+        return pixmap
+
+    def tint_pixmap(self, base: QPixmap, color: QColor) -> QPixmap:
+        tinted = QPixmap(base.size())
+        tinted.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(tinted)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.drawPixmap(0, 0, base)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(tinted.rect(), color)
+        painter.end()
+        return tinted
+
+    def pick_contrast_color(self, color: QColor) -> QColor:
+        luma = 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF()
+        if luma > self.CASE_ICON_LUMA_THRESHOLD:
+            return QColor(0, 0, 0)
+        return QColor(255, 255, 255)
+
+    def update_case_cell_item(
+        self, row: int, case_sensitive: bool, editable: bool
+    ) -> None:
+        item = self.table.item(row, self.CASE_COLUMN_INDEX)
+        if item is None:
+            item = QTableWidgetItem()
+            self.table.setItem(row, self.CASE_COLUMN_INDEX, item)
+
+        item.setText("")
+        item.setFont(self.ui_font)
+        item.setData(
+            Qt.ItemDataRole.TextAlignmentRole,
+            int(Qt.AlignmentFlag.AlignCenter),
+        )
+
+        if editable:
+            item.setData(
+                Qt.ItemDataRole.DecorationRole,
+                self.get_case_pixmap(case_sensitive),
+            )
+            item.setToolTip(self.get_case_tooltip(case_sensitive))
+        else:
+            item.setData(Qt.ItemDataRole.DecorationRole, None)
+            item.setToolTip("")
+
+        if editable:
+            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+            flags |= Qt.ItemFlag.ItemIsEnabled
+            flags |= Qt.ItemFlag.ItemIsSelectable
+            item.setFlags(flags)
+        else:
+            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+            flags |= Qt.ItemFlag.ItemIsEnabled
+            item.setFlags(flags)
 
     def refresh_table(self) -> None:
         """重写刷新表格方法，为每个单元格设置字体"""
         self.table.blockSignals(True)
         self.table.setUpdatesEnabled(False)
-
-        # 先清除所有 cell widgets
-        self.clear_cell_widgets()
 
         headers = self.get_list_headers()
         col_count = len(headers)
@@ -249,23 +584,8 @@ class GlossaryPage(QualityRuleSplitPageBase):
                 case_sensitive = bool(self.entries[row].get("case_sensitive", False))
 
             for col in range(col_count):
-                # 高级规则列使用 cell widget
-                if col == 3:
-                    self.table.setCellWidget(
-                        row, col, self.create_case_widget(case_sensitive, editable)
-                    )
-                    # 仍需设置空 item 以支持选中
-                    item = self.table.item(row, col)
-                    if item is None:
-                        item = QTableWidgetItem()
-                        self.table.setItem(row, col, item)
-                    item.setText("")
-                    if editable:
-                        item.setFlags(
-                            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                        )
-                    else:
-                        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                if col == self.CASE_COLUMN_INDEX:
+                    self.update_case_cell_item(row, case_sensitive, editable)
                     continue
 
                 item = self.table.item(row, col)
@@ -275,15 +595,16 @@ class GlossaryPage(QualityRuleSplitPageBase):
 
                 item.setText(values[col] if col < len(values) else "")
                 item.setFont(self.ui_font)
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-                )
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if editable:
-                    item.setFlags(
-                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-                    )
+                    flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+                    flags |= Qt.ItemFlag.ItemIsEnabled
+                    flags |= Qt.ItemFlag.ItemIsSelectable
+                    item.setFlags(flags)
                 else:
-                    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+                    flags |= Qt.ItemFlag.ItemIsEnabled
+                    item.setFlags(flags)
 
         self.table.setUpdatesEnabled(True)
         self.table.blockSignals(False)
@@ -336,6 +657,7 @@ class GlossaryPage(QualityRuleSplitPageBase):
         self.entries = merged
         self.cleanup_empty_entries()
         self.save_entries(self.entries)
+        self.ignore_next_quality_rule_update = True
         self.refresh_table()
 
         if current_src:

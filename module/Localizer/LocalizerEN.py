@@ -496,7 +496,7 @@ class LocalizerEN(LocalizerZH):
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_01: str = "Original"
     glossary_page_table_row_02: str = "Translation"
-    glossary_page_table_row_03: str = "Advanced Rule"
+    glossary_page_table_row_03: str = "Rule"
     glossary_page_table_row_04: str = "Description"
     glossary_page_kg: str = "One-Click Tools"
 

@@ -496,7 +496,7 @@ class LocalizerZH:
     glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_01: str = "原文"
     glossary_page_table_row_02: str = "译文"
-    glossary_page_table_row_03: str = "高级规则"
+    glossary_page_table_row_03: str = "规则"
     glossary_page_table_row_04: str = "描述"
     glossary_page_kg: str = "一键制作工具"
 
