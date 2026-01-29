@@ -6,8 +6,8 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 
-class Engine():
 
+class Engine:
     TASK_PREFIX: str = "ENGINE_"
 
     def __init__(self) -> None:
@@ -28,9 +28,11 @@ class Engine():
 
     def run(self) -> None:
         from module.Engine.APITester.APITester import APITester
+
         self.api_test = APITester()
 
         from module.Engine.Translator.Translator import Translator
+
         self.translator = Translator()
 
     def get_status(self) -> Base.TaskStatus:
@@ -42,13 +44,19 @@ class Engine():
             self.status = status
 
     def get_running_task_count(self) -> int:
-        return sum(1 for t in threading.enumerate() if t.name.startswith(__class__.TASK_PREFIX))
+        # 线程池线程常驻，用活跃任务数避免虚高
+        count = 0
+
+        translator = getattr(self, "translator", None)
+        if translator is not None:
+            count += translator.get_active_task_count()
+
+        single_task_name = f"{self.TASK_PREFIX}SINGLE"
+        count += sum(1 for t in threading.enumerate() if t.name == single_task_name)
+        return count
 
     def translate_single_item(
-        self,
-        item: Item,
-        config: Config,
-        callback: Callable[[Item, bool], None]
+        self, item: Item, config: Config, callback: Callable[[Item, bool], None]
     ) -> None:
         """
         对单个条目执行翻译，异步返回结果。
