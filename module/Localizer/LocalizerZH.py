@@ -323,9 +323,7 @@ class LocalizerZH:
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
 
     # 校对任务
-    proofreading_page_load: str = "载入"
     proofreading_page_save: str = "保存"
-    proofreading_page_save_tooltip: str = "快捷键 Ctrl + S"
     proofreading_page_export: str = "生成译文"
     proofreading_page_search: str = "搜索"
     proofreading_page_filter: str = "筛选"
@@ -341,12 +339,7 @@ class LocalizerZH:
     proofreading_page_col_status: str = "状态"
     proofreading_page_restore: str = "恢复"
     proofreading_page_more: str = "更多"
-    proofreading_page_unsaved: str = "未保存"
     proofreading_page_saved: str = "已保存"
-    proofreading_page_unsaved_title: str = "检测到未保存修改"
-    proofreading_page_unsaved_message: str = "当前译文有未保存修改，是否保存后再继续？"
-    proofreading_page_unsaved_save: str = "保存并继续"
-    proofreading_page_unsaved_cancel: str = "取消"
     proofreading_page_no_cache: str = "未找到缓存文件，请先执行翻译任务"
     proofreading_page_no_review_items: str = "没有可校对条目，可直接生成译文"
     proofreading_page_load_failed: str = "缓存文件读取失败"

@@ -19,10 +19,15 @@ from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
+from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
+from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingEditPanel import ProofreadingEditPanel
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
+from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadKind
+from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadResult
+from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadService
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -38,15 +43,23 @@ from widget.SearchCard import SearchCard
 class ProofreadingPage(QWidget, Base):
     """校对任务主页面"""
 
-    UI_FONT_PX = 12
-    UI_ICON_PX = 16
+    # 布局常量
+    FONT_SIZE = 12
+    ICON_SIZE = 16
+
+    # 防抖时间（毫秒）
+    AUTO_RELOAD_DELAY_MS: int = 120
     QUALITY_RULE_REFRESH_DELAY_MS: int = 200
+
+    # 质量规则类型
     QUALITY_RULE_TYPES: set[str] = {
         DataManager.RuleType.GLOSSARY.value,
         DataManager.RuleType.PRE_REPLACEMENT.value,
         DataManager.RuleType.POST_REPLACEMENT.value,
         DataManager.RuleType.TEXT_PRESERVE.value,
     }
+
+    # 质量规则元数据键
     QUALITY_META_KEYS: set[str] = {
         "glossary_enable",
         "pre_translation_replacement_enable",
@@ -55,12 +68,13 @@ class ProofreadingPage(QWidget, Base):
     }
 
     # 信号定义
-    items_loaded = pyqtSignal(list)  # 数据加载完成信号
-    filter_done = pyqtSignal(list)  # 筛选完成信号
+    items_loaded = pyqtSignal(int, object)  # (token, payload)
+    filter_done = pyqtSignal(int, list)  # (data_version, filtered_items)
     translate_done = pyqtSignal(object, bool)  # 翻译完成信号
     save_done = pyqtSignal(bool)  # 保存完成信号
     export_done = pyqtSignal(bool, str)  # 导出完成信号 (success, error_msg)
     item_saved = pyqtSignal(object, bool)  # 单条保存完成信号
+    item_rechecked = pyqtSignal(object, list)  # (item, warnings)
     progress_updated = pyqtSignal(
         str, int, int
     )  # 进度更新信号 (content, current, total)
@@ -80,7 +94,7 @@ class ProofreadingPage(QWidget, Base):
         self.result_checker: ResultChecker | None = None  # 结果检查器
         self.is_readonly: bool = False  # 只读模式标志
         self.config: Config | None = None  # 配置
-        self.filter_options: dict = {}  # 当前筛选选项
+        self.filter_options: ProofreadingFilterOptions = ProofreadingFilterOptions()
         self.search_keyword: str = ""  # 当前搜索关键词
         self.search_is_regex: bool = False  # 是否正则搜索
         self.search_filter_mode: bool = False  # 是否筛选模式
@@ -98,14 +112,27 @@ class ProofreadingPage(QWidget, Base):
         self.pending_action: Callable[[], None] | None = None
         self.pending_revert: Callable[[], None] | None = None
         self.pending_export: bool = False
-        self.load_ok: bool = False
+
+        # 自动载入/同步调度
+        self.data_stale: bool = True
+        self.reload_pending: bool = False
+        self.is_loading: bool = False
+        self.reload_token: int = 0
+        self.loading_token: int = 0
+        self.data_version: int = 0
+        self.toast_cycle: int = 0
+        self.no_cache_toast_cycle: int = -1
+        self.no_review_items_toast_cycle: int = -1
+        self.reload_timer: QTimer = QTimer(self)
+        self.reload_timer.setSingleShot(True)
+        self.reload_timer.timeout.connect(self.try_reload)
         self.quality_rule_refresh_token: int = 0
         self.quality_rule_refresh_timer: QTimer = QTimer(self)
         self.quality_rule_refresh_timer.setSingleShot(True)
         self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
 
-        self.ui_font_px = self.UI_FONT_PX
-        self.ui_icon_px = self.UI_ICON_PX
+        self.ui_font_px = self.FONT_SIZE
+        self.ui_icon_px = self.ICON_SIZE
 
         # 设置主容器
         self.root = QVBoxLayout(self)
@@ -125,6 +152,7 @@ class ProofreadingPage(QWidget, Base):
         )
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
+        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
 
@@ -135,6 +163,7 @@ class ProofreadingPage(QWidget, Base):
         self.save_done.connect(self.on_save_done_ui)
         self.export_done.connect(self.on_export_done_ui)
         self.item_saved.connect(self.on_item_saved_ui)
+        self.item_rechecked.connect(self.on_item_rechecked_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
         self.quality_rules_refreshed.connect(self.on_quality_rules_refreshed_ui)
@@ -259,17 +288,7 @@ class ProofreadingPage(QWidget, Base):
 
         self.command_bar_card.set_minimum_width(640)
 
-        # 加载按钮
-        self.btn_load = self.command_bar_card.add_action(
-            Action(
-                FluentIcon.DOWNLOAD,
-                Localizer.get().proofreading_page_load,
-                triggered=self.on_load_clicked,
-            )
-        )
-
-        # 分隔符与功能按钮组
-        self.command_bar_card.add_separator()
+        # 功能按钮组
         self.btn_export = self.command_bar_card.add_action(
             Action(
                 FluentIcon.SHARE,
@@ -309,120 +328,143 @@ class ProofreadingPage(QWidget, Base):
         self.pagination_bar.page_changed.connect(self.on_page_changed)
         self.command_bar_card.add_widget(self.pagination_bar)
 
-    # ========== 加载功能 ==========
-    def on_load_clicked(self) -> None:
-        """加载按钮点击"""
-        # 显示 loading 指示器
+    # ========== 自动载入 / 同步 ==========
+
+    def mark_data_stale(self, new_cycle: bool = True) -> None:
+        self.data_stale = True
+        if not new_cycle:
+            return
+
+        self.toast_cycle += 1
+        self.no_cache_toast_cycle = -1
+        self.no_review_items_toast_cycle = -1
+
+    def schedule_reload(self, reason: str) -> None:
+        if not self.isVisible():
+            return
+        if not DataManager.get().is_loaded():
+            return
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            self.reload_pending = True
+            return
+        if self.is_loading:
+            self.reload_pending = True
+            return
+        if self.edit_panel.has_unsaved_changes():
+            self.reload_pending = True
+            return
+
+        self.reload_timer.start(self.AUTO_RELOAD_DELAY_MS)
+
+    def try_reload(self) -> None:
+        if not self.data_stale:
+            return
+        if not DataManager.get().is_loaded():
+            return
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            self.reload_pending = True
+            return
+        if self.is_loading:
+            self.reload_pending = True
+            return
+        if self.edit_panel.has_unsaved_changes():
+            self.reload_pending = True
+            return
+
+        self.is_loading = True
+        self.data_stale = False
+        self.reload_token += 1
+        token: int = self.reload_token
+        self.loading_token = token
+        toast_cycle = self.toast_cycle
+        lg_path = DataManager.get().get_lg_path() or ""
+
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
-        self.load_data()
-
-    def load_data(self) -> None:
-        """加载缓存数据"""
-
-        self.load_ok = False
 
         def task() -> None:
-            # 在子线程中执行耗时的磁盘 I/O 和数据校验，防止阻塞 UI 主线程
             try:
-                self.config = Config().load()
-                # 从工程数据库读取所有条目
-                dm = DataManager.get()
-                if not dm.is_loaded():
-                    self.load_ok = False
-                    self.items_all = []
-                    self.items = []
-                    self.filtered_items = []
-                    self.warning_map = {}
-                    self.result_checker = None
-                    self.filter_options = {}
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().proofreading_page_no_cache,
-                        },
-                    )
-                    self.items_loaded.emit([])
-                    return
-                items_all = dm.get_all_items()
-                items = self.build_review_items(items_all)
-
-                if not items_all:
-                    self.load_ok = False
-                    self.items_all = []
-                    self.items = []
-                    self.filtered_items = []
-                    self.warning_map = {}
-                    self.result_checker = None
-                    self.filter_options = {}
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().proofreading_page_no_cache,
-                        },
-                    )
-                    self.items_loaded.emit([])
-                    return
-
-                if not items:
-                    self.load_ok = True
-                    self.items_all = items_all
-                    self.items = []
-                    self.filtered_items = []
-                    self.warning_map = {}
-                    self.result_checker = None
-                    self.filter_options = {}
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().proofreading_page_no_review_items,
-                        },
-                    )
-                    self.items_loaded.emit([])
-                    return
-
-                checker = ResultChecker(self.config)
-                warning_map = checker.check_items(items)
-
-                self.items_all = items_all
-                self.items = items
-                self.warning_map = warning_map
-                self.result_checker = checker
-                self.filter_options = self.build_default_filter_options(
-                    items, warning_map, checker
-                )
-
-                self.load_ok = True
-
-                self.items_loaded.emit(items)
-
+                # 加载流程下沉到 LoadService，避免 Page 内联大量 dict payload 与分支逻辑。
+                result = ProofreadingLoadService.load_snapshot(lg_path, toast_cycle)
+                self.items_loaded.emit(token, result)
             except Exception as e:
-                self.load_ok = False
-                self.error(f"{Localizer.get().proofreading_page_load_failed}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().proofreading_page_load_failed,
-                    },
+                self.error(Localizer.get().proofreading_page_load_failed, e)
+                self.items_loaded.emit(
+                    token,
+                    ProofreadingLoadResult(
+                        kind=ProofreadingLoadKind.ERROR,
+                        toast_cycle=toast_cycle,
+                        lg_path=lg_path,
+                    ),
                 )
-                self.items_loaded.emit([])
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_items_loaded_ui(self, items: list[Item]) -> None:
+    def on_items_loaded_ui(self, token: int, payload: ProofreadingLoadResult) -> None:
         """数据加载完成的 UI 更新（主线程）"""
-        # 隐藏 loading 指示器
+        if token != self.loading_token:
+            return
+
+        self.is_loading = False
         self.indeterminate_hide()
+
+        kind = payload.kind
+        toast_cycle = payload.toast_cycle
+
+        if kind == ProofreadingLoadKind.STALE:
+            # 工程已切换/卸载，丢弃旧线程结果。
+            return
+
+        if kind == ProofreadingLoadKind.ERROR:
+            self.data_stale = True
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().proofreading_page_load_failed,
+                },
+            )
+            return
+
+        # 更新页面数据快照（只在主线程写入）。
+        self.config = payload.config
+        self.items_all = payload.items_all
+        self.items = payload.items
+        self.warning_map = payload.warning_map
+        self.result_checker = payload.checker
+        self.filter_options = payload.filter_options
+        self.data_version = token
+
+        # Toast 仅提示一次（同一次 stale 周期）。
+        if (
+            kind == ProofreadingLoadKind.NO_CACHE
+            and self.no_cache_toast_cycle != toast_cycle
+        ):
+            self.no_cache_toast_cycle = toast_cycle
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().proofreading_page_no_cache,
+                },
+            )
+        if (
+            kind == ProofreadingLoadKind.NO_REVIEW_ITEMS
+            and self.no_review_items_toast_cycle != toast_cycle
+        ):
+            self.no_review_items_toast_cycle = toast_cycle
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().proofreading_page_no_review_items,
+                },
+            )
 
         self.edit_panel.set_result_checker(self.result_checker)
 
-        if items:
+        if self.items:
             self.apply_filter(False)
         else:
-            # 清空数据并显示占位符
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
             self.current_item = None
@@ -430,6 +472,11 @@ class ProofreadingPage(QWidget, Base):
             self.edit_panel.clear()
 
         self.check_engine_status()
+
+        if self.reload_pending:
+            self.reload_pending = False
+            self.data_stale = True
+            self.schedule_reload("pending")
 
     # ========== 筛选功能 ==========
     def on_filter_clicked(self) -> None:
@@ -471,6 +518,7 @@ class ProofreadingPage(QWidget, Base):
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
         # 捕获当前需要的参数快照，避免竞态
+        data_version = self.data_version
         options = self.filter_options
         items_ref = self.items
         warning_map_ref = self.warning_map
@@ -480,6 +528,7 @@ class ProofreadingPage(QWidget, Base):
         use_search_filter = self.search_filter_mode
 
         if use_search_filter and keyword and use_regex:
+            # 保持原有体验：正则非法时直接在 UI 线程提示，而不是让后台线程吞掉异常。
             try:
                 re.compile(keyword)
             except re.error as e:
@@ -495,108 +544,28 @@ class ProofreadingPage(QWidget, Base):
 
         def filter_task() -> None:
             try:
-                warning_types: set[WarningType | str] | None = options.get(
-                    FilterDialog.KEY_WARNING_TYPES
+                # 筛选规则由 Domain 层统一实现，避免 Page/Dialog 两套逻辑逐渐漂移。
+                filtered = ProofreadingDomain.filter_items(
+                    items=items_ref,
+                    warning_map=warning_map_ref,
+                    options=options,
+                    checker=checker_ref,
+                    search_keyword=keyword,
+                    search_is_regex=use_regex,
+                    enable_search_filter=use_search_filter,
+                    enable_glossary_term_filter=True,
                 )
-                statuses = options.get(FilterDialog.KEY_STATUSES)
-                file_paths = options.get(FilterDialog.KEY_FILE_PATHS)
-                glossary_terms = options.get(FilterDialog.KEY_GLOSSARY_TERMS)
-
-                if warning_types is None:
-                    warning_types = set(WarningType)
-                    warning_types.add(FilterDialog.NO_WARNING_TAG)
-
-                default_statuses = {
-                    Base.ProjectStatus.NONE,
-                    Base.ProjectStatus.PROCESSED,
-                    Base.ProjectStatus.ERROR,
-                    Base.ProjectStatus.PROCESSED_IN_PAST,
-                }
-                if statuses is None:
-                    statuses = default_statuses
-
-                if file_paths is None:
-                    file_paths = {item.get_file_path() for item in items_ref}
-
-                if glossary_terms is None:
-                    glossary_terms = set()
-
-                filtered = []
-                search_pattern = None
-                keyword_lower = ""
-                if use_search_filter and keyword:
-                    if use_regex:
-                        search_pattern = re.compile(keyword, re.IGNORECASE)
-                    else:
-                        keyword_lower = keyword.lower()
-                for item in items_ref:
-                    # 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过
-                    if item.get_status() in (
-                        Base.ProjectStatus.EXCLUDED,
-                        Base.ProjectStatus.DUPLICATED,
-                        Base.ProjectStatus.RULE_SKIPPED,
-                    ):
-                        continue
-
-                    # 警告类型筛选
-                    item_warnings = warning_map_ref.get(id(item), [])
-                    if item_warnings and not any(
-                        e in warning_types for e in item_warnings
-                    ):
-                        continue
-                    if (
-                        not item_warnings
-                        and FilterDialog.NO_WARNING_TAG not in warning_types
-                    ):
-                        continue
-
-                    # 术语级筛选
-                    if (
-                        WarningType.GLOSSARY in item_warnings
-                        and WarningType.GLOSSARY in warning_types
-                        and checker_ref
-                    ):
-                        item_terms = checker_ref.get_failed_glossary_terms(item)
-                        if glossary_terms and not any(
-                            t in glossary_terms for t in item_terms
-                        ):
-                            continue
-                        if not glossary_terms:
-                            continue
-
-                    # 翻译状态和路径筛选
-                    if item.get_status() not in statuses:
-                        continue
-
-                    if item.get_file_path() not in file_paths:
-                        continue
-
-                    if use_search_filter and keyword:
-                        src = item.get_src()
-                        dst = item.get_dst()
-                        if search_pattern:
-                            if not (
-                                search_pattern.search(src) or search_pattern.search(dst)
-                            ):
-                                continue
-                        elif keyword_lower:
-                            if (
-                                keyword_lower not in src.lower()
-                                and keyword_lower not in dst.lower()
-                            ):
-                                continue
-
-                    filtered.append(item)
-
-                self.filter_done.emit(filtered)
+                self.filter_done.emit(data_version, filtered)
             except Exception as e:
                 self.error("Filter failed", e)
-                self.filter_done.emit([])
+                self.filter_done.emit(data_version, [])
 
         threading.Thread(target=filter_task, daemon=True).start()
 
-    def on_filter_done_ui(self, filtered: list[Item]) -> None:
+    def on_filter_done_ui(self, data_version: int, filtered: list[Item]) -> None:
         """筛选完成的 UI 更新 (主线程)"""
+        if data_version != self.data_version:
+            return
         self.indeterminate_hide()
         self.filtered_items = filtered
         self.pagination_bar.set_total(len(filtered))
@@ -624,52 +593,7 @@ class ProofreadingPage(QWidget, Base):
 
         self.restore_selected_item()
 
-    def build_default_filter_options(
-        self,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]],
-        checker: ResultChecker | None,
-    ) -> dict:
-        warning_types: set[WarningType | str] = set(WarningType)
-        warning_types.add(FilterDialog.NO_WARNING_TAG)
-
-        statuses = {
-            Base.ProjectStatus.NONE,
-            Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.ERROR,
-            Base.ProjectStatus.PROCESSED_IN_PAST,
-        }
-
-        file_paths = {item.get_file_path() for item in items}
-
-        glossary_terms: set[tuple[str, str]] = set()
-        if checker:
-            for item in items:
-                if WarningType.GLOSSARY in warning_map.get(id(item), []):
-                    glossary_terms.update(checker.get_failed_glossary_terms(item))
-
-        return {
-            FilterDialog.KEY_WARNING_TYPES: warning_types,
-            FilterDialog.KEY_STATUSES: statuses,
-            FilterDialog.KEY_FILE_PATHS: file_paths,
-            FilterDialog.KEY_GLOSSARY_TERMS: glossary_terms,
-        }
-
-    def build_review_items(self, items: list[Item]) -> list[Item]:
-        """构建可校对条目列表，避免结构行进入 UI。"""
-        review_items = []
-        for item in items:
-            # 结构行需要保留用于导出，但不应进入校对列表
-            if not item.get_src().strip():
-                continue
-            if item.get_status() in (
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.DUPLICATED,
-                Base.ProjectStatus.RULE_SKIPPED,
-            ):
-                continue
-            review_items.append(item)
-        return review_items
+    # build_default_filter_options/build_review_items 已迁移到 ProofreadingDomain/ProofreadingLoadService。
 
     # ========== 搜索功能 ==========
     def on_search_clicked(self) -> None:
@@ -697,6 +621,24 @@ class ProofreadingPage(QWidget, Base):
             self.command_bar_card.setVisible(True)
 
         self.run_with_unsaved_guard(action)
+
+    def reset_search_state(self) -> None:
+        """清空搜索状态并退出搜索栏。
+
+        用于页面禁用/数据清空等场景：不保留搜索输入/模式/匹配进度。
+        """
+
+        self.search_keyword = ""
+        self.search_is_regex = False
+        self.search_filter_mode = False
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.pending_selected_item = None
+
+        self.search_card.reset_state()
+        self.search_card.setVisible(False)
+        self.attach_pagination_to_command_bar()
+        self.command_bar_card.setVisible(True)
 
     def do_search(self) -> None:
         """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
@@ -972,7 +914,10 @@ class ProofreadingPage(QWidget, Base):
 
         page_items = self.filtered_items[start_idx:end_idx]
         page_warning_map = {
-            id(item): self.warning_map.get(id(item), []) for item in page_items
+            ProofreadingDomain.get_warning_key(
+                item
+            ): ProofreadingDomain.get_item_warnings(item, self.warning_map)
+            for item in page_items
         }
 
         self.table_widget.set_items(page_items, page_warning_map, start_idx)
@@ -1025,7 +970,7 @@ class ProofreadingPage(QWidget, Base):
     def apply_selection(self, item: Item, row: int) -> None:
         self.current_item = item
         self.current_row_in_page = row
-        warnings = self.warning_map.get(id(item), [])
+        warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
         index = self.current_page_start_index + row + 1
         self.edit_panel.bind_item(item, index, warnings)
         self.edit_panel.set_readonly(self.is_readonly)
@@ -1106,13 +1051,12 @@ class ProofreadingPage(QWidget, Base):
             return
 
         self.edit_panel.apply_saved_state()
-        warnings = self.recheck_item(item)
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             self.table_widget.update_row_dst(row, item.get_dst())
-            self.table_widget.update_row_status(row, warnings)
-        if self.current_item is item:
-            self.edit_panel.refresh_status_tags(item, warnings)
+
+        # 结果检查可能较重，放到后台线程执行，避免 UI 卡顿。
+        self.start_recheck_item(item)
 
         self.update_project_status_after_save()
 
@@ -1131,6 +1075,40 @@ class ProofreadingPage(QWidget, Base):
             self.pending_revert = None
             action()
 
+        if self.reload_pending and self.data_stale:
+            self.reload_pending = False
+            self.schedule_reload("after_save")
+
+    def start_recheck_item(self, item: Item) -> None:
+        config = self.config
+        if config is None:
+            self.item_rechecked.emit(item, [])
+            return
+
+        def task() -> None:
+            try:
+                checker = ResultChecker(config)
+                warnings = checker.check_item(item)
+                self.item_rechecked.emit(item, warnings)
+            except Exception as e:
+                self.error("Recheck item failed", e)
+                self.item_rechecked.emit(item, [])
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def on_item_rechecked_ui(self, item: Item, warnings: list[WarningType]) -> None:
+        key = ProofreadingDomain.get_warning_key(item)
+        if warnings:
+            self.warning_map[key] = warnings
+        else:
+            self.warning_map.pop(key, None)
+
+        row = self.table_widget.find_row_by_item(item)
+        if row >= 0:
+            self.table_widget.update_row_status(row, warnings)
+        if self.current_item is item:
+            self.edit_panel.refresh_status_tags(item, warnings)
+
     def recheck_item(self, item: Item) -> list[WarningType]:
         """重新检查单个条目"""
         if not self.config:
@@ -1139,10 +1117,11 @@ class ProofreadingPage(QWidget, Base):
         checker = ResultChecker(self.config)
         warnings = checker.check_item(item)
 
+        key = ProofreadingDomain.get_warning_key(item)
         if warnings:
-            self.warning_map[id(item)] = warnings
+            self.warning_map[key] = warnings
         else:
-            self.warning_map.pop(id(item), None)
+            self.warning_map.pop(key, None)
 
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
@@ -1239,7 +1218,7 @@ class ProofreadingPage(QWidget, Base):
             if row >= 0:
                 self.table_widget.update_row_dst(row, "")
             if self.current_item is item:
-                warnings = self.warning_map.get(id(item), [])
+                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
                 index = self.current_page_start_index + self.current_row_in_page + 1
                 self.edit_panel.bind_item(item, index, warnings)
                 self.edit_panel.set_readonly(self.is_readonly)
@@ -1368,6 +1347,10 @@ class ProofreadingPage(QWidget, Base):
 
     def on_translate_done_ui(self, item: Item, success: bool) -> None:
         """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
+        # 失败时先落状态，保证后续持久化与 UI 刷新一致。
+        if not success:
+            item.set_status(Base.ProjectStatus.ERROR)
+
         # 保存按钮已移至编辑区，翻译完成后需要自动入库
         try:
             DataManager.get().save_item(item)
@@ -1384,9 +1367,11 @@ class ProofreadingPage(QWidget, Base):
             if success:
                 self.table_widget.update_row_dst(row, item.get_dst())
             else:
-                item.set_status(Base.ProjectStatus.ERROR)
+                # 失败也要刷新状态图标，否则 UI 可能仍显示旧状态。
+                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+                self.table_widget.update_row_status(row, warnings)
         if self.current_item is item:
-            warnings = self.warning_map.get(id(item), [])
+            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
             index = self.current_page_start_index + self.current_row_in_page + 1
             self.edit_panel.bind_item(item, index, warnings)
             self.edit_panel.set_readonly(self.is_readonly)
@@ -1553,6 +1538,15 @@ class ProofreadingPage(QWidget, Base):
     # ========== 只读模式控制 ==========
     def on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
         """Engine 状态变更事件"""
+        del data
+        if event == Base.Event.TRANSLATION_RUN:
+            # 翻译过程中数据会变化；翻译结束后需要自动同步。
+            self.data_stale = True
+            self.reload_pending = True
+        if event == Base.Event.TRANSLATION_DONE:
+            # 翻译完成视为一次新的数据周期。
+            self.mark_data_stale(new_cycle=True)
+
         self.check_engine_status()
 
     def check_engine_status(self) -> None:
@@ -1564,23 +1558,40 @@ class ProofreadingPage(QWidget, Base):
             Base.TaskStatus.STOPPING,
         )
 
+        was_busy = self.is_readonly
+
         # 1. 如果处于翻译中/停止中，清空页面数据
         if is_busy and (self.items or self.items_all):
             self.items_all = []
             self.items = []
             self.filtered_items = []
             self.warning_map = {}
-            self.load_ok = False
+            self.data_stale = True
+            self.reload_pending = True
+            # 繁忙态清空选择态，避免 current_item 等指向旧对象造成 UI 同步错乱。
+            self.pending_selected_item = None
+            self.current_item = None
+            self.current_row_in_page = -1
+            self.current_page_start_index = 0
+            self.current_page = 1
+            # 使在途的加载线程结果自动失效，避免翻译中被旧数据覆盖。
+            self.loading_token = 0
+            self.is_loading = False
             self.table_widget.set_items([], {})
             self.pagination_bar.reset()
             self.edit_panel.clear()
 
+        # 禁用态不保留搜索状态：若当前在搜索栏，直接回到主动作条。
+        if is_busy:
+            self.reset_search_state()
+
+        # 2. 翻译结束后自动同步一次
+        if was_busy and (not is_busy) and self.data_stale:
+            self.schedule_reload("engine_idle")
+
         # 2. 更新按钮状态
         has_items_all = bool(self.items_all)
         has_items = bool(self.items)
-
-        # 加载按钮：翻译繁忙时禁用；载入成功后也保持禁用。
-        self.btn_load.setEnabled((not is_busy) and (not self.load_ok))
 
         # 其他按钮只有在不繁忙且有数据时启用
         can_operate_export = not is_busy and has_items_all
@@ -1592,13 +1603,15 @@ class ProofreadingPage(QWidget, Base):
         if is_busy != self.is_readonly:
             self.is_readonly = is_busy
             self.table_widget.set_readonly(is_busy)
-            if self.current_item is not None:
-                self.edit_panel.set_readonly(is_busy)
+        # 无论是否选中条目都需要同步（空态也应只读 + 禁用写入口）。
+        self.edit_panel.set_readonly(self.is_readonly)
 
     def showEvent(self, a0: QShowEvent | None) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(a0)
         self.check_engine_status()
+        if self.data_stale:
+            self.schedule_reload("show")
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
@@ -1641,6 +1654,17 @@ class ProofreadingPage(QWidget, Base):
     def on_translation_reset(self, event: Base.Event, data: dict) -> None:
         """响应翻译重置事件"""
         self.clear_all_data()
+        self.mark_data_stale(new_cycle=True)
+        self.schedule_reload("translation_reset")
+
+    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        """工程加载后自动同步数据"""
+        del event
+        del data
+        self.clear_all_data()
+        self.config = None
+        self.mark_data_stale(new_cycle=True)
+        self.schedule_reload("project_loaded")
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""
@@ -1655,22 +1679,19 @@ class ProofreadingPage(QWidget, Base):
         self.filtered_items = []
         self.warning_map = {}
         self.result_checker = None
-        self.filter_options = {}
+        self.filter_options = ProofreadingFilterOptions()
         self.current_item = None
         self.current_row_in_page = -1
         self.current_page_start_index = 0
         self.current_page = 1
-        self.load_ok = False
+        self.data_stale = True
+        self.reload_pending = False
+        self.is_loading = False
+        self.loading_token = 0
+        self.data_version = 0
 
-        # 清空搜索状态
-        self.search_keyword = ""
-        self.search_is_regex = False
-        self.search_match_indices = []
-        self.search_current_match = -1
-        self.search_card.clear_match_info()
-        self.search_card.setVisible(False)
-        self.attach_pagination_to_command_bar()
-        self.command_bar_card.setVisible(True)
+        # 禁用态不保留搜索状态。
+        self.reset_search_state()
 
         # 重置表格和分页
         self.table_widget.set_items([], {})

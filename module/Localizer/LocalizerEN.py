@@ -323,9 +323,7 @@ class LocalizerEN(LocalizerZH):
     translation_page_timer: str = "Waiting time before delayed startup"
 
     # 校对任务
-    proofreading_page_load: str = "Load"
     proofreading_page_save: str = "Save"
-    proofreading_page_save_tooltip: str = "Shortcut Ctrl + S"
     proofreading_page_export: str = "Generate"
     proofreading_page_search: str = "Search"
     proofreading_page_filter: str = "Filter"
@@ -341,12 +339,7 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_col_status: str = "Status"
     proofreading_page_restore: str = "Restore"
     proofreading_page_more: str = "More"
-    proofreading_page_unsaved: str = "Unsaved"
     proofreading_page_saved: str = "Saved"
-    proofreading_page_unsaved_title: str = "Unsaved Changes"
-    proofreading_page_unsaved_message: str = "Current translation has unsaved changes. Save before continuing?"
-    proofreading_page_unsaved_save: str = "Save and Continue"
-    proofreading_page_unsaved_cancel: str = "Cancel"
     proofreading_page_no_cache: str = "No cache file found, please run translation task first"
     proofreading_page_no_review_items: str = "No items to review, you can generate the translation file"
     proofreading_page_load_failed: str = "Failed to read cache file"
