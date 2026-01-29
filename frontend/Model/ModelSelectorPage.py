@@ -3,6 +3,7 @@ import threading
 import anthropic
 import openai
 from google import genai
+from google.genai import types
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
@@ -25,8 +26,8 @@ from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomSearchLineEdit
 from widget.Separator import Separator
 
-class ModelSelectorPage(MessageBoxBase, Base):
 
+class ModelSelectorPage(MessageBoxBase, Base):
     # 模型加载完成信号
     models_loaded = pyqtSignal(list)
 
@@ -61,11 +62,15 @@ class ModelSelectorPage(MessageBoxBase, Base):
         self.viewLayout.setSpacing(12)
 
         # 标题
-        self.title_label = SubtitleLabel(Localizer.get().model_selector_page_title, self)
+        self.title_label = SubtitleLabel(
+            Localizer.get().model_selector_page_title, self
+        )
         self.viewLayout.addWidget(self.title_label)
 
         # 描述
-        self.description_label = CaptionLabel(Localizer.get().model_selector_page_content, self)
+        self.description_label = CaptionLabel(
+            Localizer.get().model_selector_page_content, self
+        )
         self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.viewLayout.addWidget(self.description_label)
 
@@ -90,7 +95,9 @@ class ModelSelectorPage(MessageBoxBase, Base):
         self.loading_ring.setFixedSize(48, 48)
         loading_layout.addWidget(self.loading_ring, 0, Qt.AlignCenter)
 
-        self.loading_label = CaptionLabel(Localizer.get().model_selector_page_loading, self.loading_container)
+        self.loading_label = CaptionLabel(
+            Localizer.get().model_selector_page_loading, self.loading_container
+        )
         self.loading_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         loading_layout.addWidget(self.loading_label, 0, Qt.AlignCenter)
 
@@ -148,8 +155,32 @@ class ModelSelectorPage(MessageBoxBase, Base):
 
         try:
             if api_format == Base.APIFormat.GOOGLE:
-                client = genai.Client(
-                    api_key=api_key,
+                normalized_url: str = api_url.strip().removesuffix("/")
+                api_version: str | None = None
+                if normalized_url.endswith("/v1beta"):
+                    # 兼容 URL 里指定版本，避免 SDK 拼接重复版本
+                    api_version = "v1beta"
+                    normalized_url = normalized_url.removesuffix("/v1beta")
+                elif normalized_url.endswith("/v1"):
+                    # 兼容 URL 里指定版本，避免 SDK 拼接重复版本
+                    api_version = "v1"
+                    normalized_url = normalized_url.removesuffix("/v1")
+
+                http_options_kwargs: dict[str, str] = {}
+                if normalized_url:
+                    http_options_kwargs["base_url"] = normalized_url
+                if api_version:
+                    http_options_kwargs["api_version"] = api_version
+
+                http_options = (
+                    types.HttpOptions(**http_options_kwargs)
+                    if http_options_kwargs
+                    else None
+                )
+                client = (
+                    genai.Client(api_key=api_key, http_options=http_options)
+                    if http_options
+                    else genai.Client(api_key=api_key)
                 )
                 return [model.name for model in client.models.list()]
             elif api_format == Base.APIFormat.ANTHROPIC:
@@ -166,10 +197,13 @@ class ModelSelectorPage(MessageBoxBase, Base):
                 return [model.id for model in client.models.list()]
         except Exception as e:
             self.debug(Localizer.get().model_selector_page_fail, e)
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().model_selector_page_fail,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().model_selector_page_fail,
+                },
+            )
 
         return result
 
