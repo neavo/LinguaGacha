@@ -197,6 +197,16 @@ class ProofreadingEditPanel(QWidget):
 
         self.status_scroll.setWidget(self.status_widget)
 
+        # 原文标签
+        self.src_label = CaptionLabel(
+            Localizer.get().proofreading_page_col_src, self.editor_card
+        )
+        self.src_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
+        label_font = QFont(self.src_label.font())
+        label_font.setPixelSize(self.FONT_SIZE)
+        self.src_label.setFont(label_font)
+        editor_layout.addWidget(self.src_label)
+
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
         src_font = QFont(self.src_text.font())
@@ -208,7 +218,13 @@ class ProofreadingEditPanel(QWidget):
         self.src_text.setProperty("compact", True)
         editor_layout.addWidget(self.src_text, 1)
 
-        editor_layout.addWidget(self.build_divider(self.editor_card))
+        # 译文标签
+        self.dst_label = CaptionLabel(
+            Localizer.get().proofreading_page_col_dst, self.editor_card
+        )
+        self.dst_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
+        self.dst_label.setFont(label_font)
+        editor_layout.addWidget(self.dst_label)
 
         self.dst_text = CustomTextEdit(self.editor_card)
         dst_font = QFont(self.dst_text.font())

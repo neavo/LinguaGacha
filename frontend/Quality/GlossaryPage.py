@@ -112,9 +112,9 @@ class GlossaryPage(QualityRuleSplitPageBase):
     BASE: str = "glossary"
 
     CASE_COLUMN_INDEX: int = 3
-    CASE_COLUMN_WIDTH: int = 96
-    CASE_ICON_SIZE: int = 28
-    CASE_ICON_INNER_SIZE: int = 14
+    CASE_COLUMN_WIDTH: int = 80
+    CASE_ICON_SIZE: int = 24
+    CASE_ICON_INNER_SIZE: int = 12
     CASE_ICON_BORDER_WIDTH: int = 1
     CASE_ICON_LUMA_THRESHOLD: float = 0.75
 
