@@ -118,6 +118,28 @@ class SearchCard(CardWidget):
     def add_right_widget(self, widget: QWidget) -> None:
         self.right_layout.addWidget(widget)
 
+    def reset_state(self) -> None:
+        """重置搜索 UI 状态。
+
+        用于页面禁用/数据重载等场景：不保留关键字/模式/匹配信息。
+        """
+
+        self.regex_mode = False
+        self.filter_mode = False
+        self.filter_btn.setChecked(False)
+        self.regex_btn.setChecked(False)
+        self.update_filter_tooltip()
+        self.update_regex_tooltip()
+
+        self.line_edit.setText("")
+        self.clear_match_info()
+
+        # 重置触发去抖状态，避免“清空后立刻搜索”被误判为重复触发。
+        self.search_last_trigger_time = 0.0
+        self.search_last_trigger_keyword = ""
+        self.search_last_trigger_filter_mode = False
+        self.search_last_trigger_regex_mode = False
+
     def set_base_font(self, font: QFont) -> None:
         self.setFont(font)
         self.back.setFont(font)

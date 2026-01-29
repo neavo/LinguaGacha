@@ -1,5 +1,6 @@
 from enum import StrEnum
 from typing import Any
+from typing import ClassVar
 from typing import cast
 
 from PyQt5.QtCore import QSize
@@ -16,79 +17,79 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
 
-class StatusPillKind(StrEnum):
+class StatusTagType(StrEnum):
     INFO = "INFO"
     ERROR = "ERROR"
     SUCCESS = "SUCCESS"
     WARNING = "WARNING"
 
 
-DARK_PALETTE: dict[StatusPillKind, tuple[QColor, QColor, QColor]] = {
-    StatusPillKind.INFO: (
-        QColor(56, 139, 253, 26),  # Bg (Blue)
-        QColor(56, 139, 253, 102),  # Border
-        QColor(230, 230, 230),  # Text
-    ),
-    StatusPillKind.SUCCESS: (
-        QColor(46, 160, 67, 26),  # Bg (Green)
-        QColor(46, 160, 67, 102),  # Border
-        QColor(230, 230, 230),  # Text
-    ),
-    StatusPillKind.WARNING: (
-        QColor(187, 128, 9, 26),  # Bg (Yellow)
-        QColor(187, 128, 9, 102),  # Border
-        QColor(230, 230, 230),  # Text
-    ),
-    StatusPillKind.ERROR: (
-        QColor(248, 81, 73, 26),  # Bg (Red)
-        QColor(248, 81, 73, 102),  # Border
-        QColor(230, 230, 230),  # Text
-    ),
-}
-
-LIGHT_PALETTE: dict[StatusPillKind, tuple[QColor, QColor, QColor]] = {
-    StatusPillKind.INFO: (
-        QColor(221, 244, 255),  # Bg (Blue)
-        QColor(84, 174, 255),  # Border
-        QColor(88, 88, 88),  # Text
-    ),
-    StatusPillKind.SUCCESS: (
-        QColor(218, 251, 225),  # Bg (Green)
-        QColor(74, 194, 107),  # Border
-        QColor(88, 88, 88),  # Text
-    ),
-    StatusPillKind.WARNING: (
-        QColor(255, 248, 197),  # Bg (Yellow)
-        QColor(212, 167, 44),  # Border
-        QColor(88, 88, 88),  # Text
-    ),
-    StatusPillKind.ERROR: (
-        QColor(255, 235, 233),  # Bg (Red)
-        QColor(255, 129, 130),  # Border
-        QColor(88, 88, 88),  # Text
-    ),
-}
-
-
 class StatusTag(QLabel):
-    """状态胶囊标签。
+    """状态标签。
 
-    WHY: 统一封装状态 pill 的样式与类型，避免散落的魔术字符串与 paintEvent hack。
+    统一封装状态标签（StatusTag）的样式与类型，避免散落的魔术字符串与 paintEvent hack。
     """
+
+    # 配色定义放在类内部，确保该模块不依赖全局可变状态。
+    DARK_PALETTE: ClassVar[dict[StatusTagType, tuple[QColor, QColor, QColor]]] = {
+        StatusTagType.INFO: (
+            QColor(56, 139, 253, 26),  # 背景 (Blue)
+            QColor(56, 139, 253, 102),  # 边框
+            QColor(230, 230, 230),  # 文本
+        ),
+        StatusTagType.SUCCESS: (
+            QColor(46, 160, 67, 26),  # 背景 (Green)
+            QColor(46, 160, 67, 102),  # 边框
+            QColor(230, 230, 230),  # 文本
+        ),
+        StatusTagType.WARNING: (
+            QColor(187, 128, 9, 26),  # 背景 (Yellow)
+            QColor(187, 128, 9, 102),  # 边框
+            QColor(230, 230, 230),  # 文本
+        ),
+        StatusTagType.ERROR: (
+            QColor(248, 81, 73, 26),  # 背景 (Red)
+            QColor(248, 81, 73, 102),  # 边框
+            QColor(230, 230, 230),  # 文本
+        ),
+    }
+
+    LIGHT_PALETTE: ClassVar[dict[StatusTagType, tuple[QColor, QColor, QColor]]] = {
+        StatusTagType.INFO: (
+            QColor(221, 244, 255),  # 背景 (Blue)
+            QColor(84, 174, 255),  # 边框
+            QColor(88, 88, 88),  # 文本
+        ),
+        StatusTagType.SUCCESS: (
+            QColor(218, 251, 225),  # 背景 (Green)
+            QColor(74, 194, 107),  # 边框
+            QColor(88, 88, 88),  # 文本
+        ),
+        StatusTagType.WARNING: (
+            QColor(255, 248, 197),  # 背景 (Yellow)
+            QColor(212, 167, 44),  # 边框
+            QColor(88, 88, 88),  # 文本
+        ),
+        StatusTagType.ERROR: (
+            QColor(255, 235, 233),  # 背景 (Red)
+            QColor(255, 129, 130),  # 边框
+            QColor(88, 88, 88),  # 文本
+        ),
+    }
 
     def __init__(
         self,
         text: str = "",
-        kind: StatusPillKind = StatusPillKind.INFO,
+        type: StatusTagType = StatusTagType.INFO,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(text, parent)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-        self.kind_value = kind
+        self.type_value = type
 
         # 默认与旧实现保持一致，避免 UI 体感变化。
-        self.font_size_px_value: int | None = None
+        self.font_size_value: int | None = None
 
         # 缓存颜色，避免在 paintEvent 中重复查表。
         self.bg_color = QColor()
@@ -110,10 +111,10 @@ class StatusTag(QLabel):
             pass
 
     def update_style(self) -> None:
-        palette = DARK_PALETTE if isDarkTheme() else LIGHT_PALETTE
+        palette = self.DARK_PALETTE if isDarkTheme() else self.LIGHT_PALETTE
         bg, border, text_color = palette.get(
-            self.kind_value,
-            palette[StatusPillKind.INFO],
+            self.type_value,
+            palette[StatusTagType.INFO],
         )
 
         self.bg_color = bg
@@ -122,39 +123,40 @@ class StatusTag(QLabel):
 
         # 基于初始化时捕获的 base_font 构建字体，避免主题切换导致字体变化。
         font = QFont(self.base_font)
-        font_size = self.font_size_px_value
+        font_size = self.font_size_value
         if font_size:
             font.setPixelSize(font_size)
         self.cached_font = font
         self.setFont(font)
 
-        # 清空 QSS，完全由 paintEvent 控制外观。
+        # 清空 QSS，避免样式系统与自绘逻辑互相覆盖。
         self.setStyleSheet("")
 
+        # 固定尺寸是为了让 FlowLayout 的布局计算稳定，不因字体/主题切换产生跳动。
         self.setFixedSize(self.sizeHint())
         self.update()
         self.updateGeometry()
 
-    def kind(self) -> StatusPillKind:
-        return self.kind_value
+    def type(self) -> StatusTagType:
+        return self.type_value
 
-    def set_kind(self, kind: StatusPillKind) -> None:
-        if self.kind_value == kind:
+    def set_type(self, type: StatusTagType) -> None:
+        if self.type_value == type:
             return
-        self.kind_value = kind
+        self.type_value = type
         self.update_style()
 
-    def font_size_px(self) -> int | None:
-        return self.font_size_px_value
+    def font_size(self) -> int | None:
+        return self.font_size_value
 
-    def set_font_size_px(self, size_px: int | None) -> None:
-        if size_px is not None and size_px <= 0:
-            size_px = None
+    def set_font_size(self, size: int | None) -> None:
+        if size is not None and size <= 0:
+            size = None
 
-        if self.font_size_px_value == size_px:
+        if self.font_size_value == size:
             return
 
-        self.font_size_px_value = size_px
+        self.font_size_value = size
         self.update_style()
 
     def setText(self, a0: str | None) -> None:
@@ -178,7 +180,7 @@ class StatusTag(QLabel):
     def sizeHint(self) -> QSize:
         """计算标签的合适尺寸。
 
-        WHY: 圆角矩形，预留左右内边距。
+        圆角矩形，预留左右内边距。
         """
         fm = QFontMetrics(self.font())
         text = self.text()

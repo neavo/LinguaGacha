@@ -1,5 +1,6 @@
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QHBoxLayout
@@ -15,23 +16,34 @@ from module.Localizer.Localizer import Localizer
 class PaginationBar(QWidget):
     """简化版分页控件"""
 
-    # 页码变化信号
-    page_changed = pyqtSignal(int)
-
-    # 固定每页100条
+    # 布局常量
+    BTN_SIZE = 28
+    FONT_SIZE = 12
+    ICON_SIZE = 16
     PAGE_SIZE = 100
 
-    UI_FONT_PX = 12
-    UI_ICON_PX = 16
-    UI_BTN_PX = 28
+    # 防抖时间（毫秒）
+    EMIT_DEBOUNCE_MS = 80
 
-    def __init__(self, parent: QWidget = None) -> None:
-        super().__init__(parent)
+    # 信号定义
+    page_changed = pyqtSignal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        if parent is None:
+            super().__init__()
+        else:
+            super().__init__(parent)
 
         # 初始化状态
         self.current_page: int = 1
         self.total_pages: int = 1
         self.total_items: int = 0
+
+        # 合并短时间内的连续翻页点击，避免 UI 主线程渲染排队造成“粘手感”。
+        self.pending_emit_page: int | None = None
+        self.emit_timer = QTimer(self)
+        self.emit_timer.setSingleShot(True)
+        self.emit_timer.timeout.connect(self.emit_pending_page)
 
         self.init_ui()
 
@@ -40,35 +52,35 @@ class PaginationBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)  # 减小间距，使控件更紧凑
-        layout.setAlignment(Qt.AlignLeft)  # 左对齐而非居中
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)  # 左对齐而非居中
 
         # 上一页按钮（使用扁平透明按钮）
         self.btn_prev = TransparentToolButton(FluentIcon.PAGE_LEFT, self)
-        self.btn_prev.setIconSize(QSize(self.UI_ICON_PX, self.UI_ICON_PX))
-        self.btn_prev.setFixedSize(self.UI_BTN_PX, self.UI_BTN_PX)
+        self.btn_prev.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
+        self.btn_prev.setFixedSize(self.BTN_SIZE, self.BTN_SIZE)
         self.btn_prev.clicked.connect(self.on_prev_clicked)
         layout.addWidget(self.btn_prev)
 
         # 页码信息标签
         self.page_info_label = CaptionLabel()
         font = QFont(self.page_info_label.font())
-        font.setPixelSize(self.UI_FONT_PX)
+        font.setPixelSize(self.FONT_SIZE)
         self.page_info_label.setFont(font)
         # 设置最小宽度以适应较长的页码文本（如"第 999 / 999 页"）
         self.page_info_label.setMinimumWidth(96)
-        self.page_info_label.setAlignment(Qt.AlignCenter)
+        self.page_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.page_info_label)
 
         # 下一页按钮（使用扁平透明按钮）
         self.btn_next = TransparentToolButton(FluentIcon.PAGE_RIGHT, self)
-        self.btn_next.setIconSize(QSize(self.UI_ICON_PX, self.UI_ICON_PX))
-        self.btn_next.setFixedSize(self.UI_BTN_PX, self.UI_BTN_PX)
+        self.btn_next.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
+        self.btn_next.setFixedSize(self.BTN_SIZE, self.BTN_SIZE)
         self.btn_next.clicked.connect(self.on_next_clicked)
         layout.addWidget(self.btn_next)
 
         # 翻页按钮与页码文本使用同一字号，保证视觉一致。
         btn_font = QFont(self.btn_prev.font())
-        btn_font.setPixelSize(self.UI_FONT_PX)
+        btn_font.setPixelSize(self.FONT_SIZE)
         self.btn_prev.setFont(btn_font)
         self.btn_next.setFont(btn_font)
 
@@ -83,14 +95,25 @@ class PaginationBar(QWidget):
         if self.current_page > 1:
             self.current_page -= 1
             self.update_display()
-            self.page_changed.emit(self.current_page)
+            self.schedule_emit(self.current_page)
 
     def on_next_clicked(self) -> None:
         """下一页按钮点击"""
         if self.current_page < self.total_pages:
             self.current_page += 1
             self.update_display()
-            self.page_changed.emit(self.current_page)
+            self.schedule_emit(self.current_page)
+
+    def schedule_emit(self, page: int) -> None:
+        self.pending_emit_page = page
+        self.emit_timer.start(self.EMIT_DEBOUNCE_MS)
+
+    def emit_pending_page(self) -> None:
+        page = self.pending_emit_page
+        self.pending_emit_page = None
+        if page is None:
+            return
+        self.page_changed.emit(page)
 
     def update_display(self) -> None:
         """更新显示状态"""
