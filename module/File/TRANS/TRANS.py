@@ -13,7 +13,6 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.Storage.PathStore import PathStore
 
 
 class TRANS(Base):
@@ -156,7 +155,7 @@ class TRANS(Base):
                 tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
-            output_path = PathStore.get_translated_path()
+            output_path = DataManager.get().get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)

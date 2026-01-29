@@ -43,7 +43,6 @@ from base.EventManager import EventManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.Storage.ProjectStore import ProjectStore
 
 
 class CreateProjectThread(QThread):
@@ -59,8 +58,6 @@ class CreateProjectThread(QThread):
 
     def run(self) -> None:
         try:
-            store = ProjectStore()
-
             # 设置进度回调
             def progress_callback(current: int, total: int, message: str) -> None:
                 EventManager.get().emit(
@@ -72,13 +69,15 @@ class CreateProjectThread(QThread):
                     },
                 )
 
-            store.set_progress_callback(progress_callback)
-
             # 执行创建
-            db = store.create(self.source_path, self.output_path)
+            DataManager.get().create_project(
+                self.source_path,
+                self.output_path,
+                progress_callback=progress_callback,
+            )
 
             # 成功
-            self.finished_signal.emit(True, db)
+            self.finished_signal.emit(True, None)
         except Exception as e:
             # 失败
             self.finished_signal.emit(False, str(e))
@@ -924,7 +923,9 @@ class WorkbenchPage(ScrollArea, Base):
 
     def select_source_file(self):
         """选择源文件"""
-        extensions = [f"*{ext}" for ext in ProjectStore.SUPPORTED_EXTENSIONS]
+        extensions = [
+            f"*{ext}" for ext in sorted(DataManager.get().get_supported_extensions())
+        ]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(extensions)})"
 
         path, _ = QFileDialog.getOpenFileName(
@@ -948,8 +949,7 @@ class WorkbenchPage(ScrollArea, Base):
             return
 
         # 检查是否包含支持的文件
-        store = ProjectStore()
-        source_files = store.collect_source_files(path)
+        source_files = DataManager.get().collect_source_files(path)
 
         if not source_files:
             self.emit(
@@ -1043,7 +1043,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 显示项目详情
         try:
-            info = ProjectStore.get_project_preview(path)
+            info = DataManager.get().get_project_preview(path)
             self.project_info_panel = ProjectInfoPanel(self.open_project_card)
             self.project_info_panel.set_info(info)
             self.open_project_card.layout().insertWidget(
@@ -1144,16 +1144,15 @@ class WorkbenchPage(ScrollArea, Base):
 
         if success:
             try:
-                # result is db
-                db = result
-
-                # 更新最近打开列表
-                config = Config().load()
-                config.add_recent_project(path, db.get_meta("name", ""))
-                config.save()
-
-                # 加载工程
                 DataManager.get().load_project(path)
+
+                # 更新最近打开列表（避免 UI 层直接触达数据库实例）
+                config = Config().load()
+                name = DataManager.get().get_meta("name", "")
+                if not isinstance(name, str) or not name:
+                    name = Path(path).stem
+                config.add_recent_project(path, name)
+                config.save()
 
                 self.reset_new_project_state()
             except Exception as e:

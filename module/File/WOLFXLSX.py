@@ -9,8 +9,6 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Storage.AssetStore import AssetStore
-from module.Storage.PathStore import PathStore
 from module.Data.DataManager import DataManager
 from module.TableManager import TableManager
 
@@ -139,7 +137,7 @@ class WOLFXLSX(Base):
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
         # 获取输出目录
-        output_path = PathStore.get_translated_path()
+        output_path = DataManager.get().get_translated_path()
 
         target = [
             item for item in items if item.get_file_type() == Item.FileType.WOLFXLSX
@@ -161,9 +159,10 @@ class WOLFXLSX(Base):
 
             # 尝试从数据库恢复原始文件
             restored = False
-            asset_data = DataManager.get().get_asset(rel_path)
-            if asset_data:
-                AssetStore.decompress_to_file(asset_data, abs_path)
+            original_data = DataManager.get().get_asset_decompressed(rel_path)
+            if original_data:
+                with open(abs_path, "wb") as f:
+                    f.write(original_data)
                 restored = True
 
             if restored:

@@ -17,7 +17,6 @@ from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.Storage.PathStore import PathStore
 from module.TextProcessor import TextProcessor
 from widget.ComboBoxCard import ComboBoxCard
 from widget.CommandBarCard import CommandBarCard
@@ -291,15 +290,10 @@ class TSConversionPage(QWidget, Base):
                             total,
                         )
 
-                # 直接执行导出逻辑
-                # 设置临时后缀
-                PathStore.custom_suffix = suffix
-                try:
-                    file_manager = FileManager(config)
+                # 直接执行导出逻辑（使用线程隔离的导出后缀上下文）
+                file_manager = FileManager(config)
+                with DataManager.get().export_custom_suffix_context(suffix):
                     output_path = file_manager.write_to_path(items_to_export)
-                finally:
-                    # 恢复后缀
-                    PathStore.custom_suffix = ""
 
                 # 通知结束
                 self.progress_finished.emit(output_path)
