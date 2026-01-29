@@ -5,17 +5,27 @@ from pathlib import Path
 from typing import Any
 
 from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
+from PyQt5.QtWidgets import QTableWidgetItem
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
+from qfluentwidgets import PillToolButton
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import TransparentPushButton
+from qfluentwidgets import getFont
+from qfluentwidgets import setCustomStyleSheet
 
 from base.Base import Base
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
@@ -83,12 +93,12 @@ class GlossaryPage(QualityRuleSplitPageBase):
         )
 
     def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
-        case_sensitive = bool(entry.get("case_sensitive", False))
+        # 高级规则列使用 cell widget，不需要文本
         return (
             str(entry.get("src", "")),
             str(entry.get("dst", "")),
             str(entry.get("info", "")),
-            "Aa" if case_sensitive else "",
+            "",
         )
 
     def get_search_columns(self) -> tuple[int, ...]:
@@ -149,15 +159,134 @@ class GlossaryPage(QualityRuleSplitPageBase):
         parent.addWidget(self.switch_card)
 
     def setup_table_columns(self) -> None:
-        # 列宽与旧表格保持接近：src/dst 固定，描述拉伸，标记列较窄。
-        self.table.setColumnWidth(0, 300)
-        self.table.setColumnWidth(1, 300)
-        self.table.setColumnWidth(3, 80)
+        # 表格字体：12号，与校对页保持一致
+        self.ui_font = getFont(12)
+        self.ui_font.setHintingPreference(self.table.font().hintingPreference())
+
+        # 表头字体：通过 QSS 覆盖默认值
+        header_qss = "QHeaderView::section {\n    font: 12px --FontFamilies;\n}\n"
+        setCustomStyleSheet(self.table, header_qss, header_qss)
+
+        # 禁用水平滚动条
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        # 单行显示，超长截断
+        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
+
+        # 列宽：原文/译文拉伸，描述拉伸，高级规则列固定窄宽
         header = self.table.horizontalHeader()
         if header is not None:
             header.setStretchLastSection(False)
+            # 原文、译文、描述均拉伸
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            # 高级规则列固定宽度
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(3, 96)
+
+    def clear_cell_widgets(self) -> None:
+        """移除所有 cell widgets"""
+        for row in range(self.table.rowCount()):
+            widget = self.table.cellWidget(row, 3)
+            if widget:
+                self.table.removeCellWidget(row, 3)
+                widget.deleteLater()
+
+    def create_case_widget(self, case_sensitive: bool, show_button: bool) -> QWidget:
+        """创建高级规则列的 cell widget
+
+        Args:
+            case_sensitive: 是否启用大小写敏感
+            show_button: 是否显示按钮（空白行不显示）
+        """
+        widget = QWidget()
+        widget.setFixedHeight(40)
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if show_button:
+            btn = PillToolButton(FluentIcon.FONT, widget)
+            btn.setIconSize(QSize(14, 14))
+            btn.setFixedSize(28, 28)
+            btn.setCheckable(True)
+            btn.setChecked(case_sensitive)
+            # 禁用焦点以避免点击时出现焦点框
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.installEventFilter(ToolTipFilter(btn, 300, ToolTipPosition.TOP))
+            btn.setToolTip(Localizer.get().rule_case_sensitive)
+            layout.addWidget(btn)
+
+        return widget
+
+    def refresh_table(self) -> None:
+        """重写刷新表格方法，为每个单元格设置字体"""
+        self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
+
+        # 先清除所有 cell widgets
+        self.clear_cell_widgets()
+
+        headers = self.get_list_headers()
+        col_count = len(headers)
+        self.table.setColumnCount(col_count)
+        self.table.setHorizontalHeaderLabels(headers)
+
+        target_count = max(20, len(self.entries))
+        self.table.setRowCount(target_count)
+
+        for row in range(target_count):
+            values = ("",) * col_count
+            editable = False
+            case_sensitive = False
+
+            if row < len(self.entries):
+                values = self.get_row_values(self.entries[row])
+                editable = True
+                case_sensitive = bool(self.entries[row].get("case_sensitive", False))
+
+            for col in range(col_count):
+                # 高级规则列使用 cell widget
+                if col == 3:
+                    self.table.setCellWidget(
+                        row, col, self.create_case_widget(case_sensitive, editable)
+                    )
+                    # 仍需设置空 item 以支持选中
+                    item = self.table.item(row, col)
+                    if item is None:
+                        item = QTableWidgetItem()
+                        self.table.setItem(row, col, item)
+                    item.setText("")
+                    if editable:
+                        item.setFlags(
+                            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                        )
+                    else:
+                        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    continue
+
+                item = self.table.item(row, col)
+                if item is None:
+                    item = QTableWidgetItem()
+                    self.table.setItem(row, col, item)
+
+                item.setText(values[col] if col < len(values) else "")
+                item.setFont(self.ui_font)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+                )
+                if editable:
+                    item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                    )
+                else:
+                    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+
+        self.table.setUpdatesEnabled(True)
+        self.table.blockSignals(False)
 
     # ==================== UI：命令栏 ====================
 
