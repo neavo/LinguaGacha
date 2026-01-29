@@ -2,8 +2,8 @@ from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QFrame
@@ -27,13 +27,13 @@ from qfluentwidgets import qconfig
 
 from base.Base import Base
 from model.Item import Item
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRuleManager import QualityRuleManager
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
-from widget.StatusTag import StatusTag
 from widget.StatusTag import StatusPillKind
+from widget.StatusTag import StatusTag
 
 
 class ProofreadingEditPanel(QWidget):
@@ -126,7 +126,7 @@ class ProofreadingEditPanel(QWidget):
         self.status_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
-        # WHY: 状态区不需要额外背景，直接使用卡片底色。
+        # 状态区不需要额外背景，直接使用卡片底色。
         self.status_scroll.setStyleSheet(
             "QScrollArea { background: transparent; }"
             "QScrollArea QWidget { background: transparent; }"
@@ -137,19 +137,19 @@ class ProofreadingEditPanel(QWidget):
         self.status_layout = QVBoxLayout(self.status_widget)
         self.status_layout.setContentsMargins(0, 0, 0, 0)
         self.status_layout.setSpacing(0)
-        # WHY: 状态 pill 通过 show/hide 控制显示，FlowLayout 需要 tight 模式才会跳过隐藏控件。
+        # 状态 pill 通过 show/hide 控制显示，FlowLayout 需要 tight 模式才会跳过隐藏控件。
         self.status_flow = FlowLayout(needAni=False, isTight=True)
         self.status_flow.setContentsMargins(0, 0, 0, 0)
         self.status_flow.setSpacing(6)
 
         self.status_layout.addLayout(self.status_flow)
 
-        # WHY: 状态 pill 的种类是有限的，直接预创建并通过 show/hide 控制。
+        # 状态 pill 的种类是有限的，直接预创建并通过 show/hide 控制。
         self.translation_status_pill = self.create_status_pill("", StatusPillKind.INFO)
         self.status_flow.addWidget(self.translation_status_pill)
 
         self.glossary_status_pill = self.create_status_pill("", StatusPillKind.INFO)
-        # WHY: 状态 pill 需要稳定的 hover 才能展示 tooltip，但默认禁用。
+        # 状态 pill 需要稳定的 hover 才能展示 tooltip，但默认禁用。
         # 这里单独启用该 pill，且不绑定点击行为。
         self.glossary_status_pill.setEnabled(True)
         self.glossary_status_pill.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -178,7 +178,7 @@ class ProofreadingEditPanel(QWidget):
         src_font = QFont(self.src_text.font())
         src_font.setPixelSize(self.UI_FONT_PX)
         self.src_text.setFont(src_font)
-        # WHY: 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
+        # 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
         self.src_text.setMinimumHeight(self.TEXT_MIN_HEIGHT_PX)
         self.src_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.src_text.setProperty("compact", True)
@@ -259,7 +259,7 @@ class ProofreadingEditPanel(QWidget):
         self.schedule_status_height_refresh()
 
     def update_all_divider_styles(self) -> None:
-        # WHY: 避免 lambda 捕获局部 widget 导致销毁后回调；统一在面板维度刷新样式。
+        # 避免 lambda 捕获局部 widget 导致销毁后回调；统一在面板维度刷新样式。
         for line in list(self.dividers):
             if line is None:
                 continue
@@ -277,7 +277,7 @@ class ProofreadingEditPanel(QWidget):
         self.schedule_glossary_status_refresh()
 
     def bind_item(self, item: Item, index: int, warnings: list[WarningType]) -> None:
-        # WHY: 兼容外部回调签名，面板只关心当前 item。
+        # 兼容外部回调签名，面板只关心当前 item。
         del index
 
         self.current_item = item
@@ -393,7 +393,7 @@ class ProofreadingEditPanel(QWidget):
         return line
 
     def update_divider_style(self, line: QWidget) -> None:
-        # WHY: 使用更轻的分隔线减少高度开销，同时兼容亮/暗主题。
+        # 使用更轻的分隔线减少高度开销，同时兼容亮/暗主题。
         color = "rgba(255, 255, 255, 0.08)" if isDarkTheme() else "rgba(0, 0, 0, 0.08)"
         line.setStyleSheet(f"QWidget {{ background-color: {color}; }}")
 
@@ -411,7 +411,7 @@ class ProofreadingEditPanel(QWidget):
         """根据是否有未保存修改更新按钮启用状态"""
         has_changes = self.has_unsaved_changes()
         is_readonly = self.dst_text.isReadOnly()
-        # WHY: 只读模式下按钮始终禁用；非只读时根据是否有修改决定
+        # 只读模式下按钮始终禁用；非只读时根据是否有修改决定
         self.btn_save.setEnabled(has_changes and not is_readonly)
         self.btn_restore.setEnabled(has_changes and not is_readonly)
 
@@ -457,7 +457,7 @@ class ProofreadingEditPanel(QWidget):
         if self.dst_text.isReadOnly():
             return
 
-        # WHY: 弹出菜单仍属于编辑区交互，不应触发自动保存。
+        # 弹出菜单仍属于编辑区交互，不应触发自动保存。
         if QApplication.activePopupWidget() is not None:
             return
 
@@ -494,7 +494,7 @@ class ProofreadingEditPanel(QWidget):
         self.schedule_glossary_status_refresh()
 
     def clear_status_tags(self) -> None:
-        # WHY: pill 统一预创建，这里只负责隐藏“动态部分”，不做增删。
+        # pill 统一预创建，这里只负责隐藏“动态部分”，不做增删。
         self.set_pill_layout_visible(self.translation_status_pill, False)
         for pill in self.warning_pills.values():
             self.set_pill_layout_visible(pill, False)
@@ -503,7 +503,7 @@ class ProofreadingEditPanel(QWidget):
         QTimer.singleShot(0, self.refresh_status_scroll_height)
 
     def refresh_status_scroll_height(self) -> None:
-        # WHY: FlowLayout(heightForWidth) 会按当前宽度计算实际高度，且 tight 模式会跳过隐藏控件。
+        # FlowLayout(heightForWidth) 会按当前宽度计算实际高度，且 tight 模式会跳过隐藏控件。
         probe = self.create_status_pill("A", StatusPillKind.INFO)
         line_height = max(1, probe.sizeHint().height())
         probe.deleteLater()
@@ -599,7 +599,7 @@ class ProofreadingEditPanel(QWidget):
 
     def update_glossary_status(self) -> None:
         # 关闭术语表功能时，按“无术语”处理。
-        if not self.current_item or not QualityRuleManager.get().get_glossary_enable():
+        if not self.current_item or not DataManager.get().get_glossary_enable():
             self.clear_glossary_status()
             self.set_pill_layout_visible(self.glossary_status_pill, True)
             return

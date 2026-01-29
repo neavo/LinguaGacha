@@ -22,9 +22,9 @@ from qfluentwidgets import TableWidget
 from qfluentwidgets import TransparentPushButton
 
 from base.Base import Base
+from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.QualityRuleManager import QualityRuleManager
 from module.TableManager import TableManager
 from widget.CommandBarCard import CommandBarCard
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -84,28 +84,28 @@ class TextReplacementPage(QWidget, Base):
     def get_data(self) -> list[dict[str, str]]:
         """根据 base_key 获取数据"""
         if self.base_key == "pre_translation_replacement":
-            return QualityRuleManager.get().get_pre_replacement()
-        return QualityRuleManager.get().get_post_replacement()
+            return DataManager.get().get_pre_replacement()
+        return DataManager.get().get_post_replacement()
 
     def set_data(self, data: list[dict[str, str]]) -> None:
         """根据 base_key 保存数据"""
         if self.base_key == "pre_translation_replacement":
-            QualityRuleManager.get().set_pre_replacement(data)
+            DataManager.get().set_pre_replacement(data)
         else:
-            QualityRuleManager.get().set_post_replacement(data)
+            DataManager.get().set_post_replacement(data)
 
     def get_enable(self) -> bool:
         """根据 base_key 获取启用状态"""
         if self.base_key == "pre_translation_replacement":
-            return QualityRuleManager.get().get_pre_replacement_enable()
-        return QualityRuleManager.get().get_post_replacement_enable()
+            return DataManager.get().get_pre_replacement_enable()
+        return DataManager.get().get_post_replacement_enable()
 
     def set_enable(self, enable: bool) -> None:
         """根据 base_key 设置启用状态"""
         if self.base_key == "pre_translation_replacement":
-            QualityRuleManager.get().set_pre_replacement_enable(enable)
+            DataManager.get().set_pre_replacement_enable(enable)
         else:
-            QualityRuleManager.get().set_post_replacement_enable(enable)
+            DataManager.get().set_post_replacement_enable(enable)
 
     def get_default_data(self) -> list[dict[str, str]]:
         """获取默认数据（用于重置）"""

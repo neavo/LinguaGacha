@@ -1,9 +1,9 @@
 from typing import Callable
 
 from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QObject
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QTextOption
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import isDarkTheme
@@ -69,10 +69,10 @@ class CustomTextEdit(PlainTextEdit):
 
         # 默认自动换行
         self.setLineWrapMode(PlainTextEdit.LineWrapMode.WidgetWidth)
-        # WHY: 即使启用了自动换行，仍可能因长 token 出现横向滚动条，这里彻底关闭。
+        # 即使启用了自动换行，仍可能因长 token 出现横向滚动条，这里彻底关闭。
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         option = self.document().defaultTextOption()
-        # WHY: 校对/编辑区包含长 URL、长 token 等内容时，按词语边界换行会留下大段空白。
+        # 校对/编辑区包含长 URL、长 token 等内容时，按词语边界换行会留下大段空白。
         # 使用硬换行（任意位置断行）保证版面稳定。
         option.setWrapMode(QTextOption.WrapMode.WrapAnywhere)
         self.document().setDefaultTextOption(option)
@@ -97,7 +97,7 @@ class CustomTextEdit(PlainTextEdit):
         self.update_style()
 
     def refresh_style(self) -> None:
-        # WHY: 主题切换时可能被全局样式覆盖，延迟一帧再刷新样式。
+        # 主题切换时可能被全局样式覆盖，延迟一帧再刷新样式。
         QTimer.singleShot(0, self.update_style)
 
     def set_error(self, has_error: bool) -> None:
@@ -115,7 +115,7 @@ class CustomTextEdit(PlainTextEdit):
             if a1.type() == QEvent.Type.FocusOut and self.on_focus_out:
                 self.on_focus_out()
             if a1.type() == QEvent.Type.Show:
-                # WHY: 页面创建早于主题加载时，确保显示时样式同步
+                # 页面创建早于主题加载时，确保显示时样式同步
                 self.update_style()
         return super().eventFilter(a0, a1)
 
@@ -125,7 +125,7 @@ class CustomTextEdit(PlainTextEdit):
         font_family = self.FONT_MONOSPACE if self.monospace else self.FONT_DEFAULT
         padding = 6 if bool(self.property("compact")) else 10
 
-        # WHY: 使用 isReadOnly() 而非自定义变量，确保主题切换时与实际状态一致。
+        # 使用 isReadOnly() 而非自定义变量，确保主题切换时与实际状态一致。
         is_readonly = self.isReadOnly()
 
         if is_readonly:

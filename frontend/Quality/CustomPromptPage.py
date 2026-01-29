@@ -15,10 +15,10 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.QualityRuleManager import QualityRuleManager
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
@@ -58,28 +58,28 @@ class CustomPromptPage(QWidget, Base):
     # 获取自定义提示词数据
     def get_custom_prompt_data(self) -> str:
         if self.language == BaseLanguage.Enum.ZH:
-            return QualityRuleManager.get().get_custom_prompt_zh()
-        return QualityRuleManager.get().get_custom_prompt_en()
+            return DataManager.get().get_custom_prompt_zh()
+        return DataManager.get().get_custom_prompt_en()
 
     # 保存自定义提示词数据
     def set_custom_prompt_data(self, data: str) -> None:
         if self.language == BaseLanguage.Enum.ZH:
-            QualityRuleManager.get().set_custom_prompt_zh(data)
+            DataManager.get().set_custom_prompt_zh(data)
         else:
-            QualityRuleManager.get().set_custom_prompt_en(data)
+            DataManager.get().set_custom_prompt_en(data)
 
     # 获取启用状态
     def get_custom_prompt_enable(self) -> bool:
         if self.language == BaseLanguage.Enum.ZH:
-            return QualityRuleManager.get().get_custom_prompt_zh_enable()
-        return QualityRuleManager.get().get_custom_prompt_en_enable()
+            return DataManager.get().get_custom_prompt_zh_enable()
+        return DataManager.get().get_custom_prompt_en_enable()
 
     # 设置启用状态
     def set_custom_prompt_enable(self, enable: bool) -> None:
         if self.language == BaseLanguage.Enum.ZH:
-            QualityRuleManager.get().set_custom_prompt_zh_enable(enable)
+            DataManager.get().set_custom_prompt_zh_enable(enable)
         else:
-            QualityRuleManager.get().set_custom_prompt_en_enable(enable)
+            DataManager.get().set_custom_prompt_en_enable(enable)
 
     # 工程加载后刷新数据
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:

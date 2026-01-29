@@ -4,16 +4,16 @@ import sqlite3
 import threading
 import time
 from datetime import datetime
-
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
+from typing import Generator
 
 from base.Base import Base
 
 
-class DataStore(Base):
-    """统一的 .lg 文件访问类"""
+class LGDatabase(Base):
+    """统一的 .lg 文件访问类（SQLite）。"""
 
     class RuleType(StrEnum):
         """规则类型枚举"""
@@ -89,15 +89,18 @@ class DataStore(Base):
             return
 
         # 元数据表
-        target_conn.execute("""
+        target_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )
-        """)
+        """
+        )
 
         # 资产表（原始文件 BLOB，Zstd 压缩）
-        target_conn.execute("""
+        target_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT NOT NULL UNIQUE,
@@ -105,24 +108,29 @@ class DataStore(Base):
                 original_size INTEGER NOT NULL,
                 compressed_size INTEGER NOT NULL
             )
-        """)
+        """
+        )
 
         # 翻译条目表
-        target_conn.execute("""
+        target_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 data TEXT NOT NULL
             )
-        """)
+        """
+        )
 
         # 规则表
-        target_conn.execute("""
+        target_conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS rules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL,
                 data TEXT NOT NULL
             )
-        """)
+        """
+        )
 
         # 创建索引以加速查询
         target_conn.execute(
@@ -208,7 +216,7 @@ class DataStore(Base):
                 result.append(data)
                 loaded_count += 1
                 if yield_every > 0 and loaded_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大项目读取条目时 UI 假死
+                    # 释放 GIL，避免大项目读取条目时 UI 假死
                     time.sleep(0)
             return result
 
@@ -229,7 +237,8 @@ class DataStore(Base):
                 item_id = new_id
             else:
                 conn.execute(
-                    "UPDATE items SET data = ? WHERE id = ?", (data_json, item_id)
+                    "UPDATE items SET data = ? WHERE id = ?",
+                    (data_json, item_id),
                 )
 
             conn.commit()
@@ -260,7 +269,7 @@ class DataStore(Base):
                     ids.append(cursor.lastrowid)
                 saved_count += 1
                 if yield_every > 0 and saved_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大批量写入时阻塞 UI
+                    # 释放 GIL，避免大批量写入时阻塞 UI
                     time.sleep(0)
             conn.commit()
             return ids
@@ -271,13 +280,7 @@ class DataStore(Base):
         rules: dict[RuleType, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        """综合批量更新（在单次事务中更新条目、规则及元数据）
-
-        Args:
-            items: 待更新的条目列表
-            rules: 待更新的规则字典 { RuleType: data }
-            meta: 待更新的元数据字典 { key: value }
-        """
+        """综合批量更新（在单次事务中更新条目、规则及元数据）"""
         if not items and not rules and not meta:
             return
 
@@ -325,7 +328,8 @@ class DataStore(Base):
         """获取指定类型的规则"""
         with self.connection() as conn:
             cursor = conn.execute(
-                "SELECT data FROM rules WHERE type = ? ORDER BY id", (rule_type,)
+                "SELECT data FROM rules WHERE type = ? ORDER BY id",
+                (rule_type,),
             )
             rows = cursor.fetchall()
 
@@ -360,7 +364,6 @@ class DataStore(Base):
         """设置指定类型的规则（清空后重新写入，存储为单行 JSON）"""
         with self.connection() as conn:
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
-            # 将整个列表序列化为单行 JSON 存储
             conn.execute(
                 "INSERT INTO rules (type, data) VALUES (?, ?)",
                 (rule_type, json.dumps(rules, ensure_ascii=False)),
@@ -371,7 +374,8 @@ class DataStore(Base):
         """获取文本类型的规则（如自定义提示词）"""
         with self.connection() as conn:
             cursor = conn.execute(
-                "SELECT data FROM rules WHERE type = ? LIMIT 1", (rule_type,)
+                "SELECT data FROM rules WHERE type = ? LIMIT 1",
+                (rule_type,),
             )
             row = cursor.fetchone()
             if row is None:
@@ -391,23 +395,16 @@ class DataStore(Base):
     # ========== 工厂方法 ==========
 
     @classmethod
-    def create(
-        cls,
-        db_path: str,
-        name: str,
-    ) -> "DataStore":
+    def create(cls, db_path: str, name: str) -> "LGDatabase":
         """创建新的 .lg 数据库
 
         使用短连接初始化数据库结构和元数据，不保持长连接。
         """
         db = cls(db_path)
-
-        # 使用短连接设置初始元数据（操作完成后自动关闭，WAL 文件消失）
         db.set_meta("schema_version", cls.SCHEMA_VERSION)
         db.set_meta("name", name)
         db.set_meta("created_at", datetime.now().isoformat())
         db.set_meta("updated_at", datetime.now().isoformat())
-
         return db
 
     # ========== 业务辅助 ==========
@@ -415,7 +412,6 @@ class DataStore(Base):
     def get_project_summary(self) -> dict[str, Any]:
         """获取项目概览信息（进度、文件数等）"""
         with self.connection() as conn:
-            # 读取基础信息
             meta_cursor = conn.execute("SELECT key, value FROM meta")
             meta = {
                 row["key"]: json.loads(row["value"]) for row in meta_cursor.fetchall()
@@ -423,21 +419,15 @@ class DataStore(Base):
 
             file_count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
 
-            # 计算进度
-            # 优先使用翻译进度信息（更准确，排除已筛选的条目）
             extras = meta.get("translation_extras", {})
             if isinstance(extras, dict) and "line" in extras and "total_line" in extras:
                 translated_items = extras["line"]
                 total_items = extras["total_line"]
-
-                # 临时处理：如果项目从未运行过翻译（total_line 为 0）
-                # 回退使用物理总行数，确保工作台列表能显示工程规模
                 if total_items == 0:
                     total_items = (
                         conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] or 0
                     )
             else:
-                # 兼容旧版本：未开始翻译的项目视为 0 进度
                 total_items = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
                 translated_items = 0
 

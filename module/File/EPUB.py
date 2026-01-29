@@ -11,9 +11,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Storage.AssetStore import AssetStore
-from module.Storage.PathStore import PathStore
-from module.Storage.StorageContext import StorageContext
+from module.Data.DataManager import DataManager
 
 
 class EPUB(Base):
@@ -296,20 +294,16 @@ class EPUB(Base):
                 tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
-            output_path = PathStore.get_translated_path()
+            output_path = DataManager.get().get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
+            original_content = DataManager.get().get_asset_decompressed(rel_path)
+            if original_content is None:
                 continue
-            compressed = db.get_asset(rel_path)
-            if compressed is None:
-                continue
-            original_content = AssetStore.decompress(compressed)
             source_zip = io.BytesIO(original_content)
 
             with zipfile.ZipFile(self.insert_target(abs_path), "w") as zip_writer:
@@ -337,20 +331,16 @@ class EPUB(Base):
                 tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
-            bilingual_path = PathStore.get_bilingual_path()
+            bilingual_path = DataManager.get().get_bilingual_path()
 
             # 数据处理
             abs_path = os.path.join(bilingual_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
+            original_content = DataManager.get().get_asset_decompressed(rel_path)
+            if original_content is None:
                 continue
-            compressed = db.get_asset(rel_path)
-            if compressed is None:
-                continue
-            original_content = AssetStore.decompress(compressed)
             source_zip = io.BytesIO(original_content)
 
             with zipfile.ZipFile(

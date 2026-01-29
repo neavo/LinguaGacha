@@ -2,8 +2,8 @@ from enum import StrEnum
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
@@ -87,15 +87,15 @@ class StatusTag(QLabel):
 
         self.kind_value = kind
 
-        # WHY: 默认与旧实现保持一致，避免 UI 体感变化。
+        # 默认与旧实现保持一致，避免 UI 体感变化。
         self.font_size_px_value: int | None = None
 
-        # WHY: 缓存颜色，避免在 paintEvent 中重复查表。
+        # 缓存颜色，避免在 paintEvent 中重复查表。
         self.bg_color = QColor()
         self.border_color = QColor()
         self.text_color = QColor()
 
-        # WHY: 在初始化时捕获基础字体，避免主题切换时 self.font() 被 qfluentwidgets 修改。
+        # 在初始化时捕获基础字体，避免主题切换时 self.font() 被 qfluentwidgets 修改。
         self.base_font = QFont(self.font())
         self.cached_font: QFont | None = None
 
@@ -120,7 +120,7 @@ class StatusTag(QLabel):
         self.border_color = border
         self.text_color = text_color
 
-        # WHY: 基于初始化时捕获的 base_font 构建字体，避免主题切换导致字体变化。
+        # 基于初始化时捕获的 base_font 构建字体，避免主题切换导致字体变化。
         font = QFont(self.base_font)
         font_size = self.font_size_px_value
         if font_size:
@@ -128,7 +128,7 @@ class StatusTag(QLabel):
         self.cached_font = font
         self.setFont(font)
 
-        # WHY: 清空 QSS，完全由 paintEvent 控制外观。
+        # 清空 QSS，完全由 paintEvent 控制外观。
         self.setStyleSheet("")
 
         self.setFixedSize(self.sizeHint())
@@ -162,7 +162,7 @@ class StatusTag(QLabel):
         if self.text() == text:
             return
         super().setText(text)
-        # WHY: 强制设置固定尺寸，确保 FlowLayout 能够正确计算布局。
+        # 强制设置固定尺寸，确保 FlowLayout 能够正确计算布局。
         hint = self.sizeHint()
         self.setFixedSize(hint)
         parent = self.parentWidget()
@@ -195,7 +195,7 @@ class StatusTag(QLabel):
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:
         del a0
-        # WHY: 完全自绘，避免 QLabel 默认绘制。
+        # 完全自绘，避免 QLabel 默认绘制。
         painter = QPainter(self)
         painter.setRenderHints(QPainter.RenderHint.Antialiasing)
 
@@ -204,11 +204,11 @@ class StatusTag(QLabel):
         painter.setPen(self.border_color)
         painter.setBrush(self.bg_color)
 
-        # WHY: 固定圆角半径，实现圆角矩形。
+        # 固定圆角半径，实现圆角矩形。
         r = 4
         painter.drawRoundedRect(rect, r, r)
 
-        # WHY: 自绘文本，使用缓存的字体和颜色。
+        # 自绘文本，使用缓存的字体和颜色。
         if self.cached_font:
             painter.setFont(self.cached_font)
         painter.setPen(self.text_color)
