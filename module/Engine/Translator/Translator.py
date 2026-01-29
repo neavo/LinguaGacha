@@ -65,6 +65,9 @@ class Translator(Base):
             Base.Event.TRANSLATION_REQUIRE_STOP, self.translation_require_stop
         )
 
+    def get_active_task_count(self) -> int:
+        return self.active_task_count
+
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         def task(event_name: str, task_data: dict) -> None:
