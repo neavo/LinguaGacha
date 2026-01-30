@@ -146,7 +146,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
 
         parent.addWidget(
             LineEditCard(
-                Localizer.get().api_url,
+                Localizer.get().model_basic_setting_page_api_url_title,
                 Localizer.get().model_basic_setting_page_api_url_content,
                 init=init,
                 text_changed=text_changed,

@@ -5,7 +5,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
+from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
 
@@ -195,7 +195,7 @@ class RENPY(Base):
             sorted_items = sorted(group_items, key=lambda x: x.get_row())
 
             # 获取输出目录
-            output_path = DataManager.get().get_translated_path()
+            output_path = PathStore.get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)

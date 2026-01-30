@@ -41,8 +41,9 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.EventManager import EventManager
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+from module.Storage.ProjectStore import ProjectStore
+from module.Storage.StorageContext import StorageContext
 
 
 class CreateProjectThread(QThread):
@@ -58,6 +59,8 @@ class CreateProjectThread(QThread):
 
     def run(self) -> None:
         try:
+            store = ProjectStore()
+
             # 设置进度回调
             def progress_callback(current: int, total: int, message: str) -> None:
                 EventManager.get().emit(
@@ -69,15 +72,13 @@ class CreateProjectThread(QThread):
                     },
                 )
 
+            store.set_progress_callback(progress_callback)
+
             # 执行创建
-            DataManager.get().create_project(
-                self.source_path,
-                self.output_path,
-                progress_callback=progress_callback,
-            )
+            db = store.create(self.source_path, self.output_path)
 
             # 成功
-            self.finished_signal.emit(True, None)
+            self.finished_signal.emit(True, db)
         except Exception as e:
             # 失败
             self.finished_signal.emit(False, str(e))
@@ -88,8 +89,7 @@ class FileDisplayCard(CardWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        # 避免工作台左右卡片整体高度略超出默认容器，产生轻微溢出。
-        self.setFixedHeight(145)
+        self.setFixedHeight(150)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAcceptDrops(True)
 
@@ -164,24 +164,16 @@ class DropZone(FileDisplayCard):
         )
 
         # 标题
-        self.display_title = title
         self.title_label = StrongBodyLabel(title, self)
-        # 允许被布局压缩，避免超长文件名撑开卡片。
-        self.title_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        self.main_layout.addWidget(
+            self.title_label, alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.title_label.setMinimumWidth(0)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setToolTip(self.display_title)
-        self.title_label.installEventFilter(
-            ToolTipFilter(self.title_label, 300, ToolTipPosition.TOP)
-        )
-        self.main_layout.addWidget(self.title_label)
 
         # 副标题
         self.subtitle_label = CaptionLabel(subtitle, self)
-        self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.main_layout.addWidget(self.subtitle_label)
+        self.main_layout.addWidget(
+            self.subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter
+        )
 
         # 关闭按钮
         self.close_btn.clicked.connect(self.clear_clicked)
@@ -193,8 +185,7 @@ class DropZone(FileDisplayCard):
             self.close_btn.show()
 
     def set_text(self, title: str, subtitle: str) -> None:
-        self.display_title = title
-        self.update_elided_title()
+        self.title_label.setText(title)
         self.subtitle_label.setText(subtitle)
 
         if subtitle:
@@ -206,29 +197,6 @@ class DropZone(FileDisplayCard):
 
     def set_icon(self, icon: FluentIcon) -> None:
         self.icon_widget.setIcon(icon)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self.update_elided_title()
-
-    def update_elided_title(self) -> None:
-        # elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
-        # 这里不强制 setFixedWidth，避免把“期望宽度”变成布局硬约束，导致界面抖动。
-        available_width = self.title_label.width()
-        if available_width <= 0:
-            card_width = self.width()
-            if card_width <= 0 and self.parentWidget():
-                card_width = self.parentWidget().width()
-            available_width = max(0, card_width - 48)
-        if available_width <= 0:
-            return
-
-        metrics = self.title_label.fontMetrics()
-        elided = metrics.elidedText(
-            self.display_title, Qt.TextElideMode.ElideRight, available_width
-        )
-        self.title_label.setText(elided)
-        self.title_label.setToolTip(self.display_title)
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
@@ -255,19 +223,8 @@ class SelectedFileDisplay(FileDisplayCard):
         )
 
         # 文件名
-        self.display_name = file_name
-        self.name_label = StrongBodyLabel(file_name, self)
-        # 允许被布局压缩，避免超长文件名撑开卡片。
-        self.name_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        self.name_label.setMinimumWidth(0)
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setToolTip(self.display_name)
-        self.name_label.installEventFilter(
-            ToolTipFilter(self.name_label, 300, ToolTipPosition.TOP)
-        )
-        self.main_layout.addWidget(self.name_label)
+        name_label = StrongBodyLabel(file_name, self)
+        self.main_layout.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # 状态
         status_text = (
@@ -276,39 +233,11 @@ class SelectedFileDisplay(FileDisplayCard):
             else Localizer.get().workbench_project_preparing
         )
         status_label = CaptionLabel(status_text, self)
-        status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.main_layout.addWidget(status_label)
+        self.main_layout.addWidget(status_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # 关闭按钮
         self.close_btn.clicked.connect(self.clear_clicked)
         self.close_btn.show()
-
-        # 右侧卡片在插入时可能先按完整文本 sizeHint 参与布局，导致“瞬间展开又缩回”。
-        # 这里用父容器宽度提前做一次 elide，避免首次布局抖动。
-        self.update_elided_name()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self.update_elided_name()
-
-    def update_elided_name(self) -> None:
-        # elide 宽度尽量使用 label 实际可用宽度；首次显示时可能为 0，则回退到父容器宽度。
-        # 这里不强制 setFixedWidth，避免把“期望宽度”变成布局硬约束，导致界面抖动。
-        available_width = self.name_label.width()
-        if available_width <= 0:
-            card_width = self.width()
-            if card_width <= 0 and self.parentWidget():
-                card_width = self.parentWidget().width()
-            available_width = max(0, card_width - 48)
-        if available_width <= 0:
-            return
-
-        metrics = self.name_label.fontMetrics()
-        elided = metrics.elidedText(
-            self.display_name, Qt.TextElideMode.ElideRight, available_width
-        )
-        self.name_label.setText(elided)
-        self.name_label.setToolTip(self.display_name)
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
@@ -815,7 +744,7 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout.setContentsMargins(0, 24, 0, 0)
 
         self.open_btn = PrimaryPushButton(
-            Localizer.get().workbench_open_project_title, card
+            Localizer.get().workbench_open_project_btn, card
         )
         self.open_btn.setFixedSize(160, 36)
         self.open_btn.setEnabled(False)
@@ -923,9 +852,7 @@ class WorkbenchPage(ScrollArea, Base):
 
     def select_source_file(self):
         """选择源文件"""
-        extensions = [
-            f"*{ext}" for ext in sorted(DataManager.get().get_supported_extensions())
-        ]
+        extensions = [f"*{ext}" for ext in ProjectStore.SUPPORTED_EXTENSIONS]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(extensions)})"
 
         path, _ = QFileDialog.getOpenFileName(
@@ -949,7 +876,8 @@ class WorkbenchPage(ScrollArea, Base):
             return
 
         # 检查是否包含支持的文件
-        source_files = DataManager.get().collect_source_files(path)
+        store = ProjectStore()
+        source_files = store.collect_source_files(path)
 
         if not source_files:
             self.emit(
@@ -1043,7 +971,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 显示项目详情
         try:
-            info = DataManager.get().get_project_preview(path)
+            info = ProjectStore.get_project_preview(path)
             self.project_info_panel = ProjectInfoPanel(self.open_project_card)
             self.project_info_panel.set_info(info)
             self.open_project_card.layout().insertWidget(
@@ -1144,15 +1072,16 @@ class WorkbenchPage(ScrollArea, Base):
 
         if success:
             try:
-                DataManager.get().load_project(path)
+                # result is db
+                db = result
 
-                # 更新最近打开列表（避免 UI 层直接触达数据库实例）
+                # 更新最近打开列表
                 config = Config().load()
-                name = DataManager.get().get_meta("name", "")
-                if not isinstance(name, str) or not name:
-                    name = Path(path).stem
-                config.add_recent_project(path, name)
+                config.add_recent_project(path, db.get_meta("name", ""))
                 config.save()
+
+                # 加载工程
+                StorageContext.get().load(path)
 
                 self.reset_new_project_state()
             except Exception as e:
@@ -1196,7 +1125,7 @@ class WorkbenchPage(ScrollArea, Base):
             )
 
             # 加载工程
-            DataManager.get().load_project(self.selected_lg_path)
+            StorageContext.get().load(self.selected_lg_path)
 
             # 更新最近打开列表
             config = Config().load()

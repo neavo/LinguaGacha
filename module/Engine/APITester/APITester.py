@@ -7,7 +7,6 @@ from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 
-
 class APITester(Base):
     """API 测试器 - 直接使用新的 Model 数据结构"""
 
@@ -20,13 +19,10 @@ class APITester(Base):
     # 接口测试开始事件
     def api_test_start(self, event: Base.Event, data: dict) -> None:
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
+            self.emit(Base.Event.TOAST, {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().api_tester_running,
+            })
         else:
             threading.Thread(
                 target=self.api_test_start_target,
@@ -44,25 +40,19 @@ class APITester(Base):
         # 通过 model_id 获取模型配置
         model_id = data.get("model_id")
         if not model_id:
-            self.emit(
-                Base.Event.APITEST_DONE,
-                {
-                    "result": False,
-                    "result_msg": "Missing model_id",
-                },
-            )
+            self.emit(Base.Event.APITEST_DONE, {
+                "result": False,
+                "result_msg": "Missing model_id",
+            })
             Engine.get().set_status(Base.TaskStatus.IDLE)
             return
 
         model = config.get_model(model_id)
         if model is None:
-            self.emit(
-                Base.Event.APITEST_DONE,
-                {
-                    "result": False,
-                    "result_msg": "Model not found",
-                },
-            )
+            self.emit(Base.Event.APITEST_DONE, {
+                "result": False,
+                "result_msg": "Model not found",
+            })
             Engine.get().set_status(Base.TaskStatus.IDLE)
             return
 
@@ -87,7 +77,7 @@ class APITester(Base):
             messages = [
                 {
                     "role": "user",
-                    "content": '将下面的日文文本翻译成中文，按输入格式返回结果：{"0":"魔導具師ダリヤはうつむかない"}',
+                    "content": "将下面的日文文本翻译成中文，按输入格式返回结果：{\"0\":\"魔導具師ダリヤはうつむかない\"}",
                 },
             ]
 
@@ -121,40 +111,30 @@ class APITester(Base):
                 self.warning(Localizer.get().log_api_test_fail)
             elif response_think == "":
                 success.append(key)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
-                )
+                self.info(Localizer.get().engine_response_result + "\n" + response_result)
             else:
                 success.append(key)
                 self.info(Localizer.get().engine_response_think + "\n" + response_think)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
-                )
+                self.info(Localizer.get().engine_response_result + "\n" + response_result)
 
         # 测试结果
         result_msg = (
-            Localizer.get()
-            .api_tester_result.replace("{COUNT}", str(len(api_keys)))
-            .replace("{SUCCESS}", str(len(success)))
-            .replace("{FAILURE}", str(len(failure)))
+            Localizer.get().api_tester_result.replace("{COUNT}", str(len(api_keys)))
+                                             .replace("{SUCCESS}", str(len(success)))
+                                             .replace("{FAILURE}", str(len(failure)))
         )
         self.print("")
         self.info(result_msg)
 
         # 失败密钥
         if len(failure) > 0:
-            self.warning(
-                Localizer.get().api_tester_result_failure + "\n" + "\n".join(failure)
-            )
+            self.warning(Localizer.get().api_tester_result_failure + "\n" + "\n".join(failure))
 
         # 发送完成事件
-        self.emit(
-            Base.Event.APITEST_DONE,
-            {
-                "result": len(failure) == 0,
-                "result_msg": result_msg,
-            },
-        )
+        self.emit(Base.Event.APITEST_DONE, {
+            "result": len(failure) == 0,
+            "result_msg": result_msg,
+        })
 
         # 更新运行状态
         Engine.get().set_status(Base.TaskStatus.IDLE)

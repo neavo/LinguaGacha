@@ -15,10 +15,10 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.QualityRuleManager import QualityRuleManager
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
@@ -58,28 +58,28 @@ class CustomPromptPage(QWidget, Base):
     # 获取自定义提示词数据
     def get_custom_prompt_data(self) -> str:
         if self.language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh()
-        return DataManager.get().get_custom_prompt_en()
+            return QualityRuleManager.get().get_custom_prompt_zh()
+        return QualityRuleManager.get().get_custom_prompt_en()
 
     # 保存自定义提示词数据
     def set_custom_prompt_data(self, data: str) -> None:
         if self.language == BaseLanguage.Enum.ZH:
-            DataManager.get().set_custom_prompt_zh(data)
+            QualityRuleManager.get().set_custom_prompt_zh(data)
         else:
-            DataManager.get().set_custom_prompt_en(data)
+            QualityRuleManager.get().set_custom_prompt_en(data)
 
     # 获取启用状态
     def get_custom_prompt_enable(self) -> bool:
         if self.language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh_enable()
-        return DataManager.get().get_custom_prompt_en_enable()
+            return QualityRuleManager.get().get_custom_prompt_zh_enable()
+        return QualityRuleManager.get().get_custom_prompt_en_enable()
 
     # 设置启用状态
     def set_custom_prompt_enable(self, enable: bool) -> None:
         if self.language == BaseLanguage.Enum.ZH:
-            DataManager.get().set_custom_prompt_zh_enable(enable)
+            QualityRuleManager.get().set_custom_prompt_zh_enable(enable)
         else:
-            DataManager.get().set_custom_prompt_en_enable(enable)
+            QualityRuleManager.get().set_custom_prompt_en_enable(enable)
 
     # 工程加载后刷新数据
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
@@ -173,14 +173,14 @@ class CustomPromptPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_saved,
+                    "message": Localizer.get().quality_save_toast,
                 },
             )
 
         parent.add_action(
             Action(
                 FluentIcon.SAVE,
-                Localizer.get().save,
+                Localizer.get().quality_save,
                 parent,
                 triggered=triggered,
             ),
@@ -267,7 +267,7 @@ class CustomPromptPage(QWidget, Base):
 
         def reset() -> None:
             message_box = MessageBox(
-                Localizer.get().alert, Localizer.get().confirm_reset_data, window
+                Localizer.get().alert, Localizer.get().quality_reset_alert, window
             )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
@@ -288,7 +288,7 @@ class CustomPromptPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_reset,
+                    "message": Localizer.get().quality_reset_toast,
                 },
             )
 
@@ -432,7 +432,7 @@ class CustomPromptPage(QWidget, Base):
             menu.addAction(
                 Action(
                     FluentIcon.ERASE_TOOL,
-                    Localizer.get().reset,
+                    Localizer.get().quality_reset,
                     triggered=reset,
                 )
             )

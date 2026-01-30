@@ -1,168 +1,93 @@
-from typing import Any
+import json
+import os
+from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QAbstractItemView
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
+from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QTableWidgetItem
+from PyQt5.QtWidgets import QVBoxLayout
+from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import TableWidget
 from qfluentwidgets import TransparentPushButton
-from qfluentwidgets import qconfig
 
 from base.Base import Base
-from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
-from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
-from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
-from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
-from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+from module.QualityRuleManager import QualityRuleManager
+from module.TableManager import TableManager
+from widget.CommandBarCard import CommandBarCard
+from widget.LineEditMessageBox import LineEditMessageBox
+from widget.SearchCard import SearchCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
-class GlossaryPage(QualityRulePageBase):
-    PRESET_DIR_NAME: str = "glossary"
-    DEFAULT_PRESET_CONFIG_KEY: str = "glossary_default_preset"
-    SKIP_SUCCESS_TOAST_ON_MERGE: bool = True
-
-    CASE_COLUMN_INDEX: int = 3
-    CASE_COLUMN_WIDTH: int = 80
-    CASE_ICON_SIZE: int = 24
-    CASE_ICON_INNER_SIZE: int = 12
-    CASE_ICON_BORDER_WIDTH: int = 1
-    CASE_ICON_LUMA_THRESHOLD: float = 0.75
-    CASE_ICON_SPACING: int = 4
-
-    QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.GLOSSARY.value}
-    QUALITY_META_KEYS: set[str] = {"glossary_enable"}
+class GlossaryPage(QWidget, Base):
+    BASE: str = "glossary"
 
     def __init__(self, text: str, window: FluentWindow) -> None:
-        super().__init__(text, window)
-
-        self.rule_icon_renderer = QualityRuleIconRenderer(
-            icon_size=self.CASE_ICON_SIZE,
-            inner_size=self.CASE_ICON_INNER_SIZE,
-            border_width=self.CASE_ICON_BORDER_WIDTH,
-            luma_threshold=self.CASE_ICON_LUMA_THRESHOLD,
-            icon_spacing=self.CASE_ICON_SPACING,
-        )
+        super().__init__(window)
+        self.setObjectName(text.replace(" ", "-"))
 
         # 载入并保存默认配置
         config = Config().load().save()
 
-        self.add_widget_head(self.root, config, window)
-        self.setup_split_body(self.root)
-        self.setup_table_columns()
-        self.setup_split_foot(self.root)
-        self.add_command_bar_actions(config, window)
+        # 设置主容器
+        self.root = QVBoxLayout(self)
+        self.root.setSpacing(8)
+        self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
-        qconfig.themeChanged.connect(self.on_theme_changed)
-        self.destroyed.connect(self.disconnect_theme_signals)
+        # 添加控件
+        self.add_widget_head(self.root, config, window)
+        self.add_widget_body(self.root, config, window)
+        self.add_widget_foot(self.root, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
-        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+        self.subscribe(Base.Event.GLOSSARY_REFRESH, self.glossary_refresh)
+        # 工程加载后刷新数据（从 .lg 文件读取）
+        self.subscribe(Base.Event.PROJECT_LOADED, self.glossary_refresh)
+        # 工程卸载后清空数据
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-    # ==================== DataManager 适配 ====================
+    def get_glossary_data(self) -> list[dict[str, str]]:
+        return QualityRuleManager.get().get_glossary()
 
-    def load_entries(self) -> list[dict[str, Any]]:
-        return DataManager.get().get_glossary()
-
-    def save_entries(self, entries: list[dict[str, Any]]) -> None:
-        DataManager.get().set_glossary(entries)
+    def set_glossary_data(self, data: list[dict[str, str]]) -> None:
+        QualityRuleManager.get().set_glossary(data)
 
     def get_glossary_enable(self) -> bool:
-        return DataManager.get().get_glossary_enable()
+        return QualityRuleManager.get().get_glossary_enable()
 
     def set_glossary_enable(self, enable: bool) -> None:
-        DataManager.get().set_glossary_enable(enable)
+        QualityRuleManager.get().set_glossary_enable(enable)
 
-    # ==================== SplitPageBase hooks ====================
-
-    def create_edit_panel(self, parent) -> GlossaryEditPanel:
-        panel = GlossaryEditPanel(parent)
-        panel.add_requested.connect(
-            lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
-        )
-        panel.save_requested.connect(self.save_current_entry)
-        panel.delete_requested.connect(self.delete_current_entry)
-        return panel
-
-    def create_empty_entry(self) -> dict[str, Any]:
-        return {
-            "src": "",
-            "dst": "",
-            "info": "",
-            "case_sensitive": False,
-        }
-
-    def get_list_headers(self) -> tuple[str, ...]:
-        return (
-            Localizer.get().table_col_source,
-            Localizer.get().table_col_translation,
-            Localizer.get().glossary_page_table_row_04,
-            Localizer.get().table_col_rule,
-        )
-
-    def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
-        # 规则列使用图标展示，不需要文本
-        return (
-            str(entry.get("src", "")),
-            str(entry.get("dst", "")),
-            str(entry.get("info", "")),
-            "",
-        )
-
-    def get_search_columns(self) -> tuple[int, ...]:
-        return (0, 1, 2)
-
-    def update_table_cell(
-        self,
-        row: int,
-        col: int,
-        entry: dict[str, Any] | None,
-        editable: bool,
-    ) -> bool:
-        if col != self.CASE_COLUMN_INDEX:
-            return False
-
-        case_sensitive = False
-        if entry is not None:
-            case_sensitive = bool(entry.get("case_sensitive", False))
-        self.update_case_cell_item(row, case_sensitive, editable)
-        return True
-
-    def on_entries_reloaded(self) -> None:
+    def glossary_refresh(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.set_data(self.get_glossary_data())
+        self.table_manager.sync()
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(self.get_glossary_enable())
-        if hasattr(self, "search_card"):
-            self.search_card.reset_state()
 
-    # ==================== 事件 ====================
-
-    def delete_current_entry(self) -> None:
-        if self.current_index < 0 or self.current_index >= len(self.entries):
-            return
-        self.delete_entries_by_rows([self.current_index])
-
-    def on_project_unloaded_ui(self) -> None:
+    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.table_manager.reset()
+        self.table_manager.sync()
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(True)
 
-    # ==================== UI：头部 ====================
-
-    def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
-        del window
-
+    def add_widget_head(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: SwitchButtonCard) -> None:
             widget.get_switch_button().setChecked(self.get_glossary_enable())
 
@@ -170,288 +95,659 @@ class GlossaryPage(QualityRulePageBase):
             self.set_glossary_enable(widget.get_switch_button().isChecked())
 
         self.switch_card = SwitchButtonCard(
-            Localizer.get().app_glossary_page,
-            Localizer.get().glossary_page_head_content,
+            getattr(Localizer.get(), f"{self.BASE}_page_head_title"),
+            getattr(Localizer.get(), f"{self.BASE}_page_head_content"),
             init=init,
             checked_changed=checked_changed,
         )
         parent.addWidget(self.switch_card)
 
-    def setup_table_columns(self) -> None:
-        self.table.setIconSize(QSize(self.CASE_ICON_SIZE, self.CASE_ICON_SIZE))
-        self.table.setItemDelegate(
-            QualityRuleIconDelegate(
-                self.table,
-                icon_column_index=self.CASE_COLUMN_INDEX,
-                icon_size=self.CASE_ICON_SIZE,
-            )
-        )
-        header = self.table.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(
-                self.CASE_COLUMN_INDEX, QHeaderView.ResizeMode.Fixed
-            )
-        self.table.setColumnWidth(self.CASE_COLUMN_INDEX, self.CASE_COLUMN_WIDTH)
-
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.on_table_context_menu)
-
-    def disconnect_theme_signals(self) -> None:
-        try:
-            qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except (TypeError, RuntimeError):
-            pass
-
-    def on_theme_changed(self) -> None:
-        self.rule_icon_renderer.clear_cache()
-        self.refresh_table()
-
-    def get_case_tooltip(self, case_sensitive: bool) -> str:
-        return (
-            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_enabled}"
-            if case_sensitive
-            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_disabled}"
-        )
-
-    def update_case_cell_item(
-        self, row: int, case_sensitive: bool, editable: bool
+    def add_widget_body(
+        self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        item = self.table.item(row, self.CASE_COLUMN_INDEX)
-        if item is None:
-            item = QTableWidgetItem()
-            self.table.setItem(row, self.CASE_COLUMN_INDEX, item)
+        def item_changed(item: QTableWidgetItem) -> None:
+            if self.table_manager.get_updating():
+                return
 
-        item.setText("")
-        item.setFont(self.ui_font)
-        item.setData(
-            Qt.ItemDataRole.TextAlignmentRole,
-            int(Qt.AlignmentFlag.AlignCenter),
-        )
+            new_row = item.row()
+            new_entry = self.table_manager.get_entry_by_row(new_row)
 
-        if editable:
-            item.setData(
-                Qt.ItemDataRole.DecorationRole,
-                self.rule_icon_renderer.get_pixmap(
-                    self.table, [RuleIconSpec(FluentIcon.FONT, case_sensitive)]
-                ),
-            )
-            item.setToolTip(self.get_case_tooltip(case_sensitive))
-        else:
-            item.setData(Qt.ItemDataRole.DecorationRole, None)
-            item.setToolTip("")
+            # 确保 new_entry 和其 'src' 键存在且为字符串
+            new_src_raw = new_entry.get("src")
+            if not isinstance(new_src_raw, str):
+                return
+            new_src = new_src_raw.strip()
+            if not new_src:
+                return
 
-        if editable:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            flags |= Qt.ItemFlag.ItemIsSelectable
-            item.setFlags(flags)
-        else:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            item.setFlags(flags)
+            for old_row in range(self.table.rowCount()):
+                if new_row == old_row:
+                    continue
 
-    def get_selected_entry_rows(self) -> list[int]:
-        selection_model = self.table.selectionModel()
-        if selection_model is None:
-            return []
-        rows = [index.row() for index in selection_model.selectedRows()]
-        return sorted({row for row in rows if 0 <= row < len(self.entries)})
+                old_entry = self.table_manager.get_entry_by_row(old_row)
+                # 确保 old_entry 和其 'src' 键存在且为字符串
+                old_entry_raw = old_entry.get("src")
+                if not isinstance(old_entry_raw, str):
+                    continue
+                old_src = old_entry_raw.strip()
+                if not old_src:
+                    continue
 
-    def on_table_context_menu(self, position: QPoint) -> None:
-        rows = self.get_selected_entry_rows()
-        if not rows:
-            return
+                if new_src == old_src:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "duration": 5000,
+                            "message": (
+                                f"{Localizer.get().quality_merge_duplication}"
+                                f"\n{json.dumps(new_entry, indent=None, ensure_ascii=False)}"
+                                f"\n{json.dumps(old_entry, indent=None, ensure_ascii=False)}"
+                            ),
+                        },
+                    )
+                    return  # 发现重复后立即返回，避免不必要的处理
 
-        menu = RoundMenu("", self.table)
-        menu.addAction(
-            Action(
-                FluentIcon.DELETE,
-                Localizer.get().delete,
-                triggered=lambda: self.run_with_unsaved_guard(
-                    self.delete_selected_entries
-                ),
-            )
-        )
-        menu.addSeparator()
+            # 清空数据，再从表格加载数据
+            self.table_manager.set_data([])
+            self.table_manager.append_data_from_table()
+            self.table_manager.sync()
 
-        case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)
-        case_menu.setIcon(FluentIcon.FONT)
-        case_menu.addAction(
-            Action(
-                FluentIcon.COMPLETED,
-                Localizer.get().enable,
-                triggered=lambda: self.run_with_unsaved_guard(
-                    lambda: self.set_case_sensitive_for_selection(True)
-                ),
-            )
-        )
-        case_menu.addAction(
-            Action(
-                FluentIcon.REMOVE_FROM,
-                Localizer.get().disable,
-                triggered=lambda: self.run_with_unsaved_guard(
-                    lambda: self.set_case_sensitive_for_selection(False)
-                ),
-            )
-        )
-        menu.addMenu(case_menu)
+            # 保存数据
+            self.set_glossary_data(self.table_manager.get_data())
 
-        viewport = self.table.viewport()
-        if viewport is None:
-            return
-        menu.exec(viewport.mapToGlobal(position))
-
-    def delete_selected_entries(self) -> None:
-        self.delete_entries_by_rows(self.get_selected_entry_rows())
-
-    def confirm_delete_entries(self, count: int) -> bool:
-        message = Localizer.get().quality_delete_confirm.replace("{COUNT}", str(count))
-        message_box = MessageBox(Localizer.get().confirm, message, self.main_window)
-        message_box.yesButton.setText(Localizer.get().confirm)
-        message_box.cancelButton.setText(Localizer.get().cancel)
-        return bool(message_box.exec())
-
-    def delete_entries_by_rows(self, rows: list[int]) -> None:
-        if not rows:
-            return
-
-        unique_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
-        if not unique_rows:
-            return
-
-        if not self.confirm_delete_entries(len(unique_rows)):
-            return
-
-        deleted_set = set(unique_rows)
-        current_index = self.current_index
-
-        for row in sorted(unique_rows, reverse=True):
-            del self.entries[row]
-
-        self.current_index = -1
-
-        try:
-            self.cleanup_empty_entries()
-            self.save_entries(self.entries)
-            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
-            self.ignore_next_quality_rule_update = True
-        except Exception as e:
-            self.error("Failed to delete rules", e)
+            # 弹出提示
             self.emit(
                 Base.Event.TOAST,
                 {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_save_toast,
                 },
             )
-            return
 
-        self.refresh_table()
+        def custom_context_menu_requested(position: QPoint) -> None:
+            def delete_row_with_save() -> None:
+                self.table_manager.delete_row()
+                self.table_manager.sync()
+                self.set_glossary_data(self.table_manager.get_data())
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().quality_save_toast,
+                    },
+                )
 
-        if self.entries:
-            if current_index >= 0 and current_index not in deleted_set:
-                shift = sum(1 for row in deleted_set if row < current_index)
-                next_index = current_index - shift
+            menu = RoundMenu("", self.table)
+            menu.addAction(
+                Action(
+                    FluentIcon.DELETE,
+                    Localizer.get().quality_delete_row,
+                    triggered=delete_row_with_save,
+                )
+            )
+            menu.exec(self.table.mapToGlobal(position))
+
+        self.table = TableWidget(self)
+        parent.addWidget(self.table)
+
+        # 设置表格属性
+        self.table.setColumnCount(4)
+        self.table.setBorderVisible(False)
+        self.table.setSelectRightClickedRow(True)
+
+        # 设置表格列宽
+        self.table.setColumnWidth(0, 300)
+        self.table.setColumnWidth(1, 300)
+        self.table.setColumnWidth(2, 200)
+
+        horizontal_header = self.table.horizontalHeader()
+        if horizontal_header:
+            horizontal_header.setStretchLastSection(True)
+            horizontal_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+
+        # 设置水平表头并隐藏垂直表头
+        vertical_header = self.table.verticalHeader()
+        if vertical_header:
+            vertical_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.table.setHorizontalHeaderLabels(
+            (
+                getattr(Localizer.get(), f"{self.BASE}_page_table_row_01"),
+                getattr(Localizer.get(), f"{self.BASE}_page_table_row_02"),
+                getattr(Localizer.get(), f"{self.BASE}_page_table_row_04"),
+                getattr(Localizer.get(), f"{self.BASE}_page_table_row_03"),
+            )
+        )
+
+        # 向表格更新数据
+        self.table_manager = TableManager(
+            type=TableManager.Type.GLOSSARY,
+            data=[],
+            table=self.table,
+        )
+        self.table_manager.sync()
+
+        if horizontal_header:
+            horizontal_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+        # 注册事件
+        self.table.itemChanged.connect(item_changed)
+        self.table.customContextMenuRequested.connect(custom_context_menu_requested)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+    # 底部
+    def add_widget_foot(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        # 创建搜索栏
+        self.search_card = SearchCard(self)
+        self.search_card.setVisible(False)
+        parent.addWidget(self.search_card)
+
+        def back_clicked(widget: SearchCard) -> None:
+            self.search_card.setVisible(False)
+            self.command_bar_card.setVisible(True)
+
+        self.search_card.on_back_clicked(back_clicked)
+
+        def next_clicked(widget: SearchCard) -> None:
+            keyword: str = widget.get_line_edit().text().strip()
+
+            row: int = self.table_manager.search(keyword, self.table.currentRow())
+            if row > -1:
+                self.table.setCurrentCell(row, 0)
             else:
-                next_index = min(deleted_set)
-            if next_index >= len(self.entries):
-                next_index = len(self.entries) - 1
-            self.select_row(next_index)
-        else:
-            self.apply_selection(-1)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().alert_no_data,
+                    },
+                )
+
+        self.search_card.on_next_clicked(next_clicked)
+
+        # 创建命令栏
+        self.command_bar_card = CommandBarCard()
+        parent.addWidget(self.command_bar_card)
+
+        self.command_bar_card.set_minimum_width(640)
+        self.add_command_bar_action_import(self.command_bar_card, config, window)
+        self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_search(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_preset(self.command_bar_card, config, window)
+        self.command_bar_card.add_stretch(1)
+        self.add_command_bar_action_kg(self.command_bar_card, config, window)
+        self.add_command_bar_action_wiki(self.command_bar_card, config, window)
+
+    # 导入
+    def add_command_bar_action_import(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def triggered() -> None:
+            # 选择文件
+            path, _ = QFileDialog.getOpenFileName(
+                None,
+                Localizer.get().quality_select_file,
+                "",
+                Localizer.get().quality_select_file_type,
+            )
+            if not isinstance(path, str) or path == "":
+                return
+
+            # 从文件加载数据
+            data = self.table_manager.get_data()
+            self.table_manager.reset()
+            self.table_manager.set_data(data)
+            self.table_manager.append_data_from_file(path)
+            self.table_manager.sync()
+
+            # 保存数据
+            self.set_glossary_data(self.table_manager.get_data())
+
+            # 弹出提示
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_import_toast,
+                },
+            )
+
+        parent.add_action(
+            Action(
+                FluentIcon.DOWNLOAD,
+                Localizer.get().quality_import,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    # 导出
+    def add_command_bar_action_export(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def triggered() -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                window,
+                Localizer.get().quality_select_file,
+                "",
+                Localizer.get().quality_select_file_type,
+            )
+            if not isinstance(path, str) or path == "":
+                return None
+
+            # 导出文件
+            self.table_manager.export(str(Path(path).with_suffix("")))
+
+            # 弹出提示
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_export_toast,
+                },
+            )
+
+        parent.add_action(
+            Action(
+                FluentIcon.SHARE,
+                Localizer.get().quality_export,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    # 搜索
+    def add_command_bar_action_search(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def triggered() -> None:
+            self.search_card.setVisible(True)
+            self.command_bar_card.setVisible(False)
+
+        parent.add_action(
+            Action(
+                FluentIcon.SEARCH, Localizer.get().search, parent, triggered=triggered
+            ),
+        )
+
+    # 预设
+    def add_command_bar_action_preset(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def get_preset_paths() -> tuple[list[dict], list[dict]]:
+            builtin_dir = f"resource/preset/{__class__.BASE}/{Localizer.get_app_language().lower()}"
+            user_dir = f"resource/preset/{__class__.BASE}/user"
+
+            builtin_presets = []
+            user_presets = []
+
+            # 加载内置预设
+            if os.path.exists(builtin_dir):
+                for f in os.listdir(builtin_dir):
+                    if f.lower().endswith(".json"):
+                        path = os.path.join(builtin_dir, f).replace("\\", "/")
+                        builtin_presets.append(
+                            {
+                                "name": f[:-5],
+                                "path": path,
+                                "type": "builtin",
+                            }
+                        )
+
+            # 加载用户预设
+            if not os.path.exists(user_dir):
+                os.makedirs(user_dir)
+
+            for f in os.listdir(user_dir):
+                if f.lower().endswith(".json"):
+                    path = os.path.join(user_dir, f).replace("\\", "/")
+                    user_presets.append(
+                        {
+                            "name": f[:-5],
+                            "path": path,
+                            "type": "user",
+                        }
+                    )
+
+            return builtin_presets, user_presets
+
+        def set_default_preset(item: dict) -> None:
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            current_config.glossary_default_preset = item["path"]
+            current_config.save()
+
+            # 更新当前页面的配置对象
+            config.glossary_default_preset = item["path"]
 
             self.emit(
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_saved,
+                    "message": Localizer.get().quality_set_default_preset_success,
                 },
             )
 
-        if self.reload_pending:
-            self.reload_entries()
+        def cancel_default_preset() -> None:
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            current_config.glossary_default_preset = ""
+            current_config.save()
 
-    def set_case_sensitive_for_rows(self, rows: list[int], enabled: bool) -> None:
-        if not rows:
-            return
+            # 更新当前页面的配置对象
+            config.glossary_default_preset = ""
 
-        changed_rows: list[int] = []
-        for row in rows:
-            if row < 0 or row >= len(self.entries):
-                continue
-            current_value = bool(self.entries[row].get("case_sensitive", False))
-            if current_value == enabled:
-                continue
-            self.entries[row]["case_sensitive"] = enabled
-            changed_rows.append(row)
-
-        if not changed_rows:
-            return
-
-        try:
-            self.save_entries(self.entries)
-            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
-            self.ignore_next_quality_rule_update = True
-        except Exception as e:
-            self.error("Failed to save rules", e)
             self.emit(
                 Base.Event.TOAST,
                 {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_cancel_default_preset_success,
                 },
             )
-            return
 
-        self.table.blockSignals(True)
-        self.table.setUpdatesEnabled(False)
-        for row in sorted(set(changed_rows)):
-            self.refresh_table_row(row)
-        self.table.setUpdatesEnabled(True)
-        self.table.blockSignals(False)
+        def reset() -> None:
+            message_box = MessageBox(
+                Localizer.get().alert, Localizer.get().quality_reset_alert, window
+            )
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
 
-        if self.current_index in changed_rows and 0 <= self.current_index < len(
-            self.entries
-        ):
-            self.edit_panel.bind_entry(
-                self.entries[self.current_index], self.current_index + 1
+            if not message_box.exec():
+                return
+
+            # 重置数据
+            self.table_manager.reset()
+            self.table_manager.set_data([])
+            self.table_manager.sync()
+
+            # 保存数据
+            self.set_glossary_data(self.table_manager.get_data())
+
+            # 弹出提示
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_reset_toast,
+                },
             )
 
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().toast_saved,
-            },
+        def apply_preset(path: str) -> None:
+            # 从文件加载数据
+            data = self.table_manager.get_data()
+            self.table_manager.reset()
+            self.table_manager.set_data(data)
+            self.table_manager.append_data_from_file(path)
+            self.table_manager.sync()
+
+            # 保存数据
+            self.set_glossary_data(self.table_manager.get_data())
+
+            # 弹出提示
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_import_toast,
+                },
+            )
+
+        def save_preset() -> None:
+            def on_save(dialog: LineEditMessageBox, text: str) -> None:
+                if not text.strip():
+                    return
+
+                path = f"resource/preset/{__class__.BASE}/user/{text.strip()}.json"
+                user_dir = os.path.dirname(path)
+                if not os.path.exists(user_dir):
+                    os.makedirs(user_dir)
+
+                if os.path.exists(path):
+                    message_box = MessageBox(
+                        Localizer.get().warning,
+                        Localizer.get().alert_preset_already_exists,
+                        window,
+                    )
+                    message_box.yesButton.setText(Localizer.get().confirm)
+                    message_box.cancelButton.setText(Localizer.get().cancel)
+
+                    if not message_box.exec():
+                        return
+
+                try:
+                    data = self.table_manager.get_data()
+                    with open(path, "w", encoding="utf-8") as writer:
+                        writer.write(json.dumps(data, indent=4, ensure_ascii=False))
+
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().quality_save_preset_success,
+                        },
+                    )
+                    dialog.accept()
+                except Exception as e:
+                    self.error("Failed to save preset", e)
+
+            dialog = LineEditMessageBox(
+                window, Localizer.get().quality_save_preset_title, on_save
+            )
+            dialog.exec()
+
+        def rename_preset(item: dict) -> None:
+            def on_rename(dialog: LineEditMessageBox, text: str) -> None:
+                if not text.strip():
+                    return
+
+                new_path = os.path.join(
+                    os.path.dirname(item["path"]), text.strip() + ".json"
+                )
+                if os.path.exists(new_path):
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().alert_file_already_exists,
+                        },
+                    )
+                    return
+
+                try:
+                    os.rename(item["path"], new_path)
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().task_success,
+                        },
+                    )
+                    dialog.accept()
+                except Exception as e:
+                    self.error("Failed to rename preset", e)
+
+            dialog = LineEditMessageBox(window, Localizer.get().rename, on_rename)
+            dialog.get_line_edit().setText(item["name"])
+            dialog.exec()
+
+        def delete_preset(item: dict) -> None:
+            message_box = MessageBox(
+                Localizer.get().warning,
+                Localizer.get().alert_delete_preset.format(NAME=item["name"]),
+                window,
+            )
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
+
+            if message_box.exec():
+                try:
+                    os.remove(item["path"])
+
+                    # 如果删除的是默认预设，则清除配置
+                    current_config = Config().load()
+                    if current_config.glossary_default_preset == item["path"]:
+                        current_config.glossary_default_preset = ""
+                        current_config.save()
+                        # 更新当前页面的配置对象
+                        config.glossary_default_preset = ""
+
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().task_success,
+                        },
+                    )
+                except Exception as e:
+                    self.error("Failed to delete preset", e)
+
+        def triggered() -> None:
+            menu = RoundMenu("", widget)
+
+            # 重置
+            menu.addAction(
+                Action(
+                    FluentIcon.ERASE_TOOL,
+                    Localizer.get().quality_reset,
+                    triggered=reset,
+                )
+            )
+
+            # 保存
+            menu.addAction(
+                Action(
+                    FluentIcon.SAVE,
+                    Localizer.get().quality_save_preset,
+                    triggered=save_preset,
+                )
+            )
+
+            menu.addSeparator()
+
+            builtin_presets, user_presets = get_preset_paths()
+
+            # 内置预设
+            for item in builtin_presets:
+                sub_menu = RoundMenu(item["name"], menu)
+                sub_menu.setIcon(FluentIcon.FOLDER)
+                sub_menu.addAction(
+                    Action(
+                        FluentIcon.DOWNLOAD,
+                        Localizer.get().quality_import,
+                        triggered=partial(apply_preset, item["path"]),
+                    )
+                )
+
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                if config.glossary_default_preset == item["path"]:
+                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.FLAG,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.TAG,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
+                menu.addMenu(sub_menu)
+
+            # 如果需要分隔符
+            if builtin_presets and user_presets:
+                menu.addSeparator()
+
+            # 用户预设
+            for item in user_presets:
+                sub_menu = RoundMenu(item["name"], menu)
+                sub_menu.setIcon(FluentIcon.FOLDER_ADD)
+
+                # 应用
+                sub_menu.addAction(
+                    Action(
+                        FluentIcon.DOWNLOAD,
+                        Localizer.get().quality_import,
+                        triggered=partial(apply_preset, item["path"]),
+                    )
+                )
+
+                # 重命名
+                sub_menu.addAction(
+                    Action(
+                        FluentIcon.EDIT,
+                        Localizer.get().rename,
+                        triggered=partial(rename_preset, item),
+                    )
+                )
+
+                # 删除
+                sub_menu.addAction(
+                    Action(
+                        FluentIcon.DELETE,
+                        Localizer.get().quality_delete_preset,
+                        triggered=partial(delete_preset, item),
+                    )
+                )
+
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                if config.glossary_default_preset == item["path"]:
+                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.CLEAR_SELECTION,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            FluentIcon.CERTIFICATE,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
+                menu.addMenu(sub_menu)
+
+            # 计算弹出位置（向上弹出）
+            # 1. 获取按钮全局坐标 (左上角)
+            global_pos = widget.mapToGlobal(QPoint(0, 0))
+
+            # 2. 向上弹出动画
+            # 使用 PULL_UP 动画类型，并传入按钮顶部坐标作为基准点
+            # 库会自动计算菜单位置：y = pos.y() - h + 13
+            # 我们稍微调整基准点以避免菜单覆盖按钮
+            menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
+
+        widget = parent.add_action(
+            Action(
+                FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                Localizer.get().quality_preset,
+                parent=parent,
+                triggered=triggered,
+            )
         )
 
-        if self.reload_pending:
-            self.reload_entries()
-
-    def set_case_sensitive_for_selection(self, enabled: bool) -> None:
-        self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
-
-    # ==================== UI：命令栏 ====================
-
-    def add_command_bar_actions(self, config: Config, window: FluentWindow) -> None:
-        self.command_bar_card.set_minimum_width(640)
-
-        self.add_command_bar_action_import(window)
-        self.add_command_bar_action_export(window)
-        self.command_bar_card.add_separator()
-        self.add_command_bar_action_search()
-        self.command_bar_card.add_separator()
-        self.add_command_bar_action_preset(config, window)
-        self.command_bar_card.add_stretch(1)
-        self.add_command_bar_action_kg()
-        self.add_command_bar_action_wiki()
-
-    def add_command_bar_action_kg(self) -> None:
+    # KG
+    def add_command_bar_action_kg(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
 
@@ -459,4 +755,15 @@ class GlossaryPage(QualityRulePageBase):
             FluentIcon.ROBOT, Localizer.get().glossary_page_kg
         )
         push_button.clicked.connect(connect)
-        self.command_bar_card.add_widget(push_button)
+        parent.add_widget(push_button)
+
+    # WiKi
+    def add_command_bar_action_wiki(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def connect() -> None:
+            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
+
+        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
+        push_button.clicked.connect(connect)
+        parent.add_widget(push_button)
