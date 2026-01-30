@@ -99,7 +99,7 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         button_layout.setSpacing(0)
 
         self.btn_add = TransparentPushButton(self.button_container)
-        self.btn_add.setIcon(FluentIcon.ADD)
+        self.btn_add.setIcon(FluentIcon.ADD_TO)
         self.btn_add.setText(Localizer.get().add)
         self.btn_add.clicked.connect(lambda: self.add_requested.emit())
         self.apply_button_style(self.btn_add)

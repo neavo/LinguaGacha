@@ -461,7 +461,7 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level="minimal",
-                    include_thoughts=True,
+                    include_thoughts=False,
                 )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -495,7 +495,7 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinkingBudget=0,
-                    include_thoughts=True,
+                    include_thoughts=False,
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(

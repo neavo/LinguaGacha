@@ -251,7 +251,6 @@ class ProofreadingPage(QWidget, Base):
 
         self.edit_panel = ProofreadingEditPanel(self)
         self.edit_panel.save_requested.connect(self.on_edit_save_requested)
-        self.edit_panel.restore_requested.connect(self.on_edit_restore_requested)
         self.edit_panel.copy_src_requested.connect(self.on_copy_src_clicked)
         self.edit_panel.copy_dst_requested.connect(self.on_copy_dst_clicked)
         self.edit_panel.retranslate_requested.connect(self.on_retranslate_clicked)
@@ -1036,10 +1035,6 @@ class ProofreadingPage(QWidget, Base):
             self.item_saved.emit(item, success)
 
         threading.Thread(target=task, daemon=True).start()
-
-    def on_edit_restore_requested(self) -> None:
-        if self.current_item is None:
-            return
 
     def on_item_saved_ui(self, item: Item, success: bool) -> None:
         if not success:

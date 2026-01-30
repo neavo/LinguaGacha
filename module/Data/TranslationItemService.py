@@ -44,7 +44,10 @@ class TranslationItemService:
             parsed_items: list[Item] = []
 
             asset_paths = db.get_all_asset_paths()
-            for rel_path in ChunkLimiter.iter(asset_paths, every=self.YIELD_EVERY):
+            for rel_path in ChunkLimiter.iter(
+                asset_paths,
+                every=self.YIELD_EVERY_FOR_ASSETS,
+            ):
                 compressed = db.get_asset(rel_path)
                 if not compressed:
                     continue

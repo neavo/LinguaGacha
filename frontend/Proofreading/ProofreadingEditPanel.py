@@ -54,7 +54,6 @@ class ProofreadingEditPanel(QWidget):
 
     # 信号定义
     save_requested = pyqtSignal(object, str)
-    restore_requested = pyqtSignal()
     copy_src_requested = pyqtSignal(object)
     copy_dst_requested = pyqtSignal(object)
     retranslate_requested = pyqtSignal(object)
@@ -246,16 +245,6 @@ class ProofreadingEditPanel(QWidget):
         button_layout = QHBoxLayout(self.button_container)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(0)
-
-        self.btn_restore = TransparentPushButton(self.button_container)
-        self.btn_restore.setIcon(FluentIcon.HISTORY)
-        self.btn_restore.setText(Localizer.get().proofreading_page_restore)
-        self.btn_restore.clicked.connect(self.on_restore_clicked)
-        self.btn_restore.setEnabled(False)
-        self.apply_fixed_button_style(self.btn_restore)
-        button_layout.addWidget(self.btn_restore, 1)
-
-        button_layout.addWidget(self.build_vertical_divider(self.button_container))
 
         self.btn_save = TransparentPushButton(self.button_container)
         self.btn_save.setIcon(FluentIcon.SAVE)
@@ -477,7 +466,6 @@ class ProofreadingEditPanel(QWidget):
         is_readonly = self.dst_text.isReadOnly()
         # 只读模式下按钮始终禁用；非只读时根据是否有修改决定
         self.btn_save.setEnabled(has_changes and not is_readonly)
-        self.btn_restore.setEnabled(has_changes and not is_readonly)
 
     def on_dst_text_changed(self) -> None:
         if not self.current_item:
@@ -487,18 +475,6 @@ class ProofreadingEditPanel(QWidget):
         # 输入过程只标记 dirty，不做重检查；离开编辑框后再异步计算。
         self.glossary_status_dirty = True
         self.set_status_tag_visible(self.glossary_status_tag, False)
-
-    def on_restore_clicked(self) -> None:
-        if not self.current_item:
-            return
-        self.dst_text.blockSignals(True)
-        self.dst_text.setPlainText(self.saved_text)
-        self.dst_text.blockSignals(False)
-        self.update_button_states()
-        self.glossary_status_dirty = True
-        self.set_status_tag_visible(self.glossary_status_tag, False)
-        QTimer.singleShot(0, self.start_glossary_status_compute)
-        self.restore_requested.emit()
 
     def on_save_clicked(self) -> None:
         if not self.current_item:

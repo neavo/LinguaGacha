@@ -32,7 +32,6 @@ class GlossaryPage(QualityRulePageBase):
     PRESET_DIR_NAME: str = "glossary"
     DEFAULT_PRESET_CONFIG_KEY: str = "glossary_default_preset"
     SKIP_SUCCESS_TOAST_ON_MERGE: bool = True
-    USE_DEFAULT_PRESET_ON_RESET: bool = False
 
     CASE_COLUMN_INDEX: int = 3
     CASE_COLUMN_WIDTH: int = 80
@@ -284,7 +283,7 @@ class GlossaryPage(QualityRulePageBase):
         case_menu.setIcon(FluentIcon.FONT)
         case_menu.addAction(
             Action(
-                FluentIcon.CHECKBOX,
+                FluentIcon.COMPLETED,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(True)
@@ -293,7 +292,7 @@ class GlossaryPage(QualityRulePageBase):
         )
         case_menu.addAction(
             Action(
-                FluentIcon.CLOSE,
+                FluentIcon.REMOVE_FROM,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(False)

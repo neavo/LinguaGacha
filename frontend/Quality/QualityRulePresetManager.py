@@ -3,6 +3,7 @@ import os
 from functools import partial
 from typing import TYPE_CHECKING
 
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
@@ -12,7 +13,6 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from module.Config import Config
-from module.Data.QualityRuleIO import QualityRuleIO
 from module.Localizer.Localizer import Localizer
 from widget.LineEditMessageBox import LineEditMessageBox
 
@@ -33,14 +33,12 @@ class QualityRulePresetManager:
         config: Config,
         page: "QualityRulePageBase",
         window: FluentWindow,
-        reset_to_default: bool,
     ) -> None:
         self.preset_dir_name: str = preset_dir_name
         self.default_preset_config_key: str = default_preset_config_key
         self.config: Config = config
         self.page: "QualityRulePageBase" = page
         self.window: FluentWindow = window
-        self.reset_to_default: bool = reset_to_default
 
     def get_preset_paths(self) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         builtin_dir = os.path.join(
@@ -205,24 +203,22 @@ class QualityRulePresetManager:
         if not message_box.exec():
             return
 
-        if self.reset_to_default:
-            default_preset = getattr(self.config, self.default_preset_config_key, "")
-            if default_preset and os.path.exists(default_preset):
-                self.page.entries = QualityRuleIO.load_rules_from_file(default_preset)
-                self.show_toast(
-                    Base.ToastType.SUCCESS,
-                    Localizer.get().quality_default_preset_loaded_toast.format(
-                        NAME=os.path.basename(default_preset)
-                    ),
-                )
-            else:
-                self.page.entries = []
-        else:
-            self.page.entries = []
+        # 按产品语义：重置=清空。
+        # 以 DataManager/DB 的最终结果为准刷新 UI（避免短暂显示“旧数据”）。
+        self.page.entries = []
 
-        self.page.save_entries(self.page.entries)
-        self.page.refresh_table()
-        self.page.select_row(0 if self.page.entries else -1)
+        try:
+            self.page.ignore_next_quality_rule_update = True
+            self.page.save_entries(self.page.entries)
+        except Exception as e:
+            self.page.error("Failed to reset rules", e)
+            self.show_toast(Base.ToastType.ERROR, Localizer.get().task_failed)
+            return
+
+        # 清空选择再 reload，保证编辑面板也会绑定到最新数据。
+        self.page.table.clearSelection()
+        self.page.apply_selection(-1)
+        self.page.reload_entries()
         self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_reset_toast)
 
     def build_preset_menu(self, parent_widget: QWidget) -> RoundMenu:
@@ -231,7 +227,9 @@ class QualityRulePresetManager:
             Action(
                 FluentIcon.ERASE_TOOL,
                 Localizer.get().quality_reset,
-                triggered=lambda: self.page.run_with_unsaved_guard(self.reset),
+                # 重置是破坏性操作：即使当前编辑项未保存/不合法，也应允许直接重置。
+                # RoundMenu 点击会在鼠标释放时触发，这里延迟一帧避免确认框被“穿透点击”自动确认/取消。
+                triggered=lambda checked=False: QTimer.singleShot(0, self.reset),
             )
         )
         menu.addAction(

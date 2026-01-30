@@ -55,9 +55,6 @@ class QualityRulePageBase(QWidget, Base):
     # 子类可覆盖：合并提示时是否仍显示保存成功
     SKIP_SUCCESS_TOAST_ON_MERGE: bool = False
 
-    # 子类可覆盖：重置时是否加载默认预设
-    USE_DEFAULT_PRESET_ON_RESET: bool = True
-
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
@@ -537,6 +534,7 @@ class QualityRulePageBase(QWidget, Base):
                     "message": error_msg,
                 },
             )
+
             if self.pending_revert:
                 self.pending_revert()
             self.pending_action = None
@@ -841,7 +839,6 @@ class QualityRulePageBase(QWidget, Base):
             config=config,
             page=self,
             window=window,
-            reset_to_default=self.USE_DEFAULT_PRESET_ON_RESET,
         )
 
         def triggered() -> None:

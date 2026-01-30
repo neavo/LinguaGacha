@@ -2,8 +2,8 @@ import re
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QSize
 from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
@@ -255,7 +255,7 @@ class TextReplacementPage(QualityRulePageBase):
         regex_menu.setIcon(FluentIcon.IOT)
         regex_menu.addAction(
             Action(
-                FluentIcon.CHECKBOX,
+                FluentIcon.COMPLETED,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_regex_for_selection(True)
@@ -264,7 +264,7 @@ class TextReplacementPage(QualityRulePageBase):
         )
         regex_menu.addAction(
             Action(
-                FluentIcon.CLOSE,
+                FluentIcon.REMOVE_FROM,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_regex_for_selection(False)
@@ -277,7 +277,7 @@ class TextReplacementPage(QualityRulePageBase):
         case_menu.setIcon(FluentIcon.FONT)
         case_menu.addAction(
             Action(
-                FluentIcon.CHECKBOX,
+                FluentIcon.COMPLETED,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(True)
@@ -286,7 +286,7 @@ class TextReplacementPage(QualityRulePageBase):
         )
         case_menu.addAction(
             Action(
-                FluentIcon.CLOSE,
+                FluentIcon.REMOVE_FROM,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(False)

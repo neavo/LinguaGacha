@@ -16,6 +16,8 @@ from rich.progress import TaskID
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
@@ -27,8 +29,6 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 from module.Utils.ChunkLimiter import ChunkLimiter
@@ -36,7 +36,7 @@ from module.Utils.ChunkLimiter import ChunkLimiter
 
 # 翻译器
 class Translator(Base):
-    SUBMIT_YIELD_EVERY = 32  # 批量提交时让出时间片
+    SUBMIT_YIELD_EVERY = 64  # 每批提交任务数量
 
     def __init__(self) -> None:
         super().__init__()

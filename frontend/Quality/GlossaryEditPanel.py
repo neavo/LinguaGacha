@@ -1,9 +1,10 @@
 from typing import Any
+
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import CardWidget
 from qfluentwidgets import CaptionLabel
+from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
@@ -121,7 +122,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
         button_layout.setSpacing(0)
 
         self.btn_add = TransparentPushButton(self.button_container)
-        self.btn_add.setIcon(FluentIcon.ADD)
+        self.btn_add.setIcon(FluentIcon.ADD_TO)
         self.btn_add.setText(Localizer.get().add)
         self.btn_add.clicked.connect(lambda: self.add_requested.emit())
         self.apply_button_style(self.btn_add)
