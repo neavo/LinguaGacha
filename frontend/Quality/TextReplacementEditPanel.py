@@ -1,11 +1,15 @@
 from typing import Any
 
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QShortcut
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FluentIcon
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
 
@@ -121,12 +125,21 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         self.btn_save.setText(Localizer.get().save)
         self.btn_save.clicked.connect(lambda: self.save_requested.emit())
         self.apply_button_style(self.btn_save)
+        self.btn_save.installEventFilter(
+            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
+        )
+        self.btn_save.setToolTip("Ctrl+S")
         button_layout.addWidget(self.btn_save, 1)
 
         editor_layout.addWidget(self.button_container)
         content_layout.addWidget(self.editor_card, 1)
 
         layout.addWidget(self.content_widget, 1)
+
+        # 添加快捷键
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_shortcut)
+
         self.clear()
 
         qconfig.themeChanged.connect(self.on_theme_changed)
@@ -189,6 +202,10 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         del regex
         del case_sensitive
         self.update_button_states()
+
+    def on_save_shortcut(self) -> None:
+        if self.btn_save.isEnabled():
+            self.btn_save.click()
 
     def has_unsaved_changes(self) -> bool:
         if self.saved_entry is None:

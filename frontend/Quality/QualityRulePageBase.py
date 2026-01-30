@@ -521,8 +521,16 @@ class QualityRulePageBase(QWidget, Base):
         self.refresh_table()
 
     def save_current_entry(self) -> None:
+        # 无选中项时，在末尾插入新条目
         if self.current_index < 0 or self.current_index >= len(self.entries):
-            return
+            entry = self.edit_panel.get_current_entry()
+            src = str(entry.get("src", "")).strip()
+            if not src:
+                # 空 src 不创建条目
+                return
+
+            self.entries.append(entry)
+            self.current_index = len(self.entries) - 1
 
         entry = self.edit_panel.get_current_entry()
         ok, error_msg = self.validate_entry(entry)

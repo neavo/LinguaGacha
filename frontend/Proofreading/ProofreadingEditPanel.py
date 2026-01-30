@@ -8,8 +8,10 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QShortcut
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -252,6 +254,10 @@ class ProofreadingEditPanel(QWidget):
         self.btn_save.clicked.connect(self.on_save_clicked)
         self.btn_save.setEnabled(False)
         self.apply_fixed_button_style(self.btn_save)
+        self.btn_save.installEventFilter(
+            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
+        )
+        self.btn_save.setToolTip("Ctrl+S")
         button_layout.addWidget(self.btn_save, 1)
 
         button_layout.addWidget(self.build_vertical_divider(self.button_container))
@@ -271,6 +277,10 @@ class ProofreadingEditPanel(QWidget):
         content_layout.addWidget(self.editor_card, 1)
 
         layout.addWidget(self.content_widget, 1)
+
+        # 添加快捷键
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_shortcut)
 
         # 初始为空态：保留文本框可见，但强制只读与禁用写操作入口。
         self.clear()
@@ -480,6 +490,10 @@ class ProofreadingEditPanel(QWidget):
         if not self.current_item:
             return
         self.save_requested.emit(self.current_item, self.get_current_text())
+
+    def on_save_shortcut(self) -> None:
+        if self.btn_save.isEnabled():
+            self.btn_save.click()
 
     def on_dst_focus_out(self) -> None:
         """译文框焦点离开后触发重检查（不做保存）。"""
