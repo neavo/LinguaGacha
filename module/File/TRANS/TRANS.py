@@ -1,32 +1,25 @@
 import itertools
 import json
 import os
-import time
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.File.TRANS.KAG import KAG
 from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.Storage.AssetStore import AssetStore
-from module.Storage.PathStore import PathStore
-from module.Storage.StorageContext import StorageContext
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class TRANS(Base):
-    YIELD_EVERY = 512
-
     def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
         self.config = config
-        self.source_language: BaseLanguage.Enum = config.source_language
-        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
@@ -68,26 +61,31 @@ class TRANS(Base):
             return items
 
         files: dict[str, dict] = files_raw
-        yield_every = self.YIELD_EVERY
-        parsed_count = 0
         for path, entry in files.items():
             tags_list = entry.get("tags", [])
             data_list = entry.get("data", [])
             context_list = entry.get("context", [])
             parameters_list = entry.get("parameters", [])
 
-            for tag, data, context, parameter in itertools.zip_longest(
-                tags_list if tags_list is not None else [],
-                data_list if data_list is not None else [],
-                context_list if context_list is not None else [],
-                parameters_list if parameters_list is not None else [],
-                fillvalue=None,
+            for tag, data, context, parameter in ChunkLimiter.iter(
+                itertools.zip_longest(
+                    tags_list if tags_list is not None else [],
+                    data_list if data_list is not None else [],
+                    context_list if context_list is not None else [],
+                    parameters_list if parameters_list is not None else [],
+                    fillvalue=None,
+                ),
             ):
                 # 处理可能为 None 的情况
                 tag_item: list[str] = tag if tag is not None else []
                 data_item: list[str] = data if data is not None else []
                 context_item: list[str] = context if context is not None else []
-                parameter_item: list[str] = parameter if parameter is not None else []
+                parameter_item_raw = parameter if parameter is not None else []
+                parameter_item: list[dict[str, str]] = (
+                    [v for v in parameter_item_raw if isinstance(v, dict)]
+                    if isinstance(parameter_item_raw, list)
+                    else []
+                )
 
                 # 检查并添加数据
                 src, dst, tag_final, status, skip_internal_filter = processor.check(
@@ -113,26 +111,19 @@ class TRANS(Base):
                         }
                     )
                 )
-                parsed_count += 1
-                if yield_every > 0 and parsed_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免大文件解析时 UI 假死
-                    time.sleep(0)
 
         # 去重
         if self.config.deduplication_in_trans:
             translation: dict[str, str] = {}
-            dedup_count = 0
-            for item in [v for v in items if v.get_status() == Base.ProjectStatus.NONE]:
+            for item in ChunkLimiter.iter(
+                [v for v in items if v.get_status() == Base.ProjectStatus.NONE]
+            ):
                 src = item.get_src()
                 dst = item.get_dst()
                 if src not in translation:
                     translation[src] = dst
                 else:
                     item.set_status(Base.ProjectStatus.DUPLICATED)
-                dedup_count += 1
-                if yield_every > 0 and dedup_count % yield_every == 0:
-                    # WHY: 释放 GIL，避免去重阶段阻塞 UI
-                    time.sleep(0)
 
         return items
 
@@ -157,20 +148,17 @@ class TRANS(Base):
                 tag_group.setdefault(item.get_tag(), []).append(item)
 
             # 获取输出目录
-            output_path = PathStore.get_translated_path()
+            output_path = DataManager.get().get_translated_path()
 
             # 数据处理
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             # 从工程 assets 获取原始文件内容
-            db = StorageContext.get().get_db()
-            if db is None:
+            decompressed = DataManager.get().get_asset_decompressed(rel_path)
+            if decompressed is None:
                 continue
-            compressed = db.get_asset(rel_path)
-            if compressed is None:
-                continue
-            original_content = AssetStore.decompress(compressed).decode("utf-8-sig")
+            original_content = decompressed.decode("utf-8-sig")
             json_data = json.loads(original_content)
 
             with open(abs_path, "w", encoding="utf-8") as writer:
@@ -206,7 +194,7 @@ class TRANS(Base):
                         src = item.get_src()
                         dst = item.get_dst()
                         if src in translation:
-                            item.set_dst(translation.get(src))
+                            item.set_dst(translation[src])
 
                 # 处理数据
                 path: str = ""
@@ -214,7 +202,7 @@ class TRANS(Base):
                     tags_out: list[list[str]] = []
                     data_out: list[list[str]] = []
                     context_out: list[list[str]] = []
-                    parameters_out: list[list[str]] = []
+                    parameters_out: list[list[dict[str, str]]] = []
                     for item in tag_group.get(path, []):
                         data_out.append([item.get_src(), item.get_dst()])
 
@@ -230,7 +218,12 @@ class TRANS(Base):
                             Base.ProjectStatus.EXCLUDED,
                             Base.ProjectStatus.PROCESSED_IN_PAST,
                         ):
-                            parameters_out.append(extra_field.get("parameter", []))
+                            parameter_raw = extra_field.get("parameter", [])
+                            parameters_out.append(
+                                [v for v in parameter_raw if isinstance(v, dict)]
+                                if isinstance(parameter_raw, list)
+                                else []
+                            )
                         # 否则，判断与计算分区翻译功能参数
                         else:
                             parameters_out.append(

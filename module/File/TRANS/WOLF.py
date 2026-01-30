@@ -1,5 +1,6 @@
 import re
 import itertools
+from typing import Pattern
 
 from module.File.TRANS.NONE import NONE
 from model.Item import Item
@@ -8,7 +9,7 @@ from model.Item import Item
 class WOLF(NONE):
     TEXT_TYPE: str = Item.TextType.WOLF
 
-    WHITELIST_ADDRESS: tuple[re.Pattern] = (
+    WHITELIST_ADDRESS: tuple[Pattern[str], ...] = (
         re.compile(r"/Database/stringArgs/0$", flags=re.IGNORECASE),
         re.compile(r"/CommonEvent/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
         re.compile(r"/CommonEventByName/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
@@ -19,7 +20,7 @@ class WOLF(NONE):
         re.compile(r"/StringCondition/stringArgs/\d+$", flags=re.IGNORECASE),
     )
 
-    BLACKLIST_ADDRESS: tuple[re.Pattern] = (
+    BLACKLIST_ADDRESS: tuple[Pattern[str], ...] = (
         re.compile(r"/Database/stringArgs/\d*[1-9]\d*$", flags=re.IGNORECASE),
         re.compile(r"/CommonEvent/stringArgs/0$", flags=re.IGNORECASE),
         re.compile(r"/CommonEventByName/stringArgs/0$", flags=re.IGNORECASE),
@@ -38,7 +39,9 @@ class WOLF(NONE):
         self.block_text: set[str] = self.generate_block_text(self.project)
 
     # 过滤
-    def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
+    def filter(
+        self, src: str, path: str, tag: list[str], context: list[str]
+    ) -> list[bool]:
         if any(v in src for v in WOLF.BLACKLIST_EXT):
             return [True] * len(context)
 
@@ -81,31 +84,51 @@ class WOLF(NONE):
 
         # 处理数据
         entry: dict = {}
-        files: dict = project.get("files", {})
+        files_raw = project.get("files", {})
+        if not isinstance(files_raw, dict):
+            return result
+
+        files: dict[str, dict] = files_raw
         for _, entry in files.items():
-            for data, context in itertools.zip_longest(
-                entry.get("data", []), entry.get("context", []), fillvalue=None
+            data_list_raw = entry.get("data", [])
+            context_list_raw = entry.get("context", [])
+            data_list: list = data_list_raw if isinstance(data_list_raw, list) else []
+            context_list: list = (
+                context_list_raw if isinstance(context_list_raw, list) else []
+            )
+            for data_raw, context_raw in itertools.zip_longest(
+                data_list,
+                context_list,
+                fillvalue=None,
             ):
                 # 处理可能为 None 的情况
-                data: list[str] = data if data is not None else []
-                context: list[str] = context if context is not None else []
+                data_items: list[str] = (
+                    [v for v in data_raw if isinstance(v, str)]
+                    if isinstance(data_raw, list)
+                    else []
+                )
+                context_items: list[str] = (
+                    [v for v in context_raw if isinstance(v, str)]
+                    if isinstance(context_raw, list)
+                    else []
+                )
 
                 # 如果数据为空，则跳过
-                if len(data) == 0 or not isinstance(data[0], str):
+                if len(data_items) == 0 or not isinstance(data_items[0], str):
                     continue
 
                 # 判断是否需要屏蔽
                 # 不需要屏蔽 - common/110.json/commands/29/Database/stringArgs/0
                 # 需要屏蔽   - common/110.json/commands/29/Database/stringArgs/1
-                context: str = "\n".join(context)
+                context_text: str = "\n".join(context_items)
                 if (
                     re.search(
                         r"/Database/stringArgs/\d*[1-9]\d*$",
-                        context,
+                        context_text,
                         flags=re.IGNORECASE,
                     )
                     is not None
                 ):
-                    result.add(data[0])
+                    result.add(data_items[0])
 
         return result

@@ -665,7 +665,7 @@ class TranslationPage(QWidget, Base):
             # 弹框让用户确认
             message_box = MessageBox(
                 Localizer.get().confirm,
-                Localizer.get().translation_page_export_confirm,
+                Localizer.get().export_translation_confirm,
                 window,
             )
             message_box.yesButton.setText(Localizer.get().confirm)
@@ -679,7 +679,7 @@ class TranslationPage(QWidget, Base):
         self.action_export = parent.add_action(
             Action(
                 FluentIcon.SHARE,
-                Localizer.get().translation_page_export,
+                Localizer.get().export_translation,
                 parent,
                 triggered=triggered,
             ),
@@ -741,7 +741,7 @@ class TranslationPage(QWidget, Base):
         self.action_reset = parent.add_action(
             Action(
                 FluentIcon.ERASE_TOOL,
-                Localizer.get().translation_page_reset,
+                Localizer.get().reset,
                 parent,
                 triggered=triggered,
             ),

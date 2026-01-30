@@ -8,8 +8,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.Storage.ProjectStore import ProjectStore
-from module.Storage.StorageContext import StorageContext
+from module.Data.DataManager import DataManager
 
 
 class CLIManager(Base):
@@ -95,7 +94,7 @@ class CLIManager(Base):
             self.info(f"Creating project at: {project_path}")
             try:
                 # Create project
-                ProjectStore().create(args.input, project_path)
+                DataManager.get().create_project(args.input, project_path)
             except Exception as e:
                 self.error(f"Failed to create project: {e}")
                 self.exit()
@@ -109,7 +108,7 @@ class CLIManager(Base):
                 return True
 
             try:
-                StorageContext.get().load(project_path)
+                DataManager.get().load_project(project_path)
                 self.info(f"Project loaded: {project_path}")
             except Exception as e:
                 self.error(f"Failed to load project: {e}")
@@ -144,7 +143,7 @@ class CLIManager(Base):
 
         # Determine Translation Mode
         mode = Base.TranslationMode.NEW
-        project_status = StorageContext.get().get_project_status()
+        project_status = DataManager.get().get_project_status()
 
         if args.reset:
             mode = Base.TranslationMode.RESET

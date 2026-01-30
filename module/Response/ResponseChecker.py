@@ -5,9 +5,10 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
-from module.QualityRuleManager import QualityRuleManager
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
@@ -24,7 +25,7 @@ class ResponseChecker(Base):
         LINE_ERROR_SIMILARITY = "LINE_ERROR_SIMILARITY"
         LINE_ERROR_DEGRADATION = "LINE_ERROR_DEGRADATION"
 
-    LINE_ERROR: tuple[StrEnum] = (
+    LINE_ERROR: tuple[Error, ...] = (
         Error.LINE_ERROR_KANA,
         Error.LINE_ERROR_HANGEUL,
         Error.LINE_ERROR_EMPTY_LINE,
@@ -38,19 +39,25 @@ class ResponseChecker(Base):
     # 退化检测规则
     RE_DEGRADATION = re.compile(r"(.{1,3})\1{16,}", flags=re.IGNORECASE)
 
-    def __init__(self, config: Config, items: list[Item]) -> None:
+    def __init__(
+        self,
+        config: Config,
+        items: list[Item],
+        quality_snapshot: QualityRuleSnapshot | None = None,
+    ) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
         self.config = config
+        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
 
     # 检查
     def check(
         self, srcs: list[str], dsts: list[str], text_type: Item.TextType
-    ) -> list[str]:
+    ) -> list[Error]:
         # 数据解析失败
-        if len(dsts) == 0 or all(v == "" or v == None for v in dsts):
+        if len(dsts) == 0 or all(v == "" or v is None for v in dsts):
             return [__class__.Error.FAIL_DATA] * len(srcs)
 
         # 当翻译任务为单条目任务，且此条目已经是第二次单独重试时，直接返回，不进行后续判断
@@ -87,26 +94,37 @@ class ResponseChecker(Base):
                 continue
 
             # 原文内容符合规则过滤条件时，判断为正确翻译
-            if RuleFilter.filter(src) == True:
+            if RuleFilter.filter(src):
                 checks.append(__class__.Error.NONE)
                 continue
 
             # 原文内容符合语言过滤条件时，判断为正确翻译
-            if LanguageFilter.filter(src, self.config.source_language) == True:
+            if LanguageFilter.filter(src, self.config.source_language):
                 checks.append(__class__.Error.NONE)
                 continue
 
             # 当原文中不包含重复文本但是译文中包含重复文本时，判断为 退化
             if (
-                __class__.RE_DEGRADATION.search(src) == None
-                and __class__.RE_DEGRADATION.search(dst) != None
+                __class__.RE_DEGRADATION.search(src) is None
+                and __class__.RE_DEGRADATION.search(dst) is not None
             ):
                 checks.append(__class__.Error.LINE_ERROR_DEGRADATION)
                 continue
 
             # 排除代码保护规则覆盖的文本以后再继续进行检查
-            rule: re.Pattern = TextProcessor(self.config, None).get_re_sample(
-                custom=QualityRuleManager.get().get_text_preserve_enable(),
+            processor = TextProcessor(
+                self.config,
+                None,
+                quality_snapshot=self.quality_snapshot,
+            )
+            custom_enabled = (
+                self.quality_snapshot.text_preserve_mode
+                == DataManager.TextPreserveMode.CUSTOM
+                if self.quality_snapshot is not None
+                else DataManager.get().get_text_preserve_enable()
+            )
+            rule: re.Pattern | None = processor.get_re_sample(
+                custom=custom_enabled,
                 text_type=text_type,
             )
 

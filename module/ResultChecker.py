@@ -1,14 +1,14 @@
 from enum import StrEnum
-import time
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.QualityRuleManager import QualityRuleManager
+from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class WarningType(StrEnum):
@@ -23,8 +23,6 @@ class WarningType(StrEnum):
 
 
 class ResultChecker(Base):
-    YIELD_EVERY = 512
-
     def __init__(self, config: Config) -> None:
         super().__init__()
 
@@ -35,8 +33,8 @@ class ResultChecker(Base):
 
     def prepare_glossary_data(self) -> list[dict]:
         """预处理术语表数据"""
-        glossary_items = QualityRuleManager.get().get_glossary()
-        if not QualityRuleManager.get().get_glossary_enable() or not glossary_items:
+        glossary_items = DataManager.get().get_glossary()
+        if not DataManager.get().get_glossary_enable() or not glossary_items:
             return []
 
         return [
@@ -69,8 +67,8 @@ class ResultChecker(Base):
             pre_rules
             if pre_rules is not None
             else (
-                QualityRuleManager.get().get_pre_replacement()
-                if QualityRuleManager.get().get_pre_replacement_enable()
+                DataManager.get().get_pre_replacement()
+                if DataManager.get().get_pre_replacement_enable()
                 else []
             )
         )
@@ -84,8 +82,8 @@ class ResultChecker(Base):
             post_rules
             if post_rules is not None
             else (
-                QualityRuleManager.get().get_post_replacement()
-                if QualityRuleManager.get().get_post_replacement_enable()
+                DataManager.get().get_post_replacement()
+                if DataManager.get().get_post_replacement_enable()
                 else []
             )
         )
@@ -181,24 +179,22 @@ class ResultChecker(Base):
         通过一次性提取规则缓存，将复杂度从 O(N*M) 降至 O(N+M)。
         """
         warning_map: dict[int, list[WarningType]] = {}
-        yield_every = self.YIELD_EVERY
-        checked_count = 0
 
         # 1. 在循环外部一次性准备所有规则数据
         prepared_glossary = self.prepare_glossary_data()
         pre_rules = (
-            QualityRuleManager.get().get_pre_replacement()
-            if QualityRuleManager.get().get_pre_replacement_enable()
+            DataManager.get().get_pre_replacement()
+            if DataManager.get().get_pre_replacement_enable()
             else []
         )
         post_rules = (
-            QualityRuleManager.get().get_post_replacement()
-            if QualityRuleManager.get().get_post_replacement_enable()
+            DataManager.get().get_post_replacement()
+            if DataManager.get().get_post_replacement_enable()
             else []
         )
 
         # 2. 紧凑循环处理
-        for item in items:
+        for item in ChunkLimiter.iter(items):
             warnings = self.check_item(
                 item,
                 glossary=prepared_glossary,
@@ -207,10 +203,6 @@ class ResultChecker(Base):
             )
             if warnings:
                 warning_map[id(item)] = warnings
-            checked_count += 1
-            if yield_every > 0 and checked_count % yield_every == 0:
-                # WHY: 释放 GIL，避免全量检查时 UI 假死
-                time.sleep(0)
 
         return warning_map
 

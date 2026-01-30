@@ -43,9 +43,9 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation import TranslationPage
 from frontend.WorkbenchPage import WorkbenchPage
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Storage.StorageContext import StorageContext
 from widget.ProgressToast import ProgressToast
 
 
@@ -124,7 +124,7 @@ class AppFluentWindow(FluentWindow, Base):
     def check_running_tasks(self) -> None:
         """检查是否有后台任务运行，动态更新'关闭项目'按钮状态"""
         # 如果没有加载项目，按钮本身就是隐藏的（由 update_navigation_status 控制），无需处理
-        if not StorageContext.get().is_loaded():
+        if not DataManager.get().is_loaded():
             return
 
         btn_widget = self.navigationInterface.widget("close_project_button")
@@ -144,7 +144,7 @@ class AppFluentWindow(FluentWindow, Base):
     def switchTo(self, interface: QWidget):
         """切换页面"""
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工作台
-        if not StorageContext.get().is_loaded() and interface != self.workbench_page:
+        if not DataManager.get().is_loaded() and interface != self.workbench_page:
             if self.is_project_dependent(interface):
                 # 记录用户的原始意图，以便加载后跳转
                 self.pending_target_interface = interface
@@ -159,7 +159,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     def update_navigation_status(self) -> None:
         """根据工程加载状态更新侧边栏导航项的可点击状态"""
-        is_loaded = StorageContext.get().is_loaded()
+        is_loaded = DataManager.get().is_loaded()
 
         # 只有这些页面在未加载工程时需要彻底禁用
         disable_names = [
@@ -367,7 +367,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 关闭当前项目
     def close_current_project(self) -> None:
-        if StorageContext.get().is_loaded():
+        if DataManager.get().is_loaded():
             # 二次确认
             box = MessageBox(
                 Localizer.get().warning,
@@ -378,7 +378,7 @@ class AppFluentWindow(FluentWindow, Base):
             box.cancelButton.setText(Localizer.get().cancel)
 
             if box.exec():
-                StorageContext.get().unload()
+                DataManager.get().unload_project()
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -538,7 +538,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.addSubInterface(
             BasicSettingsPage("basic_settings_page", self),
             FluentIcon.ZOOM,
-            Localizer.get().app_basic_settings_page,
+            Localizer.get().basic_settings,
             NavigationItemPosition.SCROLL,
         )
 
