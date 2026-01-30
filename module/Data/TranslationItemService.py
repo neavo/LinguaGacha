@@ -1,4 +1,4 @@
-import time
+from typing import Any
 
 from base.Base import Base
 from model.Item import Item
@@ -6,6 +6,7 @@ from module.Config import Config
 from module.Data.ProjectSession import ProjectSession
 from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class TranslationItemService:
@@ -31,11 +32,14 @@ class TranslationItemService:
                 db = self.session.db
                 if db is None:
                     return []
-                return [Item.from_dict(d) for d in db.get_all_items()]
+                items: list[dict[str, Any]] = db.get_all_items()
+
+            # 解锁后构造 Item，避免长时间占用状态锁
+            return [Item.from_dict(d) for d in items]
 
         if mode == Base.TranslationMode.RESET:
             file_manager = FileManager(config)
-            items: list[Item] = []
+            parsed_items: list[Item] = []
 
             with self.session.state_lock:
                 db = self.session.db
@@ -43,8 +47,7 @@ class TranslationItemService:
                     return []
                 asset_paths = db.get_all_asset_paths()
 
-            parsed_assets = 0
-            for rel_path in asset_paths:
+            for rel_path in ChunkLimiter.iter(asset_paths, every=self.YIELD_EVERY):
                 with self.session.state_lock:
                     db = self.session.db
                     if db is None:
@@ -59,15 +62,15 @@ class TranslationItemService:
                 except Exception:
                     continue
 
-                items.extend(file_manager.parse_asset(rel_path, content))
-                parsed_assets += 1
-                if self.YIELD_EVERY > 0 and parsed_assets % self.YIELD_EVERY == 0:
-                    time.sleep(0)
+                parsed_items.extend(file_manager.parse_asset(rel_path, content))
 
-            return items
+            return parsed_items
 
         with self.session.state_lock:
             db = self.session.db
             if db is None:
                 return []
-            return [Item.from_dict(d) for d in db.get_all_items()]
+            items: list[dict[str, Any]] = db.get_all_items()
+
+        # 解锁后构造 Item，避免长时间占用状态锁
+        return [Item.from_dict(d) for d in items]

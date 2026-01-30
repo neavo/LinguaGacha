@@ -37,8 +37,10 @@ class ItemService:
     def get_all_items(self) -> list[Item]:
         self.load_item_cache_if_needed()
         with self.session.state_lock:
-            cache = self.session.item_cache or []
-            return [Item.from_dict(d) for d in cache]
+            cache: list[dict[str, Any]] = list(self.session.item_cache or [])
+
+        # 解锁后构造 Item，避免长时间占用状态锁
+        return [Item.from_dict(d) for d in cache]
 
     def save_item(self, item: Item) -> int:
         item_dict = item.to_dict()

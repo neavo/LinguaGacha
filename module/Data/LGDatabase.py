@@ -2,7 +2,6 @@ import contextlib
 import json
 import sqlite3
 import threading
-import time
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import Any
 from typing import Generator
 
 from base.Base import Base
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class LGDatabase(Base):
@@ -27,7 +27,6 @@ class LGDatabase(Base):
 
     # 数据库版本号，用于未来的 schema 迁移
     SCHEMA_VERSION = 1
-    YIELD_EVERY = 512
 
     def __init__(self, db_path: str) -> None:
         super().__init__()
@@ -208,16 +207,10 @@ class LGDatabase(Base):
         with self.connection() as conn:
             cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
             result = []
-            yield_every = self.YIELD_EVERY
-            loaded_count = 0
-            for row in cursor:
+            for row in ChunkLimiter.iter(cursor):
                 data = json.loads(row["data"])
                 data["id"] = row["id"]
                 result.append(data)
-                loaded_count += 1
-                if yield_every > 0 and loaded_count % yield_every == 0:
-                    # 释放 GIL，避免大项目读取条目时 UI 假死
-                    time.sleep(0)
             return result
 
     def set_item(self, item: dict[str, Any]) -> int:
@@ -249,9 +242,7 @@ class LGDatabase(Base):
         with self.connection() as conn:
             conn.execute("DELETE FROM items")
             ids = []
-            yield_every = self.YIELD_EVERY
-            saved_count = 0
-            for item in items:
+            for item in ChunkLimiter.iter(items):
                 item_id = item.get("id")
                 data = {k: v for k, v in item.items() if k != "id"}
                 data_json = json.dumps(data, ensure_ascii=False)
@@ -267,10 +258,6 @@ class LGDatabase(Base):
                         "INSERT INTO items (data) VALUES (?)", (data_json,)
                     )
                     ids.append(cursor.lastrowid)
-                saved_count += 1
-                if yield_every > 0 and saved_count % yield_every == 0:
-                    # 释放 GIL，避免大批量写入时阻塞 UI
-                    time.sleep(0)
             conn.commit()
             return ids
 

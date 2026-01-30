@@ -1,5 +1,6 @@
 from base.Base import Base
 from model.Item import Item
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class ChunkGenerator:
@@ -39,42 +40,40 @@ class ChunkGenerator:
         chunk: list[Item] = []
         chunks: list[list[Item]] = []
         preceding_chunks: list[list[Item]] = []
-
-        for i, item in enumerate(items):
+        for i, item in ChunkLimiter.iter(enumerate(items)):
             # 跳过状态不是 未翻译 的数据
             if item.get_status() != Base.ProjectStatus.NONE:
                 skip = skip + 1
-                continue
-
-            # 每个片段的第一条不判断是否超限，以避免特别长的文本导致死循环
-            current_line_length = sum(
-                1 for line in item.get_src().splitlines() if line.strip()
-            )
-            current_token_length = item.get_token_count()
-
-            if len(chunk) == 0:
-                pass
-            # 如果 行数超限、Token 超限、数据来源跨文件，则结束此片段
-            elif (
-                line_length + current_line_length > line_limit
-                or token_length + current_token_length > input_token_threshold
-                or item.get_file_path() != chunk[-1].get_file_path()
-            ):
-                chunks.append(chunk)
-                preceding_chunks.append(
-                    cls.generate_preceding_chunk(
-                        items, chunk, i, skip, preceding_lines_threshold
-                    )
+            else:
+                # 每个片段的第一条不判断是否超限，以避免特别长的文本导致死循环
+                current_line_length = sum(
+                    1 for line in item.get_src().splitlines() if line.strip()
                 )
-                skip = 0
+                current_token_length = item.get_token_count()
 
-                chunk = []
-                line_length = 0
-                token_length = 0
+                if len(chunk) == 0:
+                    pass
+                # 如果 行数超限、Token 超限、数据来源跨文件，则结束此片段
+                elif (
+                    line_length + current_line_length > line_limit
+                    or token_length + current_token_length > input_token_threshold
+                    or item.get_file_path() != chunk[-1].get_file_path()
+                ):
+                    chunks.append(chunk)
+                    preceding_chunks.append(
+                        cls.generate_preceding_chunk(
+                            items, chunk, i, skip, preceding_lines_threshold
+                        )
+                    )
+                    skip = 0
 
-            chunk.append(item)
-            line_length = line_length + current_line_length
-            token_length = token_length + current_token_length
+                    chunk = []
+                    line_length = 0
+                    token_length = 0
+
+                chunk.append(item)
+                line_length = line_length + current_line_length
+                token_length = token_length + current_token_length
 
         # 如果还有剩余数据，则添加到列表中
         if len(chunk) > 0:

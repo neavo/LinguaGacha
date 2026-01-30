@@ -2,6 +2,7 @@ import dataclasses
 import re
 import threading
 from enum import StrEnum
+from functools import lru_cache
 from typing import Any
 from typing import ClassVar
 from typing import Self
@@ -13,6 +14,16 @@ from tiktoken_ext import openai_public
 
 from base.Base import Base
 from module.Text.TextBase import TextBase
+
+TOKEN_ENCODING_NAME = "o200k_base"
+TOKEN_COUNT_CACHE_MAXSIZE = 8192
+TOKEN_COUNT_CACHE_TEXT_LIMIT = 2048  # 超过此长度不进入全局缓存，避免内存膨胀
+TOKEN_ENCODING = tiktoken.get_encoding(TOKEN_ENCODING_NAME)
+
+
+@lru_cache(maxsize=TOKEN_COUNT_CACHE_MAXSIZE)
+def get_token_count_from_text(text: str) -> int:
+    return len(TOKEN_ENCODING.encode(text))
 
 
 @dataclasses.dataclass
@@ -61,6 +72,15 @@ class Item:
     # 线程锁
     lock: threading.Lock = dataclasses.field(
         init=False, repr=False, compare=False, default_factory=threading.Lock
+    )
+
+    # Token 计数缓存（不落库）
+    token_count_cache_src: str | None = dataclasses.field(
+        init=False, repr=False, compare=False, default=None
+    )
+
+    token_count_cache: int | None = dataclasses.field(
+        init=False, repr=False, compare=False, default=None
     )
 
     # WOLF
@@ -150,6 +170,8 @@ class Item:
     def set_src(self, src: str) -> None:
         with self.lock:
             self.src = src
+            self.token_count_cache = None
+            self.token_count_cache_src = None
 
     # 获取译文
     def get_dst(self) -> str:
@@ -268,7 +290,27 @@ class Item:
 
     # 获取 Token 数量
     def get_token_count(self) -> int:
-        return len(tiktoken.get_encoding("o200k_base").encode(self.get_src()))
+        with self.lock:
+            cached_src = self.token_count_cache_src
+            cached_count = self.token_count_cache
+            src = self.src
+
+        if cached_count is not None and cached_src == src:
+            return cached_count
+
+        # 长文本跳过全局缓存，避免内存膨胀
+        if len(src) > TOKEN_COUNT_CACHE_TEXT_LIMIT:
+            token_count = len(TOKEN_ENCODING.encode(src))
+        else:
+            token_count = get_token_count_from_text(src)
+
+        # 仅在源文本未变化时回写缓存，避免竞态误缓存
+        with self.lock:
+            if self.src == src:
+                self.token_count_cache_src = src
+                self.token_count_cache = token_count
+
+        return token_count
 
     # 获取第一个角色姓名原文
     def get_first_name_src(self) -> str | None:

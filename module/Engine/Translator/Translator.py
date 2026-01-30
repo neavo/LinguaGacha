@@ -4,6 +4,7 @@ import re
 import threading
 import time
 import webbrowser
+from collections.abc import Iterator
 from itertools import zip_longest
 from queue import PriorityQueue
 from typing import Optional
@@ -28,10 +29,13 @@ from module.PromptBuilder import PromptBuilder
 from module.Data.DataManager import DataManager
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 # 翻译器
 class Translator(Base):
+    SUBMIT_YIELD_EVERY = 32  # 批量提交时让出时间片
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -402,7 +406,7 @@ class Translator(Base):
 
             # 生成初始任务并加入队列
             initial_tasks = self.scheduler.generate_initial_tasks()
-            for task_item in initial_tasks:
+            for task_item in ChunkLimiter.iter(initial_tasks):
                 self.task_queue.put(task_item)
 
             # 更新任务的总行数
@@ -446,63 +450,38 @@ class Translator(Base):
                     max_workers=max_workers, thread_name_prefix=Engine.TASK_PREFIX
                 ) as executor:
                     # 消费者循环
-                    while not self.scheduler.should_stop(
-                        self.task_queue, self.active_task_count
+                    for queue_item in ChunkLimiter.iter(
+                        self.iter_queue_items_for_submit(task_limiter),
+                        every=self.SUBMIT_YIELD_EVERY,
                     ):
-                        # 检测是否需要停止任务
+                        # 再次检查停止状态，避免提交即将被取消的任务
                         if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                            task_limiter.release(None)
                             break
 
-                        try:
-                            # 尝试从队列获取任务 (阻塞式等待，提升响应性能)
-                            try:
-                                queue_item = self.task_queue.get(timeout=0.1)
-                            except Exception:
-                                continue
-
-                            # 流量限制
-                            if not task_limiter.acquire(
-                                lambda: Engine.get().get_status()
-                                == Base.TaskStatus.STOPPING
-                            ):
-                                break
-
-                            if not task_limiter.wait(
-                                lambda: Engine.get().get_status()
-                                == Base.TaskStatus.STOPPING
-                            ):
-                                break
-
-                            # 等待限流后再次检查停止状态，避免提交即将被取消的任务
-                            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                                break
-
-                            # 提交任务
-                            if queue_item.task is None:
-                                continue
-
-                            with self.db_lock:
-                                self.active_task_count += 1
-
-                            try:
-                                future = executor.submit(queue_item.task.start)
-                                future.add_done_callback(task_limiter.release)
-                                future.add_done_callback(
-                                    lambda fut,
-                                    q_item=queue_item: self.task_done_callback(
-                                        fut, pid, progress, q_item
-                                    )
-                                )
-                            except Exception as e:
-                                # 提交失败时，必须减少计数器，否则会导致死锁
-                                with self.db_lock:
-                                    self.active_task_count -= 1
-
-                                self.error("提交任务失败", e)
-                                task_limiter.release(None)  # 释放限流锁
-                        except Exception:
-                            time.sleep(0.1)
+                        task = queue_item.task
+                        if task is None:
+                            task_limiter.release(None)
                             continue
+
+                        with self.db_lock:
+                            self.active_task_count += 1
+
+                        try:
+                            future = executor.submit(task.start)
+                            future.add_done_callback(task_limiter.release)
+                            future.add_done_callback(
+                                lambda fut, q_item=queue_item: self.task_done_callback(
+                                    fut, pid, progress, q_item
+                                )
+                            )
+                        except Exception as e:
+                            # 提交失败时，必须减少计数器，否则会导致死锁
+                            with self.db_lock:
+                                self.active_task_count -= 1
+
+                            self.error("提交任务失败", e)
+                            task_limiter.release(None)  # 释放限流锁
 
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -736,6 +715,46 @@ class Translator(Base):
             "target_language": self.config.target_language,
         }
 
+    def iter_queue_items_for_submit(
+        self,
+        task_limiter: TaskLimiter,
+    ) -> Iterator[PriorityQueueItem]:
+        while not self.scheduler.should_stop(self.task_queue, self.active_task_count):
+            # 让出逻辑交给外层迭代器包装，避免重复计数
+            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                return
+
+            try:
+                # 尝试从队列获取任务 (阻塞式等待，提升响应性能)
+                try:
+                    queue_item = self.task_queue.get(timeout=0.1)
+                except Exception:
+                    continue
+
+                # 理论上不应出现，但这里确保不会触发限流器泄漏
+                if queue_item.task is None:
+                    continue
+
+                # 流量限制
+                if not task_limiter.acquire(
+                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
+                ):
+                    return
+
+                if not task_limiter.wait(
+                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
+                ):
+                    return
+
+                # 等待限流后再次检查停止状态，避免提交即将被取消的任务
+                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                    return
+
+                yield queue_item
+            except Exception:
+                time.sleep(0.1)
+                continue
+
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
         if items is None or len(items) == 0:
@@ -745,14 +764,14 @@ class Translator(Base):
         self.print("")
         count: int = 0
         with ProgressBar(transient=False) as progress:
-            pid = progress.new()
-            for item in items:
-                progress.update(pid, advance=1, total=len(items))
+            pid = progress.new(total=len(items))
+            for item in ChunkLimiter.iter(items):
                 if item.get_status() != Base.ProjectStatus.NONE:
-                    continue
-                if RuleFilter.filter(item.get_src()):
+                    pass
+                elif RuleFilter.filter(item.get_src()):
                     count = count + 1
                     item.set_status(Base.ProjectStatus.RULE_SKIPPED)
+                progress.update(pid, advance=1)
 
         # 打印日志
         self.info(
@@ -768,14 +787,14 @@ class Translator(Base):
         self.print("")
         count: int = 0
         with ProgressBar(transient=False) as progress:
-            pid = progress.new()
-            for item in items:
-                progress.update(pid, advance=1, total=len(items))
+            pid = progress.new(total=len(items))
+            for item in ChunkLimiter.iter(items):
                 if item.get_status() != Base.ProjectStatus.NONE:
-                    continue
-                if LanguageFilter.filter(item.get_src(), self.config.source_language):
+                    pass
+                elif LanguageFilter.filter(item.get_src(), self.config.source_language):
                     count = count + 1
                     item.set_status(Base.ProjectStatus.LANGUAGE_SKIPPED)
+                progress.update(pid, advance=1)
 
         # 打印日志
         self.info(
@@ -792,11 +811,11 @@ class Translator(Base):
         count: int = 0
         items_kvjson: list[Item] = []
         with ProgressBar(transient=False) as progress:
-            pid = progress.new()
-            for item in items:
-                progress.update(pid, advance=1, total=len(items))
+            pid = progress.new(total=len(items))
+            for item in ChunkLimiter.iter(items):
                 if item.get_file_type() == Item.FileType.KVJSON:
                     items_kvjson.append(item)
+                progress.update(pid, advance=1)
 
         # 按文件路径分组
         group_by_file_path: dict[str, list[Item]] = {}
