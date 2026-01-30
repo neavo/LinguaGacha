@@ -741,7 +741,7 @@ class TranslationPage(QWidget, Base):
         self.action_reset = parent.add_action(
             Action(
                 FluentIcon.ERASE_TOOL,
-                Localizer.get().translation_page_reset,
+                Localizer.get().reset,
                 parent,
                 triggered=triggered,
             ),

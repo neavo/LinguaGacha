@@ -1066,7 +1066,7 @@ class ProofreadingPage(QWidget, Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_saved,
+                "message": Localizer.get().toast_saved,
             },
         )
 

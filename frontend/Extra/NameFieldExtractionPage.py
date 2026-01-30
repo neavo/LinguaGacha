@@ -134,8 +134,8 @@ class NameFieldExtractionPage(QWidget, Base):
             v_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setHorizontalHeaderLabels(
             (
-                Localizer.get().glossary_page_table_row_01,  # 原文
-                Localizer.get().glossary_page_table_row_02,  # 译文
+                Localizer.get().table_col_source,  # 原文
+                Localizer.get().table_col_translation,  # 译文
                 Localizer.get().proofreading_page_col_status,  # 状态
             )
         )
@@ -258,7 +258,7 @@ class NameFieldExtractionPage(QWidget, Base):
         parent.add_action(
             Action(
                 FluentIcon.ERASE_TOOL,
-                Localizer.get().quality_reset,
+                Localizer.get().reset,
                 parent,
                 triggered=triggered,
             ),
@@ -417,14 +417,14 @@ class NameFieldExtractionPage(QWidget, Base):
             return
 
         title = Localizer.get().alert
-        content = Localizer.get().quality_reset_alert
+        content = Localizer.get().confirm_reset_data
 
         # 弹窗确认
         w = MessageBox(title, content, self.window())
         if w.exec():
             self.items = []
             self.refresh_table()
-            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_reset_toast)
+            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().toast_reset)
 
     def refresh_table(self) -> None:
         """完全刷新表格显示"""
@@ -707,7 +707,7 @@ class NameFieldExtractionPage(QWidget, Base):
             new_rules.sort(key=lambda x: x["src"])
             DataManager.get().set_glossary(new_rules)
 
-            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_save_toast)
+            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().toast_saved)
         else:
             self.show_toast(
                 Base.ToastType.INFO, Localizer.get().task_success

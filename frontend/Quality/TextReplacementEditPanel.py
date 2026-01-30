@@ -48,7 +48,7 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         editor_layout.setSpacing(6)
 
         self.src_label = CaptionLabel(
-            Localizer.get().pre_translation_replacement_page_table_row_01,
+            Localizer.get().table_col_source,
             self.editor_card,
         )
         self.apply_caption_label_style(self.src_label)
@@ -60,7 +60,7 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         editor_layout.addWidget(self.src_text, 1)
 
         self.dst_label = CaptionLabel(
-            Localizer.get().pre_translation_replacement_page_table_row_02,
+            Localizer.get().table_col_replacement,
             self.editor_card,
         )
         self.apply_caption_label_style(self.dst_label)
@@ -73,7 +73,7 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
 
         editor_layout.addSpacing(6)
         self.rule_label = CaptionLabel(
-            Localizer.get().pre_translation_replacement_page_table_row_03,
+            Localizer.get().table_col_rule,
             self.editor_card,
         )
         self.apply_caption_label_style(self.rule_label)

@@ -615,7 +615,7 @@ class QualityRulePageBase(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_save_toast,
+                    "message": Localizer.get().toast_saved,
                 },
             )
 
@@ -663,7 +663,7 @@ class QualityRulePageBase(QWidget, Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
+                "message": Localizer.get().toast_saved,
             },
         )
 

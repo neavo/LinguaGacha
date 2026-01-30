@@ -120,9 +120,9 @@ class TextReplacementPage(QualityRulePageBase):
 
     def get_list_headers(self) -> tuple[str, ...]:
         return (
-            getattr(Localizer.get(), f"{self.base_key}_page_table_row_01"),
-            getattr(Localizer.get(), f"{self.base_key}_page_table_row_02"),
-            getattr(Localizer.get(), f"{self.base_key}_page_table_row_03"),
+            Localizer.get().table_col_source,
+            Localizer.get().table_col_replacement,
+            Localizer.get().table_col_rule,
         )
 
     def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
@@ -363,7 +363,7 @@ class TextReplacementPage(QualityRulePageBase):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
+                "message": Localizer.get().toast_saved,
             },
         )
 
@@ -420,7 +420,7 @@ class TextReplacementPage(QualityRulePageBase):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
+                "message": Localizer.get().toast_saved,
             },
         )
 
@@ -480,7 +480,7 @@ class TextReplacementPage(QualityRulePageBase):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
+                "message": Localizer.get().toast_saved,
             },
         )
 
@@ -545,12 +545,12 @@ class TextReplacementPage(QualityRulePageBase):
 
     def build_rule_tooltip(self, regex: bool, case_sensitive: bool) -> str:
         regex_line = (
-            Localizer.get().rule_regex_on if regex else Localizer.get().rule_regex_off
+            Localizer.get().status_enabled if regex else Localizer.get().status_disabled
         )
         case_line = (
-            Localizer.get().rule_case_sensitive_on
+            Localizer.get().status_enabled
             if case_sensitive
-            else Localizer.get().rule_case_sensitive_off
+            else Localizer.get().status_disabled
         )
         return (
             f"{Localizer.get().rule_regex}\n{regex_line}\n"

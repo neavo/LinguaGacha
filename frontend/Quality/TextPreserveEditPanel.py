@@ -46,9 +46,7 @@ class TextPreserveEditPanel(QualityRuleEditPanelBase):
         editor_layout.setContentsMargins(12, 10, 12, 10)
         editor_layout.setSpacing(6)
 
-        self.src_label = CaptionLabel(
-            Localizer.get().text_preserve_page_table_row_01, self.editor_card
-        )
+        self.src_label = CaptionLabel(Localizer.get().table_col_rule, self.editor_card)
         self.apply_caption_label_style(self.src_label)
         editor_layout.addWidget(self.src_label)
 

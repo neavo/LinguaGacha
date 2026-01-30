@@ -600,9 +600,7 @@ class FilterDialog(MessageBoxBase):
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
 
-        title_row.addWidget(
-            BodyLabel(Localizer.get().proofreading_page_filter_warning_type)
-        )
+        title_row.addWidget(BodyLabel(Localizer.get().proofreading_page_result_check))
         title_row.addStretch(1)
 
         self.btn_export = PushButton(

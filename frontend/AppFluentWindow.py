@@ -538,7 +538,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.addSubInterface(
             BasicSettingsPage("basic_settings_page", self),
             FluentIcon.ZOOM,
-            Localizer.get().app_basic_settings_page,
+            Localizer.get().basic_settings,
             NavigationItemPosition.SCROLL,
         )
 

@@ -200,7 +200,7 @@ class ProofreadingEditPanel(QWidget):
 
         # 原文标签
         self.src_label = CaptionLabel(
-            Localizer.get().proofreading_page_col_src, self.editor_card
+            Localizer.get().table_col_source, self.editor_card
         )
         self.src_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         label_font = QFont(self.src_label.font())
@@ -221,7 +221,7 @@ class ProofreadingEditPanel(QWidget):
 
         # 译文标签
         self.dst_label = CaptionLabel(
-            Localizer.get().proofreading_page_col_dst, self.editor_card
+            Localizer.get().table_col_translation, self.editor_card
         )
         self.dst_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         self.dst_label.setFont(label_font)

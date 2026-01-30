@@ -107,10 +107,10 @@ class GlossaryPage(QualityRulePageBase):
 
     def get_list_headers(self) -> tuple[str, ...]:
         return (
-            Localizer.get().glossary_page_table_row_01,
-            Localizer.get().glossary_page_table_row_02,
+            Localizer.get().table_col_source,
+            Localizer.get().table_col_translation,
             Localizer.get().glossary_page_table_row_04,
-            Localizer.get().glossary_page_table_row_03,
+            Localizer.get().table_col_rule,
         )
 
     def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
@@ -170,7 +170,7 @@ class GlossaryPage(QualityRulePageBase):
             self.set_glossary_enable(widget.get_switch_button().isChecked())
 
         self.switch_card = SwitchButtonCard(
-            Localizer.get().glossary_page_head_title,
+            Localizer.get().app_glossary_page,
             Localizer.get().glossary_page_head_content,
             init=init,
             checked_changed=checked_changed,
@@ -213,9 +213,9 @@ class GlossaryPage(QualityRulePageBase):
 
     def get_case_tooltip(self, case_sensitive: bool) -> str:
         return (
-            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_on}"
+            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_enabled}"
             if case_sensitive
-            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_off}"
+            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_disabled}"
         )
 
     def update_case_cell_item(
@@ -365,13 +365,13 @@ class GlossaryPage(QualityRulePageBase):
         else:
             self.apply_selection(-1)
 
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            },
-        )
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().toast_saved,
+                },
+            )
 
         if self.reload_pending:
             self.reload_entries()
@@ -426,7 +426,7 @@ class GlossaryPage(QualityRulePageBase):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
+                "message": Localizer.get().toast_saved,
             },
         )
 

@@ -60,7 +60,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
         # 内容区：三个 CustomTextEdit，高度等分，每个上面有标题标签
         # 原文
         self.src_label = CaptionLabel(
-            Localizer.get().glossary_page_table_row_01, self.editor_card
+            Localizer.get().table_col_source, self.editor_card
         )
         self.apply_caption_label_style(self.src_label)
         editor_layout.addWidget(self.src_label)
@@ -72,7 +72,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
 
         # 译文
         self.dst_label = CaptionLabel(
-            Localizer.get().glossary_page_table_row_02, self.editor_card
+            Localizer.get().table_col_translation, self.editor_card
         )
         self.apply_caption_label_style(self.dst_label)
         editor_layout.addWidget(self.dst_label)
@@ -95,9 +95,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
         editor_layout.addWidget(self.info_text, 1)
 
         editor_layout.addSpacing(6)
-        self.rule_label = CaptionLabel(
-            Localizer.get().glossary_page_table_row_03, self.editor_card
-        )
+        self.rule_label = CaptionLabel(Localizer.get().table_col_rule, self.editor_card)
         self.apply_caption_label_style(self.rule_label)
         editor_layout.addWidget(self.rule_label)
 

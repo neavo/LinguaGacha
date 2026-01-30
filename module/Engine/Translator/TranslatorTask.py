@@ -436,9 +436,9 @@ class TranslatorTask(Base):
         elif error == ResponseChecker.Error.FAIL_LINE_COUNT:
             return Localizer.get().response_checker_fail_line_count
         elif error == ResponseChecker.Error.LINE_ERROR_KANA:
-            return Localizer.get().response_checker_line_error_kana
+            return Localizer.get().issue_kana_residue
         elif error == ResponseChecker.Error.LINE_ERROR_HANGEUL:
-            return Localizer.get().response_checker_line_error_hangeul
+            return Localizer.get().issue_hangeul_residue
         elif error == ResponseChecker.Error.LINE_ERROR_EMPTY_LINE:
             return Localizer.get().response_checker_line_error_empty_line
         elif error == ResponseChecker.Error.LINE_ERROR_SIMILARITY:

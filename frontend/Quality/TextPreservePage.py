@@ -74,7 +74,7 @@ class TextPreservePage(QualityRulePageBase):
 
     def get_list_headers(self) -> tuple[str, ...]:
         return (
-            Localizer.get().text_preserve_page_table_row_01,
+            Localizer.get().table_col_rule,
             Localizer.get().text_preserve_page_table_row_02,
         )
 
@@ -143,7 +143,7 @@ class TextPreservePage(QualityRulePageBase):
             self.run_with_unsaved_guard(action)
 
         self.mode_card = ComboBoxCard(
-            Localizer.get().text_preserve_page_head_title,
+            Localizer.get().app_text_preserve_page,
             Localizer.get().text_preserve_page_head_content,
             items,
             init=init,
@@ -277,13 +277,13 @@ class TextPreservePage(QualityRulePageBase):
         else:
             self.apply_selection(-1)
 
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            },
-        )
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().toast_saved,
+                },
+            )
 
         if self.reload_pending:
             self.reload_entries()

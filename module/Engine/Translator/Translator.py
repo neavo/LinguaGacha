@@ -162,7 +162,7 @@ class Translator(Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_reset_toast,
+                    "message": Localizer.get().toast_reset,
                 },
             )
 
@@ -237,7 +237,7 @@ class Translator(Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_reset_toast,
+                    "message": Localizer.get().toast_reset,
                 },
             )
 
@@ -438,9 +438,7 @@ class Translator(Base):
             self.info(
                 f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
             )
-            self.info(
-                f"{Localizer.get().engine_api_url} - {self.model.get('api_url', '')}"
-            )
+            self.info(f"{Localizer.get().api_url} - {self.model.get('api_url', '')}")
             self.info(
                 f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}"
             )

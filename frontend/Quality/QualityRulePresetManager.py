@@ -196,7 +196,7 @@ class QualityRulePresetManager:
 
     def reset(self) -> None:
         message_box = MessageBox(
-            Localizer.get().alert, Localizer.get().quality_reset_alert, self.window
+            Localizer.get().alert, Localizer.get().confirm_reset_data, self.window
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
@@ -219,14 +219,14 @@ class QualityRulePresetManager:
         self.page.table.clearSelection()
         self.page.apply_selection(-1)
         self.page.reload_entries()
-        self.show_toast(Base.ToastType.SUCCESS, Localizer.get().quality_reset_toast)
+        self.show_toast(Base.ToastType.SUCCESS, Localizer.get().toast_reset)
 
     def build_preset_menu(self, parent_widget: QWidget) -> RoundMenu:
         menu = RoundMenu("", parent_widget)
         menu.addAction(
             Action(
                 FluentIcon.ERASE_TOOL,
-                Localizer.get().quality_reset,
+                Localizer.get().reset,
                 # 重置是破坏性操作：即使当前编辑项未保存/不合法，也应允许直接重置。
                 # RoundMenu 点击会在鼠标释放时触发，这里延迟一帧避免确认框被“穿透点击”自动确认/取消。
                 triggered=lambda checked=False: QTimer.singleShot(0, self.reset),

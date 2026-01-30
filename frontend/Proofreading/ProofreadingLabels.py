@@ -25,8 +25,8 @@ class ProofreadingLabels:
     @staticmethod
     def get_warning_label(warning: WarningType) -> str:
         mapping: dict[WarningType, str] = {
-            WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
-            WarningType.HANGEUL: Localizer.get().proofreading_page_warning_hangeul,
+            WarningType.KANA: Localizer.get().issue_kana_residue,
+            WarningType.HANGEUL: Localizer.get().issue_hangeul_residue,
             WarningType.TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
             WarningType.SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
             WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
@@ -64,11 +64,11 @@ class ProofreadingLabels:
     def get_warning_tag_spec(warning: WarningType) -> tuple[str, StatusTagType]:
         mapping: dict[WarningType, tuple[str, StatusTagType]] = {
             WarningType.KANA: (
-                Localizer.get().proofreading_page_warning_kana,
+                Localizer.get().issue_kana_residue,
                 StatusTagType.WARNING,
             ),
             WarningType.HANGEUL: (
-                Localizer.get().proofreading_page_warning_hangeul,
+                Localizer.get().issue_hangeul_residue,
                 StatusTagType.WARNING,
             ),
             WarningType.TEXT_PRESERVE: (
