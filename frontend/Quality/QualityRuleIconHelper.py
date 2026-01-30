@@ -21,10 +21,13 @@ class RuleIconSpec:
 class QualityRuleIconDelegate(TableItemDelegate):
     """保持表格交互样式的同时绘制规则图标。"""
 
+    TOOLTIP_DELAY_MS: int = 300
+
     def __init__(self, parent, icon_column_index: int, icon_size: int) -> None:
         super().__init__(parent)
         self.icon_column_index = icon_column_index
         self.icon_size = icon_size
+        self.tooltipDelegate.setToolTipDelay(self.TOOLTIP_DELAY_MS)
 
     def paint(self, painter, option, index) -> None:
         if index.column() != self.icon_column_index:

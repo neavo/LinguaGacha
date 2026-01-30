@@ -24,6 +24,7 @@ from widget.ComboBoxCard import ComboBoxCard
 class TextPreservePage(QualityRulePageBase):
     PRESET_DIR_NAME: str = "text_preserve"
     DEFAULT_PRESET_CONFIG_KEY: str = "text_preserve_default_preset"
+    TOOLTIP_DELAY_MS: int = 300
 
     QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.TEXT_PRESERVE.value}
     QUALITY_META_KEYS: set[str] = {"text_preserve_mode", "text_preserve_enable"}
@@ -178,6 +179,11 @@ class TextPreservePage(QualityRulePageBase):
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
+        delegate = self.table.itemDelegate()
+        tooltip_delegate = getattr(delegate, "tooltipDelegate", None)
+        if tooltip_delegate is not None:
+            tooltip_delegate.setToolTipDelay(self.TOOLTIP_DELAY_MS)
 
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
