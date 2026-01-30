@@ -1,48 +1,55 @@
-import json
-import os
 import re
-from functools import partial
-from pathlib import Path
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtCore import QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QHeaderView
-from qfluentwidgets import Action
+from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import MenuAnimationType
-from qfluentwidgets import MessageBox
-from qfluentwidgets import RoundMenu
-from qfluentwidgets import TransparentPushButton
+from qfluentwidgets import qconfig
 
 from base.Base import Base
-from frontend.Quality.QualityRuleSplitPageBase import QualityRuleSplitPageBase
+from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
+from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
+from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
+from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from frontend.Quality.TextReplacementEditPanel import TextReplacementEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleIO import QualityRuleIO
-from module.Data.QualityRuleMerge import QualityRuleMerge
 from module.Localizer.Localizer import Localizer
-from widget.LineEditMessageBox import LineEditMessageBox
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
-class TextReplacementPage(QualityRuleSplitPageBase):
+class TextReplacementPage(QualityRulePageBase):
+    RULE_COLUMN_INDEX: int = 2
+    RULE_ICON_SIZE: int = 24
+    RULE_ICON_INNER_SIZE: int = 12
+    RULE_ICON_BORDER_WIDTH: int = 1
+    RULE_ICON_LUMA_THRESHOLD: float = 0.75
+    RULE_ICON_SPACING: int = 4
+    RULE_COLUMN_WIDTH: int = 90
+
     def __init__(self, name: str, window: FluentWindow, base_key: str) -> None:
         super().__init__(name, window)
 
-        self.base_key = base_key
-        self.rule_type = (
+        self.base_key: str = base_key
+        self.rule_type: DataManager.RuleType = (
             DataManager.RuleType.PRE_REPLACEMENT
             if base_key == "pre_translation_replacement"
             else DataManager.RuleType.POST_REPLACEMENT
         )
-        self.enable_meta_key = f"{base_key}_enable"
-        self.default_preset_key = f"{base_key}_default_preset"
+        self.enable_meta_key: str = f"{base_key}_enable"
+        self.PRESET_DIR_NAME: str = base_key
+        self.DEFAULT_PRESET_CONFIG_KEY: str = f"{base_key}_default_preset"
+        self.rule_icon_renderer = QualityRuleIconRenderer(
+            icon_size=self.RULE_ICON_SIZE,
+            inner_size=self.RULE_ICON_INNER_SIZE,
+            border_width=self.RULE_ICON_BORDER_WIDTH,
+            luma_threshold=self.RULE_ICON_LUMA_THRESHOLD,
+            icon_spacing=self.RULE_ICON_SPACING,
+        )
 
         self.QUALITY_RULE_TYPES = {self.rule_type.value}
         self.QUALITY_META_KEYS = {self.enable_meta_key}
@@ -54,6 +61,9 @@ class TextReplacementPage(QualityRuleSplitPageBase):
         self.setup_table_columns()
         self.setup_split_foot(self.root)
         self.add_command_bar_actions(config, window)
+
+        qconfig.themeChanged.connect(self.on_theme_changed)
+        self.destroyed.connect(self.disconnect_theme_signals)
 
         # 注册事件
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
@@ -88,9 +98,20 @@ class TextReplacementPage(QualityRuleSplitPageBase):
 
     def create_edit_panel(self, parent) -> TextReplacementEditPanel:
         panel = TextReplacementEditPanel(parent)
+        panel.add_requested.connect(
+            lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
+        )
         panel.save_requested.connect(self.save_current_entry)
         panel.delete_requested.connect(self.delete_current_entry)
         return panel
+
+    def create_empty_entry(self) -> dict[str, Any]:
+        return {
+            "src": "",
+            "dst": "",
+            "regex": False,
+            "case_sensitive": False,
+        }
 
     def get_list_headers(self) -> tuple[str, ...]:
         return (
@@ -100,16 +121,29 @@ class TextReplacementPage(QualityRuleSplitPageBase):
         )
 
     def get_row_values(self, entry: dict[str, Any]) -> tuple[str, ...]:
-        flags: list[str] = []
-        if bool(entry.get("regex", False)):
-            flags.append("R")
-        if bool(entry.get("case_sensitive", False)):
-            flags.append("Aa")
         return (
             str(entry.get("src", "")),
             str(entry.get("dst", "")),
-            " ".join(flags),
+            "",
         )
+
+    def update_table_cell(
+        self,
+        row: int,
+        col: int,
+        entry: dict[str, Any] | None,
+        editable: bool,
+    ) -> bool:
+        if col != self.RULE_COLUMN_INDEX:
+            return False
+
+        regex = False
+        case_sensitive = False
+        if entry is not None:
+            regex = bool(entry.get("regex", False))
+            case_sensitive = bool(entry.get("case_sensitive", False))
+        self.update_rule_cell_item(row, regex, case_sensitive, editable)
+        return True
 
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1)
@@ -142,34 +176,9 @@ class TextReplacementPage(QualityRuleSplitPageBase):
         if hasattr(self, "search_card"):
             self.search_card.reset_state()
 
-    # ==================== 事件 ====================
-
-    def on_quality_rule_update(self, event: Base.Event, data: dict) -> None:
-        del event
-        if not self.is_quality_rule_update_relevant(data):
-            return
-        self.request_reload()
-
-    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
-        del event
-        del data
-        self.reload_entries()
-
-    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
-        del event
-        del data
-        self.entries = []
-        self.current_index = -1
-        self.refresh_table()
-        if hasattr(self, "edit_panel"):
-            self.edit_panel.clear()
+    def on_project_unloaded_ui(self) -> None:
         if hasattr(self, "switch_card"):
             self.switch_card.get_switch_button().setChecked(True)
-        if hasattr(self, "search_card"):
-            self.search_card.reset_state()
-            self.search_card.setVisible(False)
-        if hasattr(self, "command_bar_card"):
-            self.command_bar_card.setVisible(True)
 
     # ==================== UI：头部 ====================
 
@@ -191,20 +200,95 @@ class TextReplacementPage(QualityRuleSplitPageBase):
         parent.addWidget(self.switch_card)
 
     def setup_table_columns(self) -> None:
-        self.table.setColumnWidth(0, 400)
-        self.table.setColumnWidth(1, 400)
         header = cast(QHeaderView, self.table.horizontalHeader())
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(2, 90)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(
+            self.RULE_COLUMN_INDEX, QHeaderView.ResizeMode.Fixed
+        )
+        self.table.setColumnWidth(self.RULE_COLUMN_INDEX, self.RULE_COLUMN_WIDTH)
+        self.table.setIconSize(QSize(self.RULE_ICON_SIZE, self.RULE_ICON_SIZE))
+        self.table.setItemDelegate(
+            QualityRuleIconDelegate(
+                self.table,
+                icon_column_index=self.RULE_COLUMN_INDEX,
+                icon_size=self.RULE_ICON_SIZE,
+            )
+        )
+
+    def disconnect_theme_signals(self) -> None:
+        try:
+            qconfig.themeChanged.disconnect(self.on_theme_changed)
+        except (TypeError, RuntimeError):
+            pass
+
+    def on_theme_changed(self) -> None:
+        self.rule_icon_renderer.clear_cache()
+        self.refresh_table()
+
+    def update_rule_cell_item(
+        self, row: int, regex: bool, case_sensitive: bool, editable: bool
+    ) -> None:
+        item = self.table.item(row, self.RULE_COLUMN_INDEX)
+        if item is None:
+            item = QTableWidgetItem()
+            self.table.setItem(row, self.RULE_COLUMN_INDEX, item)
+
+        item.setText("")
+        ui_font = getattr(self, "ui_font", None)
+        if ui_font is not None:
+            item.setFont(ui_font)
+        item.setData(
+            Qt.ItemDataRole.TextAlignmentRole,
+            int(Qt.AlignmentFlag.AlignCenter),
+        )
+
+        if editable:
+            item.setData(
+                Qt.ItemDataRole.DecorationRole,
+                self.rule_icon_renderer.get_pixmap(
+                    self.table,
+                    [
+                        RuleIconSpec(FluentIcon.IOT, regex),
+                        RuleIconSpec(FluentIcon.FONT, case_sensitive),
+                    ],
+                ),
+            )
+            item.setToolTip(self.build_rule_tooltip(regex, case_sensitive))
+        else:
+            item.setData(Qt.ItemDataRole.DecorationRole, None)
+            item.setToolTip("")
+
+        if editable:
+            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+            flags |= Qt.ItemFlag.ItemIsEnabled
+            flags |= Qt.ItemFlag.ItemIsSelectable
+            item.setFlags(flags)
+        else:
+            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
+            flags |= Qt.ItemFlag.ItemIsEnabled
+            item.setFlags(flags)
+
+    def build_rule_tooltip(self, regex: bool, case_sensitive: bool) -> str:
+        regex_line = (
+            Localizer.get().rule_regex_on if regex else Localizer.get().rule_regex_off
+        )
+        case_line = (
+            Localizer.get().rule_case_sensitive_on
+            if case_sensitive
+            else Localizer.get().rule_case_sensitive_off
+        )
+        return (
+            f"{Localizer.get().rule_regex}\n{regex_line}\n"
+            f"{Localizer.get().rule_case_sensitive}\n{case_line}"
+        )
 
     # ==================== UI：命令栏 ====================
 
     def add_command_bar_actions(self, config: Config, window: FluentWindow) -> None:
         self.command_bar_card.set_minimum_width(640)
 
-        self.add_command_bar_action_add()
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_import(window)
         self.add_command_bar_action_export(window)
         self.command_bar_card.add_separator()
@@ -213,445 +297,3 @@ class TextReplacementPage(QualityRuleSplitPageBase):
         self.add_command_bar_action_preset(config, window)
         self.command_bar_card.add_stretch(1)
         self.add_command_bar_action_wiki()
-
-    def add_command_bar_action_add(self) -> None:
-        def action() -> None:
-            self.entries.append(
-                {
-                    "src": "",
-                    "dst": "",
-                    "regex": False,
-                    "case_sensitive": False,
-                }
-            )
-            self.refresh_table()
-            self.select_row(len(self.entries) - 1)
-
-        self.command_bar_card.add_action(
-            Action(
-                FluentIcon.ADD,
-                Localizer.get().add,
-                triggered=lambda: self.run_with_unsaved_guard(action),
-            )
-        )
-
-    def import_rules_from_path(self, path: str) -> None:
-        current_src = ""
-        if 0 <= self.current_index < len(self.entries):
-            current_src = str(self.entries[self.current_index].get("src", "")).strip()
-
-        incoming = QualityRuleIO.load_rules_from_file(path)
-        merged, report = QualityRuleMerge.merge_overwrite(self.entries, incoming)
-        self.entries = merged
-        self.cleanup_empty_entries()
-        self.save_entries(self.entries)
-        self.refresh_table()
-
-        if current_src:
-            for i, v in enumerate(self.entries):
-                if str(v.get("src", "")).strip() == current_src:
-                    self.select_row(i)
-                    break
-        elif self.entries:
-            self.select_row(0)
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_import_toast,
-            },
-        )
-        if report.updated > 0:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().quality_merge_duplication,
-                },
-            )
-
-    def add_command_bar_action_import(self, window: FluentWindow) -> None:
-        def triggered() -> None:
-            path, _ = QFileDialog.getOpenFileName(
-                None,
-                Localizer.get().quality_select_file,
-                "",
-                Localizer.get().quality_select_file_type,
-            )
-            if not isinstance(path, str) or not path:
-                return
-            self.import_rules_from_path(path)
-
-        self.command_bar_card.add_action(
-            Action(
-                FluentIcon.DOWNLOAD,
-                Localizer.get().quality_import,
-                triggered=lambda: self.run_with_unsaved_guard(triggered),
-            )
-        )
-
-    def add_command_bar_action_export(self, window: FluentWindow) -> None:
-        def triggered() -> None:
-            path, _ = QFileDialog.getSaveFileName(
-                window,
-                Localizer.get().quality_select_file,
-                "",
-                Localizer.get().quality_select_file_type,
-            )
-            if not isinstance(path, str) or not path:
-                return
-            QualityRuleIO.export_rules(str(Path(path).with_suffix("")), self.entries)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_export_toast,
-                },
-            )
-
-        self.command_bar_card.add_action(
-            Action(
-                FluentIcon.SHARE,
-                Localizer.get().quality_export,
-                triggered=lambda: self.run_with_unsaved_guard(triggered),
-            )
-        )
-
-    def add_command_bar_action_search(self) -> None:
-        self.command_bar_card.add_action(
-            Action(
-                FluentIcon.SEARCH,
-                Localizer.get().search,
-                triggered=self.show_search_bar,
-            )
-        )
-
-    def add_command_bar_action_preset(
-        self, config: Config, window: FluentWindow
-    ) -> None:
-        def get_preset_paths() -> tuple[list[dict], list[dict]]:
-            builtin_dir = f"resource/preset/{self.base_key}/{Localizer.get_app_language().lower()}"
-            user_dir = f"resource/preset/{self.base_key}/user"
-
-            builtin_presets: list[dict] = []
-            user_presets: list[dict] = []
-
-            if os.path.exists(builtin_dir):
-                for f in os.listdir(builtin_dir):
-                    if f.lower().endswith(".json"):
-                        path = os.path.join(builtin_dir, f).replace("\\", "/")
-                        builtin_presets.append(
-                            {"name": f[:-5], "path": path, "type": "builtin"}
-                        )
-
-            if not os.path.exists(user_dir):
-                os.makedirs(user_dir)
-
-            for f in os.listdir(user_dir):
-                if f.lower().endswith(".json"):
-                    path = os.path.join(user_dir, f).replace("\\", "/")
-                    user_presets.append({"name": f[:-5], "path": path, "type": "user"})
-
-            return builtin_presets, user_presets
-
-        def set_default_preset(item: dict) -> None:
-            current_config = Config().load()
-            setattr(current_config, self.default_preset_key, item["path"])
-            current_config.save()
-            setattr(config, self.default_preset_key, item["path"])
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_set_default_preset_success,
-                },
-            )
-
-        def cancel_default_preset() -> None:
-            current_config = Config().load()
-            setattr(current_config, self.default_preset_key, "")
-            current_config.save()
-            setattr(config, self.default_preset_key, "")
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_cancel_default_preset_success,
-                },
-            )
-
-        def reset() -> None:
-            message_box = MessageBox(
-                Localizer.get().alert, Localizer.get().quality_reset_alert, window
-            )
-            message_box.yesButton.setText(Localizer.get().confirm)
-            message_box.cancelButton.setText(Localizer.get().cancel)
-            if not message_box.exec():
-                return
-
-            default_preset = getattr(config, self.default_preset_key)
-            if default_preset and os.path.exists(default_preset):
-                self.entries = QualityRuleIO.load_rules_from_file(default_preset)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().quality_default_preset_loaded_toast.format(
-                            NAME=os.path.basename(default_preset)
-                        ),
-                    },
-                )
-            else:
-                self.entries = []
-
-            self.save_entries(self.entries)
-            self.refresh_table()
-            self.select_row(0 if self.entries else -1)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_reset_toast,
-                },
-            )
-
-        def apply_preset(path: str) -> None:
-            self.import_rules_from_path(path)
-
-        def save_preset() -> None:
-            def on_save(dialog: LineEditMessageBox, text: str) -> None:
-                if not text.strip():
-                    return
-
-                path = f"resource/preset/{self.base_key}/user/{text.strip()}.json"
-                user_dir = os.path.dirname(path)
-                if not os.path.exists(user_dir):
-                    os.makedirs(user_dir)
-
-                if os.path.exists(path):
-                    message_box = MessageBox(
-                        Localizer.get().warning,
-                        Localizer.get().alert_preset_already_exists,
-                        window,
-                    )
-                    message_box.yesButton.setText(Localizer.get().confirm)
-                    message_box.cancelButton.setText(Localizer.get().cancel)
-                    if not message_box.exec():
-                        return
-
-                try:
-                    data = [v for v in self.entries if str(v.get("src", "")).strip()]
-                    with open(path, "w", encoding="utf-8") as writer:
-                        writer.write(json.dumps(data, indent=4, ensure_ascii=False))
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.SUCCESS,
-                            "message": Localizer.get().quality_save_preset_success,
-                        },
-                    )
-                    dialog.accept()
-                except Exception as e:
-                    self.error("Failed to save preset", e)
-
-            dialog = LineEditMessageBox(
-                window, Localizer.get().quality_save_preset_title, on_save
-            )
-            dialog.exec()
-
-        def rename_preset(item: dict) -> None:
-            def on_rename(dialog: LineEditMessageBox, text: str) -> None:
-                if not text.strip():
-                    return
-
-                new_path = os.path.join(
-                    os.path.dirname(item["path"]), text.strip() + ".json"
-                )
-                if os.path.exists(new_path):
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().alert_file_already_exists,
-                        },
-                    )
-                    return
-
-                try:
-                    os.rename(item["path"], new_path)
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.SUCCESS,
-                            "message": Localizer.get().task_success,
-                        },
-                    )
-                    dialog.accept()
-                except Exception as e:
-                    self.error("Failed to rename preset", e)
-
-            dialog = LineEditMessageBox(window, Localizer.get().rename, on_rename)
-            dialog.get_line_edit().setText(item["name"])
-            dialog.exec()
-
-        def delete_preset(item: dict) -> None:
-            message_box = MessageBox(
-                Localizer.get().warning,
-                Localizer.get().alert_delete_preset.format(NAME=item["name"]),
-                window,
-            )
-            message_box.yesButton.setText(Localizer.get().confirm)
-            message_box.cancelButton.setText(Localizer.get().cancel)
-            if not message_box.exec():
-                return
-
-            try:
-                os.remove(item["path"])
-
-                current_config = Config().load()
-                key = self.default_preset_key
-                if getattr(current_config, key) == item["path"]:
-                    setattr(current_config, key, "")
-                    current_config.save()
-                    setattr(config, key, "")
-
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().task_success,
-                    },
-                )
-            except Exception as e:
-                self.error("Failed to delete preset", e)
-
-        def triggered() -> None:
-            menu = RoundMenu("", widget)
-            menu.addAction(
-                Action(
-                    FluentIcon.ERASE_TOOL,
-                    Localizer.get().quality_reset,
-                    triggered=lambda: self.run_with_unsaved_guard(reset),
-                )
-            )
-            menu.addAction(
-                Action(
-                    FluentIcon.SAVE,
-                    Localizer.get().quality_save_preset,
-                    triggered=lambda: self.run_with_unsaved_guard(save_preset),
-                )
-            )
-            menu.addSeparator()
-
-            builtin_presets, user_presets = get_preset_paths()
-
-            for item in builtin_presets:
-                sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.FOLDER)
-                sub_menu.addAction(
-                    Action(
-                        FluentIcon.DOWNLOAD,
-                        Localizer.get().quality_import,
-                        triggered=partial(
-                            lambda p: self.run_with_unsaved_guard(
-                                lambda: apply_preset(p)
-                            ),
-                            item["path"],
-                        ),
-                    )
-                )
-                sub_menu.addSeparator()
-
-                if getattr(config, self.default_preset_key) == item["path"]:
-                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
-                    sub_menu.addAction(
-                        Action(
-                            FluentIcon.FLAG,
-                            Localizer.get().quality_cancel_default_preset,
-                            triggered=cancel_default_preset,
-                        )
-                    )
-                else:
-                    sub_menu.addAction(
-                        Action(
-                            FluentIcon.TAG,
-                            Localizer.get().quality_set_as_default_preset,
-                            triggered=partial(set_default_preset, item),
-                        )
-                    )
-
-                menu.addMenu(sub_menu)
-
-            if builtin_presets and user_presets:
-                menu.addSeparator()
-
-            for item in user_presets:
-                sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.FOLDER_ADD)
-                sub_menu.addAction(
-                    Action(
-                        FluentIcon.DOWNLOAD,
-                        Localizer.get().quality_import,
-                        triggered=partial(
-                            lambda p: self.run_with_unsaved_guard(
-                                lambda: apply_preset(p)
-                            ),
-                            item["path"],
-                        ),
-                    )
-                )
-                sub_menu.addAction(
-                    Action(
-                        FluentIcon.EDIT,
-                        Localizer.get().rename,
-                        triggered=partial(rename_preset, item),
-                    )
-                )
-                sub_menu.addAction(
-                    Action(
-                        FluentIcon.DELETE,
-                        Localizer.get().quality_delete_preset,
-                        triggered=partial(delete_preset, item),
-                    )
-                )
-                sub_menu.addSeparator()
-
-                if getattr(config, self.default_preset_key) == item["path"]:
-                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
-                    sub_menu.addAction(
-                        Action(
-                            FluentIcon.CLEAR_SELECTION,
-                            Localizer.get().quality_cancel_default_preset,
-                            triggered=cancel_default_preset,
-                        )
-                    )
-                else:
-                    sub_menu.addAction(
-                        Action(
-                            FluentIcon.CERTIFICATE,
-                            Localizer.get().quality_set_as_default_preset,
-                            triggered=partial(set_default_preset, item),
-                        )
-                    )
-
-                menu.addMenu(sub_menu)
-
-            global_pos = widget.mapToGlobal(QPoint(0, 0))
-            menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
-
-        widget: Any = self.command_bar_card.add_action(
-            Action(
-                FluentIcon.EXPRESSIVE_INPUT_ENTRY,
-                Localizer.get().quality_preset,
-                triggered=triggered,
-            )
-        )
-
-    def add_command_bar_action_wiki(self) -> None:
-        def connect() -> None:
-            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
-
-        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
-        push_button.clicked.connect(connect)
-        self.command_bar_card.add_widget(push_button)
