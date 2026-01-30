@@ -18,6 +18,7 @@ from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.TextProcessor import TextProcessor
@@ -33,13 +34,18 @@ class TranslatorTask(Base):
         precedings: list[Item],
         is_sub_task: bool = False,
         skip_response_check: bool = False,
+        quality_snapshot: QualityRuleSnapshot | None = None,
     ) -> None:
         super().__init__()
 
         # 初始化
         self.items = items
         self.precedings = precedings
-        self.processors = [TextProcessor(config, item) for item in items]
+        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
+        self.processors = [
+            TextProcessor(config, item, quality_snapshot=quality_snapshot)
+            for item in items
+        ]
         self.config = config
         self.model = model  # 新模型数据结构
         self.local_flag = local_flag
@@ -50,11 +56,20 @@ class TranslatorTask(Base):
 
         self.skip_response_check = skip_response_check
 
-        self.prompt_builder = PromptBuilder(self.config)
+        self.prompt_builder = PromptBuilder(
+            self.config,
+            quality_snapshot=quality_snapshot,
+        )
 
         # 跳过响应校验时不需要初始化 ResponseChecker
         self.response_checker = (
-            None if skip_response_check else ResponseChecker(self.config, items)
+            None
+            if skip_response_check
+            else ResponseChecker(
+                self.config,
+                items,
+                quality_snapshot=quality_snapshot,
+            )
         )
 
     # 启动任务
@@ -145,7 +160,9 @@ class TranslatorTask(Base):
 
         # 检查回复内容（跳过响应校验时，直接将所有结果视为有效）
         if self.skip_response_check or self.response_checker is None:
-            checks: list[str] = [ResponseChecker.Error.NONE] * len(dsts)
+            checks: list[ResponseChecker.Error] = [ResponseChecker.Error.NONE] * len(
+                dsts
+            )
         else:
             checks = self.response_checker.check(
                 srcs, dsts, self.items[0].get_text_type()
@@ -231,7 +248,7 @@ class TranslatorTask(Base):
     # 打印日志表格
     def print_log_table(
         self,
-        checks: list[str],
+        checks: list[ResponseChecker.Error],
         start: float,
         pt: int,
         ct: int,

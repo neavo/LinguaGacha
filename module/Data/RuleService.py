@@ -77,9 +77,9 @@ class RuleService:
         config = Config().load()
         loaded_presets: list[str] = []
 
-        # 新工程默认关闭文本保护（OFF）。
+        # 新工程默认使用智能文本保护（SMART）。
         # 兼容旧布尔键：同时写入 text_preserve_enable=False，避免默认值误判。
-        db.set_meta("text_preserve_mode", "off")
+        db.set_meta("text_preserve_mode", "smart")
         db.set_meta("text_preserve_enable", False)
 
         def load_json(path: str) -> list[dict[str, Any]] | None:

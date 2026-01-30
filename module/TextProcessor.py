@@ -3,6 +3,7 @@ import re
 import threading
 from enum import StrEnum
 from functools import lru_cache
+from typing import Any
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -17,6 +18,7 @@ from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
 from module.Data.DataManager import DataManager
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.RubyCleaner import RubyCleaner
 
 
@@ -47,12 +49,18 @@ class TextProcessor(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, item: Item) -> None:
+    def __init__(
+        self,
+        config: Config,
+        item: Item | None,
+        quality_snapshot: QualityRuleSnapshot | None = None,
+    ) -> None:
         super().__init__()
 
         # 初始化
         self.config: Config = config
-        self.item: Item = item
+        self.item: Item | None = item
+        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
 
         self.srcs: list[str] = []
         self.samples: list[str] = []
@@ -107,7 +115,14 @@ class TextProcessor(Base):
 
     def build_custom_preserve_data(self) -> tuple[str, ...]:
         data: list[str] = []
-        for v in DataManager.get().get_text_preserve():
+
+        preserve_entries: tuple[dict[str, Any], ...] | list[dict[str, Any]]
+        if self.quality_snapshot is not None:
+            preserve_entries = self.quality_snapshot.text_preserve_entries
+        else:
+            preserve_entries = DataManager.get().get_text_preserve()
+
+        for v in preserve_entries:
             if not isinstance(v, dict):
                 continue
             src = v.get("src", "")
@@ -119,10 +134,19 @@ class TextProcessor(Base):
             data.append(src)
         return tuple(data)
 
+    def get_text_preserve_mode(self) -> DataManager.TextPreserveMode:
+        if self.quality_snapshot is not None:
+            return self.quality_snapshot.text_preserve_mode
+        return DataManager.get().get_text_preserve_mode()
+
+    def get_text_preserve_custom_enabled(self) -> bool:
+        mode = self.get_text_preserve_mode()
+        return mode == DataManager.TextPreserveMode.CUSTOM
+
     def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern | None:
         del custom
         with __class__.LOCK:
-            mode = DataManager.get().get_text_preserve_mode()
+            mode = self.get_text_preserve_mode()
             if mode == DataManager.TextPreserveMode.OFF:
                 return None
 
@@ -140,7 +164,7 @@ class TextProcessor(Base):
     ) -> re.Pattern | None:
         del custom
         with __class__.LOCK:
-            mode = DataManager.get().get_text_preserve_mode()
+            mode = self.get_text_preserve_mode()
             if mode == DataManager.TextPreserveMode.OFF:
                 return None
 
@@ -158,7 +182,7 @@ class TextProcessor(Base):
     ) -> re.Pattern | None:
         del custom
         with __class__.LOCK:
-            mode = DataManager.get().get_text_preserve_mode()
+            mode = self.get_text_preserve_mode()
             if mode == DataManager.TextPreserveMode.OFF:
                 return None
 
@@ -176,7 +200,7 @@ class TextProcessor(Base):
     ) -> re.Pattern | None:
         del custom
         with __class__.LOCK:
-            mode = DataManager.get().get_text_preserve_mode()
+            mode = self.get_text_preserve_mode()
             if mode == DataManager.TextPreserveMode.OFF:
                 return None
 
@@ -209,11 +233,23 @@ class TextProcessor(Base):
     def clean_ruby(self, src: str) -> str:
         if not self.config.clean_ruby:
             return src
-        else:
-            return RubyCleaner.clean(src, self.item.get_text_type())
+
+        item = self.item
+        if item is None:
+            return src
+
+        assert item is not None
+
+        return RubyCleaner.clean(src, item.get_text_type())
 
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
+        item = self.item
+        if item is None:
+            return dst
+
+        assert item is not None
+
         source_language = self.config.source_language
         target_language = self.config.target_language
 
@@ -225,7 +261,13 @@ class TextProcessor(Base):
             dst = HangeulFixer.fix(dst)
 
         # 代码修复
-        dst = CodeFixer.fix(src, dst, self.item.get_text_type(), self.config)
+        dst = CodeFixer.fix(
+            src,
+            dst,
+            item.get_text_type(),
+            self.config,
+            quality_snapshot=self.quality_snapshot,
+        )
 
         # 转义修复
         dst = EscapeFixer.fix(src, dst)
@@ -239,7 +281,10 @@ class TextProcessor(Base):
         return dst
 
     # 注入姓名
-    def inject_name(self, srcs: list[str], item: Item) -> list[str]:
+    def inject_name(self, srcs: list[str], item: Item | None) -> list[str]:
+        if item is None:
+            return srcs
+
         name: str | None = item.get_first_name_src()
         if name is not None and len(srcs) > 0:
             srcs[0] = f"【{name}】{srcs[0]}"
@@ -248,9 +293,12 @@ class TextProcessor(Base):
 
     # 提取姓名
     def extract_name(
-        self, srcs: list[str], dsts: list[str], item: Item
+        self, srcs: list[str], dsts: list[str], item: Item | None
     ) -> tuple[str | None, list[str], list[str]]:
         name: str | None = None
+        if item is None:
+            return name, srcs, dsts
+
         if item.get_first_name_src() is not None and len(srcs) > 0:
             result: re.Match[str] | None = __class__.RE_NAME.search(dsts[0])
             if result is None:
@@ -267,10 +315,14 @@ class TextProcessor(Base):
 
     # 译前替换
     def replace_pre_translation(self, src: str) -> str:
-        if not DataManager.get().get_pre_replacement_enable():
-            return src
-
-        pre_replacement_data = DataManager.get().get_pre_replacement()
+        if self.quality_snapshot is not None:
+            if not self.quality_snapshot.pre_replacement_enable:
+                return src
+            pre_replacement_data = self.quality_snapshot.pre_replacement_entries
+        else:
+            if not DataManager.get().get_pre_replacement_enable():
+                return src
+            pre_replacement_data = DataManager.get().get_pre_replacement()
 
         for v in pre_replacement_data:
             raw_pattern = v.get("src", "")
@@ -313,10 +365,14 @@ class TextProcessor(Base):
 
     # 译后替换
     def replace_post_translation(self, dst: str) -> str:
-        if not DataManager.get().get_post_replacement_enable():
-            return dst
-
-        post_replacement_data = DataManager.get().get_post_replacement()
+        if self.quality_snapshot is not None:
+            if not self.quality_snapshot.post_replacement_enable:
+                return dst
+            post_replacement_data = self.quality_snapshot.post_replacement_entries
+        else:
+            if not DataManager.get().get_post_replacement_enable():
+                return dst
+            post_replacement_data = DataManager.get().get_post_replacement()
 
         for v in post_replacement_data:
             raw_pattern = v.get("src", "")
@@ -364,14 +420,14 @@ class TextProcessor(Base):
             return src
 
         rule: re.Pattern | None = self.get_re_prefix(
-            custom=DataManager.get().get_text_preserve_enable(),
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
         if rule is not None:
             src, self.prefix_codes[i] = self.extract(rule, src)
 
         rule: re.Pattern | None = self.get_re_suffix(
-            custom=DataManager.get().get_text_preserve_enable(),
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
 
@@ -382,9 +438,15 @@ class TextProcessor(Base):
 
     # 预处理
     def pre_process(self) -> None:
+        item = self.item
+        if item is None:
+            return
+
+        assert item is not None
+
         # 依次处理每行，顺序为：
-        text_type = self.item.get_text_type()
-        for i, src in enumerate(self.item.get_src().split("\n")):
+        text_type = item.get_text_type()
+        for i, src in enumerate(item.get_src().split("\n")):
             # 正规化
             src = self.normalize(src)
 
@@ -408,7 +470,7 @@ class TextProcessor(Base):
 
                     # 查找控制字符示例
                     rule: re.Pattern | None = self.get_re_sample(
-                        custom=DataManager.get().get_text_preserve_enable(),
+                        custom=self.get_text_preserve_custom_enabled(),
                         text_type=text_type,
                     )
 
@@ -424,17 +486,23 @@ class TextProcessor(Base):
                     self.vaild_index.add(i)
 
         # 注入姓名
-        self.srcs = self.inject_name(self.srcs, self.item)
+        self.srcs = self.inject_name(self.srcs, item)
 
     # 后处理
     def post_process(self, dsts: list[str]) -> tuple[str | None, str]:
+        item = self.item
+        if item is None:
+            return None, ""
+
+        assert item is not None
+
         results: list[str] = []
 
         # 提取姓名
-        name, _, dsts = self.extract_name(self.srcs, dsts, self.item)
+        name, _, dsts = self.extract_name(self.srcs, dsts, item)
 
         # 依次处理每行
-        for i, src in enumerate(self.item.get_src().split("\n")):
+        for i, src in enumerate(item.get_src().split("\n")):
             if src == "":
                 dst = ""
             elif src.strip() == "":
@@ -469,7 +537,7 @@ class TextProcessor(Base):
         x: list[str] = []
         y: list[str] = []
         rule: re.Pattern | None = self.get_re_check(
-            custom=DataManager.get().get_text_preserve_enable(),
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
 

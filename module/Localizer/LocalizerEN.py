@@ -147,7 +147,7 @@ class LocalizerEN(LocalizerZH):
     response_checker_line_error_similarity: str = "High Similarity"
     response_checker_line_error_degradation: str = "Degradation Occurred"
     project_store_ingesting_assets: str = "Ingesting assets …"
-    project_store_ingesting_file: str = "Ingesting: {NAME}"
+    project_store_ingesting_file: str = "Ingesting assets: {NAME}"
     project_store_parsing_items: str = "Parsing translation items …"
     project_store_created: str = "Project creation completed …"
     project_store_file_not_found: str = "Project file not found: {PATH}"
@@ -504,22 +504,19 @@ class LocalizerEN(LocalizerZH):
     glossary_page_kg: str = "One-Click Tools"
 
     # 文本保护
-    text_preserve_page_head_title: str = "Custom Text Preserve Rules"
+    text_preserve_page_head_title: str = "Text Preserve"
     text_preserve_page_head_content: str = (
-        "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
-        "<br>"
-        "<font color='darkgoldenrod'><b>Disabled by default</b></font>, before enabling, please carefully read the feature description in the <font color='darkgoldenrod'><b>Wiki</b></font> to ensure you fully understand how to use it"
-        "<br>"
-        "• Enabled - Preserve text by matching it against the <font color='darkgoldenrod'><b>Regular Expression Rules</b></font> set on this page"
-        "<br>"
-        "• Disabled - Automatically detects text format and game engine, and applies smart preserve rules, works well for most content"
-    )
+            "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
+            "<br>"
+            "• Off - Does not use any protection rules, leaving judgment and processing entirely to the AI"
+            "<br>"
+            "• Smart - Automatically determines the text format and game engine to select appropriate protection rules"
+            "<br>"
+            "• Custom - Protects corresponding text matched based on the <font color='darkgoldenrod'><b>Regex Rules</b></font> configured on this page"
+        )
     text_preserve_mode_off: str = "Off"
     text_preserve_mode_smart: str = "Smart"
     text_preserve_mode_custom: str = "Custom"
-    text_preserve_mode_desc_off: str = "Turn off preserve rules entirely; no built-in or custom rules"
-    text_preserve_mode_desc_smart: str = "Use built-in presets only; recommended for most content"
-    text_preserve_mode_desc_custom: str = "Use custom rules configured on this page"
     text_preserve_page_table_row_01: str = "Rule"
     text_preserve_page_table_row_02: str = "Remarks (For reference only, has no actual effect)"
 

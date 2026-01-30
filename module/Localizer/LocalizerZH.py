@@ -147,7 +147,7 @@ class LocalizerZH:
     response_checker_line_error_similarity: str = "较高相似度"
     response_checker_line_error_degradation: str = "发生退化现象"
     project_store_ingesting_assets: str = "正在收纳资产 …"
-    project_store_ingesting_file: str = "正在收纳: {NAME}"
+    project_store_ingesting_file: str = "正在收纳资产：{NAME}"
     project_store_parsing_items: str = "正在解析翻译条目 …"
     project_store_created: str = "工程创建完成 …"
     project_store_file_not_found: str = "工程文件不存在: {PATH}"
@@ -504,22 +504,19 @@ class LocalizerZH:
     glossary_page_kg: str = "一键制作工具"
 
     # 文本保护
-    text_preserve_page_head_title: str = "自定义文本保护规则"
+    text_preserve_page_head_title: str = "文本保护"
     text_preserve_page_head_content: str = (
-        "对文本中不需要翻译的代码段、控制字符、样式字符等文本进行保护，避免这些文本被错误的翻译"
+        "对文本中无需翻译的代码段、控制字符、样式字符等内容进行保护，避免它们被错误的翻译"
         "<br>"
-        "<font color='darkgoldenrod'><b>默认禁用</b></font>，启用前请仔细阅读 <font color='darkgoldenrod'><b>Wiki</b></font> 中的功能说明以确保充分理解使用方式"
+        "• 关闭 - 不使用任何保护规则，完全交给 AI 执行判断处理"
         "<br>"
-        "• 启用 - 根据本页中设置的 <font color='darkgoldenrod'><b>正则规则</b></font> 匹配对应的文本进行保护"
+        "• 智能 - 自动判断文本格式与游戏引擎选择合适的保护规则"
         "<br>"
-        "• 禁用 - 自动判断文本格式与游戏引擎，智能选择合适的保护规则，在大部分内容中都可以取得较好的效果"
+        "• 自定义 - 根据本页中设置的 <font color='darkgoldenrod'><b>正则规则</b></font> 匹配对应的文本进行保护"
     )
     text_preserve_mode_off: str = "关闭"
     text_preserve_mode_smart: str = "智能"
     text_preserve_mode_custom: str = "自定义"
-    text_preserve_mode_desc_off: str = "完全关闭文本保护，不使用内置或自定义规则"
-    text_preserve_mode_desc_smart: str = "仅使用内置预置规则，适合大多数内容"
-    text_preserve_mode_desc_custom: str = "使用本页自定义规则进行保护"
     text_preserve_page_table_row_01: str = "规则"
     text_preserve_page_table_row_02: str = "备注（仅作备忘，无实际作用）"
 

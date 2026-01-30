@@ -241,7 +241,8 @@ class DataManager(Base):
         # 兼容旧工程：
         # - True -> custom
         # - False -> smart
-        legacy = self.get_meta("text_preserve_enable", True)
+        # 旧工程默认语义：未显式开启自定义规则时，使用内置智能规则（SMART）。
+        legacy = self.get_meta("text_preserve_enable", False)
         return (
             __class__.TextPreserveMode.CUSTOM
             if bool(legacy)

@@ -3,11 +3,16 @@ from typing import Any
 from typing import cast
 
 from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QPoint
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
+from qfluentwidgets import Action
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import MessageBox
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import qconfig
 
 from base.Base import Base
@@ -216,6 +221,274 @@ class TextReplacementPage(QualityRulePageBase):
                 icon_size=self.RULE_ICON_SIZE,
             )
         )
+
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.on_table_context_menu)
+
+    def get_selected_entry_rows(self) -> list[int]:
+        selection_model = self.table.selectionModel()
+        if selection_model is None:
+            return []
+        rows = [index.row() for index in selection_model.selectedRows()]
+        return sorted({row for row in rows if 0 <= row < len(self.entries)})
+
+    def on_table_context_menu(self, position: QPoint) -> None:
+        rows = self.get_selected_entry_rows()
+        if not rows:
+            return
+
+        menu = RoundMenu("", self.table)
+        menu.addAction(
+            Action(
+                FluentIcon.DELETE,
+                Localizer.get().delete,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    self.delete_selected_entries
+                ),
+            )
+        )
+        menu.addSeparator()
+
+        regex_menu = RoundMenu(Localizer.get().rule_regex, menu)
+        regex_menu.setIcon(FluentIcon.IOT)
+        regex_menu.addAction(
+            Action(
+                FluentIcon.CHECKBOX,
+                Localizer.get().enable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_regex_for_selection(True)
+                ),
+            )
+        )
+        regex_menu.addAction(
+            Action(
+                FluentIcon.CLOSE,
+                Localizer.get().disable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_regex_for_selection(False)
+                ),
+            )
+        )
+        menu.addMenu(regex_menu)
+
+        case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)
+        case_menu.setIcon(FluentIcon.FONT)
+        case_menu.addAction(
+            Action(
+                FluentIcon.CHECKBOX,
+                Localizer.get().enable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_case_sensitive_for_selection(True)
+                ),
+            )
+        )
+        case_menu.addAction(
+            Action(
+                FluentIcon.CLOSE,
+                Localizer.get().disable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_case_sensitive_for_selection(False)
+                ),
+            )
+        )
+        menu.addMenu(case_menu)
+
+        viewport = self.table.viewport()
+        if viewport is None:
+            return
+        menu.exec(viewport.mapToGlobal(position))
+
+    def delete_selected_entries(self) -> None:
+        self.delete_entries_by_rows(self.get_selected_entry_rows())
+
+    def confirm_delete_entries(self, count: int) -> bool:
+        message = Localizer.get().quality_delete_confirm.replace("{COUNT}", str(count))
+        message_box = MessageBox(Localizer.get().confirm, message, self.main_window)
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        return bool(message_box.exec())
+
+    def delete_entries_by_rows(self, rows: list[int]) -> None:
+        if not rows:
+            return
+
+        unique_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
+        if not unique_rows:
+            return
+
+        if not self.confirm_delete_entries(len(unique_rows)):
+            return
+
+        deleted_set = set(unique_rows)
+        current_index = self.current_index
+
+        for row in sorted(unique_rows, reverse=True):
+            del self.entries[row]
+
+        self.current_index = -1
+
+        try:
+            self.cleanup_empty_entries()
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to delete rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.refresh_table()
+
+        if self.entries:
+            if current_index >= 0 and current_index not in deleted_set:
+                shift = sum(1 for row in deleted_set if row < current_index)
+                next_index = current_index - shift
+            else:
+                next_index = min(deleted_set)
+            if next_index >= len(self.entries):
+                next_index = len(self.entries) - 1
+            self.select_row(next_index)
+        else:
+            self.apply_selection(-1)
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def set_regex_for_rows(self, rows: list[int], enabled: bool) -> None:
+        if not rows:
+            return
+
+        changed_rows: list[int] = []
+        for row in rows:
+            if row < 0 or row >= len(self.entries):
+                continue
+            current_value = bool(self.entries[row].get("regex", False))
+            if current_value == enabled:
+                continue
+            self.entries[row]["regex"] = enabled
+            changed_rows.append(row)
+
+        if not changed_rows:
+            return
+
+        try:
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to save rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
+        for row in sorted(set(changed_rows)):
+            self.refresh_table_row(row)
+        self.table.setUpdatesEnabled(True)
+        self.table.blockSignals(False)
+
+        if self.current_index in changed_rows and 0 <= self.current_index < len(
+            self.entries
+        ):
+            self.edit_panel.bind_entry(
+                self.entries[self.current_index], self.current_index + 1
+            )
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def set_regex_for_selection(self, enabled: bool) -> None:
+        self.set_regex_for_rows(self.get_selected_entry_rows(), enabled)
+
+    def set_case_sensitive_for_rows(self, rows: list[int], enabled: bool) -> None:
+        if not rows:
+            return
+
+        changed_rows: list[int] = []
+        for row in rows:
+            if row < 0 or row >= len(self.entries):
+                continue
+            current_value = bool(self.entries[row].get("case_sensitive", False))
+            if current_value == enabled:
+                continue
+            self.entries[row]["case_sensitive"] = enabled
+            changed_rows.append(row)
+
+        if not changed_rows:
+            return
+
+        try:
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to save rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
+        for row in sorted(set(changed_rows)):
+            self.refresh_table_row(row)
+        self.table.setUpdatesEnabled(True)
+        self.table.blockSignals(False)
+
+        if self.current_index in changed_rows and 0 <= self.current_index < len(
+            self.entries
+        ):
+            self.edit_panel.bind_entry(
+                self.entries[self.current_index], self.current_index + 1
+            )
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def set_case_sensitive_for_selection(self, enabled: bool) -> None:
+        self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
 
     def disconnect_theme_signals(self) -> None:
         try:
