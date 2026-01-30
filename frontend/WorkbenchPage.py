@@ -815,7 +815,7 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout.setContentsMargins(0, 24, 0, 0)
 
         self.open_btn = PrimaryPushButton(
-            Localizer.get().workbench_open_project_btn, card
+            Localizer.get().workbench_open_project_title, card
         )
         self.open_btn.setFixedSize(160, 36)
         self.open_btn.setEnabled(False)

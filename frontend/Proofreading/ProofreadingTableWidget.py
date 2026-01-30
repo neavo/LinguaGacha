@@ -83,8 +83,8 @@ class ProofreadingTableWidget(TableWidget):
         self.setColumnCount(3)
         self.setHorizontalHeaderLabels(
             [
-                Localizer.get().proofreading_page_col_src,
-                Localizer.get().proofreading_page_col_dst,
+                Localizer.get().table_col_source,
+                Localizer.get().table_col_translation,
                 Localizer.get().proofreading_page_col_status,
             ]
         )
@@ -276,7 +276,7 @@ class ProofreadingTableWidget(TableWidget):
                 ToolTipFilter(warning_icon, 300, ToolTipPosition.TOP)
             )
             warning_tooltip = (
-                f"{Localizer.get().proofreading_page_warning_tooltip_title}\n"
+                f"{Localizer.get().proofreading_page_result_check}\n"
                 f"{Localizer.get().current_status}{' | '.join(warning_texts)}"
             )
             warning_icon.setToolTip(warning_tooltip)

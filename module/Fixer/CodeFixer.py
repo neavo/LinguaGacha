@@ -4,6 +4,7 @@ from rich import print
 
 from model.Item import Item
 from module.Config import Config
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 
 
 class CodeFixer:
@@ -12,14 +13,30 @@ class CodeFixer:
 
     # 检查并替换
     @classmethod
-    def fix(cls, src: str, dst: str, text_type: str, config: Config) -> str:
+    def fix(
+        cls,
+        src: str,
+        dst: str,
+        text_type: str,
+        config: Config,
+        quality_snapshot: QualityRuleSnapshot | None = None,
+    ) -> str:
         from module.TextProcessor import TextProcessor
         from module.Data.DataManager import DataManager
 
         src_codes: list[str] = []
         dst_codes: list[str] = []
-        rule: re.Pattern = TextProcessor(config, None).get_re_sample(
-            custom=DataManager.get().get_text_preserve_enable(),
+        custom_enabled = (
+            quality_snapshot.text_preserve_mode == DataManager.TextPreserveMode.CUSTOM
+            if quality_snapshot is not None
+            else DataManager.get().get_text_preserve_enable()
+        )
+        rule: re.Pattern | None = TextProcessor(
+            config,
+            None,
+            quality_snapshot=quality_snapshot,
+        ).get_re_sample(
+            custom=custom_enabled,
             text_type=text_type,
         )
 
@@ -40,6 +57,8 @@ class CodeFixer:
         # 判断是否是有序子集
         flag, mismatchs = cls.is_ordered_subset(src_codes, dst_codes)
         if flag:
+            if rule is None:
+                return dst
             i: list[int] = [0]
             dst = rule.sub(lambda m: cls.repl(m, i, mismatchs), dst)
 

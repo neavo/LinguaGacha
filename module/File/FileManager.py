@@ -7,6 +7,7 @@ from base.Base import Base
 from model.Item import Item
 from model.Project import Project
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.File.ASS import ASS
 from module.File.EPUB import EPUB
 from module.File.KVJSON import KVJSON
@@ -19,12 +20,9 @@ from module.File.TXT import TXT
 from module.File.WOLFXLSX import WOLFXLSX
 from module.File.XLSX import XLSX
 from module.Localizer.Localizer import Localizer
-from module.Data.DataManager import DataManager
 
 
 class FileManager(Base):
-    YIELD_EVERY = 64
-
     def __init__(self, config: Config) -> None:
         super().__init__()
 

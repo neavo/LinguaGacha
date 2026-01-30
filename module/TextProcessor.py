@@ -3,6 +3,7 @@ import re
 import threading
 from enum import StrEnum
 from functools import lru_cache
+from typing import Any
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -17,6 +18,7 @@ from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
 from module.Data.DataManager import DataManager
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.RubyCleaner import RubyCleaner
 
 
@@ -47,12 +49,18 @@ class TextProcessor(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(self, config: Config, item: Item) -> None:
+    def __init__(
+        self,
+        config: Config,
+        item: Item | None,
+        quality_snapshot: QualityRuleSnapshot | None = None,
+    ) -> None:
         super().__init__()
 
         # 初始化
         self.config: Config = config
-        self.item: Item = item
+        self.item: Item | None = item
+        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
 
         self.srcs: list[str] = []
         self.samples: list[str] = []
@@ -69,23 +77,30 @@ class TextProcessor(Base):
     def get_rule(
         cls,
         custom: bool,
-        custom_data: list[str],
+        custom_data: tuple[str, ...] | None,
         rule_type: RuleType,
         text_type: Item.TextType,
         language: BaseLanguage.Enum,
-    ) -> re.Pattern[str]:
-        data: list[dict[str, str]] = []
+    ) -> re.Pattern[str] | None:
+        data: list[str] = []
         if custom:
-            data = custom_data
+            if custom_data:
+                data = [v for v in custom_data if isinstance(v, str) and v.strip()]
         else:
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
             try:
                 with open(path, "r", encoding="utf-8-sig") as reader:
-                    data: list[str] = [
-                        v.get("src") for v in json.load(reader) if v.get("src") != ""
-                    ]
+                    raw = json.load(reader)
+                if isinstance(raw, list):
+                    for entry in raw:
+                        if not isinstance(entry, dict):
+                            continue
+                        src = entry.get("src", "")
+                        if isinstance(src, str) and src.strip():
+                            data.append(src)
             except Exception:
-                pass  # 不是每个格式都有对应的预置保护规则，找不到时静默跳过
+                # 不是每个格式都有对应的预置保护规则，找不到时静默跳过
+                pass
 
         if len(data) == 0:
             return None
@@ -98,73 +113,101 @@ class TextProcessor(Base):
         elif rule_type == __class__.RuleType.SUFFIX:
             return re.compile(rf"(?:{'|'.join(data)})+$", re.IGNORECASE)
 
-    def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
+    def build_custom_preserve_data(self) -> tuple[str, ...]:
+        data: list[str] = []
+
+        preserve_entries: tuple[dict[str, Any], ...] | list[dict[str, Any]]
+        if self.quality_snapshot is not None:
+            preserve_entries = self.quality_snapshot.text_preserve_entries
+        else:
+            preserve_entries = DataManager.get().get_text_preserve()
+
+        for v in preserve_entries:
+            if not isinstance(v, dict):
+                continue
+            src = v.get("src", "")
+            if not isinstance(src, str):
+                continue
+            src = src.strip()
+            if not src:
+                continue
+            data.append(src)
+        return tuple(data)
+
+    def get_text_preserve_mode(self) -> DataManager.TextPreserveMode:
+        if self.quality_snapshot is not None:
+            return self.quality_snapshot.text_preserve_mode
+        return DataManager.get().get_text_preserve_mode()
+
+    def get_text_preserve_custom_enabled(self) -> bool:
+        mode = self.get_text_preserve_mode()
+        return mode == DataManager.TextPreserveMode.CUSTOM
+
+    def get_re_check(self, custom: bool, text_type: Item.TextType) -> re.Pattern | None:
+        del custom
         with __class__.LOCK:
+            mode = self.get_text_preserve_mode()
+            if mode == DataManager.TextPreserveMode.OFF:
+                return None
+
+            use_custom = mode == DataManager.TextPreserveMode.CUSTOM
             return __class__.get_rule(
-                custom=custom,
-                custom_data=tuple(
-                    [
-                        v.get("src")
-                        for v in DataManager.get().get_text_preserve()
-                        if v.get("src") != ""
-                    ]
-                )
-                if custom
-                else None,
+                custom=use_custom,
+                custom_data=self.build_custom_preserve_data() if use_custom else None,
                 rule_type=__class__.RuleType.CHECK,
                 text_type=text_type,
                 language=Localizer.get_app_language(),
             )
 
-    def get_re_sample(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
+    def get_re_sample(
+        self, custom: bool, text_type: Item.TextType
+    ) -> re.Pattern | None:
+        del custom
         with __class__.LOCK:
+            mode = self.get_text_preserve_mode()
+            if mode == DataManager.TextPreserveMode.OFF:
+                return None
+
+            use_custom = mode == DataManager.TextPreserveMode.CUSTOM
             return __class__.get_rule(
-                custom=custom,
-                custom_data=tuple(
-                    [
-                        v.get("src")
-                        for v in DataManager.get().get_text_preserve()
-                        if v.get("src") != ""
-                    ]
-                )
-                if custom
-                else None,
+                custom=use_custom,
+                custom_data=self.build_custom_preserve_data() if use_custom else None,
                 rule_type=__class__.RuleType.SAMPLE,
                 text_type=text_type,
                 language=Localizer.get_app_language(),
             )
 
-    def get_re_prefix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
+    def get_re_prefix(
+        self, custom: bool, text_type: Item.TextType
+    ) -> re.Pattern | None:
+        del custom
         with __class__.LOCK:
+            mode = self.get_text_preserve_mode()
+            if mode == DataManager.TextPreserveMode.OFF:
+                return None
+
+            use_custom = mode == DataManager.TextPreserveMode.CUSTOM
             return __class__.get_rule(
-                custom=custom,
-                custom_data=tuple(
-                    [
-                        v.get("src")
-                        for v in DataManager.get().get_text_preserve()
-                        if v.get("src") != ""
-                    ]
-                )
-                if custom
-                else None,
+                custom=use_custom,
+                custom_data=self.build_custom_preserve_data() if use_custom else None,
                 rule_type=__class__.RuleType.PREFIX,
                 text_type=text_type,
                 language=Localizer.get_app_language(),
             )
 
-    def get_re_suffix(self, custom: bool, text_type: Item.TextType) -> re.Pattern:
+    def get_re_suffix(
+        self, custom: bool, text_type: Item.TextType
+    ) -> re.Pattern | None:
+        del custom
         with __class__.LOCK:
+            mode = self.get_text_preserve_mode()
+            if mode == DataManager.TextPreserveMode.OFF:
+                return None
+
+            use_custom = mode == DataManager.TextPreserveMode.CUSTOM
             return __class__.get_rule(
-                custom=custom,
-                custom_data=tuple(
-                    [
-                        v.get("src")
-                        for v in DataManager.get().get_text_preserve()
-                        if v.get("src") != ""
-                    ]
-                )
-                if custom
-                else None,
+                custom=use_custom,
+                custom_data=self.build_custom_preserve_data() if use_custom else None,
                 rule_type=__class__.RuleType.SUFFIX,
                 text_type=text_type,
                 language=Localizer.get_app_language(),
@@ -190,11 +233,23 @@ class TextProcessor(Base):
     def clean_ruby(self, src: str) -> str:
         if not self.config.clean_ruby:
             return src
-        else:
-            return RubyCleaner.clean(src, self.item.get_text_type())
+
+        item = self.item
+        if item is None:
+            return src
+
+        assert item is not None
+
+        return RubyCleaner.clean(src, item.get_text_type())
 
     # 自动修复
     def auto_fix(self, src: str, dst: str) -> str:
+        item = self.item
+        if item is None:
+            return dst
+
+        assert item is not None
+
         source_language = self.config.source_language
         target_language = self.config.target_language
 
@@ -206,7 +261,13 @@ class TextProcessor(Base):
             dst = HangeulFixer.fix(dst)
 
         # 代码修复
-        dst = CodeFixer.fix(src, dst, self.item.get_text_type(), self.config)
+        dst = CodeFixer.fix(
+            src,
+            dst,
+            item.get_text_type(),
+            self.config,
+            quality_snapshot=self.quality_snapshot,
+        )
 
         # 转义修复
         dst = EscapeFixer.fix(src, dst)
@@ -220,18 +281,26 @@ class TextProcessor(Base):
         return dst
 
     # 注入姓名
-    def inject_name(self, srcs: list[str], item: Item) -> list[str]:
-        name: str = item.get_first_name_src()
+    def inject_name(self, srcs: list[str], item: Item | None) -> list[str]:
+        if item is None:
+            return srcs
+
+        name: str | None = item.get_first_name_src()
         if name is not None and len(srcs) > 0:
             srcs[0] = f"【{name}】{srcs[0]}"
 
         return srcs
 
     # 提取姓名
-    def extract_name(self, srcs: list[str], dsts: list[str], item: Item) -> str:
-        name: str = None
+    def extract_name(
+        self, srcs: list[str], dsts: list[str], item: Item | None
+    ) -> tuple[str | None, list[str], list[str]]:
+        name: str | None = None
+        if item is None:
+            return name, srcs, dsts
+
         if item.get_first_name_src() is not None and len(srcs) > 0:
-            result: re.Match[str] = __class__.RE_NAME.search(dsts[0])
+            result: re.Match[str] | None = __class__.RE_NAME.search(dsts[0])
             if result is None:
                 pass
             elif result.group(1) is not None:
@@ -246,61 +315,101 @@ class TextProcessor(Base):
 
     # 译前替换
     def replace_pre_translation(self, src: str) -> str:
-        if not DataManager.get().get_pre_replacement_enable():
-            return src
-
-        pre_replacement_data = DataManager.get().get_pre_replacement()
+        if self.quality_snapshot is not None:
+            if not self.quality_snapshot.pre_replacement_enable:
+                return src
+            pre_replacement_data = self.quality_snapshot.pre_replacement_entries
+        else:
+            if not DataManager.get().get_pre_replacement_enable():
+                return src
+            pre_replacement_data = DataManager.get().get_pre_replacement()
 
         for v in pre_replacement_data:
-            pattern = v.get("src")
-            replacement = v.get("dst")
+            raw_pattern = v.get("src", "")
+            raw_replacement = v.get("dst", "")
             is_regex = v.get("regex", False)
             is_case_sensitive = v.get("case_sensitive", False)
+
+            if raw_pattern is None:
+                continue
+            if not isinstance(raw_pattern, str):
+                raw_pattern = str(raw_pattern)
+            pattern_text: str = raw_pattern
+            if not pattern_text:
+                continue
+
+            if raw_replacement is None:
+                raw_replacement = ""
+            if not isinstance(raw_replacement, str):
+                raw_replacement = str(raw_replacement)
+            replacement_text: str = raw_replacement
 
             if is_regex:
                 # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
                 flags = 0 if is_case_sensitive else re.IGNORECASE
-                src = re.sub(pattern, replacement, src, flags=flags)
+                src = re.sub(pattern_text, replacement_text, src, flags=flags)
             else:
                 # 普通替换模式
                 if is_case_sensitive:
                     # 大小写敏感：使用普通 replace
-                    src = src.replace(pattern, replacement)
+                    src = src.replace(pattern_text, replacement_text)
                 else:
                     # 大小写不敏感：使用正则模式 + IGNORECASE
                     # 需要转义特殊字符以确保按字面意义匹配
-                    pattern_escaped = re.escape(pattern)
-                    src = re.sub(pattern_escaped, replacement, src, flags=re.IGNORECASE)
+                    pattern_escaped = re.escape(pattern_text)
+                    src = re.sub(
+                        pattern_escaped, replacement_text, src, flags=re.IGNORECASE
+                    )
 
         return src
 
     # 译后替换
     def replace_post_translation(self, dst: str) -> str:
-        if not DataManager.get().get_post_replacement_enable():
-            return dst
-
-        post_replacement_data = DataManager.get().get_post_replacement()
+        if self.quality_snapshot is not None:
+            if not self.quality_snapshot.post_replacement_enable:
+                return dst
+            post_replacement_data = self.quality_snapshot.post_replacement_entries
+        else:
+            if not DataManager.get().get_post_replacement_enable():
+                return dst
+            post_replacement_data = DataManager.get().get_post_replacement()
 
         for v in post_replacement_data:
-            pattern = v.get("src")
-            replacement = v.get("dst")
+            raw_pattern = v.get("src", "")
+            raw_replacement = v.get("dst", "")
             is_regex = v.get("regex", False)
             is_case_sensitive = v.get("case_sensitive", False)
+
+            if raw_pattern is None:
+                continue
+            if not isinstance(raw_pattern, str):
+                raw_pattern = str(raw_pattern)
+            pattern_text: str = raw_pattern
+            if not pattern_text:
+                continue
+
+            if raw_replacement is None:
+                raw_replacement = ""
+            if not isinstance(raw_replacement, str):
+                raw_replacement = str(raw_replacement)
+            replacement_text: str = raw_replacement
 
             if is_regex:
                 # 正则模式：根据 case_sensitive 决定是否传递 re.IGNORECASE 标志
                 flags = 0 if is_case_sensitive else re.IGNORECASE
-                dst = re.sub(pattern, replacement, dst, flags=flags)
+                dst = re.sub(pattern_text, replacement_text, dst, flags=flags)
             else:
                 # 普通替换模式
                 if is_case_sensitive:
                     # 大小写敏感：使用普通 replace
-                    dst = dst.replace(pattern, replacement)
+                    dst = dst.replace(pattern_text, replacement_text)
                 else:
                     # 大小写不敏感：使用正则模式 + IGNORECASE
                     # 需要转义特殊字符以确保按字面意义匹配
-                    pattern_escaped = re.escape(pattern)
-                    dst = re.sub(pattern_escaped, replacement, dst, flags=re.IGNORECASE)
+                    pattern_escaped = re.escape(pattern_text)
+                    dst = re.sub(
+                        pattern_escaped, replacement_text, dst, flags=re.IGNORECASE
+                    )
 
         return dst
 
@@ -310,15 +419,15 @@ class TextProcessor(Base):
         if not self.config.auto_process_prefix_suffix_preserved_text:
             return src
 
-        rule: re.Pattern = self.get_re_prefix(
-            custom=DataManager.get().get_text_preserve_enable(),
+        rule: re.Pattern | None = self.get_re_prefix(
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
         if rule is not None:
             src, self.prefix_codes[i] = self.extract(rule, src)
 
-        rule: re.Pattern = self.get_re_suffix(
-            custom=DataManager.get().get_text_preserve_enable(),
+        rule: re.Pattern | None = self.get_re_suffix(
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
 
@@ -329,9 +438,15 @@ class TextProcessor(Base):
 
     # 预处理
     def pre_process(self) -> None:
+        item = self.item
+        if item is None:
+            return
+
+        assert item is not None
+
         # 依次处理每行，顺序为：
-        text_type = self.item.get_text_type()
-        for i, src in enumerate(self.item.get_src().split("\n")):
+        text_type = item.get_text_type()
+        for i, src in enumerate(item.get_src().split("\n")):
             # 正规化
             src = self.normalize(src)
 
@@ -354,8 +469,8 @@ class TextProcessor(Base):
                     src = self.replace_pre_translation(src)
 
                     # 查找控制字符示例
-                    rule: re.Pattern = self.get_re_sample(
-                        custom=DataManager.get().get_text_preserve_enable(),
+                    rule: re.Pattern | None = self.get_re_sample(
+                        custom=self.get_text_preserve_custom_enabled(),
                         text_type=text_type,
                     )
 
@@ -371,17 +486,23 @@ class TextProcessor(Base):
                     self.vaild_index.add(i)
 
         # 注入姓名
-        self.srcs = self.inject_name(self.srcs, self.item)
+        self.srcs = self.inject_name(self.srcs, item)
 
     # 后处理
-    def post_process(self, dsts: list[str]) -> tuple[str, str]:
+    def post_process(self, dsts: list[str]) -> tuple[str | None, str]:
+        item = self.item
+        if item is None:
+            return None, ""
+
+        assert item is not None
+
         results: list[str] = []
 
         # 提取姓名
-        name, _, dsts = self.extract_name(self.srcs, dsts, self.item)
+        name, _, dsts = self.extract_name(self.srcs, dsts, item)
 
         # 依次处理每行
-        for i, src in enumerate(self.item.get_src().split("\n")):
+        for i, src in enumerate(item.get_src().split("\n")):
             if src == "":
                 dst = ""
             elif src.strip() == "":
@@ -398,10 +519,13 @@ class TextProcessor(Base):
                 # 译后替换
                 dst = self.replace_post_translation(dst)
 
-                if i in self.prefix_codes:
-                    dst = "".join(self.prefix_codes.get(i)) + dst
-                if i in self.suffix_codes:
-                    dst = dst + "".join(self.suffix_codes.get(i))
+                prefix_codes = self.prefix_codes.get(i) or []
+                if prefix_codes:
+                    dst = "".join(prefix_codes) + dst
+
+                suffix_codes = self.suffix_codes.get(i) or []
+                if suffix_codes:
+                    dst = dst + "".join(suffix_codes)
 
             # 添加结果
             results.append(dst)
@@ -412,8 +536,8 @@ class TextProcessor(Base):
     def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
         x: list[str] = []
         y: list[str] = []
-        rule: re.Pattern = self.get_re_check(
-            custom=DataManager.get().get_text_preserve_enable(),
+        rule: re.Pattern | None = self.get_re_check(
+            custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
 

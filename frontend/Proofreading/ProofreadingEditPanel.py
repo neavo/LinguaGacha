@@ -8,8 +8,10 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QFontMetrics
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
+from PyQt5.QtWidgets import QShortcut
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -54,7 +56,6 @@ class ProofreadingEditPanel(QWidget):
 
     # 信号定义
     save_requested = pyqtSignal(object, str)
-    restore_requested = pyqtSignal()
     copy_src_requested = pyqtSignal(object)
     copy_dst_requested = pyqtSignal(object)
     retranslate_requested = pyqtSignal(object)
@@ -197,6 +198,16 @@ class ProofreadingEditPanel(QWidget):
 
         self.status_scroll.setWidget(self.status_widget)
 
+        # 原文标签
+        self.src_label = CaptionLabel(
+            Localizer.get().table_col_source, self.editor_card
+        )
+        self.src_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
+        label_font = QFont(self.src_label.font())
+        label_font.setPixelSize(self.FONT_SIZE)
+        self.src_label.setFont(label_font)
+        editor_layout.addWidget(self.src_label)
+
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
         src_font = QFont(self.src_text.font())
@@ -208,7 +219,13 @@ class ProofreadingEditPanel(QWidget):
         self.src_text.setProperty("compact", True)
         editor_layout.addWidget(self.src_text, 1)
 
-        editor_layout.addWidget(self.build_divider(self.editor_card))
+        # 译文标签
+        self.dst_label = CaptionLabel(
+            Localizer.get().table_col_translation, self.editor_card
+        )
+        self.dst_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
+        self.dst_label.setFont(label_font)
+        editor_layout.addWidget(self.dst_label)
 
         self.dst_text = CustomTextEdit(self.editor_card)
         dst_font = QFont(self.dst_text.font())
@@ -231,22 +248,16 @@ class ProofreadingEditPanel(QWidget):
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(0)
 
-        self.btn_restore = TransparentPushButton(self.button_container)
-        self.btn_restore.setIcon(FluentIcon.HISTORY)
-        self.btn_restore.setText(Localizer.get().proofreading_page_restore)
-        self.btn_restore.clicked.connect(self.on_restore_clicked)
-        self.btn_restore.setEnabled(False)
-        self.apply_fixed_button_style(self.btn_restore)
-        button_layout.addWidget(self.btn_restore, 1)
-
-        button_layout.addWidget(self.build_vertical_divider(self.button_container))
-
         self.btn_save = TransparentPushButton(self.button_container)
         self.btn_save.setIcon(FluentIcon.SAVE)
-        self.btn_save.setText(Localizer.get().proofreading_page_save)
+        self.btn_save.setText(Localizer.get().save)
         self.btn_save.clicked.connect(self.on_save_clicked)
         self.btn_save.setEnabled(False)
         self.apply_fixed_button_style(self.btn_save)
+        self.btn_save.installEventFilter(
+            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
+        )
+        self.btn_save.setToolTip(Localizer.get().shortcut_ctrl_s)
         button_layout.addWidget(self.btn_save, 1)
 
         button_layout.addWidget(self.build_vertical_divider(self.button_container))
@@ -266,6 +277,10 @@ class ProofreadingEditPanel(QWidget):
         content_layout.addWidget(self.editor_card, 1)
 
         layout.addWidget(self.content_widget, 1)
+
+        # 添加快捷键
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_shortcut)
 
         # 初始为空态：保留文本框可见，但强制只读与禁用写操作入口。
         self.clear()
@@ -461,7 +476,6 @@ class ProofreadingEditPanel(QWidget):
         is_readonly = self.dst_text.isReadOnly()
         # 只读模式下按钮始终禁用；非只读时根据是否有修改决定
         self.btn_save.setEnabled(has_changes and not is_readonly)
-        self.btn_restore.setEnabled(has_changes and not is_readonly)
 
     def on_dst_text_changed(self) -> None:
         if not self.current_item:
@@ -472,22 +486,14 @@ class ProofreadingEditPanel(QWidget):
         self.glossary_status_dirty = True
         self.set_status_tag_visible(self.glossary_status_tag, False)
 
-    def on_restore_clicked(self) -> None:
-        if not self.current_item:
-            return
-        self.dst_text.blockSignals(True)
-        self.dst_text.setPlainText(self.saved_text)
-        self.dst_text.blockSignals(False)
-        self.update_button_states()
-        self.glossary_status_dirty = True
-        self.set_status_tag_visible(self.glossary_status_tag, False)
-        QTimer.singleShot(0, self.start_glossary_status_compute)
-        self.restore_requested.emit()
-
     def on_save_clicked(self) -> None:
         if not self.current_item:
             return
         self.save_requested.emit(self.current_item, self.get_current_text())
+
+    def on_save_shortcut(self) -> None:
+        if self.btn_save.isEnabled():
+            self.btn_save.click()
 
     def on_dst_focus_out(self) -> None:
         """译文框焦点离开后触发重检查（不做保存）。"""

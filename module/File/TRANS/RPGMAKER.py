@@ -1,4 +1,5 @@
 import re
+from typing import Pattern
 
 from module.File.TRANS.NONE import NONE
 from model.Item import Item
@@ -7,9 +8,11 @@ from model.Item import Item
 class RPGMAKER(NONE):
     TEXT_TYPE: str = Item.TextType.RPGMAKER
 
-    BLACKLIST_PATH: tuple[re.Pattern] = (re.compile(r"\.js$", flags=re.IGNORECASE),)
+    BLACKLIST_PATH: tuple[Pattern[str], ...] = (
+        re.compile(r"\.js$", flags=re.IGNORECASE),
+    )
 
-    BLACKLIST_ADDRESS: tuple[re.Pattern] = (
+    BLACKLIST_ADDRESS: tuple[Pattern[str], ...] = (
         re.compile(r"^(?=.*MZ Plugin Command)(?!.*text).*", flags=re.IGNORECASE),
         re.compile(r"filename", flags=re.IGNORECASE),
         re.compile(r"/events/\d+/name", flags=re.IGNORECASE),
@@ -20,7 +23,9 @@ class RPGMAKER(NONE):
     )
 
     # 过滤
-    def filter(self, src: str, path: str, tag: list[str], context: list[str]) -> bool:
+    def filter(
+        self, src: str, path: str, tag: list[str], context: list[str]
+    ) -> list[bool]:
         if any(v in src for v in RPGMAKER.BLACKLIST_EXT):
             return [True] * len(context)
 
