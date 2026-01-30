@@ -180,7 +180,7 @@ class CustomPromptPage(QWidget, Base):
         parent.add_action(
             Action(
                 FluentIcon.SAVE,
-                Localizer.get().quality_save,
+                Localizer.get().save,
                 parent,
                 triggered=triggered,
             ),

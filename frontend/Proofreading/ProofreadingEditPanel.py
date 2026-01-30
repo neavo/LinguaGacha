@@ -248,7 +248,7 @@ class ProofreadingEditPanel(QWidget):
 
         self.btn_save = TransparentPushButton(self.button_container)
         self.btn_save.setIcon(FluentIcon.SAVE)
-        self.btn_save.setText(Localizer.get().proofreading_page_save)
+        self.btn_save.setText(Localizer.get().save)
         self.btn_save.clicked.connect(self.on_save_clicked)
         self.btn_save.setEnabled(False)
         self.apply_fixed_button_style(self.btn_save)

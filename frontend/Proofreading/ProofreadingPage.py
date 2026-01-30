@@ -297,7 +297,7 @@ class ProofreadingPage(QWidget, Base):
         self.btn_export = self.command_bar_card.add_action(
             Action(
                 FluentIcon.SHARE,
-                Localizer.get().proofreading_page_export,
+                Localizer.get().export_translation,
                 triggered=self.on_export_clicked,
             )
         )
@@ -311,7 +311,7 @@ class ProofreadingPage(QWidget, Base):
         self.btn_search = self.command_bar_card.add_action(
             Action(
                 FluentIcon.SEARCH,
-                Localizer.get().proofreading_page_search,
+                Localizer.get().search,
                 triggered=self.on_search_clicked,
             )
         )
@@ -1451,7 +1451,7 @@ class ProofreadingPage(QWidget, Base):
         # 弹框让用户确认
         message_box = MessageBox(
             Localizer.get().confirm,
-            Localizer.get().proofreading_page_export_confirm,
+            Localizer.get().export_translation_confirm,
             self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)

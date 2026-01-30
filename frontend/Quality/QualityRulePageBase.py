@@ -777,7 +777,7 @@ class QualityRulePageBase(QWidget, Base):
         def triggered() -> None:
             path, _ = QFileDialog.getOpenFileName(
                 None,
-                Localizer.get().quality_select_file,
+                Localizer.get().select_file,
                 "",
                 Localizer.get().quality_select_file_type,
             )
@@ -797,7 +797,7 @@ class QualityRulePageBase(QWidget, Base):
         def triggered() -> None:
             path, _ = QFileDialog.getSaveFileName(
                 window,
-                Localizer.get().quality_select_file,
+                Localizer.get().select_file,
                 "",
                 Localizer.get().quality_select_file_type,
             )

@@ -141,7 +141,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
 
         self.btn_save = TransparentPushButton(self.button_container)
         self.btn_save.setIcon(FluentIcon.SAVE)
-        self.btn_save.setText(Localizer.get().quality_save)
+        self.btn_save.setText(Localizer.get().save)
         self.btn_save.clicked.connect(lambda: self.save_requested.emit())
         self.apply_button_style(self.btn_save)
         button_layout.addWidget(self.btn_save, 1)

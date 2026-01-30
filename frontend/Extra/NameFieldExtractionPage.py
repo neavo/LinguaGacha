@@ -335,7 +335,7 @@ class NameFieldExtractionPage(QWidget, Base):
     def extract_names(self) -> None:
         """从工程中提取名字，并智能匹配最佳上下文"""
         if self.is_extracting:
-            self.show_toast(Base.ToastType.WARNING, Localizer.get().engine_task_running)
+            self.show_toast(Base.ToastType.WARNING, Localizer.get().task_running)
             return
 
         if not DataManager.get().is_loaded():
