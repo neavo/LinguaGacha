@@ -465,7 +465,8 @@ class LocalizerEN(LocalizerZH):
     quality_export_toast: str = "Data exported …"
     quality_save: str = "Save"
     quality_save_toast: str = "Data saved …"
-    quality_merge_duplication: str = "Duplicate data merged …"
+    quality_merge_duplication: str = "Duplicates found, old entries overwritten …"
+    quality_delete_confirm: str = "Confirm deleting {COUNT} item(s)?"
     quality_preset: str = "Preset"
     quality_reset: str = "Reset"
     quality_reset_toast: str = "Data reset …"
@@ -484,6 +485,8 @@ class LocalizerEN(LocalizerZH):
     quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
 
     # 规则列
+    enable: str = "Enable"
+    disable: str = "Disable"
     rule_regex: str = "Regular Expression"
     rule_regex_on: str = "Current Status: Enabled"
     rule_regex_off: str = "Current Status: Disabled"

@@ -131,6 +131,7 @@ class ProofreadingPage(QWidget, Base):
         self.quality_rule_refresh_timer: QTimer = QTimer(self)
         self.quality_rule_refresh_timer.setSingleShot(True)
         self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
+        self.pending_quality_rule_refresh: bool = False
 
         self.ui_font_px = self.FONT_SIZE
         self.ui_icon_px = self.ICON_SIZE
@@ -173,6 +174,10 @@ class ProofreadingPage(QWidget, Base):
         del event
         # 只对影响校对判定的规则变更触发重算，避免无效刷新
         if not self.is_quality_rule_update_relevant(event_data):
+            return
+        if not self.isVisible():
+            # 页面不可见时避免触发筛选导致全局进度 toast。
+            self.pending_quality_rule_refresh = True
             return
         if not self.items:
             return
@@ -1613,6 +1618,9 @@ class ProofreadingPage(QWidget, Base):
         self.check_engine_status()
         if self.data_stale:
             self.schedule_reload("show")
+        if self.pending_quality_rule_refresh and self.items:
+            self.pending_quality_rule_refresh = False
+            self.schedule_quality_rule_refresh()
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:

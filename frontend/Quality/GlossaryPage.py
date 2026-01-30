@@ -12,6 +12,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
@@ -166,9 +167,30 @@ class GlossaryPage(QualityRuleSplitPageBase):
 
     def create_edit_panel(self, parent) -> GlossaryEditPanel:
         panel = GlossaryEditPanel(parent)
+        panel.add_requested.connect(
+            lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
+        )
         panel.save_requested.connect(self.save_current_entry)
         panel.delete_requested.connect(self.delete_current_entry)
         return panel
+
+    def add_entry_after_current(self) -> None:
+        insert_index = (
+            self.current_index + 1
+            if 0 <= self.current_index < len(self.entries)
+            else len(self.entries)
+        )
+        self.entries.insert(
+            insert_index,
+            {
+                "src": "",
+                "dst": "",
+                "info": "",
+                "case_sensitive": False,
+            },
+        )
+        self.refresh_table()
+        self.select_row(insert_index)
 
     def get_list_headers(self) -> tuple[str, ...]:
         return (
@@ -329,14 +351,14 @@ class GlossaryPage(QualityRuleSplitPageBase):
                     "message": merge_toast,
                 },
             )
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            },
-        )
+        if not merged:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_save_toast,
+                },
+            )
 
         action = self.pending_action
         self.pending_action = None
@@ -346,6 +368,11 @@ class GlossaryPage(QualityRuleSplitPageBase):
 
         if self.reload_pending:
             self.reload_entries()
+
+    def delete_current_entry(self) -> None:
+        if self.current_index < 0 or self.current_index >= len(self.entries):
+            return
+        self.delete_entries_by_rows([self.current_index])
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event
@@ -425,6 +452,11 @@ class GlossaryPage(QualityRuleSplitPageBase):
                 self.CASE_COLUMN_INDEX, QHeaderView.ResizeMode.Fixed
             )
             self.table.setColumnWidth(self.CASE_COLUMN_INDEX, self.CASE_COLUMN_WIDTH)
+
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.on_table_context_menu)
 
     def disconnect_theme_signals(self) -> None:
         try:
@@ -609,13 +641,192 @@ class GlossaryPage(QualityRuleSplitPageBase):
         self.table.setUpdatesEnabled(True)
         self.table.blockSignals(False)
 
+    def get_selected_entry_rows(self) -> list[int]:
+        selection_model = self.table.selectionModel()
+        if selection_model is None:
+            return []
+        rows = [index.row() for index in selection_model.selectedRows()]
+        return sorted({row for row in rows if 0 <= row < len(self.entries)})
+
+    def on_table_context_menu(self, position: QPoint) -> None:
+        rows = self.get_selected_entry_rows()
+        if not rows:
+            return
+
+        menu = RoundMenu("", self.table)
+        menu.addAction(
+            Action(
+                FluentIcon.DELETE,
+                Localizer.get().delete,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    self.delete_selected_entries
+                ),
+            )
+        )
+        menu.addSeparator()
+
+        case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)
+        case_menu.setIcon(FluentIcon.FONT)
+        case_menu.addAction(
+            Action(
+                FluentIcon.CHECKBOX,
+                Localizer.get().enable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_case_sensitive_for_selection(True)
+                ),
+            )
+        )
+        case_menu.addAction(
+            Action(
+                FluentIcon.CLOSE,
+                Localizer.get().disable,
+                triggered=lambda: self.run_with_unsaved_guard(
+                    lambda: self.set_case_sensitive_for_selection(False)
+                ),
+            )
+        )
+        menu.addMenu(case_menu)
+
+        viewport = self.table.viewport()
+        if viewport is None:
+            return
+        menu.exec(viewport.mapToGlobal(position))
+
+    def delete_selected_entries(self) -> None:
+        self.delete_entries_by_rows(self.get_selected_entry_rows())
+
+    def confirm_delete_entries(self, count: int) -> bool:
+        message = Localizer.get().quality_delete_confirm.replace("{COUNT}", str(count))
+        message_box = MessageBox(Localizer.get().confirm, message, self.main_window)
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        return bool(message_box.exec())
+
+    def delete_entries_by_rows(self, rows: list[int]) -> None:
+        if not rows:
+            return
+
+        unique_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
+        if not unique_rows:
+            return
+
+        if not self.confirm_delete_entries(len(unique_rows)):
+            return
+
+        deleted_set = set(unique_rows)
+        current_index = self.current_index
+
+        for row in sorted(unique_rows, reverse=True):
+            del self.entries[row]
+
+        self.current_index = -1
+
+        try:
+            self.cleanup_empty_entries()
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to delete rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.refresh_table()
+
+        if self.entries:
+            if current_index >= 0 and current_index not in deleted_set:
+                shift = sum(1 for row in deleted_set if row < current_index)
+                next_index = current_index - shift
+            else:
+                next_index = min(deleted_set)
+            if next_index >= len(self.entries):
+                next_index = len(self.entries) - 1
+            self.select_row(next_index)
+        else:
+            self.apply_selection(-1)
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def set_case_sensitive_for_rows(self, rows: list[int], enabled: bool) -> None:
+        if not rows:
+            return
+
+        changed_rows: list[int] = []
+        for row in rows:
+            if row < 0 or row >= len(self.entries):
+                continue
+            current_value = bool(self.entries[row].get("case_sensitive", False))
+            if current_value == enabled:
+                continue
+            self.entries[row]["case_sensitive"] = enabled
+            changed_rows.append(row)
+
+        if not changed_rows:
+            return
+
+        try:
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            self.error("Failed to save rules", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
+        for row in sorted(set(changed_rows)):
+            self.refresh_table_row(row)
+        self.table.setUpdatesEnabled(True)
+        self.table.blockSignals(False)
+
+        if self.current_index in changed_rows and 0 <= self.current_index < len(
+            self.entries
+        ):
+            self.edit_panel.bind_entry(
+                self.entries[self.current_index], self.current_index + 1
+            )
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_save_toast,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def set_case_sensitive_for_selection(self, enabled: bool) -> None:
+        self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
+
     # ==================== UI：命令栏 ====================
 
     def add_command_bar_actions(self, config: Config, window: FluentWindow) -> None:
         self.command_bar_card.set_minimum_width(640)
 
-        self.add_command_bar_action_add()
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_import(window)
         self.add_command_bar_action_export(window)
         self.command_bar_card.add_separator()

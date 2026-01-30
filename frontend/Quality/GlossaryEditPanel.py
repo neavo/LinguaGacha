@@ -33,6 +33,7 @@ class GlossaryEditPanel(QWidget):
     ICON_SIZE = 16
     TEXT_MIN_HEIGHT = 84
 
+    add_requested = pyqtSignal()
     save_requested = pyqtSignal()
     delete_requested = pyqtSignal()
 
@@ -174,6 +175,15 @@ class GlossaryEditPanel(QWidget):
         button_layout = QHBoxLayout(self.button_container)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(0)
+
+        self.btn_add = TransparentPushButton(self.button_container)
+        self.btn_add.setIcon(FluentIcon.ADD)
+        self.btn_add.setText(Localizer.get().add)
+        self.btn_add.clicked.connect(lambda: self.add_requested.emit())
+        self.apply_fixed_button_style(self.btn_add)
+        button_layout.addWidget(self.btn_add, 1)
+
+        button_layout.addWidget(self.build_vertical_divider(self.button_container))
 
         self.btn_delete = TransparentPushButton(self.button_container)
         self.btn_delete.setIcon(FluentIcon.DELETE)
@@ -319,6 +329,7 @@ class GlossaryEditPanel(QWidget):
         has_entry = self.saved_entry is not None
         has_changes = self.has_unsaved_changes()
         is_readonly = self.src_text.isReadOnly()
+        self.btn_add.setEnabled(not is_readonly)
         self.btn_save.setEnabled(has_entry and has_changes and not is_readonly)
         self.btn_delete.setEnabled(has_entry and not is_readonly)
 

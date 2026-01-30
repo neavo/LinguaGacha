@@ -465,7 +465,8 @@ class LocalizerZH:
     quality_export_toast: str = "数据已导出 …"
     quality_save: str = "保存"
     quality_save_toast: str = "数据已保存 …"
-    quality_merge_duplication: str = "已合并重复数据 …"
+    quality_merge_duplication: str = "发现重复项，已覆盖旧条目 …"
+    quality_delete_confirm: str = "是否确认删除 {COUNT} 条记录？"
     quality_preset: str = "预设"
     quality_reset: str = "重置"
     quality_reset_toast: str = "数据已重置 …"
@@ -484,6 +485,8 @@ class LocalizerZH:
     quality_default_preset_loaded_toast: str = "已自动加载默认预设：{NAME} …"
 
     # 规则列
+    enable: str = "启用"
+    disable: str = "禁用"
     rule_regex: str = "正则表达式"
     rule_regex_on: str = "当前状态：已启用"
     rule_regex_off: str = "当前状态：未启用"
