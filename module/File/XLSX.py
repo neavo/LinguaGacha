@@ -5,7 +5,6 @@ import openpyxl
 import openpyxl.worksheet.worksheet
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -18,8 +17,6 @@ class XLSX(Base):
 
         # 初始化
         self.config = config
-        self.source_language: BaseLanguage.Enum = config.source_language
-        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
@@ -42,7 +39,6 @@ class XLSX(Base):
         book: openpyxl.Workbook = openpyxl.load_workbook(io.BytesIO(content))
         sheet = book.active
 
-        # Ensure it is a Worksheet
         if not isinstance(sheet, openpyxl.worksheet.worksheet.Worksheet):
             return items
 

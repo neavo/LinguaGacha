@@ -3,7 +3,6 @@ import json
 import os
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -21,8 +20,6 @@ class TRANS(Base):
 
         # 初始化
         self.config = config
-        self.source_language: BaseLanguage.Enum = config.source_language
-        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:

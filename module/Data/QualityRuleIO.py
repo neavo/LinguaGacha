@@ -85,7 +85,7 @@ class QualityRuleIO:
                         result.append(
                             {
                                 "src": f"{code}[{actor_id}]",
-                                "dst": name,
+                                "dst": nickname,
                                 "info": "",
                                 "regex": False,
                                 "case_sensitive": False,

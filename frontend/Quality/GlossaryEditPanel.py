@@ -149,7 +149,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
         self.btn_save.installEventFilter(
             ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
         )
-        self.btn_save.setToolTip("Ctrl+S")
+        self.btn_save.setToolTip(Localizer.get().shortcut_ctrl_s)
         button_layout.addWidget(self.btn_save, 1)
 
         editor_layout.addWidget(self.button_container)

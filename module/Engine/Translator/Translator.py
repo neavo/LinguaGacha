@@ -83,20 +83,11 @@ class Translator(Base):
             dm = DataManager.get()
             extras = {}
 
-            if Engine.get().get_status() != Base.TaskStatus.IDLE:
-                # 引擎忙碌时，依然从数据库获取真实状态和进度，避免 UI 按钮被错误禁用
-                if dm.is_loaded():
-                    status = dm.get_project_status()
-                    extras = dm.get_translation_extras()
-                else:
-                    status = Base.ProjectStatus.NONE
+            if dm.is_loaded():
+                status = dm.get_project_status()
+                extras = dm.get_translation_extras()
             else:
-                # 引擎空闲，获取工程状态和进度
-                if dm.is_loaded():
-                    status = dm.get_project_status()
-                    extras = dm.get_translation_extras()
-                else:
-                    status = Base.ProjectStatus.NONE
+                status = Base.ProjectStatus.NONE
 
             self.emit(
                 Base.Event.PROJECT_CHECK_DONE,
@@ -292,7 +283,7 @@ class Translator(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.WARNING,
-                        "message": "请先加载工程文件",
+                        "message": Localizer.get().alert_project_not_loaded,
                     },
                 )
                 return None
@@ -307,7 +298,7 @@ class Translator(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.WARNING,
-                        "message": "未找到激活的模型配置",
+                        "message": Localizer.get().alert_no_active_model,
                     },
                 )
                 return None
