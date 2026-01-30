@@ -1,6 +1,7 @@
 import threading
 from contextlib import AbstractContextManager
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 from typing import ClassVar
@@ -33,6 +34,11 @@ class DataManager(Base):
 
     # 对外提供统一的规则枚举入口，避免业务侧直接依赖数据库实现
     RuleType = LGDatabase.RuleType
+
+    class TextPreserveMode(StrEnum):
+        OFF = "off"  # 完全关闭：不使用内置或自定义规则
+        SMART = "smart"  # 智能：使用内置预置规则
+        CUSTOM = "custom"  # 自定义：使用项目内自定义规则
 
     def __init__(self) -> None:
         super().__init__()
@@ -224,11 +230,54 @@ class DataManager(Base):
     def set_text_preserve(self, data: list[dict[str, Any]]) -> None:
         self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
 
+    def get_text_preserve_mode(self) -> TextPreserveMode:
+        raw = self.get_meta("text_preserve_mode", None)
+        if isinstance(raw, str):
+            try:
+                return __class__.TextPreserveMode(raw)
+            except Exception:
+                pass
+
+        # 兼容旧工程：
+        # - True -> custom
+        # - False -> smart
+        # 旧工程默认语义：未显式开启自定义规则时，使用内置智能规则（SMART）。
+        legacy = self.get_meta("text_preserve_enable", False)
+        return (
+            __class__.TextPreserveMode.CUSTOM
+            if bool(legacy)
+            else __class__.TextPreserveMode.SMART
+        )
+
+    def set_text_preserve_mode(self, mode: TextPreserveMode | str) -> None:
+        try:
+            normalized = (
+                mode
+                if isinstance(mode, __class__.TextPreserveMode)
+                else __class__.TextPreserveMode(str(mode))
+            )
+        except Exception:
+            normalized = __class__.TextPreserveMode.OFF
+
+        # 新语义的唯一权威来源
+        self.set_meta("text_preserve_mode", normalized.value)
+
+        # 写入旧键用于兼容与避免默认值误判。
+        # 注意：旧布尔无法表达 OFF，这里将 OFF 映射为 False。
+        legacy_enable = normalized == __class__.TextPreserveMode.CUSTOM
+        self.set_meta("text_preserve_enable", legacy_enable)
+
     def get_text_preserve_enable(self) -> bool:
-        return bool(self.get_meta("text_preserve_enable", True))
+        # 兼容旧接口：仅表示“是否使用自定义规则”。
+        return self.get_text_preserve_mode() == __class__.TextPreserveMode.CUSTOM
 
     def set_text_preserve_enable(self, enable: bool) -> None:
-        self.set_meta("text_preserve_enable", bool(enable))
+        # 兼容旧接口：False 映射为 SMART（与历史一致）。
+        self.set_text_preserve_mode(
+            __class__.TextPreserveMode.CUSTOM
+            if enable
+            else __class__.TextPreserveMode.SMART
+        )
 
     def get_pre_replacement(self) -> list[dict[str, Any]]:
         return self.get_rules_cached(LGDatabase.RuleType.PRE_REPLACEMENT)

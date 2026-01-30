@@ -27,6 +27,9 @@ class LineEditStyleMixin:
     LIGHT_TEXT = "rgba(0, 0, 0, 0.9)"
     LIGHT_BORDER = "rgba(0, 0, 0, 0.1)"
 
+    # 错误状态边框颜色
+    ERROR_BORDER = "#e74c3c"
+
     # 默认字体回落: 系统 UI → 各平台 → CJK → 通用
     FONT_DEFAULT = (
         "system-ui, "
@@ -41,12 +44,11 @@ class LineEditStyleMixin:
     # NOTE: 该 mixin 预期与 QWidget 子类组合使用；这里声明最小接口用于类型检查。
     destroyed: Any
 
-    def setStyleSheet(self, style: str) -> None:  # noqa: N802
-        raise NotImplementedError
-
     def init_style_mixin(self, widget_class_name: str) -> None:
         """初始化样式混入，需要在子类 __init__ 中调用"""
         self.widget_class_name = widget_class_name  # 用于生成正确的 QSS 选择器
+
+        self.has_error: bool = False
 
         # 初始样式
         self.update_line_edit_style()
@@ -81,10 +83,12 @@ class LineEditStyleMixin:
         # 使用动态类名生成 QSS
         cls = self.widget_class_name
 
+        border_color_effective = self.ERROR_BORDER if self.has_error else border_color
+
         cast(Any, self).setStyleSheet(f"""
             {cls} {{
                 background-color: {bg_color};
-                border: 1px solid {border_color};
+                border: 1px solid {border_color_effective};
                 border-radius: 6px;
                 color: {text_color};
                 font-family: {self.FONT_DEFAULT};
@@ -93,14 +97,20 @@ class LineEditStyleMixin:
             }}
             {cls}:hover {{
                 background-color: {bg_hover};
-                border: 1px solid {border_color};
+                border: 1px solid {border_color_effective};
             }}
             {cls}:focus {{
-                border: 1px solid {theme_color};
-                border-bottom: 1px solid {theme_color};
+                border: 1px solid {border_color_effective if self.has_error else theme_color};
+                border-bottom: 1px solid {border_color_effective if self.has_error else theme_color};
                 background-color: {bg_color};
             }}
         """)
+
+    def set_error(self, has_error: bool) -> None:
+        """设置错误状态（红色边框）。"""
+        if self.has_error != has_error:
+            self.has_error = has_error
+            self.update_line_edit_style()
 
 
 class CustomLineEdit(LineEdit, LineEditStyleMixin):

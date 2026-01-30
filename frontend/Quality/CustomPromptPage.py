@@ -173,14 +173,14 @@ class CustomPromptPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_save_toast,
+                    "message": Localizer.get().toast_saved,
                 },
             )
 
         parent.add_action(
             Action(
                 FluentIcon.SAVE,
-                Localizer.get().quality_save,
+                Localizer.get().save,
                 parent,
                 triggered=triggered,
             ),
@@ -267,7 +267,7 @@ class CustomPromptPage(QWidget, Base):
 
         def reset() -> None:
             message_box = MessageBox(
-                Localizer.get().alert, Localizer.get().quality_reset_alert, window
+                Localizer.get().alert, Localizer.get().confirm_reset_data, window
             )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
@@ -288,7 +288,7 @@ class CustomPromptPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_reset_toast,
+                    "message": Localizer.get().toast_reset,
                 },
             )
 
@@ -432,7 +432,7 @@ class CustomPromptPage(QWidget, Base):
             menu.addAction(
                 Action(
                     FluentIcon.ERASE_TOOL,
-                    Localizer.get().quality_reset,
+                    Localizer.get().reset,
                     triggered=reset,
                 )
             )

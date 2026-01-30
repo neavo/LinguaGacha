@@ -9,6 +9,7 @@ from model.Item import Item
 from module.Config import Config
 from module.ChunkGenerator import ChunkGenerator
 from module.Localizer.Localizer import Localizer
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Translator.TranslatorTask import TranslatorTask
 
 
@@ -46,12 +47,19 @@ class PriorityQueueItem:
 
 
 class TaskScheduler(Base):
-    def __init__(self, config: Config, model: dict, items: list[Item]) -> None:
+    def __init__(
+        self,
+        config: Config,
+        model: dict,
+        items: list[Item],
+        quality_snapshot: QualityRuleSnapshot | None = None,
+    ) -> None:
         """初始化任务调度器"""
         super().__init__()
         self.config = config
         self.model = model
         self.items = items
+        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
 
         # 初始token阈值
         self.initial_t0 = self.model.get("threshold", {}).get("input_token_limit", 512)
@@ -196,6 +204,7 @@ class TaskScheduler(Base):
             items=context.items,
             precedings=context.precedings,
             is_sub_task=not context.is_initial,
+            quality_snapshot=self.quality_snapshot,
         )
         # 注入详细状态用于日志
         task.split_count = context.split_count

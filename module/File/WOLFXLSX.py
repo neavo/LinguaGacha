@@ -6,11 +6,10 @@ import openpyxl.styles
 from openpyxl.worksheet.worksheet import Worksheet
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.TableManager import TableManager
+from module.Data.SpreadsheetUtil import SpreadsheetUtil
 
 
 class WOLFXLSX(Base):
@@ -59,8 +58,6 @@ class WOLFXLSX(Base):
 
         # 初始化
         self.config = config
-        self.source_language: BaseLanguage.Enum = config.source_language
-        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
@@ -83,7 +80,6 @@ class WOLFXLSX(Base):
         book: openpyxl.Workbook = openpyxl.load_workbook(io.BytesIO(content))
         sheet = book.active
 
-        # Ensure it is a Worksheet
         if not isinstance(sheet, Worksheet):
             return items
 
@@ -166,7 +162,7 @@ class WOLFXLSX(Base):
                 restored = True
 
             if restored:
-                # 加劳恢复的文件
+                # 加载恢复的文件
                 book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
                 sheet = book.active
             else:
@@ -184,11 +180,11 @@ class WOLFXLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                TableManager.set_cell_value(
-                    sheet, row, column=self.COL_SRC_TEXT, value=item.get_src()
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=self.COL_SRC_TEXT, value=item.get_src()
                 )
-                TableManager.set_cell_value(
-                    sheet, row, column=self.COL_DST_TEXT, value=item.get_dst()
+                SpreadsheetUtil.set_cell_value(
+                    sheet, row=row, column=self.COL_DST_TEXT, value=item.get_dst()
                 )
 
             # 保存工作簿

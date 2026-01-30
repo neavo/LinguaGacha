@@ -164,7 +164,7 @@ class TSConversionPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().engine_task_running,
+                    "message": Localizer.get().task_running,
                 },
             )
             return

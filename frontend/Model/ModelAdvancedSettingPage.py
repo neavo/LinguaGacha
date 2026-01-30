@@ -20,7 +20,6 @@ from widget.SliderCard import SliderCard
 
 
 class ModelAdvancedSettingPage(MessageBoxBase, Base):
-
     TOP_P_DEFAULT: float = 0.95
     TEMPERATURE_DEFAULT: float = 0.95
     PRESENCE_PENALTY_DEFAULT: float = 0.00
@@ -120,8 +119,9 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         config.save()
 
     # top_p
-    def add_widget_top_p(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_top_p(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
             switch_button.setOnText("")
@@ -139,20 +139,23 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "top_p"))
+            switch_button.checkedChanged.connect(
+                lambda checked: self.checked_changed(widget, checked, "top_p")
+            )
 
         parent.addWidget(
             SliderCard(
                 title=Localizer.get().model_advanced_setting_page_top_p_title,
-                description=Localizer.get().model_advanced_setting_page_top_p_content,
+                description=Localizer.get().model_advanced_setting_page_param_caution,
                 init=init,
                 slider_released=lambda widget: self.slider_released(widget, "top_p"),
             )
         )
 
     # temperature
-    def add_widget_temperature(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_temperature(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
             switch_button.setOnText("")
@@ -170,20 +173,25 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "temperature"))
+            switch_button.checkedChanged.connect(
+                lambda checked: self.checked_changed(widget, checked, "temperature")
+            )
 
         parent.addWidget(
             SliderCard(
                 title=Localizer.get().model_advanced_setting_page_temperature_title,
-                description=Localizer.get().model_advanced_setting_page_temperature_content,
+                description=Localizer.get().model_advanced_setting_page_param_caution,
                 init=init,
-                slider_released=lambda widget: self.slider_released(widget, "temperature"),
+                slider_released=lambda widget: self.slider_released(
+                    widget, "temperature"
+                ),
             )
         )
 
     # presence_penalty
-    def add_widget_presence_penalty(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_presence_penalty(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
             switch_button.setOnText("")
@@ -201,20 +209,27 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "presence_penalty"))
+            switch_button.checkedChanged.connect(
+                lambda checked: self.checked_changed(
+                    widget, checked, "presence_penalty"
+                )
+            )
 
         parent.addWidget(
             SliderCard(
                 title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
-                description=Localizer.get().model_advanced_setting_page_presence_penalty_content,
+                description=Localizer.get().model_advanced_setting_page_param_caution,
                 init=init,
-                slider_released=lambda widget: self.slider_released(widget, "presence_penalty"),
+                slider_released=lambda widget: self.slider_released(
+                    widget, "presence_penalty"
+                ),
             )
         )
 
     # frequency_penalty
-    def add_widget_frequency_penalty(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_frequency_penalty(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def init(widget: SliderCard) -> None:
             switch_button = SwitchButton()
             switch_button.setOnText("")
@@ -232,24 +247,33 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             switch_button.setChecked(is_enabled)
 
             # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(lambda checked: self.checked_changed(widget, checked, "frequency_penalty"))
+            switch_button.checkedChanged.connect(
+                lambda checked: self.checked_changed(
+                    widget, checked, "frequency_penalty"
+                )
+            )
 
         parent.addWidget(
             SliderCard(
                 title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
-                description=Localizer.get().model_advanced_setting_page_frequency_penalty_content,
+                description=Localizer.get().model_advanced_setting_page_param_caution,
                 init=init,
-                slider_released=lambda widget: self.slider_released(widget, "frequency_penalty"),
+                slider_released=lambda widget: self.slider_released(
+                    widget, "frequency_penalty"
+                ),
             )
         )
 
     # 自定义请求配置
-    def add_widget_request_config(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
+    def add_widget_request_config(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         request_config = self.model.get("request", {})
 
         # 自定义 Headers
-        def switch_changed_headers(checked: bool, plain_text_edit: CustomTextEdit) -> None:
+        def switch_changed_headers(
+            checked: bool, plain_text_edit: CustomTextEdit
+        ) -> None:
             plain_text_edit.setReadOnly(not checked)
             config = Config().load()
             if "request" not in self.model:
@@ -259,7 +283,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             config.save()
 
         def validate_and_save_headers(plain_text_edit: CustomTextEdit) -> bool:
-            """ 校验 JSON 并保存，返回是否有效 """
+            """校验 JSON 并保存，返回是否有效"""
             text = plain_text_edit.toPlainText().strip()
 
             # 空内容视为有效的空对象
@@ -282,7 +306,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return False
 
         def focus_out_headers(plain_text_edit: CustomTextEdit) -> None:
-            """ 失去焦点时，如果内容有误则显示 Toast """
+            """失去焦点时，如果内容有误则显示 Toast"""
             text = plain_text_edit.toPlainText().strip()
             if not text:
                 return
@@ -290,15 +314,21 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             try:
                 parsed = json.loads(text)
                 if not isinstance(parsed, dict):
-                    self.emit(Base.Event.TOAST, {
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                        },
+                    )
+            except json.JSONDecodeError:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
                         "type": Base.ToastType.WARNING,
                         "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                    })
-            except json.JSONDecodeError:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                })
+                    },
+                )
 
         def init_headers(widget: GroupCard) -> None:
             # 添加开关按钮到标题行右侧
@@ -314,17 +344,25 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             plain_text_edit.setFixedHeight(192)
             headers = request_config.get("extra_headers", {})
             if headers:
-                plain_text_edit.setPlainText(json.dumps(headers, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_headers_placeholder)
+                plain_text_edit.setPlainText(
+                    json.dumps(headers, indent=2, ensure_ascii=False)
+                )
+            plain_text_edit.setPlaceholderText(
+                Localizer.get().model_advanced_setting_page_headers_placeholder
+            )
             plain_text_edit.setReadOnly(not is_enabled)
             # 输入时实时校验并更新红框状态
-            plain_text_edit.textChanged.connect(lambda: validate_and_save_headers(plain_text_edit))
+            plain_text_edit.textChanged.connect(
+                lambda: validate_and_save_headers(plain_text_edit)
+            )
             # 失去焦点时才显示 Toast 提示
             plain_text_edit.set_on_focus_out(lambda: focus_out_headers(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
             # 注册开关事件
-            switch_button.checkedChanged.connect(lambda checked: switch_changed_headers(checked, plain_text_edit))
+            switch_button.checkedChanged.connect(
+                lambda checked: switch_changed_headers(checked, plain_text_edit)
+            )
 
         parent.addWidget(
             GroupCard(
@@ -346,7 +384,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             config.save()
 
         def validate_and_save_body(plain_text_edit: CustomTextEdit) -> bool:
-            """ 校验 JSON 并保存，返回是否有效 """
+            """校验 JSON 并保存，返回是否有效"""
             text = plain_text_edit.toPlainText().strip()
 
             # 空内容视为有效的空对象
@@ -369,7 +407,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return False
 
         def focus_out_body(plain_text_edit: CustomTextEdit) -> None:
-            """ 失去焦点时，如果内容有误则显示 Toast """
+            """失去焦点时，如果内容有误则显示 Toast"""
             text = plain_text_edit.toPlainText().strip()
             if not text:
                 return
@@ -377,15 +415,21 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             try:
                 parsed = json.loads(text)
                 if not isinstance(parsed, dict):
-                    self.emit(Base.Event.TOAST, {
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().model_advanced_setting_page_json_format_error,
+                        },
+                    )
+            except json.JSONDecodeError:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
                         "type": Base.ToastType.WARNING,
                         "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                    })
-            except json.JSONDecodeError:
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                })
+                    },
+                )
 
         def init_body(widget: GroupCard) -> None:
             # 添加开关按钮到标题行右侧
@@ -401,17 +445,25 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             plain_text_edit.setFixedHeight(192)
             body = request_config.get("extra_body", {})
             if body:
-                plain_text_edit.setPlainText(json.dumps(body, indent=2, ensure_ascii=False))
-            plain_text_edit.setPlaceholderText(Localizer.get().model_advanced_setting_page_body_placeholder)
+                plain_text_edit.setPlainText(
+                    json.dumps(body, indent=2, ensure_ascii=False)
+                )
+            plain_text_edit.setPlaceholderText(
+                Localizer.get().model_advanced_setting_page_body_placeholder
+            )
             plain_text_edit.setReadOnly(not is_enabled)
             # 输入时实时校验并更新红框状态
-            plain_text_edit.textChanged.connect(lambda: validate_and_save_body(plain_text_edit))
+            plain_text_edit.textChanged.connect(
+                lambda: validate_and_save_body(plain_text_edit)
+            )
             # 失去焦点时才显示 Toast 提示
             plain_text_edit.set_on_focus_out(lambda: focus_out_body(plain_text_edit))
             widget.add_widget(plain_text_edit)
 
             # 注册开关事件
-            switch_button.checkedChanged.connect(lambda checked: switch_changed_body(checked, plain_text_edit))
+            switch_button.checkedChanged.connect(
+                lambda checked: switch_changed_body(checked, plain_text_edit)
+            )
 
         parent.addWidget(
             GroupCard(
@@ -423,7 +475,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         )
 
     def save_request_field(self, field: str, value: dict) -> None:
-        """ 保存请求配置字段 """
+        """保存请求配置字段"""
         config = Config().load()
         if "request" not in self.model:
             self.model["request"] = {}
@@ -432,7 +484,9 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         config.save()
 
     # 添加链接
-    def add_widget_url(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_url(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         api_format = self.model.get("api_format", "")
         if api_format == Base.APIFormat.GOOGLE:
             url = "https://ai.google.dev/gemini-api/docs/thinking"
@@ -443,7 +497,9 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
         else:
             url = "https://platform.openai.com/docs/api-reference/chat/create"
 
-        hyper_link_label = HyperlinkLabel(QUrl(url), Localizer.get().model_advanced_setting_page_document_link)
+        hyper_link_label = HyperlinkLabel(
+            QUrl(url), Localizer.get().model_advanced_setting_page_document_link
+        )
         hyper_link_label.setUnderlineVisible(True)
 
         parent.addSpacing(16)

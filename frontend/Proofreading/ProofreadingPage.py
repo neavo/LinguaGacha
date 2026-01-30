@@ -64,6 +64,7 @@ class ProofreadingPage(QWidget, Base):
         "glossary_enable",
         "pre_translation_replacement_enable",
         "post_translation_replacement_enable",
+        "text_preserve_mode",
         "text_preserve_enable",
     }
 
@@ -130,6 +131,7 @@ class ProofreadingPage(QWidget, Base):
         self.quality_rule_refresh_timer: QTimer = QTimer(self)
         self.quality_rule_refresh_timer.setSingleShot(True)
         self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
+        self.pending_quality_rule_refresh: bool = False
 
         self.ui_font_px = self.FONT_SIZE
         self.ui_icon_px = self.ICON_SIZE
@@ -172,6 +174,10 @@ class ProofreadingPage(QWidget, Base):
         del event
         # 只对影响校对判定的规则变更触发重算，避免无效刷新
         if not self.is_quality_rule_update_relevant(event_data):
+            return
+        if not self.isVisible():
+            # 页面不可见时避免触发筛选导致全局进度 toast。
+            self.pending_quality_rule_refresh = True
             return
         if not self.items:
             return
@@ -245,7 +251,6 @@ class ProofreadingPage(QWidget, Base):
 
         self.edit_panel = ProofreadingEditPanel(self)
         self.edit_panel.save_requested.connect(self.on_edit_save_requested)
-        self.edit_panel.restore_requested.connect(self.on_edit_restore_requested)
         self.edit_panel.copy_src_requested.connect(self.on_copy_src_clicked)
         self.edit_panel.copy_dst_requested.connect(self.on_copy_dst_clicked)
         self.edit_panel.retranslate_requested.connect(self.on_retranslate_clicked)
@@ -292,7 +297,7 @@ class ProofreadingPage(QWidget, Base):
         self.btn_export = self.command_bar_card.add_action(
             Action(
                 FluentIcon.SHARE,
-                Localizer.get().proofreading_page_export,
+                Localizer.get().export_translation,
                 triggered=self.on_export_clicked,
             )
         )
@@ -306,7 +311,7 @@ class ProofreadingPage(QWidget, Base):
         self.btn_search = self.command_bar_card.add_action(
             Action(
                 FluentIcon.SEARCH,
-                Localizer.get().proofreading_page_search,
+                Localizer.get().search,
                 triggered=self.on_search_clicked,
             )
         )
@@ -1031,10 +1036,6 @@ class ProofreadingPage(QWidget, Base):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_edit_restore_requested(self) -> None:
-        if self.current_item is None:
-            return
-
     def on_item_saved_ui(self, item: Item, success: bool) -> None:
         if not success:
             self.emit(
@@ -1065,7 +1066,7 @@ class ProofreadingPage(QWidget, Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_saved,
+                "message": Localizer.get().toast_saved,
             },
         )
 
@@ -1450,7 +1451,7 @@ class ProofreadingPage(QWidget, Base):
         # 弹框让用户确认
         message_box = MessageBox(
             Localizer.get().confirm,
-            Localizer.get().proofreading_page_export_confirm,
+            Localizer.get().export_translation_confirm,
             self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
@@ -1612,6 +1613,9 @@ class ProofreadingPage(QWidget, Base):
         self.check_engine_status()
         if self.data_stale:
             self.schedule_reload("show")
+        if self.pending_quality_rule_refresh and self.items:
+            self.pending_quality_rule_refresh = False
+            self.schedule_quality_rule_refresh()
 
     # ========== Loading 指示器 ==========
     def indeterminate_show(self, msg: str) -> None:
