@@ -486,9 +486,23 @@ class ProofreadingEditPanel(QWidget):
         self.glossary_status_dirty = True
         self.set_status_tag_visible(self.glossary_status_tag, False)
 
+    def schedule_glossary_status_recheck(self) -> None:
+        """在不打断编辑的前提下触发术语状态重检查。"""
+        if not self.current_item:
+            return
+        if self.dst_text.isReadOnly():
+            return
+        if not self.glossary_status_dirty:
+            return
+
+        # 延迟一帧，避免点击/快捷键触发的保存动作被同步计算卡住。
+        self.glossary_status_timer.start(self.GLOSSARY_STATUS_DELAY_MS)
+
     def on_save_clicked(self) -> None:
         if not self.current_item:
             return
+        # Ctrl+S 保存不会触发 FocusOut，这里统一补上术语状态重检查。
+        self.schedule_glossary_status_recheck()
         self.save_requested.emit(self.current_item, self.get_current_text())
 
     def on_save_shortcut(self) -> None:
@@ -497,15 +511,7 @@ class ProofreadingEditPanel(QWidget):
 
     def on_dst_focus_out(self) -> None:
         """译文框焦点离开后触发重检查（不做保存）。"""
-        if not self.current_item:
-            return
-        if self.dst_text.isReadOnly():
-            return
-        if not self.glossary_status_dirty:
-            return
-
-        # 延迟一帧，避免点击动作被同步计算卡住。
-        self.glossary_status_timer.start(self.GLOSSARY_STATUS_DELAY_MS)
+        self.schedule_glossary_status_recheck()
 
     def refresh_status_tags(self, item: Item, warnings: list[WarningType]) -> None:
         self.clear_status_tags()
