@@ -13,10 +13,12 @@ from qfluentwidgets import MessageBox
 from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
-from module.Data.DataManager import DataManager
 from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.QualityRuleManager import QualityRuleManager
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
 from module.TextProcessor import TextProcessor
 from widget.ComboBoxCard import ComboBoxCard
 from widget.CommandBarCard import CommandBarCard
@@ -164,12 +166,13 @@ class TSConversionPage(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
+                    "message": Localizer.get().engine_task_running,
                 },
             )
             return
 
-        if not DataManager.get().is_loaded():
+        database = StorageContext.get().get_db()
+        if database is None:
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -207,7 +210,7 @@ class TSConversionPage(QWidget, Base):
                 config = Config().load()
                 text_processor = TextProcessor(config, Item())
 
-                items_data = DataManager.get().get_all_items()
+                items_data = database.get_all_items()
                 total = len(items_data)
                 if total == 0:
                     self.emit(
@@ -235,7 +238,8 @@ class TSConversionPage(QWidget, Base):
                 suffix = "_S2T" if is_to_traditional else "_T2S"
 
                 items_to_export = []
-                for index, item in enumerate(items_data):
+                for index, item_data in enumerate(items_data):
+                    item = Item.from_dict(item_data)
                     dst = item.get_dst()
 
                     # 转换译文
@@ -290,10 +294,15 @@ class TSConversionPage(QWidget, Base):
                             total,
                         )
 
-                # 直接执行导出逻辑（使用线程隔离的导出后缀上下文）
-                file_manager = FileManager(config)
-                with DataManager.get().export_custom_suffix_context(suffix):
+                # 直接执行导出逻辑
+                # 设置临时后缀
+                PathStore.custom_suffix = suffix
+                try:
+                    file_manager = FileManager(config)
                     output_path = file_manager.write_to_path(items_to_export)
+                finally:
+                    # 恢复后缀
+                    PathStore.custom_suffix = ""
 
                 # 通知结束
                 self.progress_finished.emit(output_path)
@@ -321,7 +330,7 @@ class TSConversionPage(QWidget, Base):
         # 获取保护规则，逻辑与 TextProcessor 保持一致
         # 根据全局“文本保护”开关决定使用自定义规则还是预置规则
         rule = text_processor.get_re_check(
-            custom=DataManager.get().get_text_preserve_enable(),
+            custom=QualityRuleManager.get().get_text_preserve_enable(),
             text_type=text_type,
         )
 

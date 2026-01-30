@@ -235,7 +235,7 @@ class ModelPage(QWidget, Base):
             menu.addAction(
                 Action(
                     FluentIcon.SETTING,
-                    Localizer.get().basic_settings,
+                    Localizer.get().model_page_basic_setting,
                     triggered=partial(self.show_model_basic_setting_page, model_id),
                 )
             )

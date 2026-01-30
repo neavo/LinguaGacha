@@ -107,7 +107,7 @@ class ToolBoxPage(QWidget, Base):
         parent.addWidget(
             ItemCard(
                 parent=self,
-                title=Localizer.get().name_field_extraction_page,
+                title=Localizer.get().tool_box_page_name_field_extraction,
                 description=Localizer.get().tool_box_page_name_field_extraction_desc,
                 init=None,
                 clicked=clicked,

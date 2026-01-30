@@ -6,10 +6,13 @@ import openpyxl.styles
 from openpyxl.worksheet.worksheet import Worksheet
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
-from module.Data.SpreadsheetUtil import SpreadsheetUtil
+from module.Storage.AssetStore import AssetStore
+from module.Storage.PathStore import PathStore
+from module.Storage.StorageContext import StorageContext
+from module.TableManager import TableManager
 
 
 class WOLFXLSX(Base):
@@ -58,6 +61,8 @@ class WOLFXLSX(Base):
 
         # 初始化
         self.config = config
+        self.source_language: BaseLanguage.Enum = config.source_language
+        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
@@ -80,6 +85,7 @@ class WOLFXLSX(Base):
         book: openpyxl.Workbook = openpyxl.load_workbook(io.BytesIO(content))
         sheet = book.active
 
+        # Ensure it is a Worksheet
         if not isinstance(sheet, Worksheet):
             return items
 
@@ -133,7 +139,8 @@ class WOLFXLSX(Base):
     # 写入
     def write_to_path(self, items: list[Item]) -> None:
         # 获取输出目录
-        output_path = DataManager.get().get_translated_path()
+        output_path = PathStore.get_translated_path()
+        db = StorageContext.get().get_db()
 
         target = [
             item for item in items if item.get_file_type() == Item.FileType.WOLFXLSX
@@ -155,14 +162,14 @@ class WOLFXLSX(Base):
 
             # 尝试从数据库恢复原始文件
             restored = False
-            original_data = DataManager.get().get_asset_decompressed(rel_path)
-            if original_data:
-                with open(abs_path, "wb") as f:
-                    f.write(original_data)
-                restored = True
+            if db:
+                asset_data = db.get_asset(rel_path)
+                if asset_data:
+                    AssetStore.decompress_to_file(asset_data, abs_path)
+                    restored = True
 
             if restored:
-                # 加载恢复的文件
+                # 加劳恢复的文件
                 book: openpyxl.Workbook = openpyxl.load_workbook(abs_path)
                 sheet = book.active
             else:
@@ -180,11 +187,11 @@ class WOLFXLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                SpreadsheetUtil.set_cell_value(
-                    sheet, row=row, column=self.COL_SRC_TEXT, value=item.get_src()
+                TableManager.set_cell_value(
+                    sheet, row, column=self.COL_SRC_TEXT, value=item.get_src()
                 )
-                SpreadsheetUtil.set_cell_value(
-                    sheet, row=row, column=self.COL_DST_TEXT, value=item.get_dst()
+                TableManager.set_cell_value(
+                    sheet, row, column=self.COL_DST_TEXT, value=item.get_dst()
                 )
 
             # 保存工作簿

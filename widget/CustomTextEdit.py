@@ -1,10 +1,6 @@
 from typing import Callable
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QTextOption
+from PyQt5.QtGui import QFocusEvent
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
@@ -63,72 +59,55 @@ class CustomTextEdit(PlainTextEdit):
     def __init__(self, parent=None, monospace: bool = False):
         super().__init__(parent)
 
-        self.monospace = monospace
-        self.has_error = False
-        self.on_focus_out: Callable[[], None] | None = None
+        self._is_read_only = False
+        self._monospace = monospace
+        self._has_error = False
+        self._on_focus_out: Callable[[], None] | None = None
 
         # 默认自动换行
         self.setLineWrapMode(PlainTextEdit.LineWrapMode.WidgetWidth)
-        # 即使启用了自动换行，仍可能因长 token 出现横向滚动条，这里彻底关闭。
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        option = self.document().defaultTextOption()
-        # 校对/编辑区包含长 URL、长 token 等内容时，按词语边界换行会留下大段空白。
-        # 使用硬换行（任意位置断行）保证版面稳定。
-        option.setWrapMode(QTextOption.WrapMode.WrapAnywhere)
-        self.document().setDefaultTextOption(option)
 
         # 初始样式
         self.update_style()
-        self.installEventFilter(self)
 
         # 监听主题变化，控件销毁时自动断开
-        qconfig.themeChangedFinished.connect(self.refresh_style)
+        qconfig.themeChanged.connect(self.update_style)
         self.destroyed.connect(self.disconnect_signals)
 
     def disconnect_signals(self) -> None:
         """断开全局信号连接，避免内存泄漏"""
         try:
-            qconfig.themeChangedFinished.disconnect(self.refresh_style)
+            qconfig.themeChanged.disconnect(self.update_style)
         except (TypeError, RuntimeError):
             pass
 
-    def setReadOnly(self, ro: bool) -> None:
-        super().setReadOnly(ro)
+    def setReadOnly(self, read_only: bool) -> None:
+        self._is_read_only = read_only
+        super().setReadOnly(read_only)
         self.update_style()
-
-    def refresh_style(self) -> None:
-        # 主题切换时可能被全局样式覆盖，延迟一帧再刷新样式。
-        QTimer.singleShot(0, self.update_style)
 
     def set_error(self, has_error: bool) -> None:
         """设置错误状态，显示红色边框"""
-        if self.has_error != has_error:
-            self.has_error = has_error
+        if self._has_error != has_error:
+            self._has_error = has_error
             self.update_style()
 
     def set_on_focus_out(self, callback: Callable[[], None]) -> None:
         """设置失去焦点时的回调函数"""
-        self.on_focus_out = callback
+        self._on_focus_out = callback
 
-    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
-        if a0 is self and a1 is not None:
-            if a1.type() == QEvent.Type.FocusOut and self.on_focus_out:
-                self.on_focus_out()
-            if a1.type() == QEvent.Type.Show:
-                # 页面创建早于主题加载时，确保显示时样式同步
-                self.update_style()
-        return super().eventFilter(a0, a1)
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        """重写失去焦点事件，触发回调"""
+        super().focusOutEvent(event)
+        if self._on_focus_out:
+            self._on_focus_out()
 
     def update_style(self) -> None:
         is_dark = isDarkTheme()
         theme_color = themeColor().name()
-        font_family = self.FONT_MONOSPACE if self.monospace else self.FONT_DEFAULT
-        padding = 6 if bool(self.property("compact")) else 10
+        font_family = self.FONT_MONOSPACE if self._monospace else self.FONT_DEFAULT
 
-        # 使用 isReadOnly() 而非自定义变量，确保主题切换时与实际状态一致。
-        is_readonly = self.isReadOnly()
-
-        if is_readonly:
+        if self._is_read_only:
             if is_dark:
                 bg_color = self.DARK_BG_READONLY
                 border = "1px solid transparent"
@@ -151,35 +130,27 @@ class CustomTextEdit(PlainTextEdit):
             focus_border = f"1px solid {theme_color}"
 
         # 错误状态覆盖边框颜色
-        if self.has_error and not is_readonly:
+        if self._has_error and not self._is_read_only:
             border = f"1px solid {self.ERROR_BORDER}"
             focus_border = f"1px solid {self.ERROR_BORDER}"
 
         self.setStyleSheet(f"""
-            CustomTextEdit,
-            CustomTextEdit PlainTextEdit,
-            CustomTextEdit QPlainTextEdit {{
+            CustomTextEdit {{
                 background-color: {bg_color};
                 border: {border};
-                 border-radius: 6px;
-                 color: {color};
-                 font-family: {font_family};
-                 padding: {padding}px;
-                 selection-background-color: {theme_color};
-             }}
-            CustomTextEdit QPlainTextEdit::viewport {{
-                background-color: {bg_color};
+                border-radius: 6px;
+                color: {color};
+                font-family: {font_family};
+                padding: 10px;
+                selection-background-color: {theme_color};
             }}
-            CustomTextEdit:hover,
-            CustomTextEdit PlainTextEdit:hover,
-            CustomTextEdit QPlainTextEdit:hover {{
+            CustomTextEdit:hover {{
                 border: {border};
                 background-color: {bg_color};
             }}
-            CustomTextEdit:focus,
-            CustomTextEdit PlainTextEdit:focus,
-            CustomTextEdit QPlainTextEdit:focus {{
+            CustomTextEdit:focus {{
                 border: {focus_border};
+                border-bottom: 1px solid {theme_color};
                 background-color: {bg_color};
             }}
         """)

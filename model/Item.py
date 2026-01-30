@@ -2,11 +2,9 @@ import dataclasses
 import re
 import threading
 from enum import StrEnum
-from functools import lru_cache
 from typing import Any
 from typing import ClassVar
 from typing import Self
-from typing import cast
 
 import tiktoken
 import tiktoken_ext
@@ -15,104 +13,73 @@ from tiktoken_ext import openai_public
 from base.Base import Base
 from module.Text.TextBase import TextBase
 
-TOKEN_ENCODING_NAME = "o200k_base"
-TOKEN_COUNT_CACHE_MAXSIZE = 8192
-TOKEN_COUNT_CACHE_TEXT_LIMIT = 2048  # 超过此长度不进入全局缓存，避免内存膨胀
-TOKEN_ENCODING = tiktoken.get_encoding(TOKEN_ENCODING_NAME)
-
-
-@lru_cache(maxsize=TOKEN_COUNT_CACHE_MAXSIZE)
-def get_token_count_from_text(text: str) -> int:
-    return len(TOKEN_ENCODING.encode(text))
-
-
 @dataclasses.dataclass
-class Item:
+class Item():
+
     # 必须显式的引用这两个库，否则打包后会报错
     tiktoken_ext
     openai_public
 
     class FileType(StrEnum):
-        NONE = "NONE"  # 无类型
-        MD = "MD"  # .md Markdown
-        TXT = "TXT"  # .txt 文本文件
-        SRT = "SRT"  # .srt 字幕文件
-        ASS = "ASS"  # .ass 字幕文件
-        EPUB = "EPUB"  # .epub
-        XLSX = "XLSX"  # .xlsx Translator++ SExtractor
-        WOLFXLSX = "WOLFXLSX"  # .xlsx WOLF 官方翻译工具导出文件
-        RENPY = "RENPY"  # .rpy RenPy
-        TRANS = "TRANS"  # .trans Translator++
-        KVJSON = "KVJSON"  # .json MTool
-        MESSAGEJSON = "MESSAGEJSON"  # .json SExtractor
+
+        NONE = "NONE"                              # 无类型
+        MD = "MD"                                  # .md Markdown
+        TXT = "TXT"                                # .txt 文本文件
+        SRT = "SRT"                                # .srt 字幕文件
+        ASS = "ASS"                                # .ass 字幕文件
+        EPUB = "EPUB"                              # .epub
+        XLSX = "XLSX"                              # .xlsx Translator++ SExtractor
+        WOLFXLSX = "WOLFXLSX"                      # .xlsx WOLF 官方翻译工具导出文件
+        RENPY = "RENPY"                            # .rpy RenPy
+        TRANS = "TRANS"                            # .trans Translator++
+        KVJSON = "KVJSON"                          # .json MTool
+        MESSAGEJSON = "MESSAGEJSON"                # .json SExtractor
 
     class TextType(StrEnum):
-        NONE = "NONE"  # 无类型，即纯文本
-        MD = "MD"  # Markdown
-        KAG = "KAG"  # KAG 游戏文本
-        WOLF = "WOLF"  # WOLF 游戏文本
-        RENPY = "RENPY"  # RENPY 游戏文本
-        RPGMAKER = "RPGMAKER"  # RPGMAKER 游戏文本
+
+        NONE = "NONE"                              # 无类型，即纯文本
+        MD = "MD"                                  # Markdown
+        KAG = "KAG"                                # KAG 游戏文本
+        WOLF = "WOLF"                              # WOLF 游戏文本
+        RENPY = "RENPY"                            # RENPY 游戏文本
+        RPGMAKER = "RPGMAKER"                      # RPGMAKER 游戏文本
 
     # 默认值
-    id: int | None = None  # 数据库主键（自增）
-    src: str = ""  # 原文
-    dst: str = ""  # 译文
-    name_src: str | list[str] | None = None  # 角色姓名原文
-    name_dst: str | list[str] | None = None  # 角色姓名译文
-    extra_field: str | dict = ""  # 额外字段原文
-    tag: str = ""  # 标签
-    row: int = 0  # 行号
-    file_type: FileType = FileType.NONE  # 文件的类型
-    file_path: str = ""  # 文件的相对路径
-    text_type: TextType = TextType.NONE  # 文本的实际类型
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE  # 翻译状态
-    retry_count: int = 0  # 重试次数，当前只有单独重试的时候才增加此计数
+    id: int | None = None                                                                       # 数据库主键（自增）
+    src: str = ""                                                                               # 原文
+    dst: str = ""                                                                               # 译文
+    name_src: str | list[str] = None                                                            # 角色姓名原文
+    name_dst: str | list[str] = None                                                            # 角色姓名译文
+    extra_field: str | dict = ""                                                                # 额外字段原文
+    tag: str = ""                                                                               # 标签
+    row: int = 0                                                                                # 行号
+    file_type: FileType = FileType.NONE                                                         # 文件的类型
+    file_path: str = ""                                                                         # 文件的相对路径
+    text_type: TextType = TextType.NONE                                                         # 文本的实际类型
+    status: Base.ProjectStatus = Base.ProjectStatus.NONE                                        # 翻译状态
+    retry_count: int = 0                                                                        # 重试次数，当前只有单独重试的时候才增加此计数
 
     # 线程锁
-    lock: threading.Lock = dataclasses.field(
-        init=False, repr=False, compare=False, default_factory=threading.Lock
-    )
-
-    # Token 计数缓存（不落库）
-    token_count_cache_src: str | None = dataclasses.field(
-        init=False, repr=False, compare=False, default=None
-    )
-
-    token_count_cache: int | None = dataclasses.field(
-        init=False, repr=False, compare=False, default=None
-    )
+    lock: threading.Lock = dataclasses.field(init = False, repr = False, compare = False, default_factory = threading.Lock)
 
     # WOLF
-    REGEX_WOLF: ClassVar[tuple] = (
-        re.compile(r"@\d+", flags=re.IGNORECASE),  # 角色 ID
-        re.compile(
-            r"\\[cus]db\[.+?:.+?:.+?\]", flags=re.IGNORECASE
-        ),  # 数据库变量 \cdb[0:1:2]
+    REGEX_WOLF: ClassVar[tuple[re.Pattern]] = (
+        re.compile(r"@\d+", flags = re.IGNORECASE),                                             # 角色 ID
+        re.compile(r"\\[cus]db\[.+?:.+?:.+?\]", flags = re.IGNORECASE),                         # 数据库变量 \cdb[0:1:2]
     )
 
     # RENPY
-    CJK_RANGE: ClassVar[str] = (
-        rf"{TextBase.CJK_RANGE}{TextBase.HANGUL_RANGE}{TextBase.HIRAGANA_RANGE}{TextBase.KATAKANA_RANGE}"
-    )
-    REGEX_RENPY: ClassVar[tuple] = (
-        re.compile(r"\{[^\{" + CJK_RANGE + r"]*?\}", flags=re.IGNORECASE),  # {w=2.3}
-        re.compile(
-            r"\[[^\[" + CJK_RANGE + r"]*?\]", flags=re.IGNORECASE
-        ),  # [renpy.version_only]
+    CJK_RANGE: ClassVar[str] = rf"{TextBase.CJK_RANGE}{TextBase.HANGUL_RANGE}{TextBase.HIRAGANA_RANGE}{TextBase.KATAKANA_RANGE}"
+    REGEX_RENPY: ClassVar[tuple[re.Pattern]] = (
+        re.compile(r"\{[^\{" + CJK_RANGE + r"]*?\}", flags = re.IGNORECASE),                    # {w=2.3}
+        re.compile(r"\[[^\[" + CJK_RANGE + r"]*?\]", flags = re.IGNORECASE),                    # [renpy.version_only]
     )
 
     # RPGMaker
-    REGEX_RPGMaker: ClassVar[tuple] = (
-        re.compile(
-            r"en\(.{0,8}[vs]\[\d+\].{0,16}\)", flags=re.IGNORECASE
-        ),  # en(!s[982]) en(v[982] >= 1)
-        re.compile(
-            r"if\(.{0,8}[vs]\[\d+\].{0,16}\)", flags=re.IGNORECASE
-        ),  # if(!s[982]) if(v[982] >= 1)
-        re.compile(
-            r"[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]]", flags=re.IGNORECASE
-        ),  # /c[xy12] \bc[xy12] <\bc[xy12]>
+    REGEX_RPGMaker: ClassVar[tuple[re.Pattern]] = (
+        re.compile(r"en\(.{0,8}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE),                    # en(!s[982]) en(v[982] >= 1)
+        re.compile(r"if\(.{0,8}[vs]\[\d+\].{0,16}\)", flags = re.IGNORECASE),                    # if(!s[982]) if(v[982] >= 1)
+        re.compile(r"[/\\][a-z]{1,8}[<\[][a-z\d]{0,16}[>\]]", flags = re.IGNORECASE),            # /c[xy12] \bc[xy12] <\bc[xy12]>
     )
 
     @classmethod
@@ -126,29 +93,20 @@ class Item:
             return {
                 v.name: getattr(self, v.name)
                 for v in dataclasses.fields(self)
-                if v.init
+                if v.init != False
             }
 
     def __post_init__(self) -> None:
         # 如果文件类型是 XLSX、TRANS、KVJSON、MESSAGEJSON，且没有文本类型，则判断实际的文本类型
         if (
-            self.get_file_type()
-            in (
-                __class__.FileType.XLSX,
-                __class__.FileType.KVJSON,
-                __class__.FileType.MESSAGEJSON,
-            )
+            self.get_file_type() in (__class__.FileType.XLSX, __class__.FileType.KVJSON, __class__.FileType.MESSAGEJSON)
             and self.get_text_type() == __class__.TextType.NONE
         ):
             if any(v.search(self.get_src()) is not None for v in __class__.REGEX_WOLF):
                 self.set_text_type(__class__.TextType.WOLF)
-            elif any(
-                v.search(self.get_src()) is not None for v in __class__.REGEX_RPGMaker
-            ):
+            elif any(v.search(self.get_src()) is not None for v in __class__.REGEX_RPGMaker):
                 self.set_text_type(__class__.TextType.RPGMAKER)
-            elif any(
-                v.search(self.get_src()) is not None for v in __class__.REGEX_RENPY
-            ):
+            elif any(v.search(self.get_src()) is not None for v in __class__.REGEX_RENPY):
                 self.set_text_type(__class__.TextType.RENPY)
 
     # 获取数据库主键
@@ -170,8 +128,6 @@ class Item:
     def set_src(self, src: str) -> None:
         with self.lock:
             self.src = src
-            self.token_count_cache = None
-            self.token_count_cache_src = None
 
     # 获取译文
     def get_dst(self) -> str:
@@ -189,22 +145,22 @@ class Item:
                 self.dst = str(dst)
 
     # 获取角色姓名原文
-    def get_name_src(self) -> str | list[str] | None:
+    def get_name_src(self) -> str | list[str]:
         with self.lock:
-            return cast(str | list[str] | None, self.name_src)
+            return self.name_src
 
     # 设置角色姓名原文
-    def set_name_src(self, name_src: str | list[str] | None) -> None:
+    def set_name_src(self, name_src: str | list[str]) -> None:
         with self.lock:
             self.name_src = name_src
 
     # 获取角色姓名译文
-    def get_name_dst(self) -> str | list[str] | None:
+    def get_name_dst(self) -> str | list[str]:
         with self.lock:
-            return cast(str | list[str] | None, self.name_dst)
+            return self.name_dst
 
     # 设置角色姓名译文
-    def set_name_dst(self, name_dst: str | list[str] | None) -> None:
+    def set_name_dst(self, name_dst: str | list[str]) -> None:
         with self.lock:
             self.name_dst = name_dst
 
@@ -290,33 +246,13 @@ class Item:
 
     # 获取 Token 数量
     def get_token_count(self) -> int:
-        with self.lock:
-            cached_src = self.token_count_cache_src
-            cached_count = self.token_count_cache
-            src = self.src
-
-        if cached_count is not None and cached_src == src:
-            return cached_count
-
-        # 长文本跳过全局缓存，避免内存膨胀
-        if len(src) > TOKEN_COUNT_CACHE_TEXT_LIMIT:
-            token_count = len(TOKEN_ENCODING.encode(src))
-        else:
-            token_count = get_token_count_from_text(src)
-
-        # 仅在源文本未变化时回写缓存，避免竞态误缓存
-        with self.lock:
-            if self.src == src:
-                self.token_count_cache_src = src
-                self.token_count_cache = token_count
-
-        return token_count
+        return len(tiktoken.get_encoding("o200k_base").encode(self.get_src()))
 
     # 获取第一个角色姓名原文
-    def get_first_name_src(self) -> str | None:
-        name: str | None = None
+    def get_first_name_src(self) -> str:
+        name: str = None
 
-        name_src: str | list[str] | None = self.get_name_src()
+        name_src: str | list[str] = self.get_name_src()
         if isinstance(name_src, str) and name_src != "":
             name = name_src
         elif isinstance(name_src, list) and name_src != []:
@@ -326,7 +262,7 @@ class Item:
 
     # 设置第一个角色姓名译文
     def set_first_name_dst(self, name: str) -> None:
-        name_src: str | list[str] | None = self.get_name_src()
+        name_src: str | list[str] = self.get_name_src()
         if isinstance(name_src, str) and name_src != "":
             self.set_name_dst(name)
         elif isinstance(name_src, list) and name_src != []:

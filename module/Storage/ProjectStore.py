@@ -3,15 +3,18 @@ from pathlib import Path
 
 from base.Base import Base
 from module.Config import Config
-from module.Data.LGDatabase import LGDatabase
-from module.Data.Type import ProgressCallback
-from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
+from module.QualityRuleManager import QualityRuleManager
+from module.Storage.AssetStore import AssetStore
+from module.Storage.DataStore import DataStore
 
 
-class ProjectService(Base):
-    """工程创建/预览服务。"""
+class ProjectStore(Base):
+    """工程存储管理器"""
+
+    # 进度回调类型：callback(current, total, message)
+    ProgressCallback = Callable[[int, int, str], None]
 
     # 支持的文件扩展名
     SUPPORTED_EXTENSIONS = {
@@ -28,12 +31,16 @@ class ProjectService(Base):
 
     def __init__(self) -> None:
         super().__init__()
-        self.progress_callback: ProgressCallback | None = None
+        self.progress_callback: ProjectStore.ProgressCallback | None = None
 
-    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+    def set_progress_callback(
+        self, callback: ProjectStore.ProgressCallback | None
+    ) -> None:
+        """设置进度回调函数 callback(current, total, message)"""
         self.progress_callback = callback
 
     def report_progress(self, current: int, total: int, message: str) -> None:
+        """报告进度"""
         if self.progress_callback is None:
             return
         self.progress_callback(current, total, message)
@@ -42,24 +49,31 @@ class ProjectService(Base):
         self,
         source_path: str,
         output_path: str,
-        init_rules: Callable[[LGDatabase], list[str]] | None = None,
-    ) -> list[str]:
-        """创建工程并写入 assets/items/meta。
+    ) -> DataStore:
+        """创建工程
 
-        返回：初始化成功加载的默认预设名称列表。
+        Args:
+            source_path: 源文件或目录路径
+            output_path: 输出的 .lg 文件路径
+
+        Returns:
+            创建的 DataStore 实例
         """
+        # 确保输出目录存在
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+        # 删除已存在的文件
         if Path(output_path).exists():
             Path(output_path).unlink()
 
+        # 创建数据库
         project_name = Path(source_path).name
-        db = LGDatabase.create(output_path, project_name)
+        db = DataStore.create(output_path, project_name)
 
-        loaded_presets: list[str] = []
-        if init_rules is not None:
-            loaded_presets = init_rules(db)
+        # 初始化质量规则
+        QualityRuleManager.get().initialize_project_rules(db)
 
+        # 收集源文件
         source_files = self.collect_source_files(source_path)
         total_files = len(source_files)
 
@@ -67,28 +81,9 @@ class ProjectService(Base):
             0, total_files, Localizer.get().project_store_ingesting_assets
         )
 
-        config = Config().load()
-        file_manager = FileManager(config)
-        items = []
-
+        # 收纳资产
         for i, file_path in enumerate(source_files):
-            rel_path = self.get_relative_path(source_path, file_path)
-
-            try:
-                with open(file_path, "rb") as f:
-                    original_data = f.read()
-            except Exception as e:
-                self.error(f"Failed to read source file: {file_path}", e)
-                continue
-
-            compressed = ZstdCodec.compress(original_data)
-            db.add_asset(rel_path, compressed, len(original_data))
-
-            try:
-                items.extend(file_manager.parse_asset(rel_path, original_data))
-            except Exception as e:
-                self.error(f"Failed to parse asset: {rel_path}", e)
-
+            self.ingest_asset(db, source_path, file_path)
             self.report_progress(
                 i + 1,
                 total_files,
@@ -97,14 +92,24 @@ class ProjectService(Base):
                 ),
             )
 
+        # 解析翻译条目
         self.report_progress(
             total_files, total_files, Localizer.get().project_store_parsing_items
         )
 
+        # 使用 FileManager 解析翻译条目（直接从刚存入数据库的资产中解析）
+        config = Config().load()
+        items = FileManager(config).get_items_for_translation(
+            Base.TranslationMode.NEW, db=db
+        )
+
+        # 将条目保存到数据库
         if items:
             db.set_items([item.to_dict() for item in items])
 
+            # 初始化翻译进度元数据
             # 将 total_line 设为 0，标记该工程尚未进行翻译扫描
+            # 这样在翻译页初始化时，剩余行数会显示为 0，直到第一次翻译运行完成过滤
             extras = {
                 "total_line": 0,
                 "line": 0,
@@ -113,19 +118,24 @@ class ProjectService(Base):
                 "total_output_tokens": 0,
                 "time": 0,
             }
+
             db.set_meta("translation_extras", extras)
 
         self.report_progress(
             total_files, total_files, Localizer.get().project_store_created
         )
 
-        return loaded_presets
+        return db
 
     def collect_source_files(self, source_path: str) -> list[str]:
+        """收集源文件列表"""
         path_obj = Path(source_path)
+
         if path_obj.is_file():
+            # 单个文件
             return [source_path] if self.is_supported_file(source_path) else []
 
+        # 目录递归扫描
         return [
             str(f)
             for f in path_obj.rglob("*")
@@ -133,22 +143,38 @@ class ProjectService(Base):
         ]
 
     def is_supported_file(self, file_path: str) -> bool:
+        """检查是否为支持的文件类型"""
         ext = Path(file_path).suffix.lower()
         return ext in self.SUPPORTED_EXTENSIONS
 
-    def get_relative_path(self, base_path: str, file_path: str) -> str:
-        return (
+    def ingest_asset(self, db: DataStore, base_path: str, file_path: str) -> None:
+        """收纳单个资产到数据库"""
+        # 计算相对路径
+        relative_path = (
             Path(file_path).name
             if Path(base_path).is_file()
             else str(Path(file_path).relative_to(base_path))
         )
 
-    def get_project_preview(self, lg_path: str) -> dict:
-        """获取工程预览信息（不完全加载）。"""
+        # 压缩文件
+        compressed_data, original_size = AssetStore.compress_file(file_path)
+
+        # 存入数据库
+        db.add_asset(relative_path, compressed_data, original_size)
+
+    @staticmethod
+    def get_project_preview(lg_path: str) -> dict:
+        """获取工程预览信息（不完全加载）
+
+        使用短连接模式，操作完成后自动关闭，WAL 文件会被清理。
+        用于在工作台中显示项目详情。
+        """
         if not Path(lg_path).exists():
             raise FileNotFoundError(
                 Localizer.get().project_store_file_not_found.format(PATH=lg_path)
             )
 
-        db = LGDatabase(lg_path)
+        # 使用短连接模式（不调用 open()）
+
+        db = DataStore(lg_path)
         return db.get_project_summary()

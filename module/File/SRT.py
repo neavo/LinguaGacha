@@ -4,7 +4,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
+from module.Storage.PathStore import PathStore
 from module.Text.TextHelper import TextHelper
 
 
@@ -102,9 +102,8 @@ class SRT(Base):
         return items
 
     def write_to_path(self, items: list[Item]) -> None:
-        dm = DataManager.get()
-        output_path = dm.get_translated_path()
-        bilingual_path = dm.get_bilingual_path()
+        output_path = PathStore.get_translated_path()
+        bilingual_path = PathStore.get_bilingual_path()
 
         # 筛选 SRT 条目
         target_items = [i for i in items if i.get_file_type() == Item.FileType.SRT]

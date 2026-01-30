@@ -147,19 +147,6 @@ class TaskRequester(Base):
             return url.removesuffix("/").removesuffix("/chat/completions")
 
     @classmethod
-    def parse_google_api_url(cls, url: str) -> tuple[str, str | None]:
-        normalized_url: str = url.strip().removesuffix("/")
-        if not normalized_url:
-            return "", None
-        if normalized_url.endswith("/v1beta"):
-            # 兼容 URL 里指定版本，避免 SDK 拼接重复版本
-            return normalized_url.removesuffix("/v1beta"), "v1beta"
-        if normalized_url.endswith("/v1"):
-            # 兼容 URL 里指定版本，避免 SDK 拼接重复版本
-            return normalized_url.removesuffix("/v1"), "v1"
-        return normalized_url, None
-
-    @classmethod
     @lru_cache(maxsize=None)
     def get_client(
         cls,
@@ -183,22 +170,13 @@ class TaskRequester(Base):
             # 合并默认 headers 和自定义 headers
             headers = cls.get_default_headers()
             headers.update(dict(extra_headers_tuple))
-            base_url, api_version = cls.parse_google_api_url(url)
-            if base_url or api_version:
-                http_options = types.HttpOptions(
-                    base_url=base_url if base_url else None,
-                    api_version=api_version,
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
-            else:
-                http_options = types.HttpOptions(
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
             return genai.Client(
                 api_key=key,
-                http_options=http_options,
+                http_options=types.HttpOptions(
+                    base_url=url,
+                    timeout=timeout * 1000,
+                    headers=headers,
+                ),
             )
         elif api_format == Base.APIFormat.ANTHROPIC:
             return anthropic.Anthropic(
@@ -461,7 +439,7 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level="minimal",
-                    include_thoughts=False,
+                    include_thoughts=True,
                 )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -495,7 +473,7 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinkingBudget=0,
-                    include_thoughts=False,
+                    include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(

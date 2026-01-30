@@ -1,8 +1,6 @@
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-from typing import cast
 
 from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import QPointF
@@ -11,7 +9,6 @@ from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPolygonF
 from PyQt5.QtGui import QPen
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
@@ -37,21 +34,18 @@ from qfluentwidgets import themeColor
 
 from base.Base import Base
 from base.LogManager import LogManager
-from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
-from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
-from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from model.Item import Item
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
+from module.Storage.StorageContext import StorageContext
 from widget.CustomLineEdit import CustomSearchLineEdit
 
 
 class FilterListItemWidget(QWidget):
     """自定义列表项 widget：悬浮背景 + 手绘 checkbox + CaptionLabel 文本 + 计数"""
 
-    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+    def __init__(self, text: str, parent: QWidget = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(40)
         # 启用鼠标追踪以接收 enterEvent/leaveEvent
@@ -67,18 +61,14 @@ class FilterListItemWidget(QWidget):
 
         # 使用 CaptionLabel 显示文本（12px 字体，QFluentWidgets 内置控件处理好渲染）
         self.text_label = CaptionLabel(text, self)
-        self.text_label.setAlignment(
-            cast(Any, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        )
-        self.text_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.text_label.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         # 使用 CaptionLabel 显示计数
         self.count_label = CaptionLabel("0", self)
         self.count_label.setMinimumWidth(32)
-        self.count_label.setAlignment(
-            cast(Any, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        )
-        self.count_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.count_label.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         # 布局
         layout = QHBoxLayout(self)
@@ -105,17 +95,17 @@ class FilterListItemWidget(QWidget):
         self.setToolTip(tooltip)
         self.installEventFilter(ToolTipFilter(self, 300, ToolTipPosition.TOP))
 
-    def enterEvent(self, a0) -> None:
+    def enterEvent(self, event) -> None:
         """鼠标进入时设置悬浮状态"""
         self.hovered = True
         self.update()
-        super().enterEvent(a0)
+        super().enterEvent(event)
 
-    def leaveEvent(self, a0) -> None:
+    def leaveEvent(self, event) -> None:
         """鼠标离开时取消悬浮状态"""
         self.hovered = False
         self.update()
-        super().leaveEvent(a0)
+        super().leaveEvent(event)
 
     def get_check_color(self) -> QColor:
         if not isDarkTheme():
@@ -125,8 +115,7 @@ class FilterListItemWidget(QWidget):
         luma = 0.2126 * color.redF() + 0.7152 * color.greenF() + 0.0722 * color.blueF()
         return QColor(0, 0, 0) if luma > 0.75 else QColor(255, 255, 255)
 
-    def paintEvent(self, a0) -> None:
-        del a0
+    def paintEvent(self, event) -> None:
         """绘制悬浮背景 + Fluent 风格 checkbox"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
@@ -137,7 +126,7 @@ class FilterListItemWidget(QWidget):
                 QColor(255, 255, 255, 20) if isDarkTheme() else QColor(0, 0, 0, 10)
             )
             painter.setBrush(hover_color)
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(Qt.NoPen)
             # 不留左右边距，与搜索框对齐
             bg_rect = self.rect().adjusted(0, 2, 0, -2)
             painter.drawRoundedRect(bg_rect, 5, 5)
@@ -154,13 +143,13 @@ class FilterListItemWidget(QWidget):
         if self.checked:
             # 选中状态：主题色背景 + 白色勾
             painter.setBrush(themeColor())
-            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(checkbox_rect, 5, 5)
 
             # 绘制白色对勾
             check_pen = QPen(self.get_check_color(), 2)
-            check_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            check_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            check_pen.setCapStyle(Qt.RoundCap)
+            check_pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(check_pen)
 
             origin = checkbox_rect.topLeft()
@@ -168,10 +157,10 @@ class FilterListItemWidget(QWidget):
             p1 = origin + QPointF(w * 0.27, w * 0.5)
             p2 = origin + QPointF(w * 0.44, w * 0.68)
             p3 = origin + QPointF(w * 0.75, w * 0.34)
-            painter.drawPolyline(QPolygonF([p1, p2, p3]))
+            painter.drawPolyline([p1, p2, p3])
         else:
             # 未选中状态：边框 + 透明背景
-            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setBrush(Qt.NoBrush)
             border_c = (
                 QColor(255, 255, 255, 138) if isDarkTheme() else QColor(0, 0, 0, 110)
             )
@@ -200,6 +189,7 @@ class FilterListDelegate(ListItemDelegate):
 class FilterDialog(MessageBoxBase):
     """双栏式筛选对话框：左栏文件范围，右栏筛选条件与术语明细，全联动刷新"""
 
+    NO_WARNING_TAG = "NO_WARNING"
     LIST_STYLE = """
             ListWidget, QListWidget, QListView {
                 background: transparent;
@@ -237,7 +227,7 @@ class FilterDialog(MessageBoxBase):
     ) -> None:
         super().__init__(parent)
 
-        # 规则跳过条目无需校对；非目标原文语言可由用户选择显示
+        # WHY: 规则跳过条目无需校对；非目标原文语言可由用户选择显示
         self.items = [
             i
             for i in items
@@ -268,17 +258,13 @@ class FilterDialog(MessageBoxBase):
         """导出错误报告"""
         # 1. 获取当前筛选结果中的错误条目
         items = self.get_current_filtered_items()
-        error_items = [
-            i
-            for i in items
-            if ProofreadingDomain.get_item_warnings(i, self.warning_map)
-        ]
+        error_items = [i for i in items if self.warning_map.get(id(i))]
 
         if not error_items:
             InfoBar.warning(
                 title=Localizer.get().alert,
                 content=Localizer.get().alert_no_data,
-                orient=Qt.Orientation.Horizontal,
+                orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,
                 duration=2000,
@@ -287,7 +273,7 @@ class FilterDialog(MessageBoxBase):
             return
 
         # 2. 准备导出路径
-        lg_path = DataManager.get().get_lg_path()
+        lg_path = StorageContext.get().get_lg_path()
         if not lg_path:
             return
 
@@ -297,7 +283,17 @@ class FilterDialog(MessageBoxBase):
         output_name = f"{project_name}_结果检查.txt"
         output_path = project_path.parent / output_name
 
-        # 3. 生成内容
+        # 3. 准备警告类型名称映射
+        warning_labels = {
+            WarningType.KANA: Localizer.get().proofreading_page_warning_kana,
+            WarningType.HANGEUL: Localizer.get().proofreading_page_warning_hangeul,
+            WarningType.TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
+            WarningType.SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
+            WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
+            WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
+        }
+
+        # 4. 生成内容
         content_lines = []
         separator_line = "=" * 60
         section_separator = "-" * 60
@@ -320,9 +316,7 @@ class FilterDialog(MessageBoxBase):
 
         # 警告筛选 (只列结果检查，忽略文件范围)
         valid_warning_buttons = {
-            w: b
-            for w, b in self.warning_buttons.items()
-            if w != ProofreadingFilterOptions.NO_WARNING_TAG
+            w: b for w, b in self.warning_buttons.items() if w != self.NO_WARNING_TAG
         }
 
         selected_warnings = {
@@ -351,8 +345,8 @@ class FilterDialog(MessageBoxBase):
 
         # 4.2 错误条目
         for i, item in enumerate(error_items, 1):
-            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-            warning_strs = [ProofreadingLabels.get_warning_label(w) for w in warnings]
+            warnings = self.warning_map.get(id(item), [])
+            warning_strs = [warning_labels.get(w, w) for w in warnings]
             warning_line = " | ".join(warning_strs)
 
             # Item Header
@@ -385,7 +379,7 @@ class FilterDialog(MessageBoxBase):
             InfoBar.success(
                 title=Localizer.get().task_success,
                 content="",
-                orient=Qt.Orientation.Horizontal,
+                orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,
                 duration=3000,
@@ -397,9 +391,7 @@ class FilterDialog(MessageBoxBase):
     def build_glossary_error_map(self) -> None:
         """构建术语错误明细映射"""
         for item in self.items:
-            if WarningType.GLOSSARY not in ProofreadingDomain.get_item_warnings(
-                item, self.warning_map
-            ):
+            if WarningType.GLOSSARY not in self.warning_map.get(id(item), []):
                 continue
             failed_terms = self.result_checker.get_failed_glossary_terms(item)
             for term in failed_terms:
@@ -422,7 +414,7 @@ class FilterDialog(MessageBoxBase):
         left_layout = QVBoxLayout(left_container)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(12)
-        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        left_layout.setAlignment(Qt.AlignTop)
 
         left_layout.addWidget(self.create_status_card())
         left_layout.addWidget(self.create_warning_card())
@@ -449,7 +441,7 @@ class FilterDialog(MessageBoxBase):
     def setup_filter_list_widget(self, list_widget: ListWidget) -> None:
         list_widget.setSelectionMode(QAbstractItemView.NoSelection)
         list_widget.setItemDelegate(FilterListDelegate(list_widget))
-        list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         list_widget.setResizeMode(ListWidget.Adjust)
         list_widget.setStyleSheet(self.LIST_STYLE)
 
@@ -511,7 +503,7 @@ class FilterDialog(MessageBoxBase):
 
             list_item = QListWidgetItem()
             list_item.setSizeHint(QSize(-1, 40))
-            list_item.setData(Qt.ItemDataRole.UserRole, path)  # 存储路径
+            list_item.setData(Qt.UserRole, path)  # 存储路径
 
             self.file_list.addItem(list_item)
 
@@ -547,29 +539,22 @@ class FilterDialog(MessageBoxBase):
 
         self.status_buttons: dict[Base.ProjectStatus, PillPushButton] = {}
         status_types = [
-            (
-                Base.ProjectStatus.NONE,
-                ProofreadingLabels.get_status_label(Base.ProjectStatus.NONE),
-            ),
+            (Base.ProjectStatus.NONE, Localizer.get().proofreading_page_status_none),
             (
                 Base.ProjectStatus.PROCESSED,
-                ProofreadingLabels.get_status_label(Base.ProjectStatus.PROCESSED),
+                Localizer.get().proofreading_page_status_processed,
             ),
             (
                 Base.ProjectStatus.ERROR,
-                ProofreadingLabels.get_status_label(Base.ProjectStatus.ERROR),
+                Localizer.get().proofreading_page_status_error,
             ),
             (
                 Base.ProjectStatus.PROCESSED_IN_PAST,
-                ProofreadingLabels.get_status_label(
-                    Base.ProjectStatus.PROCESSED_IN_PAST
-                ),
+                Localizer.get().proofreading_page_status_processed_in_past,
             ),
             (
                 Base.ProjectStatus.LANGUAGE_SKIPPED,
-                ProofreadingLabels.get_status_label(
-                    Base.ProjectStatus.LANGUAGE_SKIPPED
-                ),
+                Localizer.get().proofreading_page_status_non_target_source_language,
             ),
         ]
 
@@ -600,7 +585,9 @@ class FilterDialog(MessageBoxBase):
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
 
-        title_row.addWidget(BodyLabel(Localizer.get().proofreading_page_result_check))
+        title_row.addWidget(
+            BodyLabel(Localizer.get().proofreading_page_filter_warning_type)
+        )
         title_row.addStretch(1)
 
         self.btn_export = PushButton(
@@ -625,33 +612,21 @@ class FilterDialog(MessageBoxBase):
 
         self.warning_buttons: dict[str | WarningType, PillPushButton] = {}
         warning_types = [
-            (
-                ProofreadingFilterOptions.NO_WARNING_TAG,
-                Localizer.get().proofreading_page_filter_no_warning,
-            ),
-            (
-                WarningType.KANA,
-                ProofreadingLabels.get_warning_label(WarningType.KANA),
-            ),
-            (
-                WarningType.HANGEUL,
-                ProofreadingLabels.get_warning_label(WarningType.HANGEUL),
-            ),
+            (self.NO_WARNING_TAG, Localizer.get().proofreading_page_filter_no_warning),
+            (WarningType.KANA, Localizer.get().proofreading_page_warning_kana),
+            (WarningType.HANGEUL, Localizer.get().proofreading_page_warning_hangeul),
             (
                 WarningType.TEXT_PRESERVE,
-                ProofreadingLabels.get_warning_label(WarningType.TEXT_PRESERVE),
+                Localizer.get().proofreading_page_warning_text_preserve,
             ),
             (
                 WarningType.SIMILARITY,
-                ProofreadingLabels.get_warning_label(WarningType.SIMILARITY),
+                Localizer.get().proofreading_page_warning_similarity,
             ),
-            (
-                WarningType.GLOSSARY,
-                ProofreadingLabels.get_warning_label(WarningType.GLOSSARY),
-            ),
+            (WarningType.GLOSSARY, Localizer.get().proofreading_page_warning_glossary),
             (
                 WarningType.RETRY_THRESHOLD,
-                ProofreadingLabels.get_warning_label(WarningType.RETRY_THRESHOLD),
+                Localizer.get().proofreading_page_warning_retry,
             ),
         ]
 
@@ -724,7 +699,7 @@ class FilterDialog(MessageBoxBase):
         self.term_empty_label = CaptionLabel(
             Localizer.get().proofreading_page_filter_no_glossary_error
         )
-        self.term_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.term_empty_label.setAlignment(Qt.AlignCenter)
         self.term_empty_label.hide()
         layout.addWidget(self.term_empty_label)
 
@@ -807,21 +782,24 @@ class FilterDialog(MessageBoxBase):
             w for w, btn in self.warning_buttons.items() if btn.isChecked()
         }
 
-        options = ProofreadingFilterOptions(
-            warning_types=selected_warnings,
-            statuses=selected_statuses,
-            file_paths=selected_files,
-            glossary_terms=set(),
-        )
-        # 保持历史行为：筛选对话框内的联动计数不受术语勾选影响。
-        return ProofreadingDomain.filter_items(
-            items=self.items,
-            warning_map=self.warning_map,
-            options=options,
-            checker=self.result_checker,
-            enable_search_filter=False,
-            enable_glossary_term_filter=False,
-        )
+        result = []
+        for item in self.items:
+            # 文件筛选
+            if item.get_file_path() not in selected_files:
+                continue
+            # 状态筛选
+            if item.get_status() not in selected_statuses:
+                continue
+            # 警告筛选
+            item_warnings = self.warning_map.get(id(item), [])
+            if item_warnings:
+                if not any(w in selected_warnings for w in item_warnings):
+                    continue
+            else:
+                if self.NO_WARNING_TAG not in selected_warnings:
+                    continue
+            result.append(item)
+        return result
 
     def refresh_all(self) -> None:
         """全量联动刷新：所有模块的计数都基于当前筛选结果"""
@@ -845,7 +823,7 @@ class FilterDialog(MessageBoxBase):
         warning_counts: dict[str | WarningType, int] = {}
         no_warning_count = 0
         for item in filtered_items:
-            item_warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+            item_warnings = self.warning_map.get(id(item), [])
             if item_warnings:
                 for w in item_warnings:
                     warning_counts[w] = warning_counts.get(w, 0) + 1
@@ -855,7 +833,7 @@ class FilterDialog(MessageBoxBase):
         for warning_type, btn in self.warning_buttons.items():
             count = (
                 no_warning_count
-                if warning_type == ProofreadingFilterOptions.NO_WARNING_TAG
+                if warning_type == self.NO_WARNING_TAG
                 else warning_counts.get(warning_type, 0)
             )
             base_label = btn.text().rsplit(" • ", 1)[0]
@@ -901,15 +879,11 @@ class FilterDialog(MessageBoxBase):
             return
 
         # 计算当前筛选结果中的术语错误频次
-        filtered_set = {ProofreadingDomain.get_warning_key(i) for i in filtered_items}
+        filtered_set = set(id(i) for i in filtered_items)
         term_counts: dict[tuple[str, str], int] = {}
 
         for term, items in self.glossary_error_map.items():
-            count = sum(
-                1
-                for i in items
-                if ProofreadingDomain.get_warning_key(i) in filtered_set
-            )
+            count = sum(1 for i in items if id(i) in filtered_set)
             if count > 0:
                 term_counts[term] = count
 
@@ -933,7 +907,7 @@ class FilterDialog(MessageBoxBase):
 
             list_item = QListWidgetItem()
             list_item.setSizeHint(QSize(-1, 40))
-            list_item.setData(Qt.ItemDataRole.UserRole, term)  # 存储术语 Key
+            list_item.setData(Qt.UserRole, term)  # 存储术语 Key
 
             self.term_list.addItem(list_item)
 
@@ -952,7 +926,7 @@ class FilterDialog(MessageBoxBase):
     # 公共接口
     # =========================================
 
-    def get_filter_options(self) -> ProofreadingFilterOptions:
+    def get_filter_options(self) -> dict:
         # 强制同步当前可见 widget 的状态到持久化存储，以防最后的操作没有触发刷新
         self.sync_term_widgets_to_state()
 
@@ -972,27 +946,21 @@ class FilterDialog(MessageBoxBase):
         if WarningType.GLOSSARY in selected_warnings:
             selected_terms = set(self.term_checked_state)
 
-        return ProofreadingFilterOptions(
-            warning_types=selected_warnings,
-            statuses=selected_statuses,
-            file_paths=selected_files,
-            glossary_terms=selected_terms,
-        )
+        return {
+            self.KEY_WARNING_TYPES: selected_warnings,
+            self.KEY_STATUSES: selected_statuses,
+            self.KEY_FILE_PATHS: selected_files,
+            self.KEY_GLOSSARY_TERMS: selected_terms,
+        }
 
-    def set_filter_options(self, options: ProofreadingFilterOptions | dict) -> None:
-        resolved = (
-            options
-            if isinstance(options, ProofreadingFilterOptions)
-            else ProofreadingFilterOptions.from_dict(options)
-        )
-
-        warning_types = resolved.warning_types
+    def set_filter_options(self, options: dict) -> None:
+        warning_types = options.get(self.KEY_WARNING_TYPES)
         if warning_types is None:
             warning_types = set(self.warning_buttons.keys())
         for warning_type, btn in self.warning_buttons.items():
             btn.setChecked(warning_type in warning_types)
 
-        statuses = resolved.statuses
+        statuses = options.get(self.KEY_STATUSES)
         if statuses is None:
             statuses = {
                 status
@@ -1002,14 +970,14 @@ class FilterDialog(MessageBoxBase):
         for status, btn in self.status_buttons.items():
             btn.setChecked(status in statuses)
 
-        file_paths = resolved.file_paths
+        file_paths = options.get(self.KEY_FILE_PATHS)
         if file_paths is None:
             file_paths = set(self.file_list_items.keys())
         for path, widget in self.file_list_widgets.items():
             widget.set_checked(path in file_paths)
 
         # 在 refresh_all 前预设术语持久化状态
-        glossary_terms = resolved.glossary_terms
+        glossary_terms = options.get(self.KEY_GLOSSARY_TERMS)
         if glossary_terms is None:
             glossary_terms = set(self.glossary_error_map.keys())
         self.term_checked_state = set(glossary_terms)

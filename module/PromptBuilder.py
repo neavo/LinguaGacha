@@ -6,22 +6,18 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRuleManager import QualityRuleManager
 
 
 class PromptBuilder(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
-    def __init__(
-        self, config: Config, quality_snapshot: QualityRuleSnapshot | None = None
-    ) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         # 初始化
         self.config: Config = config
-        self.quality_snapshot: QualityRuleSnapshot | None = quality_snapshot
 
     @classmethod
     def reset(cls) -> None:
@@ -72,27 +68,17 @@ class PromptBuilder(Base):
 
     # 获取自定义提示词数据
     def get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
-        snapshot = self.quality_snapshot
-        if snapshot is not None:
-            if language == BaseLanguage.Enum.ZH:
-                return snapshot.custom_prompt_zh
-            return snapshot.custom_prompt_en
-
         if language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh()
-        return DataManager.get().get_custom_prompt_en()
+            return QualityRuleManager.get().get_custom_prompt_zh()
+        else:
+            return QualityRuleManager.get().get_custom_prompt_en()
 
     # 获取自定义提示词启用状态
     def get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
-        snapshot = self.quality_snapshot
-        if snapshot is not None:
-            if language == BaseLanguage.Enum.ZH:
-                return snapshot.custom_prompt_zh_enable
-            return snapshot.custom_prompt_en_enable
-
         if language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh_enable()
-        return DataManager.get().get_custom_prompt_en_enable()
+            return QualityRuleManager.get().get_custom_prompt_zh_enable()
+        else:
+            return QualityRuleManager.get().get_custom_prompt_en_enable()
 
     # 获取主提示词
     def build_main(self) -> str:
@@ -165,11 +151,7 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        glossary_data = (
-            self.quality_snapshot.get_glossary_entries()
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary()
-        )
+        glossary_data = QualityRuleManager.get().get_glossary()
 
         for v in glossary_data:
             src = v.get("src", "")
@@ -221,11 +203,7 @@ class PromptBuilder(Base):
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
-        glossary_data = (
-            self.quality_snapshot.get_glossary_entries()
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary()
-        )
+        glossary_data = QualityRuleManager.get().get_glossary()
 
         for v in glossary_data:
             src = v.get("src", "")
@@ -316,12 +294,7 @@ class PromptBuilder(Base):
                 console_log.append(result)
 
         # 术语表
-        glossary_enable = (
-            self.quality_snapshot.glossary_enable
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary_enable()
-        )
-        if glossary_enable:
+        if QualityRuleManager.get().get_glossary_enable():
             result = self.build_glossary(srcs)
             if result != "":
                 content = content + "\n" + result
@@ -365,12 +338,7 @@ class PromptBuilder(Base):
 
         # 术语表
         content = "将下面的日文文本翻译成中文：\n" + "\n".join(srcs)
-        glossary_enable = (
-            self.quality_snapshot.glossary_enable
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary_enable()
-        )
-        if glossary_enable:
+        if QualityRuleManager.get().get_glossary_enable():
             result = self.build_glossary_sakura(srcs)
             if result != "":
                 content = (

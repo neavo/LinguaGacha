@@ -58,9 +58,7 @@ class RuleWidget(QWidget):
             self.regex_button.toggled.connect(self.on_regex_toggled)
             self.layout.addWidget(self.regex_button)
             # 安装 ToolTipFilter
-            self.regex_button.installEventFilter(
-                ToolTipFilter(self.regex_button, 300, ToolTipPosition.TOP)
-            )
+            self.regex_button.installEventFilter(ToolTipFilter(self.regex_button, 300, ToolTipPosition.TOP))
             self.update_regex_tooltip()
 
         # 创建大小写敏感按钮
@@ -72,9 +70,7 @@ class RuleWidget(QWidget):
             self.case_button.toggled.connect(self.on_case_toggled)
             self.layout.addWidget(self.case_button)
             # 安装 ToolTipFilter
-            self.case_button.installEventFilter(
-                ToolTipFilter(self.case_button, 300, ToolTipPosition.TOP)
-            )
+            self.case_button.installEventFilter(ToolTipFilter(self.case_button, 300, ToolTipPosition.TOP))
             self.update_case_tooltip()
 
     def on_regex_toggled(self, checked: bool) -> None:
@@ -92,9 +88,9 @@ class RuleWidget(QWidget):
         if self.regex_button is None:
             return
         tooltip_text = (
-            f"{Localizer.get().rule_regex}\n{Localizer.get().status_enabled}"
+            f"{Localizer.get().rule_regex}\n{Localizer.get().rule_regex_on}"
             if self.regex_button.isChecked()
-            else f"{Localizer.get().rule_regex}\n{Localizer.get().status_disabled}"
+            else f"{Localizer.get().rule_regex}\n{Localizer.get().rule_regex_off}"
         )
         self.regex_button.setToolTip(tooltip_text)
 
@@ -103,18 +99,16 @@ class RuleWidget(QWidget):
         if self.case_button is None:
             return
         tooltip_text = (
-            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_enabled}"
+            f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_on}"
             if self.case_button.isChecked()
-            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_disabled}"
+            else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().rule_case_sensitive_off}"
         )
         self.case_button.setToolTip(tooltip_text)
 
     def trigger_callback(self) -> None:
         """触发状态改变回调"""
         if callable(self.on_changed_callback):
-            self.on_changed_callback(
-                self.get_regex_enabled(), self.get_case_sensitive_enabled()
-            )
+            self.on_changed_callback(self.get_regex_enabled(), self.get_case_sensitive_enabled())
 
     def get_regex_enabled(self) -> bool:
         """获取正则状态"""
