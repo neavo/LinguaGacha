@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 import os
 import re
@@ -19,6 +20,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
+from module.Engine.TaskLimiter import AsyncTaskLimiter
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskScheduler import PriorityQueueItem
@@ -36,7 +38,6 @@ from module.Utils.ChunkLimiter import ChunkLimiter
 
 # 翻译器
 class Translator(Base):
-    SUBMIT_YIELD_EVERY = 64  # 每批提交任务数量
 
     def __init__(self) -> None:
         super().__init__()
@@ -406,23 +407,16 @@ class Translator(Base):
                 self.items_cache,
                 quality_snapshot=self.quality_snapshot,
             )
-            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
 
-            # 生成初始任务并加入队列
-            initial_tasks = self.scheduler.generate_initial_tasks()
-            for task_item in ChunkLimiter.iter(initial_tasks):
-                self.task_queue.put(task_item)
+            # 保留旧字段以兼容历史代码路径（当前异步调度不再使用该队列）。
+            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
 
             # 更新任务的总行数
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
-            # 打印日志
-            self.info(
-                Localizer.get().engine_task_generation.replace(
-                    "{COUNT}", str(len(initial_tasks))
-                )
-            )
+            # 初始任务改为流式生成：避免一次性创建大量 Task/Processor 导致启动卡顿
+            generated_task_counter: dict[str, int] = {"count": 0}
 
             # 输出开始翻译的日志
             self.print("")
@@ -443,8 +437,7 @@ class Translator(Base):
                 )
                 self.print("")
 
-            # 启动消费者线程池
-            task_limiter = TaskLimiter(
+            task_limiter = AsyncTaskLimiter(
                 rps=max_workers, rpm=rpm_threshold, max_concurrency=max_workers
             )
 
@@ -453,42 +446,23 @@ class Translator(Base):
                     total=self.extras.get("total_line", 0),
                     completed=self.extras.get("line", 0),
                 )
-                with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=max_workers, thread_name_prefix=Engine.TASK_PREFIX
-                ) as executor:
-                    # 消费者循环
-                    for queue_item in ChunkLimiter.iter(
-                        self.iter_queue_items_for_submit(task_limiter),
-                        every=self.SUBMIT_YIELD_EVERY,
-                    ):
-                        # 再次检查停止状态，避免提交即将被取消的任务
-                        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                            task_limiter.release(None)
-                            break
 
-                        task = queue_item.task
-                        if task is None:
-                            task_limiter.release(None)
-                            continue
+                asyncio.run(
+                    self.start_async_translation(
+                        progress=progress,
+                        pid=pid,
+                        task_limiter=task_limiter,
+                        max_workers=max_workers,
+                        generated_task_counter=generated_task_counter,
+                    )
+                )
 
-                        with self.db_lock:
-                            self.active_task_count += 1
-
-                        try:
-                            future = executor.submit(task.start)
-                            future.add_done_callback(task_limiter.release)
-                            future.add_done_callback(
-                                lambda fut, q_item=queue_item: self.task_done_callback(
-                                    fut, pid, progress, q_item
-                                )
-                            )
-                        except Exception as e:
-                            # 提交失败时，必须减少计数器，否则会导致死锁
-                            with self.db_lock:
-                                self.active_task_count -= 1
-
-                            self.error("提交任务失败", e)
-                            task_limiter.release(None)  # 释放限流锁
+            # 初始任务生成统计日志（任务已开始执行，但语义一致）
+            self.info(
+                Localizer.get().engine_task_generation.replace(
+                    "{COUNT}", str(generated_task_counter.get("count", 0))
+                )
+            )
 
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -779,6 +753,247 @@ class Translator(Base):
             except Exception:
                 time.sleep(0.1)
                 continue
+
+    def get_task_buffer_size(self, max_workers: int) -> int:
+        # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
+        return max(64, min(4096, max_workers * 4))
+
+    async def start_async_translation(
+        self,
+        *,
+        progress: ProgressBar,
+        pid: TaskID,
+        task_limiter: AsyncTaskLimiter,
+        max_workers: int,
+        generated_task_counter: dict[str, int],
+    ) -> None:
+        loop = asyncio.get_running_loop()
+
+        buffer_size = self.get_task_buffer_size(max_workers)
+        normal_queue: asyncio.Queue = asyncio.Queue(maxsize=buffer_size)
+        high_queue: asyncio.Queue = asyncio.Queue(maxsize=buffer_size)
+        commit_queue: asyncio.Queue = asyncio.Queue()
+        producer_done = asyncio.Event()
+
+        def should_stop() -> bool:
+            return Engine.get().get_status() == Base.TaskStatus.STOPPING
+
+        def producer() -> None:
+            try:
+                for context in self.scheduler.generate_initial_contexts_iter():
+                    if should_stop():
+                        break
+
+                    generated_task_counter["count"] = (
+                        generated_task_counter.get("count", 0) + 1
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        normal_queue.put(context), loop
+                    ).result()
+            finally:
+                loop.call_soon_threadsafe(producer_done.set)
+
+        threading.Thread(
+            target=producer,
+            name=f"{Engine.TASK_PREFIX}PRODUCER",
+            daemon=True,
+        ).start()
+
+        cpu_workers = max(4, min(32, os.cpu_count() or 8))
+        in_flight_limit = max_workers + buffer_size
+
+        async def run_one_context(context) -> None:
+            if should_stop():
+                return
+
+            acquired = await task_limiter.acquire(should_stop)
+            if not acquired:
+                return
+
+            try:
+                waited = await task_limiter.wait(should_stop)
+                if not waited:
+                    return
+
+                if should_stop():
+                    return
+
+                task = self.scheduler.create_task(context)
+
+                with self.db_lock:
+                    self.active_task_count += 1
+
+                result = await task.start_async(cpu_executor)
+                await commit_queue.put((context, task, result))
+            finally:
+                task_limiter.release()
+
+        def apply_batch_update_sync(
+            task,
+            result: dict,
+            finalized_items: list[dict[str, Any]],
+            processed_count: int,
+            error_count: int,
+            glossaries: list,
+        ) -> dict:
+            with self.db_lock:
+                try:
+                    new_glossary_data = None
+                    if glossaries and self.config.auto_glossary_enable:
+                        new_glossary_data = self.merge_glossary(glossaries)
+
+                    self.extras.update(
+                        {
+                            "processed_line": self.extras.get("processed_line", 0)
+                            + processed_count,
+                            "error_line": self.extras.get("error_line", 0)
+                            + error_count,
+                            "total_tokens": self.extras.get("total_tokens", 0)
+                            + result.get("input_tokens", 0)
+                            + result.get("output_tokens", 0),
+                            "total_input_tokens": self.extras.get(
+                                "total_input_tokens", 0
+                            )
+                            + result.get("input_tokens", 0),
+                            "total_output_tokens": self.extras.get(
+                                "total_output_tokens", 0
+                            )
+                            + result.get("output_tokens", 0),
+                            "time": time.time() - self.extras.get("start_time", 0),
+                        }
+                    )
+                    self.extras["line"] = (
+                        self.extras["processed_line"] + self.extras["error_line"]
+                    )
+
+                    rules_map = (
+                        {DataManager.RuleType.GLOSSARY: new_glossary_data}
+                        if new_glossary_data
+                        else {}
+                    )
+                    DataManager.get().update_batch(
+                        items=finalized_items,
+                        rules=rules_map,
+                        meta={
+                            "translation_extras": self.extras,
+                            "project_status": Base.ProjectStatus.PROCESSING,
+                        },
+                    )
+                finally:
+                    self.active_task_count -= 1
+
+                return dict(self.extras)
+
+        async def committer() -> None:
+            while True:
+                payload = await commit_queue.get()
+                if payload is None:
+                    return
+
+                context, task, result = payload
+
+                if not should_stop() and any(
+                    i.get_status() == Base.ProjectStatus.NONE for i in task.items
+                ):
+                    for new_context in self.scheduler.handle_failed_context(
+                        context, result
+                    ):
+                        await high_queue.put(new_context)
+
+                finalized_items = [
+                    item.to_dict()
+                    for item in task.items
+                    if item.get_status()
+                    in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
+                ]
+
+                processed_count = sum(
+                    1
+                    for i in task.items
+                    if i.get_status() == Base.ProjectStatus.PROCESSED
+                )
+                error_count = sum(
+                    1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
+                )
+
+                glossaries = result.get("glossaries")
+                if not isinstance(glossaries, list):
+                    glossaries = []
+
+                extras_snapshot = await asyncio.to_thread(
+                    apply_batch_update_sync,
+                    task,
+                    result,
+                    finalized_items,
+                    processed_count,
+                    error_count,
+                    glossaries,
+                )
+
+                progress.update(
+                    pid,
+                    completed=extras_snapshot.get("line", 0),
+                    total=extras_snapshot.get("total_line", 0),
+                )
+                self.emit(Base.Event.TRANSLATION_UPDATE, extras_snapshot)
+
+        async def get_next_context():
+            try:
+                return high_queue.get_nowait()
+            except asyncio.queues.QueueEmpty:
+                pass
+
+            if producer_done.is_set() and normal_queue.empty() and high_queue.empty():
+                return None
+
+            try:
+                return await asyncio.wait_for(normal_queue.get(), timeout=0.1)
+            except asyncio.TimeoutError:
+                return None
+
+        commit_task = asyncio.create_task(committer())
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=cpu_workers, thread_name_prefix=f"{Engine.TASK_PREFIX}CPU"
+        ) as cpu_executor:
+            in_flight: set[asyncio.Task] = set()
+            while True:
+                if should_stop() and not in_flight:
+                    break
+
+                if (
+                    producer_done.is_set()
+                    and normal_queue.empty()
+                    and high_queue.empty()
+                    and not in_flight
+                ):
+                    break
+
+                # 控制已创建的 in-flight 数量，避免在限流等待时堆积过多协程。
+                if len(in_flight) >= in_flight_limit:
+                    done, pending = await asyncio.wait(
+                        in_flight, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    in_flight = pending
+                    continue
+
+                context = await get_next_context()
+                if context is None:
+                    if in_flight:
+                        done, pending = await asyncio.wait(
+                            in_flight, timeout=0.1, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        in_flight = pending
+                    continue
+
+                task = asyncio.create_task(run_one_context(context))
+                in_flight.add(task)
+
+        if in_flight:
+            await asyncio.wait(in_flight)
+
+        await commit_queue.put(None)
+        await commit_task
 
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:

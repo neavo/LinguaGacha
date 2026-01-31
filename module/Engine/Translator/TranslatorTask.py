@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import itertools
 import re
 import threading
@@ -88,6 +90,24 @@ class TranslatorTask(Base):
                 "glossaries": [],
             }
 
+    async def start_async(self, cpu_executor: concurrent.futures.Executor) -> dict:
+        try:
+            return await self.request_async(
+                self.items,
+                self.processors,
+                self.precedings,
+                self.local_flag,
+                cpu_executor,
+            )
+        except Exception as e:
+            self.error(f"{Localizer.get().task_failed}", e)
+            return {
+                "row_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "glossaries": [],
+            }
+
     # 请求
     def request(
         self,
@@ -96,50 +116,36 @@ class TranslatorTask(Base):
         precedings: list[Item],
         local_flag: bool,
     ) -> dict:
-        # 任务开始的时间
         start_time = time.time()
 
-        # 文本预处理
-        srcs: list[str] = []
-        samples: list[str] = []
-        for processor in processors:
-            processor.pre_process()
+        prepared = self.prepare_request_data(items, processors, precedings, local_flag)
+        if prepared.get("done"):
+            result = prepared.get("result")
+            return (
+                result
+                if isinstance(result, dict)
+                else {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
+            )
 
-            # 获取预处理后的数据
-            srcs.extend(processor.srcs)
-            samples.extend(processor.samples)
-
-        # 如果没有任何有效原文文本，则直接完成当前任务
-        if len(srcs) == 0:
-            for item, processor in zip(items, processors):
-                item.set_dst(item.get_src())
-                item.set_status(Base.ProjectStatus.PROCESSED)
-
+        messages = prepared.get("messages")
+        if not isinstance(messages, list):
             return {
-                "row_count": len(items),
+                "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "glossaries": [],
             }
 
-        # 生成请求提示词
-        api_format = self.model.get("api_format", "OpenAI")
-        if api_format != Base.APIFormat.SAKURALLM:
-            self.messages, console_log = self.prompt_builder.generate_prompt(
-                srcs, samples, precedings, local_flag
-            )
-        else:
-            self.messages, console_log = self.prompt_builder.generate_prompt_sakura(
-                srcs
-            )
-
-        # 发起请求
         requester = TaskRequester(self.config, self.model)
         exception, response_think, response_result, input_tokens, output_tokens = (
-            requester.request(self.messages)
+            requester.request(messages)
         )
 
-        # 如果请求发生异常，则记录日志并跳过本次循环
         if exception:
             msg = (
                 Localizer.get()
@@ -155,10 +161,74 @@ class TranslatorTask(Base):
                 "glossaries": [],
             }
 
-        # 提取回复内容
+        return self.apply_response_data(
+            prepared,
+            response_think,
+            response_result,
+            input_tokens,
+            output_tokens,
+            start_time,
+        )
+
+    def prepare_request_data(
+        self,
+        items: list[Item],
+        processors: list[TextProcessor],
+        precedings: list[Item],
+        local_flag: bool,
+    ) -> dict:
+        srcs: list[str] = []
+        samples: list[str] = []
+        for processor in processors:
+            processor.pre_process()
+            srcs.extend(processor.srcs)
+            samples.extend(processor.samples)
+
+        if len(srcs) == 0:
+            for item, processor in zip(items, processors):
+                item.set_dst(item.get_src())
+                item.set_status(Base.ProjectStatus.PROCESSED)
+
+            return {
+                "done": True,
+                "result": {
+                    "row_count": len(items),
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                },
+            }
+
+        api_format = self.model.get("api_format", "OpenAI")
+        if api_format != Base.APIFormat.SAKURALLM:
+            messages, console_log = self.prompt_builder.generate_prompt(
+                srcs, samples, precedings, local_flag
+            )
+        else:
+            messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
+
+        self.messages = messages
+        return {
+            "done": False,
+            "srcs": srcs,
+            "messages": messages,
+            "console_log": console_log,
+        }
+
+    def apply_response_data(
+        self,
+        prepared: dict,
+        response_think: str,
+        response_result: str,
+        input_tokens: int,
+        output_tokens: int,
+        start_time: float,
+    ) -> dict:
+        srcs: list[str] = prepared.get("srcs", [])
+        console_log: list[str] = prepared.get("console_log", [])
+
         dsts, glossarys = ResponseDecoder().decode(response_result)
 
-        # 检查回复内容（跳过响应校验时，直接将所有结果视为有效）
         if self.skip_response_check or self.response_checker is None:
             checks: list[ResponseChecker.Error] = [ResponseChecker.Error.NONE] * len(
                 dsts
@@ -167,16 +237,12 @@ class TranslatorTask(Base):
             checks = self.response_checker.check(
                 srcs, dsts, self.items[0].get_text_type()
             )
-
-            # 当任务失败且是单条目任务时，更新重试次数
             if (
                 any(v != ResponseChecker.Error.NONE for v in checks)
                 and len(self.items) == 1
             ):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
-        # 模型回复日志
-        # 在这里将日志分成打印在控制台和写入文件的两份，按不同逻辑处理
         file_log = console_log.copy()
         if response_think != "":
             file_log.append(
@@ -189,14 +255,13 @@ class TranslatorTask(Base):
             file_log.append(
                 Localizer.get().engine_response_result + "\n" + response_result
             )
-            console_log.append(
-                Localizer.get().engine_response_result + "\n" + response_result
-            ) if LogManager.get().is_expert_mode() else None
+            if LogManager.get().is_expert_mode():
+                console_log.append(
+                    Localizer.get().engine_response_result + "\n" + response_result
+                )
 
-        # 如果有任何正确的条目，则处理结果
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in checks):
-            # 更新缓存数据
             dsts_cp = dsts.copy()
             checks_cp = checks.copy()
             if len(srcs) > len(dsts_cp):
@@ -205,7 +270,7 @@ class TranslatorTask(Base):
                 checks_cp.extend(
                     [ResponseChecker.Error.NONE] * (len(srcs) - len(checks_cp))
                 )
-            for item, processor in zip(items, processors):
+            for item, processor in zip(self.items, self.processors):
                 length = len(processor.srcs)
                 dsts_ex = [dsts_cp.pop(0) for _ in range(length)]
                 checks_ex = [checks_cp.pop(0) for _ in range(length)]
@@ -217,7 +282,6 @@ class TranslatorTask(Base):
                     item.set_status(Base.ProjectStatus.PROCESSED)
                     updated_count = updated_count + 1
 
-        # 打印任务结果
         self.print_log_table(
             checks,
             start_time,
@@ -229,7 +293,6 @@ class TranslatorTask(Base):
             console_log,
         )
 
-        # 返回任务结果
         if updated_count > 0:
             return {
                 "row_count": updated_count,
@@ -237,13 +300,89 @@ class TranslatorTask(Base):
                 "output_tokens": output_tokens,
                 "glossaries": glossarys,
             }
-        else:
+        return {
+            "row_count": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "glossaries": [],
+        }
+
+    async def request_async(
+        self,
+        items: list[Item],
+        processors: list[TextProcessor],
+        precedings: list[Item],
+        local_flag: bool,
+        cpu_executor: concurrent.futures.Executor,
+    ) -> dict:
+        start_time = time.time()
+        loop = asyncio.get_running_loop()
+
+        prepared = await loop.run_in_executor(
+            cpu_executor,
+            self.prepare_request_data,
+            items,
+            processors,
+            precedings,
+            local_flag,
+        )
+
+        if prepared.get("done"):
+            result = prepared.get("result")
+            return (
+                result
+                if isinstance(result, dict)
+                else {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
+            )
+
+        messages = prepared.get("messages")
+        if not isinstance(messages, list):
             return {
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "glossaries": [],
             }
+
+        requester = TaskRequester(self.config, self.model)
+        (
+            exception,
+            response_think,
+            response_result,
+            input_tokens,
+            output_tokens,
+        ) = await requester.request_async(messages)
+
+        if exception:
+            msg = (
+                Localizer.get()
+                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .replace("{RETRY}", str(self.retry_count))
+                .replace("{THRESHOLD}", str(self.token_threshold))
+            )
+            self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
+            return {
+                "row_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "glossaries": [],
+            }
+
+        return await loop.run_in_executor(
+            cpu_executor,
+            self.apply_response_data,
+            prepared,
+            response_think,
+            response_result,
+            input_tokens,
+            output_tokens,
+            start_time,
+        )
 
     # 打印日志表格
     def print_log_table(

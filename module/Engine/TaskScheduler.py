@@ -1,5 +1,6 @@
 import math
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from queue import PriorityQueue
 from enum import IntEnum
@@ -71,30 +72,32 @@ class TaskScheduler(Base):
 
     def generate_initial_tasks(self) -> list[PriorityQueueItem]:
         """生成初始翻译任务"""
-        # 生成缓存数据条目片段
-        chunks, precedings = ChunkGenerator.generate_item_chunks(
+        queue_items: list[PriorityQueueItem] = []
+        for context in self.generate_initial_contexts_iter():
+            task = self.create_task(context)
+            queue_items.append(
+                PriorityQueueItem(
+                    priority=TaskPriority.NORMAL,
+                    context=context,
+                    task=task,
+                )
+            )
+
+        return queue_items
+
+    def generate_initial_contexts_iter(self) -> "Iterator[TaskContext]":
+        """流式生成初始任务上下文（不创建 TranslatorTask）。"""
+        for chunk_items, chunk_precedings in ChunkGenerator.generate_item_chunks_iter(
             items=self.items,
             input_token_threshold=self.initial_t0,
             preceding_lines_threshold=self.config.preceding_lines_threshold,
-        )
-
-        queue_items = []
-        for chunk_items, chunk_precedings in zip(chunks, precedings):
-            context = TaskContext(
+        ):
+            yield TaskContext(
                 items=chunk_items,
                 precedings=chunk_precedings,
                 token_threshold=self.initial_t0,
                 is_initial=True,
             )
-
-            task = self.create_task(context)
-            queue_items.append(
-                PriorityQueueItem(
-                    priority=TaskPriority.NORMAL, context=context, task=task
-                )
-            )
-
-        return queue_items
 
     def handle_failed_task(
         self, queue_item: PriorityQueueItem, result: dict
@@ -182,6 +185,66 @@ class TaskScheduler(Base):
                 self.force_accept(item)
 
         return new_tasks
+
+    def handle_failed_context(
+        self, context: TaskContext, result: dict
+    ) -> list[TaskContext]:
+        """处理失败任务上下文，返回新的上下文列表（可能为空）。"""
+        items = [i for i in context.items if i.get_status() == Base.ProjectStatus.NONE]
+        if not items:
+            return []
+
+        new_contexts: list[TaskContext] = []
+
+        if len(items) > 1:
+            new_threshold = max(1, math.floor(context.token_threshold * self.factor))
+
+            if context.token_threshold <= 1:
+                for item in items:
+                    new_contexts.append(
+                        TaskContext(
+                            items=[item],
+                            precedings=[],
+                            token_threshold=1,
+                            split_count=context.split_count + 1,
+                            retry_count=0,
+                            is_initial=False,
+                        )
+                    )
+            else:
+                sub_chunks, _ = ChunkGenerator.generate_item_chunks(
+                    items=items,
+                    input_token_threshold=new_threshold,
+                    preceding_lines_threshold=0,
+                )
+                for sub_chunk in sub_chunks:
+                    new_contexts.append(
+                        TaskContext(
+                            items=sub_chunk,
+                            precedings=[],
+                            token_threshold=new_threshold,
+                            split_count=context.split_count + 1,
+                            retry_count=0,
+                            is_initial=False,
+                        )
+                    )
+        else:
+            item = items[0]
+            if context.retry_count < 3:
+                new_contexts.append(
+                    TaskContext(
+                        items=[item],
+                        precedings=[],
+                        token_threshold=context.token_threshold,
+                        split_count=context.split_count,
+                        retry_count=context.retry_count + 1,
+                        is_initial=False,
+                    )
+                )
+            else:
+                self.force_accept(item)
+
+        return new_contexts
 
     def create_task(self, context: TaskContext) -> TranslatorTask:
         """根据上下文创建 TranslatorTask"""
