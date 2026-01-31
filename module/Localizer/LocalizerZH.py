@@ -89,7 +89,7 @@ class LocalizerZH:
     app_new_version_success: str = "新版本下载成功 … "
     app_new_version_downloaded: str = "点击应用新版本！"
     app_new_version_waiting_restart: str = "更新完成，应用即将关闭 …"
-    project_closed_toast: str = "当前项目已关闭 …"
+    app_project_closed_toast: str = "当前项目已关闭 …"
     app_close_project_btn: str = "关闭项目"
     app_theme_btn: str = "变换自如"
     app_language_btn: str = "字字珠玑"
@@ -120,7 +120,8 @@ class LocalizerZH:
     log_api_test_fail: str = "接口测试失败 … "
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
-    cli_verify_language: str = "参数发生错误：无效的语言 …"
+    log_unknown_reason: str = "未知原因"
+    log_cli_verify_language: str = "参数发生错误：无效的语言 …"
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"

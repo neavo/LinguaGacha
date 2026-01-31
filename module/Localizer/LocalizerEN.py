@@ -89,7 +89,7 @@ class LocalizerEN(LocalizerZH):
     app_new_version_success: str = "New version download successful …"
     app_new_version_downloaded: str = "Click to apply New Version!"
     app_new_version_waiting_restart: str = "Update completed, application will close soon …"
-    project_closed_toast: str = "Current project closed …"
+    app_project_closed_toast: str = "Current project closed …"
     app_close_project_btn: str = "Close Project"
     app_theme_btn: str = "Theme"
     app_language_btn: str = "Language"
@@ -120,7 +120,8 @@ class LocalizerEN(LocalizerZH):
     log_api_test_fail: str = "API test failed … "
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
-    cli_verify_language: str = "parameter error: invalid language …"
+    log_unknown_reason: str = "Unknown Reason"
+    log_cli_verify_language: str = "parameter error: invalid language …"
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"

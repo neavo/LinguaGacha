@@ -16,11 +16,11 @@ from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
+from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.TextProcessor import TextProcessor
@@ -344,7 +344,7 @@ class TranslatorTask(Base):
             if len(srcs) == 1 and self.retry_count >= 3:
                 is_force_accept = True
                 sub_info += Localizer.get().translator_task_force_accept_info.replace(
-                    "{REASON}", reason if reason else "未知原因"
+                    "{REASON}", reason if reason else Localizer.get().log_unknown_reason
                 )
 
         # 统计信息
@@ -515,6 +515,9 @@ class TranslatorTask(Base):
     ) -> None:
         """
         单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
+
+        注意：此方法为低频调用场景设计（用户手动触发单条重新翻译），
+        每次调用会创建新的事件循环和线程池，避免复杂的事件循环管理。
 
         Args:
             item: 待翻译的 Item 对象

@@ -5,7 +5,6 @@ import re
 import threading
 import time
 import webbrowser
-from collections.abc import Iterator
 from itertools import zip_longest
 from queue import PriorityQueue
 from typing import Any
@@ -21,7 +20,6 @@ from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import AsyncTaskLimiter
-from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskScheduler import PriorityQueueItem
 from module.Engine.TaskScheduler import TaskScheduler
@@ -38,7 +36,6 @@ from module.Utils.ChunkLimiter import ChunkLimiter
 
 # 翻译器
 class Translator(Base):
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -714,46 +711,6 @@ class Translator(Base):
             "target_language": self.config.target_language,
         }
 
-    def iter_queue_items_for_submit(
-        self,
-        task_limiter: TaskLimiter,
-    ) -> Iterator[PriorityQueueItem]:
-        while not self.scheduler.should_stop(self.task_queue, self.active_task_count):
-            # 让出逻辑交给外层迭代器包装，避免重复计数
-            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                return
-
-            try:
-                # 尝试从队列获取任务 (阻塞式等待，提升响应性能)
-                try:
-                    queue_item = self.task_queue.get(timeout=0.1)
-                except Exception:
-                    continue
-
-                # 理论上不应出现，但这里确保不会触发限流器泄漏
-                if queue_item.task is None:
-                    continue
-
-                # 流量限制
-                if not task_limiter.acquire(
-                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
-                ):
-                    return
-
-                if not task_limiter.wait(
-                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
-                ):
-                    return
-
-                # 等待限流后再次检查停止状态，避免提交即将被取消的任务
-                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                    return
-
-                yield queue_item
-            except Exception:
-                time.sleep(0.1)
-                continue
-
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
         return max(64, min(4096, max_workers * 4))
@@ -767,6 +724,22 @@ class Translator(Base):
         max_workers: int,
         generated_task_counter: dict[str, int],
     ) -> None:
+        """
+        异步翻译调度的核心方法，采用生产者-消费者模式实现高效的任务调度。
+
+        整体架构：
+        ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌────────────┐
+        │  Producer   │────▶│ normal_queue │────▶│  Consumer   │────▶│ commit_que │
+        │  (Thread)   │     │ high_queue   │     │  (asyncio)  │     │ (Committer)│
+        └─────────────┘     └──────────────┘     └─────────────┘     └────────────┘
+
+        组件说明：
+        - Producer: 独立线程，流式生成初始任务上下文，避免一次性创建大量任务导致启动卡顿
+        - normal_queue: 存放初始任务上下文，带容量限制实现背压控制
+        - high_queue: 存放失败后需要重试/切分的任务上下文，优先级高于 normal_queue
+        - Consumer: 异步协程池，从队列获取上下文、创建任务、执行翻译
+        - Committer: 独立协程，负责处理翻译结果、更新数据库、处理失败任务
+        """
         loop = asyncio.get_running_loop()
 
         buffer_size = self.get_task_buffer_size(max_workers)
@@ -779,6 +752,12 @@ class Translator(Base):
             return Engine.get().get_status() == Base.TaskStatus.STOPPING
 
         def producer() -> None:
+            """
+            生产者线程：流式生成初始任务上下文。
+
+            使用 run_coroutine_threadsafe + .result() 实现背压控制：
+            当 normal_queue 达到容量上限时，生产者会阻塞等待，避免内存无限增长。
+            """
             try:
                 for context in self.scheduler.generate_initial_contexts_iter():
                     if should_stop():
@@ -799,10 +778,17 @@ class Translator(Base):
             daemon=True,
         ).start()
 
+        # CPU 工作线程数：用于执行文本预处理、响应解析等 CPU 密集型操作
         cpu_workers = max(4, min(32, os.cpu_count() or 8))
+        # in-flight 限制：控制同时处于"已创建但未完成"状态的协程数量
         in_flight_limit = max_workers + buffer_size
 
         async def run_one_context(context) -> None:
+            """
+            执行单个任务上下文的翻译流程。
+
+            流程：acquire(并发许可) -> wait(限流) -> create_task -> start_async -> commit
+            """
             if should_stop():
                 return
 
@@ -836,6 +822,11 @@ class Translator(Base):
             error_count: int,
             glossaries: list,
         ) -> dict:
+            """
+            同步执行批量更新操作（在独立线程中执行以避免阻塞事件循环）。
+
+            负责：更新统计数据、合并术语表、写入数据库。
+            """
             with self.db_lock:
                 try:
                     new_glossary_data = None
@@ -885,6 +876,15 @@ class Translator(Base):
                 return dict(self.extras)
 
         async def committer() -> None:
+            """
+            提交协程：处理翻译结果、更新数据库、处理失败任务。
+
+            职责：
+            1. 从 commit_queue 获取已完成的任务结果
+            2. 将失败的任务上下文重新放入 high_queue 进行重试/切分
+            3. 调用 apply_batch_update_sync 更新数据库
+            4. 更新进度条和触发事件
+            """
             while True:
                 payload = await commit_queue.get()
                 if payload is None:
@@ -938,9 +938,15 @@ class Translator(Base):
                 self.emit(Base.Event.TRANSLATION_UPDATE, extras_snapshot)
 
         async def get_next_context():
+            """
+            获取下一个待处理的任务上下文。
+
+            优先级：high_queue > normal_queue
+            返回 None 表示当前没有可用上下文（可能需要等待或已结束）。
+            """
             try:
                 return high_queue.get_nowait()
-            except asyncio.queues.QueueEmpty:
+            except asyncio.QueueEmpty:
                 pass
 
             if producer_done.is_set() and normal_queue.empty() and high_queue.empty():
@@ -953,14 +959,17 @@ class Translator(Base):
 
         commit_task = asyncio.create_task(committer())
 
+        # 主消费循环：从队列获取上下文，创建协程执行翻译
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=cpu_workers, thread_name_prefix=f"{Engine.TASK_PREFIX}CPU"
         ) as cpu_executor:
             in_flight: set[asyncio.Task] = set()
             while True:
+                # 停止条件检查
                 if should_stop() and not in_flight:
                     break
 
+                # 完成条件检查：生产者结束 + 队列空 + 无在途任务
                 if (
                     producer_done.is_set()
                     and normal_queue.empty()
@@ -969,7 +978,7 @@ class Translator(Base):
                 ):
                     break
 
-                # 控制已创建的 in-flight 数量，避免在限流等待时堆积过多协程。
+                # 背压控制：限制同时在途的协程数量，避免内存无限增长
                 if len(in_flight) >= in_flight_limit:
                     done, pending = await asyncio.wait(
                         in_flight, return_when=asyncio.FIRST_COMPLETED
@@ -1152,113 +1161,3 @@ class Translator(Base):
         # 打开输出文件夹
         if self.config.output_folder_open_on_finish:
             webbrowser.open(os.path.abspath(output_path))
-
-    # 翻译任务完成时
-    def task_done_callback(
-        self,
-        future: concurrent.futures.Future,
-        pid: TaskID,
-        progress: ProgressBar,
-        queue_item: PriorityQueueItem,
-    ) -> None:
-        try:
-            # 获取结果 (防御性处理，确保异常被捕获)
-            try:
-                result = future.result()
-            except Exception as e:
-                self.error("任务执行异常", e)
-                result = {"row_count": 0, "input_tokens": 0, "output_tokens": 0}
-
-            task = queue_item.task
-            if task is None:
-                return
-
-            # --- 预处理 (锁外执行以减少阻塞) ---
-            # 处理失败或部分失败的任务 (重试或切分)
-            if any(i.get_status() == Base.ProjectStatus.NONE for i in task.items):
-                new_tasks = self.scheduler.handle_failed_task(queue_item, result)
-                for new_q_item in new_tasks:
-                    self.task_queue.put(new_q_item)
-
-            # 1. 提取待存条目
-            finalized_items = [
-                item.to_dict()
-                for item in task.items
-                if item.get_status()
-                in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-            ]
-
-            # 2. 统计数据
-            processed_count = sum(
-                1 for i in task.items if i.get_status() == Base.ProjectStatus.PROCESSED
-            )
-            error_count = sum(
-                1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
-            )
-
-            # 3. 提取术语
-            glossaries = result.get("glossaries")
-            if not isinstance(glossaries, list):
-                glossaries = []
-
-            # --- 合并写入事务 (锁定一次，写入一次) ---
-            with self.db_lock:
-                new_glossary_data = None
-
-                # 合并术语表
-                if glossaries and self.config.auto_glossary_enable:
-                    new_glossary_data = self.merge_glossary(glossaries)
-
-                # 更新统计数据
-                self.extras.update(
-                    {
-                        "processed_line": self.extras.get("processed_line", 0)
-                        + processed_count,
-                        "error_line": self.extras.get("error_line", 0) + error_count,
-                        "total_tokens": self.extras.get("total_tokens", 0)
-                        + result.get("input_tokens", 0)
-                        + result.get("output_tokens", 0),
-                        "total_input_tokens": self.extras.get("total_input_tokens", 0)
-                        + result.get("input_tokens", 0),
-                        "total_output_tokens": self.extras.get("total_output_tokens", 0)
-                        + result.get("output_tokens", 0),
-                        "time": time.time() - self.extras.get("start_time", 0),
-                    }
-                )
-                self.extras["line"] = (
-                    self.extras["processed_line"] + self.extras["error_line"]
-                )
-
-                # 执行综合批量更新
-                rules_map = (
-                    {DataManager.RuleType.GLOSSARY: new_glossary_data}
-                    if new_glossary_data
-                    else {}
-                )
-                DataManager.get().update_batch(
-                    items=finalized_items,
-                    rules=rules_map,
-                    meta={
-                        "translation_extras": self.extras,
-                        "project_status": Base.ProjectStatus.PROCESSING,
-                    },
-                )
-
-            # 更新终端进度条
-            progress.update(
-                pid,
-                completed=self.extras.get("line", 0),
-                total=self.extras.get("total_line", 0),
-            )
-
-            # 触发翻译进度更新事件
-            self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
-
-        except concurrent.futures.CancelledError:
-            # 任务取消是正常流程，无需记录错误
-            pass
-        except Exception as e:
-            self.error(f"{Localizer.get().task_failed}", e)
-        finally:
-            with self.db_lock:
-                self.active_task_count -= 1
