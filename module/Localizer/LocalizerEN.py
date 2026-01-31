@@ -275,6 +275,7 @@ class LocalizerEN(LocalizerZH):
     workbench_drop_ready_source: str = "{COUNT} source files found, ready"
     workbench_select_project_title: str = "Select Project File"
     workbench_toast_invalid_lg: str = "Please select a .lg project file"
+    workbench_toast_drop_multi_not_supported: str = "Only one file or folder can be dropped at a time"
     workbench_msg_file_not_found_title: str = "File Not Found"
     workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
     workbench_msg_close_confirm: str = "Are you sure you want to close the current project?"
