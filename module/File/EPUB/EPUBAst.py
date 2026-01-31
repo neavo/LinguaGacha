@@ -56,6 +56,7 @@ class EPUBAst(Base):
         "h4",
         "h5",
         "h6",
+        "div",
         "li",
         "td",
         "th",
@@ -64,6 +65,9 @@ class EPUBAst(Base):
         "dt",
         "dd",
     )
+
+    RE_SLOT_INLINE_WHITESPACE = re.compile(r"[\r\n\t]+")
+    RE_MULTI_SPACE = re.compile(r"[ ]{2,}")
 
     SKIP_SUBTREE_TAGS: frozenset[str] = frozenset(
         {
@@ -84,6 +88,18 @@ class EPUBAst(Base):
     def __init__(self, config: Config) -> None:
         super().__init__()
         self.config = config
+
+    @classmethod
+    def normalize_slot_text(cls, text: str) -> str:
+        """把 text/tail 槽位的源码排版换行归一化为行内空白。
+
+        EPUB 的 XHTML 往往为了源码可读性会在文本节点中包含换行与缩进空白；
+        slot-per-line 方案若直接使用 '\n' 分隔，会导致 parts 数与行数不一致。
+        """
+
+        # 只处理控制换行/制表符，避免破坏全角空格等非 ASCII 空白。
+        text = cls.RE_SLOT_INLINE_WHITESPACE.sub(" ", text)
+        return cls.RE_MULTI_SPACE.sub(" ", text)
 
     @staticmethod
     def normalize_epub_path(path: str) -> str:
@@ -352,7 +368,12 @@ class EPUBAst(Base):
         return False
 
     def extract_items_from_document(
-        self, doc_path: str, raw: bytes, spine_index: int, rel_path: str
+        self,
+        doc_path: str,
+        raw: bytes,
+        spine_index: int,
+        rel_path: str,
+        is_nav: bool = False,
     ) -> list[Item]:
         items: list[Item] = []
         root = self.parse_xhtml_or_html(raw)
@@ -378,11 +399,14 @@ class EPUBAst(Base):
             if not slot_texts:
                 continue
 
-            parts = [
-                {"slot": ref.slot, "path": ref.path, "raw": text} for ref, text in slots
-            ]
-            src = "\n".join([p["raw"] for p in parts])
-            digest = self.sha1_hex("\u0000".join([p["raw"] for p in parts]))
+            part_defs: list[dict[str, str]] = []
+            part_texts: list[str] = []
+            for ref, text in slots:
+                part_defs.append({"slot": ref.slot, "path": ref.path})
+                part_texts.append(self.normalize_slot_text(text))
+
+            src = "\n".join(part_texts)
+            digest = self.sha1_hex("\u0000".join(part_texts))
 
             item = Item.from_dict(
                 {
@@ -397,10 +421,9 @@ class EPUBAst(Base):
                             "mode": "slot_per_line",
                             "doc_path": doc_path,
                             "block_path": self.build_elem_path(root, block),
-                            "parts": [
-                                {"slot": p["slot"], "path": p["path"]} for p in parts
-                            ],
+                            "parts": part_defs,
                             "src_digest": digest,
+                            "is_nav": is_nav,
                         }
                     },
                 }
@@ -424,6 +447,8 @@ class EPUBAst(Base):
             text = elem.text or ""
             if text.strip() == "":
                 continue
+
+            text = self.normalize_slot_text(text)
 
             item = Item.from_dict(
                 {
@@ -461,6 +486,8 @@ class EPUBAst(Base):
             opf_path = self.parse_container_opf_path(zip_reader)
             pkg = self.parse_opf(zip_reader, opf_path)
 
+            processed_paths: set[str] = set()
+
             for spine_index, doc_path in enumerate(pkg.spine_paths):
                 lower = doc_path.lower()
                 if not lower.endswith((".xhtml", ".html", ".htm")):
@@ -477,8 +504,30 @@ class EPUBAst(Base):
                         raw=raw,
                         spine_index=spine_index,
                         rel_path=rel_path,
+                        is_nav=pkg.nav_path == doc_path,
                     )
                 )
+                processed_paths.add(doc_path)
+
+            # v3 nav.xhtml（目录通常不在 spine，必须显式处理）
+            if pkg.nav_path and pkg.nav_path not in processed_paths:
+                nav_lower = pkg.nav_path.lower()
+                if nav_lower.endswith((".xhtml", ".html", ".htm")):
+                    try:
+                        with zip_reader.open(pkg.nav_path) as f:
+                            raw = f.read()
+                        items.extend(
+                            self.extract_items_from_document(
+                                doc_path=pkg.nav_path,
+                                raw=raw,
+                                spine_index=800,
+                                rel_path=rel_path,
+                                is_nav=True,
+                            )
+                        )
+                        processed_paths.add(pkg.nav_path)
+                    except Exception:
+                        pass
 
             # v2 ncx
             if pkg.ncx_path:

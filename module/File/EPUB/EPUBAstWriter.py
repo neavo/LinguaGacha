@@ -9,7 +9,7 @@ from lxml import etree
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
-from module.File.EPUBAst import EPUBAst
+from module.File.EPUB.EPUBAst import EPUBAst
 
 
 class EPUBAstWriter(Base):
@@ -59,18 +59,33 @@ class EPUBAstWriter(Base):
     def apply_items_to_tree(
         self,
         root: etree._Element,
+        doc_path: str,
         items: list[Item],
         bilingual: bool,
     ) -> tuple[int, int]:
         applied = 0
         skipped = 0
 
-        is_nav = self.is_nav_page(root)
+        doc_lower = doc_path.lower()
+        is_ncx = (
+            doc_lower.endswith(".ncx") or self.ast.local_name(str(root.tag)) == "ncx"
+        )
+
+        is_nav_flag = False
+        for item in items:
+            extra = item.get_extra_field()
+            epub = extra.get("epub") if isinstance(extra, dict) else None
+            if isinstance(epub, dict) and epub.get("is_nav") is True:
+                is_nav_flag = True
+                break
+
+        is_nav = self.is_nav_page(root) or is_nav_flag
+        allow_bilingual_insert = bilingual and (not is_nav) and (not is_ncx)
 
         # 先应用翻译（不改变结构），并记录 block 元素引用供后续双语插入。
         # items 在抽取阶段按文档顺序生成，row 越大越靠后。双语插入会改变 sibling index，
         # 因此必须在所有 path 查找完成后再做插入。
-        block_refs: list[tuple[Item, etree._Element]] = []
+        block_refs: list[tuple[Item, etree._Element, etree._Element]] = []
 
         for item in items:
             extra = item.get_extra_field()
@@ -116,9 +131,9 @@ class EPUBAstWriter(Base):
                     ok = False
                     break
                 if slot == "text":
-                    current_texts.append(elem.text or "")
+                    current_texts.append(self.ast.normalize_slot_text(elem.text or ""))
                 else:
-                    current_texts.append(elem.tail or "")
+                    current_texts.append(self.ast.normalize_slot_text(elem.tail or ""))
                 resolved.append((slot, elem))
 
             if not ok:
@@ -130,6 +145,17 @@ class EPUBAstWriter(Base):
                 skipped += 1
                 continue
 
+            # 双语插入需要保留原文块的快照（必须在写回译文前 clone）
+            if allow_bilingual_insert and not (
+                self.config.deduplication_in_bilingual
+                and item.get_src() == item.get_dst()
+            ):
+                block_path = epub.get("block_path")
+                if isinstance(block_path, str) and block_path != "":
+                    block_elem = self.ast.find_by_path(root, block_path)
+                    if block_elem is not None:
+                        block_refs.append((item, block_elem, copy.deepcopy(block_elem)))
+
             # 翻译写回
             for (slot, elem), text in zip(resolved, dst_lines, strict=True):
                 if slot == "text":
@@ -139,25 +165,13 @@ class EPUBAstWriter(Base):
 
             applied += 1
 
-            block_path = epub.get("block_path")
-            if isinstance(block_path, str) and block_path != "":
-                block_elem = self.ast.find_by_path(root, block_path)
-                if block_elem is not None:
-                    block_refs.append((item, block_elem))
-
-        # 双语插入：在每个 block 前插入原文 block（导航页除外）
-        if bilingual and not is_nav:
-            # 为避免插入影响后续定位，这里按文档顺序的逆序插入
-            for item, block in reversed(block_refs):
-                if (
-                    self.config.deduplication_in_bilingual
-                    and item.get_src() == item.get_dst()
-                ):
-                    continue
+        # 双语插入：在每个 block 前插入原文 block（目录页/NCX 除外）
+        if allow_bilingual_insert:
+            # 为避免插入影响顺序，这里按文档顺序的逆序插入
+            for item, block, clone in reversed(block_refs):
                 parent = block.getparent()
                 if parent is None:
                     continue
-                clone = copy.deepcopy(block)
                 style = clone.get("style", "")
                 style = style.rstrip(";")
                 style = (style + ";" if style else "") + "opacity:0.50;"
@@ -195,6 +209,9 @@ class EPUBAstWriter(Base):
                 continue
             by_doc.setdefault(doc_path, []).append(item)
 
+        for doc_items in by_doc.values():
+            doc_items.sort(key=lambda x: x.get_row())
+
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
         src_zip = io.BytesIO(original_epub_bytes)
@@ -230,7 +247,7 @@ class EPUBAstWriter(Base):
                         try:
                             root = self.parse_doc(raw)
                             self.apply_items_to_tree(
-                                root, by_doc.get(name, []), bilingual
+                                root, name, by_doc.get(name, []), bilingual
                             )
                             zip_writer.writestr(name, self.serialize_doc(root))
                         except Exception:

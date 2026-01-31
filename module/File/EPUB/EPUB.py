@@ -4,8 +4,9 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.File.EPUBAst import EPUBAst
-from module.File.EPUBAstWriter import EPUBAstWriter
+from module.File.EPUB.EPUBAst import EPUBAst
+from module.File.EPUB.EPUBAstWriter import EPUBAstWriter
+from module.File.EPUB.EPUBLegacy import EPUBLegacy
 
 
 class EPUB(Base):
@@ -14,6 +15,41 @@ class EPUB(Base):
         self.config = config
         self.ast = EPUBAst(config)
         self.writer = EPUBAstWriter(config)
+        self.legacy_writer = EPUBLegacy(config)
+
+    @staticmethod
+    def has_epub_ast_metadata(item: Item) -> bool:
+        extra = item.get_extra_field()
+        if not isinstance(extra, dict):
+            return False
+        epub = extra.get("epub")
+        if not isinstance(epub, dict):
+            return False
+        parts = epub.get("parts")
+        return isinstance(parts, list) and len(parts) > 0
+
+    def build_epub_from_items(
+        self,
+        original_epub_bytes: bytes,
+        items: list[Item],
+        out_path: str,
+        bilingual: bool,
+    ) -> None:
+        use_ast = all(self.has_epub_ast_metadata(i) for i in items)
+        if use_ast:
+            self.writer.build_epub(
+                original_epub_bytes=original_epub_bytes,
+                items=items,
+                out_path=out_path,
+                bilingual=bilingual,
+            )
+        else:
+            self.legacy_writer.build_epub(
+                original_epub_bytes=original_epub_bytes,
+                items=items,
+                out_path=out_path,
+                bilingual=bilingual,
+            )
 
     def insert_target(self, path: str) -> str:
         root, ext = os.path.splitext(path)
@@ -53,7 +89,7 @@ class EPUB(Base):
                 continue
 
             out_epub_path = self.insert_target(abs_path)
-            self.writer.build_epub(
+            self.build_epub_from_items(
                 original_epub_bytes=original_content,
                 items=group_items,
                 out_path=out_epub_path,
@@ -70,7 +106,7 @@ class EPUB(Base):
                 continue
 
             out_epub_path = self.insert_source_target(abs_path)
-            self.writer.build_epub(
+            self.build_epub_from_items(
                 original_epub_bytes=original_content,
                 items=group_items,
                 out_path=out_epub_path,
