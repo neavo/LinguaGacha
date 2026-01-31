@@ -74,22 +74,6 @@ class TranslatorTask(Base):
             )
         )
 
-    # 启动任务
-    def start(self) -> dict:
-        try:
-            return self.request(
-                self.items, self.processors, self.precedings, self.local_flag
-            )
-        except Exception as e:
-            # 最终兜底，确保任务不会由于未捕获异常而彻底丢失回调
-            self.error(f"{Localizer.get().task_failed}", e)
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
-
     async def start_async(self, cpu_executor: concurrent.futures.Executor) -> dict:
         try:
             return await self.request_async(
@@ -107,68 +91,6 @@ class TranslatorTask(Base):
                 "output_tokens": 0,
                 "glossaries": [],
             }
-
-    # 请求
-    def request(
-        self,
-        items: list[Item],
-        processors: list[TextProcessor],
-        precedings: list[Item],
-        local_flag: bool,
-    ) -> dict:
-        start_time = time.time()
-
-        prepared = self.prepare_request_data(items, processors, precedings, local_flag)
-        if prepared.get("done"):
-            result = prepared.get("result")
-            return (
-                result
-                if isinstance(result, dict)
-                else {
-                    "row_count": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                }
-            )
-
-        messages = prepared.get("messages")
-        if not isinstance(messages, list):
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
-
-        requester = TaskRequester(self.config, self.model)
-        exception, response_think, response_result, input_tokens, output_tokens = (
-            requester.request(messages)
-        )
-
-        if exception:
-            msg = (
-                Localizer.get()
-                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
-                .replace("{RETRY}", str(self.retry_count))
-                .replace("{THRESHOLD}", str(self.token_threshold))
-            )
-            self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
-
-        return self.apply_response_data(
-            prepared,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-            start_time,
-        )
 
     def prepare_request_data(
         self,
@@ -629,9 +551,16 @@ class TranslatorTask(Base):
                     skip_response_check=True,
                 )
 
-                # 执行翻译
-                result = translator_task.start()
-                success = result.get("row_count", 0) > 0
+                async def run_async() -> dict:
+                    with concurrent.futures.ThreadPoolExecutor(
+                        max_workers=1,
+                        thread_name_prefix=f"{Engine.TASK_PREFIX}CPU_SINGLE",
+                    ) as cpu_executor:
+                        return await translator_task.start_async(cpu_executor)
+
+                # 执行翻译（统一走异步请求路径）
+                result = asyncio.run(run_async())
+                success = bool(result.get("row_count", 0) > 0)
             except Exception:
                 success = False
             finally:

@@ -1,4 +1,5 @@
 import copy
+import asyncio
 import threading
 
 from base.Base import Base
@@ -98,38 +99,45 @@ class APITester(Base):
         if not api_keys:
             api_keys = ["no_key_required"]
 
-        # 开始测试
-        for key in api_keys:
-            # 重置请求器，清除缓存和索引
-            TaskRequester.reset()
+        async def run_tests() -> None:
+            for key in api_keys:
+                TaskRequester.reset()
 
-            # 深拷贝模型配置，避免嵌套字典引用问题
-            model_test = copy.deepcopy(model)
-            model_test["api_key"] = key
+                model_test = copy.deepcopy(model)
+                model_test["api_key"] = key
 
-            # 创建请求器
-            requester = TaskRequester(config, model_test)
+                requester = TaskRequester(config, model_test)
 
-            self.print("")
-            self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
-            self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
-            skip, response_think, response_result, _, _ = requester.request(messages)
+                self.print("")
+                self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
+                self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
 
-            # 提取回复内容
-            if skip:
-                failure.append(key)
-                self.warning(Localizer.get().log_api_test_fail)
-            elif response_think == "":
-                success.append(key)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
-                )
-            else:
-                success.append(key)
-                self.info(Localizer.get().engine_response_think + "\n" + response_think)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
-                )
+                (
+                    exception,
+                    response_think,
+                    response_result,
+                    _,
+                    _,
+                ) = await requester.request_async(messages)
+
+                if exception:
+                    failure.append(key)
+                    self.warning(Localizer.get().log_api_test_fail)
+                elif response_think == "":
+                    success.append(key)
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+                else:
+                    success.append(key)
+                    self.info(
+                        Localizer.get().engine_response_think + "\n" + response_think
+                    )
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+
+        asyncio.run(run_tests())
 
         # 测试结果
         result_msg = (

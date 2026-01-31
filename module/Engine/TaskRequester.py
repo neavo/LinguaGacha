@@ -129,7 +129,6 @@ class TaskRequester(Base):
     def reset(cls) -> None:
         cls.API_KEY_INDEX: int = 0
         cls.get_url.cache_clear()
-        cls.get_client.cache_clear()
         cls.get_async_client.cache_clear()
 
     @classmethod
@@ -166,60 +165,6 @@ class TaskRequester(Base):
             # 兼容 URL 里指定版本，避免 SDK 拼接重复版本
             return normalized_url.removesuffix("/v1"), "v1"
         return normalized_url, None
-
-    @classmethod
-    @lru_cache(maxsize=None)
-    def get_client(
-        cls,
-        url: str,
-        key: str,
-        api_format: str,
-        timeout: int,
-        extra_headers_tuple: tuple = (),
-    ) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
-        # extra_headers_tuple 用于 Google API，格式为 ((k1, v1), (k2, v2), ...)，可作为缓存 key
-        if api_format == Base.APIFormat.SAKURALLM:
-            return openai.OpenAI(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(
-                    read=timeout, pool=8.00, write=8.00, connect=8.00
-                ),
-                max_retries=0,
-            )
-        if api_format == Base.APIFormat.GOOGLE:
-            headers = cls.get_default_headers()
-            headers.update(dict(extra_headers_tuple))
-            base_url, api_version = cls.parse_google_api_url(url)
-            if base_url or api_version:
-                http_options = types.HttpOptions(
-                    base_url=base_url if base_url else None,
-                    api_version=api_version,
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
-            else:
-                http_options = types.HttpOptions(
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
-            return genai.Client(api_key=key, http_options=http_options)
-        if api_format == Base.APIFormat.ANTHROPIC:
-            return anthropic.Anthropic(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(
-                    read=timeout, pool=8.00, write=8.00, connect=8.00
-                ),
-                max_retries=0,
-            )
-
-        return openai.OpenAI(
-            base_url=url,
-            api_key=key,
-            timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
-            max_retries=0,
-        )
 
     @classmethod
     @lru_cache(maxsize=None)
@@ -282,31 +227,6 @@ class TaskRequester(Base):
             "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
         }
 
-    def request(
-        self, messages: list[dict]
-    ) -> tuple[Exception | None, str, str, int, int]:
-        """发起请求"""
-        # 构建生成参数
-        args: dict[str, float] = {}
-        if self.generation.get("top_p_custom_enable"):
-            args["top_p"] = self.generation.get("top_p")
-        if self.generation.get("temperature_custom_enable"):
-            args["temperature"] = self.generation.get("temperature")
-        if self.generation.get("presence_penalty_custom_enable"):
-            args["presence_penalty"] = self.generation.get("presence_penalty")
-        if self.generation.get("frequency_penalty_custom_enable"):
-            args["frequency_penalty"] = self.generation.get("frequency_penalty")
-
-        # 根据 API 格式发起请求
-        if self.api_format == Base.APIFormat.SAKURALLM:
-            return self.request_sakura(messages, args)
-        elif self.api_format == Base.APIFormat.GOOGLE:
-            return self.request_google(messages, args)
-        elif self.api_format == Base.APIFormat.ANTHROPIC:
-            return self.request_anthropic(messages, args)
-        else:
-            return self.request_openai(messages, args)
-
     async def request_async(
         self, messages: list[dict]
     ) -> tuple[Exception | None, str, str, int, int]:
@@ -347,51 +267,6 @@ class TaskRequester(Base):
             "extra_body": self.extra_body,
         }
         return result
-
-    def request_sakura(
-        self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[Exception | None, str, str, int, int]:
-        try:
-            with __class__.LOCK:
-                client: openai.OpenAI = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
-                )
-
-            response: openai.types.completion.Completion = (
-                client.chat.completions.create(
-                    **self.generate_sakura_args(messages, args)
-                )
-            )
-
-            response_result = response.choices[0].message.content
-        except Exception as e:
-            return e, "", "", 0, 0
-
-        # 获取 Token 消耗
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
-
-        # Sakura 返回的内容多行文本，将其转换为 JSON 字符串
-        response_result = json.dumps(
-            {
-                str(i): line.strip()
-                for i, line in enumerate(response_result.strip().splitlines())
-            },
-            indent=None,
-            ensure_ascii=False,
-        )
-
-        return None, "", response_result, input_tokens, output_tokens
 
     async def request_sakura_async(
         self, messages: list[dict[str, str]], args: dict[str, float]
@@ -490,58 +365,6 @@ class TaskRequester(Base):
         result["extra_body"] = extra_body
 
         return result
-
-    def request_openai(
-        self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[Exception | None, str, str, int, int]:
-        try:
-            with __class__.LOCK:
-                client: openai.OpenAI = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
-                )
-
-            response: openai.types.completion.Completion = (
-                client.chat.completions.create(
-                    **self.generate_openai_args(messages, args)
-                )
-            )
-
-            # 提取回复内容
-            message = response.choices[0].message
-            if hasattr(message, "reasoning_content") and isinstance(
-                message.reasoning_content, str
-            ):
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", message.reasoning_content.strip()
-                )
-                response_result = message.content.strip()
-            elif "</think>" in message.content:
-                splited = message.content.split("</think>")
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", splited[0].removeprefix("<think>").strip()
-                )
-                response_result = splited[-1].strip()
-            else:
-                response_think = ""
-                response_result = message.content.strip()
-        except Exception as e:
-            return e, "", "", 0, 0
-
-        # 获取 Token 消耗
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
-
-        return None, response_think, response_result, input_tokens, output_tokens
 
     async def request_openai_async(
         self, messages: list[dict[str, str]], args: dict[str, float]
@@ -699,61 +522,6 @@ class TaskRequester(Base):
             "config": types.GenerateContentConfig(**config_args),
         }
 
-    def request_google(
-        self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[Exception | None, str, str, int, int]:
-        try:
-            # 将 custom_headers 转换为 tuple 以支持 lru_cache
-            extra_headers_tuple = (
-                tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
-            )
-            with __class__.LOCK:
-                client: genai.Client = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
-                    extra_headers_tuple=extra_headers_tuple,
-                )
-
-            response: types.GenerateContentResponse = client.models.generate_content(
-                **self.generate_google_args(messages, args)
-            )
-
-            # 提取回复内容
-            response_think = ""
-            response_result = ""
-            if (
-                len(response.candidates) > 0
-                and len(response.candidates[-1].content.parts) > 0
-            ):
-                parts = response.candidates[-1].content.parts
-                think_messages = [v for v in parts if v.thought]
-                if len(think_messages) > 0:
-                    response_think = __class__.RE_LINE_BREAK.sub(
-                        "\n", think_messages[-1].text.strip()
-                    )
-                result_messages = [v for v in parts if not v.thought]
-                if len(result_messages) > 0:
-                    response_result = result_messages[-1].text.strip()
-        except Exception as e:
-            return e, "", "", 0, 0
-
-        # 获取 Token 消耗
-        try:
-            input_tokens = int(response.usage_metadata.prompt_token_count)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            total_token_count = int(response.usage_metadata.total_token_count)
-            prompt_token_count = int(response.usage_metadata.prompt_token_count)
-            output_tokens = total_token_count - prompt_token_count
-        except Exception:
-            output_tokens = 0
-
-        return None, response_think, response_result, input_tokens, output_tokens
-
     async def request_google_async(
         self, messages: list[dict[str, str]], args: dict[str, float]
     ) -> tuple[Exception | None, str, str, int, int]:
@@ -857,61 +625,6 @@ class TaskRequester(Base):
             result["extra_body"] = self.extra_body
 
         return result
-
-    def request_anthropic(
-        self, messages: list[dict[str, str]], args: dict[str, float]
-    ) -> tuple[Exception | None, str, str, int, int]:
-        try:
-            with __class__.LOCK:
-                client: anthropic.Anthropic = __class__.get_client(
-                    url=__class__.get_url(self.api_url, self.api_format),
-                    key=__class__.get_key(self.api_keys),
-                    api_format=self.api_format,
-                    timeout=self.config.request_timeout,
-                )
-
-            response: anthropic.types.Message = client.messages.create(
-                **self.generate_anthropic_args(messages, args)
-            )
-
-            # 提取回复内容
-            text_messages = [
-                msg
-                for msg in response.content
-                if hasattr(msg, "text") and isinstance(msg.text, str)
-            ]
-            think_messages = [
-                msg
-                for msg in response.content
-                if hasattr(msg, "thinking") and isinstance(msg.thinking, str)
-            ]
-
-            if text_messages:
-                response_result = text_messages[-1].text.strip()
-            else:
-                response_result = ""
-
-            if think_messages:
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", think_messages[-1].thinking.strip()
-                )
-            else:
-                response_think = ""
-        except Exception as e:
-            return e, "", "", 0, 0
-
-        # 获取 Token 消耗
-        try:
-            input_tokens = int(response.usage.input_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.output_tokens)
-        except Exception:
-            output_tokens = 0
-
-        return None, response_think, response_result, input_tokens, output_tokens
 
     async def request_anthropic_async(
         self, messages: list[dict[str, str]], args: dict[str, float]
