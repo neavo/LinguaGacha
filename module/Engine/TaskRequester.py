@@ -1,7 +1,10 @@
 import json
+import asyncio
+import inspect
 import re
 import threading
 from functools import lru_cache
+from typing import Any
 
 import anthropic
 import httpx
@@ -13,6 +16,9 @@ from base.Base import Base
 from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
+
+
+AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
 
 
 class TaskRequester(Base):
@@ -68,6 +74,10 @@ class TaskRequester(Base):
 
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
+
+    # Async 客户端缓存（按事件循环隔离，避免跨 loop 复用导致 "Event loop is closed"）
+    ASYNC_CLIENT_CACHE: dict[AsyncClientCacheKey, Any] = {}
+    ASYNC_CLIENT_KEYS_BY_LOOP: dict[int, set[AsyncClientCacheKey]] = {}
 
     def __init__(self, config: Config, model: dict) -> None:
         """
@@ -127,9 +137,54 @@ class TaskRequester(Base):
     # 重置
     @classmethod
     def reset(cls) -> None:
-        cls.API_KEY_INDEX: int = 0
-        cls.get_url.cache_clear()
-        cls.get_async_client.cache_clear()
+        with cls.LOCK:
+            cls.API_KEY_INDEX = 0
+            cls.get_url.cache_clear()
+            cls.ASYNC_CLIENT_CACHE.clear()
+            cls.ASYNC_CLIENT_KEYS_BY_LOOP.clear()
+
+    @staticmethod
+    async def maybe_await(result: Any) -> None:
+        if inspect.isawaitable(result):
+            await result
+
+    @classmethod
+    async def aclose_client(cls, client: Any) -> None:
+        aio_client = getattr(client, "aio", None)
+        if aio_client is not None:
+            aclose = getattr(aio_client, "aclose", None)
+            if callable(aclose):
+                await cls.maybe_await(aclose())
+            close = getattr(aio_client, "close", None)
+            if callable(close):
+                await cls.maybe_await(close())
+
+        aclose = getattr(client, "aclose", None)
+        if callable(aclose):
+            await cls.maybe_await(aclose())
+            return
+
+        close = getattr(client, "close", None)
+        if callable(close):
+            await cls.maybe_await(close())
+
+    @classmethod
+    async def aclose_clients_for_running_loop(cls) -> None:
+        loop_id = id(asyncio.get_running_loop())
+        with cls.LOCK:
+            keys = cls.ASYNC_CLIENT_KEYS_BY_LOOP.pop(loop_id, set())
+            clients = [
+                cls.ASYNC_CLIENT_CACHE.pop(key)
+                for key in keys
+                if key in cls.ASYNC_CLIENT_CACHE
+            ]
+
+        for client in clients:
+            try:
+                await cls.aclose_client(client)
+            except Exception:
+                # 关闭阶段尽力而为，避免影响主流程
+                pass
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
@@ -167,7 +222,6 @@ class TaskRequester(Base):
         return normalized_url, None
 
     @classmethod
-    @lru_cache(maxsize=None)
     def get_async_client(
         cls,
         url: str,
@@ -176,9 +230,22 @@ class TaskRequester(Base):
         timeout: int,
         extra_headers_tuple: tuple = (),
     ) -> openai.AsyncOpenAI | genai.Client | anthropic.AsyncAnthropic:
+        loop_id = id(asyncio.get_running_loop())
+        cache_key: AsyncClientCacheKey = (
+            loop_id,
+            url,
+            key,
+            api_format,
+            timeout,
+            extra_headers_tuple,
+        )
+        cached = cls.ASYNC_CLIENT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
         # extra_headers_tuple 用于 Google API，格式为 ((k1, v1), (k2, v2), ...)，可作为缓存 key
         if api_format == Base.APIFormat.SAKURALLM:
-            return openai.AsyncOpenAI(
+            client = openai.AsyncOpenAI(
                 base_url=url,
                 api_key=key,
                 timeout=httpx.Timeout(
@@ -186,7 +253,7 @@ class TaskRequester(Base):
                 ),
                 max_retries=0,
             )
-        if api_format == Base.APIFormat.GOOGLE:
+        elif api_format == Base.APIFormat.GOOGLE:
             headers = cls.get_default_headers()
             headers.update(dict(extra_headers_tuple))
             base_url, api_version = cls.parse_google_api_url(url)
@@ -202,9 +269,18 @@ class TaskRequester(Base):
                     timeout=timeout * 1000,
                     headers=headers,
                 )
-            return genai.Client(api_key=key, http_options=http_options)
-        if api_format == Base.APIFormat.ANTHROPIC:
-            return anthropic.AsyncAnthropic(
+            client = genai.Client(api_key=key, http_options=http_options)
+        elif api_format == Base.APIFormat.ANTHROPIC:
+            client = anthropic.AsyncAnthropic(
+                base_url=url,
+                api_key=key,
+                timeout=httpx.Timeout(
+                    read=timeout, pool=8.00, write=8.00, connect=8.00
+                ),
+                max_retries=0,
+            )
+        else:
+            client = openai.AsyncOpenAI(
                 base_url=url,
                 api_key=key,
                 timeout=httpx.Timeout(
@@ -213,12 +289,9 @@ class TaskRequester(Base):
                 max_retries=0,
             )
 
-        return openai.AsyncOpenAI(
-            base_url=url,
-            api_key=key,
-            timeout=httpx.Timeout(read=timeout, pool=8.00, write=8.00, connect=8.00),
-            max_retries=0,
-        )
+        cls.ASYNC_CLIENT_CACHE[cache_key] = client
+        cls.ASYNC_CLIENT_KEYS_BY_LOOP.setdefault(loop_id, set()).add(cache_key)
+        return client
 
     @staticmethod
     def get_default_headers() -> dict:

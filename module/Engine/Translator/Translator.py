@@ -1004,6 +1004,8 @@ class Translator(Base):
         await commit_queue.put(None)
         await commit_task
 
+        await TaskRequester.aclose_clients_for_running_loop()
+
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
         if items is None or len(items) == 0:

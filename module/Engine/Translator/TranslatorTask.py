@@ -559,7 +559,10 @@ class TranslatorTask(Base):
                         max_workers=1,
                         thread_name_prefix=f"{Engine.TASK_PREFIX}CPU_SINGLE",
                     ) as cpu_executor:
-                        return await translator_task.start_async(cpu_executor)
+                        try:
+                            return await translator_task.start_async(cpu_executor)
+                        finally:
+                            await TaskRequester.aclose_clients_for_running_loop()
 
                 # 执行翻译（统一走异步请求路径）
                 result = asyncio.run(run_async())
