@@ -67,6 +67,23 @@ class TextProcessor(Base):
         self.vaild_index: set[int] = set()
         self.prefix_codes: dict[int, list[str]] = {}
         self.suffix_codes: dict[int, list[str]] = {}
+        # 始终保留每行的头尾空白（与文本保护规则及其开关解耦）。
+        self.leading_whitespace_by_line: dict[int, str] = {}
+        self.trailing_whitespace_by_line: dict[int, str] = {}
+
+    def extract_line_edge_whitespace(self, i: int, src: str) -> str:
+        leading_len = len(src) - len(src.lstrip())
+        trailing_len = len(src) - len(src.rstrip())
+
+        leading = src[:leading_len] if leading_len > 0 else ""
+        trailing = src[len(src) - trailing_len :] if trailing_len > 0 else ""
+
+        self.leading_whitespace_by_line[i] = leading
+        self.trailing_whitespace_by_line[i] = trailing
+
+        if trailing_len > 0:
+            return src[leading_len:-trailing_len]
+        return src[leading_len:]
 
     @classmethod
     def reset(cls) -> None:
@@ -458,6 +475,8 @@ class TextProcessor(Base):
             elif src.strip() == "":
                 pass
             else:
+                src = self.extract_line_edge_whitespace(i, src)
+
                 # 处理前后缀代码段
                 src = self.prefix_suffix_process(i, src, text_type)
 
@@ -526,6 +545,10 @@ class TextProcessor(Base):
                 suffix_codes = self.suffix_codes.get(i) or []
                 if suffix_codes:
                     dst = dst + "".join(suffix_codes)
+
+                leading = self.leading_whitespace_by_line.get(i, "")
+                trailing = self.trailing_whitespace_by_line.get(i, "")
+                dst = leading + dst + trailing
 
             # 添加结果
             results.append(dst)
