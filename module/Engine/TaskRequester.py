@@ -1,10 +1,12 @@
-import json
 import asyncio
+import contextlib
 import inspect
+import json
 import re
 import threading
 from functools import lru_cache
 from typing import Any
+from typing import Callable
 
 import anthropic
 import httpx
@@ -16,9 +18,83 @@ from base.Base import Base
 from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
-
+from module.Response.ResponseChecker import ResponseChecker
 
 AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
+
+
+class RequestCancelledError(Exception):
+    """用户触发停止导致的主动取消（不应记为翻译错误）。"""
+
+
+class StreamDegradationError(Exception):
+    """流式输出检测到明显退化/重复，提前中断。"""
+
+
+def safe_close_async_resource(resource: Any) -> Any:
+    """Best-effort close for async stream/generator resources."""
+
+    close = getattr(resource, "close", None)
+    if callable(close):
+        result = close()
+        if inspect.isawaitable(result):
+            return asyncio.ensure_future(result)
+        return None
+
+    aclose = getattr(resource, "aclose", None)
+    if callable(aclose):
+        result = aclose()
+        if inspect.isawaitable(result):
+            return asyncio.ensure_future(result)
+        return None
+
+    return None
+
+
+async def consume_async_iterator_polling(
+    iterator: Any,
+    *,
+    stop_checker: Callable[[], bool] | None,
+    poll_interval_s: float,
+    on_item: Callable[[Any], None],
+    on_stop: Callable[[], Any] | None = None,
+) -> None:
+    """Consume an async iterator but still respond quickly to stop requests.
+
+    Why: `async for` can block waiting for the next chunk; polling keeps stop responsive.
+    """
+
+    if poll_interval_s <= 0:
+        poll_interval_s = 0.1
+
+    while True:
+        anext_task = asyncio.create_task(iterator.__anext__())
+        try:
+            while True:
+                done, _ = await asyncio.wait({anext_task}, timeout=poll_interval_s)
+                if anext_task in done:
+                    item = await anext_task
+                    on_item(item)
+                    break
+
+                if stop_checker is not None and stop_checker():
+                    if on_stop is not None:
+                        await TaskRequester.maybe_await(on_stop())
+                    raise RequestCancelledError("stop requested")
+        except StopAsyncIteration:
+            return
+        except RequestCancelledError:
+            if not anext_task.done():
+                anext_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await anext_task
+            raise
+        except Exception:
+            if not anext_task.done():
+                anext_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await anext_task
+            raise
 
 
 class TaskRequester(Base):
@@ -39,7 +115,7 @@ class TaskRequester(Base):
     RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
 
     # Claude
-    RE_CLAUDE: tuple[re.Pattern] = (
+    RE_CLAUDE: tuple[re.Pattern, ...] = (
         re.compile(r"claude-3-7-sonnet", flags=re.IGNORECASE),
         re.compile(r"claude-opus-4-\d", flags=re.IGNORECASE),
         re.compile(r"claude-haiku-4-\d", flags=re.IGNORECASE),
@@ -47,30 +123,34 @@ class TaskRequester(Base):
     )
 
     # OpenAI
-    RE_OPENAI: tuple[re.Pattern] = (
+    RE_OPENAI: tuple[re.Pattern, ...] = (
         re.compile(r"gpt-\d", flags=re.IGNORECASE),
         re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
     )
 
     # OpenAI Compatible
-    RE_GLM: tuple[re.Pattern] = (
+    RE_GLM: tuple[re.Pattern, ...] = (
         re.compile(r"glm-4\.5", flags=re.IGNORECASE),
         re.compile(r"glm-4\.6", flags=re.IGNORECASE),
         re.compile(r"glm-4\.7", flags=re.IGNORECASE),
     )
-    RE_KIMI: tuple[re.Pattern] = (
+    RE_KIMI: tuple[re.Pattern, ...] = (
         re.compile(r"kimi", flags=re.IGNORECASE),  # 逗号必须保留
     )
-    RE_DOUBAO: tuple[re.Pattern] = (
+    RE_DOUBAO: tuple[re.Pattern, ...] = (
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
     )
-    RE_DEEPSEEK: tuple[re.Pattern] = (
+    RE_DEEPSEEK: tuple[re.Pattern, ...] = (
         re.compile(r"deepseek", flags=re.IGNORECASE),  # 逗号必须保留
     )
 
     # 正则
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
+
+    # 流式控制
+    STREAM_POLL_INTERVAL_S: float = 0.15
+    STREAM_DEGRADATION_TAIL_CHARS: int = 2048
 
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
@@ -301,7 +381,11 @@ class TaskRequester(Base):
         }
 
     async def request_async(
-        self, messages: list[dict]
+        self,
+        messages: list[dict],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
         args: dict[str, float] = {}
         if self.generation.get("top_p_custom_enable"):
@@ -314,18 +398,254 @@ class TaskRequester(Base):
             args["frequency_penalty"] = self.generation.get("frequency_penalty")
 
         if self.api_format == Base.APIFormat.SAKURALLM:
-            return await self.request_sakura_async(messages, args)
+            return await self.request_sakura_async(
+                messages,
+                args,
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
+            )
         if self.api_format == Base.APIFormat.GOOGLE:
-            return await self.request_google_async(messages, args)
+            return await self.request_google_async(
+                messages,
+                args,
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
+            )
         if self.api_format == Base.APIFormat.ANTHROPIC:
-            return await self.request_anthropic_async(messages, args)
-        return await self.request_openai_async(messages, args)
+            return await self.request_anthropic_async(
+                messages,
+                args,
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
+            )
+        return await self.request_openai_async(
+            messages,
+            args,
+            stop_checker=stop_checker,
+            src_has_degradation=src_has_degradation,
+        )
 
     def build_extra_headers(self) -> dict:
         """构建请求头，合并自定义 Headers"""
         headers = self.get_default_headers()
         headers.update(self.extra_headers)
         return headers
+
+    @classmethod
+    def extract_openai_think_and_result(cls, message: Any) -> tuple[str, str]:
+        """尽量复用非流式逻辑，从 message 中提取 think/result。"""
+
+        if hasattr(message, "reasoning_content") and isinstance(
+            message.reasoning_content, str
+        ):
+            response_think = cls.RE_LINE_BREAK.sub(
+                "\n", message.reasoning_content.strip()
+            )
+            response_result = str(getattr(message, "content", "") or "").strip()
+            return response_think, response_result
+
+        content = str(getattr(message, "content", "") or "")
+        if "</think>" in content:
+            splited = content.split("</think>")
+            response_think = cls.RE_LINE_BREAK.sub(
+                "\n", splited[0].removeprefix("<think>").strip()
+            )
+            response_result = splited[-1].strip()
+            return response_think, response_result
+
+        return "", content.strip()
+
+    @classmethod
+    def has_degradation_in_tail(cls, tail: str) -> bool:
+        if not tail:
+            return False
+        return ResponseChecker.RE_DEGRADATION.search(tail) is not None
+
+    async def request_openai_chat_stream(
+        self,
+        client: openai.AsyncOpenAI,
+        request_args: dict,
+        *,
+        stop_checker: Callable[[], bool] | None,
+        src_has_degradation: bool,
+    ) -> tuple[str, str, int, int]:
+        result_tail = ""
+
+        def on_event(event: Any) -> None:
+            nonlocal result_tail
+
+            event_type = getattr(event, "type", "")
+            if event_type != "content.delta":
+                return
+
+            text = getattr(event, "content", None)
+            if not isinstance(text, str) or not text:
+                return
+
+            result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
+            if not src_has_degradation and self.has_degradation_in_tail(result_tail):
+                raise StreamDegradationError("degradation detected")
+
+        async with client.chat.completions.stream(**request_args) as stream:
+            iterator = stream
+            if hasattr(stream, "__aiter__"):
+                iterator = stream.__aiter__()
+
+            def on_stop() -> Any:
+                return safe_close_async_resource(stream)
+
+            await consume_async_iterator_polling(
+                iterator,
+                stop_checker=stop_checker,
+                poll_interval_s=self.STREAM_POLL_INTERVAL_S,
+                on_item=on_event,
+                on_stop=on_stop,
+            )
+
+            completion = await stream.get_final_completion()
+
+        message = completion.choices[0].message
+        response_think, response_result = self.extract_openai_think_and_result(message)
+
+        try:
+            input_tokens = int(completion.usage.prompt_tokens)
+        except Exception:
+            input_tokens = 0
+
+        try:
+            output_tokens = int(completion.usage.completion_tokens)
+        except Exception:
+            output_tokens = 0
+
+        return response_think, response_result, input_tokens, output_tokens
+
+    async def request_anthropic_message_stream(
+        self,
+        client: anthropic.AsyncAnthropic,
+        request_args: dict,
+        *,
+        stop_checker: Callable[[], bool] | None,
+        src_has_degradation: bool,
+    ) -> tuple[str, str, int, int]:
+        result_tail = ""
+
+        def on_text(text: Any) -> None:
+            nonlocal result_tail
+            if not isinstance(text, str) or not text:
+                return
+
+            result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
+            if not src_has_degradation and self.has_degradation_in_tail(result_tail):
+                raise StreamDegradationError("degradation detected")
+
+        async with client.messages.stream(**request_args) as stream:
+            iterator = stream.text_stream
+            if hasattr(iterator, "__aiter__"):
+                iterator = iterator.__aiter__()
+
+            await consume_async_iterator_polling(
+                iterator,
+                stop_checker=stop_checker,
+                poll_interval_s=self.STREAM_POLL_INTERVAL_S,
+                on_item=on_text,
+                on_stop=stream.close,
+            )
+
+            message = await stream.get_final_message()
+
+        text_messages = [
+            msg
+            for msg in message.content
+            if hasattr(msg, "text") and isinstance(msg.text, str)
+        ]
+        think_messages = [
+            msg
+            for msg in message.content
+            if hasattr(msg, "thinking") and isinstance(msg.thinking, str)
+        ]
+
+        response_result = text_messages[-1].text.strip() if text_messages else ""
+        response_think = (
+            self.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
+            if think_messages
+            else ""
+        )
+
+        try:
+            input_tokens = int(message.usage.input_tokens)
+        except Exception:
+            input_tokens = 0
+
+        try:
+            output_tokens = int(message.usage.output_tokens)
+        except Exception:
+            output_tokens = 0
+
+        return response_think, response_result, input_tokens, output_tokens
+
+    async def request_google_content_stream(
+        self,
+        client: genai.Client,
+        request_args: dict,
+        *,
+        stop_checker: Callable[[], bool] | None,
+        src_has_degradation: bool,
+    ) -> tuple[str, str, int, int]:
+        result_parts: list[str] = []
+        result_tail = ""
+        last_usage: Any = None
+
+        def on_chunk(chunk: Any) -> None:
+            nonlocal result_tail
+            nonlocal last_usage
+
+            text = getattr(chunk, "text", None)
+            if isinstance(text, str) and text:
+                result_parts.append(text)
+                result_tail = (result_tail + text)[
+                    -self.STREAM_DEGRADATION_TAIL_CHARS :
+                ]
+                if not src_has_degradation and self.has_degradation_in_tail(
+                    result_tail
+                ):
+                    raise StreamDegradationError("degradation detected")
+
+            usage_metadata = getattr(chunk, "usage_metadata", None)
+            if usage_metadata is not None:
+                last_usage = usage_metadata
+
+        generator = await client.aio.models.generate_content_stream(**request_args)
+        iterator = generator
+        if hasattr(generator, "__aiter__"):
+            iterator = generator.__aiter__()
+
+        def on_stop() -> Any:
+            return safe_close_async_resource(generator)
+
+        await consume_async_iterator_polling(
+            iterator,
+            stop_checker=stop_checker,
+            poll_interval_s=self.STREAM_POLL_INTERVAL_S,
+            on_item=on_chunk,
+            on_stop=on_stop,
+        )
+
+        response_result = "".join(result_parts).strip()
+        response_think = ""
+
+        try:
+            input_tokens = int(last_usage.prompt_token_count)
+        except Exception:
+            input_tokens = 0
+
+        try:
+            total_token_count = int(last_usage.total_token_count)
+            prompt_token_count = int(last_usage.prompt_token_count)
+            output_tokens = total_token_count - prompt_token_count
+        except Exception:
+            output_tokens = 0
+
+        return response_think, response_result, input_tokens, output_tokens
 
     # ========== Sakura 请求 ==========
 
@@ -342,8 +662,16 @@ class TaskRequester(Base):
         return result
 
     async def request_sakura_async(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, float],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         try:
             with __class__.LOCK:
                 client: openai.AsyncOpenAI = __class__.get_async_client(
@@ -353,36 +681,30 @@ class TaskRequester(Base):
                     timeout=self.config.request_timeout,
                 )
 
-            response: openai.types.completion.Completion = (
-                await client.chat.completions.create(
-                    **self.generate_sakura_args(messages, args)
-                )
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = await self.request_openai_chat_stream(
+                client,
+                self.generate_sakura_args(messages, args),
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
             )
-
-            response_result = response.choices[0].message.content
         except Exception as e:
             return e, "", "", 0, 0
-
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
 
         response_result = json.dumps(
             {
                 str(i): line.strip()
-                for i, line in enumerate(response_result.strip().splitlines())
+                for i, line in enumerate(str(response_result).strip().splitlines())
             },
             indent=None,
             ensure_ascii=False,
         )
 
-        return None, "", response_result, input_tokens, output_tokens
+        return None, response_think, response_result, input_tokens, output_tokens
 
     # ========== OpenAI 请求 ==========
 
@@ -440,8 +762,16 @@ class TaskRequester(Base):
         return result
 
     async def request_openai_async(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, float],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         try:
             with __class__.LOCK:
                 client: openai.AsyncOpenAI = __class__.get_async_client(
@@ -451,41 +781,19 @@ class TaskRequester(Base):
                     timeout=self.config.request_timeout,
                 )
 
-            response: openai.types.completion.Completion = (
-                await client.chat.completions.create(
-                    **self.generate_openai_args(messages, args)
-                )
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = await self.request_openai_chat_stream(
+                client,
+                self.generate_openai_args(messages, args),
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
             )
-
-            message = response.choices[0].message
-            if hasattr(message, "reasoning_content") and isinstance(
-                message.reasoning_content, str
-            ):
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", message.reasoning_content.strip()
-                )
-                response_result = message.content.strip()
-            elif "</think>" in message.content:
-                splited = message.content.split("</think>")
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", splited[0].removeprefix("<think>").strip()
-                )
-                response_result = splited[-1].strip()
-            else:
-                response_think = ""
-                response_result = message.content.strip()
         except Exception as e:
             return e, "", "", 0, 0
-
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
 
         return None, response_think, response_result, input_tokens, output_tokens
 
@@ -534,6 +842,9 @@ class TaskRequester(Base):
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level="minimal",
                     include_thoughts=False,
+                    # 虽然 thinkingBudget 可用于实现向后兼容性，但将其与 Gemini 3 Pro 搭配使用可能会导致性能欠佳。
+                    # 所以仅在尝试彻底关闭思考时使用，以提高彻底关闭思考的概率。
+                    thinkingBudget=0,
                 )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -596,8 +907,16 @@ class TaskRequester(Base):
         }
 
     async def request_google_async(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, float],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         try:
             extra_headers_tuple = (
                 tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
@@ -611,41 +930,19 @@ class TaskRequester(Base):
                     extra_headers_tuple=extra_headers_tuple,
                 )
 
-            response: types.GenerateContentResponse = (
-                await client.aio.models.generate_content(
-                    **self.generate_google_args(messages, args)
-                )
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = await self.request_google_content_stream(
+                client,
+                self.generate_google_args(messages, args),
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
             )
-
-            response_think = ""
-            response_result = ""
-            if (
-                len(response.candidates) > 0
-                and len(response.candidates[-1].content.parts) > 0
-            ):
-                parts = response.candidates[-1].content.parts
-                think_messages = [v for v in parts if v.thought]
-                if think_messages:
-                    response_think = __class__.RE_LINE_BREAK.sub(
-                        "\n", think_messages[-1].text.strip()
-                    )
-                result_messages = [v for v in parts if not v.thought]
-                if result_messages:
-                    response_result = result_messages[-1].text.strip()
         except Exception as e:
             return e, "", "", 0, 0
-
-        try:
-            input_tokens = int(response.usage_metadata.prompt_token_count)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            total_token_count = int(response.usage_metadata.total_token_count)
-            prompt_token_count = int(response.usage_metadata.prompt_token_count)
-            output_tokens = total_token_count - prompt_token_count
-        except Exception:
-            output_tokens = 0
 
         return None, response_think, response_result, input_tokens, output_tokens
 
@@ -700,8 +997,16 @@ class TaskRequester(Base):
         return result
 
     async def request_anthropic_async(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, float],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         try:
             with __class__.LOCK:
                 client: anthropic.AsyncAnthropic = __class__.get_async_client(
@@ -711,43 +1016,18 @@ class TaskRequester(Base):
                     timeout=self.config.request_timeout,
                 )
 
-            response: anthropic.types.Message = await client.messages.create(
-                **self.generate_anthropic_args(messages, args)
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = await self.request_anthropic_message_stream(
+                client,
+                self.generate_anthropic_args(messages, args),
+                stop_checker=stop_checker,
+                src_has_degradation=src_has_degradation,
             )
-
-            text_messages = [
-                msg
-                for msg in response.content
-                if hasattr(msg, "text") and isinstance(msg.text, str)
-            ]
-            think_messages = [
-                msg
-                for msg in response.content
-                if hasattr(msg, "thinking") and isinstance(msg.thinking, str)
-            ]
-
-            if text_messages:
-                response_result = text_messages[-1].text.strip()
-            else:
-                response_result = ""
-
-            if think_messages:
-                response_think = __class__.RE_LINE_BREAK.sub(
-                    "\n", think_messages[-1].thinking.strip()
-                )
-            else:
-                response_think = ""
         except Exception as e:
             return e, "", "", 0, 0
-
-        try:
-            input_tokens = int(response.usage.input_tokens)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(response.usage.output_tokens)
-        except Exception:
-            output_tokens = 0
 
         return None, response_think, response_result, input_tokens, output_tokens

@@ -964,7 +964,13 @@ class Translator(Base):
             max_workers=cpu_workers, thread_name_prefix=f"{Engine.TASK_PREFIX}CPU"
         ) as cpu_executor:
             in_flight: set[asyncio.Task] = set()
+            clients_closed_on_stop = False
             while True:
+                if should_stop() and not clients_closed_on_stop:
+                    # Best-effort: hard-interrupt in-flight requests by closing clients.
+                    clients_closed_on_stop = True
+                    await TaskRequester.aclose_clients_for_running_loop()
+
                 # 停止条件检查
                 if should_stop() and not in_flight:
                     break

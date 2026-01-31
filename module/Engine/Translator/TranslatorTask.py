@@ -19,6 +19,8 @@ from module.Config import Config
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskRequester import RequestCancelledError
+from module.Engine.TaskRequester import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseChecker import ResponseChecker
@@ -130,11 +132,16 @@ class TranslatorTask(Base):
             messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
 
         self.messages = messages
+
+        src_has_degradation = any(
+            ResponseChecker.RE_DEGRADATION.search(v) is not None for v in srcs
+        )
         return {
             "done": False,
             "srcs": srcs,
             "messages": messages,
             "console_log": console_log,
+            "src_has_degradation": src_has_degradation,
         }
 
     def apply_response_data(
@@ -271,6 +278,11 @@ class TranslatorTask(Base):
                 "glossaries": [],
             }
 
+        src_has_degradation = bool(prepared.get("src_has_degradation", False))
+
+        def stop_checker() -> bool:
+            return Engine.get().get_status() == Base.TaskStatus.STOPPING
+
         requester = TaskRequester(self.config, self.model)
         (
             exception,
@@ -278,16 +290,43 @@ class TranslatorTask(Base):
             response_result,
             input_tokens,
             output_tokens,
-        ) = await requester.request_async(messages)
+        ) = await requester.request_async(
+            messages,
+            stop_checker=stop_checker,
+            src_has_degradation=src_has_degradation,
+        )
 
         if exception:
+            if isinstance(exception, RequestCancelledError):
+                return {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
+
+            if stop_checker():
+                return {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
+
             msg = (
                 Localizer.get()
                 .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
                 .replace("{RETRY}", str(self.retry_count))
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
-            self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
+
+            if isinstance(exception, StreamDegradationError):
+                self.warning(
+                    f"{Localizer.get().task_failed}\n{msg}",
+                    exception,
+                )
+            else:
+                self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
             return {
                 "row_count": 0,
                 "input_tokens": 0,
