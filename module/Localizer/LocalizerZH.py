@@ -275,6 +275,7 @@ class LocalizerZH:
     workbench_drop_ready_source: str = "包含 {COUNT} 个源文件，准备就绪"
     workbench_select_project_title: str = "选择工程文件"
     workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
+    workbench_toast_drop_multi_not_supported: str = "一次只能拖拽一个文件或文件夹"
     workbench_msg_file_not_found_title: str = "文件不存在"
     workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除 …?"
     workbench_msg_close_confirm: str = "确定要关闭当前工程吗 …?"

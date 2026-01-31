@@ -232,9 +232,24 @@ class DropZone(FileDisplayCard):
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
-        if urls:
-            path = urls[0].toLocalFile()
-            self.fileDropped.emit(path)
+        if not urls:
+            return
+
+        if len(urls) != 1:
+            EventManager.get().emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().workbench_toast_drop_multi_not_supported,
+                },
+            )
+            return
+
+        path = urls[0].toLocalFile()
+        if not path:
+            return
+
+        self.fileDropped.emit(path)
 
 
 class SelectedFileDisplay(FileDisplayCard):
@@ -312,9 +327,24 @@ class SelectedFileDisplay(FileDisplayCard):
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
-        if urls:
-            path = urls[0].toLocalFile()
-            self.fileDropped.emit(path)
+        if not urls:
+            return
+
+        if len(urls) != 1:
+            EventManager.get().emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().workbench_toast_drop_multi_not_supported,
+                },
+            )
+            return
+
+        path = urls[0].toLocalFile()
+        if not path:
+            return
+
+        self.fileDropped.emit(path)
 
 
 class RecentProjectItem(QFrame):
