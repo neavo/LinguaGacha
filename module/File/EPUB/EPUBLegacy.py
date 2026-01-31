@@ -14,8 +14,16 @@ from module.Config import Config
 class EPUBLegacy(Base):
     """旧 EPUB 写回逻辑，仅用于兼容老工程。
 
-    老工程的 Item 没有 AST 定位信息（extra_field 为空），只能依赖“抽取顺序 == 写回顺序”。
+    老工程的 Item 没有 AST 定位信息（extra_field 为空），只能依赖"抽取顺序 == 写回顺序"。
     新工程默认走 AST writer，避免顺序错位问题。
+
+    使用场景：
+    - 项目是在 AST 方案上线前创建的
+    - Item 的 extra_field 中没有 epub.parts 信息
+
+    注意事项：
+    - 本模块使用 BeautifulSoup 进行 HTML 解析，会丢失部分格式信息
+    - 双语输出在导航页面会被跳过，避免链接重复
     """
 
     EPUB_TAGS: tuple[str, ...] = (
@@ -84,11 +92,12 @@ class EPUBLegacy(Base):
     ) -> None:
         with zip_reader.open(path) as reader:
             target_items = tag_group.get(path, [])
+            raw = reader.read()
             try:
-                bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "lxml-xml")
+                bs = BeautifulSoup(raw.decode("utf-8-sig"), "lxml-xml")
             except Exception:
                 # 兜底：按 xml 解析失败时仍用默认解析器
-                bs = BeautifulSoup(reader.read().decode("utf-8-sig"), "xml")
+                bs = BeautifulSoup(raw.decode("utf-8-sig"), "xml")
 
             for dom in bs.find_all("text"):
                 if dom.get_text().strip() == "":

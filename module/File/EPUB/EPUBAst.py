@@ -43,10 +43,20 @@ class EPUBAst(Base):
     """基于 OPF spine + lxml AST 的 EPUB 抽取器。
 
     设计目标：
-    - 只抽取“可翻译纯文本”，不把 HTML tag 发给模型
+    - 只抽取"可翻译纯文本"，不把 HTML tag 发给模型
     - 定位信息写入 Item.extra_field，写回时只修改 text/tail
     - 同时兼容 EPUB2/EPUB3（通过 OPF version + nav/ncx）
+
+    Row 编号规则（用于保证不同文档类型间的有序性）：
+    - 正文章节：spine_index * ROW_MULTIPLIER + unit_index，支持最多 8000 章
+    - Nav 文档：ROW_BASE_NAV + unit_index（当 nav 不在 spine 时）
+    - NCX 文档：ROW_BASE_NCX + unit_index（始终排在最后）
     """
+
+    # Row 编号常量：用于保证 item 在不同文档类型间的有序性
+    ROW_MULTIPLIER = 1_000_000  # 每个 spine 文档最多 100 万个翻译单元
+    ROW_BASE_NAV = 8_000_000_000  # nav.xhtml 的 row 基数（支持最多 8000 章正文）
+    ROW_BASE_NCX = 9_000_000_000  # NCX 的 row 基数（始终排在 nav 之后）
 
     BLOCK_TAGS: tuple[str, ...] = (
         "p",
@@ -244,8 +254,7 @@ class EPUBAst(Base):
 
         # nav（EPUB3）
         nav_path: str | None = None
-        for item_id, v in manifest_items.items():
-            del item_id
+        for _, v in manifest_items.items():
             props = v.get("properties", "")
             if "nav" in {p.strip() for p in props.split()}:
                 nav_path = v.get("path")
@@ -413,7 +422,7 @@ class EPUBAst(Base):
                     "src": src,
                     "dst": src,
                     "tag": doc_path,
-                    "row": spine_index * 1_000_000 + unit_index,
+                    "row": spine_index * self.ROW_MULTIPLIER + unit_index,
                     "file_type": Item.FileType.EPUB,
                     "file_path": rel_path,
                     "extra_field": {
@@ -455,7 +464,7 @@ class EPUBAst(Base):
                     "src": text,
                     "dst": text,
                     "tag": ncx_path,
-                    "row": 900_000_000 + unit_index,
+                    "row": self.ROW_BASE_NCX + unit_index,
                     "file_type": Item.FileType.EPUB,
                     "file_path": rel_path,
                     "extra_field": {
@@ -520,14 +529,16 @@ class EPUBAst(Base):
                             self.extract_items_from_document(
                                 doc_path=pkg.nav_path,
                                 raw=raw,
-                                spine_index=800,
+                                spine_index=self.ROW_BASE_NAV // self.ROW_MULTIPLIER,
                                 rel_path=rel_path,
                                 is_nav=True,
                             )
                         )
                         processed_paths.add(pkg.nav_path)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.warning(
+                            f"Failed to process nav document: {pkg.nav_path}", e
+                        )
 
             # v2 ncx
             if pkg.ncx_path:
@@ -537,8 +548,8 @@ class EPUBAst(Base):
                     items.extend(
                         self.extract_items_from_ncx(pkg.ncx_path, raw, rel_path)
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.warning(f"Failed to process NCX document: {pkg.ncx_path}", e)
 
         return items
 

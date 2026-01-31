@@ -10,6 +10,18 @@ from module.File.EPUB.EPUBLegacy import EPUBLegacy
 
 
 class EPUB(Base):
+    """EPUB 文件处理的门面类。
+
+    职责：
+    - 提供统一的读取/写入接口
+    - 根据 Item 元数据自动选择合适的写回策略（AST vs Legacy）
+    - 管理单语/双语两种输出模式
+
+    写回策略选择：
+    - 如果所有 Item 都有 AST 元数据（epub.parts），使用 EPUBAstWriter
+    - 否则回退到 EPUBLegacy 以兼容老工程
+    """
+
     def __init__(self, config: Config) -> None:
         super().__init__()
         self.config = config
@@ -79,7 +91,7 @@ class EPUB(Base):
 
         dm = DataManager.get()
 
-        # 单语
+        # 单语输出：仅包含译文，适合直接阅读
         for rel_path, group_items in group.items():
             output_path = dm.get_translated_path()
             abs_path = os.path.join(output_path, rel_path)
@@ -96,7 +108,7 @@ class EPUB(Base):
                 bilingual=False,
             )
 
-        # 双语
+        # 双语输出：原文+译文对照，适合学习或校对
         for rel_path, group_items in group.items():
             output_path = dm.get_bilingual_path()
             abs_path = os.path.join(output_path, rel_path)

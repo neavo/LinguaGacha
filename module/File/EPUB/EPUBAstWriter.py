@@ -13,6 +13,15 @@ from module.File.EPUB.EPUBAst import EPUBAst
 
 
 class EPUBAstWriter(Base):
+    """基于 AST 定位信息的 EPUB 译文写回器。
+
+    设计目标：
+    - 使用 Item.extra_field 中的精确路径定位，避免顺序依赖
+    - 通过 digest 校验确保写入位置正确
+    - 支持单语/双语两种输出模式
+    - 导航页面（nav/ncx）不插入双语原文块，避免链接重复
+    """
+
     def __init__(self, config: Config) -> None:
         super().__init__()
         self.config = config
@@ -250,8 +259,12 @@ class EPUBAstWriter(Base):
                                 root, name, by_doc.get(name, []), bilingual
                             )
                             zip_writer.writestr(name, self.serialize_doc(root))
-                        except Exception:
+                        except Exception as e:
                             # 解析/回写失败时原样写回，避免破坏 epub
+                            self.warning(
+                                f"Failed to apply translations to {name}, keeping original",
+                                e,
+                            )
                             zip_writer.writestr(name, raw)
                         continue
 
