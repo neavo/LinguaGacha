@@ -40,20 +40,27 @@ class TaskRequester(Base):
         re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
     )
 
+    # OpenAI
+    RE_OPENAI: tuple[re.Pattern] = (
+        re.compile(r"gpt-\d", flags=re.IGNORECASE),
+        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
+    )
+
     # OpenAI Compatible
     RE_GLM: tuple[re.Pattern] = (
         re.compile(r"glm-4\.5", flags=re.IGNORECASE),
         re.compile(r"glm-4\.6", flags=re.IGNORECASE),
         re.compile(r"glm-4\.7", flags=re.IGNORECASE),
     )
+    RE_KIMI: tuple[re.Pattern] = (
+        re.compile(r"kimi", flags=re.IGNORECASE),  # 逗号必须保留
+    )
     RE_DOUBAO: tuple[re.Pattern] = (
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
     )
-    RE_DEEPSEEK: tuple[re.Pattern] = (re.compile(r"deepseek", flags=re.IGNORECASE),)
-    RE_OPENAI: tuple[re.Pattern] = (
-        re.compile(r"gpt-\d", flags=re.IGNORECASE),
-        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
+    RE_DEEPSEEK: tuple[re.Pattern] = (
+        re.compile(r"deepseek", flags=re.IGNORECASE),  # 逗号必须保留
     )
 
     # 正则
@@ -340,6 +347,12 @@ class TaskRequester(Base):
 
         # GLM
         if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
+            thinking_type = (
+                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
+            )
+            extra_body["thinking"] = {"type": thinking_type}
+        # Kimi
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_KIMI):
             thinking_type = (
                 "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
             )
