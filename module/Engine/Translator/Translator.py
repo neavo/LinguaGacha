@@ -967,7 +967,7 @@ class Translator(Base):
             clients_closed_on_stop = False
             while True:
                 if should_stop() and not clients_closed_on_stop:
-                    # Best-effort: hard-interrupt in-flight requests by closing clients.
+                    # 尽力关闭客户端以硬中断在途请求
                     clients_closed_on_stop = True
                     await TaskRequester.aclose_clients_for_running_loop()
 

@@ -50,6 +50,7 @@ class LocalizerZH:
     search: str = "搜索"
     placeholder: str = "请输入关键词 …"
     task_failed: str = "任务执行失败 …"
+    task_close_client_failed: str = "关闭客户端时发生异常 …"
     task_success: str = "任务执行成功 …"
     task_running: str = "任务正在执行中，请稍后再试 …"
     toast_saved: str = "已保存 …"

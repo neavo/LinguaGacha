@@ -1,5 +1,20 @@
+"""
+任务请求器模块 - 负责向各种 LLM API 发送流式请求
+
+支持的 API 格式:
+- OpenAI / OpenAI Compatible (GLM, Kimi, Doubao, DeepSeek 等)
+- Google Gemini (含思考模式)
+- Anthropic Claude (含扩展思考)
+- SakuraLLM
+
+主要功能:
+- 流式请求与响应处理
+- 停止信号快速响应
+- 输出退化检测与提前中断
+- 客户端缓存与生命周期管理
+"""
+
 import asyncio
-import contextlib
 import inspect
 import json
 import re
@@ -29,72 +44,6 @@ class RequestCancelledError(Exception):
 
 class StreamDegradationError(Exception):
     """流式输出检测到明显退化/重复，提前中断。"""
-
-
-def safe_close_async_resource(resource: Any) -> Any:
-    """Best-effort close for async stream/generator resources."""
-
-    close = getattr(resource, "close", None)
-    if callable(close):
-        result = close()
-        if inspect.isawaitable(result):
-            return asyncio.ensure_future(result)
-        return None
-
-    aclose = getattr(resource, "aclose", None)
-    if callable(aclose):
-        result = aclose()
-        if inspect.isawaitable(result):
-            return asyncio.ensure_future(result)
-        return None
-
-    return None
-
-
-async def consume_async_iterator_polling(
-    iterator: Any,
-    *,
-    stop_checker: Callable[[], bool] | None,
-    poll_interval_s: float,
-    on_item: Callable[[Any], None],
-    on_stop: Callable[[], Any] | None = None,
-) -> None:
-    """Consume an async iterator but still respond quickly to stop requests.
-
-    Why: `async for` can block waiting for the next chunk; polling keeps stop responsive.
-    """
-
-    if poll_interval_s <= 0:
-        poll_interval_s = 0.1
-
-    while True:
-        anext_task = asyncio.create_task(iterator.__anext__())
-        try:
-            while True:
-                done, _ = await asyncio.wait({anext_task}, timeout=poll_interval_s)
-                if anext_task in done:
-                    item = await anext_task
-                    on_item(item)
-                    break
-
-                if stop_checker is not None and stop_checker():
-                    if on_stop is not None:
-                        await TaskRequester.maybe_await(on_stop())
-                    raise RequestCancelledError("stop requested")
-        except StopAsyncIteration:
-            return
-        except RequestCancelledError:
-            if not anext_task.done():
-                anext_task.cancel()
-                with contextlib.suppress(BaseException):
-                    await anext_task
-            raise
-        except Exception:
-            if not anext_task.done():
-                anext_task.cancel()
-                with contextlib.suppress(BaseException):
-                    await anext_task
-            raise
 
 
 class TaskRequester(Base):
@@ -225,11 +174,82 @@ class TaskRequester(Base):
 
     @staticmethod
     async def maybe_await(result: Any) -> None:
+        """等待可能的协程对象。"""
         if inspect.isawaitable(result):
             await result
 
+    @staticmethod
+    def safe_close_async_resource(resource: Any) -> Any:
+        """尽力关闭异步流/生成器资源。"""
+        close = getattr(resource, "close", None)
+        if callable(close):
+            result = close()
+            if inspect.isawaitable(result):
+                return asyncio.ensure_future(result)
+            return None
+
+        aclose = getattr(resource, "aclose", None)
+        if callable(aclose):
+            result = aclose()
+            if inspect.isawaitable(result):
+                return asyncio.ensure_future(result)
+            return None
+
+        return None
+
+    @classmethod
+    async def consume_async_iterator_polling(
+        cls,
+        iterator: Any,
+        *,
+        stop_checker: Callable[[], bool] | None,
+        poll_interval_s: float,
+        on_item: Callable[[Any], None],
+        on_stop: Callable[[], Any] | None = None,
+    ) -> None:
+        """消费异步迭代器，同时保持对停止信号的快速响应。
+
+        原因: `async for` 会阻塞等待下一个 chunk；轮询机制保持停止响应性。
+        """
+        if poll_interval_s <= 0:
+            poll_interval_s = 0.1
+
+        while True:
+            anext_task = asyncio.create_task(iterator.__anext__())
+            try:
+                while True:
+                    done, _ = await asyncio.wait({anext_task}, timeout=poll_interval_s)
+                    if anext_task in done:
+                        item = await anext_task
+                        on_item(item)
+                        break
+
+                    if stop_checker is not None and stop_checker():
+                        if on_stop is not None:
+                            await cls.maybe_await(on_stop())
+                        raise RequestCancelledError("stop requested")
+            except StopAsyncIteration:
+                return
+            except RequestCancelledError:
+                if not anext_task.done():
+                    anext_task.cancel()
+                    try:
+                        await anext_task
+                    except asyncio.CancelledError:
+                        pass
+                raise
+            except Exception:
+                if not anext_task.done():
+                    anext_task.cancel()
+                    try:
+                        await anext_task
+                    except asyncio.CancelledError:
+                        pass
+                raise
+
     @classmethod
     async def aclose_client(cls, client: Any) -> None:
+        """关闭单个客户端，尝试多种关闭方法。"""
         aio_client = getattr(client, "aio", None)
         if aio_client is not None:
             aclose = getattr(aio_client, "aclose", None)
@@ -250,6 +270,10 @@ class TaskRequester(Base):
 
     @classmethod
     async def aclose_clients_for_running_loop(cls) -> None:
+        """关闭当前事件循环中所有缓存的客户端。"""
+        from base.LogManager import LogManager
+        from module.Localizer.Localizer import Localizer
+
         loop_id = id(asyncio.get_running_loop())
         with cls.LOCK:
             keys = cls.ASYNC_CLIENT_KEYS_BY_LOOP.pop(loop_id, set())
@@ -262,9 +286,9 @@ class TaskRequester(Base):
         for client in clients:
             try:
                 await cls.aclose_client(client)
-            except Exception:
-                # 关闭阶段尽力而为，避免影响主流程
-                pass
+            except Exception as e:
+                # 关闭阶段尽力而为，记录警告但不影响主流程
+                LogManager.get().warning(Localizer.get().task_close_client_failed, e)
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:
@@ -492,9 +516,9 @@ class TaskRequester(Base):
                 iterator = stream.__aiter__()
 
             def on_stop() -> Any:
-                return safe_close_async_resource(stream)
+                return __class__.safe_close_async_resource(stream)
 
-            await consume_async_iterator_polling(
+            await __class__.consume_async_iterator_polling(
                 iterator,
                 stop_checker=stop_checker,
                 poll_interval_s=self.STREAM_POLL_INTERVAL_S,
@@ -543,7 +567,7 @@ class TaskRequester(Base):
             if hasattr(iterator, "__aiter__"):
                 iterator = iterator.__aiter__()
 
-            await consume_async_iterator_polling(
+            await __class__.consume_async_iterator_polling(
                 iterator,
                 stop_checker=stop_checker,
                 poll_interval_s=self.STREAM_POLL_INTERVAL_S,
@@ -591,6 +615,8 @@ class TaskRequester(Base):
         stop_checker: Callable[[], bool] | None,
         src_has_degradation: bool,
     ) -> tuple[str, str, int, int]:
+        # 分别累计思考内容和响应内容
+        think_parts: list[str] = []
         result_parts: list[str] = []
         result_tail = ""
         last_usage: Any = None
@@ -599,16 +625,33 @@ class TaskRequester(Base):
             nonlocal result_tail
             nonlocal last_usage
 
-            text = getattr(chunk, "text", None)
-            if isinstance(text, str) and text:
-                result_parts.append(text)
-                result_tail = (result_tail + text)[
-                    -self.STREAM_DEGRADATION_TAIL_CHARS :
-                ]
-                if not src_has_degradation and self.has_degradation_in_tail(
-                    result_tail
-                ):
-                    raise StreamDegradationError("degradation detected")
+            # 从 chunk 中提取 candidates[].content.parts
+            candidates = getattr(chunk, "candidates", None)
+            if candidates and len(candidates) > 0:
+                content = getattr(candidates[0], "content", None)
+                if content:
+                    parts = getattr(content, "parts", None)
+                    if parts:
+                        for part in parts:
+                            text = getattr(part, "text", None)
+                            if not isinstance(text, str) or not text:
+                                continue
+
+                            # 根据 part.thought 属性区分思考内容和响应内容
+                            is_thought = getattr(part, "thought", False)
+                            if is_thought:
+                                think_parts.append(text)
+                            else:
+                                result_parts.append(text)
+                                # 仅对响应内容检测退化
+                                result_tail = (result_tail + text)[
+                                    -self.STREAM_DEGRADATION_TAIL_CHARS :
+                                ]
+                                if (
+                                    not src_has_degradation
+                                    and self.has_degradation_in_tail(result_tail)
+                                ):
+                                    raise StreamDegradationError("degradation detected")
 
             usage_metadata = getattr(chunk, "usage_metadata", None)
             if usage_metadata is not None:
@@ -620,9 +663,9 @@ class TaskRequester(Base):
             iterator = generator.__aiter__()
 
         def on_stop() -> Any:
-            return safe_close_async_resource(generator)
+            return __class__.safe_close_async_resource(generator)
 
-        await consume_async_iterator_polling(
+        await __class__.consume_async_iterator_polling(
             iterator,
             stop_checker=stop_checker,
             poll_interval_s=self.STREAM_POLL_INTERVAL_S,
@@ -631,7 +674,7 @@ class TaskRequester(Base):
         )
 
         response_result = "".join(result_parts).strip()
-        response_think = ""
+        response_think = __class__.RE_LINE_BREAK.sub("\n", "".join(think_parts).strip())
 
         try:
             input_tokens = int(last_usage.prompt_token_count)

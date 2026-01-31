@@ -50,6 +50,7 @@ class LocalizerEN(LocalizerZH):
     search: str = "Search"
     placeholder: str = "Please enter keywords …"
     task_failed: str = "Task failed …"
+    task_close_client_failed: str = "Failed to close client …"
     task_success: str = "Task succeeded …"
     task_running: str = "Task is running, please try again later …"
     toast_saved: str = "Saved …"
