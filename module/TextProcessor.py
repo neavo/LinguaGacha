@@ -546,6 +546,8 @@ class TextProcessor(Base):
                 if suffix_codes:
                     dst = dst + "".join(suffix_codes)
 
+                # 在所有处理（fixers、replacements、prefix/suffix codes）完成后，
+                # 再恢复原始的头尾空白，确保空白始终位于最外层，避免被中间处理误修。
                 leading = self.leading_whitespace_by_line.get(i, "")
                 trailing = self.trailing_whitespace_by_line.get(i, "")
                 dst = leading + dst + trailing
