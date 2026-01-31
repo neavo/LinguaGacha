@@ -126,40 +126,28 @@ class AsyncTaskLimiter:
             self.semaphore.release()
 
     async def wait(self, stop_checker: Optional[Callable[[], bool]] = None) -> bool:
-        async with self.bucket_lock:
-            current_time = time.time()
-            elapsed_time = current_time - self.last_request_time
+        if self.max_capacity == float("inf") or self.rate_per_second == float("inf"):
+            return True
 
-            # 恢复额度
-            if self.max_capacity != float("inf") and self.rate_per_second != float(
-                "inf"
-            ):
-                self.current_capacity = (
-                    self.current_capacity + elapsed_time * self.rate_per_second
-                )
-                self.current_capacity = min(self.current_capacity, self.max_capacity)
-            else:
-                self.current_capacity = float("inf")
-
-            # 如果额度不足，等待
-            if self.current_capacity < 1:
-                wait_time = (1 - self.current_capacity) / self.rate_per_second
-            else:
-                wait_time = 0.0
-
-        while wait_time > 0:
+        while True:
             if stop_checker is not None and stop_checker():
                 return False
 
-            sleep_time = min(wait_time, 0.25)
-            await asyncio.sleep(sleep_time)
-            wait_time -= sleep_time
+            async with self.bucket_lock:
+                now = time.time()
+                elapsed_time = now - self.last_request_time
 
-        async with self.bucket_lock:
-            if self.current_capacity != float("inf"):
-                if self.current_capacity < 1:
-                    self.current_capacity = 1
-                self.current_capacity = self.current_capacity - 1
-                self.last_request_time = time.time()
+                # 恢复额度
+                self.current_capacity = min(
+                    self.max_capacity,
+                    self.current_capacity + elapsed_time * self.rate_per_second,
+                )
+                self.last_request_time = now
 
-        return True
+                if self.current_capacity >= 1:
+                    self.current_capacity = self.current_capacity - 1
+                    return True
+
+                wait_time = (1 - self.current_capacity) / self.rate_per_second
+
+            await asyncio.sleep(min(wait_time, 0.25))

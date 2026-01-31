@@ -131,7 +131,6 @@ class LocalizerZH:
     engine_task_stop: str = "任务已停止 …"
     engine_task_save: str = "正在保存任务结果 …"
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
-    engine_task_generation: str = "任务生成已完成，共生成 {COUNT} 个任务 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
     engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个非目标原文语言条目 …"
     engine_task_filter_changed: str = "过滤结果与上次不同：规则跳过 {RULE} 条，非目标原文语言 {LANGUAGE} 条 …"

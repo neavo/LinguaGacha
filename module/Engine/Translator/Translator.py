@@ -412,9 +412,6 @@ class Translator(Base):
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
-            # 初始任务改为流式生成：避免一次性创建大量 Task/Processor 导致启动卡顿
-            generated_task_counter: dict[str, int] = {"count": 0}
-
             # 输出开始翻译的日志
             self.print("")
             self.info(
@@ -450,16 +447,8 @@ class Translator(Base):
                         pid=pid,
                         task_limiter=task_limiter,
                         max_workers=max_workers,
-                        generated_task_counter=generated_task_counter,
                     )
                 )
-
-            # 初始任务生成统计日志（任务已开始执行，但语义一致）
-            self.info(
-                Localizer.get().engine_task_generation.replace(
-                    "{COUNT}", str(generated_task_counter.get("count", 0))
-                )
-            )
 
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -722,7 +711,6 @@ class Translator(Base):
         pid: TaskID,
         task_limiter: AsyncTaskLimiter,
         max_workers: int,
-        generated_task_counter: dict[str, int],
     ) -> None:
         """
         异步翻译调度的核心方法，采用生产者-消费者模式实现高效的任务调度。
@@ -745,7 +733,7 @@ class Translator(Base):
         buffer_size = self.get_task_buffer_size(max_workers)
         normal_queue: asyncio.Queue = asyncio.Queue(maxsize=buffer_size)
         high_queue: asyncio.Queue = asyncio.Queue(maxsize=buffer_size)
-        commit_queue: asyncio.Queue = asyncio.Queue()
+        commit_queue: asyncio.Queue = asyncio.Queue(maxsize=buffer_size)
         producer_done = asyncio.Event()
 
         def should_stop() -> bool:
@@ -762,15 +750,27 @@ class Translator(Base):
                 for context in self.scheduler.generate_initial_contexts_iter():
                     if should_stop():
                         break
-
-                    generated_task_counter["count"] = (
-                        generated_task_counter.get("count", 0) + 1
-                    )
-                    asyncio.run_coroutine_threadsafe(
+                    future = asyncio.run_coroutine_threadsafe(
                         normal_queue.put(context), loop
-                    ).result()
+                    )
+
+                    while True:
+                        if should_stop():
+                            future.cancel()
+                            break
+
+                        try:
+                            future.result(timeout=0.1)
+                            break
+                        except concurrent.futures.TimeoutError:
+                            continue
+                        except Exception:
+                            break
             finally:
-                loop.call_soon_threadsafe(producer_done.set)
+                try:
+                    loop.call_soon_threadsafe(producer_done.set)
+                except Exception:
+                    pass
 
         threading.Thread(
             target=producer,
@@ -828,50 +828,42 @@ class Translator(Base):
             负责：更新统计数据、合并术语表、写入数据库。
             """
             with self.db_lock:
-                try:
-                    new_glossary_data = None
-                    if glossaries and self.config.auto_glossary_enable:
-                        new_glossary_data = self.merge_glossary(glossaries)
+                new_glossary_data = None
+                if glossaries and self.config.auto_glossary_enable:
+                    new_glossary_data = self.merge_glossary(glossaries)
 
-                    self.extras.update(
-                        {
-                            "processed_line": self.extras.get("processed_line", 0)
-                            + processed_count,
-                            "error_line": self.extras.get("error_line", 0)
-                            + error_count,
-                            "total_tokens": self.extras.get("total_tokens", 0)
-                            + result.get("input_tokens", 0)
-                            + result.get("output_tokens", 0),
-                            "total_input_tokens": self.extras.get(
-                                "total_input_tokens", 0
-                            )
-                            + result.get("input_tokens", 0),
-                            "total_output_tokens": self.extras.get(
-                                "total_output_tokens", 0
-                            )
-                            + result.get("output_tokens", 0),
-                            "time": time.time() - self.extras.get("start_time", 0),
-                        }
-                    )
-                    self.extras["line"] = (
-                        self.extras["processed_line"] + self.extras["error_line"]
-                    )
+                self.extras.update(
+                    {
+                        "processed_line": self.extras.get("processed_line", 0)
+                        + processed_count,
+                        "error_line": self.extras.get("error_line", 0) + error_count,
+                        "total_tokens": self.extras.get("total_tokens", 0)
+                        + result.get("input_tokens", 0)
+                        + result.get("output_tokens", 0),
+                        "total_input_tokens": self.extras.get("total_input_tokens", 0)
+                        + result.get("input_tokens", 0),
+                        "total_output_tokens": self.extras.get("total_output_tokens", 0)
+                        + result.get("output_tokens", 0),
+                        "time": time.time() - self.extras.get("start_time", 0),
+                    }
+                )
+                self.extras["line"] = (
+                    self.extras["processed_line"] + self.extras["error_line"]
+                )
 
-                    rules_map = (
-                        {DataManager.RuleType.GLOSSARY: new_glossary_data}
-                        if new_glossary_data
-                        else {}
-                    )
-                    DataManager.get().update_batch(
-                        items=finalized_items,
-                        rules=rules_map,
-                        meta={
-                            "translation_extras": self.extras,
-                            "project_status": Base.ProjectStatus.PROCESSING,
-                        },
-                    )
-                finally:
-                    self.active_task_count -= 1
+                rules_map = (
+                    {DataManager.RuleType.GLOSSARY: new_glossary_data}
+                    if new_glossary_data
+                    else {}
+                )
+                DataManager.get().update_batch(
+                    items=finalized_items,
+                    rules=rules_map,
+                    meta={
+                        "translation_extras": self.extras,
+                        "project_status": Base.ProjectStatus.PROCESSING,
+                    },
+                )
 
                 return dict(self.extras)
 
@@ -892,50 +884,59 @@ class Translator(Base):
 
                 context, task, result = payload
 
-                if not should_stop() and any(
-                    i.get_status() == Base.ProjectStatus.NONE for i in task.items
-                ):
-                    for new_context in self.scheduler.handle_failed_context(
-                        context, result
+                try:
+                    if not should_stop() and any(
+                        i.get_status() == Base.ProjectStatus.NONE for i in task.items
                     ):
-                        await high_queue.put(new_context)
+                        for new_context in self.scheduler.handle_failed_context(
+                            context, result
+                        ):
+                            await high_queue.put(new_context)
 
-                finalized_items = [
-                    item.to_dict()
-                    for item in task.items
-                    if item.get_status()
-                    in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-                ]
+                    finalized_items = [
+                        item.to_dict()
+                        for item in task.items
+                        if item.get_status()
+                        in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
+                    ]
 
-                processed_count = sum(
-                    1
-                    for i in task.items
-                    if i.get_status() == Base.ProjectStatus.PROCESSED
-                )
-                error_count = sum(
-                    1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
-                )
+                    processed_count = sum(
+                        1
+                        for i in task.items
+                        if i.get_status() == Base.ProjectStatus.PROCESSED
+                    )
+                    error_count = sum(
+                        1
+                        for i in task.items
+                        if i.get_status() == Base.ProjectStatus.ERROR
+                    )
 
-                glossaries = result.get("glossaries")
-                if not isinstance(glossaries, list):
-                    glossaries = []
+                    glossaries = result.get("glossaries")
+                    if not isinstance(glossaries, list):
+                        glossaries = []
 
-                extras_snapshot = await asyncio.to_thread(
-                    apply_batch_update_sync,
-                    task,
-                    result,
-                    finalized_items,
-                    processed_count,
-                    error_count,
-                    glossaries,
-                )
+                    extras_snapshot = await asyncio.to_thread(
+                        apply_batch_update_sync,
+                        task,
+                        result,
+                        finalized_items,
+                        processed_count,
+                        error_count,
+                        glossaries,
+                    )
 
-                progress.update(
-                    pid,
-                    completed=extras_snapshot.get("line", 0),
-                    total=extras_snapshot.get("total_line", 0),
-                )
-                self.emit(Base.Event.TRANSLATION_UPDATE, extras_snapshot)
+                    progress.update(
+                        pid,
+                        completed=extras_snapshot.get("line", 0),
+                        total=extras_snapshot.get("total_line", 0),
+                    )
+                    self.emit(Base.Event.TRANSLATION_UPDATE, extras_snapshot)
+                except Exception as e:
+                    self.error("提交翻译结果失败", e)
+                    Engine.get().set_status(Base.TaskStatus.STOPPING)
+                finally:
+                    with self.db_lock:
+                        self.active_task_count -= 1
 
         async def get_next_context():
             """
@@ -966,14 +967,26 @@ class Translator(Base):
             in_flight: set[asyncio.Task] = set()
             clients_closed_on_stop = False
             while True:
-                if should_stop() and not clients_closed_on_stop:
-                    # 尽力关闭客户端以硬中断在途请求
-                    clients_closed_on_stop = True
-                    await TaskRequester.aclose_clients_for_running_loop()
+                # 清理已完成任务，避免持有大量 done task 导致内存增长
+                if in_flight:
+                    done = {t for t in in_flight if t.done()}
+                    if done:
+                        in_flight.difference_update(done)
 
-                # 停止条件检查
-                if should_stop() and not in_flight:
-                    break
+                if should_stop():
+                    if not clients_closed_on_stop:
+                        # 尽力关闭客户端以硬中断在途请求
+                        clients_closed_on_stop = True
+                        await TaskRequester.aclose_clients_for_running_loop()
+
+                    if not in_flight:
+                        break
+
+                    done, _ = await asyncio.wait(
+                        in_flight, timeout=0.1, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    in_flight.difference_update(done)
+                    continue
 
                 # 完成条件检查：生产者结束 + 队列空 + 无在途任务
                 if (
@@ -986,19 +999,21 @@ class Translator(Base):
 
                 # 背压控制：限制同时在途的协程数量，避免内存无限增长
                 if len(in_flight) >= in_flight_limit:
-                    done, pending = await asyncio.wait(
+                    done, _ = await asyncio.wait(
                         in_flight, return_when=asyncio.FIRST_COMPLETED
                     )
-                    in_flight = pending
+                    in_flight.difference_update(done)
                     continue
 
                 context = await get_next_context()
                 if context is None:
                     if in_flight:
-                        done, pending = await asyncio.wait(
-                            in_flight, timeout=0.1, return_when=asyncio.FIRST_COMPLETED
+                        done, _ = await asyncio.wait(
+                            in_flight,
+                            timeout=0.1,
+                            return_when=asyncio.FIRST_COMPLETED,
                         )
-                        in_flight = pending
+                        in_flight.difference_update(done)
                     continue
 
                 task = asyncio.create_task(run_one_context(context))

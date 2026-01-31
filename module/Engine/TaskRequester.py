@@ -33,7 +33,6 @@ from base.Base import Base
 from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
-from module.Response.ResponseChecker import ResponseChecker
 
 AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
 
@@ -71,12 +70,6 @@ class TaskRequester(Base):
         re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
     )
 
-    # OpenAI
-    RE_OPENAI: tuple[re.Pattern, ...] = (
-        re.compile(r"gpt-\d", flags=re.IGNORECASE),
-        re.compile(r"o\d(-mini)*(-preview)*(-\d+-\d+-\d+)*$", flags=re.IGNORECASE),
-    )
-
     # OpenAI Compatible
     RE_GLM: tuple[re.Pattern, ...] = (
         re.compile(r"glm-4\.5", flags=re.IGNORECASE),
@@ -96,6 +89,13 @@ class TaskRequester(Base):
 
     # 正则
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
+
+    # 退化检测（仅针对输出 tail；忽略空白符）
+    # - 单字符重复 >= 100 次
+    # - 双字符模式 AB 重复 >= 50 次（A != B）
+    RE_WS: re.Pattern = re.compile(r"\s+")
+    RE_SINGLE_CHAR_REPEAT: re.Pattern = re.compile(r"(.)\1{99,}")
+    RE_AB_REPEAT: re.Pattern = re.compile(r"(.)(.)(?:\1\2){49,}")
 
     # 流式控制
     STREAM_POLL_INTERVAL_S: float = 0.15
@@ -132,7 +132,7 @@ class TaskRequester(Base):
         ]
 
         # 提取阈值配置
-        self.output_token_limit: int = model.get("threshold", {}).get(
+        self.output_token_limit = model.get("threshold", {}).get(
             "output_token_limit", 4096
         )
 
@@ -214,6 +214,19 @@ class TaskRequester(Base):
         if poll_interval_s <= 0:
             poll_interval_s = 0.1
 
+        closed = False
+
+        async def close_once() -> None:
+            nonlocal closed
+            if closed or on_stop is None:
+                return
+            closed = True
+            try:
+                await cls.maybe_await(on_stop())
+            except Exception:
+                # 关闭阶段尽力而为
+                return
+
         while True:
             anext_task = asyncio.create_task(iterator.__anext__())
             try:
@@ -225,8 +238,7 @@ class TaskRequester(Base):
                         break
 
                     if stop_checker is not None and stop_checker():
-                        if on_stop is not None:
-                            await cls.maybe_await(on_stop())
+                        await close_once()
                         raise RequestCancelledError("stop requested")
             except StopAsyncIteration:
                 return
@@ -239,6 +251,7 @@ class TaskRequester(Base):
                         pass
                 raise
             except Exception:
+                await close_once()
                 if not anext_task.done():
                     anext_task.cancel()
                     try:
@@ -409,9 +422,8 @@ class TaskRequester(Base):
         messages: list[dict],
         *,
         stop_checker: Callable[[], bool] | None = None,
-        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
-        args: dict[str, float] = {}
+        args: dict[str, Any] = {}
         if self.generation.get("top_p_custom_enable"):
             args["top_p"] = self.generation.get("top_p")
         if self.generation.get("temperature_custom_enable"):
@@ -426,27 +438,23 @@ class TaskRequester(Base):
                 messages,
                 args,
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         if self.api_format == Base.APIFormat.GOOGLE:
             return await self.request_google_async(
                 messages,
                 args,
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         if self.api_format == Base.APIFormat.ANTHROPIC:
             return await self.request_anthropic_async(
                 messages,
                 args,
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         return await self.request_openai_async(
             messages,
             args,
             stop_checker=stop_checker,
-            src_has_degradation=src_has_degradation,
         )
 
     def build_extra_headers(self) -> dict:
@@ -483,7 +491,20 @@ class TaskRequester(Base):
     def has_degradation_in_tail(cls, tail: str) -> bool:
         if not tail:
             return False
-        return ResponseChecker.RE_DEGRADATION.search(tail) is not None
+
+        # 允许空白符插入重复之间，但不计入重复次数。
+        compact = cls.RE_WS.sub("", tail)
+        if not compact:
+            return False
+
+        if cls.RE_SINGLE_CHAR_REPEAT.search(compact) is not None:
+            return True
+
+        match = cls.RE_AB_REPEAT.search(compact)
+        if match is None:
+            return False
+
+        return match.group(1) != match.group(2)
 
     async def request_openai_chat_stream(
         self,
@@ -491,7 +512,6 @@ class TaskRequester(Base):
         request_args: dict,
         *,
         stop_checker: Callable[[], bool] | None,
-        src_has_degradation: bool,
     ) -> tuple[str, str, int, int]:
         result_tail = ""
 
@@ -507,7 +527,7 @@ class TaskRequester(Base):
                 return
 
             result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-            if not src_has_degradation and self.has_degradation_in_tail(result_tail):
+            if self.has_degradation_in_tail(result_tail):
                 raise StreamDegradationError("degradation detected")
 
         async with client.chat.completions.stream(**request_args) as stream:
@@ -531,13 +551,20 @@ class TaskRequester(Base):
         message = completion.choices[0].message
         response_think, response_result = self.extract_openai_think_and_result(message)
 
+        # 兜底：若流式事件未覆盖到全部输出，仍在最终结果尾部做一次检测。
+        if self.has_degradation_in_tail(
+            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
+        ):
+            raise StreamDegradationError("degradation detected")
+
+        usage: Any = getattr(completion, "usage", None)
         try:
-            input_tokens = int(completion.usage.prompt_tokens)
+            input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
         except Exception:
             input_tokens = 0
 
         try:
-            output_tokens = int(completion.usage.completion_tokens)
+            output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
         except Exception:
             output_tokens = 0
 
@@ -549,7 +576,6 @@ class TaskRequester(Base):
         request_args: dict,
         *,
         stop_checker: Callable[[], bool] | None,
-        src_has_degradation: bool,
     ) -> tuple[str, str, int, int]:
         result_tail = ""
 
@@ -559,7 +585,7 @@ class TaskRequester(Base):
                 return
 
             result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-            if not src_has_degradation and self.has_degradation_in_tail(result_tail):
+            if self.has_degradation_in_tail(result_tail):
                 raise StreamDegradationError("degradation detected")
 
         async with client.messages.stream(**request_args) as stream:
@@ -577,31 +603,39 @@ class TaskRequester(Base):
 
             message = await stream.get_final_message()
 
-        text_messages = [
-            msg
-            for msg in message.content
-            if hasattr(msg, "text") and isinstance(msg.text, str)
-        ]
-        think_messages = [
-            msg
-            for msg in message.content
-            if hasattr(msg, "thinking") and isinstance(msg.thinking, str)
-        ]
+        text_messages: list[str] = []
+        think_messages: list[str] = []
+        for msg in message.content:
+            msg_any: Any = msg
 
-        response_result = text_messages[-1].text.strip() if text_messages else ""
+            text = getattr(msg_any, "text", None)
+            if isinstance(text, str) and text:
+                text_messages.append(text)
+
+            thinking = getattr(msg_any, "thinking", None)
+            if isinstance(thinking, str) and thinking:
+                think_messages.append(thinking)
+
+        response_result = text_messages[-1].strip() if text_messages else ""
         response_think = (
-            self.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
+            self.RE_LINE_BREAK.sub("\n", think_messages[-1].strip())
             if think_messages
             else ""
         )
 
+        if self.has_degradation_in_tail(
+            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
+        ):
+            raise StreamDegradationError("degradation detected")
+
+        usage: Any = getattr(message, "usage", None)
         try:
-            input_tokens = int(message.usage.input_tokens)
+            input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         except Exception:
             input_tokens = 0
 
         try:
-            output_tokens = int(message.usage.output_tokens)
+            output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         except Exception:
             output_tokens = 0
 
@@ -613,7 +647,6 @@ class TaskRequester(Base):
         request_args: dict,
         *,
         stop_checker: Callable[[], bool] | None,
-        src_has_degradation: bool,
     ) -> tuple[str, str, int, int]:
         # 分别累计思考内容和响应内容
         think_parts: list[str] = []
@@ -647,10 +680,7 @@ class TaskRequester(Base):
                                 result_tail = (result_tail + text)[
                                     -self.STREAM_DEGRADATION_TAIL_CHARS :
                                 ]
-                                if (
-                                    not src_has_degradation
-                                    and self.has_degradation_in_tail(result_tail)
-                                ):
+                                if self.has_degradation_in_tail(result_tail):
                                     raise StreamDegradationError("degradation detected")
 
             usage_metadata = getattr(chunk, "usage_metadata", None)
@@ -676,6 +706,11 @@ class TaskRequester(Base):
         response_result = "".join(result_parts).strip()
         response_think = __class__.RE_LINE_BREAK.sub("\n", "".join(think_parts).strip())
 
+        if self.has_degradation_in_tail(
+            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
+        ):
+            raise StreamDegradationError("degradation detected")
+
         try:
             input_tokens = int(last_usage.prompt_token_count)
         except Exception:
@@ -693,31 +728,33 @@ class TaskRequester(Base):
     # ========== Sakura 请求 ==========
 
     def generate_sakura_args(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
-        result = args | {
-            "model": self.model_id,
-            "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
-            "extra_body": self.extra_body,
-        }
+        result: dict[str, Any] = dict(args)
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": messages,
+                "max_completion_tokens": self.output_token_limit,
+                "extra_headers": self.build_extra_headers(),
+                "extra_body": self.extra_body,
+            }
+        )
         return result
 
     async def request_sakura_async(
         self,
         messages: list[dict[str, str]],
-        args: dict[str, float],
+        args: dict[str, Any],
         *,
         stop_checker: Callable[[], bool] | None = None,
-        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
         if stop_checker is not None and stop_checker():
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
             with __class__.LOCK:
-                client: openai.AsyncOpenAI = __class__.get_async_client(
+                client: Any = __class__.get_async_client(
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
@@ -733,7 +770,6 @@ class TaskRequester(Base):
                 client,
                 self.generate_sakura_args(messages, args),
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         except Exception as e:
             return e, "", "", 0, 0
@@ -752,21 +788,17 @@ class TaskRequester(Base):
     # ========== OpenAI 请求 ==========
 
     def generate_openai_args(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
-        result = args | {
-            "model": self.model_id,
-            "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
-        }
-
-        # 为 OpenAI 平台设置 max_completion_tokens
-        if self.api_url.startswith("https://api.openai.com") or any(
-            v.search(self.model_id) is not None for v in __class__.RE_OPENAI
-        ):
-            result.pop("max_tokens", None)
-            result["max_completion_tokens"] = self.output_token_limit
+        result: dict[str, Any] = dict(args)
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": messages,
+                "max_completion_tokens": self.output_token_limit,
+                "extra_headers": self.build_extra_headers(),
+            }
+        )
 
         # 构建 extra_body：先设置内置值，再合并用户配置（用户值优先）
         extra_body = {}
@@ -807,17 +839,16 @@ class TaskRequester(Base):
     async def request_openai_async(
         self,
         messages: list[dict[str, str]],
-        args: dict[str, float],
+        args: dict[str, Any],
         *,
         stop_checker: Callable[[], bool] | None = None,
-        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
         if stop_checker is not None and stop_checker():
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
             with __class__.LOCK:
-                client: openai.AsyncOpenAI = __class__.get_async_client(
+                client: Any = __class__.get_async_client(
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
@@ -833,7 +864,6 @@ class TaskRequester(Base):
                 client,
                 self.generate_openai_args(messages, args),
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         except Exception as e:
             return e, "", "", 0, 0
@@ -843,25 +873,33 @@ class TaskRequester(Base):
     # ========== Google 请求 ==========
 
     def generate_google_args(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
-        config_args = args | {
-            "max_output_tokens": self.output_token_limit,
-            "safety_settings": (
-                types.SafetySetting(
-                    category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
-                ),
-            ),
-        }
+        config_args: dict[str, Any] = dict(args)
+        config_args.update(
+            {
+                "max_output_tokens": self.output_token_limit,
+                # 兼容 dict 形式，避免与 SDK 类型定义强绑定
+                "safety_settings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                ],
+            }
+        )
 
         # Gemini 3 Pro
         if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
@@ -871,73 +909,71 @@ class TaskRequester(Base):
                 ThinkingLevel.MEDIUM,
             ):
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="low",
+                    thinking_level=types.ThinkingLevel.LOW,
                     include_thoughts=True,
                 )
             else:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="high",
+                    thinking_level=types.ThinkingLevel.HIGH,
                     include_thoughts=True,
                 )
         # Gemini 3 Flash
         elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level="minimal",
-                    include_thoughts=False,
-                    # 虽然 thinkingBudget 可用于实现向后兼容性，但将其与 Gemini 3 Pro 搭配使用可能会导致性能欠佳。
-                    # 所以仅在尝试彻底关闭思考时使用，以提高彻底关闭思考的概率。
-                    thinkingBudget=0,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_level": "MINIMAL",
+                    "include_thoughts": False,
+                    "thinking_budget": 0,
+                }
             else:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_level=self.thinking_level.lower(),
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_level": self.thinking_level.value,
+                    "include_thoughts": True,
+                }
         # Gemini 2.5 Pro
         elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=128,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 128,
+                    "include_thoughts": True,
+                }
             elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1024,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 1024,
+                    "include_thoughts": True,
+                }
             elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1536,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 1536,
+                    "include_thoughts": True,
+                }
             elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=2048,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 2048,
+                    "include_thoughts": True,
+                }
         # Gemini 2.5 Flash
         elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=0,
-                    include_thoughts=False,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 0,
+                    "include_thoughts": False,
+                }
             elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1024,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 1024,
+                    "include_thoughts": True,
+                }
             elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=1536,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 1536,
+                    "include_thoughts": True,
+                }
             elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = types.ThinkingConfig(
-                    thinkingBudget=2048,
-                    include_thoughts=True,
-                )
+                config_args["thinking_config"] = {
+                    "thinking_budget": 2048,
+                    "include_thoughts": True,
+                }
 
         # Custom Body
         if self.extra_body:
@@ -952,10 +988,9 @@ class TaskRequester(Base):
     async def request_google_async(
         self,
         messages: list[dict[str, str]],
-        args: dict[str, float],
+        args: dict[str, Any],
         *,
         stop_checker: Callable[[], bool] | None = None,
-        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
         if stop_checker is not None and stop_checker():
             return RequestCancelledError("stop requested"), "", "", 0, 0
@@ -965,7 +1000,7 @@ class TaskRequester(Base):
                 tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
             )
             with __class__.LOCK:
-                client: genai.Client = __class__.get_async_client(
+                client: Any = __class__.get_async_client(
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
@@ -982,7 +1017,6 @@ class TaskRequester(Base):
                 client,
                 self.generate_google_args(messages, args),
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         except Exception as e:
             return e, "", "", 0, 0
@@ -992,14 +1026,17 @@ class TaskRequester(Base):
     # ========== Anthropic 请求 ==========
 
     def generate_anthropic_args(
-        self, messages: list[dict[str, str]], args: dict[str, float]
+        self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
-        result = args | {
-            "model": self.model_id,
-            "messages": messages,
-            "max_tokens": self.output_token_limit,
-            "extra_headers": self.build_extra_headers(),
-        }
+        result: dict[str, Any] = dict(args)
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": messages,
+                "max_tokens": self.output_token_limit,
+                "extra_headers": self.build_extra_headers(),
+            }
+        )
 
         # 移除不支持的参数
         result.pop("presence_penalty", None)
@@ -1042,17 +1079,16 @@ class TaskRequester(Base):
     async def request_anthropic_async(
         self,
         messages: list[dict[str, str]],
-        args: dict[str, float],
+        args: dict[str, Any],
         *,
         stop_checker: Callable[[], bool] | None = None,
-        src_has_degradation: bool = False,
     ) -> tuple[Exception | None, str, str, int, int]:
         if stop_checker is not None and stop_checker():
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
             with __class__.LOCK:
-                client: anthropic.AsyncAnthropic = __class__.get_async_client(
+                client: Any = __class__.get_async_client(
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
@@ -1068,7 +1104,6 @@ class TaskRequester(Base):
                 client,
                 self.generate_anthropic_args(messages, args),
                 stop_checker=stop_checker,
-                src_has_degradation=src_has_degradation,
             )
         except Exception as e:
             return e, "", "", 0, 0

@@ -18,9 +18,9 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
-from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequester import RequestCancelledError
 from module.Engine.TaskRequester import StreamDegradationError
+from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseChecker import ResponseChecker
@@ -131,17 +131,11 @@ class TranslatorTask(Base):
         else:
             messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
 
-        self.messages = messages
-
-        src_has_degradation = any(
-            ResponseChecker.RE_DEGRADATION.search(v) is not None for v in srcs
-        )
         return {
             "done": False,
             "srcs": srcs,
             "messages": messages,
             "console_log": console_log,
-            "src_has_degradation": src_has_degradation,
         }
 
     def apply_response_data(
@@ -155,16 +149,34 @@ class TranslatorTask(Base):
     ) -> dict:
         srcs: list[str] = prepared.get("srcs", [])
         console_log: list[str] = prepared.get("console_log", [])
+        stream_degraded = bool(prepared.get("stream_degraded", False))
 
-        dsts, glossarys = ResponseDecoder().decode(response_result)
+        if stream_degraded:
+            dsts = [""] * len(srcs)
+            glossarys: list[dict[str, str]] = []
+        else:
+            dsts, glossarys = ResponseDecoder().decode(response_result)
 
-        if self.skip_response_check or self.response_checker is None:
-            checks: list[ResponseChecker.Error] = [ResponseChecker.Error.NONE] * len(
-                dsts
-            )
+        if stream_degraded:
+            if self.response_checker is None:
+                checks = [ResponseChecker.Error.LINE_ERROR_DEGRADATION] * len(srcs)
+            else:
+                checks = self.response_checker.check(
+                    srcs,
+                    dsts,
+                    self.items[0].get_text_type(),
+                    stream_degraded=True,
+                )
+            if len(self.items) == 1:
+                self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
+        elif self.skip_response_check or self.response_checker is None:
+            checks = [ResponseChecker.Error.NONE] * len(dsts)
         else:
             checks = self.response_checker.check(
-                srcs, dsts, self.items[0].get_text_type()
+                srcs,
+                dsts,
+                self.items[0].get_text_type(),
+                stream_degraded=False,
             )
             if (
                 any(v != ResponseChecker.Error.NONE for v in checks)
@@ -278,8 +290,6 @@ class TranslatorTask(Base):
                 "glossaries": [],
             }
 
-        src_has_degradation = bool(prepared.get("src_has_degradation", False))
-
         def stop_checker() -> bool:
             return Engine.get().get_status() == Base.TaskStatus.STOPPING
 
@@ -293,7 +303,6 @@ class TranslatorTask(Base):
         ) = await requester.request_async(
             messages,
             stop_checker=stop_checker,
-            src_has_degradation=src_has_degradation,
         )
 
         if exception:
@@ -321,18 +330,19 @@ class TranslatorTask(Base):
             )
 
             if isinstance(exception, StreamDegradationError):
-                self.warning(
-                    f"{Localizer.get().task_failed}\n{msg}",
-                    exception,
-                )
+                prepared["stream_degraded"] = True
+                response_think = ""
+                response_result = ""
+                input_tokens = 0
+                output_tokens = 0
             else:
                 self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
+                return {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
 
         return await loop.run_in_executor(
             cpu_executor,
