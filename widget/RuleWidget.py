@@ -4,12 +4,18 @@ from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import PillToolButton
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
+from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
+
+
+# ==================== 图标常量 ====================
+
+ICON_REGEX: BaseIcon = BaseIcon.REGEX  # 规则按钮：正则
+ICON_CASE_SENSITIVE: BaseIcon = BaseIcon.CASE_SENSITIVE  # 规则按钮：大小写敏感
 
 
 class RuleWidget(QWidget):
@@ -51,7 +57,7 @@ class RuleWidget(QWidget):
 
         # 创建正则按钮
         if show_regex:
-            self.regex_button = PillToolButton(FluentIcon.IOT, self)
+            self.regex_button = PillToolButton(ICON_REGEX, self)
             self.regex_button.setIconSize(QSize(14, 14))
             self.regex_button.setFixedSize(28, 28)
             self.regex_button.setChecked(regex_enabled)
@@ -65,7 +71,7 @@ class RuleWidget(QWidget):
 
         # 创建大小写敏感按钮
         if show_case_sensitive:
-            self.case_button = PillToolButton(FluentIcon.FONT, self)
+            self.case_button = PillToolButton(ICON_CASE_SENSITIVE, self)
             self.case_button.setIconSize(QSize(16, 16))
             self.case_button.setFixedSize(28, 28)
             self.case_button.setChecked(case_sensitive_enabled)

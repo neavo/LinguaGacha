@@ -9,15 +9,20 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import SubtitleLabel
 from qfluentwidgets import TransparentToolButton
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.Separator import Separator
+
+
+# ==================== 图标常量 ====================
+
+ICON_CARD_ENTER: BaseIcon = BaseIcon.CHEVRON_RIGHT  # 卡片：提示可进入/展开
 
 
 class ItemCard(CardWidget):
@@ -50,7 +55,7 @@ class ItemCard(CardWidget):
         )  # 在上层控件上禁用鼠标事件以将事件向下层传播
         self.head_hbox.addWidget(self.title_label)
         self.head_hbox.addStretch(1)
-        self.title_button = TransparentToolButton(FluentIcon.PAGE_RIGHT)
+        self.title_button = TransparentToolButton(ICON_CARD_ENTER)
         self.head_hbox.addWidget(self.title_button)
 
         # 添加分割线

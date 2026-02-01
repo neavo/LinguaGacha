@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FlowLayout
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MenuAnimationType
@@ -24,6 +23,7 @@ from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
 from frontend.Translation.TimerMessageBox import TimerMessageBox
 from module.Config import Config
@@ -31,6 +31,18 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
+
+# ==================== 图标常量 ====================
+# 统一收口本页使用到的图标，方便按语义核对（开始/停止/导出/重置等）。
+
+ICON_ACTION_START: BaseIcon = BaseIcon.PLAY  # 命令栏：开始翻译
+ICON_ACTION_CONTINUE: BaseIcon = BaseIcon.ROTATE_CW  # 命令栏：继续/重新启动翻译
+ICON_ACTION_STOP: BaseIcon = BaseIcon.CIRCLE_STOP  # 命令栏：停止翻译
+ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_INPUT  # 命令栏：导出翻译结果
+ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置
+ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置失败项
+ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置全部
+ICON_ACTION_TIMER: BaseIcon = BaseIcon.TIMER  # 命令栏：定时器
 
 
 class TranslationPage(QWidget, Base):
@@ -113,10 +125,10 @@ class TranslationPage(QWidget, Base):
         # 更新开始按钮图标和文案
         if has_progress:
             self.action_start.setText(Localizer.get().translation_page_continue)
-            self.action_start.setIcon(FluentIcon.ROTATE)
+            self.action_start.setIcon(ICON_ACTION_CONTINUE)
         else:
             self.action_start.setText(Localizer.get().start)
-            self.action_start.setIcon(FluentIcon.PLAY)
+            self.action_start.setIcon(ICON_ACTION_START)
 
         if status == Base.TaskStatus.IDLE:
             self.indeterminate_hide()
@@ -609,7 +621,9 @@ class TranslationPage(QWidget, Base):
             )
 
         self.action_start = parent.add_action(
-            Action(FluentIcon.PLAY, Localizer.get().start, parent, triggered=triggered)
+            Action(
+                ICON_ACTION_START, Localizer.get().start, parent, triggered=triggered
+            )
         )
 
     # 停止
@@ -634,7 +648,7 @@ class TranslationPage(QWidget, Base):
 
         self.action_stop = parent.add_action(
             Action(
-                FluentIcon.CANCEL_MEDIUM,
+                ICON_ACTION_STOP,
                 Localizer.get().stop,
                 parent,
                 triggered=triggered,
@@ -678,7 +692,7 @@ class TranslationPage(QWidget, Base):
 
         self.action_export = parent.add_action(
             Action(
-                FluentIcon.SHARE,
+                ICON_ACTION_EXPORT,
                 Localizer.get().export_translation,
                 parent,
                 triggered=triggered,
@@ -717,7 +731,7 @@ class TranslationPage(QWidget, Base):
             menu = RoundMenu("", self.action_reset)
             menu.addAction(
                 Action(
-                    FluentIcon.DELETE,
+                    ICON_ACTION_RESET_FAILED,
                     Localizer.get().translation_page_reset_failed,
                     triggered=lambda: confirm_and_emit(
                         Localizer.get().translation_page_alert_reset_failed,
@@ -727,7 +741,7 @@ class TranslationPage(QWidget, Base):
             )
             menu.addAction(
                 Action(
-                    FluentIcon.ERASE_TOOL,
+                    ICON_ACTION_RESET_ALL,
                     Localizer.get().translation_page_reset_all,
                     triggered=lambda: confirm_and_emit(
                         Localizer.get().translation_page_alert_reset_all,
@@ -740,7 +754,7 @@ class TranslationPage(QWidget, Base):
 
         self.action_reset = parent.add_action(
             Action(
-                FluentIcon.ERASE_TOOL,
+                ICON_ACTION_RESET,
                 Localizer.get().reset,
                 parent,
                 triggered=triggered,
@@ -817,7 +831,7 @@ class TranslationPage(QWidget, Base):
 
         self.action_timer = parent.add_action(
             Action(
-                FluentIcon.HISTORY, Localizer.get().timer, parent, triggered=triggered
+                ICON_ACTION_TIMER, Localizer.get().timer, parent, triggered=triggered
             )
         )
 

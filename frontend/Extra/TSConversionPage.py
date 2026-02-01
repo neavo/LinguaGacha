@@ -6,11 +6,11 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Data.DataManager import DataManager
@@ -22,6 +22,11 @@ from widget.ComboBoxCard import ComboBoxCard
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SwitchButtonCard import SwitchButtonCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_ACTION_START: BaseIcon = BaseIcon.PLAY  # 命令栏：开始转换
 
 
 class TSConversionPage(QWidget, Base):
@@ -112,7 +117,7 @@ class TSConversionPage(QWidget, Base):
 
         self.command_bar_card.add_action(
             Action(
-                FluentIcon.PLAY,
+                ICON_ACTION_START,
                 Localizer.get().ts_conversion_action_start,
                 self.command_bar_card,
                 triggered=start_triggered,

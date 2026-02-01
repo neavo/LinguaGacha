@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import ComboBox
 from qfluentwidgets import DropDownPushButton
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PlainTextEdit
@@ -13,6 +12,7 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
@@ -21,6 +21,13 @@ from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
 from widget.LineEditCard import LineEditCard
 from widget.LineEditMessageBox import LineEditMessageBox
+
+
+# ==================== 图标常量 ====================
+
+ICON_MODEL_ID_MENU: BaseIcon = BaseIcon.PENCIL  # 模型 ID：下拉菜单按钮
+ICON_MODEL_ID_EDIT: BaseIcon = BaseIcon.PENCIL_LINE  # 模型 ID：编辑/修改
+ICON_MODEL_ID_SYNC: BaseIcon = BaseIcon.REFRESH_CW  # 模型 ID：同步/更新
 
 
 class ModelBasicSettingPage(MessageBoxBase, Base):
@@ -231,7 +238,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         parent.addWidget(empty_card)
 
         drop_down_push_button = DropDownPushButton(Localizer.get().edit)
-        drop_down_push_button.setIcon(FluentIcon.LABEL)
+        drop_down_push_button.setIcon(ICON_MODEL_ID_MENU)
         drop_down_push_button.setFixedWidth(128)
         drop_down_push_button.setContentsMargins(4, 0, 4, 0)
         empty_card.add_widget(drop_down_push_button)
@@ -239,7 +246,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         menu = RoundMenu("", drop_down_push_button)
         menu.addAction(
             Action(
-                FluentIcon.EDIT,
+                ICON_MODEL_ID_EDIT,
                 Localizer.get().model_basic_setting_page_model_id_edit,
                 triggered=lambda _: triggered_edit(),
             )
@@ -247,7 +254,7 @@ class ModelBasicSettingPage(MessageBoxBase, Base):
         menu.addSeparator()
         menu.addAction(
             Action(
-                FluentIcon.SYNC,
+                ICON_MODEL_ID_SYNC,
                 Localizer.get().model_basic_setting_page_model_id_sync,
                 triggered=lambda _: triggered_sync(),
             )

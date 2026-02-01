@@ -6,15 +6,30 @@ from typing import TYPE_CHECKING
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.LineEditMessageBox import LineEditMessageBox
+
+
+# ==================== 图标常量 ====================
+
+ICON_RULE_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空规则）
+ICON_RULE_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
+ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
+ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用
+
+ICON_PRESET_DEFAULT_MARK: BaseIcon = BaseIcon.FOLDER_HEART  # 子菜单：当前为默认预设
+ICON_PRESET_SET_DEFAULT: BaseIcon = BaseIcon.HEART  # 子菜单动作：设为默认预设
+ICON_PRESET_CANCEL_DEFAULT: BaseIcon = BaseIcon.HEART_OFF  # 子菜单动作：取消默认预设
+
+ICON_PRESET_RENAME: BaseIcon = BaseIcon.PENCIL_LINE  # 子菜单动作：重命名
+ICON_PRESET_DELETE: BaseIcon = BaseIcon.TRASH_2  # 子菜单动作：删除
 
 if TYPE_CHECKING:
     from frontend.Quality.QualityRulePageBase import QualityRulePageBase
@@ -225,7 +240,7 @@ class QualityRulePresetManager:
         menu = RoundMenu("", parent_widget)
         menu.addAction(
             Action(
-                FluentIcon.ERASE_TOOL,
+                ICON_RULE_RESET,
                 Localizer.get().reset,
                 # 重置是破坏性操作：即使当前编辑项未保存/不合法，也应允许直接重置。
                 # RoundMenu 点击会在鼠标释放时触发，这里延迟一帧避免确认框被“穿透点击”自动确认/取消。
@@ -234,7 +249,7 @@ class QualityRulePresetManager:
         )
         menu.addAction(
             Action(
-                FluentIcon.SAVE,
+                ICON_RULE_SAVE_PRESET,
                 Localizer.get().quality_save_preset,
                 triggered=lambda: self.page.run_with_unsaved_guard(
                     self.prompt_save_preset
@@ -247,10 +262,10 @@ class QualityRulePresetManager:
 
         for item in builtin_presets:
             sub_menu = RoundMenu(item["name"], menu)
-            sub_menu.setIcon(FluentIcon.FOLDER)
+            sub_menu.setIcon(ICON_PRESET_FOLDER)
             sub_menu.addAction(
                 Action(
-                    FluentIcon.DOWNLOAD,
+                    ICON_PRESET_IMPORT,
                     Localizer.get().quality_import,
                     triggered=partial(
                         lambda p: self.page.run_with_unsaved_guard(
@@ -263,10 +278,10 @@ class QualityRulePresetManager:
             sub_menu.addSeparator()
 
             if self.is_default_preset(item):
-                sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.FLAG,
+                        ICON_PRESET_CANCEL_DEFAULT,
                         Localizer.get().quality_cancel_default_preset,
                         triggered=self.cancel_default_preset,
                     )
@@ -274,7 +289,7 @@ class QualityRulePresetManager:
             else:
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.TAG,
+                        ICON_PRESET_SET_DEFAULT,
                         Localizer.get().quality_set_as_default_preset,
                         triggered=partial(self.set_default_preset, item),
                     )
@@ -287,10 +302,10 @@ class QualityRulePresetManager:
 
         for item in user_presets:
             sub_menu = RoundMenu(item["name"], menu)
-            sub_menu.setIcon(FluentIcon.FOLDER_ADD)
+            sub_menu.setIcon(ICON_PRESET_FOLDER)
             sub_menu.addAction(
                 Action(
-                    FluentIcon.DOWNLOAD,
+                    ICON_PRESET_IMPORT,
                     Localizer.get().quality_import,
                     triggered=partial(
                         lambda p: self.page.run_with_unsaved_guard(
@@ -302,14 +317,14 @@ class QualityRulePresetManager:
             )
             sub_menu.addAction(
                 Action(
-                    FluentIcon.EDIT,
+                    ICON_PRESET_RENAME,
                     Localizer.get().rename,
                     triggered=partial(self.prompt_rename_preset, item),
                 )
             )
             sub_menu.addAction(
                 Action(
-                    FluentIcon.DELETE,
+                    ICON_PRESET_DELETE,
                     Localizer.get().quality_delete_preset,
                     triggered=partial(self.delete_preset, item),
                 )
@@ -317,10 +332,10 @@ class QualityRulePresetManager:
             sub_menu.addSeparator()
 
             if self.is_default_preset(item):
-                sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.CLEAR_SELECTION,
+                        ICON_PRESET_CANCEL_DEFAULT,
                         Localizer.get().quality_cancel_default_preset,
                         triggered=self.cancel_default_preset,
                     )
@@ -328,7 +343,7 @@ class QualityRulePresetManager:
             else:
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.CERTIFICATE,
+                        ICON_PRESET_SET_DEFAULT,
                         Localizer.get().quality_set_as_default_preset,
                         triggered=partial(self.set_default_preset, item),
                     )

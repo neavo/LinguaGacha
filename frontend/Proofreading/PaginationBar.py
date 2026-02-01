@@ -7,10 +7,16 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import TransparentToolButton
 
+from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
+
+
+# ==================== 图标常量 ====================
+
+ICON_PAGE_PREV: BaseIcon = BaseIcon.CIRCLE_CHEVRON_LEFT  # 分页：上一页
+ICON_PAGE_NEXT: BaseIcon = BaseIcon.CIRCLE_CHEVRON_RIGHT  # 分页：下一页
 
 
 class PaginationBar(QWidget):
@@ -55,7 +61,7 @@ class PaginationBar(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)  # 左对齐而非居中
 
         # 上一页按钮（使用扁平透明按钮）
-        self.btn_prev = TransparentToolButton(FluentIcon.PAGE_LEFT, self)
+        self.btn_prev = TransparentToolButton(ICON_PAGE_PREV, self)
         self.btn_prev.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         self.btn_prev.setFixedSize(self.BTN_SIZE, self.BTN_SIZE)
         self.btn_prev.clicked.connect(self.on_prev_clicked)
@@ -72,7 +78,7 @@ class PaginationBar(QWidget):
         layout.addWidget(self.page_info_label)
 
         # 下一页按钮（使用扁平透明按钮）
-        self.btn_next = TransparentToolButton(FluentIcon.PAGE_RIGHT, self)
+        self.btn_next = TransparentToolButton(ICON_PAGE_NEXT, self)
         self.btn_next.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         self.btn_next.setFixedSize(self.BTN_SIZE, self.BTN_SIZE)
         self.btn_next.clicked.connect(self.on_next_clicked)
