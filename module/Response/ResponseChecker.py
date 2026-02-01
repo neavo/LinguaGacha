@@ -18,19 +18,19 @@ class ResponseChecker(Base):
         NONE = "NONE"
         UNKNOWN = "UNKNOWN"
         FAIL_DATA = "FAIL_DATA"
+        FAIL_TIMEOUT = "FAIL_TIMEOUT"
         FAIL_LINE_COUNT = "FAIL_LINE_COUNT"
+        FAIL_DEGRADATION = "FAIL_DEGRADATION"
         LINE_ERROR_KANA = "LINE_ERROR_KANA"
         LINE_ERROR_HANGEUL = "LINE_ERROR_HANGEUL"
         LINE_ERROR_EMPTY_LINE = "LINE_ERROR_EMPTY_LINE"
         LINE_ERROR_SIMILARITY = "LINE_ERROR_SIMILARITY"
-        LINE_ERROR_DEGRADATION = "LINE_ERROR_DEGRADATION"
 
     LINE_ERROR: tuple[Error, ...] = (
         Error.LINE_ERROR_KANA,
         Error.LINE_ERROR_HANGEUL,
         Error.LINE_ERROR_EMPTY_LINE,
         Error.LINE_ERROR_SIMILARITY,
-        Error.LINE_ERROR_DEGRADATION,
     )
 
     # 重试次数阈值
@@ -59,7 +59,8 @@ class ResponseChecker(Base):
         stream_degraded: bool = False,
     ) -> list[Error]:
         if stream_degraded:
-            return [__class__.Error.LINE_ERROR_DEGRADATION] * len(srcs)
+            # 退化检测来自流式输出整体行为，不对应具体某一行的质量问题。
+            return [__class__.Error.FAIL_DEGRADATION] * len(srcs)
 
         # 数据解析失败
         if len(dsts) == 0 or all(v == "" or v is None for v in dsts):
