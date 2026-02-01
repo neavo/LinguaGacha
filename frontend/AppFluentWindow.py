@@ -1,6 +1,7 @@
 import os
 import signal
 import time
+from typing import cast
 
 from PyQt5.QtCore import QEvent
 from PyQt5.QtCore import Qt
@@ -8,6 +9,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QDesktopWidget
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
@@ -68,7 +70,8 @@ class AppFluentWindow(FluentWindow, Base):
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
-        desktop = QApplication.desktop().availableGeometry()
+        desktop_widget = cast(QDesktopWidget, QApplication.desktop())
+        desktop = desktop_widget.availableGeometry()
         self.move(
             desktop.width() // 2 - self.width() // 2,
             desktop.height() // 2 - self.height() // 2,
@@ -219,7 +222,7 @@ class AppFluentWindow(FluentWindow, Base):
         ]
 
     # 重写窗口关闭函数
-    def closeEvent(self, event: QEvent) -> None:
+    def closeEvent(self, e: QEvent) -> None:
         message_box = MessageBox(
             Localizer.get().warning, Localizer.get().app_close_message_box, self
         )
@@ -227,7 +230,7 @@ class AppFluentWindow(FluentWindow, Base):
         message_box.cancelButton.setText(Localizer.get().cancel)
 
         if not message_box.exec():
-            event.ignore()
+            e.ignore()
         else:
             os.kill(os.getpid(), signal.SIGTERM)
 
@@ -272,7 +275,8 @@ class AppFluentWindow(FluentWindow, Base):
             self.progress_hide_timer = None
 
         # 记录开始时间（如果是首次显示）
-        if self.progress_start_time == 0.0:
+        # 若用户手动关闭过进度 Toast，再次显示时也需要重新计时
+        if self.progress_start_time == 0.0 or not self.progress_toast.is_visible():
             self.progress_start_time = time.time()
 
         message = data.get("message", "")
@@ -320,8 +324,8 @@ class AppFluentWindow(FluentWindow, Base):
         self.progress_toast.hide_toast()
 
     # 重写窗口大小变化事件，更新进度 Toast 位置
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
         if self.progress_toast.is_visible():
             self.progress_toast.update_position()
 

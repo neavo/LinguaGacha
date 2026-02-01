@@ -19,15 +19,15 @@ from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
-from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
-from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
+from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
+from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
 from frontend.Proofreading.ProofreadingEditPanel import ProofreadingEditPanel
-from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadKind
 from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadResult
 from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadService
+from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -1066,7 +1066,7 @@ class ProofreadingPage(QWidget, Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().toast_saved,
+                "message": Localizer.get().toast_save,
             },
         )
 

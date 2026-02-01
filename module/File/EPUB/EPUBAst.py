@@ -107,6 +107,14 @@ class EPUBAst(Base):
         slot-per-line 方案若直接使用 '\n' 分隔，会导致 parts 数与行数不一致。
         """
 
+        if (
+            "\r" not in text
+            and "\n" not in text
+            and "\t" not in text
+            and "  " not in text
+        ):
+            return text
+
         # 只处理控制换行/制表符，避免破坏全角空格等非 ASCII 空白。
         text = cls.RE_SLOT_INLINE_WHITESPACE.sub(" ", text)
         return cls.RE_MULTI_SPACE.sub(" ", text)
@@ -167,6 +175,38 @@ class EPUBAst(Base):
         return "/" + "/".join(f"{s.name}[{s.pos}]" for s in segs)
 
     @classmethod
+    def iter_elem_path_pairs(
+        cls, root: etree._Element
+    ) -> Iterator[tuple[etree._Element, str]]:
+        if not isinstance(root.tag, str):
+            return
+
+        root_path = f"/{cls.local_name(root.tag)}[1]"
+        stack: list[tuple[etree._Element, str]] = [(root, root_path)]
+        while stack:
+            parent, parent_path = stack.pop()
+            yield parent, parent_path
+
+            counter: dict[str, int] = {}
+            child_entries: list[tuple[etree._Element, str]] = []
+            for child in cls.iter_children_elements(parent):
+                name = cls.local_name(child.tag)
+                idx = counter.get(name, 0) + 1
+                counter[name] = idx
+                child_entries.append((child, f"{parent_path}/{name}[{idx}]"))
+
+            for child, child_path in reversed(child_entries):
+                stack.append((child, child_path))
+
+    @classmethod
+    def build_elem_path_map(cls, root: etree._Element) -> dict[int, str]:
+        return {id(elem): path for elem, path in cls.iter_elem_path_pairs(root)}
+
+    @classmethod
+    def build_elem_by_path(cls, root: etree._Element) -> dict[str, etree._Element]:
+        return {path: elem for elem, path in cls.iter_elem_path_pairs(root)}
+
+    @classmethod
     def parse_elem_path(cls, path: str) -> list[EpubPathSeg]:
         parts = [p for p in path.strip().split("/") if p]
         segs: list[EpubPathSeg] = []
@@ -200,6 +240,15 @@ class EPUBAst(Base):
     @staticmethod
     def sha1_hex(text: str) -> str:
         return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def sha1_hex_with_null_separator(parts: list[str]) -> str:
+        hasher = hashlib.sha1()
+        for i, part in enumerate(parts):
+            if i:
+                hasher.update(b"\x00")
+            hasher.update(part.encode("utf-8"))
+        return hasher.hexdigest()
 
     @classmethod
     def parse_container_opf_path(cls, zip_reader: zipfile.ZipFile) -> str:
@@ -325,9 +374,19 @@ class EPUBAst(Base):
             raise ValueError("Failed to parse html/xhtml") from e
 
     def iter_translatable_text_slots(
-        self, root: etree._Element, block: etree._Element
+        self,
+        root: etree._Element,
+        block: etree._Element,
+        path_map: dict[int, str] | None = None,
     ) -> list[tuple[EpubPartRef, str]]:
         results: list[tuple[EpubPartRef, str]] = []
+
+        def get_path(elem: etree._Element) -> str:
+            if path_map is not None:
+                path = path_map.get(id(elem))
+                if path is not None:
+                    return path
+            return self.build_elem_path(root, elem)
 
         def walk(elem: etree._Element) -> None:
             name = self.local_name(elem.tag)
@@ -336,16 +395,14 @@ class EPUBAst(Base):
 
             # elem.text
             if elem.text is not None and elem.text != "":
-                ref = EpubPartRef(slot="text", path=self.build_elem_path(root, elem))
+                ref = EpubPartRef(slot="text", path=get_path(elem))
                 results.append((ref, elem.text))
 
             # children
             for child in self.iter_children_elements(elem):
                 walk(child)
                 if child.tail is not None and child.tail != "":
-                    ref = EpubPartRef(
-                        slot="tail", path=self.build_elem_path(root, child)
-                    )
+                    ref = EpubPartRef(slot="tail", path=get_path(child))
                     results.append((ref, child.tail))
 
         walk(block)
@@ -387,22 +444,46 @@ class EPUBAst(Base):
         items: list[Item] = []
         root = self.parse_xhtml_or_html(raw)
 
+        elem_list = [e for e in root.iter() if isinstance(e.tag, str)]
+        path_map = self.build_elem_path_map(root)
+
+        in_skipped_map: dict[int, bool] = {}
+        for elem in elem_list:
+            parent = elem.getparent()
+            parent_in_skip = False
+            if parent is not None and isinstance(parent.tag, str):
+                parent_in_skip = in_skipped_map.get(id(parent), False)
+            in_skipped_map[id(elem)] = parent_in_skip or (
+                self.local_name(elem.tag) in self.SKIP_SUBTREE_TAGS
+            )
+
+        has_block_in_subtree_map: dict[int, bool] = {}
+        has_block_descendant_map: dict[int, bool] = {}
+        for elem in reversed(elem_list):
+            has_child_block_in_subtree = False
+            for child in self.iter_children_elements(elem):
+                if has_block_in_subtree_map[id(child)]:
+                    has_child_block_in_subtree = True
+                    break
+            has_block_descendant_map[id(elem)] = has_child_block_in_subtree
+            has_block_in_subtree_map[id(elem)] = (
+                self.is_block_candidate(elem) or has_child_block_in_subtree
+            )
+
         # 选择 block：只取“叶子 block”，避免 div/li 嵌套导致重复。
         blocks: list[etree._Element] = []
-        for elem in root.iter():
-            if not isinstance(elem.tag, str):
-                continue
+        for elem in elem_list:
             if not self.is_block_candidate(elem):
                 continue
-            if self.is_inside_skipped_subtree(elem):
+            if in_skipped_map[id(elem)]:
                 continue
-            if self.has_block_descendant(elem):
+            if has_block_descendant_map[id(elem)]:
                 continue
             blocks.append(elem)
 
         unit_index = 0
         for block in blocks:
-            slots = self.iter_translatable_text_slots(root, block)
+            slots = self.iter_translatable_text_slots(root, block, path_map=path_map)
             # 过滤空白槽位
             slot_texts = [t for _ref, t in slots if t.strip() != ""]
             if not slot_texts:
@@ -415,7 +496,7 @@ class EPUBAst(Base):
                 part_texts.append(self.normalize_slot_text(text))
 
             src = "\n".join(part_texts)
-            digest = self.sha1_hex("\u0000".join(part_texts))
+            digest = self.sha1_hex_with_null_separator(part_texts)
 
             item = Item.from_dict(
                 {
@@ -429,7 +510,7 @@ class EPUBAst(Base):
                         "epub": {
                             "mode": "slot_per_line",
                             "doc_path": doc_path,
-                            "block_path": self.build_elem_path(root, block),
+                            "block_path": path_map[id(block)],
                             "parts": part_defs,
                             "src_digest": digest,
                             "is_nav": is_nav,
