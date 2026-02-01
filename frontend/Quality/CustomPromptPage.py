@@ -7,13 +7,13 @@ from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CommandButton
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -24,6 +24,23 @@ from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
 from widget.LineEditMessageBox import LineEditMessageBox
 from widget.SwitchButtonCard import SwitchButtonCard
+
+# ==================== 图标常量 ====================
+
+ICON_ACTION_SAVE: BaseIcon = BaseIcon.SAVE  # 命令栏：保存当前提示词
+ICON_PRESET_MENU_ROOT: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单入口
+
+ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空内容）
+ICON_PRESET_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
+ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
+ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用
+
+ICON_PRESET_DEFAULT_MARK: BaseIcon = BaseIcon.FOLDER_HEART  # 子菜单：当前为默认预设
+ICON_PRESET_SET_DEFAULT: BaseIcon = BaseIcon.HEART  # 子菜单动作：设为默认预设
+ICON_PRESET_CANCEL_DEFAULT: BaseIcon = BaseIcon.HEART_OFF  # 子菜单动作：取消默认预设
+
+ICON_PRESET_RENAME: BaseIcon = BaseIcon.PENCIL_LINE  # 子菜单动作：重命名
+ICON_PRESET_DELETE: BaseIcon = BaseIcon.TRASH_2  # 子菜单动作：删除
 
 
 class CustomPromptPage(QWidget, Base):
@@ -179,7 +196,7 @@ class CustomPromptPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.SAVE,
+                ICON_ACTION_SAVE,
                 Localizer.get().save,
                 parent,
                 triggered=triggered,
@@ -431,7 +448,7 @@ class CustomPromptPage(QWidget, Base):
             # 重置
             menu.addAction(
                 Action(
-                    FluentIcon.ERASE_TOOL,
+                    ICON_PRESET_RESET,
                     Localizer.get().reset,
                     triggered=reset,
                 )
@@ -440,7 +457,7 @@ class CustomPromptPage(QWidget, Base):
             # 保存
             menu.addAction(
                 Action(
-                    FluentIcon.SAVE,
+                    ICON_PRESET_SAVE_PRESET,
                     Localizer.get().quality_save_preset,
                     triggered=save_preset,
                 )
@@ -452,11 +469,12 @@ class CustomPromptPage(QWidget, Base):
 
             # 内置预设
             for item in builtin_presets:
+                # 导入
                 sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.FOLDER)
+                sub_menu.setIcon(ICON_PRESET_FOLDER)
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.DOWNLOAD,
+                        ICON_PRESET_IMPORT,
                         Localizer.get().quality_import,
                         triggered=partial(apply_preset, item["path"]),
                     )
@@ -467,10 +485,10 @@ class CustomPromptPage(QWidget, Base):
                 # 默认预设控制
                 key = f"custom_prompt_{self.language_code}_default_preset"
                 if getattr(config, key) == item["path"]:
-                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                    sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                     sub_menu.addAction(
                         Action(
-                            FluentIcon.FLAG,
+                            ICON_PRESET_CANCEL_DEFAULT,
                             Localizer.get().quality_cancel_default_preset,
                             triggered=cancel_default_preset,
                         )
@@ -478,7 +496,7 @@ class CustomPromptPage(QWidget, Base):
                 else:
                     sub_menu.addAction(
                         Action(
-                            FluentIcon.TAG,
+                            ICON_PRESET_SET_DEFAULT,
                             Localizer.get().quality_set_as_default_preset,
                             triggered=partial(set_default_preset, item),
                         )
@@ -493,12 +511,12 @@ class CustomPromptPage(QWidget, Base):
             # 用户预设
             for item in user_presets:
                 sub_menu = RoundMenu(item["name"], menu)
-                sub_menu.setIcon(FluentIcon.FOLDER_ADD)
+                sub_menu.setIcon(ICON_PRESET_FOLDER)
 
-                # 应用
+                # 导入
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.DOWNLOAD,
+                        ICON_PRESET_IMPORT,
                         Localizer.get().quality_import,
                         triggered=partial(apply_preset, item["path"]),
                     )
@@ -507,7 +525,7 @@ class CustomPromptPage(QWidget, Base):
                 # 重命名
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.EDIT,
+                        ICON_PRESET_RENAME,
                         Localizer.get().rename,
                         triggered=partial(rename_preset, item),
                     )
@@ -516,7 +534,7 @@ class CustomPromptPage(QWidget, Base):
                 # 删除
                 sub_menu.addAction(
                     Action(
-                        FluentIcon.DELETE,
+                        ICON_PRESET_DELETE,
                         Localizer.get().quality_delete_preset,
                         triggered=partial(delete_preset, item),
                     )
@@ -527,10 +545,10 @@ class CustomPromptPage(QWidget, Base):
                 # 默认预设控制
                 key = f"custom_prompt_{self.language_code}_default_preset"
                 if getattr(config, key) == item["path"]:
-                    sub_menu.setIcon(FluentIcon.CERTIFICATE)
+                    sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                     sub_menu.addAction(
                         Action(
-                            FluentIcon.CLEAR_SELECTION,
+                            ICON_PRESET_CANCEL_DEFAULT,
                             Localizer.get().quality_cancel_default_preset,
                             triggered=cancel_default_preset,
                         )
@@ -538,7 +556,7 @@ class CustomPromptPage(QWidget, Base):
                 else:
                     sub_menu.addAction(
                         Action(
-                            FluentIcon.CERTIFICATE,
+                            ICON_PRESET_SET_DEFAULT,
                             Localizer.get().quality_set_as_default_preset,
                             triggered=partial(set_default_preset, item),
                         )
@@ -552,7 +570,7 @@ class CustomPromptPage(QWidget, Base):
 
         widget = parent.add_action(
             Action(
-                FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                ICON_PRESET_MENU_ROOT,
                 Localizer.get().quality_preset,
                 parent=parent,
                 triggered=triggered,

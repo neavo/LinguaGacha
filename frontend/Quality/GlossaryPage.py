@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
@@ -17,6 +16,7 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
@@ -26,6 +26,15 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from widget.SwitchButtonCard import SwitchButtonCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_CASE_SENSITIVE: BaseIcon = BaseIcon.CASE_SENSITIVE  # 规则图标：大小写敏感
+ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2  # 右键菜单：删除条目
+ICON_MENU_ENABLE: BaseIcon = BaseIcon.CHECK  # 右键菜单：启用
+ICON_MENU_DISABLE: BaseIcon = BaseIcon.X  # 右键菜单：禁用
+ICON_KG_LINK: BaseIcon = BaseIcon.BOT  # 命令栏：跳转 KeywordGacha
 
 
 class GlossaryPage(QualityRulePageBase):
@@ -237,7 +246,8 @@ class GlossaryPage(QualityRulePageBase):
             item.setData(
                 Qt.ItemDataRole.DecorationRole,
                 self.rule_icon_renderer.get_pixmap(
-                    self.table, [RuleIconSpec(FluentIcon.FONT, case_sensitive)]
+                    self.table,
+                    [RuleIconSpec(ICON_CASE_SENSITIVE, case_sensitive)],
                 ),
             )
             item.setToolTip(self.get_case_tooltip(case_sensitive))
@@ -270,7 +280,7 @@ class GlossaryPage(QualityRulePageBase):
         menu = RoundMenu("", self.table)
         menu.addAction(
             Action(
-                FluentIcon.DELETE,
+                ICON_MENU_DELETE,
                 Localizer.get().delete,
                 triggered=lambda: self.run_with_unsaved_guard(
                     self.delete_selected_entries
@@ -280,10 +290,10 @@ class GlossaryPage(QualityRulePageBase):
         menu.addSeparator()
 
         case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)
-        case_menu.setIcon(FluentIcon.FONT)
+        case_menu.setIcon(ICON_CASE_SENSITIVE)
         case_menu.addAction(
             Action(
-                FluentIcon.COMPLETED,
+                ICON_MENU_ENABLE,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(True)
@@ -292,7 +302,7 @@ class GlossaryPage(QualityRulePageBase):
         )
         case_menu.addAction(
             Action(
-                FluentIcon.REMOVE_FROM,
+                ICON_MENU_DISABLE,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(False)
@@ -456,7 +466,8 @@ class GlossaryPage(QualityRulePageBase):
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
 
         push_button = TransparentPushButton(
-            FluentIcon.ROBOT, Localizer.get().glossary_page_kg
+            ICON_KG_LINK,
+            Localizer.get().glossary_page_kg,
         )
         push_button.clicked.connect(connect)
         self.command_bar_card.add_widget(push_button)

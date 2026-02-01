@@ -17,7 +17,6 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import TableWidget
@@ -27,6 +26,7 @@ from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from module.Config import Config
 from module.Data.QualityRuleIO import QualityRuleIO
@@ -34,6 +34,14 @@ from module.Data.QualityRuleMerge import QualityRuleMerge
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
+
+# ==================== 图标常量 ====================
+
+ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入规则
+ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出规则
+ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
+ICON_ACTION_PRESET: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单
+ICON_ACTION_WIKI: BaseIcon = BaseIcon.CIRCLE_QUESTION_MARK  # 命令栏：打开 Wiki
 
 
 class QualityRulePageBase(QWidget, Base):
@@ -795,7 +803,7 @@ class QualityRulePageBase(QWidget, Base):
 
         return self.command_bar_card.add_action(
             Action(
-                FluentIcon.DOWNLOAD,
+                ICON_ACTION_IMPORT,
                 Localizer.get().quality_import,
                 triggered=lambda: self.run_with_unsaved_guard(triggered),
             )
@@ -823,7 +831,7 @@ class QualityRulePageBase(QWidget, Base):
 
         return self.command_bar_card.add_action(
             Action(
-                FluentIcon.SHARE,
+                ICON_ACTION_EXPORT,
                 Localizer.get().quality_export,
                 triggered=lambda: self.run_with_unsaved_guard(triggered),
             )
@@ -832,7 +840,7 @@ class QualityRulePageBase(QWidget, Base):
     def add_command_bar_action_search(self) -> CommandButton:
         return self.command_bar_card.add_action(
             Action(
-                FluentIcon.SEARCH,
+                ICON_ACTION_SEARCH,
                 Localizer.get().search,
                 triggered=self.show_search_bar,
             )
@@ -858,7 +866,7 @@ class QualityRulePageBase(QWidget, Base):
 
         widget = self.command_bar_card.add_action(
             Action(
-                FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                ICON_ACTION_PRESET,
                 Localizer.get().quality_preset,
                 triggered=triggered,
             )
@@ -869,6 +877,9 @@ class QualityRulePageBase(QWidget, Base):
         def connect() -> None:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
 
-        push_button = TransparentPushButton(FluentIcon.HELP, Localizer.get().wiki)
+        push_button = TransparentPushButton(
+            ICON_ACTION_WIKI,
+            Localizer.get().wiki,
+        )
         push_button.clicked.connect(connect)
         self.command_bar_card.add_widget(push_button)

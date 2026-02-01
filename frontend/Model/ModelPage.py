@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import DropDownPushButton
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import PrimaryDropDownPushButton
 from qfluentwidgets import PushButton
@@ -14,6 +13,7 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from frontend.Model.ModelBasicSettingPage import ModelBasicSettingPage
 from frontend.Model.ModelTaskSettingPage import ModelTaskSettingPage
@@ -22,6 +22,18 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
 from widget.FlowCard import FlowCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_ADD_MODEL: BaseIcon = BaseIcon.PLUS  # 添加模型按钮
+ICON_ACTIVATE_MODEL: BaseIcon = BaseIcon.CHECK  # 模型操作：激活
+ICON_OPEN_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 模型操作：打开基础设置
+ICON_OPEN_TASK_SETTINGS: BaseIcon = BaseIcon.LIST_TODO  # 模型操作：打开任务设置
+ICON_OPEN_ADVANCED_SETTINGS: BaseIcon = BaseIcon.CODE  # 模型操作：打开高级设置
+ICON_TEST_MODEL: BaseIcon = BaseIcon.SEND  # 模型操作：测试连接
+ICON_RESET_MODEL: BaseIcon = BaseIcon.REFRESH_CW  # 预设模型操作：重置到初始状态
+ICON_DELETE_MODEL: BaseIcon = BaseIcon.TRASH_2  # 自定义模型操作：删除
 
 
 class ModelPage(QWidget, Base):
@@ -158,7 +170,7 @@ class ModelPage(QWidget, Base):
         def init(widget: FlowCard) -> None:
             if show_add_button:
                 add_button = PushButton(Localizer.get().add)
-                add_button.setIcon(FluentIcon.ADD_TO)
+                add_button.setIcon(ICON_ADD_MODEL)
                 add_button.setContentsMargins(4, 0, 4, 0)
                 add_button.clicked.connect(lambda: self.add_model(model_type, window))
                 widget.add_widget_to_head(add_button)
@@ -224,7 +236,7 @@ class ModelPage(QWidget, Base):
             # 激活
             menu.addAction(
                 Action(
-                    FluentIcon.EXPRESSIVE_INPUT_ENTRY,
+                    ICON_ACTIVATE_MODEL,
                     Localizer.get().model_page_activate,
                     triggered=partial(self.activate_model, model_id),
                 )
@@ -234,7 +246,7 @@ class ModelPage(QWidget, Base):
             # 基础设置
             menu.addAction(
                 Action(
-                    FluentIcon.SETTING,
+                    ICON_OPEN_BASIC_SETTINGS,
                     Localizer.get().basic_settings,
                     triggered=partial(self.show_model_basic_setting_page, model_id),
                 )
@@ -244,7 +256,7 @@ class ModelPage(QWidget, Base):
             # 任务设置
             menu.addAction(
                 Action(
-                    FluentIcon.BOOK_SHELF,
+                    ICON_OPEN_TASK_SETTINGS,
                     Localizer.get().model_page_task_setting,
                     triggered=partial(self.show_model_task_setting_page, model_id),
                 )
@@ -254,7 +266,7 @@ class ModelPage(QWidget, Base):
             # 高级设置
             menu.addAction(
                 Action(
-                    FluentIcon.DEVELOPER_TOOLS,
+                    ICON_OPEN_ADVANCED_SETTINGS,
                     Localizer.get().model_page_advanced_setting,
                     triggered=partial(self.show_advanced_edit_page, model_id),
                 )
@@ -264,7 +276,7 @@ class ModelPage(QWidget, Base):
             # 测试模型
             menu.addAction(
                 Action(
-                    FluentIcon.SEND,
+                    ICON_TEST_MODEL,
                     Localizer.get().model_page_test,
                     triggered=partial(self.model_test_start, model_id),
                 )
@@ -275,7 +287,7 @@ class ModelPage(QWidget, Base):
             if model_type == ModelType.PRESET.value:
                 menu.addAction(
                     Action(
-                        FluentIcon.SYNC,
+                        ICON_RESET_MODEL,
                         Localizer.get().model_page_reset,
                         triggered=partial(self.reset_preset_model, model_id),
                     )
@@ -283,7 +295,7 @@ class ModelPage(QWidget, Base):
             else:
                 menu.addAction(
                     Action(
-                        FluentIcon.DELETE,
+                        ICON_DELETE_MODEL,
                         Localizer.get().model_page_delete,
                         triggered=partial(self.delete_model, model_id),
                     )

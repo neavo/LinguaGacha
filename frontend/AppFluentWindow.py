@@ -11,7 +11,6 @@ from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QDesktopWidget
 from PyQt5.QtWidgets import QWidget
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
@@ -25,6 +24,7 @@ from qfluentwidgets import setTheme
 from qfluentwidgets import setThemeColor
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
@@ -49,6 +49,35 @@ from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.ProgressToast import ProgressToast
+
+
+# ==================== 图标常量 ====================
+# 这里统一抽取页面/导航用到的图标，便于按语义检查与后续替换。
+
+ICON_NAV_THEME: BaseIcon = BaseIcon.SUN_MOON  # 侧边栏：主题切换
+ICON_NAV_LANGUAGE: BaseIcon = BaseIcon.GLOBE  # 侧边栏：语言切换
+ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.COG  # 侧边栏底部：应用设置入口
+
+ICON_NAV_MODEL: BaseIcon = BaseIcon.SLACK  # 侧边栏：模型管理
+ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
+ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
+ICON_NAV_CLOSE_PROJECT: BaseIcon = BaseIcon.SQUARE_POWER  # 侧边栏：关闭当前工程
+
+ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏：基础设置
+ICON_NAV_EXPERT_SETTINGS: BaseIcon = BaseIcon.GRADUATION_CAP  # 侧边栏：专家设置
+
+ICON_NAV_GLOSSARY: BaseIcon = BaseIcon.BOOK_A  # 侧边栏：术语表
+ICON_NAV_TEXT_PRESERVE: BaseIcon = BaseIcon.SHIELD_CHECK  # 侧边栏：文本保护
+ICON_NAV_TEXT_REPLACEMENT: BaseIcon = BaseIcon.REPLACE_ALL  # 侧边栏：文本替换
+ICON_NAV_PRE_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_START  # 侧边栏：译前替换
+ICON_NAV_POST_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_END  # 侧边栏：译后替换
+
+ICON_NAV_CUSTOM_PROMPT: BaseIcon = BaseIcon.BOOK_OPEN_CHECK  # 侧边栏：自定义提示词入口
+ICON_NAV_CUSTOM_PROMPT_EN: BaseIcon = BaseIcon.PEN_TOOL  # 自定义提示词：英文页
+ICON_NAV_CUSTOM_PROMPT_ZH: BaseIcon = BaseIcon.PENCIL  # 自定义提示词：中文页
+
+ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
+ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
 
 
 class AppFluentWindow(FluentWindow, Base):
@@ -449,7 +478,7 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 主题切换按钮
         theme_navigation_button = NavigationPushButton(
-            FluentIcon.CONSTRACT, Localizer.get().app_theme_btn, False
+            ICON_NAV_THEME.qicon(), Localizer.get().app_theme_btn, False
         )
         self.navigationInterface.addWidget(
             routeKey="theme_navigation_button",
@@ -460,7 +489,7 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 语言切换按钮
         language_navigation_button = NavigationPushButton(
-            FluentIcon.LANGUAGE, Localizer.get().app_language_btn, False
+            ICON_NAV_LANGUAGE.qicon(), Localizer.get().app_language_btn, False
         )
         self.navigationInterface.addWidget(
             routeKey="language_navigation_button",
@@ -472,7 +501,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 应用设置按钮
         self.addSubInterface(
             AppSettingsPage("app_settings_page", self),
-            FluentIcon.SETTING,
+            ICON_NAV_APP_SETTINGS.qicon(),
             Localizer.get().app_settings_page,
             NavigationItemPosition.BOTTOM,
         )
@@ -500,7 +529,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 模型管理
         self.addSubInterface(
             ModelPage("model_page", self),
-            FluentIcon.IOT,
+            ICON_NAV_MODEL.qicon(),
             Localizer.get().app_model_page,
             NavigationItemPosition.SCROLL,
         )
@@ -511,7 +540,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.translation_page = TranslationPage("translation_page", self)
         self.addSubInterface(
             self.translation_page,
-            FluentIcon.TRANSPARENT,
+            ICON_NAV_TRANSLATION.qicon(),
             Localizer.get().app_translation_page,
             NavigationItemPosition.SCROLL,
         )
@@ -520,14 +549,16 @@ class AppFluentWindow(FluentWindow, Base):
         self.proofreading_page = ProofreadingPage("proofreading_page", self)
         self.addSubInterface(
             self.proofreading_page,
-            FluentIcon.CHECKBOX,
+            ICON_NAV_PROOFREADING.qicon(),
             Localizer.get().app_proofreading_page,
             NavigationItemPosition.SCROLL,
         )
 
         # 关闭项目按钮
         close_project_button = NavigationPushButton(
-            FluentIcon.POWER_BUTTON, Localizer.get().app_close_project_btn, False
+            ICON_NAV_CLOSE_PROJECT.qicon(),
+            Localizer.get().app_close_project_btn,
+            False,
         )
         self.navigationInterface.addWidget(
             routeKey="close_project_button",
@@ -541,7 +572,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 基础设置
         self.addSubInterface(
             BasicSettingsPage("basic_settings_page", self),
-            FluentIcon.ZOOM,
+            ICON_NAV_BASIC_SETTINGS.qicon(),
             Localizer.get().basic_settings,
             NavigationItemPosition.SCROLL,
         )
@@ -550,7 +581,7 @@ class AppFluentWindow(FluentWindow, Base):
         if LogManager.get().is_expert_mode():
             self.addSubInterface(
                 ExpertSettingsPage("expert_settings_page", self),
-                FluentIcon.EDUCATION,
+                ICON_NAV_EXPERT_SETTINGS.qicon(),
                 Localizer.get().app_expert_settings_page,
                 NavigationItemPosition.SCROLL,
             )
@@ -561,7 +592,7 @@ class AppFluentWindow(FluentWindow, Base):
         self.glossary_page = GlossaryPage("glossary_page", self)
         self.addSubInterface(
             interface=self.glossary_page,
-            icon=FluentIcon.DICTIONARY,
+            icon=ICON_NAV_GLOSSARY.qicon(),
             text=Localizer.get().app_glossary_page,
             position=NavigationItemPosition.SCROLL,
         )
@@ -570,7 +601,7 @@ class AppFluentWindow(FluentWindow, Base):
             # 文本保护
             self.addSubInterface(
                 interface=TextPreservePage("text_preserve_page", self),
-                icon=FluentIcon.VPN,
+                icon=ICON_NAV_TEXT_PRESERVE.qicon(),
                 text=Localizer.get().app_text_preserve_page,
                 position=NavigationItemPosition.SCROLL,
             )
@@ -579,7 +610,7 @@ class AppFluentWindow(FluentWindow, Base):
             self.text_replacement_page = EmptyPage("replacement_page", self)
             self.addSubInterface(
                 interface=self.text_replacement_page,
-                icon=FluentIcon.CLIPPING_TOOL,
+                icon=ICON_NAV_TEXT_REPLACEMENT.qicon(),
                 text=Localizer.get().app_text_replacement_page,
                 position=NavigationItemPosition.SCROLL,
             )
@@ -589,7 +620,7 @@ class AppFluentWindow(FluentWindow, Base):
                     self,
                     "pre_translation_replacement",
                 ),
-                icon=FluentIcon.SEARCH,
+                icon=ICON_NAV_PRE_REPLACEMENT.qicon(),
                 text=Localizer.get().app_pre_translation_replacement_page,
                 position=NavigationItemPosition.SCROLL,
                 parent=self.text_replacement_page,
@@ -600,7 +631,7 @@ class AppFluentWindow(FluentWindow, Base):
                     self,
                     "post_translation_replacement",
                 ),
-                icon=FluentIcon.SEARCH_MIRROR,
+                icon=ICON_NAV_POST_REPLACEMENT.qicon(),
                 text=Localizer.get().app_post_translation_replacement_page,
                 position=NavigationItemPosition.SCROLL,
                 parent=self.text_replacement_page,
@@ -610,33 +641,33 @@ class AppFluentWindow(FluentWindow, Base):
         self.custom_prompt_page = EmptyPage("custom_prompt_page", self)
         self.addSubInterface(
             self.custom_prompt_page,
-            FluentIcon.LABEL,
+            ICON_NAV_CUSTOM_PROMPT.qicon(),
             Localizer.get().app_custom_prompt_navigation_item,
             NavigationItemPosition.SCROLL,
         )
         if Localizer.get_app_language() == BaseLanguage.Enum.EN:
             self.addSubInterface(
                 CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                FluentIcon.PENCIL_INK,
+                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
                 Localizer.get().app_custom_prompt_en_page,
                 parent=self.custom_prompt_page,
             )
             self.addSubInterface(
                 CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                FluentIcon.PENCIL_INK,
+                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
                 Localizer.get().app_custom_prompt_zh_page,
                 parent=self.custom_prompt_page,
             )
         else:
             self.addSubInterface(
                 CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                FluentIcon.PENCIL_INK,
+                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
                 Localizer.get().app_custom_prompt_zh_page,
                 parent=self.custom_prompt_page,
             )
             self.addSubInterface(
                 CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                FluentIcon.PENCIL_INK,
+                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
                 Localizer.get().app_custom_prompt_en_page,
                 parent=self.custom_prompt_page,
             )
@@ -646,7 +677,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 实验室
         self.addSubInterface(
             interface=LaboratoryPage("laboratory_page", self),
-            icon=FluentIcon.FINGERPRINT,
+            icon=ICON_NAV_LABORATORY.qicon(),
             text=Localizer.get().app_laboratory_page,
             position=NavigationItemPosition.SCROLL,
         )
@@ -654,7 +685,7 @@ class AppFluentWindow(FluentWindow, Base):
         # 百宝箱
         self.addSubInterface(
             interface=ToolBoxPage("tool_box_page", self),
-            icon=FluentIcon.TILES,
+            icon=ICON_NAV_TOOLBOX.qicon(),
             text=Localizer.get().app_treasure_chest_page,
             position=NavigationItemPosition.SCROLL,
         )

@@ -12,13 +12,13 @@ from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -27,6 +27,16 @@ from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_ROW_DELETE: BaseIcon = BaseIcon.TRASH_2  # 表格右键：删除选中行
+ICON_ACTION_EXTRACT: BaseIcon = BaseIcon.FINGERPRINT_PATTERN  # 命令栏：提取姓名字段
+ICON_ACTION_TRANSLATE: BaseIcon = BaseIcon.LANGUAGES  # 命令栏：翻译提取结果
+ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
+ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置/清空
+ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
 
 
 class NameFieldExtractionPage(QWidget, Base):
@@ -100,7 +110,7 @@ class NameFieldExtractionPage(QWidget, Base):
             menu = RoundMenu("", self.table)
             menu.addAction(
                 Action(
-                    FluentIcon.DELETE,
+                    ICON_ROW_DELETE,
                     Localizer.get().quality_delete_row,
                     triggered=delete_row,
                 )
@@ -214,7 +224,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.FINGERPRINT,
+                ICON_ACTION_EXTRACT,
                 Localizer.get().name_field_extraction_action_extract,
                 parent,
                 triggered=triggered,
@@ -228,7 +238,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.MICROPHONE,
+                ICON_ACTION_TRANSLATE,
                 Localizer.get().name_field_extraction_action_translate,
                 parent,
                 triggered=triggered,
@@ -243,7 +253,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.SEARCH,
+                ICON_ACTION_SEARCH,
                 Localizer.get().search,
                 parent,
                 triggered=triggered,
@@ -257,7 +267,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.ERASE_TOOL,
+                ICON_ACTION_RESET,
                 Localizer.get().reset,
                 parent,
                 triggered=triggered,
@@ -271,7 +281,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
         parent.add_action(
             Action(
-                FluentIcon.DOWNLOAD,
+                ICON_ACTION_IMPORT,
                 Localizer.get().name_field_extraction_action_import,
                 parent,
                 triggered=triggered,

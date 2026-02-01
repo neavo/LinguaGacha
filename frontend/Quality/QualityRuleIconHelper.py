@@ -6,15 +6,16 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPixmap
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import TableItemDelegate
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
+from base.BaseIcon import BaseIcon
+
 
 @dataclasses.dataclass(frozen=True)
 class RuleIconSpec:
-    icon: FluentIcon
+    icon: BaseIcon
     enabled: bool
 
 
@@ -168,7 +169,7 @@ class QualityRuleIconRenderer:
         return pixmap
 
     def build_single_icon_pixmap(
-        self, icon: FluentIcon, enabled: bool, is_dark: bool, dpr: float
+        self, icon: BaseIcon, enabled: bool, is_dark: bool, dpr: float
     ) -> QPixmap:
         size_px = max(1, int(round(self.icon_size * dpr)))
         pixmap = QPixmap(size_px, size_px)

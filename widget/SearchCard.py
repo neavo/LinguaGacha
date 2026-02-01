@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import QTableWidget
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
@@ -17,8 +16,16 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import TransparentToolButton
 from qfluentwidgets import VerticalSeparator
 
+from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomSearchLineEdit
+
+
+# ==================== 图标常量 ====================
+
+ICON_BACK: BaseIcon = BaseIcon.CIRCLE_ARROW_LEFT  # 搜索栏：返回
+ICON_PREV_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_UP  # 搜索栏：上一个匹配
+ICON_NEXT_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_DOWN  # 搜索栏：下一个匹配
 
 
 class SearchCard(CardWidget):
@@ -56,7 +63,7 @@ class SearchCard(CardWidget):
 
         # 1. 返回按钮
         self.back = TransparentPushButton(self)
-        self.back.setIcon(FluentIcon.EMBED)
+        self.back.setIcon(ICON_BACK)
         self.back.setText(Localizer.get().back)
         self.root.addWidget(self.back)
 
@@ -96,13 +103,13 @@ class SearchCard(CardWidget):
 
         # 5. 导航按钮
         self.prev = TransparentToolButton(self)
-        self.prev.setIcon(FluentIcon.UP)
+        self.prev.setIcon(ICON_PREV_MATCH)
         self.prev.setToolTip(Localizer.get().search_prev_match)
         self.prev.installEventFilter(ToolTipFilter(self.prev, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.prev)
 
         self.next = TransparentToolButton(self)
-        self.next.setIcon(FluentIcon.DOWN)
+        self.next.setIcon(ICON_NEXT_MATCH)
         self.next.setToolTip(Localizer.get().search_next_match)
         self.next.installEventFilter(ToolTipFilter(self.next, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.next)
