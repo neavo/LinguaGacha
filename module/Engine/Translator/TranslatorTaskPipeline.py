@@ -27,6 +27,11 @@ class TranslatorTaskPipeline:
     的方法复杂度。
     """
 
+    # 高优先级队列容量上限（防止极端情况下内存占用过大）
+    HIGH_QUEUE_MAX: int = 16384
+    # 高优先级队列相对于 buffer_size 的倍率（失败任务扇出需要额外余量）
+    HIGH_QUEUE_MULTIPLIER: int = 8
+
     def __init__(
         self,
         *,
@@ -46,7 +51,13 @@ class TranslatorTaskPipeline:
 
         self.buffer_size = self.translator.get_task_buffer_size(max_workers)
         self.normal_queue: asyncio.Queue = asyncio.Queue(maxsize=self.buffer_size)
-        self.high_queue: asyncio.Queue = asyncio.Queue(maxsize=self.buffer_size)
+        # 失败任务会扇出出更多重试/拆分任务；high_queue 需要更大的余量，否则极端失败场景下
+        # committer 可能因队列满而阻塞，进而导致工作协程卡在 commit_queue.put 上。
+        high_queue_size = min(
+            __class__.HIGH_QUEUE_MAX,
+            self.buffer_size * __class__.HIGH_QUEUE_MULTIPLIER,
+        )
+        self.high_queue: asyncio.Queue = asyncio.Queue(maxsize=high_queue_size)
         self.commit_queue: asyncio.Queue = asyncio.Queue(maxsize=self.buffer_size)
         self.producer_done = asyncio.Event()
 

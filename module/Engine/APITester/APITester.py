@@ -5,6 +5,7 @@ import threading
 from base.Base import Base
 from module.Config import Config
 from module.Engine.Engine import Engine
+from module.Engine.TaskRequester import RequestHardTimeoutError
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 
@@ -137,7 +138,24 @@ class APITester(Base):
 
                     if exception:
                         failure.append(key)
-                        self.warning(Localizer.get().log_api_test_fail)
+                        reason = Localizer.get().log_unknown_reason
+                        if isinstance(exception, RequestHardTimeoutError):
+                            reason = Localizer.get().api_tester_timeout.replace(
+                                "{SECONDS}", str(config.request_timeout)
+                            )
+                        else:
+                            exception_text = str(exception).strip()
+                            reason = (
+                                f"{exception.__class__.__name__}: {exception_text}"
+                                if exception_text
+                                else exception.__class__.__name__
+                            )
+
+                        self.warning(
+                            Localizer.get().log_api_test_fail.replace(
+                                "{REASON}", reason
+                            )
+                        )
                     elif response_think == "":
                         success.append(key)
                         self.info(

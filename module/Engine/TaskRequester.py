@@ -1,26 +1,14 @@
-"""
-任务请求器模块 - 负责向各种 LLM API 发送流式请求
-
-支持的 API 格式:
-- OpenAI / OpenAI Compatible (GLM, Kimi, Doubao, DeepSeek 等)
-- Google Gemini (含思考模式)
-- Anthropic Claude (含扩展思考)
-- SakuraLLM
-
-主要功能:
-- 流式请求与响应处理
-- 停止信号快速响应
-- 输出退化检测与提前中断
-- 客户端缓存与生命周期管理
-"""
-
 import asyncio
+import dataclasses
 import inspect
 import json
 import re
 import threading
+import time
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
+from typing import AsyncIterator
 from typing import Callable
 
 import anthropic
@@ -33,22 +21,34 @@ from base.Base import Base
 from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
+from module.Engine.TaskRequesterErrors import RequestCancelledError
+from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequesterStream import StreamConsumer
+from module.Engine.TaskRequesterStream import StreamControl
+from module.Engine.TaskRequesterStream import StreamSession
+from module.Engine.TaskRequesterStream import StreamStrategy
+from module.Engine.TaskRequesterStream import maybe_await_value
+from module.Engine.TaskRequesterStream import safe_close_async_resource
 
 AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
 
-
-class RequestCancelledError(Exception):
-    """用户触发停止导致的主动取消（不应记为翻译错误）。"""
-
-
-class StreamDegradationError(Exception):
-    """流式输出检测到明显退化/重复，提前中断。"""
+__all__ = [
+    "RequestCancelledError",
+    "RequestHardTimeoutError",
+    "StreamDegradationError",
+    "TaskRequester",
+]
 
 
 class TaskRequester(Base):
-    """
-    任务请求器 - 负责向各种 LLM API 发送请求
-    直接使用新的 Model 数据结构，不兼容旧的 platform 格式
+    """任务请求器 - 负责向各种 LLM API 发送流式请求。
+
+    设计要点：
+    - 流式生命周期（轮询消费、停止信号、硬超时、取消/关闭顺序）在 `TaskRequesterStream` 里统一实现。
+    - 协议差异（OpenAI/Anthropic/Google 的 chunk 结构与最终结果提取）在本文件内用 Strategy 做隔离。
+
+    这么拆的原因：让 stop/timeout/close 行为有唯一实现入口，减少补丁式分支带来的回归风险。
     """
 
     # 密钥索引
@@ -100,6 +100,10 @@ class TaskRequester(Base):
     # 流式控制
     STREAM_POLL_INTERVAL_S: float = 0.15
     STREAM_DEGRADATION_TAIL_CHARS: int = 2048
+
+    # SDK 超时（request_timeout 用于请求级硬超时，SDK 超时仅作底层兜底）
+    SDK_DEFAULT_TIMEOUT_S: int = 300
+    SDK_TIMEOUT_BUFFER_S: int = 5
 
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
@@ -177,91 +181,6 @@ class TaskRequester(Base):
         """等待可能的协程对象。"""
         if inspect.isawaitable(result):
             await result
-
-    @staticmethod
-    def safe_close_async_resource(resource: Any) -> Any:
-        """尽力关闭异步流/生成器资源。"""
-        close = getattr(resource, "close", None)
-        if callable(close):
-            result = close()
-            if inspect.isawaitable(result):
-                return asyncio.ensure_future(result)
-            return None
-
-        aclose = getattr(resource, "aclose", None)
-        if callable(aclose):
-            result = aclose()
-            if inspect.isawaitable(result):
-                return asyncio.ensure_future(result)
-            return None
-
-        return None
-
-    @classmethod
-    async def consume_async_iterator_polling(
-        cls,
-        iterator: Any,
-        *,
-        stop_checker: Callable[[], bool] | None,
-        poll_interval_s: float,
-        on_item: Callable[[Any], None],
-        on_stop: Callable[[], Any] | None = None,
-    ) -> None:
-        """消费异步迭代器，同时保持对停止信号的快速响应。
-
-        原因: `async for` 会阻塞等待下一个 chunk；轮询机制保持停止响应性。
-        """
-        if poll_interval_s <= 0:
-            poll_interval_s = 0.1
-
-        closed = False
-
-        async def close_once() -> None:
-            nonlocal closed
-            if closed or on_stop is None:
-                return
-            closed = True
-            try:
-                await cls.maybe_await(on_stop())
-            except Exception:
-                # 关闭阶段尽力而为
-                return
-
-        while True:
-            anext_task = asyncio.create_task(iterator.__anext__())
-            try:
-                while True:
-                    # asyncio.wait() -> (done, pending)，这里仅关心 done。
-                    done = (await asyncio.wait({anext_task}, timeout=poll_interval_s))[
-                        0
-                    ]
-                    if anext_task in done:
-                        item = await anext_task
-                        on_item(item)
-                        break
-
-                    if stop_checker is not None and stop_checker():
-                        await close_once()
-                        raise RequestCancelledError("stop requested")
-            except StopAsyncIteration:
-                return
-            except RequestCancelledError:
-                if not anext_task.done():
-                    anext_task.cancel()
-                    try:
-                        await anext_task
-                    except asyncio.CancelledError:
-                        pass
-                raise
-            except Exception:
-                await close_once()
-                if not anext_task.done():
-                    anext_task.cancel()
-                    try:
-                        await anext_task
-                    except asyncio.CancelledError:
-                        pass
-                raise
 
     @classmethod
     async def aclose_client(cls, client: Any) -> None:
@@ -424,6 +343,12 @@ class TaskRequester(Base):
         """仅 OpenAI 官方端点优先使用 max_completion_tokens。"""
         return str(self.api_url).startswith("https://api.openai.com")
 
+    def get_sdk_timeout_seconds(self) -> int:
+        hard_timeout_s = int(self.config.request_timeout)
+        return max(
+            self.SDK_DEFAULT_TIMEOUT_S, hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
+        )
+
     async def request_async(
         self,
         messages: list[dict],
@@ -513,160 +438,209 @@ class TaskRequester(Base):
 
         return match.group(1) != match.group(2)
 
-    async def request_openai_chat_stream(
-        self,
-        client: openai.AsyncOpenAI,
-        request_args: dict,
-        *,
-        stop_checker: Callable[[], bool] | None,
-    ) -> tuple[str, str, int, int]:
-        result_tail = ""
+    @dataclasses.dataclass
+    class OpenAIStreamState:
+        result_tail: str = ""
 
-        def on_event(event: Any) -> None:
-            nonlocal result_tail
+    class OpenAIStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
 
-            event_type = getattr(event, "type", "")
+        def create_state(self) -> "TaskRequester.OpenAIStreamState":
+            return TaskRequester.OpenAIStreamState()
+
+        @asynccontextmanager
+        async def build_stream_session(
+            self,
+            client: openai.AsyncOpenAI,
+            request_args: dict[str, Any],
+        ) -> AsyncIterator[StreamSession]:
+            async with client.chat.completions.stream(**request_args) as stream:
+                iterator: Any = (
+                    stream.__aiter__() if hasattr(stream, "__aiter__") else stream
+                )
+
+                def close() -> Any:
+                    return safe_close_async_resource(stream)
+
+                yield StreamSession(
+                    iterator=iterator,
+                    close=close,
+                    finalize=stream.get_final_completion,
+                )
+
+        def handle_item(
+            self, state: "TaskRequester.OpenAIStreamState", item: Any
+        ) -> None:
+            event_type = getattr(item, "type", "")
             if event_type != "content.delta":
                 return
 
-            text = getattr(event, "content", None)
+            text = getattr(item, "content", None)
             if not isinstance(text, str) or not text:
                 return
 
-            result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-            if self.has_degradation_in_tail(result_tail):
+            state.result_tail = (state.result_tail + text)[
+                -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
+            ]
+            if self.requester.has_degradation_in_tail(state.result_tail):
                 raise StreamDegradationError("degradation detected")
 
-        async with client.chat.completions.stream(**request_args) as stream:
-            iterator = stream
-            if hasattr(stream, "__aiter__"):
-                iterator = stream.__aiter__()
+        async def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.OpenAIStreamState",
+        ) -> tuple[str, str, int, int]:
+            if session.finalize is None:
+                raise RuntimeError("OpenAI stream missing finalize")
 
-            def on_stop() -> Any:
-                return __class__.safe_close_async_resource(stream)
-
-            await __class__.consume_async_iterator_polling(
-                iterator,
-                stop_checker=stop_checker,
-                poll_interval_s=self.STREAM_POLL_INTERVAL_S,
-                on_item=on_event,
-                on_stop=on_stop,
+            completion: Any = await maybe_await_value(session.finalize())
+            message = completion.choices[0].message
+            response_think, response_result = (
+                self.requester.extract_openai_think_and_result(message)
             )
 
-            completion = await stream.get_final_completion()
-
-        message = completion.choices[0].message
-        response_think, response_result = self.extract_openai_think_and_result(message)
-
-        # 兜底：若流式事件未覆盖到全部输出，仍在最终结果尾部做一次检测。
-        if self.has_degradation_in_tail(
-            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-        ):
-            raise StreamDegradationError("degradation detected")
-
-        usage: Any = getattr(completion, "usage", None)
-        try:
-            input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-        except Exception:
-            output_tokens = 0
-
-        return response_think, response_result, input_tokens, output_tokens
-
-    async def request_anthropic_message_stream(
-        self,
-        client: anthropic.AsyncAnthropic,
-        request_args: dict,
-        *,
-        stop_checker: Callable[[], bool] | None,
-    ) -> tuple[str, str, int, int]:
-        result_tail = ""
-
-        def on_text(text: Any) -> None:
-            nonlocal result_tail
-            if not isinstance(text, str) or not text:
-                return
-
-            result_tail = (result_tail + text)[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-            if self.has_degradation_in_tail(result_tail):
+            # 兜底：若流式事件未覆盖到全部输出，仍在最终结果尾部做一次检测。
+            if self.requester.has_degradation_in_tail(
+                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            ):
                 raise StreamDegradationError("degradation detected")
 
-        async with client.messages.stream(**request_args) as stream:
-            iterator = stream.text_stream
+            usage: Any = getattr(completion, "usage", None)
+            try:
+                input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            except Exception:
+                input_tokens = 0
+
+            try:
+                output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+            except Exception:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    @dataclasses.dataclass
+    class AnthropicStreamState:
+        result_tail: str = ""
+
+    class AnthropicStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
+
+        def create_state(self) -> "TaskRequester.AnthropicStreamState":
+            return TaskRequester.AnthropicStreamState()
+
+        @asynccontextmanager
+        async def build_stream_session(
+            self,
+            client: anthropic.AsyncAnthropic,
+            request_args: dict[str, Any],
+        ) -> AsyncIterator[StreamSession]:
+            async with client.messages.stream(**request_args) as stream:
+                iterator: Any = stream.text_stream
+                if hasattr(iterator, "__aiter__"):
+                    iterator = iterator.__aiter__()
+
+                yield StreamSession(
+                    iterator=iterator,
+                    close=stream.close,
+                    finalize=stream.get_final_message,
+                )
+
+        def handle_item(
+            self, state: "TaskRequester.AnthropicStreamState", item: Any
+        ) -> None:
+            if not isinstance(item, str) or not item:
+                return
+
+            state.result_tail = (state.result_tail + item)[
+                -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
+            ]
+            if self.requester.has_degradation_in_tail(state.result_tail):
+                raise StreamDegradationError("degradation detected")
+
+        async def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.AnthropicStreamState",
+        ) -> tuple[str, str, int, int]:
+            if session.finalize is None:
+                raise RuntimeError("Anthropic stream missing finalize")
+
+            message: Any = await maybe_await_value(session.finalize())
+
+            text_messages: list[str] = []
+            think_messages: list[str] = []
+            for msg in message.content:
+                msg_any: Any = msg
+
+                text = getattr(msg_any, "text", None)
+                if isinstance(text, str) and text:
+                    text_messages.append(text)
+
+                thinking = getattr(msg_any, "thinking", None)
+                if isinstance(thinking, str) and thinking:
+                    think_messages.append(thinking)
+
+            response_result = text_messages[-1].strip() if text_messages else ""
+            response_think = (
+                self.requester.RE_LINE_BREAK.sub("\n", think_messages[-1].strip())
+                if think_messages
+                else ""
+            )
+
+            if self.requester.has_degradation_in_tail(
+                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            ):
+                raise StreamDegradationError("degradation detected")
+
+            usage: Any = getattr(message, "usage", None)
+            try:
+                input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            except Exception:
+                input_tokens = 0
+
+            try:
+                output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+            except Exception:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    @dataclasses.dataclass
+    class GoogleStreamState:
+        think_parts: list[str] = dataclasses.field(default_factory=list)
+        result_parts: list[str] = dataclasses.field(default_factory=list)
+        result_tail: str = ""
+        last_usage: Any = None
+
+    class GoogleStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
+
+        def create_state(self) -> "TaskRequester.GoogleStreamState":
+            return TaskRequester.GoogleStreamState()
+
+        @asynccontextmanager
+        async def build_stream_session(
+            self,
+            client: genai.Client,
+            request_args: dict[str, Any],
+        ) -> AsyncIterator[StreamSession]:
+            generator = await client.aio.models.generate_content_stream(**request_args)
+            iterator: Any = generator
             if hasattr(iterator, "__aiter__"):
                 iterator = iterator.__aiter__()
 
-            await __class__.consume_async_iterator_polling(
-                iterator,
-                stop_checker=stop_checker,
-                poll_interval_s=self.STREAM_POLL_INTERVAL_S,
-                on_item=on_text,
-                on_stop=stream.close,
-            )
+            def close() -> Any:
+                return safe_close_async_resource(generator)
 
-            message = await stream.get_final_message()
+            yield StreamSession(iterator=iterator, close=close)
 
-        text_messages: list[str] = []
-        think_messages: list[str] = []
-        for msg in message.content:
-            msg_any: Any = msg
-
-            text = getattr(msg_any, "text", None)
-            if isinstance(text, str) and text:
-                text_messages.append(text)
-
-            thinking = getattr(msg_any, "thinking", None)
-            if isinstance(thinking, str) and thinking:
-                think_messages.append(thinking)
-
-        response_result = text_messages[-1].strip() if text_messages else ""
-        response_think = (
-            self.RE_LINE_BREAK.sub("\n", think_messages[-1].strip())
-            if think_messages
-            else ""
-        )
-
-        if self.has_degradation_in_tail(
-            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-        ):
-            raise StreamDegradationError("degradation detected")
-
-        usage: Any = getattr(message, "usage", None)
-        try:
-            input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-        except Exception:
-            output_tokens = 0
-
-        return response_think, response_result, input_tokens, output_tokens
-
-    async def request_google_content_stream(
-        self,
-        client: genai.Client,
-        request_args: dict,
-        *,
-        stop_checker: Callable[[], bool] | None,
-    ) -> tuple[str, str, int, int]:
-        # 分别累计思考内容和响应内容
-        think_parts: list[str] = []
-        result_parts: list[str] = []
-        result_tail = ""
-        last_usage: Any = None
-
-        def on_chunk(chunk: Any) -> None:
-            nonlocal result_tail
-            nonlocal last_usage
-
-            # 从 chunk 中提取 candidates[].content.parts
-            candidates = getattr(chunk, "candidates", None)
+        def handle_item(
+            self, state: "TaskRequester.GoogleStreamState", item: Any
+        ) -> None:
+            candidates = getattr(item, "candidates", None)
             if candidates and len(candidates) > 0:
                 content = getattr(candidates[0], "content", None)
                 if content:
@@ -677,60 +651,76 @@ class TaskRequester(Base):
                             if not isinstance(text, str) or not text:
                                 continue
 
-                            # 根据 part.thought 属性区分思考内容和响应内容
                             is_thought = getattr(part, "thought", False)
                             if is_thought:
-                                think_parts.append(text)
+                                state.think_parts.append(text)
                             else:
-                                result_parts.append(text)
-                                # 仅对响应内容检测退化
-                                result_tail = (result_tail + text)[
-                                    -self.STREAM_DEGRADATION_TAIL_CHARS :
+                                state.result_parts.append(text)
+                                state.result_tail = (state.result_tail + text)[
+                                    -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
                                 ]
-                                if self.has_degradation_in_tail(result_tail):
+                                if self.requester.has_degradation_in_tail(
+                                    state.result_tail
+                                ):
                                     raise StreamDegradationError("degradation detected")
 
-            usage_metadata = getattr(chunk, "usage_metadata", None)
+            usage_metadata = getattr(item, "usage_metadata", None)
             if usage_metadata is not None:
-                last_usage = usage_metadata
+                state.last_usage = usage_metadata
 
-        generator = await client.aio.models.generate_content_stream(**request_args)
-        iterator = generator
-        if hasattr(generator, "__aiter__"):
-            iterator = generator.__aiter__()
+        async def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.GoogleStreamState",
+        ) -> tuple[str, str, int, int]:
+            response_result = "".join(state.result_parts).strip()
+            response_think = self.requester.RE_LINE_BREAK.sub(
+                "\n", "".join(state.think_parts).strip()
+            )
 
-        def on_stop() -> Any:
-            return __class__.safe_close_async_resource(generator)
+            if self.requester.has_degradation_in_tail(
+                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            ):
+                raise StreamDegradationError("degradation detected")
 
-        await __class__.consume_async_iterator_polling(
-            iterator,
+            last_usage: Any = state.last_usage
+            try:
+                input_tokens = int(last_usage.prompt_token_count)
+            except Exception:
+                input_tokens = 0
+
+            try:
+                total_token_count = int(last_usage.total_token_count)
+                prompt_token_count = int(last_usage.prompt_token_count)
+                output_tokens = total_token_count - prompt_token_count
+            except Exception:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    async def request_stream_with_strategy(
+        self,
+        client: Any,
+        request_args: dict[str, Any],
+        strategy: StreamStrategy,
+        *,
+        stop_checker: Callable[[], bool] | None,
+    ) -> tuple[str, str, int, int]:
+        deadline_monotonic = time.monotonic() + self.config.request_timeout
+        control = StreamControl.create(
             stop_checker=stop_checker,
+            deadline_monotonic=deadline_monotonic,
             poll_interval_s=self.STREAM_POLL_INTERVAL_S,
-            on_item=on_chunk,
-            on_stop=on_stop,
         )
+        state = strategy.create_state()
 
-        response_result = "".join(result_parts).strip()
-        response_think = __class__.RE_LINE_BREAK.sub("\n", "".join(think_parts).strip())
+        async with strategy.build_stream_session(client, request_args) as session:
 
-        if self.has_degradation_in_tail(
-            response_result[-self.STREAM_DEGRADATION_TAIL_CHARS :]
-        ):
-            raise StreamDegradationError("degradation detected")
+            def on_item(item: Any) -> None:
+                strategy.handle_item(state, item)
 
-        try:
-            input_tokens = int(last_usage.prompt_token_count)
-        except Exception:
-            input_tokens = 0
-
-        try:
-            total_token_count = int(last_usage.total_token_count)
-            prompt_token_count = int(last_usage.prompt_token_count)
-            output_tokens = total_token_count - prompt_token_count
-        except Exception:
-            output_tokens = 0
-
-        return response_think, response_result, input_tokens, output_tokens
+            await StreamConsumer.consume(session, control, on_item=on_item)
+            return await strategy.finalize(session, state)
 
     # ========== Sakura 请求 ==========
 
@@ -770,7 +760,7 @@ class TaskRequester(Base):
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    timeout=self.get_sdk_timeout_seconds(),
                 )
 
             (
@@ -778,9 +768,10 @@ class TaskRequester(Base):
                 response_result,
                 input_tokens,
                 output_tokens,
-            ) = await self.request_openai_chat_stream(
+            ) = await self.request_stream_with_strategy(
                 client,
                 self.generate_sakura_args(messages, args),
+                __class__.OpenAIStreamStrategy(self),
                 stop_checker=stop_checker,
             )
         except Exception as e:
@@ -869,7 +860,7 @@ class TaskRequester(Base):
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    timeout=self.get_sdk_timeout_seconds(),
                 )
 
             (
@@ -877,9 +868,10 @@ class TaskRequester(Base):
                 response_result,
                 input_tokens,
                 output_tokens,
-            ) = await self.request_openai_chat_stream(
+            ) = await self.request_stream_with_strategy(
                 client,
                 self.generate_openai_args(messages, args),
+                __class__.OpenAIStreamStrategy(self),
                 stop_checker=stop_checker,
             )
         except Exception as e:
@@ -1021,7 +1013,7 @@ class TaskRequester(Base):
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    timeout=self.get_sdk_timeout_seconds(),
                     extra_headers_tuple=extra_headers_tuple,
                 )
 
@@ -1030,9 +1022,10 @@ class TaskRequester(Base):
                 response_result,
                 input_tokens,
                 output_tokens,
-            ) = await self.request_google_content_stream(
+            ) = await self.request_stream_with_strategy(
                 client,
                 self.generate_google_args(messages, args),
+                __class__.GoogleStreamStrategy(self),
                 stop_checker=stop_checker,
             )
         except Exception as e:
@@ -1109,7 +1102,7 @@ class TaskRequester(Base):
                     url=__class__.get_url(self.api_url, self.api_format),
                     key=__class__.get_key(self.api_keys),
                     api_format=self.api_format,
-                    timeout=self.config.request_timeout,
+                    timeout=self.get_sdk_timeout_seconds(),
                 )
 
             (
@@ -1117,9 +1110,10 @@ class TaskRequester(Base):
                 response_result,
                 input_tokens,
                 output_tokens,
-            ) = await self.request_anthropic_message_stream(
+            ) = await self.request_stream_with_strategy(
                 client,
                 self.generate_anthropic_args(messages, args),
+                __class__.AnthropicStreamStrategy(self),
                 stop_checker=stop_checker,
             )
         except Exception as e:
