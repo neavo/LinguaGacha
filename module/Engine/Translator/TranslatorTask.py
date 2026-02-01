@@ -19,6 +19,7 @@ from module.Config import Config
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import RequestCancelledError
+from module.Engine.TaskRequester import RequestHardTimeoutError
 from module.Engine.TaskRequester import StreamDegradationError
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
@@ -328,6 +329,21 @@ class TranslatorTask(Base):
                 .replace("{RETRY}", str(self.retry_count))
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
+
+            if isinstance(exception, RequestHardTimeoutError):
+                self.warning(
+                    Localizer.get().translator_task_hard_timeout.replace(
+                        "{SECONDS}", str(self.config.request_timeout)
+                    )
+                    + "\n"
+                    + msg,
+                )
+                return {
+                    "row_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "glossaries": [],
+                }
 
             if isinstance(exception, StreamDegradationError):
                 prepared["stream_degraded"] = True

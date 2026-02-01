@@ -19,6 +19,7 @@ import inspect
 import json
 import re
 import threading
+import time
 from functools import lru_cache
 from typing import Any
 from typing import Callable
@@ -39,6 +40,10 @@ AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
 
 class RequestCancelledError(Exception):
     """用户触发停止导致的主动取消（不应记为翻译错误）。"""
+
+
+class RequestHardTimeoutError(Exception):
+    """请求级硬超时（按可恢复失败处理，不等同于用户停止）。"""
 
 
 class StreamDegradationError(Exception):
@@ -206,6 +211,7 @@ class TaskRequester(Base):
         poll_interval_s: float,
         on_item: Callable[[Any], None],
         on_stop: Callable[[], Any] | None = None,
+        deadline_monotonic: float | None = None,
     ) -> None:
         """消费异步迭代器，同时保持对停止信号的快速响应。
 
@@ -215,6 +221,12 @@ class TaskRequester(Base):
             poll_interval_s = 0.1
 
         closed = False
+
+        def is_deadline_reached() -> bool:
+            return (
+                deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic
+            )
 
         async def close_once() -> None:
             nonlocal closed
@@ -228,6 +240,14 @@ class TaskRequester(Base):
                 return
 
         while True:
+            # 在创建下一次 __anext__ 之前先检查，避免流式输出很密集时无法及时响应停止/超时。
+            if stop_checker is not None and stop_checker():
+                await close_once()
+                raise RequestCancelledError("stop requested")
+            if is_deadline_reached():
+                await close_once()
+                raise RequestHardTimeoutError("deadline exceeded")
+
             anext_task = asyncio.create_task(iterator.__anext__())
             try:
                 while True:
@@ -243,9 +263,13 @@ class TaskRequester(Base):
                     if stop_checker is not None and stop_checker():
                         await close_once()
                         raise RequestCancelledError("stop requested")
+
+                    if is_deadline_reached():
+                        await close_once()
+                        raise RequestHardTimeoutError("deadline exceeded")
             except StopAsyncIteration:
                 return
-            except RequestCancelledError:
+            except (RequestCancelledError, RequestHardTimeoutError):
                 if not anext_task.done():
                     anext_task.cancel()
                     try:
@@ -521,6 +545,7 @@ class TaskRequester(Base):
         stop_checker: Callable[[], bool] | None,
     ) -> tuple[str, str, int, int]:
         result_tail = ""
+        deadline_monotonic = time.monotonic() + self.config.request_timeout
 
         def on_event(event: Any) -> None:
             nonlocal result_tail
@@ -551,6 +576,7 @@ class TaskRequester(Base):
                 poll_interval_s=self.STREAM_POLL_INTERVAL_S,
                 on_item=on_event,
                 on_stop=on_stop,
+                deadline_monotonic=deadline_monotonic,
             )
 
             completion = await stream.get_final_completion()
@@ -585,6 +611,7 @@ class TaskRequester(Base):
         stop_checker: Callable[[], bool] | None,
     ) -> tuple[str, str, int, int]:
         result_tail = ""
+        deadline_monotonic = time.monotonic() + self.config.request_timeout
 
         def on_text(text: Any) -> None:
             nonlocal result_tail
@@ -606,6 +633,7 @@ class TaskRequester(Base):
                 poll_interval_s=self.STREAM_POLL_INTERVAL_S,
                 on_item=on_text,
                 on_stop=stream.close,
+                deadline_monotonic=deadline_monotonic,
             )
 
             message = await stream.get_final_message()
@@ -660,6 +688,7 @@ class TaskRequester(Base):
         result_parts: list[str] = []
         result_tail = ""
         last_usage: Any = None
+        deadline_monotonic = time.monotonic() + self.config.request_timeout
 
         def on_chunk(chunk: Any) -> None:
             nonlocal result_tail
@@ -708,6 +737,7 @@ class TaskRequester(Base):
             poll_interval_s=self.STREAM_POLL_INTERVAL_S,
             on_item=on_chunk,
             on_stop=on_stop,
+            deadline_monotonic=deadline_monotonic,
         )
 
         response_result = "".join(result_parts).strip()

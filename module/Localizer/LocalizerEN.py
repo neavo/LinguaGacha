@@ -137,6 +137,7 @@ class LocalizerEN(LocalizerZH):
     engine_task_scheduler_stop_with_untranslated: str = "Task scheduler stopped, but {COUNT} items remain untranslated (potentially lost due to exceptions)"
     translator_task_status_info: str = "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}"
     translator_task_force_accept_info: str = " | Forced Accept: {REASON}"
+    translator_task_hard_timeout: str = "Request timed out ({SECONDS}s). The task will be treated as failed and automatically split/retried …"
     translator_simple_log_prefix: str = "Simple Log"
     engine_api_name: str = "API Name"
     engine_api_model: str = "API Model"
