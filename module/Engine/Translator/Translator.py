@@ -124,113 +124,145 @@ class Translator(Base):
 
     # 翻译重置事件
     def translation_reset(self, event: Base.Event, data: dict) -> None:
+        dm = DataManager.get()
+        if not dm.is_loaded():
+            return
+
+        # 先给用户即时反馈：重置可能非常耗时（尤其是强制重解析资产时）
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().translation_page_toast_resetting,
+                "indeterminate": True,
+            },
+        )
+
         def task() -> None:
-            dm = DataManager.get()
-            if not dm.is_loaded():
-                return
+            try:
+                # 1. 重新解析资产以获取初始状态的条目
+                # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
+                items = dm.get_items_for_translation(
+                    self.config, Base.TranslationMode.RESET
+                )
 
-            # 1. 重新解析资产以获取初始状态的条目
-            # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
-            items = dm.get_items_for_translation(
-                self.config, Base.TranslationMode.RESET
-            )
+                # 2. 清空并重新写入条目到数据库
+                dm.replace_all_items(items)
 
-            # 2. 清空并重新写入条目到数据库
-            dm.replace_all_items(items)
+                # 3. 清除元数据中的进度信息
+                dm.set_translation_extras({})
 
-            # 3. 清除元数据中的进度信息
-            dm.set_translation_extras({})
+                # 4. 设置项目状态为 NONE
+                dm.set_project_status(Base.ProjectStatus.NONE)
 
-            # 4. 设置项目状态为 NONE
-            dm.set_project_status(Base.ProjectStatus.NONE)
+                # 5. 更新本地缓存
+                self.extras = dm.get_translation_extras()
 
-            # 5. 更新本地缓存
-            self.extras = dm.get_translation_extras()
-
-            # 触发状态检查以同步 UI
-            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_reset,
-                },
-            )
+                # 触发状态检查以同步 UI
+                self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            except Exception as e:
+                self.error(f"{Localizer.get().task_failed}", e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+            finally:
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
         threading.Thread(target=task).start()
 
     def translation_reset_failed(self, event: Base.Event, data: dict) -> None:
-        def task() -> None:
-            if Engine.get().get_status() != Base.TaskStatus.IDLE:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                return
-            dm = DataManager.get()
-            if not dm.is_loaded():
-                return
-
-            items = dm.get_all_items()
-            if not items:
-                return
-
-            updated = False
-            for item in items:
-                if item.get_status() == Base.ProjectStatus.ERROR:
-                    item.set_dst("")
-                    item.set_status(Base.ProjectStatus.NONE)
-                    item.set_retry_count(0)
-                    updated = True
-
-            if updated:
-                dm.replace_all_items(items)
-
-            processed_line = sum(
-                1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
-            )
-            error_line = sum(
-                1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
-            )
-            total_line = sum(
-                1
-                for item in items
-                if item.get_status()
-                in (
-                    Base.ProjectStatus.NONE,
-                    Base.ProjectStatus.PROCESSED,
-                    Base.ProjectStatus.ERROR,
-                )
-            )
-
-            extras = dm.get_translation_extras()
-            if not isinstance(extras, dict):
-                extras = {}
-            extras["processed_line"] = processed_line
-            extras["error_line"] = error_line
-            extras["line"] = processed_line + error_line
-            extras["total_line"] = total_line
-            dm.set_translation_extras(extras)
-
-            project_status = (
-                Base.ProjectStatus.PROCESSING
-                if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
-                else Base.ProjectStatus.PROCESSED
-            )
-            dm.set_project_status(project_status)
-            self.extras = extras
-
-            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
             self.emit(
                 Base.Event.TOAST,
                 {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_reset,
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
                 },
             )
+            return
+
+        dm = DataManager.get()
+        if not dm.is_loaded():
+            return
+
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().translation_page_toast_resetting,
+                "indeterminate": True,
+            },
+        )
+
+        def task() -> None:
+            try:
+                items = dm.get_all_items()
+                if not items:
+                    return
+
+                updated = False
+                for item in items:
+                    if item.get_status() == Base.ProjectStatus.ERROR:
+                        item.set_dst("")
+                        item.set_status(Base.ProjectStatus.NONE)
+                        item.set_retry_count(0)
+                        updated = True
+
+                if updated:
+                    dm.replace_all_items(items)
+
+                processed_line = sum(
+                    1
+                    for item in items
+                    if item.get_status() == Base.ProjectStatus.PROCESSED
+                )
+                error_line = sum(
+                    1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
+                )
+                total_line = sum(
+                    1
+                    for item in items
+                    if item.get_status()
+                    in (
+                        Base.ProjectStatus.NONE,
+                        Base.ProjectStatus.PROCESSED,
+                        Base.ProjectStatus.ERROR,
+                    )
+                )
+
+                extras = dm.get_translation_extras()
+                if not isinstance(extras, dict):
+                    extras = {}
+                extras["processed_line"] = processed_line
+                extras["error_line"] = error_line
+                extras["line"] = processed_line + error_line
+                extras["total_line"] = total_line
+                dm.set_translation_extras(extras)
+
+                project_status = (
+                    Base.ProjectStatus.PROCESSING
+                    if any(
+                        item.get_status() == Base.ProjectStatus.NONE for item in items
+                    )
+                    else Base.ProjectStatus.PROCESSED
+                )
+                dm.set_project_status(project_status)
+                self.extras = extras
+
+                self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            except Exception as e:
+                self.error(f"{Localizer.get().task_failed}", e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+            finally:
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
         threading.Thread(target=task).start()
 

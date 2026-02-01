@@ -8,10 +8,10 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QBoxLayout
 from PyQt5.QtWidgets import QAbstractItemView
+from PyQt5.QtWidgets import QBoxLayout
 from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
@@ -615,7 +615,7 @@ class QualityRulePageBase(QWidget, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_saved,
+                    "message": Localizer.get().toast_save,
                 },
             )
 
@@ -663,7 +663,7 @@ class QualityRulePageBase(QWidget, Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().toast_saved,
+                "message": Localizer.get().toast_save,
             },
         )
 

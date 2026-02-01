@@ -281,7 +281,7 @@ class TextPreservePage(QualityRulePageBase):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_saved,
+                    "message": Localizer.get().toast_save,
                 },
             )
 
