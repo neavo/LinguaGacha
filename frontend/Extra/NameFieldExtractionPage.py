@@ -707,7 +707,7 @@ class NameFieldExtractionPage(QWidget, Base):
             new_rules.sort(key=lambda x: x["src"])
             DataManager.get().set_glossary(new_rules)
 
-            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().toast_saved)
+            self.show_toast(Base.ToastType.SUCCESS, Localizer.get().toast_save)
         else:
             self.show_toast(
                 Base.ToastType.INFO, Localizer.get().task_success
