@@ -2,23 +2,13 @@ import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from queue import PriorityQueue
-from enum import IntEnum
 
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.ChunkGenerator import ChunkGenerator
-from module.Localizer.Localizer import Localizer
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Translator.TranslatorTask import TranslatorTask
-
-
-class TaskPriority(IntEnum):
-    """任务优先级 - 数值越小优先级越高"""
-
-    HIGH = 0
-    NORMAL = 1
 
 
 @dataclass(order=True)
@@ -31,20 +21,6 @@ class TaskContext:
     split_count: int = 0  # 拆分次数
     retry_count: int = 0  # 重试次数（累计）
     is_initial: bool = True  # 是否为初始任务
-
-
-@dataclass(order=False)
-class PriorityQueueItem:
-    """队列项"""
-
-    priority: TaskPriority
-    context: TaskContext = field(compare=False)
-    task: TranslatorTask | None = field(compare=False, default=None)
-
-    def __lt__(self, other):
-        if not isinstance(other, PriorityQueueItem):
-            return NotImplemented
-        return self.priority < other.priority
 
 
 class TaskScheduler(Base):
@@ -70,21 +46,6 @@ class TaskScheduler(Base):
         t0_effective = max(17, self.initial_t0)
         self.factor = math.pow(16 / t0_effective, 0.25)
 
-    def generate_initial_tasks(self) -> list[PriorityQueueItem]:
-        """生成初始翻译任务"""
-        queue_items: list[PriorityQueueItem] = []
-        for context in self.generate_initial_contexts_iter():
-            task = self.create_task(context)
-            queue_items.append(
-                PriorityQueueItem(
-                    priority=TaskPriority.NORMAL,
-                    context=context,
-                    task=task,
-                )
-            )
-
-        return queue_items
-
     def generate_initial_contexts_iter(self) -> "Iterator[TaskContext]":
         """流式生成初始任务上下文（不创建 TranslatorTask）。"""
         for chunk_items, chunk_precedings in ChunkGenerator.generate_item_chunks_iter(
@@ -98,24 +59,6 @@ class TaskScheduler(Base):
                 token_threshold=self.initial_t0,
                 is_initial=True,
             )
-
-    def handle_failed_task(
-        self, queue_item: PriorityQueueItem, result: dict
-    ) -> list[PriorityQueueItem]:
-        """处理失败任务，返回新的任务列表（可能为空）"""
-        contexts = self.handle_failed_context(queue_item.context, result)
-        queue_items: list[PriorityQueueItem] = []
-        for context in contexts:
-            task = self.create_task(context)
-            queue_items.append(
-                PriorityQueueItem(
-                    priority=TaskPriority.HIGH,
-                    context=context,
-                    task=task,
-                )
-            )
-
-        return queue_items
 
     def handle_failed_context(
         self, context: TaskContext, result: dict
@@ -217,35 +160,3 @@ class TaskScheduler(Base):
             if not item.get_dst():
                 item.set_dst(item.get_src())
             item.set_status(Base.ProjectStatus.ERROR)
-
-    def should_stop(self, task_queue: PriorityQueue, running_count: int) -> bool:
-        """判断是否应该停止生产新任务"""
-        # 1. 队列为空
-        # 2. 没有正在执行的任务
-        # 3. 没有未翻译的 items (status = NONE)
-        # 注意：这里的 items 是指 self.items 中的所有条目
-        if not task_queue.empty():
-            return False
-
-        if running_count > 0:
-            return False
-
-        # 如果队列为空且没有正在执行的任务，强制停止
-        # 检查是否还有残留的未翻译条目（可能是被异常丢弃的任务）
-        untranslated = [
-            i for i in self.items if i.get_status() == Base.ProjectStatus.NONE
-        ]
-        if untranslated:
-            self.warning(
-                Localizer.get().engine_task_scheduler_stop_with_untranslated.replace(
-                    "{COUNT}", str(len(untranslated))
-                )
-            )
-
-        return True
-
-    def get_untranslated_items(self) -> list[Item]:
-        """获取未翻译的 items"""
-        return [
-            item for item in self.items if item.get_status() == Base.ProjectStatus.NONE
-        ]

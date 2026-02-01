@@ -20,25 +20,38 @@ class APITester(Base):
 
     # 接口测试开始事件
     def api_test_start(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-        else:
+        engine = Engine.get()
+        with engine.lock:
+            if engine.status != Base.TaskStatus.IDLE:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().task_running,
+                    },
+                )
+                return
+
+            # 原子化占用状态，避免短时间重复触发导致多线程并发启动。
+            engine.status = Base.TaskStatus.TESTING
+
+        try:
             threading.Thread(
                 target=self.api_test_start_target,
                 args=(event, data),
             ).start()
+        except Exception as e:
+            engine.set_status(Base.TaskStatus.IDLE)
+            self.error(Localizer.get().task_failed, e)
 
     # 接口测试开始
     def api_test_start_target(self, event: Base.Event, data: dict) -> None:
-        # 更新运行状态
-        Engine.get().set_status(Base.TaskStatus.TESTING)
+        try:
+            self.api_test_start_target_inner(event, data)
+        finally:
+            Engine.get().set_status(Base.TaskStatus.IDLE)
 
+    def api_test_start_target_inner(self, event: Base.Event, data: dict) -> None:
         # 加载配置
         config = Config().load()
 
@@ -52,7 +65,6 @@ class APITester(Base):
                     "result_msg": "Missing model_id",
                 },
             )
-            Engine.get().set_status(Base.TaskStatus.IDLE)
             return
 
         model = config.get_model(model_id)
@@ -64,7 +76,6 @@ class APITester(Base):
                     "result_msg": "Model not found",
                 },
             )
-            Engine.get().set_status(Base.TaskStatus.IDLE)
             return
 
         # 测试结果
@@ -175,6 +186,3 @@ class APITester(Base):
                 "result_msg": result_msg,
             },
         )
-
-        # 更新运行状态
-        Engine.get().set_status(Base.TaskStatus.IDLE)
