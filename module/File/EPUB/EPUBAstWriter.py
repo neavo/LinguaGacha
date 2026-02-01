@@ -91,6 +91,8 @@ class EPUBAstWriter(Base):
         is_nav = self.is_nav_page(root) or is_nav_flag
         allow_bilingual_insert = bilingual and (not is_nav) and (not is_ncx)
 
+        elem_by_path = self.ast.build_elem_by_path(root)
+
         # 先应用翻译（不改变结构），并记录 block 元素引用供后续双语插入。
         # items 在抽取阶段按文档顺序生成，row 越大越靠后。双语插入会改变 sibling index，
         # 因此必须在所有 path 查找完成后再做插入。
@@ -135,7 +137,9 @@ class EPUBAstWriter(Base):
                 if slot not in {"text", "tail"} or not isinstance(path, str):
                     ok = False
                     break
-                elem = self.ast.find_by_path(root, path)
+                elem = elem_by_path.get(path)
+                if elem is None:
+                    elem = self.ast.find_by_path(root, path)
                 if elem is None:
                     ok = False
                     break
@@ -149,7 +153,7 @@ class EPUBAstWriter(Base):
                 skipped += 1
                 continue
 
-            digest = self.ast.sha1_hex("\u0000".join(current_texts))
+            digest = self.ast.sha1_hex_with_null_separator(current_texts)
             if digest != src_digest:
                 skipped += 1
                 continue
@@ -161,7 +165,9 @@ class EPUBAstWriter(Base):
             ):
                 block_path = epub.get("block_path")
                 if isinstance(block_path, str) and block_path != "":
-                    block_elem = self.ast.find_by_path(root, block_path)
+                    block_elem = elem_by_path.get(block_path)
+                    if block_elem is None:
+                        block_elem = self.ast.find_by_path(root, block_path)
                     if block_elem is not None:
                         block_refs.append((item, block_elem, copy.deepcopy(block_elem)))
 
