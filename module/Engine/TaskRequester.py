@@ -231,7 +231,10 @@ class TaskRequester(Base):
             anext_task = asyncio.create_task(iterator.__anext__())
             try:
                 while True:
-                    done, _ = await asyncio.wait({anext_task}, timeout=poll_interval_s)
+                    # asyncio.wait() -> (done, pending)，这里仅关心 done。
+                    done = (await asyncio.wait({anext_task}, timeout=poll_interval_s))[
+                        0
+                    ]
                     if anext_task in done:
                         item = await anext_task
                         on_item(item)
@@ -301,7 +304,7 @@ class TaskRequester(Base):
                 await cls.aclose_client(client)
             except Exception as e:
                 # 关闭阶段尽力而为，记录警告但不影响主流程
-                LogManager.get().warning(Localizer.get().task_close_client_failed, e)
+                LogManager.get().warning(Localizer.get().task_close_failed, e)
 
     @classmethod
     def get_key(cls, keys: list[str]) -> str:

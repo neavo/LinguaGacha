@@ -143,11 +143,12 @@ class TaskScheduler(Base):
                         )
                     )
             else:
-                sub_chunks, _ = ChunkGenerator.generate_item_chunks(
+                # 拆分后的子任务不携带上文，避免错误上下文干扰拆分/重试。
+                sub_chunks = ChunkGenerator.generate_item_chunks(
                     items=items,
                     input_token_threshold=new_threshold,
                     preceding_lines_threshold=0,
-                )
+                )[0]
                 for sub_chunk in sub_chunks:
                     new_contexts.append(
                         TaskContext(

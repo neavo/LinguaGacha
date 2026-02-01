@@ -196,7 +196,7 @@ class QualityRulePresetManager:
 
     def reset(self) -> None:
         message_box = MessageBox(
-            Localizer.get().alert, Localizer.get().confirm_reset_data, self.window
+            Localizer.get().alert, Localizer.get().alert_confirm_reset_data, self.window
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)

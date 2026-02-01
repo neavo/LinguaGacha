@@ -15,8 +15,8 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Data.DataManager import DataManager
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from widget.CommandBarCard import CommandBarCard
@@ -267,7 +267,7 @@ class CustomPromptPage(QWidget, Base):
 
         def reset() -> None:
             message_box = MessageBox(
-                Localizer.get().alert, Localizer.get().confirm_reset_data, window
+                Localizer.get().alert, Localizer.get().alert_confirm_reset_data, window
             )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
