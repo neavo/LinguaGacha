@@ -262,7 +262,7 @@ class ProofreadingTableWidget(TableWidget):
             )
             status_tooltip = (
                 f"{Localizer.get().proofreading_page_filter_status}\n"
-                f"{Localizer.get().current_status}{ProofreadingLabels.get_status_label(status)}"
+                f"{Localizer.get().status}{ProofreadingLabels.get_status_label(status)}"
             )
             status_icon.setToolTip(status_tooltip)
             layout.addWidget(status_icon)
@@ -277,7 +277,7 @@ class ProofreadingTableWidget(TableWidget):
             )
             warning_tooltip = (
                 f"{Localizer.get().proofreading_page_result_check}\n"
-                f"{Localizer.get().current_status}{' | '.join(warning_texts)}"
+                f"{Localizer.get().status}{' | '.join(warning_texts)}"
             )
             warning_icon.setToolTip(warning_tooltip)
             layout.addWidget(warning_icon)

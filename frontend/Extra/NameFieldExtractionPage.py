@@ -417,7 +417,7 @@ class NameFieldExtractionPage(QWidget, Base):
             return
 
         title = Localizer.get().alert
-        content = Localizer.get().confirm_reset_data
+        content = Localizer.get().alert_confirm_reset_data
 
         # 弹窗确认
         w = MessageBox(title, content, self.window())

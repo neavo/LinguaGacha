@@ -77,7 +77,7 @@ class LogManager:
     def print(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -101,7 +101,7 @@ class LogManager:
     def debug(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -125,7 +125,7 @@ class LogManager:
     def info(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -149,7 +149,7 @@ class LogManager:
     def error(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -173,7 +173,7 @@ class LogManager:
     def warning(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:

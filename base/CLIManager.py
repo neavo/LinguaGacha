@@ -7,8 +7,8 @@ from typing import Self
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
 from module.Data.DataManager import DataManager
+from module.Localizer.Localizer import Localizer
 
 
 class CLIManager(Base):
@@ -130,7 +130,7 @@ class CLIManager(Base):
         elif self.verify_language(args.source_language):
             config.source_language = BaseLanguage.Enum(args.source_language)
         else:
-            self.error(f"--source_language {Localizer.get().cli_verify_language}")
+            self.error(f"--source_language {Localizer.get().log_cli_verify_language}")
             self.exit()
 
         if not isinstance(args.target_language, str):
@@ -138,7 +138,7 @@ class CLIManager(Base):
         elif self.verify_language(args.target_language):
             config.target_language = BaseLanguage.Enum(args.target_language)
         else:
-            self.error(f"--target_language {Localizer.get().cli_verify_language}")
+            self.error(f"--target_language {Localizer.get().log_cli_verify_language}")
             self.exit()
 
         # Determine Translation Mode

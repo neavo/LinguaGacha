@@ -1,10 +1,9 @@
-import concurrent.futures
+import asyncio
 import os
 import re
 import threading
 import time
 import webbrowser
-from collections.abc import Iterator
 from itertools import zip_longest
 from queue import PriorityQueue
 from typing import Any
@@ -19,10 +18,13 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
-from module.Engine.TaskLimiter import TaskLimiter
+from module.Engine.TaskLimiter import AsyncTaskLimiter
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskScheduler import PriorityQueueItem
 from module.Engine.TaskScheduler import TaskScheduler
+from module.Engine.Translator.TranslatorTaskAsyncPipeline import (
+    TranslatorTaskAsyncPipeline,
+)
 from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
@@ -36,8 +38,6 @@ from module.Utils.ChunkLimiter import ChunkLimiter
 
 # 翻译器
 class Translator(Base):
-    SUBMIT_YIELD_EVERY = 64  # 每批提交任务数量
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -406,23 +406,13 @@ class Translator(Base):
                 self.items_cache,
                 quality_snapshot=self.quality_snapshot,
             )
-            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
 
-            # 生成初始任务并加入队列
-            initial_tasks = self.scheduler.generate_initial_tasks()
-            for task_item in ChunkLimiter.iter(initial_tasks):
-                self.task_queue.put(task_item)
+            # 保留旧字段以兼容历史代码路径（当前异步调度不再使用该队列）。
+            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
 
             # 更新任务的总行数
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
-
-            # 打印日志
-            self.info(
-                Localizer.get().engine_task_generation.replace(
-                    "{COUNT}", str(len(initial_tasks))
-                )
-            )
 
             # 输出开始翻译的日志
             self.print("")
@@ -443,8 +433,7 @@ class Translator(Base):
                 )
                 self.print("")
 
-            # 启动消费者线程池
-            task_limiter = TaskLimiter(
+            task_limiter = AsyncTaskLimiter(
                 rps=max_workers, rpm=rpm_threshold, max_concurrency=max_workers
             )
 
@@ -453,42 +442,15 @@ class Translator(Base):
                     total=self.extras.get("total_line", 0),
                     completed=self.extras.get("line", 0),
                 )
-                with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=max_workers, thread_name_prefix=Engine.TASK_PREFIX
-                ) as executor:
-                    # 消费者循环
-                    for queue_item in ChunkLimiter.iter(
-                        self.iter_queue_items_for_submit(task_limiter),
-                        every=self.SUBMIT_YIELD_EVERY,
-                    ):
-                        # 再次检查停止状态，避免提交即将被取消的任务
-                        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                            task_limiter.release(None)
-                            break
 
-                        task = queue_item.task
-                        if task is None:
-                            task_limiter.release(None)
-                            continue
-
-                        with self.db_lock:
-                            self.active_task_count += 1
-
-                        try:
-                            future = executor.submit(task.start)
-                            future.add_done_callback(task_limiter.release)
-                            future.add_done_callback(
-                                lambda fut, q_item=queue_item: self.task_done_callback(
-                                    fut, pid, progress, q_item
-                                )
-                            )
-                        except Exception as e:
-                            # 提交失败时，必须减少计数器，否则会导致死锁
-                            with self.db_lock:
-                                self.active_task_count -= 1
-
-                            self.error("提交任务失败", e)
-                            task_limiter.release(None)  # 释放限流锁
+                asyncio.run(
+                    self.start_async_translation(
+                        progress=progress,
+                        pid=pid,
+                        task_limiter=task_limiter,
+                        max_workers=max_workers,
+                    )
+                )
 
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -740,45 +702,85 @@ class Translator(Base):
             "target_language": self.config.target_language,
         }
 
-    def iter_queue_items_for_submit(
+    def get_task_buffer_size(self, max_workers: int) -> int:
+        # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
+        return max(64, min(4096, max_workers * 4))
+
+    def apply_batch_update_sync(
         self,
-        task_limiter: TaskLimiter,
-    ) -> Iterator[PriorityQueueItem]:
-        while not self.scheduler.should_stop(self.task_queue, self.active_task_count):
-            # 让出逻辑交给外层迭代器包装，避免重复计数
-            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                return
+        task: Any,
+        result: dict[str, Any],
+        finalized_items: list[dict[str, Any]],
+        processed_count: int,
+        error_count: int,
+        glossaries: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """
+        同步执行批量更新操作（在独立线程中执行以避免阻塞事件循环）。
 
-            try:
-                # 尝试从队列获取任务 (阻塞式等待，提升响应性能)
-                try:
-                    queue_item = self.task_queue.get(timeout=0.1)
-                except Exception:
-                    continue
+        负责：更新统计数据、合并术语表、写入数据库。
+        """
+        with self.db_lock:
+            new_glossary_data = None
+            if glossaries and self.config.auto_glossary_enable:
+                new_glossary_data = self.merge_glossary(glossaries)
 
-                # 理论上不应出现，但这里确保不会触发限流器泄漏
-                if queue_item.task is None:
-                    continue
+            self.extras.update(
+                {
+                    "processed_line": self.extras.get("processed_line", 0)
+                    + processed_count,
+                    "error_line": self.extras.get("error_line", 0) + error_count,
+                    "total_tokens": self.extras.get("total_tokens", 0)
+                    + result.get("input_tokens", 0)
+                    + result.get("output_tokens", 0),
+                    "total_input_tokens": self.extras.get("total_input_tokens", 0)
+                    + result.get("input_tokens", 0),
+                    "total_output_tokens": self.extras.get("total_output_tokens", 0)
+                    + result.get("output_tokens", 0),
+                    "time": time.time() - self.extras.get("start_time", 0),
+                }
+            )
+            self.extras["line"] = (
+                self.extras["processed_line"] + self.extras["error_line"]
+            )
 
-                # 流量限制
-                if not task_limiter.acquire(
-                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
-                ):
-                    return
+            rules_map = (
+                {DataManager.RuleType.GLOSSARY: new_glossary_data}
+                if new_glossary_data
+                else {}
+            )
+            DataManager.get().update_batch(
+                items=finalized_items,
+                rules=rules_map,
+                meta={
+                    "translation_extras": self.extras,
+                    "project_status": Base.ProjectStatus.PROCESSING,
+                },
+            )
 
-                if not task_limiter.wait(
-                    lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING
-                ):
-                    return
+            return dict(self.extras)
 
-                # 等待限流后再次检查停止状态，避免提交即将被取消的任务
-                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                    return
+    async def start_async_translation(
+        self,
+        *,
+        progress: ProgressBar,
+        pid: TaskID,
+        task_limiter: AsyncTaskLimiter,
+        max_workers: int,
+    ) -> None:
+        """
+        异步翻译调度入口。
 
-                yield queue_item
-            except Exception:
-                time.sleep(0.1)
-                continue
+        具体的生产者/消费者/提交逻辑封装在 TranslatorTaskAsyncPipeline 中，避免本方法过长。
+        """
+        pipeline = TranslatorTaskAsyncPipeline(
+            translator=self,
+            progress=progress,
+            pid=pid,
+            task_limiter=task_limiter,
+            max_workers=max_workers,
+        )
+        await pipeline.run()
 
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
@@ -937,113 +939,3 @@ class Translator(Base):
         # 打开输出文件夹
         if self.config.output_folder_open_on_finish:
             webbrowser.open(os.path.abspath(output_path))
-
-    # 翻译任务完成时
-    def task_done_callback(
-        self,
-        future: concurrent.futures.Future,
-        pid: TaskID,
-        progress: ProgressBar,
-        queue_item: PriorityQueueItem,
-    ) -> None:
-        try:
-            # 获取结果 (防御性处理，确保异常被捕获)
-            try:
-                result = future.result()
-            except Exception as e:
-                self.error("任务执行异常", e)
-                result = {"row_count": 0, "input_tokens": 0, "output_tokens": 0}
-
-            task = queue_item.task
-            if task is None:
-                return
-
-            # --- 预处理 (锁外执行以减少阻塞) ---
-            # 处理失败或部分失败的任务 (重试或切分)
-            if any(i.get_status() == Base.ProjectStatus.NONE for i in task.items):
-                new_tasks = self.scheduler.handle_failed_task(queue_item, result)
-                for new_q_item in new_tasks:
-                    self.task_queue.put(new_q_item)
-
-            # 1. 提取待存条目
-            finalized_items = [
-                item.to_dict()
-                for item in task.items
-                if item.get_status()
-                in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-            ]
-
-            # 2. 统计数据
-            processed_count = sum(
-                1 for i in task.items if i.get_status() == Base.ProjectStatus.PROCESSED
-            )
-            error_count = sum(
-                1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
-            )
-
-            # 3. 提取术语
-            glossaries = result.get("glossaries")
-            if not isinstance(glossaries, list):
-                glossaries = []
-
-            # --- 合并写入事务 (锁定一次，写入一次) ---
-            with self.db_lock:
-                new_glossary_data = None
-
-                # 合并术语表
-                if glossaries and self.config.auto_glossary_enable:
-                    new_glossary_data = self.merge_glossary(glossaries)
-
-                # 更新统计数据
-                self.extras.update(
-                    {
-                        "processed_line": self.extras.get("processed_line", 0)
-                        + processed_count,
-                        "error_line": self.extras.get("error_line", 0) + error_count,
-                        "total_tokens": self.extras.get("total_tokens", 0)
-                        + result.get("input_tokens", 0)
-                        + result.get("output_tokens", 0),
-                        "total_input_tokens": self.extras.get("total_input_tokens", 0)
-                        + result.get("input_tokens", 0),
-                        "total_output_tokens": self.extras.get("total_output_tokens", 0)
-                        + result.get("output_tokens", 0),
-                        "time": time.time() - self.extras.get("start_time", 0),
-                    }
-                )
-                self.extras["line"] = (
-                    self.extras["processed_line"] + self.extras["error_line"]
-                )
-
-                # 执行综合批量更新
-                rules_map = (
-                    {DataManager.RuleType.GLOSSARY: new_glossary_data}
-                    if new_glossary_data
-                    else {}
-                )
-                DataManager.get().update_batch(
-                    items=finalized_items,
-                    rules=rules_map,
-                    meta={
-                        "translation_extras": self.extras,
-                        "project_status": Base.ProjectStatus.PROCESSING,
-                    },
-                )
-
-            # 更新终端进度条
-            progress.update(
-                pid,
-                completed=self.extras.get("line", 0),
-                total=self.extras.get("total_line", 0),
-            )
-
-            # 触发翻译进度更新事件
-            self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
-
-        except concurrent.futures.CancelledError:
-            # 任务取消是正常流程，无需记录错误
-            pass
-        except Exception as e:
-            self.error(f"{Localizer.get().task_failed}", e)
-        finally:
-            with self.db_lock:
-                self.active_task_count -= 1
