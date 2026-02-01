@@ -417,6 +417,10 @@ class TaskRequester(Base):
             "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
         }
 
+    def should_use_max_completion_tokens(self) -> bool:
+        """仅 OpenAI 官方端点优先使用 max_completion_tokens。"""
+        return str(self.api_url).startswith("https://api.openai.com")
+
     async def request_async(
         self,
         messages: list[dict],
@@ -731,11 +735,16 @@ class TaskRequester(Base):
         self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
         result: dict[str, Any] = dict(args)
+        token_key = (
+            "max_completion_tokens"
+            if self.should_use_max_completion_tokens()
+            else "max_tokens"
+        )
         result.update(
             {
                 "model": self.model_id,
                 "messages": messages,
-                "max_completion_tokens": self.output_token_limit,
+                token_key: self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
                 "extra_body": self.extra_body,
             }
@@ -791,11 +800,16 @@ class TaskRequester(Base):
         self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
         result: dict[str, Any] = dict(args)
+        token_key = (
+            "max_completion_tokens"
+            if self.should_use_max_completion_tokens()
+            else "max_tokens"
+        )
         result.update(
             {
                 "model": self.model_id,
                 "messages": messages,
-                "max_completion_tokens": self.output_token_limit,
+                token_key: self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
             }
         )

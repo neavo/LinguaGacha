@@ -783,36 +783,20 @@ class Translator(Base):
         # in-flight 限制：控制同时处于"已创建但未完成"状态的协程数量
         in_flight_limit = max_workers + buffer_size
 
-        async def run_one_context(context) -> None:
-            """
-            执行单个任务上下文的翻译流程。
+        def handle_done_tasks(done_tasks: set[asyncio.Task]) -> None:
+            """显式读取异常，避免 "Task exception was never retrieved"。"""
+            for task in done_tasks:
+                try:
+                    exc = task.exception()
+                except asyncio.CancelledError:
+                    continue
+                except Exception as e:
+                    self.error("读取协程异常失败", e)
+                    continue
 
-            流程：acquire(并发许可) -> wait(限流) -> create_task -> start_async -> commit
-            """
-            if should_stop():
-                return
-
-            acquired = await task_limiter.acquire(should_stop)
-            if not acquired:
-                return
-
-            try:
-                waited = await task_limiter.wait(should_stop)
-                if not waited:
-                    return
-
-                if should_stop():
-                    return
-
-                task = self.scheduler.create_task(context)
-
-                with self.db_lock:
-                    self.active_task_count += 1
-
-                result = await task.start_async(cpu_executor)
-                await commit_queue.put((context, task, result))
-            finally:
-                task_limiter.release()
+                if exc is not None:
+                    self.error("协程任务执行异常", exc)
+                    Engine.get().set_status(Base.TaskStatus.STOPPING)
 
         def apply_batch_update_sync(
             task,
@@ -867,7 +851,7 @@ class Translator(Base):
 
                 return dict(self.extras)
 
-        async def committer() -> None:
+        async def committer(db_executor: concurrent.futures.Executor) -> None:
             """
             提交协程：处理翻译结果、更新数据库、处理失败任务。
 
@@ -915,7 +899,8 @@ class Translator(Base):
                     if not isinstance(glossaries, list):
                         glossaries = []
 
-                    extras_snapshot = await asyncio.to_thread(
+                    extras_snapshot = await loop.run_in_executor(
+                        db_executor,
                         apply_batch_update_sync,
                         task,
                         result,
@@ -958,74 +943,144 @@ class Translator(Base):
             except asyncio.TimeoutError:
                 return None
 
-        commit_task = asyncio.create_task(committer())
+        commit_task: asyncio.Task | None = None
 
-        # 主消费循环：从队列获取上下文，创建协程执行翻译
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=cpu_workers, thread_name_prefix=f"{Engine.TASK_PREFIX}CPU"
-        ) as cpu_executor:
-            in_flight: set[asyncio.Task] = set()
-            clients_closed_on_stop = False
-            while True:
-                # 清理已完成任务，避免持有大量 done task 导致内存增长
-                if in_flight:
-                    done = {t for t in in_flight if t.done()}
-                    if done:
-                        in_flight.difference_update(done)
+        try:
+            # 主消费循环：从队列获取上下文，创建协程执行翻译
+            with (
+                concurrent.futures.ThreadPoolExecutor(
+                    max_workers=cpu_workers,
+                    thread_name_prefix=f"{Engine.TASK_PREFIX}CPU",
+                ) as cpu_executor,
+                concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1,
+                    thread_name_prefix=f"{Engine.TASK_PREFIX}DB",
+                ) as db_executor,
+            ):
 
-                if should_stop():
-                    if not clients_closed_on_stop:
-                        # 尽力关闭客户端以硬中断在途请求
-                        clients_closed_on_stop = True
-                        await TaskRequester.aclose_clients_for_running_loop()
+                async def run_one_context(context) -> None:
+                    """
+                    执行单个任务上下文的翻译流程。
 
-                    if not in_flight:
-                        break
+                    流程：acquire(并发许可) -> wait(限流) -> create_task -> start_async -> commit
+                    """
+                    if should_stop():
+                        return
 
-                    done, _ = await asyncio.wait(
-                        in_flight, timeout=0.1, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    in_flight.difference_update(done)
-                    continue
+                    acquired = await task_limiter.acquire(should_stop)
+                    if not acquired:
+                        return
 
-                # 完成条件检查：生产者结束 + 队列空 + 无在途任务
-                if (
-                    producer_done.is_set()
-                    and normal_queue.empty()
-                    and high_queue.empty()
-                    and not in_flight
-                ):
-                    break
+                    incremented = False
+                    submitted = False
+                    try:
+                        waited = await task_limiter.wait(should_stop)
+                        if not waited:
+                            return
 
-                # 背压控制：限制同时在途的协程数量，避免内存无限增长
-                if len(in_flight) >= in_flight_limit:
-                    done, _ = await asyncio.wait(
-                        in_flight, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    in_flight.difference_update(done)
-                    continue
+                        if should_stop():
+                            return
 
-                context = await get_next_context()
-                if context is None:
+                        task = self.scheduler.create_task(context)
+
+                        with self.db_lock:
+                            self.active_task_count += 1
+                            incremented = True
+
+                        result = await task.start_async(cpu_executor)
+                        await commit_queue.put((context, task, result))
+                        submitted = True
+                    except Exception as e:
+                        self.error("执行任务失败", e)
+                        Engine.get().set_status(Base.TaskStatus.STOPPING)
+                    finally:
+                        # 若提交队列失败或异常中断，避免活跃任务计数泄漏。
+                        if incremented and not submitted:
+                            with self.db_lock:
+                                self.active_task_count -= 1
+
+                        task_limiter.release()
+
+                commit_task = asyncio.create_task(committer(db_executor))
+                in_flight: set[asyncio.Task] = set()
+                clients_closed_on_stop = False
+
+                while True:
+                    # 清理已完成任务，避免持有大量 done task 导致内存增长
                     if in_flight:
+                        done = {t for t in in_flight if t.done()}
+                        if done:
+                            handle_done_tasks(done)
+                            in_flight.difference_update(done)
+
+                    if should_stop():
+                        if not clients_closed_on_stop:
+                            # 尽力关闭客户端以硬中断在途请求
+                            clients_closed_on_stop = True
+                            await TaskRequester.aclose_clients_for_running_loop()
+
+                        if not in_flight:
+                            break
+
                         done, _ = await asyncio.wait(
                             in_flight,
                             timeout=0.1,
                             return_when=asyncio.FIRST_COMPLETED,
                         )
+                        handle_done_tasks(done)
                         in_flight.difference_update(done)
-                    continue
+                        continue
 
-                task = asyncio.create_task(run_one_context(context))
-                in_flight.add(task)
+                    # 完成条件检查：生产者结束 + 队列空 + 无在途任务
+                    if (
+                        producer_done.is_set()
+                        and normal_queue.empty()
+                        and high_queue.empty()
+                        and not in_flight
+                    ):
+                        break
 
-        if in_flight:
-            await asyncio.wait(in_flight)
+                    # 背压控制：限制同时在途的协程数量，避免内存无限增长
+                    if len(in_flight) >= in_flight_limit:
+                        done, _ = await asyncio.wait(
+                            in_flight,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        handle_done_tasks(done)
+                        in_flight.difference_update(done)
+                        continue
 
-        await commit_queue.put(None)
-        await commit_task
+                    context = await get_next_context()
+                    if context is None:
+                        if in_flight:
+                            done, _ = await asyncio.wait(
+                                in_flight,
+                                timeout=0.1,
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
+                            handle_done_tasks(done)
+                            in_flight.difference_update(done)
+                        continue
 
-        await TaskRequester.aclose_clients_for_running_loop()
+                    task = asyncio.create_task(run_one_context(context))
+                    in_flight.add(task)
+
+                if in_flight:
+                    done, _ = await asyncio.wait(in_flight)
+                    handle_done_tasks(done)
+
+                await commit_queue.put(None)
+                await commit_task
+        finally:
+            # 退出时确保资源被关闭，避免 stop 后仍残留连接。
+            await TaskRequester.aclose_clients_for_running_loop()
+
+            if commit_task is not None and not commit_task.done():
+                commit_task.cancel()
+                try:
+                    await commit_task
+                except Exception:
+                    pass
 
     # 规则过滤
     def rule_filter(self, items: list[Item]) -> None:
