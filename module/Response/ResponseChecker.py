@@ -36,9 +36,6 @@ class ResponseChecker(Base):
     # 重试次数阈值
     RETRY_COUNT_THRESHOLD: int = 2
 
-    # 退化检测规则
-    RE_DEGRADATION = re.compile(r"(.{1,3})\1{16,}", flags=re.IGNORECASE)
-
     def __init__(
         self,
         config: Config,
@@ -54,8 +51,16 @@ class ResponseChecker(Base):
 
     # 检查
     def check(
-        self, srcs: list[str], dsts: list[str], text_type: Item.TextType
+        self,
+        srcs: list[str],
+        dsts: list[str],
+        text_type: Item.TextType,
+        *,
+        stream_degraded: bool = False,
     ) -> list[Error]:
+        if stream_degraded:
+            return [__class__.Error.LINE_ERROR_DEGRADATION] * len(srcs)
+
         # 数据解析失败
         if len(dsts) == 0 or all(v == "" or v is None for v in dsts):
             return [__class__.Error.FAIL_DATA] * len(srcs)
@@ -101,14 +106,6 @@ class ResponseChecker(Base):
             # 原文内容符合语言过滤条件时，判断为正确翻译
             if LanguageFilter.filter(src, self.config.source_language):
                 checks.append(__class__.Error.NONE)
-                continue
-
-            # 当原文中不包含重复文本但是译文中包含重复文本时，判断为 退化
-            if (
-                __class__.RE_DEGRADATION.search(src) is None
-                and __class__.RE_DEGRADATION.search(dst) is not None
-            ):
-                checks.append(__class__.Error.LINE_ERROR_DEGRADATION)
                 continue
 
             # 排除代码保护规则覆盖的文本以后再继续进行检查

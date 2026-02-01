@@ -383,7 +383,7 @@ class AppFluentWindow(FluentWindow, Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().project_closed_toast,
+                        "message": Localizer.get().app_project_closed_toast,
                     },
                 )
 

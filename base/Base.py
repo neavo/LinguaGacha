@@ -93,7 +93,7 @@ class Base:
     def print(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -103,7 +103,7 @@ class Base:
     def debug(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -113,7 +113,7 @@ class Base:
     def info(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -123,7 +123,7 @@ class Base:
     def error(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
@@ -133,7 +133,7 @@ class Base:
     def warning(
         self,
         msg: str,
-        e: Exception | None = None,
+        e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
     ) -> None:
