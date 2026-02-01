@@ -27,7 +27,9 @@ class TranslatorTaskPipeline:
     的方法复杂度。
     """
 
+    # 高优先级队列容量上限（防止极端情况下内存占用过大）
     HIGH_QUEUE_MAX: int = 16384
+    # 高优先级队列相对于 buffer_size 的倍率（失败任务扇出需要额外余量）
     HIGH_QUEUE_MULTIPLIER: int = 8
 
     def __init__(

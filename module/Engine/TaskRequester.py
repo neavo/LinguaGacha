@@ -27,8 +27,8 @@ from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Engine.TaskRequesterStream import StreamConsumer
 from module.Engine.TaskRequesterStream import StreamControl
 from module.Engine.TaskRequesterStream import StreamSession
+from module.Engine.TaskRequesterStream import StreamStrategy
 from module.Engine.TaskRequesterStream import maybe_await_value
-from module.Engine.TaskRequesterStream import no_op_close
 from module.Engine.TaskRequesterStream import safe_close_async_resource
 
 AsyncClientCacheKey = tuple[int, str, str, str, int, tuple]
@@ -100,6 +100,10 @@ class TaskRequester(Base):
     # 流式控制
     STREAM_POLL_INTERVAL_S: float = 0.15
     STREAM_DEGRADATION_TAIL_CHARS: int = 2048
+
+    # SDK 超时（request_timeout 用于请求级硬超时，SDK 超时仅作底层兜底）
+    SDK_DEFAULT_TIMEOUT_S: int = 300
+    SDK_TIMEOUT_BUFFER_S: int = 5
 
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
@@ -177,30 +181,6 @@ class TaskRequester(Base):
         """等待可能的协程对象。"""
         if inspect.isawaitable(result):
             await result
-
-    @classmethod
-    async def consume_async_iterator_polling(
-        cls,
-        iterator: Any,
-        *,
-        stop_checker: Callable[[], bool] | None,
-        poll_interval_s: float,
-        on_item: Callable[[Any], None],
-        on_stop: Callable[[], Any] | None = None,
-        deadline_monotonic: float | None = None,
-    ) -> None:
-        """消费异步迭代器，同时保持对停止信号的快速响应。"""
-
-        control = StreamControl.create(
-            stop_checker=stop_checker,
-            deadline_monotonic=deadline_monotonic,
-            poll_interval_s=poll_interval_s,
-        )
-        session = StreamSession(
-            iterator=iterator,
-            close=on_stop if on_stop is not None else no_op_close,
-        )
-        await StreamConsumer.consume(session, control, on_item=on_item)
 
     @classmethod
     async def aclose_client(cls, client: Any) -> None:
@@ -365,10 +345,9 @@ class TaskRequester(Base):
 
     def get_sdk_timeout_seconds(self) -> int:
         hard_timeout_s = int(self.config.request_timeout)
-        default_soft_timeout_s = 300
-
-        # request_timeout 用于请求级硬超时；SDK/httpx 的 read timeout 仅作底层兜底，不应更早触发。
-        return max(default_soft_timeout_s, hard_timeout_s + 5)
+        return max(
+            self.SDK_DEFAULT_TIMEOUT_S, hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
+        )
 
     async def request_async(
         self,
@@ -723,7 +702,7 @@ class TaskRequester(Base):
         self,
         client: Any,
         request_args: dict[str, Any],
-        strategy: Any,
+        strategy: StreamStrategy,
         *,
         stop_checker: Callable[[], bool] | None,
     ) -> tuple[str, str, int, int]:

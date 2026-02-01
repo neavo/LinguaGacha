@@ -137,7 +137,6 @@ class LocalizerZH:
     engine_task_scheduler_stop_with_untranslated: str = "任务调度器停止，但仍有 {COUNT} 个未翻译条目（可能因异常丢失）"
     translator_task_status_info: str = "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}"
     translator_task_force_accept_info: str = " | 已强制放行：{REASON}"
-    translator_task_hard_timeout: str = "请求超时（{SECONDS} 秒），将按失败处理（如启用任务调度将自动拆分/重试） …"
     translator_simple_log_prefix: str = "简略日志"
     engine_api_name: str = "接口名称"
     engine_api_model: str = "接口模型"

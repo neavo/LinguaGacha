@@ -4,6 +4,7 @@ import inspect
 import time
 from typing import Any
 from typing import Callable
+from typing import Protocol
 
 from module.Engine.TaskRequesterErrors import RequestCancelledError
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
@@ -43,6 +44,34 @@ class StreamSession:
     iterator: Any
     close: Callable[[], Any]
     finalize: Callable[[], Any] | None = None
+
+
+class StreamStrategy(Protocol):
+    """流式请求策略协议 - 定义不同 LLM API 的流式处理接口。"""
+
+    def create_state(self) -> Any:
+        """创建策略特定的状态对象。"""
+        ...
+
+    def build_stream_session(
+        self,
+        client: Any,
+        request_args: dict[str, Any],
+    ) -> Any:
+        """构建流式会话的异步上下文管理器，返回 AsyncContextManager[StreamSession]。"""
+        ...
+
+    def handle_item(self, state: Any, item: Any) -> None:
+        """处理流式输出的单个 chunk。"""
+        ...
+
+    async def finalize(
+        self,
+        session: StreamSession,
+        state: Any,
+    ) -> tuple[str, str, int, int]:
+        """流结束后提取最终结果：(think, result, input_tokens, output_tokens)。"""
+        ...
 
 
 def no_op_close() -> None:
