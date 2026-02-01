@@ -19,6 +19,7 @@ from module.Config import Config
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import RequestCancelledError
+from module.Engine.TaskRequester import RequestHardTimeoutError
 from module.Engine.TaskRequester import StreamDegradationError
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
@@ -150,16 +151,19 @@ class TranslatorTask(Base):
         srcs: list[str] = prepared.get("srcs", [])
         console_log: list[str] = prepared.get("console_log", [])
         stream_degraded = bool(prepared.get("stream_degraded", False))
+        request_timeout = bool(prepared.get("request_timeout", False))
 
-        if stream_degraded:
+        if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
             glossarys: list[dict[str, str]] = []
         else:
             dsts, glossarys = ResponseDecoder().decode(response_result)
 
-        if stream_degraded:
+        if request_timeout:
+            checks = [ResponseChecker.Error.FAIL_TIMEOUT] * len(srcs)
+        elif stream_degraded:
             if self.response_checker is None:
-                checks = [ResponseChecker.Error.LINE_ERROR_DEGRADATION] * len(srcs)
+                checks = [ResponseChecker.Error.FAIL_DEGRADATION] * len(srcs)
             else:
                 checks = self.response_checker.check(
                     srcs,
@@ -329,7 +333,14 @@ class TranslatorTask(Base):
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
 
-            if isinstance(exception, StreamDegradationError):
+            if isinstance(exception, RequestHardTimeoutError):
+                prepared["request_timeout"] = True
+                response_think = ""
+                response_result = ""
+                input_tokens = 0
+                output_tokens = 0
+
+            elif isinstance(exception, StreamDegradationError):
                 prepared["stream_degraded"] = True
                 response_think = ""
                 response_result = ""
@@ -413,6 +424,18 @@ class TranslatorTask(Base):
         elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail.replace(
+                "{REASON}", reason
+            )
+            log_func = self.error
+        elif all(v == ResponseChecker.Error.FAIL_TIMEOUT for v in checks):
+            style = "red"
+            message = Localizer.get().translator_response_check_fail_all.replace(
+                "{REASON}", Localizer.get().response_checker_fail_timeout
+            )
+            log_func = self.error
+        elif all(v == ResponseChecker.Error.FAIL_DEGRADATION for v in checks):
+            style = "red"
+            message = Localizer.get().translator_response_check_fail_all.replace(
                 "{REASON}", reason
             )
             log_func = self.error
@@ -545,6 +568,8 @@ class TranslatorTask(Base):
             return Localizer.get().response_checker_fail_data
         elif error == ResponseChecker.Error.FAIL_LINE_COUNT:
             return Localizer.get().response_checker_fail_line_count
+        elif error == ResponseChecker.Error.FAIL_TIMEOUT:
+            return Localizer.get().response_checker_fail_timeout
         elif error == ResponseChecker.Error.LINE_ERROR_KANA:
             return Localizer.get().issue_kana_residue
         elif error == ResponseChecker.Error.LINE_ERROR_HANGEUL:
@@ -553,8 +578,8 @@ class TranslatorTask(Base):
             return Localizer.get().response_checker_line_error_empty_line
         elif error == ResponseChecker.Error.LINE_ERROR_SIMILARITY:
             return Localizer.get().response_checker_line_error_similarity
-        elif error == ResponseChecker.Error.LINE_ERROR_DEGRADATION:
-            return Localizer.get().response_checker_line_error_degradation
+        elif error == ResponseChecker.Error.FAIL_DEGRADATION:
+            return Localizer.get().response_checker_fail_degradation
         else:
             return ""
 
