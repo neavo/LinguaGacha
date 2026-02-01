@@ -50,6 +50,9 @@ class Translator(Base):
         # 正在执行的任务计数器（用于精准判断任务结束）
         self.active_task_count: int = 0
 
+        # 当前翻译任务的限流器（用于 UI 展示真实并发）
+        self.task_limiter: AsyncTaskLimiter | None = None
+
         # 停止请求标记（用于避免手动停止后自动生成译文）
         self.stop_requested: bool = False
 
@@ -77,6 +80,18 @@ class Translator(Base):
     def get_active_task_count(self) -> int:
         return self.active_task_count
 
+    def get_concurrency_in_use(self) -> int:
+        limiter = self.task_limiter
+        if limiter is None:
+            return 0
+        return limiter.get_concurrency_in_use()
+
+    def get_concurrency_limit(self) -> int:
+        limiter = self.task_limiter
+        if limiter is None:
+            return 0
+        return limiter.get_concurrency_limit()
+
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         def task(event_name: str, task_data: dict) -> None:
@@ -101,20 +116,30 @@ class Translator(Base):
 
     # 翻译开始事件
     def translation_run(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() == Base.TaskStatus.IDLE:
-            self.stop_requested = False
+        engine = Engine.get()
+        with engine.lock:
+            if engine.status != Base.TaskStatus.IDLE:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().task_running,
+                    },
+                )
+                return
+
+            # 原子化占用状态，避免短时间重复触发导致多线程并发启动。
+            engine.status = Base.TaskStatus.TRANSLATING
+
+        self.stop_requested = False
+        try:
             threading.Thread(
                 target=self.start,
                 args=(event, data),
             ).start()
-        else:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
+        except Exception as e:
+            engine.set_status(Base.TaskStatus.IDLE)
+            self.error(Localizer.get().task_failed, e)
 
     # 翻译停止事件
     def translation_require_stop(self, event: Base.Event, data: dict) -> None:
@@ -436,6 +461,7 @@ class Translator(Base):
             task_limiter = AsyncTaskLimiter(
                 rps=max_workers, rpm=rpm_threshold, max_concurrency=max_workers
             )
+            self.task_limiter = task_limiter
 
             with ProgressBar(transient=True) as progress:
                 pid = progress.new(
@@ -493,6 +519,9 @@ class Translator(Base):
         finally:
             # 等待最后的回调执行完毕
             time.sleep(1.0)
+
+            # 清理限流器引用，避免 UI 读取到上一次任务的并发数据
+            self.task_limiter = None
 
             # MTool 优化器后处理
             if self.items_cache:

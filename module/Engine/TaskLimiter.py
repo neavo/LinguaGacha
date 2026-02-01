@@ -91,9 +91,13 @@ class AsyncTaskLimiter:
         self.current_capacity = self.max_capacity
         self.last_request_time = time.time()
 
+        # 使用 BoundedSemaphore 避免 release 失配导致并发上限“被抬高”。
         self.semaphore = (
-            asyncio.Semaphore(max_concurrency) if max_concurrency > 0 else None
+            asyncio.BoundedSemaphore(max_concurrency) if max_concurrency > 0 else None
         )
+        self.max_concurrency = max_concurrency
+        self.in_use_concurrency = 0
+        self.in_use_concurrency_lock = threading.Lock()
         self.bucket_lock = asyncio.Lock()
 
     def calculate_max_capacity(self) -> float:
@@ -110,6 +114,10 @@ class AsyncTaskLimiter:
 
     async def acquire(self, stop_checker: Optional[Callable[[], bool]] = None) -> bool:
         if self.semaphore is None:
+            if stop_checker is not None and stop_checker():
+                return False
+            with self.in_use_concurrency_lock:
+                self.in_use_concurrency += 1
             return True
 
         while True:
@@ -117,6 +125,8 @@ class AsyncTaskLimiter:
                 return False
             try:
                 await asyncio.wait_for(self.semaphore.acquire(), timeout=0.1)
+                with self.in_use_concurrency_lock:
+                    self.in_use_concurrency += 1
                 return True
             except asyncio.TimeoutError:
                 continue
@@ -124,6 +134,16 @@ class AsyncTaskLimiter:
     def release(self) -> None:
         if self.semaphore is not None:
             self.semaphore.release()
+        with self.in_use_concurrency_lock:
+            if self.in_use_concurrency > 0:
+                self.in_use_concurrency -= 1
+
+    def get_concurrency_in_use(self) -> int:
+        with self.in_use_concurrency_lock:
+            return self.in_use_concurrency
+
+    def get_concurrency_limit(self) -> int:
+        return max(0, int(self.max_concurrency))
 
     async def wait(self, stop_checker: Optional[Callable[[], bool]] = None) -> bool:
         if self.max_capacity == float("inf") or self.rate_per_second == float("inf"):
