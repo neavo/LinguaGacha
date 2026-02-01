@@ -12,7 +12,6 @@ from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableWidget
@@ -22,11 +21,26 @@ from qfluentwidgets import getFont
 from qfluentwidgets import setCustomStyleSheet
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import WarningType
+
+
+# ==================== 图标常量 ====================
+
+ICON_STATUS_PROCESSED: BaseIcon = BaseIcon.CIRCLE_CHECK_BIG  # 状态：已处理
+ICON_STATUS_PROCESSED_IN_PAST: BaseIcon = BaseIcon.HISTORY  # 状态：过去已处理
+ICON_STATUS_ERROR: BaseIcon = BaseIcon.CIRCLE_ALERT  # 状态：错误
+ICON_STATUS_LANGUAGE_SKIPPED: BaseIcon = (
+    BaseIcon.CIRCLE_MINUS
+)  # 状态：跳过（语言不匹配）
+
+ICON_WARNING: BaseIcon = BaseIcon.TRIANGLE_ALERT  # 提示：有告警/需注意
+ICON_BATCH_RETRANSLATE: BaseIcon = BaseIcon.REFRESH_CW  # 右键菜单：批量重翻
+ICON_BATCH_RESET_TRANSLATION: BaseIcon = BaseIcon.ERASER  # 右键菜单：批量重置译文
 
 
 class ProofreadingTableWidget(TableWidget):
@@ -49,10 +63,10 @@ class ProofreadingTableWidget(TableWidget):
 
     # 翻译状态图标（未翻译不显示）
     STATUS_ICONS = {
-        Base.ProjectStatus.PROCESSED: FluentIcon.COMPLETED,
-        Base.ProjectStatus.PROCESSED_IN_PAST: FluentIcon.HISTORY,
-        Base.ProjectStatus.ERROR: FluentIcon.INFO,
-        Base.ProjectStatus.LANGUAGE_SKIPPED: FluentIcon.REMOVE_FROM,
+        Base.ProjectStatus.PROCESSED: ICON_STATUS_PROCESSED,
+        Base.ProjectStatus.PROCESSED_IN_PAST: ICON_STATUS_PROCESSED_IN_PAST,
+        Base.ProjectStatus.ERROR: ICON_STATUS_ERROR,
+        Base.ProjectStatus.LANGUAGE_SKIPPED: ICON_STATUS_LANGUAGE_SKIPPED,
     }
 
     # 信号定义
@@ -268,7 +282,7 @@ class ProofreadingTableWidget(TableWidget):
             layout.addWidget(status_icon)
 
         if warnings:
-            warning_icon = IconWidget(FluentIcon.VPN)
+            warning_icon = IconWidget(ICON_WARNING)
             warning_icon.setFixedSize(16, 16)
             # Tooltip 文案统一由 Labels 层提供，避免 Table/Dialog/EditPanel 不一致。
             warning_texts = [ProofreadingLabels.get_warning_label(e) for e in warnings]
@@ -386,7 +400,7 @@ class ProofreadingTableWidget(TableWidget):
         # 统一使用批量重翻逻辑，无论单选还是多选
         menu.addAction(
             Action(
-                FluentIcon.SYNC,
+                ICON_BATCH_RETRANSLATE,
                 Localizer.get().proofreading_page_batch_retranslate,
                 triggered=lambda checked: self.batch_retranslate_clicked.emit(
                     selected_items
@@ -397,7 +411,7 @@ class ProofreadingTableWidget(TableWidget):
         # 批量重置
         menu.addAction(
             Action(
-                FluentIcon.DELETE,
+                ICON_BATCH_RESET_TRANSLATION,
                 Localizer.get().proofreading_page_batch_reset_translation,
                 triggered=lambda checked: self.batch_reset_translation_clicked.emit(
                     selected_items

@@ -7,18 +7,23 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from frontend.Quality.TextPreserveEditPanel import TextPreserveEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from widget.ComboBoxCard import ComboBoxCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2  # 右键菜单：删除条目
 
 
 class TextPreservePage(QualityRulePageBase):
@@ -205,7 +210,7 @@ class TextPreservePage(QualityRulePageBase):
         menu = RoundMenu("", self.table)
         menu.addAction(
             Action(
-                FluentIcon.DELETE,
+                ICON_MENU_DELETE,
                 Localizer.get().delete,
                 triggered=lambda: self.run_with_unsaved_guard(
                     self.delete_selected_entries

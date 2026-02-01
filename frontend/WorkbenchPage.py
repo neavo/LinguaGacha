@@ -22,7 +22,7 @@ from qfluentwidgets import Action
 from qfluentwidgets import BodyLabel
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
-from qfluentwidgets import FluentIcon
+from qfluentwidgets import FluentIconBase
 from qfluentwidgets import IconWidget
 from qfluentwidgets import MessageBox
 from qfluentwidgets import PrimaryPushButton
@@ -39,10 +39,23 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from base.EventManager import EventManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+
+# ==================== 图标常量 ====================
+# 抽取图标常量，避免在页面逻辑里散落具体图标名，便于按语义统一调整。
+
+ICON_CLOSE: BaseIcon = BaseIcon.X  # 关闭/移除（右上角关闭、移除最近项目等）
+ICON_FILE: BaseIcon = BaseIcon.FILE  # 文件/文档（源文件、.lg 等）
+ICON_FOLDER: BaseIcon = BaseIcon.FOLDER  # 目录（源目录选择）
+ICON_HISTORY_EMPTY: BaseIcon = BaseIcon.BADGE_ALERT  # 最近项目为空的占位图标
+
+ICON_DROP_SOURCE_EMPTY: BaseIcon = BaseIcon.FILE_PLUS  # 新建工程：待选择源文件/目录
+ICON_DROP_SOURCE_READY: BaseIcon = BaseIcon.FOLDER  # 新建工程：源文件/目录已就绪
+ICON_DROP_PROJECT_EMPTY: BaseIcon = BaseIcon.FILE  # 打开工程：待选择 .lg 文件
 
 
 class CreateProjectThread(QThread):
@@ -99,7 +112,7 @@ class FileDisplayCard(CardWidget):
         self.main_layout.setSpacing(8)
 
         # 通用关闭按钮
-        self.close_btn = TransparentToolButton(FluentIcon.CLOSE, self)
+        self.close_btn = TransparentToolButton(ICON_CLOSE, self)
         self.close_btn.setFixedSize(30, 30)
         self.close_btn.hide()
 
@@ -152,7 +165,7 @@ class DropZone(FileDisplayCard):
     clear_clicked = pyqtSignal()  # 清除信号
 
     def __init__(
-        self, icon: FluentIcon, title: str, subtitle: str, parent=None
+        self, icon: FluentIconBase, title: str, subtitle: str, parent=None
     ) -> None:
         super().__init__(parent)
 
@@ -204,7 +217,7 @@ class DropZone(FileDisplayCard):
             self.subtitle_label.hide()
             self.close_btn.hide()
 
-    def set_icon(self, icon: FluentIcon) -> None:
+    def set_icon(self, icon: FluentIconBase) -> None:
         self.icon_widget.setIcon(icon)
 
     def resizeEvent(self, event) -> None:
@@ -263,7 +276,7 @@ class SelectedFileDisplay(FileDisplayCard):
         super().__init__(parent)
 
         # 图标
-        self.icon_widget = IconWidget(FluentIcon.DOCUMENT, self)
+        self.icon_widget = IconWidget(ICON_FILE, self)
         self.icon_widget.setFixedSize(48, 48)
         self.main_layout.addWidget(
             self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
@@ -370,7 +383,7 @@ class RecentProjectItem(QFrame):
         layout.setSpacing(12)
 
         # 图标
-        icon = IconWidget(FluentIcon.DOCUMENT, self)
+        icon = IconWidget(ICON_FILE, self)
         icon.setFixedSize(28, 28)
         icon.setStyleSheet(f"IconWidget {{ color: {themeColor().name()}; }}")
         layout.addWidget(icon)
@@ -395,7 +408,7 @@ class RecentProjectItem(QFrame):
         layout.addLayout(text_layout, 1)
 
         # 删除按钮
-        self.remove_btn = TransparentToolButton(FluentIcon.CLOSE, self)
+        self.remove_btn = TransparentToolButton(ICON_CLOSE, self)
         self.remove_btn.setFixedSize(32, 32)
         self.remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.path))
         self.remove_btn.hide()  # 默认隐藏，hover 时显示
@@ -561,7 +574,7 @@ class EmptyRecentProjectState(QWidget):
         self.v_layout.setSpacing(16)
         self.v_layout.setContentsMargins(0, 60, 0, 60)
 
-        self.icon_widget = IconWidget(FluentIcon.HISTORY, self)
+        self.icon_widget = IconWidget(ICON_HISTORY_EMPTY, self)
         self.icon_widget.setFixedSize(64, 64)
 
         self.label = BodyLabel(Localizer.get().workbench_recent_empty, self)
@@ -696,7 +709,10 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 拖拽区域
         self.new_drop_zone = DropZone(
-            FluentIcon.ADD, Localizer.get().workbench_drop_zone_source_title, "", card
+            ICON_DROP_SOURCE_EMPTY,
+            Localizer.get().workbench_drop_zone_source_title,
+            "",
+            card,
         )
         self.new_drop_zone.clicked.connect(self.on_select_source)
         self.new_drop_zone.fileDropped.connect(self.on_source_dropped)
@@ -810,7 +826,10 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 拖拽区域（默认状态）/ 选中显示
         self.open_drop_zone = DropZone(
-            FluentIcon.FOLDER, Localizer.get().workbench_drop_zone_lg_title, "", card
+            ICON_DROP_PROJECT_EMPTY,
+            Localizer.get().workbench_drop_zone_lg_title,
+            "",
+            card,
         )
         self.open_drop_zone.clicked.connect(self.on_select_lg)
         self.open_drop_zone.fileDropped.connect(self.on_lg_dropped)
@@ -928,16 +947,12 @@ class WorkbenchPage(ScrollArea, Base):
         menu = RoundMenu(parent=self)
 
         # 选择文件
-        select_file_action = Action(
-            FluentIcon.DOCUMENT, Localizer.get().select_file, self
-        )
+        select_file_action = Action(ICON_FILE, Localizer.get().select_file, self)
         select_file_action.triggered.connect(self.select_source_file)
         menu.addAction(select_file_action)
 
         # 选择文件夹
-        select_folder_action = Action(
-            FluentIcon.FOLDER, Localizer.get().select_folder, self
-        )
+        select_folder_action = Action(ICON_FOLDER, Localizer.get().select_folder, self)
         select_folder_action.triggered.connect(self.select_source_folder)
         menu.addAction(select_folder_action)
 
@@ -968,7 +983,7 @@ class WorkbenchPage(ScrollArea, Base):
         """重置新建工程的选中状态"""
         self.selected_source_path = None
         self.new_btn.setEnabled(False)
-        self.new_drop_zone.set_icon(FluentIcon.ADD)
+        self.new_drop_zone.set_icon(ICON_DROP_SOURCE_EMPTY)
         self.new_drop_zone.set_text(
             Localizer.get().workbench_drop_zone_source_title, ""
         )
@@ -1000,7 +1015,7 @@ class WorkbenchPage(ScrollArea, Base):
         # 限制显示数量，避免数字过大
         count_str = f"{count}" if count < 1000 else "999+"
 
-        self.new_drop_zone.set_icon(FluentIcon.FOLDER)
+        self.new_drop_zone.set_icon(ICON_DROP_SOURCE_READY)
         self.new_drop_zone.set_text(
             file_name,
             Localizer.get().workbench_drop_ready_source.replace("{COUNT}", count_str),

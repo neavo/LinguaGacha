@@ -12,13 +12,13 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
@@ -38,6 +38,12 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
+
+# ==================== 图标常量 ====================
+
+ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_INPUT  # 命令栏：导出译文
+ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：打开搜索栏
+ICON_ACTION_FILTER: BaseIcon = BaseIcon.FUNNEL  # 命令栏：打开筛选面板
 
 
 class ProofreadingPage(QWidget, Base):
@@ -296,7 +302,7 @@ class ProofreadingPage(QWidget, Base):
         # 功能按钮组
         self.btn_export = self.command_bar_card.add_action(
             Action(
-                FluentIcon.SHARE,
+                ICON_ACTION_EXPORT,
                 Localizer.get().export_translation,
                 triggered=self.on_export_clicked,
             )
@@ -310,7 +316,7 @@ class ProofreadingPage(QWidget, Base):
         self.command_bar_card.add_separator()
         self.btn_search = self.command_bar_card.add_action(
             Action(
-                FluentIcon.SEARCH,
+                ICON_ACTION_SEARCH,
                 Localizer.get().search,
                 triggered=self.on_search_clicked,
             )
@@ -319,7 +325,7 @@ class ProofreadingPage(QWidget, Base):
 
         self.btn_filter = self.command_bar_card.add_action(
             Action(
-                FluentIcon.FILTER,
+                ICON_ACTION_FILTER,
                 Localizer.get().proofreading_page_filter,
                 triggered=self.on_filter_clicked,
             )

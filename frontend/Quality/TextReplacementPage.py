@@ -9,13 +9,13 @@ from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import qconfig
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
 from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
@@ -25,6 +25,15 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from widget.SwitchButtonCard import SwitchButtonCard
+
+
+# ==================== 图标常量 ====================
+
+ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2  # 右键菜单：删除条目
+ICON_RULE_REGEX: BaseIcon = BaseIcon.REGEX  # 规则图标：正则
+ICON_RULE_CASE_SENSITIVE: BaseIcon = BaseIcon.CASE_SENSITIVE  # 规则图标：大小写敏感
+ICON_MENU_ENABLE: BaseIcon = BaseIcon.CHECK  # 右键菜单：启用
+ICON_MENU_DISABLE: BaseIcon = BaseIcon.X  # 右键菜单：禁用
 
 
 class TextReplacementPage(QualityRulePageBase):
@@ -242,7 +251,7 @@ class TextReplacementPage(QualityRulePageBase):
         menu = RoundMenu("", self.table)
         menu.addAction(
             Action(
-                FluentIcon.DELETE,
+                ICON_MENU_DELETE,
                 Localizer.get().delete,
                 triggered=lambda: self.run_with_unsaved_guard(
                     self.delete_selected_entries
@@ -252,10 +261,10 @@ class TextReplacementPage(QualityRulePageBase):
         menu.addSeparator()
 
         regex_menu = RoundMenu(Localizer.get().rule_regex, menu)
-        regex_menu.setIcon(FluentIcon.IOT)
+        regex_menu.setIcon(ICON_RULE_REGEX)
         regex_menu.addAction(
             Action(
-                FluentIcon.COMPLETED,
+                ICON_MENU_ENABLE,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_regex_for_selection(True)
@@ -264,7 +273,7 @@ class TextReplacementPage(QualityRulePageBase):
         )
         regex_menu.addAction(
             Action(
-                FluentIcon.REMOVE_FROM,
+                ICON_MENU_DISABLE,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_regex_for_selection(False)
@@ -274,10 +283,10 @@ class TextReplacementPage(QualityRulePageBase):
         menu.addMenu(regex_menu)
 
         case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)
-        case_menu.setIcon(FluentIcon.FONT)
+        case_menu.setIcon(ICON_RULE_CASE_SENSITIVE)
         case_menu.addAction(
             Action(
-                FluentIcon.COMPLETED,
+                ICON_MENU_ENABLE,
                 Localizer.get().enable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(True)
@@ -286,7 +295,7 @@ class TextReplacementPage(QualityRulePageBase):
         )
         case_menu.addAction(
             Action(
-                FluentIcon.REMOVE_FROM,
+                ICON_MENU_DISABLE,
                 Localizer.get().disable,
                 triggered=lambda: self.run_with_unsaved_guard(
                     lambda: self.set_case_sensitive_for_selection(False)
@@ -523,8 +532,8 @@ class TextReplacementPage(QualityRulePageBase):
                 self.rule_icon_renderer.get_pixmap(
                     self.table,
                     [
-                        RuleIconSpec(FluentIcon.IOT, regex),
-                        RuleIconSpec(FluentIcon.FONT, case_sensitive),
+                        RuleIconSpec(ICON_RULE_REGEX, regex),
+                        RuleIconSpec(ICON_RULE_CASE_SENSITIVE, case_sensitive),
                     ],
                 ),
             )

@@ -19,7 +19,6 @@ from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
-from qfluentwidgets import FluentIcon
 from qfluentwidgets import IconWidget
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
@@ -29,6 +28,7 @@ from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
+from base.BaseIcon import BaseIcon
 from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
@@ -38,6 +38,15 @@ from widget.CustomTextEdit import CustomTextEdit
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from widget.StatusTag import StatusTagType
 from widget.StatusTag import StatusTag
+
+
+# ==================== 图标常量 ====================
+
+ICON_FILE_INFO: BaseIcon = BaseIcon.FILE  # 文件信息卡片：提示当前条目来源文件
+ICON_SAVE_ENTRY: BaseIcon = BaseIcon.SAVE  # 操作按钮：保存当前编辑结果
+ICON_MORE_ACTIONS: BaseIcon = BaseIcon.ELLIPSIS  # 操作按钮：更多操作菜单
+ICON_RETRANSLATE: BaseIcon = BaseIcon.REFRESH_CW  # 更多菜单：重翻当前条目
+ICON_RESET_TRANSLATION: BaseIcon = BaseIcon.ERASER  # 更多菜单：重置当前条目译文
 
 
 class ProofreadingEditPanel(QWidget):
@@ -103,7 +112,7 @@ class ProofreadingEditPanel(QWidget):
         file_layout = QHBoxLayout(self.file_card)
         file_layout.setContentsMargins(12, 8, 12, 8)
         file_layout.setSpacing(8)
-        icon = IconWidget(FluentIcon.DOCUMENT)
+        icon = IconWidget(ICON_FILE_INFO)
         icon.setFixedSize(self.ICON_SIZE, self.ICON_SIZE)
         file_layout.addWidget(icon)
         self.file_path_label = CaptionLabel("", self.file_card)
@@ -249,7 +258,7 @@ class ProofreadingEditPanel(QWidget):
         button_layout.setSpacing(0)
 
         self.btn_save = TransparentPushButton(self.button_container)
-        self.btn_save.setIcon(FluentIcon.SAVE)
+        self.btn_save.setIcon(ICON_SAVE_ENTRY)
         self.btn_save.setText(Localizer.get().save)
         self.btn_save.clicked.connect(self.on_save_clicked)
         self.btn_save.setEnabled(False)
@@ -264,7 +273,7 @@ class ProofreadingEditPanel(QWidget):
 
         # 操作按钮（移到底部，与编辑区按钮同一尺寸体系）
         self.more_button = TransparentPushButton(self.button_container)
-        self.more_button.setIcon(FluentIcon.MORE)
+        self.more_button.setIcon(ICON_MORE_ACTIONS)
         self.more_button.setText(Localizer.get().proofreading_page_more)
         self.apply_fixed_button_style(self.more_button)
         self.more_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -394,7 +403,7 @@ class ProofreadingEditPanel(QWidget):
         menu = RoundMenu("", self.more_button)
 
         action_retranslate = Action(
-            FluentIcon.SYNC,
+            ICON_RETRANSLATE,
             Localizer.get().proofreading_page_retranslate,
             triggered=lambda: self.retranslate_requested.emit(item),
         )
@@ -402,7 +411,7 @@ class ProofreadingEditPanel(QWidget):
         menu.addAction(action_retranslate)
 
         action_reset = Action(
-            FluentIcon.DELETE,
+            ICON_RESET_TRANSLATION,
             Localizer.get().proofreading_page_reset_translation,
             triggered=lambda: self.reset_translation_requested.emit(item),
         )

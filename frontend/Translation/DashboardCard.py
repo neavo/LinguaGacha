@@ -10,9 +10,14 @@ from qfluentwidgets import IconWidget
 from qfluentwidgets import LargeTitleLabel
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import SubtitleLabel
-from qfluentwidgets import FluentIcon
 
+from base.BaseIcon import BaseIcon
 from widget.Separator import Separator
+
+
+# ==================== 图标常量 ====================
+
+ICON_SWITCH_MODE: BaseIcon = BaseIcon.ARROW_LEFT_RIGHT  # 卡片：提示可切换显示模式
 
 
 class DashboardCard(CardWidget):
@@ -83,7 +88,7 @@ class DashboardCard(CardWidget):
             self.footer_hbox.setContentsMargins(0, 0, 0, 0)
             self.footer_hbox.addStretch(1)
 
-            self.switch_icon = IconWidget(FluentIcon.SYNC, self)
+            self.switch_icon = IconWidget(ICON_SWITCH_MODE, self)
             self.switch_icon.setFixedSize(14, 14)
             # 设置较浅的颜色，保持视觉轻量
             self.opacity_effect = QGraphicsOpacityEffect(self.switch_icon)
