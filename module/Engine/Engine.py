@@ -44,12 +44,12 @@ class Engine:
             self.status = status
 
     def get_running_task_count(self) -> int:
-        # 线程池线程常驻，用活跃任务数避免虚高
+        # 线程池线程常驻：用真实并发数（占用 limiter 的任务数）避免 UI 虚高。
         count = 0
 
         translator = getattr(self, "translator", None)
         if translator is not None:
-            count += translator.get_active_task_count()
+            count += translator.get_concurrency_in_use()
 
         single_task_name = f"{self.TASK_PREFIX}SINGLE"
         count += sum(1 for t in threading.enumerate() if t.name == single_task_name)
