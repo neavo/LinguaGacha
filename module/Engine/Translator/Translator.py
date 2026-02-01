@@ -5,7 +5,6 @@ import threading
 import time
 import webbrowser
 from itertools import zip_longest
-from queue import PriorityQueue
 from typing import Any
 from typing import Optional
 
@@ -18,13 +17,10 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
-from module.Engine.TaskLimiter import AsyncTaskLimiter
+from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
-from module.Engine.TaskScheduler import PriorityQueueItem
 from module.Engine.TaskScheduler import TaskScheduler
-from module.Engine.Translator.TranslatorTaskAsyncPipeline import (
-    TranslatorTaskAsyncPipeline,
-)
+from module.Engine.Translator.TranslatorTaskPipeline import TranslatorTaskPipeline
 from module.File.FileManager import FileManager
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
@@ -47,14 +43,11 @@ class Translator(Base):
         # 翻译进度额外数据
         self.extras: dict = {}
 
-        # 正在执行的任务计数器（用于精准判断任务结束）
-        self.active_task_count: int = 0
+        # 当前翻译任务的限流器（用于 UI 展示真实并发）
+        self.task_limiter: TaskLimiter | None = None
 
         # 停止请求标记（用于避免手动停止后自动生成译文）
         self.stop_requested: bool = False
-
-        # 线程锁
-        self.db_lock = threading.Lock()
 
         # 配置
         self.config = Config().load()
@@ -74,8 +67,44 @@ class Translator(Base):
             Base.Event.TRANSLATION_REQUIRE_STOP, self.translation_require_stop
         )
 
-    def get_active_task_count(self) -> int:
-        return self.active_task_count
+    def get_concurrency_in_use(self) -> int:
+        limiter = self.task_limiter
+        if limiter is None:
+            return 0
+        return limiter.get_concurrency_in_use()
+
+    def get_concurrency_limit(self) -> int:
+        limiter = self.task_limiter
+        if limiter is None:
+            return 0
+        return limiter.get_concurrency_limit()
+
+    def update_extras_snapshot(
+        self,
+        *,
+        processed_count: int,
+        error_count: int,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> dict[str, Any]:
+        """更新翻译进度统计并返回不可变快照。"""
+        self.extras.update(
+            {
+                "processed_line": self.extras.get("processed_line", 0)
+                + processed_count,
+                "error_line": self.extras.get("error_line", 0) + error_count,
+                "total_tokens": self.extras.get("total_tokens", 0)
+                + input_tokens
+                + output_tokens,
+                "total_input_tokens": self.extras.get("total_input_tokens", 0)
+                + input_tokens,
+                "total_output_tokens": self.extras.get("total_output_tokens", 0)
+                + output_tokens,
+                "time": time.time() - self.extras.get("start_time", 0),
+            }
+        )
+        self.extras["line"] = self.extras["processed_line"] + self.extras["error_line"]
+        return dict(self.extras)
 
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
@@ -101,20 +130,30 @@ class Translator(Base):
 
     # 翻译开始事件
     def translation_run(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() == Base.TaskStatus.IDLE:
-            self.stop_requested = False
+        engine = Engine.get()
+        with engine.lock:
+            if engine.status != Base.TaskStatus.IDLE:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().task_running,
+                    },
+                )
+                return
+
+            # 原子化占用状态，避免短时间重复触发导致多线程并发启动。
+            engine.status = Base.TaskStatus.TRANSLATING
+
+        self.stop_requested = False
+        try:
             threading.Thread(
                 target=self.start,
                 args=(event, data),
             ).start()
-        else:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
+        except Exception as e:
+            engine.set_status(Base.TaskStatus.IDLE)
+            self.error(Localizer.get().task_failed, e)
 
     # 翻译停止事件
     def translation_require_stop(self, event: Base.Event, data: dict) -> None:
@@ -302,9 +341,6 @@ class Translator(Base):
                 else Base.TranslationMode.NEW
             )
 
-            # 更新运行状态
-            Engine.get().set_status(Base.TaskStatus.TRANSLATING)
-
             # 初始化
             self.config = config if isinstance(config, Config) else Config().load()
 
@@ -335,7 +371,7 @@ class Translator(Base):
                 )
                 return None
 
-            max_workers, rpm_threshold = self.initialize_max_workers()
+            max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
 
             # 质量规则快照：除自动术语表新增条目外，翻译过程中不再读取 DataManager 的实时值
             self.quality_snapshot = QualityRuleSnapshot.capture()
@@ -439,9 +475,6 @@ class Translator(Base):
                 quality_snapshot=self.quality_snapshot,
             )
 
-            # 保留旧字段以兼容历史代码路径（当前异步调度不再使用该队列）。
-            self.task_queue: "PriorityQueue[PriorityQueueItem]" = PriorityQueue()
-
             # 更新任务的总行数
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
@@ -465,9 +498,12 @@ class Translator(Base):
                 )
                 self.print("")
 
-            task_limiter = AsyncTaskLimiter(
-                rps=max_workers, rpm=rpm_threshold, max_concurrency=max_workers
+            task_limiter = TaskLimiter(
+                rps=rps_limit,
+                rpm=rpm_threshold,
+                max_concurrency=max_workers,
             )
+            self.task_limiter = task_limiter
 
             with ProgressBar(transient=True) as progress:
                 pid = progress.new(
@@ -525,6 +561,9 @@ class Translator(Base):
         finally:
             # 等待最后的回调执行完毕
             time.sleep(1.0)
+
+            # 清理限流器引用，避免 UI 读取到上一次任务的并发数据
+            self.task_limiter = None
 
             # MTool 优化器后处理
             if self.items_cache:
@@ -678,36 +717,44 @@ class Translator(Base):
             is not None
         )
 
-    # 初始化速度控制器
-    def initialize_max_workers(self) -> tuple[int, int]:
-        # 从模型的 threshold 读取
-        if not hasattr(self, "model") or self.model is None:
-            return 8, 0
-        threshold = self.model.get("threshold", {})
-        max_workers: int = threshold.get("concurrency_limit", 0)
-        rpm_threshold: int = threshold.get("rpm_limit", 0)
+    def initialize_task_limits(self) -> tuple[int, int, int]:
+        """推导任务并发与速率上限。
 
-        # 当 max_workers = 0 时，尝试获取 llama.cpp 槽数
-        if max_workers == 0:
+        - `concurrency_limit=0` 表示自动：优先尝试读取 llama.cpp /slots，其次根据 rpm 估算。
+        - 未配置 rpm 时，沿用旧行为：rps 默认为 concurrency，避免短时间突发。
+        """
+        if not hasattr(self, "model") or self.model is None:
+            return 8, 8, 0
+
+        threshold = self.model.get("threshold", {})
+        max_concurrency = max(0, int(threshold.get("concurrency_limit", 0) or 0))
+        rpm_limit = max(0, int(threshold.get("rpm_limit", 0) or 0))
+
+        # 当 concurrency_limit=0 时，且为本地模型，尝试获取 llama.cpp 槽数。
+        if max_concurrency == 0 and self.initialize_local_flag():
             try:
                 api_url = self.model.get("api_url", "")
-                response = httpx.get(re.sub(r"/v1$", "", api_url) + "/slots")
+                response = httpx.get(
+                    re.sub(r"/v1$", "", api_url) + "/slots",
+                    timeout=2.0,
+                )
                 response.raise_for_status()
                 response_json = response.json()
-                if isinstance(response_json, list) and len(response_json) > 0:
-                    max_workers = len(response_json)
+                if isinstance(response_json, list) and response_json:
+                    max_concurrency = len(response_json)
             except Exception:
                 pass
 
-        if max_workers == 0 and rpm_threshold == 0:
-            max_workers = 8
-            rpm_threshold = 0
-        elif max_workers > 0 and rpm_threshold == 0:
-            pass
-        elif max_workers == 0 and rpm_threshold > 0:
-            max_workers = 8192
+        if max_concurrency == 0:
+            if rpm_limit > 0:
+                # 估算：假设平均请求耗时 ~250ms，取 4 倍 rps 作为并发冗余，并限制上限避免失控。
+                derived = (rpm_limit * 4 + 59) // 60
+                max_concurrency = max(8, min(64, derived))
+            else:
+                max_concurrency = 8
 
-        return max_workers, rpm_threshold
+        rps_limit = 0 if rpm_limit > 0 else max_concurrency
+        return max_concurrency, rps_limit, rpm_limit
 
     def reset_recalculable_status(self, items: list[Item]) -> None:
         for item in items:
@@ -740,72 +787,47 @@ class Translator(Base):
 
     def apply_batch_update_sync(
         self,
-        task: Any,
-        result: dict[str, Any],
         finalized_items: list[dict[str, Any]],
-        processed_count: int,
-        error_count: int,
         glossaries: list[dict[str, str]],
-    ) -> dict[str, Any]:
+        extras_snapshot: dict[str, Any],
+    ) -> None:
         """
         同步执行批量更新操作（在独立线程中执行以避免阻塞事件循环）。
 
-        负责：更新统计数据、合并术语表、写入数据库。
+        负责：合并术语表、写入数据库。
         """
-        with self.db_lock:
-            new_glossary_data = None
-            if glossaries and self.config.auto_glossary_enable:
-                new_glossary_data = self.merge_glossary(glossaries)
+        new_glossary_data = None
+        if glossaries and self.config.auto_glossary_enable:
+            new_glossary_data = self.merge_glossary(glossaries)
 
-            self.extras.update(
-                {
-                    "processed_line": self.extras.get("processed_line", 0)
-                    + processed_count,
-                    "error_line": self.extras.get("error_line", 0) + error_count,
-                    "total_tokens": self.extras.get("total_tokens", 0)
-                    + result.get("input_tokens", 0)
-                    + result.get("output_tokens", 0),
-                    "total_input_tokens": self.extras.get("total_input_tokens", 0)
-                    + result.get("input_tokens", 0),
-                    "total_output_tokens": self.extras.get("total_output_tokens", 0)
-                    + result.get("output_tokens", 0),
-                    "time": time.time() - self.extras.get("start_time", 0),
-                }
-            )
-            self.extras["line"] = (
-                self.extras["processed_line"] + self.extras["error_line"]
-            )
-
-            rules_map = (
-                {DataManager.RuleType.GLOSSARY: new_glossary_data}
-                if new_glossary_data
-                else {}
-            )
-            DataManager.get().update_batch(
-                items=finalized_items,
-                rules=rules_map,
-                meta={
-                    "translation_extras": self.extras,
-                    "project_status": Base.ProjectStatus.PROCESSING,
-                },
-            )
-
-            return dict(self.extras)
+        rules_map = (
+            {DataManager.RuleType.GLOSSARY: new_glossary_data}
+            if new_glossary_data
+            else {}
+        )
+        DataManager.get().update_batch(
+            items=finalized_items,
+            rules=rules_map,
+            meta={
+                "translation_extras": extras_snapshot,
+                "project_status": Base.ProjectStatus.PROCESSING,
+            },
+        )
 
     async def start_async_translation(
         self,
         *,
         progress: ProgressBar,
         pid: TaskID,
-        task_limiter: AsyncTaskLimiter,
+        task_limiter: TaskLimiter,
         max_workers: int,
     ) -> None:
         """
         异步翻译调度入口。
 
-        具体的生产者/消费者/提交逻辑封装在 TranslatorTaskAsyncPipeline 中，避免本方法过长。
+        具体的生产者/消费者/提交逻辑封装在 TranslatorTaskPipeline 中，避免本方法过长。
         """
-        pipeline = TranslatorTaskAsyncPipeline(
+        pipeline = TranslatorTaskPipeline(
             translator=self,
             progress=progress,
             pid=pid,
