@@ -1,9 +1,9 @@
 from typing import Any
 from typing import cast
 
+from PyQt5 import sip
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
-from PyQt5 import sip
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import InfoBar
@@ -21,6 +21,27 @@ class ProgressToast:
         self.progress_ring: ProgressRing | None = None
         self.is_indeterminate = True
         self.bottom_offset = 80
+
+    def apply_relayout(self) -> None:
+        """根据当前内容重算尺寸，并重新居中定位。"""
+
+        self.ensure_widgets_alive()
+        if self.info_bar is None:
+            return
+
+        adjust_text = getattr(self.info_bar, "_adjustText", None)
+        try:
+            if callable(adjust_text):
+                adjust_text()
+            else:
+                self.info_bar.adjustSize()
+        except RuntimeError:
+            self.info_bar = None
+            self.indeterminate_ring = None
+            self.progress_ring = None
+            return
+
+        self.update_position()
 
     def is_qt_object_alive(self, obj: object | None) -> bool:
         """判断 Qt 对象是否仍然可用。
@@ -104,16 +125,18 @@ class ProgressToast:
         info_bar.closedSignal.connect(lambda: self.on_info_bar_closed(info_bar))
 
         # 同时创建两种圆环，以便动态切换
-        self.indeterminate_ring = IndeterminateProgressRing(info_bar)
-        self.indeterminate_ring.setFixedSize(18, 18)
-        self.indeterminate_ring.setStrokeWidth(3)
+        indeterminate_ring = IndeterminateProgressRing(info_bar)
+        indeterminate_ring.setFixedSize(18, 18)
+        indeterminate_ring.setStrokeWidth(3)
+        self.indeterminate_ring = indeterminate_ring
 
-        self.progress_ring = ProgressRing(info_bar)
-        self.progress_ring.setFixedSize(18, 18)
-        self.progress_ring.setStrokeWidth(3)
-        self.progress_ring.setRange(0, 100)
-        self.progress_ring.setValue(0)
-        self.progress_ring.setTextVisible(False)
+        progress_ring = ProgressRing(info_bar)
+        progress_ring.setFixedSize(18, 18)
+        progress_ring.setStrokeWidth(3)
+        progress_ring.setRange(0, 100)
+        progress_ring.setValue(0)
+        progress_ring.setTextVisible(False)
+        self.progress_ring = progress_ring
 
         # 隐藏原始 iconWidget 并移除其布局占位
         info_bar.iconWidget.hide()
@@ -126,17 +149,17 @@ class ProgressToast:
 
         # 插入圆环到布局中
         info_bar.hBoxLayout.insertSpacing(0, 8)
-        info_bar.hBoxLayout.insertWidget(1, self.indeterminate_ring, 0, align_vcenter)
-        info_bar.hBoxLayout.insertWidget(2, self.progress_ring, 0, align_vcenter)
+        info_bar.hBoxLayout.insertWidget(1, indeterminate_ring, 0, align_vcenter)
+        info_bar.hBoxLayout.insertWidget(2, progress_ring, 0, align_vcenter)
         info_bar.hBoxLayout.insertSpacing(3, 16)
 
         # 根据初始模式显示对应的圆环
         if is_indeterminate:
-            self.progress_ring.hide()
-            self.indeterminate_ring.show()
+            progress_ring.hide()
+            indeterminate_ring.show()
         else:
-            self.indeterminate_ring.hide()
-            self.progress_ring.show()
+            indeterminate_ring.hide()
+            progress_ring.show()
 
         return info_bar
 
@@ -150,8 +173,9 @@ class ProgressToast:
                 self.switch_to_indeterminate()
             return
 
-        self.info_bar = self.create_info_bar(content, True)
-        self.info_bar.show()
+        info_bar = self.create_info_bar(content, True)
+        self.info_bar = info_bar
+        info_bar.show()
         QTimer.singleShot(0, self.update_position)
 
     def show_progress(self, content: str, current: int = 0, total: int = 0) -> None:
@@ -159,8 +183,9 @@ class ProgressToast:
         self.ensure_widgets_alive()
 
         if self.info_bar is None:
-            self.info_bar = self.create_info_bar(content, False)
-            self.info_bar.show()
+            info_bar = self.create_info_bar(content, False)
+            self.info_bar = info_bar
+            info_bar.show()
             QTimer.singleShot(0, self.update_position)
         elif self.is_indeterminate:
             self.switch_to_determinate()
@@ -204,7 +229,11 @@ class ProgressToast:
             self.progress_ring = None
             return
 
+        # 同步 InfoBar 内部状态，避免窗口 resize 时 _adjustText() 用旧 content 覆盖显示。
+        self.info_bar.content = content
+        content_label.setVisible(bool(content))
         content_label.setText(content)
+        self.apply_relayout()
 
     def switch_to_indeterminate(self) -> None:
         """平滑切换到不定进度模式"""
