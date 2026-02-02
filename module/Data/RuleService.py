@@ -78,9 +78,7 @@ class RuleService:
         loaded_presets: list[str] = []
 
         # 新工程默认使用智能文本保护（SMART）。
-        # 兼容旧布尔键：同时写入 text_preserve_enable=False，避免默认值误判。
         db.set_meta("text_preserve_mode", "smart")
-        db.set_meta("text_preserve_enable", False)
 
         def load_json(path: str) -> list[dict[str, Any]] | None:
             try:
@@ -108,6 +106,9 @@ class RuleService:
             data = load_json(config.text_preserve_default_preset)
             if data is not None:
                 db.set_rules(LGDatabase.RuleType.TEXT_PRESERVE, data)
+                # 这里加载的是“自定义规则预设”，必须切到 CUSTOM，
+                # 否则仍处于 SMART 模式会忽略这些规则。
+                db.set_meta("text_preserve_mode", "custom")
                 loaded_presets.append(Localizer.get().app_text_preserve_page)
 
         # 3. 译前替换

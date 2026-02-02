@@ -127,6 +127,29 @@ class DataManager(Base):
             # 载入 meta 强缓存
             self.meta_service.refresh_cache_from_db()
 
+            # 兼容旧工程：早期使用 text_preserve_enable(bool) 表示是否启用自定义文本保护；
+            # 新语义改为 text_preserve_mode(off/smart/custom)。这里只在工程加载时做一次迁移写回。
+            raw_mode = self.session.meta_cache.get("text_preserve_mode")
+            mode_valid = False
+            if isinstance(raw_mode, str):
+                try:
+                    __class__.TextPreserveMode(raw_mode)
+                    mode_valid = True
+                except Exception:
+                    mode_valid = False
+
+            if not mode_valid:
+                legacy_enable = bool(
+                    self.session.meta_cache.get("text_preserve_enable", False)
+                )
+                migrated = (
+                    __class__.TextPreserveMode.CUSTOM.value
+                    if legacy_enable
+                    else __class__.TextPreserveMode.SMART.value
+                )
+                self.session.db.set_meta("text_preserve_mode", migrated)
+                self.session.meta_cache["text_preserve_mode"] = migrated
+
             # 清理其它缓存（避免跨工程串数据）
             self.session.rule_cache.clear()
             self.session.rule_text_cache.clear()
@@ -612,23 +635,16 @@ class DataManager(Base):
         self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
 
     def get_text_preserve_mode(self) -> TextPreserveMode:
-        raw = self.get_meta("text_preserve_mode", None)
+        raw = self.get_meta(
+            "text_preserve_mode", __class__.TextPreserveMode.SMART.value
+        )
         if isinstance(raw, str):
             try:
                 return __class__.TextPreserveMode(raw)
             except Exception:
                 pass
 
-        # 兼容旧工程：
-        # - True -> custom
-        # - False -> smart
-        # 旧工程默认语义：未显式开启自定义规则时，使用内置智能规则（SMART）。
-        legacy = self.get_meta("text_preserve_enable", False)
-        return (
-            __class__.TextPreserveMode.CUSTOM
-            if bool(legacy)
-            else __class__.TextPreserveMode.SMART
-        )
+        return __class__.TextPreserveMode.SMART
 
     def set_text_preserve_mode(self, mode: TextPreserveMode | str) -> None:
         try:
@@ -642,23 +658,6 @@ class DataManager(Base):
 
         # 新语义的唯一权威来源
         self.set_meta("text_preserve_mode", normalized.value)
-
-        # 写入旧键用于兼容与避免默认值误判。
-        # 注意：旧布尔无法表达 OFF，这里将 OFF 映射为 False。
-        legacy_enable = normalized == __class__.TextPreserveMode.CUSTOM
-        self.set_meta("text_preserve_enable", legacy_enable)
-
-    def get_text_preserve_enable(self) -> bool:
-        # 兼容旧接口：仅表示“是否使用自定义规则”。
-        return self.get_text_preserve_mode() == __class__.TextPreserveMode.CUSTOM
-
-    def set_text_preserve_enable(self, enable: bool) -> None:
-        # 兼容旧接口：False 映射为 SMART（与历史一致）。
-        self.set_text_preserve_mode(
-            __class__.TextPreserveMode.CUSTOM
-            if enable
-            else __class__.TextPreserveMode.SMART
-        )
 
     def get_pre_replacement(self) -> list[dict[str, Any]]:
         return self.get_rules_cached(LGDatabase.RuleType.PRE_REPLACEMENT)
