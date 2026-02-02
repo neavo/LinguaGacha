@@ -85,6 +85,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260202 v0.53.0
+  - feat - Significantly speed up task stop
+  - feat - Support for Kimi series thinking toggle
+  - feat - Brand new `EPUB` and `RenPy` parsers based on `AST`
+    - Theoretically capable of 100% accurate style restoration
+
 - 20260131 v0.52.0
   - feat - Redesigned the following pages:
     - `Proofreading` `Glossary`

@@ -80,6 +80,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260202 v0.53.0
+  - 功能 - 显著加快任务停止的速度
+  - 功能 - 支持 Kimi 系列思考开关
+  - 功能 - 基于 `AST` 的全新 `EPUB` `RenPy` 解析器
+    - 理论上可以做到 100% 准确的还原样式
+
 - 20260131 v0.52.0
   - 功能 - 重新设计了以下页面：
     - `校对页` `术语表`
