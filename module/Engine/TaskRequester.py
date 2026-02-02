@@ -90,16 +90,15 @@ class TaskRequester(Base):
     # 正则
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
 
-    # 退化检测（仅针对输出 tail；忽略空白符）
-    # - 单字符重复 >= 100 次
-    # - 双字符模式 AB 重复 >= 50 次（A != B）
-    RE_WS: re.Pattern = re.compile(r"\s+")
-    RE_SINGLE_CHAR_REPEAT: re.Pattern = re.compile(r"(.)\1{99,}")
-    RE_AB_REPEAT: re.Pattern = re.compile(r"(.)(.)(?:\1\2){49,}")
+    # 流式输出退化检测（忽略空白符）：
+    # - 单字符连续重复 >= 100
+    # - 双字符交替模式 ABAB... 长度 >= 100（等价于 AB 重复 >= 50 对，且 A != B）
+    STREAM_DEGRADATION_SINGLE_CHAR_THRESHOLD: int = 100
+    STREAM_DEGRADATION_ALTERNATING_CHAR_THRESHOLD: int = 100
 
     # 流式控制
     STREAM_POLL_INTERVAL_S: float = 0.15
-    STREAM_DEGRADATION_TAIL_CHARS: int = 2048
+    STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 2048
 
     # SDK 超时（request_timeout 用于请求级硬超时，SDK 超时仅作底层兜底）
     SDK_DEFAULT_TIMEOUT_S: int = 300
@@ -420,27 +419,74 @@ class TaskRequester(Base):
         return "", content.strip()
 
     @classmethod
-    def has_degradation_in_tail(cls, tail: str) -> bool:
-        if not tail:
+    def has_output_degradation(cls, text: str) -> bool:
+        """检测输出是否出现明显退化（忽略空白符）。"""
+
+        if not text:
             return False
+        detector = cls.DegradationDetector()
+        return detector.feed(text)
 
-        # 允许空白符插入重复之间，但不计入重复次数。
-        compact = cls.RE_WS.sub("", tail)
-        if not compact:
+    @dataclasses.dataclass
+    class DegradationDetector:
+        """增量退化检测器。
+
+        为什么用增量：流式输出可能产生大量 delta；若每个 delta 都拼接尾部再做全量扫描，
+        会把事件循环打到 CPU 饱和，进而拖慢并发爬升与整体吞吐。
+        """
+
+        last_char: str | None = None
+        second_last_char: str | None = None
+        single_run: int = 0
+        alternating_run: int = 0
+
+        def feed(self, text: str) -> bool:
+            for ch in text:
+                if ch.isspace():
+                    continue
+
+                if self.last_char is None:
+                    self.last_char = ch
+                    self.single_run = 1
+                    self.alternating_run = 1
+                    continue
+
+                if ch == self.last_char:
+                    self.single_run += 1
+                else:
+                    self.single_run = 1
+
+                if (
+                    self.single_run
+                    >= TaskRequester.STREAM_DEGRADATION_SINGLE_CHAR_THRESHOLD
+                ):
+                    return True
+
+                if (
+                    self.second_last_char is not None
+                    and ch == self.second_last_char
+                    and self.second_last_char != self.last_char
+                ):
+                    self.alternating_run += 1
+                else:
+                    self.alternating_run = 2 if ch != self.last_char else 1
+
+                if (
+                    self.alternating_run
+                    >= TaskRequester.STREAM_DEGRADATION_ALTERNATING_CHAR_THRESHOLD
+                ):
+                    return True
+
+                self.second_last_char = self.last_char
+                self.last_char = ch
+
             return False
-
-        if cls.RE_SINGLE_CHAR_REPEAT.search(compact) is not None:
-            return True
-
-        match = cls.RE_AB_REPEAT.search(compact)
-        if match is None:
-            return False
-
-        return match.group(1) != match.group(2)
 
     @dataclasses.dataclass
     class OpenAIStreamState:
-        result_tail: str = ""
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
 
     class OpenAIStreamStrategy:
         def __init__(self, requester: "TaskRequester") -> None:
@@ -480,10 +526,7 @@ class TaskRequester(Base):
             if not isinstance(text, str) or not text:
                 return
 
-            state.result_tail = (state.result_tail + text)[
-                -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
-            ]
-            if self.requester.has_degradation_in_tail(state.result_tail):
+            if state.degradation_detector.feed(text):
                 raise StreamDegradationError("degradation detected")
 
         async def finalize(
@@ -500,9 +543,11 @@ class TaskRequester(Base):
                 self.requester.extract_openai_think_and_result(message)
             )
 
-            # 兜底：若流式事件未覆盖到全部输出，仍在最终结果尾部做一次检测。
-            if self.requester.has_degradation_in_tail(
-                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            # 兜底：流式事件偶发丢失时，仅检查最终输出尾部窗口避免全量扫描。
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
             ):
                 raise StreamDegradationError("degradation detected")
 
@@ -521,7 +566,9 @@ class TaskRequester(Base):
 
     @dataclasses.dataclass
     class AnthropicStreamState:
-        result_tail: str = ""
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
 
     class AnthropicStreamStrategy:
         def __init__(self, requester: "TaskRequester") -> None:
@@ -553,10 +600,7 @@ class TaskRequester(Base):
             if not isinstance(item, str) or not item:
                 return
 
-            state.result_tail = (state.result_tail + item)[
-                -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
-            ]
-            if self.requester.has_degradation_in_tail(state.result_tail):
+            if state.degradation_detector.feed(item):
                 raise StreamDegradationError("degradation detected")
 
         async def finalize(
@@ -589,8 +633,11 @@ class TaskRequester(Base):
                 else ""
             )
 
-            if self.requester.has_degradation_in_tail(
-                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            # 兜底：流式事件偶发丢失时，仅检查最终输出尾部窗口避免全量扫描。
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
             ):
                 raise StreamDegradationError("degradation detected")
 
@@ -611,7 +658,9 @@ class TaskRequester(Base):
     class GoogleStreamState:
         think_parts: list[str] = dataclasses.field(default_factory=list)
         result_parts: list[str] = dataclasses.field(default_factory=list)
-        result_tail: str = ""
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
         last_usage: Any = None
 
     class GoogleStreamStrategy:
@@ -656,12 +705,7 @@ class TaskRequester(Base):
                                 state.think_parts.append(text)
                             else:
                                 state.result_parts.append(text)
-                                state.result_tail = (state.result_tail + text)[
-                                    -self.requester.STREAM_DEGRADATION_TAIL_CHARS :
-                                ]
-                                if self.requester.has_degradation_in_tail(
-                                    state.result_tail
-                                ):
+                                if state.degradation_detector.feed(text):
                                     raise StreamDegradationError("degradation detected")
 
             usage_metadata = getattr(item, "usage_metadata", None)
@@ -678,8 +722,10 @@ class TaskRequester(Base):
                 "\n", "".join(state.think_parts).strip()
             )
 
-            if self.requester.has_degradation_in_tail(
-                response_result[-self.requester.STREAM_DEGRADATION_TAIL_CHARS :]
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
             ):
                 raise StreamDegradationError("degradation detected")
 
