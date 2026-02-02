@@ -6,10 +6,17 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.File.RenPyTL.RenPyTlExtractor import RenPyTlExtractor
+from module.File.RenPyTL.RenPyTlLexer import sha1_hex
+from module.File.RenPyTL.RenPyTlParser import parse_document
+from module.File.RenPyTL.RenPyTlWriter import RenPyTlWriter
 from module.Text.TextHelper import TextHelper
 
 
 class RENPY(Base):
+    RE_TRANSLATE_HEADER = re.compile(
+        r"^translate\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\s*:\s*$"
+    )
     # # game/script8.rpy:16878
     # translate chinese arabialogoff_e5798d9a:
     #
@@ -45,9 +52,6 @@ class RENPY(Base):
     #     # n "After a wonderful night, the next day, to our displeasure, we were faced with the continuation of the commotion that I had accidentally engendered the morning prior."
     #     n ""
 
-    # 匹配 RenPy 文本的规则
-    RE_RENPY = re.compile(r"\"(.*?)(?<!\\)\"(?!\")", flags=re.IGNORECASE)
-
     def __init__(self, config: Config) -> None:
         super().__init__()
 
@@ -71,110 +75,17 @@ class RENPY(Base):
 
     # 从流读取
     def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-        def process(text: str) -> str:
-            return text.replace("\\n", "\n").replace('\\"', '"')
-
-        items: list[Item] = []
-
         # 获取编码
         encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
         text = content.decode(encoding)
-        lines = [line.rstrip() for line in text.splitlines()]
+        lines = text.splitlines()
 
-        for i, line in enumerate(lines):
-            results: list[str] = RENPY.RE_RENPY.findall(line)
-            is_content_line = line.startswith("    # ") or line.startswith("    old ")
-
-            # 不是内容行但找到匹配项目时，则直接跳过这一行
-            if not is_content_line and len(results) > 0:
-                continue
-            elif is_content_line and len(results) == 1:
-                src = results[0]
-                dst = self.find_dst(i + 1, line, lines)
-                name = None
-            elif is_content_line and len(results) >= 2:
-                src = results[1]
-                dst = self.find_dst(i + 1, line, lines)
-                name = results[0]
-            else:
-                src = ""
-                dst = ""
-                name = None
-
-            # 添加数据
-            if src == "":
-                items.append(
-                    Item.from_dict(
-                        {
-                            "src": process(src),
-                            "dst": dst,
-                            "name_src": name,
-                            "name_dst": name,
-                            "extra_field": line,
-                            "row": len(items),
-                            "file_type": Item.FileType.RENPY,
-                            "file_path": rel_path,
-                            "text_type": Item.TextType.RENPY,
-                            "status": Base.ProjectStatus.EXCLUDED,
-                        }
-                    )
-                )
-            elif dst != "" and src != dst:
-                items.append(
-                    Item.from_dict(
-                        {
-                            "src": process(src),
-                            "dst": dst,
-                            "name_src": name,
-                            "name_dst": name,
-                            "extra_field": line,
-                            "row": len(items),
-                            "file_type": Item.FileType.RENPY,
-                            "file_path": rel_path,
-                            "text_type": Item.TextType.RENPY,
-                            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
-                        }
-                    )
-                )
-            else:
-                # 此时存在两种情况：
-                # 1. 源文与译文相同
-                # 2. 源文不为空且译文为空
-                # 在后续翻译步骤中，语言过滤等情况可能导致实际不翻译此条目
-                # 而如果翻译后文件中 译文 为空，则实际游戏内文本显示也将为空
-                # 为了避免这种情况，应该在添加数据时直接设置 dst 为 src 以避免出现预期以外的空译文
-                items.append(
-                    Item.from_dict(
-                        {
-                            "src": process(src),
-                            "dst": process(src),
-                            "name_src": name,
-                            "name_dst": name,
-                            "extra_field": line,
-                            "row": len(items),
-                            "file_type": Item.FileType.RENPY,
-                            "file_path": rel_path,
-                            "text_type": Item.TextType.RENPY,
-                            "status": Base.ProjectStatus.NONE,
-                        }
-                    )
-                )
-
-        return items
+        doc = parse_document(lines)
+        extractor = RenPyTlExtractor()
+        return extractor.extract(doc, rel_path)
 
     # 写入数据
     def write_to_path(self, items: list[Item]) -> None:
-        def repl(m: re.Match, i: list[int], repl_list: list[str]) -> str:
-            if i[0] < len(repl_list) and repl_list[i[0]] is not None:
-                i[0] = i[0] + 1
-                return f'"{repl_list[i[0] - 1]}"'
-            else:
-                i[0] = i[0] + 1
-                return m.group(0)
-
-        def process(text: str) -> str:
-            return text.replace("\n", "\\n").replace('\\"', '"').replace('"', '\\"')
-
         # 筛选
         target = [item for item in items if item.get_file_type() == Item.FileType.RENPY]
 
@@ -189,77 +100,153 @@ class RENPY(Base):
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
-        # 分别处理每个文件
+        dm = DataManager.get()
+        output_path = dm.get_translated_path()
+        writer = RenPyTlWriter()
+        extractor = RenPyTlExtractor()
+
         for rel_path, group_items in group.items():
-            # 按行号排序
-            sorted_items = sorted(group_items, key=lambda x: x.get_row())
+            original = dm.get_asset_decompressed(rel_path)
+            if original is None:
+                continue
 
-            # 获取输出目录
-            output_path = DataManager.get().get_translated_path()
+            encoding = TextHelper.get_encoding(content=original, add_sig_to_utf8=True)
+            text = original.decode(encoding)
+            lines = text.splitlines()
 
-            # 数据处理
+            items_to_apply = self.build_items_for_writeback(
+                extractor,
+                rel_path,
+                lines,
+                group_items,
+            )
+            items_to_apply.sort(key=self.get_item_target_line)
+
+            writer.apply_items_to_lines(lines, items_to_apply)
+
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(abs_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
 
-            result = []
-            for item in sorted_items:
-                dst: str = item.get_dst()
-                name_dst_raw = item.get_name_dst()
-                name_dst: str = (
-                    name_dst_raw if isinstance(name_dst_raw, str) else ""
-                )  # RenPy names are expected to be str
-                line: str = item.get_extra_field()
-                results: list[str] = RENPY.RE_RENPY.findall(line)
+    def build_items_for_writeback(
+        self,
+        extractor: RenPyTlExtractor,
+        rel_path: str,
+        lines: list[str],
+        items: list[Item],
+    ) -> list[Item]:
+        if any(self.has_ast_extra_field(v) for v in items):
+            return items
 
-                # 添加原文
-                result.append(line)
+        doc = parse_document(lines)
+        new_items = extractor.extract(doc, rel_path)
+        self.transfer_legacy_translations(items, new_items)
 
-                # 添加译文
-                i = [0]
-                dsts: list[str] = []
-                if len(results) == 1:
-                    dsts = [process(dst)]
-                elif len(results) >= 2:
-                    dsts = [name_dst, process(dst)]
+        if not self.config.write_translated_name_fields_to_file:
+            self.revert_name(new_items)
+        else:
+            self.uniform_name(new_items)
 
-                if line.startswith("    # "):
-                    if len(results) > 0:
-                        line_processed = RENPY.RE_RENPY.sub(
-                            lambda m: repl(m, i, dsts), line
-                        )
-                        result.append(f"    {line_processed.removeprefix('    # ')}")
-                elif line.startswith("    old "):
-                    if len(results) > 0:
-                        line_processed = RENPY.RE_RENPY.sub(
-                            lambda m: repl(m, i, dsts), line
-                        )
-                        result.append(
-                            f"    new {line_processed.removeprefix('    old ')}"
-                        )
+        return new_items
 
-            with open(abs_path, "w", encoding="utf-8") as writer:
-                writer.write("\n".join(result))
+    def has_ast_extra_field(self, item: Item) -> bool:
+        extra_raw = item.get_extra_field()
+        if not isinstance(extra_raw, dict):
+            return False
+        renpy = extra_raw.get("renpy")
+        return isinstance(renpy, dict)
 
-    # 获取译文
-    def find_dst(self, start: int, line: str, lines: list[str]) -> str:
-        # 越界检查
-        if start >= len(lines):
-            return ""
+    def get_item_target_line(self, item: Item) -> int:
+        extra_raw = item.get_extra_field()
+        extra = extra_raw if isinstance(extra_raw, dict) else {}
+        renpy = extra.get("renpy", {}) if isinstance(extra.get("renpy"), dict) else {}
+        pair = renpy.get("pair", {}) if isinstance(renpy.get("pair"), dict) else {}
+        line = pair.get("target_line")
+        return int(line) if isinstance(line, int) else 0
 
-        # 遍历剩余行寻找目标数据
-        line_clean = line.removeprefix("    # ").removeprefix("    old ")
-        for line_ex in lines[start:]:
-            line_ex_clean = line_ex.removeprefix("    ").removeprefix("    new ")
-            results: list[str] = RENPY.RE_RENPY.findall(line_ex_clean)
-            if RENPY.RE_RENPY.sub("", line_clean) == RENPY.RE_RENPY.sub(
-                "", line_ex_clean
-            ):
-                if len(results) == 1:
-                    return results[0]
-                elif len(results) >= 2:
-                    return results[1]
+    def transfer_legacy_translations(
+        self,
+        legacy_items: list[Item],
+        new_items: list[Item],
+    ) -> None:
+        legacy_by_key: dict[tuple[str, str, str], list[Item]] = {}
 
-        return ""
+        current_lang: str | None = None
+        current_label: str | None = None
+        for item in sorted(legacy_items, key=lambda x: x.get_row()):
+            extra_raw = item.get_extra_field()
+            if not isinstance(extra_raw, str):
+                continue
+
+            header = self.parse_translate_header(extra_raw)
+            if header is not None:
+                current_lang, current_label = header
+                continue
+
+            if current_lang is None or current_label is None:
+                continue
+
+            if item.get_src() == "":
+                continue
+
+            key = (current_lang, current_label, sha1_hex(extra_raw))
+            legacy_by_key.setdefault(key, []).append(item)
+
+        for item in new_items:
+            key = self.build_ast_key(item)
+            if key is None:
+                continue
+            candidates = legacy_by_key.get(key)
+            if not candidates:
+                continue
+
+            picked = self.pick_best_candidate(item, candidates)
+            item.set_dst(picked.get_dst())
+            if picked.get_name_dst() is not None:
+                item.set_name_dst(picked.get_name_dst())
+
+    def build_ast_key(self, item: Item) -> tuple[str, str, str] | None:
+        extra_raw = item.get_extra_field()
+        extra = extra_raw if isinstance(extra_raw, dict) else {}
+        renpy = extra.get("renpy")
+        if not isinstance(renpy, dict):
+            return None
+        block = renpy.get("block")
+        digest = renpy.get("digest")
+        if not isinstance(block, dict) or not isinstance(digest, dict):
+            return None
+        lang = block.get("lang")
+        label = block.get("label")
+        template_raw_sha1 = digest.get("template_raw_sha1")
+        if not isinstance(lang, str) or not isinstance(label, str):
+            return None
+        if not isinstance(template_raw_sha1, str) or template_raw_sha1 == "":
+            return None
+        return (lang, label, template_raw_sha1)
+
+    def pick_best_candidate(self, item: Item, candidates: list[Item]) -> Item:
+        if len(candidates) == 1:
+            return candidates.pop(0)
+
+        src = item.get_src()
+        name = item.get_name_src()
+
+        for i, cand in enumerate(candidates):
+            if cand.get_src() == src and cand.get_name_src() == name:
+                return candidates.pop(i)
+
+        for i, cand in enumerate(candidates):
+            if cand.get_src() == src:
+                return candidates.pop(i)
+
+        return candidates.pop(0)
+
+    def parse_translate_header(self, line: str) -> tuple[str, str] | None:
+        m = self.RE_TRANSLATE_HEADER.match(line.strip())
+        if m is None:
+            return None
+        return m.group(1), m.group(2)
 
     # 还原姓名字段
     def revert_name(self, items: list[Item]) -> None:
