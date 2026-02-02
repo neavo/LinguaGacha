@@ -7,7 +7,6 @@ ProgressCallback = Callable[[int, int, str], None]
 RULE_META_KEYS: set[str] = {
     "glossary_enable",
     "text_preserve_mode",
-    "text_preserve_enable",
     "pre_translation_replacement_enable",
     "post_translation_replacement_enable",
     "custom_prompt_zh_enable",

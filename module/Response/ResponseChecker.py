@@ -5,7 +5,6 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
@@ -115,14 +114,8 @@ class ResponseChecker(Base):
                 None,
                 quality_snapshot=self.quality_snapshot,
             )
-            custom_enabled = (
-                self.quality_snapshot.text_preserve_mode
-                == DataManager.TextPreserveMode.CUSTOM
-                if self.quality_snapshot is not None
-                else DataManager.get().get_text_preserve_enable()
-            )
             rule: re.Pattern | None = processor.get_re_sample(
-                custom=custom_enabled,
+                custom=False,
                 text_type=text_type,
             )
 
