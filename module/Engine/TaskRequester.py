@@ -742,6 +742,9 @@ class TaskRequester(Base):
                 "extra_body": self.extra_body,
             }
         )
+
+        # SakuraLLM 走 OpenAI Chat Completions 的流式接口，默认开启 usage 以统计 token。
+        result.setdefault("stream_options", {"include_usage": True})
         return result
 
     async def request_sakura_async(
@@ -807,6 +810,9 @@ class TaskRequester(Base):
                 "extra_headers": self.build_extra_headers(),
             }
         )
+
+        # OpenAI 流式场景下，usage 默认不返回；显式开启以获取 token 统计。
+        result.setdefault("stream_options", {"include_usage": True})
 
         # 构建 extra_body：先设置内置值，再合并用户配置（用户值优先）
         extra_body = {}
