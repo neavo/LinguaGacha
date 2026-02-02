@@ -156,6 +156,9 @@ class CLIManager(Base):
             # Fresh project
             mode = Base.TranslationMode.NEW
 
+        # 已移除翻译开始阶段的过滤：CLI 若覆盖语言/开关，必须在启动翻译前重算并落库。
+        DataManager.get().run_project_prefilter(config, reason="cli")
+
         self.emit(
             Base.Event.TRANSLATION_RUN,
             {

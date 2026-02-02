@@ -38,6 +38,12 @@ class Base:
         QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
+        CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
+        PROJECT_PREFILTER_RUN = "PROJECT_PREFILTER_RUN"  # 工程 - 预过滤开始
+        PROJECT_PREFILTER_DONE = "PROJECT_PREFILTER_DONE"  # 工程 - 预过滤完成
+        PROJECT_PREFILTER_UPDATED = (
+            "PROJECT_PREFILTER_UPDATED"  # 工程 - 预过滤结果已更新
+        )
 
     # 接口格式
     class APIFormat(StrEnum):
