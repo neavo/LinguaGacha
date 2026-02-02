@@ -324,9 +324,9 @@ class TSConversionPage(QWidget, Base):
             return converter.convert(text)
 
         # 获取保护规则，逻辑与 TextProcessor 保持一致
-        # 根据全局“文本保护”开关决定使用自定义规则还是预置规则
+        # 实际生效逻辑由 text_preserve_mode 决定，TextProcessor 会在内部读取该值。
         rule = text_processor.get_re_check(
-            custom=DataManager.get().get_text_preserve_enable(),
+            custom=False,
             text_type=text_type,
         )
 

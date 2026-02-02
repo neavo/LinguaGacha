@@ -32,7 +32,7 @@ class TextPreservePage(QualityRulePageBase):
     TOOLTIP_DELAY_MS: int = 300
 
     QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.TEXT_PRESERVE.value}
-    QUALITY_META_KEYS: set[str] = {"text_preserve_mode", "text_preserve_enable"}
+    QUALITY_META_KEYS: set[str] = {"text_preserve_mode"}
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(text, window)

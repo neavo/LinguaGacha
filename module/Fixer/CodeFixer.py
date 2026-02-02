@@ -17,26 +17,20 @@ class CodeFixer:
         cls,
         src: str,
         dst: str,
-        text_type: str,
+        text_type: Item.TextType,
         config: Config,
         quality_snapshot: QualityRuleSnapshot | None = None,
     ) -> str:
         from module.TextProcessor import TextProcessor
-        from module.Data.DataManager import DataManager
 
         src_codes: list[str] = []
         dst_codes: list[str] = []
-        custom_enabled = (
-            quality_snapshot.text_preserve_mode == DataManager.TextPreserveMode.CUSTOM
-            if quality_snapshot is not None
-            else DataManager.get().get_text_preserve_enable()
-        )
         rule: re.Pattern | None = TextProcessor(
             config,
             None,
             quality_snapshot=quality_snapshot,
         ).get_re_sample(
-            custom=custom_enabled,
+            custom=False,
             text_type=text_type,
         )
 
@@ -78,8 +72,10 @@ class CodeFixer:
 
     # 判断是否是有序子集，并输出 y 中多余元素的索引
     @classmethod
-    def is_ordered_subset(cls, x: list[str], y: list[str]) -> tuple[bool, list[int]]:
-        y: list[str] = y.copy()
+    def is_ordered_subset(
+        cls, x: list[str], y_list: list[str]
+    ) -> tuple[bool, list[int]]:
+        y_copy = y_list.copy()
         mismatchs: list[int] = []
 
         y_index: int = -1
@@ -87,8 +83,8 @@ class CodeFixer:
             match_flag: bool = False
             break_flag: bool = False
 
-            while (not break_flag) and len(y) > 0:
-                y_item = y.pop(0)
+            while (not break_flag) and len(y_copy) > 0:
+                y_item = y_copy.pop(0)
                 y_index = y_index + 1
                 if x_item == y_item:
                     match_flag = True
@@ -101,7 +97,7 @@ class CodeFixer:
                 return False, []
 
         # 如果还有剩余未匹配项，则将其索引全部添加
-        for i in range(len(y)):
+        for i in range(len(y_copy)):
             mismatchs.append(y_index + i + 1)
 
         # 如果所有 x 元素都匹配成功，返回 True
