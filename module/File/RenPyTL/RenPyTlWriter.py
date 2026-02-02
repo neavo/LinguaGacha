@@ -82,7 +82,7 @@ class RenPyTlWriter(Base):
         if kind_str == "STRINGS":
             base_code = target_rest
         else:
-            template_indent, template_rest = split_indent(template_raw)
+            _, template_rest = split_indent(template_raw)
             is_comment, template_code = strip_comment_prefix(template_rest)
             if not is_comment:
                 return False

@@ -132,6 +132,9 @@ class RenPyTlExtractor(Base):
                 "slots": [{"role": s.role, "lit_index": s.lit_index} for s in slots],
                 "digest": {
                     "template_raw_sha1": sha1_hex(template_stmt.raw_line),
+                    "template_raw_rstrip_sha1": sha1_hex(
+                        template_stmt.raw_line.rstrip()
+                    ),
                     "target_skeleton_sha1": sha1_hex(target_stmt.strict_key),
                     "target_string_count": target_stmt.string_count,
                 },

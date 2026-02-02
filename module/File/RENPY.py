@@ -122,7 +122,13 @@ class RENPY(Base):
             )
             items_to_apply.sort(key=self.get_item_target_line)
 
-            writer.apply_items_to_lines(lines, items_to_apply)
+            applied, skipped = writer.apply_items_to_lines(lines, items_to_apply)
+            if skipped > 0:
+                # 导出阶段的写回是“尽量写回但不写错行”，因此这里记录 skipped 便于排查。
+                self.warning(
+                    f"RENPY 导出写回跳过 {skipped} 条: {rel_path} (applied={applied})",
+                    console=False,
+                )
 
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
@@ -136,12 +142,16 @@ class RENPY(Base):
         lines: list[str],
         items: list[Item],
     ) -> list[Item]:
-        if any(self.has_ast_extra_field(v) for v in items):
+        # 仅当该文件的所有条目都携带 AST extra_field 时才直接写回。
+        # 若存在新旧格式混用（部分为 legacy extra_field=str），直接写回会导致 legacy 条目被跳过。
+        if items and all(self.has_ast_extra_field(v) for v in items):
             return items
 
         doc = parse_document(lines)
         new_items = extractor.extract(doc, rel_path)
-        self.transfer_legacy_translations(items, new_items)
+
+        ast_written_target_lines = self.transfer_ast_translations(items, new_items)
+        self.transfer_legacy_translations(items, new_items, ast_written_target_lines)
 
         if not self.config.write_translated_name_fields_to_file:
             self.revert_name(new_items)
@@ -169,6 +179,7 @@ class RENPY(Base):
         self,
         legacy_items: list[Item],
         new_items: list[Item],
+        skip_target_lines: set[int] | None = None,
     ) -> None:
         legacy_by_key: dict[tuple[str, str, str], list[Item]] = {}
 
@@ -194,11 +205,22 @@ class RENPY(Base):
             legacy_by_key.setdefault(key, []).append(item)
 
         for item in new_items:
-            key = self.build_ast_key(item)
-            if key is None:
+            if skip_target_lines is not None:
+                target_line = self.get_item_target_line(item)
+                if target_line in skip_target_lines:
+                    continue
+
+            keys = self.build_ast_keys(item)
+            if not keys:
                 continue
-            candidates = legacy_by_key.get(key)
-            if not candidates:
+
+            candidates: list[Item] | None = None
+            for key in keys:
+                bucket = legacy_by_key.get(key)
+                if bucket:
+                    candidates = bucket
+                    break
+            if candidates is None:
                 continue
 
             picked = self.pick_best_candidate(item, candidates)
@@ -206,24 +228,78 @@ class RENPY(Base):
             if picked.get_name_dst() is not None:
                 item.set_name_dst(picked.get_name_dst())
 
-    def build_ast_key(self, item: Item) -> tuple[str, str, str] | None:
+    def transfer_ast_translations(
+        self,
+        existing_items: list[Item],
+        new_items: list[Item],
+    ) -> set[int]:
+        existing_by_key: dict[tuple[str, str, str], list[Item]] = {}
+        for item in existing_items:
+            if not self.has_ast_extra_field(item):
+                continue
+
+            keys = self.build_ast_keys(item)
+            if not keys:
+                continue
+
+            # 仅使用主 key 建索引，避免同一条目被重复消耗。
+            existing_by_key.setdefault(keys[0], []).append(item)
+
+        written_target_lines: set[int] = set()
+        for item in new_items:
+            keys = self.build_ast_keys(item)
+            if not keys:
+                continue
+
+            candidates: list[Item] | None = None
+            for key in keys:
+                bucket = existing_by_key.get(key)
+                if bucket:
+                    candidates = bucket
+                    break
+            if candidates is None:
+                continue
+
+            picked = self.pick_best_candidate(item, candidates)
+            item.set_dst(picked.get_dst())
+            if picked.get_name_dst() is not None:
+                item.set_name_dst(picked.get_name_dst())
+
+            target_line = self.get_item_target_line(item)
+            if target_line > 0:
+                written_target_lines.add(target_line)
+
+        return written_target_lines
+
+    def build_ast_keys(self, item: Item) -> list[tuple[str, str, str]]:
         extra_raw = item.get_extra_field()
         extra = extra_raw if isinstance(extra_raw, dict) else {}
         renpy = extra.get("renpy")
         if not isinstance(renpy, dict):
-            return None
+            return []
         block = renpy.get("block")
         digest = renpy.get("digest")
         if not isinstance(block, dict) or not isinstance(digest, dict):
-            return None
+            return []
         lang = block.get("lang")
         label = block.get("label")
-        template_raw_sha1 = digest.get("template_raw_sha1")
         if not isinstance(lang, str) or not isinstance(label, str):
-            return None
-        if not isinstance(template_raw_sha1, str) or template_raw_sha1 == "":
-            return None
-        return (lang, label, template_raw_sha1)
+            return []
+
+        primary = digest.get("template_raw_sha1")
+        fallback = digest.get("template_raw_rstrip_sha1")
+
+        keys: list[tuple[str, str, str]] = []
+        if isinstance(primary, str) and primary != "":
+            keys.append((lang, label, primary))
+        if (
+            isinstance(fallback, str)
+            and fallback != ""
+            and (not keys or fallback != keys[0][2])
+        ):
+            keys.append((lang, label, fallback))
+
+        return keys
 
     def pick_best_candidate(self, item: Item, candidates: list[Item]) -> Item:
         if len(candidates) == 1:

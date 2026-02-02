@@ -48,7 +48,6 @@ class StatementNode:
     stmt_kind: StmtKind
     block_kind: BlockKind
     literals: list[StringLiteral]
-    slots: list[Slot]
     strict_key: str
     relaxed_key: str
     string_count: int

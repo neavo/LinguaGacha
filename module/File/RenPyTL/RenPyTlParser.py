@@ -2,8 +2,6 @@ import re
 
 from module.File.RenPyTL.RenPyTlAst import BlockKind
 from module.File.RenPyTL.RenPyTlAst import RenPyTlDocument
-from module.File.RenPyTL.RenPyTlAst import Slot
-from module.File.RenPyTL.RenPyTlAst import SlotRole
 from module.File.RenPyTL.RenPyTlAst import StatementNode
 from module.File.RenPyTL.RenPyTlAst import StmtKind
 from module.File.RenPyTL.RenPyTlAst import TranslateBlock
@@ -57,7 +55,6 @@ def parse_statement(
             stmt_kind=StmtKind.BLANK,
             block_kind=block_kind,
             literals=[],
-            slots=[],
             strict_key="",
             relaxed_key="",
             string_count=0,
@@ -100,7 +97,6 @@ def parse_statement(
         stmt_kind=stmt_kind,
         block_kind=block_kind,
         literals=literals,
-        slots=[],
         strict_key=strict_key,
         relaxed_key=relaxed_key,
         string_count=len(literals),
@@ -139,9 +135,5 @@ def parse_document(lines: list[str]) -> RenPyTlDocument:
             )
         )
 
-    # slot assignment happens after matching (needs template/target pairing).
+    # Slot selection happens in extractor after matching.
     return RenPyTlDocument(lines=lines, blocks=blocks)
-
-
-def build_slot(role: SlotRole, lit_index: int) -> Slot:
-    return Slot(role=role, lit_index=lit_index)
