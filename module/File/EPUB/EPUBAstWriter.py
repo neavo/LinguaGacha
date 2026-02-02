@@ -54,7 +54,10 @@ class EPUBAstWriter(Base):
             text,
         )
 
-    def parse_doc(self, raw: bytes) -> etree._Element:
+    def parse_doc(self, raw: bytes, doc_path: str) -> etree._Element:
+        doc_lower = doc_path.lower()
+        if doc_lower.endswith(".ncx"):
+            return self.ast.parse_ncx_xml(raw)
         return self.ast.parse_xhtml_or_html(raw)
 
     def serialize_doc(self, root: etree._Element) -> bytes:
@@ -260,7 +263,7 @@ class EPUBAstWriter(Base):
                     ):
                         raw = zip_reader.read(name)
                         try:
-                            root = self.parse_doc(raw)
+                            root = self.parse_doc(raw, name)
                             self.apply_items_to_tree(
                                 root, name, by_doc.get(name, []), bilingual
                             )
