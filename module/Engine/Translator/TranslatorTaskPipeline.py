@@ -74,6 +74,11 @@ class TranslatorTaskPipeline:
 
         self.close_clients_timeout_s = 2.0
 
+        # pending_commit_count 用于避免 worker 在“最后一个 chunk 提交结果后、
+        # committer 还未来得及生成重试/拆分任务”这一窗口期提前退出。
+        # 典型症状：最后一条为多行文本时出现黄框(部分通过)后任务直接停止。
+        self.pending_commit_count: int = 0
+
     def should_stop(self) -> bool:
         return Engine.get().get_status() == Base.TaskStatus.STOPPING
 
@@ -203,6 +208,9 @@ class TranslatorTaskPipeline:
                     e,
                 )
                 Engine.get().set_status(Base.TaskStatus.STOPPING)
+            finally:
+                if self.pending_commit_count > 0:
+                    self.pending_commit_count -= 1
 
     async def get_next_context(self) -> Any | None:
         """优先级：high_queue > normal_queue。"""
@@ -215,10 +223,14 @@ class TranslatorTaskPipeline:
             except asyncio.QueueEmpty:
                 pass
 
+            # 退出条件必须考虑 committer 的“提交窗口期”：
+            # worker 可能刚把最后一个 payload 放入 commit_queue，
+            # committer 尚未处理并生成重试任务(high_queue 仍为空)。
             if (
                 self.producer_done.is_set()
                 and self.normal_queue.empty()
                 and self.high_queue.empty()
+                and self.pending_commit_count == 0
             ):
                 return None
 
@@ -250,7 +262,15 @@ class TranslatorTaskPipeline:
 
             task = self.translator.scheduler.create_task(context)
             result = await task.start_async(cpu_executor)
-            await self.commit_queue.put((context, task, result))
+            # 先增计数再 await put，避免 committer 抢先消费导致计数错位。
+            self.pending_commit_count += 1
+            queued = False
+            try:
+                await self.commit_queue.put((context, task, result))
+                queued = True
+            finally:
+                if not queued and self.pending_commit_count > 0:
+                    self.pending_commit_count -= 1
         except Exception as e:
             LogManager.get().error(
                 Localizer.get().task_failed,
