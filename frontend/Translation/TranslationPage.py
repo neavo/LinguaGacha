@@ -63,6 +63,7 @@ class TranslationPage(QWidget, Base):
         # 初始化
         self.data = {}
         self.timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
+        self.is_prefiltering = False
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -87,6 +88,12 @@ class TranslationPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self.update_button_status)
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
+        self.subscribe(
+            Base.Event.PROJECT_PREFILTER_RUN, self.on_project_prefilter_changed
+        )
+        self.subscribe(
+            Base.Event.PROJECT_PREFILTER_DONE, self.on_project_prefilter_changed
+        )
 
         # 定时器
         self.ui_update_timer = QTimer(self)
@@ -152,6 +159,14 @@ class TranslationPage(QWidget, Base):
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
+
+        if self.is_prefiltering:
+            self.action_start.setEnabled(False)
+
+    def on_project_prefilter_changed(self, event: Base.Event, data: dict) -> None:
+        del data
+        self.is_prefiltering = event == Base.Event.PROJECT_PREFILTER_RUN
+        self.update_button_status(event, {})
 
     def translation_done(self, event: Base.Event, data: dict) -> None:
         self.update_button_status(event, data)

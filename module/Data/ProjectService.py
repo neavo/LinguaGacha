@@ -7,6 +7,7 @@ from module.Data.LGDatabase import LGDatabase
 from module.Data.Type import ProgressCallback
 from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
+from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
 
 
@@ -102,7 +103,38 @@ class ProjectService(Base):
         )
 
         if items:
+            # 创建期预过滤：把翻译期会跳过的条目提前标记并落库，
+            # 避免在未执行翻译前进入校对页时暴露噪音条目。
+            def prefilter_progress(current: int, total: int) -> None:
+                self.report_progress(current, total, Localizer.get().data_processing)
+
+            prefilter_result = ProjectPrefilter.apply(
+                items,
+                config,
+                progress_cb=prefilter_progress,
+            )
+
+            self.info(
+                Localizer.get().engine_task_rule_filter.replace(
+                    "{COUNT}", str(prefilter_result.stats.rule_skipped)
+                )
+            )
+            self.info(
+                Localizer.get().engine_task_language_filter.replace(
+                    "{COUNT}", str(prefilter_result.stats.language_skipped)
+                )
+            )
+            self.info(
+                Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                    "{COUNT}", str(prefilter_result.stats.mtool_skipped)
+                )
+            )
+
             db.set_items([item.to_dict() for item in items])
+
+            db.set_meta("prefilter_config", prefilter_result.prefilter_config)
+            db.set_meta("source_language", config.source_language)
+            db.set_meta("target_language", config.target_language)
 
             # 将 total_line 设为 0，标记该工程尚未进行翻译扫描
             extras = {

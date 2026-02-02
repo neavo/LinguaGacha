@@ -177,6 +177,7 @@ class Translator(Base):
         )
 
         def task() -> None:
+            resetting_toast_active = True
             try:
                 # 1. 重新解析资产以获取初始状态的条目
                 # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
@@ -196,6 +197,13 @@ class Translator(Base):
                 # 5. 更新本地缓存
                 self.extras = dm.get_translation_extras()
 
+                # 隐藏“重置中”提示，进入预过滤阶段。
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                resetting_toast_active = False
+
+                # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
+                dm.run_project_prefilter(self.config, reason="translation_reset")
+
                 # 触发状态检查以同步 UI
                 self.emit(Base.Event.PROJECT_CHECK_RUN, {})
             except Exception as e:
@@ -208,7 +216,8 @@ class Translator(Base):
                     },
                 )
             finally:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                if resetting_toast_active:
+                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
         threading.Thread(target=task).start()
 
@@ -427,45 +436,8 @@ class Translator(Base):
             # 更新翻译进度
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
 
-            # 3. 过滤与预处理 (核心业务逻辑保留在翻译器)
-            self.reset_recalculable_status(self.items_cache)
-
-            # 规则过滤
-            self.rule_filter(self.items_cache)
-
-            # 语言过滤
-            self.language_filter(self.items_cache)
-
-            # MTool 优化器预处理
-            self.mtool_optimizer_preprocess(self.items_cache)
-
-            filter_snapshot = self.get_filter_snapshot(self.items_cache)
-            previous_snapshot = dm.get_meta("filter_snapshot", {})
-            if (
-                isinstance(previous_snapshot, dict)
-                and previous_snapshot
-                and previous_snapshot != filter_snapshot
-            ):
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.INFO,
-                        "message": Localizer.get()
-                        .engine_task_filter_changed.replace(
-                            "{RULE}", str(filter_snapshot["rule_skipped"])
-                        )
-                        .replace(
-                            "{LANGUAGE}", str(filter_snapshot["language_skipped"])
-                        ),
-                    },
-                )
-
-            dm.set_meta("filter_snapshot", filter_snapshot)
-            dm.set_meta("source_language", self.config.source_language)
-            dm.set_meta("target_language", self.config.target_language)
-
-            # 持久化初始化后的状态（包括过滤掉的条目）
-            dm.replace_all_items(self.items_cache)
+            # 3. 预过滤已在工程创建/配置变更/重置翻译阶段完成并落库。
+            # 翻译开始阶段不再重复执行过滤，避免双跑与语义漂移。
 
             # 初始化任务调度器
             self.scheduler = TaskScheduler(
@@ -755,31 +727,6 @@ class Translator(Base):
 
         rps_limit = 0 if rpm_limit > 0 else max_concurrency
         return max_concurrency, rps_limit, rpm_limit
-
-    def reset_recalculable_status(self, items: list[Item]) -> None:
-        for item in items:
-            if item.get_status() in (
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
-            ):
-                item.set_status(Base.ProjectStatus.NONE)
-
-    def get_filter_snapshot(self, items: list[Item]) -> dict[str, int | str]:
-        rule_skipped = sum(
-            1 for item in items if item.get_status() == Base.ProjectStatus.RULE_SKIPPED
-        )
-        language_skipped = sum(
-            1
-            for item in items
-            if item.get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
-        )
-
-        return {
-            "rule_skipped": rule_skipped,
-            "language_skipped": language_skipped,
-            "source_language": self.config.source_language,
-            "target_language": self.config.target_language,
-        }
 
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。

@@ -18,6 +18,7 @@ from module.Data.MetaService import MetaService
 from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
 from module.Data.Type import RULE_META_KEYS
+from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
 
 
@@ -66,6 +67,13 @@ class DataManager(Base):
         self.subscribe(
             Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_activity
         )
+
+        # 配置变更触发预过滤重算（确保校对/翻译读取同一份稳定状态）
+        self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
+        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+
+        self.prefilter_lock = threading.Lock()
+        self.prefilter_running = False
 
     @classmethod
     def get(cls) -> "DataManager":
@@ -146,6 +154,175 @@ class DataManager(Base):
     def on_translation_activity(self, event: Base.Event, data: dict) -> None:
         # 翻译过程中 items 会频繁写入 DB；items 缓存不追实时，统一失效更安全。
         self.item_service.clear_item_cache()
+
+    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+
+        # 旧工程可能没有预过滤元信息；为避免移除翻译期过滤后出现跳过集合不一致，
+        # 在工程加载后按当前配置补一次（若已一致则跳过）。
+        config = Config().load()
+        if not self.is_prefilter_needed(config):
+            return
+        self.schedule_project_prefilter(config, reason="project_loaded")
+
+    def on_config_updated(self, event: Base.Event, data: dict) -> None:
+        del event
+        keys = data.get("keys", [])
+        if not isinstance(keys, list):
+            keys = []
+        relevant = {"source_language", "target_language", "mtool_optimizer_enable"}
+        if not any(isinstance(k, str) and k in relevant for k in keys):
+            return
+        if not self.is_loaded():
+            return
+
+        config = Config().load()
+        self.schedule_project_prefilter(config, reason="config_updated")
+
+    def is_prefilter_needed(self, config: Config) -> bool:
+        raw = self.get_meta("prefilter_config", {})
+        if not isinstance(raw, dict):
+            return True
+        expected = {
+            "source_language": config.source_language.value,
+            "target_language": config.target_language.value,
+            "mtool_optimizer_enable": bool(config.mtool_optimizer_enable),
+        }
+        return raw != expected
+
+    def schedule_project_prefilter(self, config: Config, *, reason: str) -> None:
+        # 翻译过程中 UI 会禁用相关开关，但这里仍做一次兜底。
+        from module.Engine.Engine import Engine
+
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            return
+
+        with self.prefilter_lock:
+            if self.prefilter_running:
+                return
+            self.prefilter_running = True
+
+        # 先发事件锁 UI，避免“加载旧工程后立刻点击开始翻译”的竞态。
+        self.emit(Base.Event.PROJECT_PREFILTER_RUN, {"reason": reason})
+
+        def task() -> None:
+            try:
+                self.run_project_prefilter(config, reason=reason)
+            finally:
+                with self.prefilter_lock:
+                    self.prefilter_running = False
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def run_project_prefilter(self, config: Config, *, reason: str) -> None:
+        """执行预过滤并落库。
+
+        注意：该方法会写 DB，必须在后台线程调用。
+        """
+
+        if not self.is_loaded():
+            return
+
+        self.emit(
+            Base.Event.PROJECT_PREFILTER_RUN,
+            {
+                "reason": reason,
+            },
+        )
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().data_processing,
+                "indeterminate": False,
+                "current": 0,
+                "total": 0,
+            },
+        )
+
+        try:
+            self.item_service.clear_item_cache()
+            items = self.get_all_items()
+            total = len(items)
+            self.emit(
+                Base.Event.PROGRESS_TOAST_UPDATE,
+                {
+                    "message": Localizer.get().data_processing,
+                    "current": 0,
+                    "total": total,
+                },
+            )
+
+            if total == 0:
+                return
+
+            def progress_cb(current: int, total: int) -> None:
+                self.emit(
+                    Base.Event.PROGRESS_TOAST_UPDATE,
+                    {
+                        "message": Localizer.get().data_processing,
+                        "current": current,
+                        "total": total,
+                    },
+                )
+
+            result = ProjectPrefilter.apply(items, config, progress_cb=progress_cb)
+            self.replace_all_items(items)
+
+            self.set_meta("prefilter_config", result.prefilter_config)
+            self.set_meta("source_language", config.source_language)
+            self.set_meta("target_language", config.target_language)
+
+            self.info(
+                Localizer.get().engine_task_rule_filter.replace(
+                    "{COUNT}", str(result.stats.rule_skipped)
+                )
+            )
+            self.info(
+                Localizer.get().engine_task_language_filter.replace(
+                    "{COUNT}", str(result.stats.language_skipped)
+                )
+            )
+            self.info(
+                Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                    "{COUNT}", str(result.stats.mtool_skipped)
+                )
+            )
+
+            # 总结 toast 复用现有文案，避免新增重复措辞。
+            summary = " | ".join(
+                [
+                    Localizer.get().engine_task_rule_filter.replace(
+                        "{COUNT}", str(result.stats.rule_skipped)
+                    ),
+                    Localizer.get().engine_task_language_filter.replace(
+                        "{COUNT}", str(result.stats.language_skipped)
+                    ),
+                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                        "{COUNT}", str(result.stats.mtool_skipped)
+                    ),
+                ]
+            )
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.INFO,
+                    "message": summary,
+                },
+            )
+            self.emit(Base.Event.PROJECT_PREFILTER_UPDATED, {"reason": reason})
+        except Exception as e:
+            self.error("Project prefilter failed", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+        finally:
+            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+            self.emit(Base.Event.PROJECT_PREFILTER_DONE, {"reason": reason})
 
     # ===================== meta =====================
 
