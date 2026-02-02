@@ -79,6 +79,13 @@ class EPUBAst(Base):
     RE_SLOT_INLINE_WHITESPACE = re.compile(r"[\r\n\t]+")
     RE_MULTI_SPACE = re.compile(r"[ ]{2,}")
 
+    # NCX 里常见的轻度不规范：裸 '&'（例如：<text>a&b</text>）。
+    # 用 bytes 级别的最小修复，避免引入编码误判。
+    RE_NCX_BARE_AMP = re.compile(
+        rb"&(?!(?:[A-Za-z][A-Za-z0-9._:-]*|#[0-9]+|#[xX][0-9A-Fa-f]+);)"
+    )
+    RE_CDATA_SECTION = re.compile(rb"<!\[CDATA\[.*?\]\]>", re.DOTALL)
+
     SKIP_SUBTREE_TAGS: frozenset[str] = frozenset(
         {
             "script",
@@ -373,6 +380,52 @@ class EPUBAst(Base):
         except Exception as e:
             raise ValueError("Failed to parse html/xhtml") from e
 
+    @classmethod
+    def fix_ncx_bare_ampersands(cls, raw: bytes) -> bytes:
+        if b"&" not in raw:
+            return raw
+
+        # CDATA 内 '&' 是合法字符，避免误改。
+        parts: list[bytes] = []
+        last_end = 0
+        for m in cls.RE_CDATA_SECTION.finditer(raw):
+            before = raw[last_end : m.start()]
+            parts.append(cls.RE_NCX_BARE_AMP.sub(b"&amp;", before))
+            parts.append(raw[m.start() : m.end()])
+            last_end = m.end()
+
+        tail = raw[last_end:]
+        parts.append(cls.RE_NCX_BARE_AMP.sub(b"&amp;", tail))
+        return b"".join(parts)
+
+    @classmethod
+    def parse_ncx_xml(cls, raw: bytes) -> etree._Element:
+        # 优先严格 XML；失败后做最小修复再容错解析，降低 warning 噪音。
+        try:
+            parser = etree.XMLParser(
+                recover=False, resolve_entities=True, no_network=True
+            )
+            return etree.fromstring(raw, parser=parser)
+        except Exception:
+            pass
+
+        fixed = cls.fix_ncx_bare_ampersands(raw)
+        try:
+            parser = etree.XMLParser(
+                recover=False, resolve_entities=True, no_network=True
+            )
+            return etree.fromstring(fixed, parser=parser)
+        except Exception:
+            pass
+
+        try:
+            parser = etree.XMLParser(
+                recover=True, resolve_entities=True, no_network=True
+            )
+            return etree.fromstring(fixed, parser=parser)
+        except Exception as e:
+            raise ValueError("Failed to parse ncx") from e
+
     def iter_translatable_text_slots(
         self,
         root: etree._Element,
@@ -528,7 +581,7 @@ class EPUBAst(Base):
     ) -> list[Item]:
         # 兼容旧实现：抽取 NCX 的 <text>。
         items: list[Item] = []
-        root = etree.fromstring(raw)
+        root = self.parse_ncx_xml(raw)
 
         unit_index = 0
         for elem in root.xpath(".//*[local-name()='text']"):
@@ -539,6 +592,7 @@ class EPUBAst(Base):
                 continue
 
             text = self.normalize_slot_text(text)
+            elem_path = self.build_elem_path(root, elem)
 
             item = Item.from_dict(
                 {
@@ -552,11 +606,11 @@ class EPUBAst(Base):
                         "epub": {
                             "mode": "slot_per_line",
                             "doc_path": ncx_path,
-                            "block_path": self.build_elem_path(root, elem),
+                            "block_path": elem_path,
                             "parts": [
                                 {
                                     "slot": "text",
-                                    "path": self.build_elem_path(root, elem),
+                                    "path": elem_path,
                                 }
                             ],
                             "src_digest": self.sha1_hex(text),
