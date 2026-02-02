@@ -28,11 +28,10 @@ from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import WarningType
 
-
 # ==================== 图标常量 ====================
 
-ICON_STATUS_PROCESSED: BaseIcon = BaseIcon.CIRCLE_CHECK_BIG  # 状态：已处理
-ICON_STATUS_PROCESSED_IN_PAST: BaseIcon = BaseIcon.HISTORY  # 状态：过去已处理
+ICON_STATUS_PROCESSED: BaseIcon = BaseIcon.CIRCLE_CHECK  # 状态：已翻译
+ICON_STATUS_PROCESSED_IN_PAST: BaseIcon = BaseIcon.HISTORY  # 状态：历史完成
 ICON_STATUS_ERROR: BaseIcon = BaseIcon.CIRCLE_ALERT  # 状态：错误
 ICON_STATUS_LANGUAGE_SKIPPED: BaseIcon = (
     BaseIcon.CIRCLE_MINUS

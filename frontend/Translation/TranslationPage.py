@@ -40,7 +40,7 @@ ICON_ACTION_CONTINUE: BaseIcon = BaseIcon.ROTATE_CW  # 命令栏：继续/重新
 ICON_ACTION_STOP: BaseIcon = BaseIcon.CIRCLE_STOP  # 命令栏：停止翻译
 ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_INPUT  # 命令栏：导出翻译结果
 ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置
-ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置失败项
+ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.PAINTBRUSH  # 更多菜单：重置失败项
 ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置全部
 ICON_ACTION_TIMER: BaseIcon = BaseIcon.TIMER  # 命令栏：定时器
 
@@ -739,6 +739,7 @@ class TranslationPage(QWidget, Base):
                     ),
                 )
             )
+            menu.addSeparator()
             menu.addAction(
                 Action(
                     ICON_ACTION_RESET_ALL,

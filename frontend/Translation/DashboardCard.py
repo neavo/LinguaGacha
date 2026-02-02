@@ -1,10 +1,10 @@
 from typing import Callable
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QGraphicsOpacityEffect
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QGraphicsOpacityEffect
 from qfluentwidgets import CardWidget
 from qfluentwidgets import IconWidget
 from qfluentwidgets import LargeTitleLabel
@@ -14,10 +14,9 @@ from qfluentwidgets import SubtitleLabel
 from base.BaseIcon import BaseIcon
 from widget.Separator import Separator
 
-
 # ==================== 图标常量 ====================
 
-ICON_SWITCH_MODE: BaseIcon = BaseIcon.ARROW_LEFT_RIGHT  # 卡片：提示可切换显示模式
+ICON_SWITCH_MODE: BaseIcon = BaseIcon.REPEAT_2  # 卡片：提示可切换显示模式
 
 
 class DashboardCard(CardWidget):
