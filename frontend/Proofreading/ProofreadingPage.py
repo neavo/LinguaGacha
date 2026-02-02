@@ -163,6 +163,9 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
+        self.subscribe(
+            Base.Event.PROJECT_PREFILTER_UPDATED, self.on_project_prefilter_updated
+        )
 
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
@@ -188,6 +191,12 @@ class ProofreadingPage(QWidget, Base):
         if not self.items:
             return
         self.schedule_quality_rule_refresh()
+
+    def on_project_prefilter_updated(self, event: Base.Event, event_data: dict) -> None:
+        del event
+        del event_data
+        self.mark_data_stale(new_cycle=True)
+        self.schedule_reload("prefilter_updated")
 
     def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
         if not event_data:

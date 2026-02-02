@@ -124,6 +124,9 @@ class LocalizerZH:
     log_unknown_reason: str = "未知原因"
     log_cli_verify_language: str = "参数发生错误：无效的语言 …"
 
+    # 通用
+    data_processing: str = "数据处理中 …"
+
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"
     engine_task_done: str = "所有数据均已处理，任务已结束 …"
@@ -133,7 +136,6 @@ class LocalizerZH:
     engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
     engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个非目标原文语言条目 …"
-    engine_task_filter_changed: str = "过滤结果与上次不同：规则跳过 {RULE} 条，非目标原文语言 {LANGUAGE} 条 …"
     engine_task_scheduler_stop_with_untranslated: str = "任务调度器停止，但仍有 {COUNT} 个未翻译条目（可能因异常丢失）"
     translator_task_status_info: str = "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}"
     translator_task_force_accept_info: str = " | 已强制放行：{REASON}"
