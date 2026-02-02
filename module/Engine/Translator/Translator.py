@@ -22,14 +22,11 @@ from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskScheduler import TaskScheduler
 from module.Engine.Translator.TranslatorTaskPipeline import TranslatorTaskPipeline
 from module.File.FileManager import FileManager
-from module.Filter.LanguageFilter import LanguageFilter
-from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
-from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 # 翻译器
@@ -782,103 +779,6 @@ class Translator(Base):
             max_workers=max_workers,
         )
         await pipeline.run()
-
-    # 规则过滤
-    def rule_filter(self, items: list[Item]) -> None:
-        if items is None or len(items) == 0:
-            return None
-
-        # 筛选
-        self.print("")
-        count: int = 0
-        with ProgressBar(transient=False) as progress:
-            pid = progress.new(total=len(items))
-            for item in ChunkLimiter.iter(items):
-                if item.get_status() != Base.ProjectStatus.NONE:
-                    pass
-                elif RuleFilter.filter(item.get_src()):
-                    count = count + 1
-                    item.set_status(Base.ProjectStatus.RULE_SKIPPED)
-                progress.update(pid, advance=1)
-
-        # 打印日志
-        self.info(
-            Localizer.get().engine_task_rule_filter.replace("{COUNT}", str(count))
-        )
-
-    # 语言过滤
-    def language_filter(self, items: list[Item]) -> None:
-        if items is None or len(items) == 0:
-            return None
-
-        # 筛选
-        self.print("")
-        count: int = 0
-        with ProgressBar(transient=False) as progress:
-            pid = progress.new(total=len(items))
-            for item in ChunkLimiter.iter(items):
-                if item.get_status() != Base.ProjectStatus.NONE:
-                    pass
-                elif LanguageFilter.filter(item.get_src(), self.config.source_language):
-                    count = count + 1
-                    item.set_status(Base.ProjectStatus.LANGUAGE_SKIPPED)
-                progress.update(pid, advance=1)
-
-        # 打印日志
-        self.info(
-            Localizer.get().engine_task_language_filter.replace("{COUNT}", str(count))
-        )
-
-    # MTool 优化器预处理
-    def mtool_optimizer_preprocess(self, items: list[Item]) -> None:
-        if items is None or len(items) == 0 or not self.config.mtool_optimizer_enable:
-            return None
-
-        # 筛选
-        self.print("")
-        count: int = 0
-        items_kvjson: list[Item] = []
-        with ProgressBar(transient=False) as progress:
-            pid = progress.new(total=len(items))
-            for item in ChunkLimiter.iter(items):
-                if item.get_file_type() == Item.FileType.KVJSON:
-                    items_kvjson.append(item)
-                progress.update(pid, advance=1)
-
-        # 按文件路径分组
-        group_by_file_path: dict[str, list[Item]] = {}
-        for item in items_kvjson:
-            group_by_file_path.setdefault(item.get_file_path(), []).append(item)
-
-        # 分别处理每个文件的数据
-        for items_by_file_path in group_by_file_path.values():
-            # 找出子句
-            target = set()
-            for item in items_by_file_path:
-                src = item.get_src()
-                if src.count("\n") > 0:
-                    target.update(
-                        [
-                            line.strip()
-                            for line in src.splitlines()
-                            if line.strip() != ""
-                        ]
-                    )
-
-            # 移除子句
-            for item in items_by_file_path:
-                if item.get_status() != Base.ProjectStatus.NONE:
-                    continue
-                if item.get_src() in target:
-                    count = count + 1
-                    item.set_status(Base.ProjectStatus.RULE_SKIPPED)
-
-        # 打印日志
-        self.info(
-            Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                "{COUNT}", str(count)
-            )
-        )
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:

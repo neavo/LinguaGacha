@@ -1,5 +1,3 @@
-from typing import cast
-
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QLayout
@@ -29,13 +27,11 @@ class BasicSettingsPage(QWidget, Base):
         # 根据应用语言构建语言列表
         if Localizer.get_app_language() == BaseLanguage.Enum.ZH:
             self.languages = [
-                BaseLanguage.get_name_zh(cast(BaseLanguage.Enum, v))
-                for v in BaseLanguage.get_languages()
+                BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()
             ]
         else:
             self.languages = [
-                BaseLanguage.get_name_en(cast(BaseLanguage.Enum, v))
-                for v in BaseLanguage.get_languages()
+                BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()
             ]
 
         # 设置容器
@@ -104,10 +100,9 @@ class BasicSettingsPage(QWidget, Base):
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = Config().load()
-            config.source_language = cast(
-                BaseLanguage.Enum,
-                BaseLanguage.get_languages()[widget.get_combo_box().currentIndex()],
-            )
+            config.source_language = BaseLanguage.get_languages()[
+                widget.get_combo_box().currentIndex()
+            ]
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
@@ -132,10 +127,9 @@ class BasicSettingsPage(QWidget, Base):
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = Config().load()
-            config.target_language = cast(
-                BaseLanguage.Enum,
-                BaseLanguage.get_languages()[widget.get_combo_box().currentIndex()],
-            )
+            config.target_language = BaseLanguage.get_languages()[
+                widget.get_combo_box().currentIndex()
+            ]
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["target_language"]})
 

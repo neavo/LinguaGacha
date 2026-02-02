@@ -9,6 +9,7 @@ from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
+from module.Utils.ChunkLimiter import ChunkLimiter
 
 
 class ProjectService(Base):
@@ -109,8 +110,10 @@ class ProjectService(Base):
                 self.report_progress(current, total, Localizer.get().data_processing)
 
             prefilter_result = ProjectPrefilter.apply(
-                items,
-                config,
+                items=items,
+                source_language=str(config.source_language),
+                target_language=str(config.target_language),
+                mtool_optimizer_enable=bool(config.mtool_optimizer_enable),
                 progress_cb=prefilter_progress,
             )
 
@@ -130,11 +133,17 @@ class ProjectService(Base):
                 )
             )
 
-            db.set_items([item.to_dict() for item in items])
+            # 控制台输出完毕后留一个空行，便于区分后续日志。
+            self.print("")
+
+            items_dicts: list[dict] = []
+            for item in ChunkLimiter.iter(items):
+                items_dicts.append(item.to_dict())
+            db.set_items(items_dicts)
 
             db.set_meta("prefilter_config", prefilter_result.prefilter_config)
-            db.set_meta("source_language", config.source_language)
-            db.set_meta("target_language", config.target_language)
+            db.set_meta("source_language", str(config.source_language))
+            db.set_meta("target_language", str(config.target_language))
 
             # 将 total_line 设为 0，标记该工程尚未进行翻译扫描
             extras = {

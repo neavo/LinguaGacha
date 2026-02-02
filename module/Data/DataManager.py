@@ -1,5 +1,6 @@
 import threading
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -19,7 +20,22 @@ from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
 from module.Data.Type import RULE_META_KEYS
 from module.Filter.ProjectPrefilter import ProjectPrefilter
+from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
+from module.Utils.ChunkLimiter import ChunkLimiter
+
+
+@dataclass(frozen=True)
+class ProjectPrefilterRequest:
+    """预过滤请求快照（跨线程传递）。"""
+
+    token: int
+    seq: int
+    lg_path: str
+    reason: str
+    source_language: str
+    target_language: str
+    mtool_optimizer_enable: bool
 
 
 class DataManager(Base):
@@ -72,8 +88,16 @@ class DataManager(Base):
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
 
+        # 预过滤是工程级写库操作：统一串行化并做合并，避免竞态与重复工作。
         self.prefilter_lock = threading.Lock()
-        self.prefilter_running = False
+        self.prefilter_cond = threading.Condition(self.prefilter_lock)
+        self.prefilter_running: bool = False
+        self.prefilter_pending: bool = False
+        self.prefilter_token: int = 0
+        self.prefilter_active_token: int = 0
+        self.prefilter_request_seq: int = 0
+        self.prefilter_last_handled_seq: int = 0
+        self.prefilter_latest_request: ProjectPrefilterRequest | None = None
 
     @classmethod
     def get(cls) -> "DataManager":
@@ -178,6 +202,8 @@ class DataManager(Base):
             return
 
         config = Config().load()
+        if not self.is_prefilter_needed(config):
+            return
         self.schedule_project_prefilter(config, reason="config_updated")
 
     def is_prefilter_needed(self, config: Config) -> bool:
@@ -185,132 +211,232 @@ class DataManager(Base):
         if not isinstance(raw, dict):
             return True
         expected = {
-            "source_language": config.source_language.value,
-            "target_language": config.target_language.value,
+            "source_language": str(config.source_language),
+            "target_language": str(config.target_language),
             "mtool_optimizer_enable": bool(config.mtool_optimizer_enable),
         }
         return raw != expected
 
     def schedule_project_prefilter(self, config: Config, *, reason: str) -> None:
+        """后台触发预过滤（自动合并短时间内的多次请求）。"""
+
         # 翻译过程中 UI 会禁用相关开关，但这里仍做一次兜底。
         from module.Engine.Engine import Engine
 
+        if not self.is_loaded():
+            return
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             return
 
-        with self.prefilter_lock:
+        source_language = str(config.source_language)
+        target_language = str(config.target_language)
+        mtool_optimizer_enable = bool(config.mtool_optimizer_enable)
+
+        start_worker = False
+        with self.prefilter_cond:
             if self.prefilter_running:
-                return
-            self.prefilter_running = True
+                token = self.prefilter_active_token
+            else:
+                self.prefilter_token += 1
+                token = self.prefilter_token
+                self.prefilter_active_token = token
+                self.prefilter_running = True
+                start_worker = True
+
+            self.prefilter_request_seq += 1
+            seq = self.prefilter_request_seq
+            lg_path = self.get_lg_path() or ""
+            self.prefilter_latest_request = ProjectPrefilterRequest(
+                token=token,
+                seq=seq,
+                lg_path=lg_path,
+                reason=reason,
+                source_language=source_language,
+                target_language=target_language,
+                mtool_optimizer_enable=mtool_optimizer_enable,
+            )
+            self.prefilter_pending = True
+            self.prefilter_cond.notify_all()
+
+        if not start_worker:
+            return
 
         # 先发事件锁 UI，避免“加载旧工程后立刻点击开始翻译”的竞态。
-        self.emit(Base.Event.PROJECT_PREFILTER_RUN, {"reason": reason})
-
-        def task() -> None:
-            try:
-                self.run_project_prefilter(config, reason=reason)
-            finally:
-                with self.prefilter_lock:
-                    self.prefilter_running = False
-
-        threading.Thread(target=task, daemon=True).start()
+        self.emit(
+            Base.Event.PROJECT_PREFILTER_RUN,
+            {
+                "reason": reason,
+                "token": token,
+                "lg_path": lg_path,
+            },
+        )
+        threading.Thread(
+            target=self._project_prefilter_worker, args=(token,), daemon=True
+        ).start()
 
     def run_project_prefilter(self, config: Config, *, reason: str) -> None:
-        """执行预过滤并落库。
+        """执行预过滤并落库（同步）。
 
-        注意：该方法会写 DB，必须在后台线程调用。
+        注意：该方法会写 DB 且可能耗时；GUI 模式下应在后台线程调用。
         """
 
+        # 翻译过程中 UI 会禁用相关开关，但这里仍做一次兜底。
+        from module.Engine.Engine import Engine
+
         if not self.is_loaded():
+            return
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            return
+
+        source_language = str(config.source_language)
+        target_language = str(config.target_language)
+        mtool_optimizer_enable = bool(config.mtool_optimizer_enable)
+
+        start_worker = False
+        with self.prefilter_cond:
+            if self.prefilter_running:
+                token = self.prefilter_active_token
+                self.prefilter_request_seq += 1
+                seq = self.prefilter_request_seq
+                lg_path = self.get_lg_path() or ""
+                self.prefilter_latest_request = ProjectPrefilterRequest(
+                    token=token,
+                    seq=seq,
+                    lg_path=lg_path,
+                    reason=reason,
+                    source_language=source_language,
+                    target_language=target_language,
+                    mtool_optimizer_enable=mtool_optimizer_enable,
+                )
+                self.prefilter_pending = True
+                self.prefilter_cond.notify_all()
+                self.prefilter_cond.wait_for(lambda: not self.prefilter_running)
+                return
+
+            self.prefilter_token += 1
+            token = self.prefilter_token
+            self.prefilter_active_token = token
+            self.prefilter_running = True
+            start_worker = True
+
+            self.prefilter_request_seq += 1
+            seq = self.prefilter_request_seq
+            lg_path = self.get_lg_path() or ""
+            self.prefilter_latest_request = ProjectPrefilterRequest(
+                token=token,
+                seq=seq,
+                lg_path=lg_path,
+                reason=reason,
+                source_language=source_language,
+                target_language=target_language,
+                mtool_optimizer_enable=mtool_optimizer_enable,
+            )
+            self.prefilter_pending = True
+            self.prefilter_cond.notify_all()
+
+        if not start_worker:
             return
 
         self.emit(
             Base.Event.PROJECT_PREFILTER_RUN,
             {
                 "reason": reason,
+                "token": token,
+                "lg_path": lg_path,
             },
         )
+        self._project_prefilter_worker(token)
+
+    def _project_prefilter_worker(self, token: int) -> None:
+        """预过滤工作线程/同步入口。
+
+        - 串行执行：同一时间只允许一个 worker 运行
+        - 合并请求：运行中不断吸收最新请求，最终只保证落库的是“最后一次配置”
+        """
+
+        last_request: ProjectPrefilterRequest | None = None
+        last_result: ProjectPrefilterResult | None = None
+        updated = False
+
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
                 "message": Localizer.get().data_processing,
-                "indeterminate": False,
-                "current": 0,
-                "total": 0,
+                # 先显示不定进度：加载 items 前无法给出可信 total，避免进度条长时间停在 0%。
+                "indeterminate": True,
             },
         )
 
         try:
-            self.item_service.clear_item_cache()
-            items = self.get_all_items()
-            total = len(items)
-            self.emit(
-                Base.Event.PROGRESS_TOAST_UPDATE,
-                {
-                    "message": Localizer.get().data_processing,
-                    "current": 0,
-                    "total": total,
-                },
-            )
+            while True:
+                with self.prefilter_cond:
+                    if not self.prefilter_pending:
+                        # 收尾事件放在锁内发出：避免新任务 show 被旧任务 hide 打断。
+                        if (
+                            updated
+                            and last_result is not None
+                            and last_request is not None
+                        ):
+                            self.info(
+                                Localizer.get().engine_task_rule_filter.replace(
+                                    "{COUNT}", str(last_result.stats.rule_skipped)
+                                )
+                            )
+                            self.info(
+                                Localizer.get().engine_task_language_filter.replace(
+                                    "{COUNT}", str(last_result.stats.language_skipped)
+                                )
+                            )
+                            self.info(
+                                Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                                    "{COUNT}", str(last_result.stats.mtool_skipped)
+                                )
+                            )
 
-            if total == 0:
-                return
+                            # 仅在控制台输出统计信息，避免 UI Toast 产生噪音。
+                            self.print("")
+                            self.emit(
+                                Base.Event.PROJECT_PREFILTER_UPDATED,
+                                {
+                                    "reason": last_request.reason,
+                                    "token": token,
+                                    "lg_path": last_request.lg_path,
+                                },
+                            )
 
-            def progress_cb(current: int, total: int) -> None:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST_UPDATE,
-                    {
-                        "message": Localizer.get().data_processing,
-                        "current": current,
-                        "total": total,
-                    },
-                )
+                        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                        self.emit(
+                            Base.Event.PROJECT_PREFILTER_DONE,
+                            {
+                                "reason": last_request.reason
+                                if last_request
+                                else "unknown",
+                                "token": token,
+                                "lg_path": last_request.lg_path if last_request else "",
+                            },
+                        )
 
-            result = ProjectPrefilter.apply(items, config, progress_cb=progress_cb)
-            self.replace_all_items(items)
+                        self.prefilter_running = False
+                        self.prefilter_active_token = 0
+                        self.prefilter_cond.notify_all()
+                        return
 
-            self.set_meta("prefilter_config", result.prefilter_config)
-            self.set_meta("source_language", config.source_language)
-            self.set_meta("target_language", config.target_language)
+                    request = self.prefilter_latest_request
+                    self.prefilter_pending = False
 
-            self.info(
-                Localizer.get().engine_task_rule_filter.replace(
-                    "{COUNT}", str(result.stats.rule_skipped)
-                )
-            )
-            self.info(
-                Localizer.get().engine_task_language_filter.replace(
-                    "{COUNT}", str(result.stats.language_skipped)
-                )
-            )
-            self.info(
-                Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                    "{COUNT}", str(result.stats.mtool_skipped)
-                )
-            )
+                if request is None:
+                    continue
 
-            # 总结 toast 复用现有文案，避免新增重复措辞。
-            summary = " | ".join(
-                [
-                    Localizer.get().engine_task_rule_filter.replace(
-                        "{COUNT}", str(result.stats.rule_skipped)
-                    ),
-                    Localizer.get().engine_task_language_filter.replace(
-                        "{COUNT}", str(result.stats.language_skipped)
-                    ),
-                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                        "{COUNT}", str(result.stats.mtool_skipped)
-                    ),
-                ]
-            )
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.INFO,
-                    "message": summary,
-                },
-            )
-            self.emit(Base.Event.PROJECT_PREFILTER_UPDATED, {"reason": reason})
+                last_request = request
+                result = self._apply_project_prefilter_once(request)
+
+                with self.prefilter_cond:
+                    self.prefilter_last_handled_seq = request.seq
+                    self.prefilter_cond.notify_all()
+
+                if result is not None:
+                    updated = True
+                    last_result = result
         except Exception as e:
             self.error("Project prefilter failed", e)
             self.emit(
@@ -320,9 +446,87 @@ class DataManager(Base):
                     "message": Localizer.get().task_failed,
                 },
             )
-        finally:
-            self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-            self.emit(Base.Event.PROJECT_PREFILTER_DONE, {"reason": reason})
+
+            with self.prefilter_cond:
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.emit(
+                    Base.Event.PROJECT_PREFILTER_DONE,
+                    {
+                        "reason": last_request.reason if last_request else "unknown",
+                        "token": token,
+                        "lg_path": last_request.lg_path if last_request else "",
+                    },
+                )
+
+                self.prefilter_running = False
+                self.prefilter_active_token = 0
+                self.prefilter_cond.notify_all()
+
+    def _apply_project_prefilter_once(
+        self, request: ProjectPrefilterRequest
+    ) -> ProjectPrefilterResult | None:
+        """执行一次预过滤并写入 DB。
+
+        返回 None 表示：工程已切换/卸载，本次结果被丢弃。
+        """
+
+        if not self.is_loaded():
+            return None
+
+        lg_path = self.get_lg_path()
+        if not lg_path or lg_path != request.lg_path:
+            return None
+
+        self.item_service.clear_item_cache()
+        items = self.get_all_items()
+        total = len(items)
+        progress_total = total * (3 if request.mtool_optimizer_enable else 2)
+        # 加载完成后切换为确定进度模式。
+        self.emit(
+            Base.Event.PROGRESS_TOAST_SHOW,
+            {
+                "message": Localizer.get().data_processing,
+                "indeterminate": False,
+                "current": 0,
+                "total": progress_total,
+            },
+        )
+
+        def progress_cb(current: int, total: int) -> None:
+            self.emit(
+                Base.Event.PROGRESS_TOAST_UPDATE,
+                {
+                    "message": Localizer.get().data_processing,
+                    "current": current,
+                    "total": total,
+                },
+            )
+
+        result = ProjectPrefilter.apply(
+            items=items,
+            source_language=request.source_language,
+            target_language=request.target_language,
+            mtool_optimizer_enable=request.mtool_optimizer_enable,
+            progress_cb=progress_cb,
+        )
+
+        items_dict: list[dict[str, Any]] = []
+        for item in ChunkLimiter.iter(items):
+            items_dict.append(item.to_dict())
+
+        meta = {
+            "prefilter_config": result.prefilter_config,
+            "source_language": request.source_language,
+            "target_language": request.target_language,
+        }
+
+        # 落库前二次确认工程未切换，避免把旧工程结果写入新工程。
+        with self.state_lock:
+            if self.session.db is None or self.session.lg_path != request.lg_path:
+                return None
+            self.batch_service.update_batch(items=items_dict, meta=meta)
+
+        return result
 
     # ===================== meta =====================
 
