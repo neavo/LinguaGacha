@@ -9,6 +9,7 @@ from qfluentwidgets import SingleDirectionScrollArea
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.ComboBoxCard import ComboBoxCard
 from widget.SpinCard import SpinCard
@@ -62,6 +63,31 @@ class BasicSettingsPage(QWidget, Base):
         # 填充
         scroll_area_vbox.addStretch(1)
 
+        # 翻译过程中禁用会影响过滤/翻译语义的选项，避免与翻译写库产生竞态。
+        self.subscribe(Base.Event.TRANSLATION_RUN, self.on_translation_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.on_translation_status_changed)
+        self.subscribe(
+            Base.Event.TRANSLATION_REQUIRE_STOP, self.on_translation_status_changed
+        )
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_status_changed)
+        self.on_translation_status_changed(Base.Event.TRANSLATION_DONE, {})
+
+    def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+        status = Engine.get().get_status()
+        locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
+        if (
+            hasattr(self, "source_language_card")
+            and self.source_language_card is not None
+        ):
+            self.source_language_card.get_combo_box().setEnabled(not locked)
+        if (
+            hasattr(self, "target_language_card")
+            and self.target_language_card is not None
+        ):
+            self.target_language_card.get_combo_box().setEnabled(not locked)
+
     # 原文语言
     def add_widget_source_language(
         self, parent: QLayout, config: Config, windows: FluentWindow
@@ -78,16 +104,16 @@ class BasicSettingsPage(QWidget, Base):
                 widget.get_combo_box().currentIndex()
             ]
             config.save()
+            self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
-        parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_source_language_title,
-                Localizer.get().basic_settings_page_source_language_content,
-                items=self.languages,
-                init=init,
-                current_changed=current_changed,
-            )
+        self.source_language_card = ComboBoxCard(
+            Localizer.get().basic_settings_page_source_language_title,
+            Localizer.get().basic_settings_page_source_language_content,
+            items=self.languages,
+            init=init,
+            current_changed=current_changed,
         )
+        parent.addWidget(self.source_language_card)
 
     # 译文语言
     def add_widget_target_language(
@@ -105,16 +131,16 @@ class BasicSettingsPage(QWidget, Base):
                 widget.get_combo_box().currentIndex()
             ]
             config.save()
+            self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["target_language"]})
 
-        parent.addWidget(
-            ComboBoxCard(
-                Localizer.get().basic_settings_page_target_language_title,
-                Localizer.get().basic_settings_page_target_language_content,
-                items=self.languages,
-                init=init,
-                current_changed=current_changed,
-            )
+        self.target_language_card = ComboBoxCard(
+            Localizer.get().basic_settings_page_target_language_title,
+            Localizer.get().basic_settings_page_target_language_content,
+            items=self.languages,
+            init=init,
+            current_changed=current_changed,
         )
+        parent.addWidget(self.target_language_card)
 
     # 工程文件保存位置
     def add_widget_project_save_mode(

@@ -4,7 +4,7 @@ from module.Text.TextHelper import TextHelper
 
 class LanguageFilter:
     @staticmethod
-    def filter(src: str, source_language: BaseLanguage.Enum) -> bool:
+    def filter(src: str, source_language: BaseLanguage.Enum | str) -> bool:
         # 获取语言判断函数
         if source_language == BaseLanguage.Enum.ZH:
             func = TextHelper.CJK.any
@@ -14,7 +14,6 @@ class LanguageFilter:
             func = getattr(TextHelper, source_language).any
 
         # 返回值 True 表示需要过滤（即需要排除）
-        if callable(func) != True:
+        if not callable(func):
             return False
-        else:
-            return not func(src)
+        return not func(src)

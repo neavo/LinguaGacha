@@ -124,6 +124,9 @@ class LocalizerEN(LocalizerZH):
     log_unknown_reason: str = "Unknown Reason"
     log_cli_verify_language: str = "parameter error: invalid language …"
 
+    # Common
+    data_processing: str = "Processing data …"
+
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"
     engine_task_done: str = "All data has been processed, task finished …"
@@ -133,7 +136,6 @@ class LocalizerEN(LocalizerZH):
     engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
     engine_task_language_filter: str = "Language filtering completed, {COUNT} non-target source language entries were skipped in total …"
-    engine_task_filter_changed: str = "Filter results changed since last run: {RULE} rule-skipped, {LANGUAGE} non-target source language …"
     engine_task_scheduler_stop_with_untranslated: str = "Task scheduler stopped, but {COUNT} items remain untranslated (potentially lost due to exceptions)"
     translator_task_status_info: str = "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}"
     translator_task_force_accept_info: str = " | Forced Accept: {REASON}"
