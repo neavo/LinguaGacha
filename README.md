@@ -40,7 +40,6 @@
     - 添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
-  - [ [火山引擎](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ]，需付费但便宜，速度快，质量高，无显卡要求　`👈👈 推荐`
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，需付费但便宜，速度快，质量高，无显卡要求 `👈👈 推荐`
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
@@ -52,7 +51,6 @@
 ## 使用教程 📝
 - 综合
   - [基础教程](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 手把手教学，有手就行，新手必看`
-  - [Google Gemini 免费接口](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFree)
   - [高质量翻译 WOLF 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLF)
   - [高质量翻译 RenPy 引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRenPy)
   - [高质量翻译 RPGMaker 系列引擎游戏的最佳实践](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMaker)
@@ -62,7 +60,7 @@
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
   - [补充翻译](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslation)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
-  - [百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
+  - [百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion) [百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -80,6 +78,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260204 v0.53.2
+  - 优化与修复
+
 - 20260203 v0.53.1
   - 优化与修复
 
@@ -88,14 +89,6 @@
   - 功能 - 支持 Kimi 系列思考开关
   - 功能 - 基于 `AST` 的全新 `EPUB` `RenPy` 解析器
     - 理论上可以做到 100% 准确的还原样式
-
-- 20260131 v0.52.0
-  - 功能 - 重新设计了以下页面：
-    - `校对页` `术语表`
-    - `文本保护` `译前替换` `译后替换`
-  - 功能 - 过滤模式（表格搜索）
-  - 性能与交互优化
-
 
 ### 开发指南 🛠️
 - 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理

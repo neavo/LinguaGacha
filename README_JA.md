@@ -45,7 +45,6 @@
     - 実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
-  - [ [Gemini API](https://aistudio.google.com/) ] (有料、費用対効果が高い、高速、比較的高品質、GPU不要)　`👈👈 推奨`
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (有料、費用対効果が高い、高速、高品質、GPU不要)　`👈👈 推奨`
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
@@ -57,7 +56,6 @@
 ## 使い方チュートリアル - English 📝
 - Overall
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
   - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
   - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
@@ -66,8 +64,8 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
-- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
+  - [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN) [Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
 - 入力フォルダ内のすべての対応ファイル（サブディレクトリを含む）を処理：

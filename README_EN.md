@@ -46,7 +46,6 @@
     - Make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
-  - [ [Gemini API](https://aistudio.google.com/) ] (Paid, cost-effective, fast, relatively-high-quality, no GPU required)　`👈👈 Recommended`
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Recommended`
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
@@ -58,7 +57,6 @@
 ## User Guide 📝
 - Overall
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
   - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
   - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
@@ -67,8 +65,8 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
-- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
+  - [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN) [Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
 - Processes all supported files in input folder (including subdirectories):
@@ -85,6 +83,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260204 v0.53.2
+  - Optimization and Fixes
+
 - 20260203 v0.53.1
   - Optimization and Fixes
 
@@ -93,13 +94,6 @@
   - feat - Support for Kimi series thinking toggle
   - feat - Brand new `EPUB` and `RenPy` parsers based on `AST`
     - Theoretically capable of 100% accurate style restoration
-
-- 20260131 v0.52.0
-  - feat - Redesigned the following pages:
-    - `Proofreading` `Glossary`
-    - `Text Protection` `Pre Replacement` `Post Replacement`
-  - feat - Filter Mode (Table Search)
-  - Performance and interaction optimization
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
