@@ -211,7 +211,11 @@ class LocalizerZH:
     model_basic_setting_page_model_id_edit: str = "手动输入"
     model_basic_setting_page_model_id_sync: str = "在线获取"
     model_basic_setting_page_thinking_title: str = "思考等级"
-    model_basic_setting_page_thinking_content: str = "设置模型的思考行为，会影响模型思考的时间和消耗，只支持部分模型  [→ 点击查看支持的模型列表 ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
+    model_basic_setting_page_thinking_content: str = (
+        "设置模型的思考行为，会影响模型思考的时间和消耗，只支持部分模型  [→[支持思考的模型列表]←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
+        ""
+        ""
+    )
     model_basic_setting_page_thinking_off: str = "无"
     model_basic_setting_page_thinking_low: str = "低"
     model_basic_setting_page_thinking_medium: str = "中"

@@ -211,7 +211,11 @@ class LocalizerEN(LocalizerZH):
     model_basic_setting_page_model_id_edit: str = "Manual Input"
     model_basic_setting_page_model_id_sync: str = "Fetch Online"
     model_basic_setting_page_thinking_title: str = "Thinking Level"
-    model_basic_setting_page_thinking_content: str = "Set the thinking behavior of the model, which will affect the thinking time and consumption. Only supported by some models  [→ Click to view the list of supported models ←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)"
+    model_basic_setting_page_thinking_content: str = (
+        "Set the thinking behavior of the model, which will affect the thinking time and consumption."
+        "<br>"
+        "Only supported by some models  [→[Model List For Thinking Mode]←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)"
+    )
     model_basic_setting_page_thinking_off: str = "Off"
     model_basic_setting_page_thinking_low: str = "Low"
     model_basic_setting_page_thinking_medium: str = "Medium"
