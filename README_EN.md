@@ -85,6 +85,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260203 v0.53.1
+  - Optimization and Fixes
+
 - 20260202 v0.53.0
   - feat - Significantly speed up task stop
   - feat - Support for Kimi series thinking toggle
@@ -97,26 +100,6 @@
     - `Text Protection` `Pre Replacement` `Post Replacement`
   - feat - Filter Mode (Table Search)
   - Performance and interaction optimization
-
-- 20260127 v0.51.1
-  - feat - Reset failed entries (Translation page)
-  - feat - Dynamically calculate target entries to adapt to changes in filtering rules #345 #357
-  - fix - Issue where the proofreading function could lead to project corruption
-  - Performance and interaction optimization
-
-- 20260126 v0.50.6
-  - perf - Significantly improved translation speed
-  - perf - Significantly improved data loading speed on the proofreading page
-  - feat - Traditional/Simplified conversion is now a Toolbox feature
-  - Optimized and fixed a large number of issues in interaction logic and data processing workflows
-    - #267 #328 #341 #347 #358 #359
-
-- 20260123 v0.50.4
-  - Extensive interaction logic optimizations
-    - Multiple project file saving rules #337
-    - Export proofreading filter results to file #336
-    - Reset translation status for specified data entries #334
-    - Set default quality rules such as `Glossary` when creating new projects #338
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
