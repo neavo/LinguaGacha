@@ -1,5 +1,4 @@
 import copy
-import asyncio
 import threading
 
 from base.Base import Base
@@ -111,74 +110,59 @@ class APITester(Base):
         if not api_keys:
             api_keys = ["no_key_required"]
 
-        async def run_tests() -> None:
-            TaskRequester.reset()
-            try:
-                for key in api_keys:
-                    model_test = copy.deepcopy(model)
-                    model_test["api_key"] = key
+        TaskRequester.reset()
+        try:
+            for key in api_keys:
+                model_test = copy.deepcopy(model)
+                model_test["api_key"] = key
 
-                    requester = TaskRequester(config, model_test)
+                requester = TaskRequester(config, model_test)
 
-                    self.print("")
-                    self.info(
-                        Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]"
-                    )
-                    self.info(
-                        Localizer.get().api_tester_messages + "\n" + f"{messages}"
-                    )
+                self.print("")
+                self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
+                self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
 
-                    (
-                        exception,
-                        response_think,
-                        response_result,
-                        _,
-                        _,
-                    ) = await requester.request_async(messages)
+                (
+                    exception,
+                    response_think,
+                    response_result,
+                    _,
+                    _,
+                ) = requester.request(messages)
 
-                    if exception:
-                        failure.append(key)
-                        reason = Localizer.get().log_unknown_reason
-                        if isinstance(exception, RequestHardTimeoutError):
-                            reason = Localizer.get().api_tester_timeout.replace(
-                                "{SECONDS}", str(config.request_timeout)
-                            )
-                        else:
-                            exception_text = str(exception).strip()
-                            reason = (
-                                f"{exception.__class__.__name__}: {exception_text}"
-                                if exception_text
-                                else exception.__class__.__name__
-                            )
-
-                        self.warning(
-                            Localizer.get().log_api_test_fail.replace(
-                                "{REASON}", reason
-                            )
-                        )
-                    elif response_think == "":
-                        success.append(key)
-                        self.info(
-                            Localizer.get().engine_response_result
-                            + "\n"
-                            + response_result
+                if exception:
+                    failure.append(key)
+                    reason = Localizer.get().log_unknown_reason
+                    if isinstance(exception, RequestHardTimeoutError):
+                        reason = Localizer.get().api_tester_timeout.replace(
+                            "{SECONDS}", str(config.request_timeout)
                         )
                     else:
-                        success.append(key)
-                        self.info(
-                            Localizer.get().engine_response_think
-                            + "\n"
-                            + response_think
+                        exception_text = str(exception).strip()
+                        reason = (
+                            f"{exception.__class__.__name__}: {exception_text}"
+                            if exception_text
+                            else exception.__class__.__name__
                         )
-                        self.info(
-                            Localizer.get().engine_response_result
-                            + "\n"
-                            + response_result
-                        )
-            finally:
-                await TaskRequester.aclose_clients_for_running_loop()
 
-        asyncio.run(run_tests())
+                    self.warning(
+                        Localizer.get().log_api_test_fail.replace("{REASON}", reason)
+                    )
+                elif response_think == "":
+                    success.append(key)
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+                else:
+                    success.append(key)
+                    self.info(
+                        Localizer.get().engine_response_think + "\n" + response_think
+                    )
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+        finally:
+            TaskRequester.close_clients_for_current_thread()
 
         # 测试结果
         result_msg = (

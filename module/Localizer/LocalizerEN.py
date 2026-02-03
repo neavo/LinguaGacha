@@ -52,7 +52,6 @@ class LocalizerEN(LocalizerZH):
     task_failed: str = "Task failed …"
     task_success: str = "Task succeeded …"
     task_running: str = "Task is running …"
-    task_close_failed: str = "Task close failed …"
     task_batch_translation_progress: str = "Translating, item {CURRENT} of {TOTAL} …"
     task_batch_translation_success: str = "Translation completed, {SUCCESS} successful, {FAILED} failed …"
     toast_save: str = "Saved …"

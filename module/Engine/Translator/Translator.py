@@ -1,4 +1,3 @@
-import asyncio
 import os
 import re
 import threading
@@ -103,6 +102,33 @@ class Translator(Base):
         self.extras["line"] = self.extras["processed_line"] + self.extras["error_line"]
         return dict(self.extras)
 
+    def sync_extras_line_stats(self) -> None:
+        """以 items_cache 为权威来源，重算行数统计。
+
+        在高并发 + 动态拆分/重试的情况下，增量计数可能出现极小漂移；
+        最终以实际 Item 状态回填，保证 UI/元数据一致。
+        """
+        if self.items_cache is None:
+            return
+
+        processed_line = 0
+        error_line = 0
+        remaining_line = 0
+        for item in self.items_cache:
+            status = item.get_status()
+            if status == Base.ProjectStatus.PROCESSED:
+                processed_line += 1
+            elif status == Base.ProjectStatus.ERROR:
+                error_line += 1
+            elif status == Base.ProjectStatus.NONE:
+                remaining_line += 1
+
+        self.extras["processed_line"] = processed_line
+        self.extras["error_line"] = error_line
+        self.extras["line"] = processed_line + error_line
+        self.extras["total_line"] = self.extras["line"] + remaining_line
+        self.extras["time"] = time.time() - self.extras.get("start_time", 0)
+
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         def task(event_name: str, task_data: dict) -> None:
@@ -157,6 +183,7 @@ class Translator(Base):
         # 更新运行状态
         self.stop_requested = True
         Engine.get().set_status(Base.TaskStatus.STOPPING)
+        # 同步流式下 stop 依赖底层 SDK/HTTP 超时收尾，响应可能有延迟；后续可优化为可中断 IO。
 
     # 翻译重置事件
     def translation_reset(self, event: Base.Event, data: dict) -> None:
@@ -480,14 +507,16 @@ class Translator(Base):
                     completed=self.extras.get("line", 0),
                 )
 
-                asyncio.run(
-                    self.start_async_translation(
-                        progress=progress,
-                        pid=pid,
-                        task_limiter=task_limiter,
-                        max_workers=max_workers,
-                    )
+                self.start_translation_pipeline(
+                    progress=progress,
+                    pid=pid,
+                    task_limiter=task_limiter,
+                    max_workers=max_workers,
                 )
+
+            # 任务结束后以最终状态回填行数统计，避免 UI 出现“少量剩余行数”但实际已完成。
+            self.sync_extras_line_stats()
+            self.emit(Base.Event.TRANSLATION_UPDATE, dict(self.extras))
 
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
@@ -736,9 +765,9 @@ class Translator(Base):
         extras_snapshot: dict[str, Any],
     ) -> None:
         """
-        同步执行批量更新操作（在独立线程中执行以避免阻塞事件循环）。
+        同步执行批量更新（在翻译后台线程中串行落库）。
 
-        负责：合并术语表、写入数据库。
+        为什么串行：DataManager.update_batch(...) 需要事务一致性，并且要保证缓存/事件顺序稳定。
         """
         new_glossary_data = None
         if glossaries and self.config.auto_glossary_enable:
@@ -758,7 +787,7 @@ class Translator(Base):
             },
         )
 
-    async def start_async_translation(
+    def start_translation_pipeline(
         self,
         *,
         progress: ProgressBar,
@@ -767,7 +796,7 @@ class Translator(Base):
         max_workers: int,
     ) -> None:
         """
-        异步翻译调度入口。
+        同步翻译调度入口。
 
         具体的生产者/消费者/提交逻辑封装在 TranslatorTaskPipeline 中，避免本方法过长。
         """
@@ -778,7 +807,7 @@ class Translator(Base):
             task_limiter=task_limiter,
             max_workers=max_workers,
         )
-        await pipeline.run()
+        pipeline.run()
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:

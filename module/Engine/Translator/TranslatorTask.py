@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 import itertools
 import re
 import threading
@@ -77,14 +75,13 @@ class TranslatorTask(Base):
             )
         )
 
-    async def start_async(self, cpu_executor: concurrent.futures.Executor) -> dict:
+    def start(self) -> dict:
         try:
-            return await self.request_async(
+            return self.request(
                 self.items,
                 self.processors,
                 self.precedings,
                 self.local_flag,
-                cpu_executor,
             )
         except Exception as e:
             self.error(f"{Localizer.get().task_failed}", e)
@@ -155,9 +152,9 @@ class TranslatorTask(Base):
 
         if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
-            glossarys: list[dict[str, str]] = []
+            glossaries: list[dict[str, str]] = []
         else:
-            dsts, glossarys = ResponseDecoder().decode(response_result)
+            dsts, glossaries = ResponseDecoder().decode(response_result)
 
         if request_timeout:
             checks = [ResponseChecker.Error.FAIL_TIMEOUT] * len(srcs)
@@ -243,7 +240,7 @@ class TranslatorTask(Base):
                 "row_count": updated_count,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
-                "glossaries": glossarys,
+                "glossaries": glossaries,
             }
         return {
             "row_count": 0,
@@ -252,25 +249,15 @@ class TranslatorTask(Base):
             "glossaries": [],
         }
 
-    async def request_async(
+    def request(
         self,
         items: list[Item],
         processors: list[TextProcessor],
         precedings: list[Item],
         local_flag: bool,
-        cpu_executor: concurrent.futures.Executor,
     ) -> dict:
         start_time = time.time()
-        loop = asyncio.get_running_loop()
-
-        prepared = await loop.run_in_executor(
-            cpu_executor,
-            self.prepare_request_data,
-            items,
-            processors,
-            precedings,
-            local_flag,
-        )
+        prepared = self.prepare_request_data(items, processors, precedings, local_flag)
 
         if prepared.get("done"):
             result = prepared.get("result")
@@ -304,7 +291,7 @@ class TranslatorTask(Base):
             response_result,
             input_tokens,
             output_tokens,
-        ) = await requester.request_async(
+        ) = requester.request(
             messages,
             stop_checker=stop_checker,
         )
@@ -355,9 +342,7 @@ class TranslatorTask(Base):
                     "glossaries": [],
                 }
 
-        return await loop.run_in_executor(
-            cpu_executor,
-            self.apply_response_data,
+        return self.apply_response_data(
             prepared,
             response_think,
             response_result,
@@ -591,7 +576,7 @@ class TranslatorTask(Base):
         单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
 
         注意：此方法为低频调用场景设计（用户手动触发单条重新翻译），
-        每次调用会创建新的事件循环和线程池，避免复杂的事件循环管理。
+        使用后台线程执行同步请求路径；结束时关闭当前线程创建的 SDK 客户端，避免连接残留。
 
         Args:
             item: 待翻译的 Item 对象
@@ -628,22 +613,13 @@ class TranslatorTask(Base):
                     skip_response_check=True,
                 )
 
-                async def run_async() -> dict:
-                    with concurrent.futures.ThreadPoolExecutor(
-                        max_workers=1,
-                        thread_name_prefix=f"{Engine.TASK_PREFIX}CPU_SINGLE",
-                    ) as cpu_executor:
-                        try:
-                            return await translator_task.start_async(cpu_executor)
-                        finally:
-                            await TaskRequester.aclose_clients_for_running_loop()
-
-                # 执行翻译（统一走异步请求路径）
-                result = asyncio.run(run_async())
+                # 执行翻译（同步请求路径）
+                result = translator_task.start()
                 success = bool(result.get("row_count", 0) > 0)
             except Exception:
                 success = False
             finally:
+                TaskRequester.close_clients_for_current_thread()
                 # 回调通知
                 if callback:
                     callback(item, success)
