@@ -1,41 +1,29 @@
 import dataclasses
 import json
 import re
-import threading
 import time
 from contextlib import contextmanager
-from functools import lru_cache
 from typing import Any
 from typing import Callable
 from typing import Iterator
 
 import anthropic
-import httpx
 import openai
 from google import genai
 from google.genai import types
 
 from base.Base import Base
-from base.VersionManager import VersionManager
 from model.Model import ThinkingLevel
 from module.Config import Config
+from module.Engine.Engine import Engine
+from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
 from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Engine.TaskRequesterStream import StreamConsumer
 from module.Engine.TaskRequesterStream import StreamControl
 from module.Engine.TaskRequesterStream import StreamSession
 from module.Engine.TaskRequesterStream import StreamStrategy
 from module.Engine.TaskRequesterStream import safe_close_resource
-
-ClientCacheKey = tuple[int, str, str, str, int, tuple]
-
-__all__ = [
-    "RequestCancelledError",
-    "RequestHardTimeoutError",
-    "StreamDegradationError",
-    "TaskRequester",
-]
 
 
 class TaskRequester(Base):
@@ -46,8 +34,6 @@ class TaskRequester(Base):
     - 流式消费/硬超时/stop 检查统一在 `TaskRequesterStream`。
     - 协议差异（OpenAI/Anthropic/Google 的 chunk 结构与最终结果提取）用 Strategy 隔离。
     """
-
-    API_KEY_INDEX: int = 0
 
     # Gemini
     RE_GEMINI_2_5_PRO: re.Pattern = re.compile(r"gemini-2\.5-pro", flags=re.IGNORECASE)
@@ -88,12 +74,6 @@ class TaskRequester(Base):
     STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 2048
 
     SDK_TIMEOUT_BUFFER_S: int = 5
-
-    LOCK: threading.Lock = threading.Lock()
-
-    # SDK client 通常持有连接池/会话对象；线程安全语义不明确时，按线程隔离复用最稳。
-    CLIENT_CACHE: dict[ClientCacheKey, Any] = {}
-    CLIENT_KEYS_BY_THREAD: dict[int, set[ClientCacheKey]] = {}
 
     def __init__(self, config: Config, model: dict) -> None:
         super().__init__()
@@ -138,172 +118,7 @@ class TaskRequester(Base):
 
     @classmethod
     def reset(cls) -> None:
-        with cls.LOCK:
-            cls.API_KEY_INDEX = 0
-            cls.get_url.cache_clear()
-            cls.CLIENT_CACHE.clear()
-            cls.CLIENT_KEYS_BY_THREAD.clear()
-
-    @classmethod
-    def close_client(cls, client: Any) -> None:
-        # 同步请求器只创建同步 SDK client，因此只需调用 close()。
-        close = getattr(client, "close", None)
-        if not callable(close):
-            return
-
-        try:
-            close()
-        except Exception:
-            return
-
-    @classmethod
-    def close_clients_for_current_thread(cls) -> None:
-        thread_id = threading.get_ident()
-        with cls.LOCK:
-            keys = cls.CLIENT_KEYS_BY_THREAD.pop(thread_id, set())
-            clients = [
-                cls.CLIENT_CACHE.pop(key) for key in keys if key in cls.CLIENT_CACHE
-            ]
-
-        for client in clients:
-            try:
-                cls.close_client(client)
-            except Exception:
-                continue
-
-    @classmethod
-    def get_key(cls, keys: list[str]) -> str:
-        if len(keys) == 0:
-            return "no_key_required"
-        if len(keys) == 1:
-            return keys[0]
-        with cls.LOCK:
-            key = keys[cls.API_KEY_INDEX % len(keys)]
-            cls.API_KEY_INDEX = (cls.API_KEY_INDEX + 1) % len(keys)
-            return key
-
-    @classmethod
-    @lru_cache(maxsize=None)
-    def get_url(cls, url: str, api_format: str) -> str:
-        if api_format == Base.APIFormat.SAKURALLM:
-            return url.removesuffix("/").removesuffix("/chat/completions")
-        if api_format == Base.APIFormat.GOOGLE:
-            return url.removesuffix("/")
-        if api_format == Base.APIFormat.ANTHROPIC:
-            return url.removesuffix("/")
-        return url.removesuffix("/").removesuffix("/chat/completions")
-
-    @classmethod
-    def parse_google_api_url(cls, url: str) -> tuple[str, str | None]:
-        normalized_url: str = url.strip().removesuffix("/")
-        if not normalized_url:
-            return "", None
-        if normalized_url.endswith("/v1beta"):
-            return normalized_url.removesuffix("/v1beta"), "v1beta"
-        if normalized_url.endswith("/v1"):
-            return normalized_url.removesuffix("/v1"), "v1"
-        return normalized_url, None
-
-    @classmethod
-    def get_client(
-        cls,
-        url: str,
-        key: str,
-        api_format: str,
-        timeout: int,
-        extra_headers_tuple: tuple = (),
-    ) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
-        thread_id = threading.get_ident()
-        cache_key: ClientCacheKey = (
-            thread_id,
-            url,
-            key,
-            api_format,
-            int(timeout),
-            extra_headers_tuple,
-        )
-        cached = cls.CLIENT_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
-
-        with cls.LOCK:
-            cached = cls.CLIENT_CACHE.get(cache_key)
-            if cached is not None:
-                return cached
-
-        if api_format == Base.APIFormat.SAKURALLM:
-            client = openai.OpenAI(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(
-                    read=timeout,
-                    pool=8.00,
-                    write=8.00,
-                    connect=8.00,
-                ),
-                max_retries=0,
-            )
-        elif api_format == Base.APIFormat.GOOGLE:
-            headers = cls.get_default_headers()
-            headers.update(dict(extra_headers_tuple))
-            base_url, api_version = cls.parse_google_api_url(url)
-            if base_url or api_version:
-                http_options = types.HttpOptions(
-                    base_url=base_url if base_url else None,
-                    api_version=api_version,
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
-            else:
-                http_options = types.HttpOptions(
-                    timeout=timeout * 1000,
-                    headers=headers,
-                )
-            client = genai.Client(api_key=key, http_options=http_options)
-        elif api_format == Base.APIFormat.ANTHROPIC:
-            client = anthropic.Anthropic(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(
-                    read=timeout,
-                    pool=8.00,
-                    write=8.00,
-                    connect=8.00,
-                ),
-                max_retries=0,
-            )
-        else:
-            client = openai.OpenAI(
-                base_url=url,
-                api_key=key,
-                timeout=httpx.Timeout(
-                    read=timeout,
-                    pool=8.00,
-                    write=8.00,
-                    connect=8.00,
-                ),
-                max_retries=0,
-            )
-
-        with cls.LOCK:
-            existing = cls.CLIENT_CACHE.get(cache_key)
-            if existing is not None:
-                # 极端并发下可能重复构建；尽力回收重复 client。
-                try:
-                    cls.close_client(client)
-                except Exception:
-                    pass
-                return existing
-
-            cls.CLIENT_CACHE[cache_key] = client
-            cls.CLIENT_KEYS_BY_THREAD.setdefault(thread_id, set()).add(cache_key)
-            return client
-
-    @staticmethod
-    def get_default_headers() -> dict:
-        return {
-            "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
-        }
+        TaskRequesterClientPool.reset()
 
     def should_use_max_completion_tokens(self) -> bool:
         return str(self.api_url).startswith("https://api.openai.com")
@@ -319,6 +134,9 @@ class TaskRequester(Base):
         *,
         stop_checker: Callable[[], bool] | None = None,
     ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         args: dict[str, Any] = {}
         if self.generation.get("top_p_custom_enable"):
             args["top_p"] = self.generation.get("top_p")
@@ -329,16 +147,20 @@ class TaskRequester(Base):
         if self.generation.get("frequency_penalty_custom_enable"):
             args["frequency_penalty"] = self.generation.get("frequency_penalty")
 
-        if self.api_format == Base.APIFormat.SAKURALLM:
-            return self.request_sakura(messages, args, stop_checker=stop_checker)
-        if self.api_format == Base.APIFormat.GOOGLE:
-            return self.request_google(messages, args, stop_checker=stop_checker)
-        if self.api_format == Base.APIFormat.ANTHROPIC:
-            return self.request_anthropic(messages, args, stop_checker=stop_checker)
-        return self.request_openai(messages, args, stop_checker=stop_checker)
+        Engine.get().inc_request_in_flight()
+        try:
+            if self.api_format == Base.APIFormat.SAKURALLM:
+                return self.request_sakura(messages, args, stop_checker=stop_checker)
+            if self.api_format == Base.APIFormat.GOOGLE:
+                return self.request_google(messages, args, stop_checker=stop_checker)
+            if self.api_format == Base.APIFormat.ANTHROPIC:
+                return self.request_anthropic(messages, args, stop_checker=stop_checker)
+            return self.request_openai(messages, args, stop_checker=stop_checker)
+        finally:
+            Engine.get().dec_request_in_flight()
 
     def build_extra_headers(self) -> dict:
-        headers = self.get_default_headers()
+        headers = TaskRequesterClientPool.get_default_headers()
         headers.update(self.extra_headers)
         return headers
 
@@ -727,9 +549,9 @@ class TaskRequester(Base):
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
-            client: Any = __class__.get_client(
-                url=__class__.get_url(self.api_url, self.api_format),
-                key=__class__.get_key(self.api_keys),
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
                 api_format=self.api_format,
                 timeout=self.get_sdk_timeout_seconds(),
             )
@@ -821,9 +643,9 @@ class TaskRequester(Base):
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
-            client: Any = __class__.get_client(
-                url=__class__.get_url(self.api_url, self.api_format),
-                key=__class__.get_key(self.api_keys),
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
                 api_format=self.api_format,
                 timeout=self.get_sdk_timeout_seconds(),
             )
@@ -898,7 +720,7 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.MINIMAL,
-                    include_thoughts=False,
+                    include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -983,9 +805,9 @@ class TaskRequester(Base):
             extra_headers_tuple = (
                 tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
             )
-            client: Any = __class__.get_client(
-                url=__class__.get_url(self.api_url, self.api_format),
-                key=__class__.get_key(self.api_keys),
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
                 api_format=self.api_format,
                 timeout=self.get_sdk_timeout_seconds(),
                 extra_headers_tuple=extra_headers_tuple,
@@ -1057,9 +879,9 @@ class TaskRequester(Base):
             return RequestCancelledError("stop requested"), "", "", 0, 0
 
         try:
-            client: Any = __class__.get_client(
-                url=__class__.get_url(self.api_url, self.api_format),
-                key=__class__.get_key(self.api_keys),
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
                 api_format=self.api_format,
                 timeout=self.get_sdk_timeout_seconds(),
             )

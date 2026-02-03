@@ -16,6 +16,10 @@ class Engine:
         # 初始化
         self.status: Base.TaskStatus = Base.TaskStatus.IDLE
 
+        # 正在发送请求的任务数（不包含限速等待）
+        self.request_in_flight_count: int = 0
+        self.request_in_flight_lock = threading.Lock()
+
         # 线程锁
         self.lock = threading.Lock()
 
@@ -43,8 +47,22 @@ class Engine:
         with self.lock:
             self.status = status
 
+    def inc_request_in_flight(self) -> None:
+        with self.request_in_flight_lock:
+            self.request_in_flight_count += 1
+
+    def dec_request_in_flight(self) -> None:
+        with self.request_in_flight_lock:
+            if self.request_in_flight_count > 0:
+                self.request_in_flight_count -= 1
+
+    def get_request_in_flight_count(self) -> int:
+        with self.request_in_flight_lock:
+            return self.request_in_flight_count
+
     def get_running_task_count(self) -> int:
-        # 线程池线程常驻：用真实并发数（占用 limiter 的任务数）避免 UI 虚高。
+        # 后台任务数（用于 busy 判断）：包含占用 limiter 的并发与单条翻译线程。
+        # UI 需要“实时请求数”时使用 get_request_in_flight_count()。
         count = 0
 
         translator = getattr(self, "translator", None)

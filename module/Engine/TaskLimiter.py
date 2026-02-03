@@ -26,10 +26,13 @@ class TaskLimiter:
         self.bucket_lock = threading.Lock()
 
     def calculate_max_capacity(self) -> float:
-        return min(
-            self.rps if self.rps > 0 else float("inf"),
-            self.rpm / 60 if self.rpm > 0 else float("inf"),
-        )
+        # 这里的“令牌”表示“请求许可”。每次请求消耗 1 个令牌。
+        # 当 rpm < 60 时，rate_per_second 会小于 1；如果桶容量也被钳制到 < 1，
+        # 则 current_capacity 永远无法累计到 >= 1，wait() 会进入永久等待。
+        stricter_rate = self.calculate_stricter_rate()
+        if stricter_rate == float("inf"):
+            return float("inf")
+        return max(1.0, stricter_rate)
 
     def calculate_stricter_rate(self) -> float:
         return min(
