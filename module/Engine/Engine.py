@@ -59,7 +59,7 @@ class Engine:
         self, item: Item, config: Config, callback: Callable[[Item, bool], None]
     ) -> None:
         """
-        对单个条目执行翻译，异步返回结果。
+        对单个条目执行翻译，通过后台线程 + 回调异步返回结果。
         复用 TranslatorTask 的完整翻译流程（预处理、响应校验、日志等）。
 
         Args:

@@ -1,6 +1,4 @@
-import asyncio
 import dataclasses
-import inspect
 import time
 from typing import Any
 from typing import Callable
@@ -14,28 +12,16 @@ from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 class StreamControl:
     stop_checker: Callable[[], bool] | None
     deadline_monotonic: float | None
-    poll_interval_s: float
-    cleanup_timeout_s: float
 
     @staticmethod
     def create(
         *,
         stop_checker: Callable[[], bool] | None,
         deadline_monotonic: float | None,
-        poll_interval_s: float,
-        cleanup_timeout_s: float | None = None,
     ) -> "StreamControl":
-        poll_interval_s = poll_interval_s if poll_interval_s > 0 else 0.1
-
-        if cleanup_timeout_s is None:
-            # 清理阶段（取消/关闭）必须可退出，否则会导致翻译线程卡死。
-            cleanup_timeout_s = max(0.2, min(2.0, poll_interval_s * 10))
-
         return StreamControl(
             stop_checker=stop_checker,
             deadline_monotonic=deadline_monotonic,
-            poll_interval_s=poll_interval_s,
-            cleanup_timeout_s=cleanup_timeout_s,
         )
 
 
@@ -49,84 +35,51 @@ class StreamSession:
 class StreamStrategy(Protocol):
     """流式请求策略协议 - 定义不同 LLM API 的流式处理接口。"""
 
-    def create_state(self) -> Any:
-        """创建策略特定的状态对象。"""
-        ...
+    def create_state(self) -> Any: ...
 
     def build_stream_session(
-        self,
-        client: Any,
-        request_args: dict[str, Any],
-    ) -> Any:
-        """构建流式会话的异步上下文管理器，返回 AsyncContextManager[StreamSession]。"""
-        ...
+        self, client: Any, request_args: dict[str, Any]
+    ) -> Any: ...
 
-    def handle_item(self, state: Any, item: Any) -> None:
-        """处理流式输出的单个 chunk。"""
-        ...
+    def handle_item(self, state: Any, item: Any) -> None: ...
 
-    async def finalize(
-        self,
-        session: StreamSession,
-        state: Any,
-    ) -> tuple[str, str, int, int]:
-        """流结束后提取最终结果：(think, result, input_tokens, output_tokens)。"""
-        ...
+    def finalize(
+        self, session: StreamSession, state: Any
+    ) -> tuple[str, str, int, int]: ...
 
 
-def no_op_close() -> None:
-    return None
+def safe_close_resource(resource: Any) -> None:
+    """尽力关闭同步资源。
 
-
-async def maybe_await_value(result: Any) -> Any:
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
-def safe_close_async_resource(resource: Any) -> Any:
-    """尽力关闭异步流/生成器资源。"""
+    同步请求器不会 await；若传入异步资源（aclose 返回 coroutine），关闭将不会生效。
+    因此此处仅处理同步 close()，避免误导与潜在的未 await 告警。
+    """
 
     close = getattr(resource, "close", None)
-    if callable(close):
-        result = close()
-        if inspect.isawaitable(result):
-            return asyncio.ensure_future(result)
-        return None
+    if not callable(close):
+        return
 
-    aclose = getattr(resource, "aclose", None)
-    if callable(aclose):
-        result = aclose()
-        if inspect.isawaitable(result):
-            return asyncio.ensure_future(result)
-        return None
-
-    return None
+    try:
+        close()
+    except Exception:
+        return
 
 
 class StreamConsumer:
     @staticmethod
-    async def consume(
+    def consume(
         session: StreamSession,
         control: StreamControl,
         *,
         on_item: Callable[[Any], None],
     ) -> None:
-        """消费异步迭代器，同时保持对 stop/hard-timeout 的快速响应。"""
-        closed = False
+        """消费同步迭代器。
 
-        async def cancel_pending_anext_task(task: asyncio.Task | None) -> None:
-            if task is None or task.done():
-                return
-            task.cancel()
-            try:
-                await asyncio.wait_for(task, timeout=control.cleanup_timeout_s)
-            except asyncio.TimeoutError:
-                return
-            except asyncio.CancelledError:
-                return
-            except Exception:
-                return
+        注意：同步 stream 在拉取下一块 chunk 时通常是阻塞的，因此 stop/硬超时主要在
+        chunk 边界检查；阻塞期间的强制打断依赖底层 SDK/httpx 超时。
+        """
+
+        closed = False
 
         def is_deadline_reached() -> bool:
             return (
@@ -134,63 +87,35 @@ class StreamConsumer:
                 and time.monotonic() >= control.deadline_monotonic
             )
 
-        async def close_once() -> None:
+        def close_once() -> None:
             nonlocal closed
             if closed:
                 return
             closed = True
             try:
-                stop_result = session.close()
-                if inspect.isawaitable(stop_result):
-                    try:
-                        await asyncio.wait_for(
-                            stop_result,
-                            timeout=control.cleanup_timeout_s,
-                        )
-                    except asyncio.TimeoutError:
-                        return
+                session.close()
             except Exception:
                 return
 
-        while True:
-            # 在创建下一次 __anext__ 之前先检查，避免流式输出很密集时无法及时响应停止/超时。
-            if control.stop_checker is not None and control.stop_checker():
-                await close_once()
-                raise RequestCancelledError("stop requested")
-            if is_deadline_reached():
-                await close_once()
-                raise RequestHardTimeoutError("deadline exceeded")
+        try:
+            iterator = iter(session.iterator)
+            while True:
+                # 同步流式无法在 next() 阻塞时被外部打断；
+                # 这里的提前检查用于避免在“已请求 stop 的 chunk 边界”继续拉取下一块数据。
+                if control.stop_checker is not None and control.stop_checker():
+                    close_once()
+                    raise RequestCancelledError("stop requested")
+                if is_deadline_reached():
+                    close_once()
+                    raise RequestHardTimeoutError("deadline exceeded")
 
-            anext_task = asyncio.create_task(session.iterator.__anext__())
-            try:
-                while True:
-                    done = (
-                        await asyncio.wait(
-                            {anext_task}, timeout=control.poll_interval_s
-                        )
-                    )[0]
-                    if anext_task in done:
-                        item = await anext_task
-                        on_item(item)
-                        break
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    return
 
-                    if control.stop_checker is not None and control.stop_checker():
-                        # 先取消 __anext__，避免 close 阻塞等待正在进行的拉取。
-                        await cancel_pending_anext_task(anext_task)
-                        await close_once()
-                        raise RequestCancelledError("stop requested")
-
-                    if is_deadline_reached():
-                        # 先取消 __anext__，避免 close 阻塞等待正在进行的拉取。
-                        await cancel_pending_anext_task(anext_task)
-                        await close_once()
-                        raise RequestHardTimeoutError("deadline exceeded")
-            except StopAsyncIteration:
-                return
-            except (RequestCancelledError, RequestHardTimeoutError):
-                await cancel_pending_anext_task(anext_task)
-                raise
-            except Exception:
-                await cancel_pending_anext_task(anext_task)
-                await close_once()
-                raise
+                on_item(item)
+        finally:
+            # 正常结束/异常结束都尝试关闭，避免残留连接。
+            if not closed:
+                close_once()
