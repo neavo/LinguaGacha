@@ -11,7 +11,6 @@ from base.Base import Base
 from base.LogManager import LogManager
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
-from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 
@@ -194,12 +193,10 @@ class TranslatorTaskPipeline:
         """固定 worker 线程：持续消费上下文并执行翻译。"""
         while True:
             if self.should_stop():
-                TaskRequester.close_clients_for_current_thread()
                 return
 
             context = self.get_next_context()
             if context is None:
-                TaskRequester.close_clients_for_current_thread()
                 return
 
             self.inc_active_context()
@@ -320,21 +317,15 @@ class TranslatorTaskPipeline:
     def run(self) -> None:
         self.start_producer_thread()
 
-        try:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_workers,
-                thread_name_prefix=f"{Engine.TASK_PREFIX}WORKER",
-            ) as executor:
-                futures = [
-                    executor.submit(self.worker) for _ in range(self.max_workers)
-                ]
-                self.commit_loop()
-                for f in futures:
-                    try:
-                        f.result()
-                    except Exception as e:
-                        LogManager.get().error(Localizer.get().task_failed, e)
-                        Engine.get().set_status(Base.TaskStatus.STOPPING)
-        finally:
-            # 尽力关闭本线程可能创建的客户端。
-            TaskRequester.close_clients_for_current_thread()
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers,
+            thread_name_prefix=f"{Engine.TASK_PREFIX}WORKER",
+        ) as executor:
+            futures = [executor.submit(self.worker) for _ in range(self.max_workers)]
+            self.commit_loop()
+            for f in futures:
+                try:
+                    f.result()
+                except Exception as e:
+                    LogManager.get().error(Localizer.get().task_failed, e)
+                    Engine.get().set_status(Base.TaskStatus.STOPPING)

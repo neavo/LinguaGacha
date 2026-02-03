@@ -16,10 +16,10 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
-from module.Engine.TaskRequester import RequestCancelledError
-from module.Engine.TaskRequester import RequestHardTimeoutError
-from module.Engine.TaskRequester import StreamDegradationError
 from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskRequesterErrors import RequestCancelledError
+from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseChecker import ResponseChecker
@@ -576,7 +576,7 @@ class TranslatorTask(Base):
         单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
 
         注意：此方法为低频调用场景设计（用户手动触发单条重新翻译），
-        使用后台线程执行同步请求路径；结束时关闭当前线程创建的 SDK 客户端，避免连接残留。
+        使用后台线程执行同步请求路径；SDK client 由 TaskRequester 按参数组合全局缓存复用。
 
         Args:
             item: 待翻译的 Item 对象
@@ -619,7 +619,6 @@ class TranslatorTask(Base):
             except Exception:
                 success = False
             finally:
-                TaskRequester.close_clients_for_current_thread()
                 # 回调通知
                 if callback:
                     callback(item, success)

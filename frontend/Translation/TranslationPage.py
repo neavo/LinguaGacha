@@ -251,7 +251,8 @@ class TranslationPage(QWidget, Base):
 
     # 更新实时任务数
     def update_task(self, data: dict) -> None:
-        task = Engine.get().get_running_task_count()
+        # UI 上的“实时任务数”仅展示正在发送请求的数量（不包含限速等待）。
+        task = Engine.get().get_request_in_flight_count()
         if task < 1000:
             self.task.set_unit("Task")
             self.task.set_value(f"{task}")
