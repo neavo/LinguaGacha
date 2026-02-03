@@ -964,16 +964,22 @@ class TaskRequester(Base):
 
         # Gemini 3 Pro
         if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
-            if self.thinking_level in (
-                ThinkingLevel.OFF,
-                ThinkingLevel.LOW,
-                ThinkingLevel.MEDIUM,
-            ):
+            if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.LOW,
                     include_thoughts=True,
                 )
-            else:
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.HIGH,
                     include_thoughts=True,
@@ -981,60 +987,69 @@ class TaskRequester(Base):
         # Gemini 3 Flash
         elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = {
-                    "thinking_level": "MINIMAL",
-                    "include_thoughts": False,
-                    "thinking_budget": 0,
-                }
-            else:
-                config_args["thinking_config"] = {
-                    "thinking_level": self.thinking_level.value,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL,
+                    include_thoughts=False,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MEDIUM,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH,
+                    include_thoughts=True,
+                )
         # Gemini 2.5 Pro
         elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 128,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=128,
+                    include_thoughts=True,
+                )
             elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 1024,
-                    "include_thoughts": True,
-                }
-            elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 1536,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1024,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1536,
+                    include_thoughts=True,
+                )
             elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 2048,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=2048,
+                    include_thoughts=True,
+                )
         # Gemini 2.5 Flash
         elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 0,
-                    "include_thoughts": False,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=0,
+                    include_thoughts=False,
+                )
             elif self.thinking_level == ThinkingLevel.LOW:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 1024,
-                    "include_thoughts": True,
-                }
-            elif self.thinking_level == ThinkingLevel.MEDIUM:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 1536,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1024,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1536,
+                    include_thoughts=True,
+                )
             elif self.thinking_level == ThinkingLevel.HIGH:
-                config_args["thinking_config"] = {
-                    "thinking_budget": 2048,
-                    "include_thoughts": True,
-                }
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=2048,
+                    include_thoughts=True,
+                )
 
         # Custom Body
         if self.extra_body:
