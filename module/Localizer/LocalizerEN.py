@@ -164,6 +164,7 @@ class LocalizerEN(LocalizerZH):
     api_tester_timeout: str = "Request timed out ({SECONDS}s)"
     api_tester_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
     api_tester_result_failure: str = "Failed Keys:"
+    api_tester_token_info: str = "Token usage: input {INPUT}, output {OUTPUT}, time {TIME}s"
     translator_mtool_optimizer_pre_log: str = "MToolOptimizer pre-processing completed, {COUNT} entries containing duplicate clauses were filtered in total …"
     translator_mtool_optimizer_post_log: str = "MToolOptimizer post-processing completed …"
     translator_response_check_fail: str = "Data error, will automatically retry, Reason: {REASON}"

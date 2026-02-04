@@ -1,8 +1,11 @@
 import copy
 import threading
+import time
 
 from base.Base import Base
 from module.Config import Config
+from module.Engine.APITester.APITesterResult import APITestResult
+from module.Engine.APITester.APITesterResult import KeyTestResult
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
@@ -17,6 +20,14 @@ class APITester(Base):
 
         # 注册事件
         self.subscribe(Base.Event.APITEST_RUN, self.api_test_start)
+
+    def mask_api_key(self, key: str) -> str:
+        """脱敏 API Key：保留前 8 + 后 8，中间用等长 * 替代。"""
+
+        key = key.strip()
+        if len(key) <= 16:
+            return key
+        return f"{key[:8]}{'*' * (len(key) - 16)}{key[-8:]}"
 
     # 接口测试开始事件
     def api_test_start(self, event: Base.Event, data: dict) -> None:
@@ -78,9 +89,8 @@ class APITester(Base):
             )
             return
 
-        # 测试结果
-        failure = []
-        success = []
+        # 测试结果 - 收集 KeyTestResult 列表
+        key_results: list[KeyTestResult] = []
 
         # 构造提示词
         api_format = model.get("api_format", "OpenAI")
@@ -111,27 +121,34 @@ class APITester(Base):
             api_keys = ["no_key_required"]
 
         TaskRequester.reset()
-        for key in api_keys:
+        for api_key in api_keys:
             model_test = copy.deepcopy(model)
-            model_test["api_key"] = key
+            model_test["api_key"] = api_key
+
+            masked_key = self.mask_api_key(api_key)
 
             requester = TaskRequester(config, model_test)
 
             self.print("")
-            self.info(Localizer.get().api_tester_key + "\n" + f"[green]{key}[/]")
+            self.info(Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]")
             self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
+
+            # 记录开始时间
+            start_time_ns = time.perf_counter_ns()
 
             (
                 exception,
                 response_think,
                 response_result,
-                _,
-                _,
+                input_tokens,
+                output_tokens,
             ) = requester.request(messages)
 
+            # 计算响应时间（毫秒）
+            response_time_ms = (time.perf_counter_ns() - start_time_ns) // 1_000_000
+
             if exception:
-                failure.append(key)
-                reason = Localizer.get().log_unknown_reason
+                # 确定失败原因
                 if isinstance(exception, RequestHardTimeoutError):
                     reason = Localizer.get().api_tester_timeout.replace(
                         "{SECONDS}", str(config.request_timeout)
@@ -144,42 +161,87 @@ class APITester(Base):
                         else exception.__class__.__name__
                     )
 
+                key_results.append(
+                    KeyTestResult(
+                        masked_key=masked_key,
+                        success=False,
+                        input_tokens=0,
+                        output_tokens=0,
+                        response_time_ms=response_time_ms,
+                        error_reason=reason,
+                    )
+                )
+
                 self.warning(
                     Localizer.get().log_api_test_fail.replace("{REASON}", reason)
                 )
-            elif response_think == "":
-                success.append(key)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
-                )
             else:
-                success.append(key)
-                self.info(Localizer.get().engine_response_think + "\n" + response_think)
-                self.info(
-                    Localizer.get().engine_response_result + "\n" + response_result
+                key_results.append(
+                    KeyTestResult(
+                        masked_key=masked_key,
+                        success=True,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        response_time_ms=response_time_ms,
+                        error_reason="",
+                    )
                 )
 
-        # 测试结果
+                if response_think == "":
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+                else:
+                    self.info(
+                        Localizer.get().engine_response_think + "\n" + response_think
+                    )
+                    self.info(
+                        Localizer.get().engine_response_result + "\n" + response_result
+                    )
+
+                # Token 信息放在回复之后，便于阅读。
+                token_info = (
+                    Localizer.get()
+                    .api_tester_token_info.replace("{INPUT}", str(input_tokens))
+                    .replace("{OUTPUT}", str(output_tokens))
+                    .replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
+                )
+                self.info(token_info)
+
+        # 统计结果
+        success_results = [r for r in key_results if r.success]
+        failure_results = [r for r in key_results if not r.success]
+        total_response_time_ms = sum(r.response_time_ms for r in key_results)
+
+        # 测试结果消息
         result_msg = (
             Localizer.get()
             .api_tester_result.replace("{COUNT}", str(len(api_keys)))
-            .replace("{SUCCESS}", str(len(success)))
-            .replace("{FAILURE}", str(len(failure)))
+            .replace("{SUCCESS}", str(len(success_results)))
+            .replace("{FAILURE}", str(len(failure_results)))
         )
         self.print("")
         self.info(result_msg)
 
         # 失败密钥
-        if len(failure) > 0:
+        if failure_results:
+            failed_masked_keys = [r.masked_key for r in failure_results]
             self.warning(
-                Localizer.get().api_tester_result_failure + "\n" + "\n".join(failure)
+                Localizer.get().api_tester_result_failure
+                + "\n"
+                + "\n".join(failed_masked_keys)
             )
 
-        # 发送完成事件
-        self.emit(
-            Base.Event.APITEST_DONE,
-            {
-                "result": len(failure) == 0,
-                "result_msg": result_msg,
-            },
+        # 构建结果对象
+        test_result = APITestResult(
+            success=len(failure_results) == 0,
+            result_msg=result_msg,
+            total_count=len(api_keys),
+            success_count=len(success_results),
+            failure_count=len(failure_results),
+            total_response_time_ms=total_response_time_ms,
+            key_results=tuple(key_results),
         )
+
+        # 发送完成事件
+        self.emit(Base.Event.APITEST_DONE, test_result.to_event_dict())
