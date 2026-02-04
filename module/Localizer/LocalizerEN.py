@@ -122,6 +122,21 @@ class LocalizerEN(LocalizerZH):
     log_write_file_fail: str = "File writing failed …"
     log_unknown_reason: str = "Unknown Reason"
     log_cli_verify_language: str = "parameter error: invalid language …"
+    log_cli_quality_rule_file_not_found: str = (
+        "parameter error: rule file not found …\nArgument: {ARG}\nPath: {PATH}"
+    )
+    log_cli_quality_rule_file_unsupported: str = (
+        "parameter error: unsupported rule file format (only .json/.xlsx) …\nArgument: {ARG}\nPath: {PATH}"
+    )
+    log_cli_quality_rule_import_failed: str = (
+        "quality rule import failed …\nArgument: {ARG}\nPath: {PATH}\nReason: {REASON}"
+    )
+    log_cli_text_preserve_mode_invalid: str = (
+        "parameter error: invalid text preserve options …\n"
+        "--text_preserve_mode: {MODE}\n"
+        "--text_preserve: {PATH}\n"
+        "Note: mode=custom requires --text_preserve; providing --text_preserve requires mode=custom"
+    )
 
     # Common
     data_processing: str = "Processing data …"

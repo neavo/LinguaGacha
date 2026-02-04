@@ -51,6 +51,9 @@ class Translator(Base):
         # 翻译期间使用的质量规则快照（开始/继续时捕获）
         self.quality_snapshot: QualityRuleSnapshot | None = None
 
+        # 是否允许把质量规则写回工程（GUI 为 True；CLI 可传 False 仅本次生效）。
+        self.persist_quality_rules: bool = True
+
         # 注册事件
         self.subscribe(Base.Event.PROJECT_CHECK_RUN, self.project_check_run)
         self.subscribe(Base.Event.TRANSLATION_RUN, self.translation_run)
@@ -270,57 +273,10 @@ class Translator(Base):
 
         def task() -> None:
             try:
-                items = dm.get_all_items()
-                if not items:
+                extras = dm.reset_failed_items_sync()
+                if extras is None:
                     return
 
-                updated = False
-                for item in items:
-                    if item.get_status() == Base.ProjectStatus.ERROR:
-                        item.set_dst("")
-                        item.set_status(Base.ProjectStatus.NONE)
-                        item.set_retry_count(0)
-                        updated = True
-
-                if updated:
-                    dm.replace_all_items(items)
-
-                processed_line = sum(
-                    1
-                    for item in items
-                    if item.get_status() == Base.ProjectStatus.PROCESSED
-                )
-                error_line = sum(
-                    1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
-                )
-                total_line = sum(
-                    1
-                    for item in items
-                    if item.get_status()
-                    in (
-                        Base.ProjectStatus.NONE,
-                        Base.ProjectStatus.PROCESSED,
-                        Base.ProjectStatus.ERROR,
-                    )
-                )
-
-                extras = dm.get_translation_extras()
-                if not isinstance(extras, dict):
-                    extras = {}
-                extras["processed_line"] = processed_line
-                extras["error_line"] = error_line
-                extras["line"] = processed_line + error_line
-                extras["total_line"] = total_line
-                dm.set_translation_extras(extras)
-
-                project_status = (
-                    Base.ProjectStatus.PROCESSING
-                    if any(
-                        item.get_status() == Base.ProjectStatus.NONE for item in items
-                    )
-                    else Base.ProjectStatus.PROCESSED
-                )
-                dm.set_project_status(project_status)
                 self.extras = extras
 
                 self.emit(Base.Event.PROJECT_CHECK_RUN, {})
@@ -406,8 +362,15 @@ class Translator(Base):
 
             max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
 
-            # 质量规则快照：除自动术语表新增条目外，翻译过程中不再读取 DataManager 的实时值
-            self.quality_snapshot = QualityRuleSnapshot.capture()
+            persist_quality_rules = data.get("persist_quality_rules", True)
+            self.persist_quality_rules = bool(persist_quality_rules)
+
+            snapshot_override = data.get("quality_snapshot")
+            self.quality_snapshot = (
+                snapshot_override
+                if isinstance(snapshot_override, QualityRuleSnapshot)
+                else QualityRuleSnapshot.capture()
+            )
 
             # 重置
             TextProcessor.reset()
@@ -615,7 +578,9 @@ class Translator(Base):
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
         DataManager.get().close_db()
 
-    def merge_glossary(self, glossary_list: list[dict[str, str]]) -> list[dict] | None:
+    def merge_glossary(
+        self, glossary_list: list[dict[str, str]], *, persist: bool = True
+    ) -> list[dict] | None:
         """
         合并术语表并更新缓存，返回待写入的数据（若无变化返回 None）
         """
@@ -660,6 +625,10 @@ class Translator(Base):
 
         added_entries = snapshot.merge_glossary_entries(incoming)
         if not added_entries:
+            return None
+
+        # CLI 模式可禁用规则写回：保留本次快照的增量效果，但不触碰工程缓存/落库。
+        if not persist:
             return None
 
         dm = DataManager.get()
@@ -771,7 +740,9 @@ class Translator(Base):
         """
         new_glossary_data = None
         if glossaries and self.config.auto_glossary_enable:
-            new_glossary_data = self.merge_glossary(glossaries)
+            new_glossary_data = self.merge_glossary(
+                glossaries, persist=self.persist_quality_rules
+            )
 
         rules_map = (
             {DataManager.RuleType.GLOSSARY: new_glossary_data}
@@ -850,7 +821,17 @@ class Translator(Base):
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
         # 启用自动术语表的时，更新配置文件
-        if DataManager.get().get_glossary_enable() and self.config.auto_glossary_enable:
+        snapshot = self.quality_snapshot
+        glossary_enable = (
+            snapshot.glossary_enable
+            if snapshot is not None
+            else DataManager.get().get_glossary_enable()
+        )
+        if (
+            glossary_enable
+            and self.config.auto_glossary_enable
+            and self.persist_quality_rules
+        ):
             # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
             # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可

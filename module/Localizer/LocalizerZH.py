@@ -122,6 +122,21 @@ class LocalizerZH:
     log_write_file_fail: str = "文件写入失败 …"
     log_unknown_reason: str = "未知原因"
     log_cli_verify_language: str = "参数发生错误：无效的语言 …"
+    log_cli_quality_rule_file_not_found: str = (
+        "参数发生错误：规则文件不存在 …\n参数：{ARG}\n路径：{PATH}"
+    )
+    log_cli_quality_rule_file_unsupported: str = (
+        "参数发生错误：规则文件格式不受支持（仅支持 .json/.xlsx） …\n参数：{ARG}\n路径：{PATH}"
+    )
+    log_cli_quality_rule_import_failed: str = (
+        "质量规则导入失败 …\n参数：{ARG}\n路径：{PATH}\n原因：{REASON}"
+    )
+    log_cli_text_preserve_mode_invalid: str = (
+        "参数发生错误：文本保护参数组合无效 …\n"
+        "--text_preserve_mode: {MODE}\n"
+        "--text_preserve: {PATH}\n"
+        "说明：mode=custom 时必须提供 --text_preserve；提供 --text_preserve 时 mode 必须为 custom"
+    )
 
     # 通用
     data_processing: str = "数据处理中 …"
