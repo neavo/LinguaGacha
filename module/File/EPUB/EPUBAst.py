@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import html.entities
 import io
 import os
 import posixpath
@@ -84,6 +85,7 @@ class EPUBAst(Base):
     RE_NCX_BARE_AMP = re.compile(
         rb"&(?!(?:[A-Za-z][A-Za-z0-9._:-]*|#[0-9]+|#[xX][0-9A-Fa-f]+);)"
     )
+    RE_HTML_NAMED_ENTITY = re.compile(rb"&([A-Za-z][A-Za-z0-9._:-]*);")
     RE_CDATA_SECTION = re.compile(rb"<!\[CDATA\[.*?\]\]>", re.DOTALL)
 
     SKIP_SUBTREE_TAGS: frozenset[str] = frozenset(
@@ -357,28 +359,81 @@ class EPUBAst(Base):
 
     @classmethod
     def parse_xhtml_or_html(cls, raw: bytes) -> etree._Element:
-        # 先严格按 XML 解析（XHTML），失败再用 HTMLParser 容错。
+        # 优先严格按 XML 解析（XHTML）。若失败，先把 HTML 命名实体转成数字引用再重试，
+        # 避免 libxml2 的 recover 模式在遇到未定义实体时出现静默损坏。
+
         try:
-            parser = etree.XMLParser(recover=False, resolve_entities=True)
-            root = etree.fromstring(raw, parser=parser)
-            return root
+            parser = etree.XMLParser(
+                recover=False, resolve_entities=True, no_network=True
+            )
+            return etree.fromstring(raw, parser=parser)
         except Exception:
             pass
 
+        fixed = cls.normalize_html_named_entities_for_xml(raw)
+        if fixed is not raw:
+            try:
+                parser = etree.XMLParser(
+                    recover=False, resolve_entities=True, no_network=True
+                )
+                return etree.fromstring(fixed, parser=parser)
+            except Exception:
+                pass
+
         try:
             # 一些 epub 的 xhtml 有小瑕疵但结构仍可恢复，尽量保持 XML 语义。
-            parser = etree.XMLParser(recover=True, resolve_entities=True)
-            root = etree.fromstring(raw, parser=parser)
-            return root
+            parser = etree.XMLParser(
+                recover=True, resolve_entities=True, no_network=True
+            )
+            return etree.fromstring(fixed, parser=parser)
         except Exception:
             pass
 
         try:
             parser = etree.HTMLParser(recover=True)
-            root = etree.fromstring(raw, parser=parser)
-            return root
+            return etree.fromstring(raw, parser=parser)
         except Exception as e:
             raise ValueError("Failed to parse html/xhtml") from e
+
+    @classmethod
+    def normalize_html_named_entities_for_xml(cls, raw: bytes) -> bytes:
+        """把 HTML 命名实体转换为 XML 可解析的形式。
+
+        - 已知命名实体：替换为等价的数字字符引用（例如：&nbsp; -> &#160;）。
+        - 未知命名实体：把 '&' 转义为 '&amp;'，以保留原始文本（例如：&foo; -> &amp;foo;）。
+        """
+
+        if b"&" not in raw:
+            return raw
+
+        # html.entities.name2codepoint 只覆盖单码点实体；html5 能覆盖多码点实体。
+        html5_entities = html.entities.html5
+
+        def repl(m: re.Match[bytes]) -> bytes:
+            name_bytes = m.group(1)
+
+            # RE_HTML_NAMED_ENTITY 只匹配 ASCII 字符集，decode 不会失败。
+            name = name_bytes.decode("ascii")
+
+            value = html5_entities.get(f"{name};") or html5_entities.get(name)
+            if value is None:
+                return b"&amp;" + name_bytes + b";"
+
+            # 转成数字引用，确保 XML 一定可解析；多码点实体会展开为多个字符引用。
+            return "".join(f"&#{ord(ch)};" for ch in value).encode("ascii")
+
+        # CDATA 内本就不会展开实体，保持原样避免误改。
+        parts: list[bytes] = []
+        last_end = 0
+        for m in cls.RE_CDATA_SECTION.finditer(raw):
+            before = raw[last_end : m.start()]
+            parts.append(cls.RE_HTML_NAMED_ENTITY.sub(repl, before))
+            parts.append(raw[m.start() : m.end()])
+            last_end = m.end()
+
+        tail = raw[last_end:]
+        parts.append(cls.RE_HTML_NAMED_ENTITY.sub(repl, tail))
+        return b"".join(parts)
 
     @classmethod
     def fix_ncx_bare_ampersands(cls, raw: bytes) -> bytes:
