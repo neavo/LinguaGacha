@@ -582,6 +582,76 @@ class DataManager(Base):
     def set_translation_extras(self, extras: dict) -> None:
         self.set_meta("translation_extras", extras)
 
+    def reset_failed_items_sync(self) -> dict[str, Any] | None:
+        """重置失败条目并同步进度元数据。
+
+        用途：
+        - GUI 的“重置失败项”按钮
+        - CLI 的 --reset_failed
+
+        约束：该方法会写 DB；GUI 模式下应在后台线程调用。
+        """
+
+        if not self.is_loaded():
+            return None
+
+        items = self.get_all_items()
+        if not items:
+            return None
+
+        changed_items: list[dict[str, Any]] = []
+        for item in items:
+            if item.get_status() != Base.ProjectStatus.ERROR:
+                continue
+
+            item.set_dst("")
+            item.set_status(Base.ProjectStatus.NONE)
+            item.set_retry_count(0)
+
+            item_dict = item.to_dict()
+            if isinstance(item_dict.get("id"), int):
+                changed_items.append(item_dict)
+
+        processed_line = sum(
+            1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
+        )
+        error_line = sum(
+            1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
+        )
+        total_line = sum(
+            1
+            for item in items
+            if item.get_status()
+            in (
+                Base.ProjectStatus.NONE,
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.ERROR,
+            )
+        )
+
+        extras = self.get_translation_extras()
+        extras["processed_line"] = processed_line
+        extras["error_line"] = error_line
+        extras["line"] = processed_line + error_line
+        extras["total_line"] = total_line
+
+        project_status = (
+            Base.ProjectStatus.PROCESSING
+            if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
+            else Base.ProjectStatus.PROCESSED
+        )
+
+        # 单次事务写入：确保 items/meta 一致。
+        self.update_batch(
+            items=changed_items or None,
+            meta={
+                "translation_extras": extras,
+                "project_status": project_status,
+            },
+        )
+
+        return extras
+
     # ===================== rules =====================
 
     def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
