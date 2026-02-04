@@ -164,6 +164,7 @@ class LocalizerZH:
     api_tester_timeout: str = "请求超时（{SECONDS} 秒）"
     api_tester_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
     api_tester_result_failure: str = "失败的密钥："
+    api_tester_token_info: str = "Token 使用：输入 {INPUT}，输出 {OUTPUT}，耗时 {TIME} 秒"
     translator_mtool_optimizer_pre_log: str = "MToolOptimizer 预处理已完成，共过滤 {COUNT} 个包含重复子句的条目 …"
     translator_mtool_optimizer_post_log: str = "MToolOptimizer 后处理已完成 …"
     translator_response_check_fail: str = "返回数据错误，将自动重试，原因：{REASON}"
