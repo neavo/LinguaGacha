@@ -554,6 +554,9 @@ class LocalizerZH:
         ""
     )
 
+    # 自定义提示词 - 导入导出
+    custom_prompt_select_file_type: str = "支持的文件 (*.txt)"
+
     # 实验室
     laboratory_page_mtool_optimizer_enable: str = "MTool 优化器"
     laboratory_page_mtool_optimizer_enable_desc: str = (

@@ -1,7 +1,9 @@
 import os
 from functools import partial
+from pathlib import Path
 
 from PyQt5.QtCore import QPoint
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
@@ -28,6 +30,8 @@ from widget.SwitchButtonCard import SwitchButtonCard
 # ==================== 图标常量 ====================
 
 ICON_ACTION_SAVE: BaseIcon = BaseIcon.SAVE  # 命令栏：保存当前提示词
+ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
+ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出
 ICON_PRESET_MENU_ROOT: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单入口
 
 ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空内容）
@@ -174,8 +178,115 @@ class CustomPromptPage(QWidget, Base):
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
+        self.add_command_bar_action_import(self.command_bar_card, config, window)
+        self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
         self.add_command_bar_action_save(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
+
+    def import_prompt_from_path(self, path: str) -> None:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as reader:
+                text = reader.read().strip()
+        except Exception as e:
+            self.error("", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.set_custom_prompt_data(text)
+        self.main_text.setPlainText(text)
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_import_toast,
+            },
+        )
+
+    def export_prompt_to_path(self, path: str) -> None:
+        try:
+            final_path = Path(path)
+            if final_path.suffix.lower() != ".txt":
+                final_path = final_path.with_suffix(".txt")
+            with open(str(final_path), "w", encoding="utf-8") as writer:
+                writer.write(self.main_text.toPlainText().strip())
+        except Exception as e:
+            self.error("", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_export_toast,
+            },
+        )
+
+    def add_command_bar_action_import(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        del config
+        del window
+
+        def triggered() -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                None,
+                Localizer.get().select_file,
+                "",
+                Localizer.get().custom_prompt_select_file_type,
+            )
+            if not isinstance(path, str) or not path:
+                return
+            self.import_prompt_from_path(path)
+
+        parent.add_action(
+            Action(
+                ICON_ACTION_IMPORT,
+                Localizer.get().quality_import,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    def add_command_bar_action_export(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        del config
+
+        def triggered() -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                window,
+                Localizer.get().select_file,
+                "",
+                Localizer.get().custom_prompt_select_file_type,
+            )
+            if not isinstance(path, str) or not path:
+                return
+            self.export_prompt_to_path(path)
+
+        parent.add_action(
+            Action(
+                ICON_ACTION_EXPORT,
+                Localizer.get().quality_export,
+                parent,
+                triggered=triggered,
+            ),
+        )
 
     # 保存
     def add_command_bar_action_save(
@@ -368,7 +479,7 @@ class CustomPromptPage(QWidget, Base):
                     )
                     dialog.accept()
                 except Exception as e:
-                    self.error("Failed to save preset", e)
+                    self.error("", e)
 
             dialog = LineEditMessageBox(
                 window, Localizer.get().quality_save_preset_title, on_save
@@ -404,7 +515,7 @@ class CustomPromptPage(QWidget, Base):
                     )
                     dialog.accept()
                 except Exception as e:
-                    self.error("Failed to rename preset", e)
+                    self.error("", e)
 
             dialog = LineEditMessageBox(window, Localizer.get().rename, on_rename)
             dialog.get_line_edit().setText(item["name"])
@@ -440,7 +551,7 @@ class CustomPromptPage(QWidget, Base):
                         },
                     )
                 except Exception as e:
-                    self.error("Failed to delete preset", e)
+                    self.error("", e)
 
         def triggered() -> None:
             menu = RoundMenu("", widget)

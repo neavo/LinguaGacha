@@ -554,6 +554,9 @@ class LocalizerEN(LocalizerZH):
         "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>"
     )
 
+    # 自定义提示词 - 导入导出
+    custom_prompt_select_file_type: str = "Supported Files (*.txt)"
+
     # 实验室
     laboratory_page_mtool_optimizer_enable: str = "MTool Optimizer"
     laboratory_page_mtool_optimizer_enable_desc: str = (
