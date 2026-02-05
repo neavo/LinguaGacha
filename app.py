@@ -14,6 +14,7 @@ from qfluentwidgets import setTheme
 from rich.console import Console
 
 from base.CLIManager import CLIManager
+from base.EventManager import EventManager
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
 from frontend.AppFluentWindow import AppFluentWindow
@@ -26,8 +27,10 @@ from module.Localizer.Localizer import Localizer
 def excepthook(
     exc_type: type[BaseException],
     exc_value: BaseException,
-    exc_traceback: TracebackType,
+    exc_traceback: TracebackType | None,
 ) -> None:
+    del exc_type
+    del exc_traceback
     LogManager.get().error(Localizer.get().log_crash, exc_value)
 
     if not isinstance(exc_value, KeyboardInterrupt):
@@ -131,6 +134,9 @@ if __name__ == "__main__":
 
     # 创建全局应用对象
     app = QApplication(sys.argv)
+
+    # 固定事件中心的 QObject 线程亲和性在主线程，避免后台线程首次触发导致回调跑偏。
+    EventManager.get()
 
     # 设置应用图标
     app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
