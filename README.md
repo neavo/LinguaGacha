@@ -78,17 +78,11 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260204 v0.53.2
-  - 优化与修复
-
-- 20260203 v0.53.1
-  - 优化与修复
-
-- 20260202 v0.53.0
-  - 功能 - 显著加快任务停止的速度
-  - 功能 - 支持 Kimi 系列思考开关
-  - 功能 - 基于 `AST` 的全新 `EPUB` `RenPy` 解析器
-    - 理论上可以做到 100% 准确的还原样式
+- 20260205 v0.54.0
+  - 功能 - CLI 模式支持 `术语表` 等质量规则
+    - [#403](https://github.com/neavo/LinguaGacha/issues/403)
+  - 修复 - EPUB 文本解析兼容性优化
+    - [#404](https://github.com/neavo/LinguaGacha/issues/404) [#406](https://github.com/neavo/LinguaGacha/issues/406) [#412](https://github.com/neavo/LinguaGacha/issues/412)
 
 ### 开发指南 🛠️
 - 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理

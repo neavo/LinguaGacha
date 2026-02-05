@@ -83,17 +83,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260204 v0.53.2
-  - Optimization and Fixes
-
-- 20260203 v0.53.1
-  - Optimization and Fixes
-
-- 20260202 v0.53.0
-  - feat - Significantly speed up task stop
-  - feat - Support for Kimi series thinking toggle
-  - feat - Brand new `EPUB` and `RenPy` parsers based on `AST`
-    - Theoretically capable of 100% accurate style restoration
+- 20260205 v0.54.0
+  - feat - CLI mode supports quality rules such as `Glossary`
+    - [#403](https://github.com/neavo/LinguaGacha/issues/403)
+  - fix - EPUB text parsing compatibility optimization
+    - [#404](https://github.com/neavo/LinguaGacha/issues/404) [#406](https://github.com/neavo/LinguaGacha/issues/406) [#412](https://github.com/neavo/LinguaGacha/issues/412)
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
