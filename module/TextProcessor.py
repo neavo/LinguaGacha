@@ -1,4 +1,3 @@
-import json
 import re
 import threading
 from enum import StrEnum
@@ -20,6 +19,7 @@ from module.Normalizer import Normalizer
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
 from module.RubyCleaner import RubyCleaner
+from module.Utils.JSONTool import JSONTool
 
 
 class TextProcessor(Base):
@@ -106,8 +106,7 @@ class TextProcessor(Base):
         else:
             path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
             try:
-                with open(path, "r", encoding="utf-8-sig") as reader:
-                    raw = json.load(reader)
+                raw = JSONTool.load_file(path)
                 if isinstance(raw, list):
                     for entry in raw:
                         if not isinstance(entry, dict):

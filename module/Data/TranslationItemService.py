@@ -6,14 +6,11 @@ from module.Config import Config
 from module.Data.ProjectSession import ProjectSession
 from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 class TranslationItemService:
     """按翻译模式获取条目列表（继续/新翻译/重置）。"""
-
-    # 资产解析时的批量大小
-    YIELD_EVERY_FOR_ASSETS = 1
 
     def __init__(self, session: ProjectSession) -> None:
         self.session = session
@@ -34,7 +31,7 @@ class TranslationItemService:
 
             # 分批构造 Item，避免后台线程长时间占用 GIL 导致 UI 掉帧
             result: list[Item] = []
-            for item_dict in ChunkLimiter.iter(items):
+            for item_dict in GapTool.iter(items):
                 result.append(Item.from_dict(item_dict))
 
             return result
@@ -44,10 +41,7 @@ class TranslationItemService:
             parsed_items: list[Item] = []
 
             asset_paths = db.get_all_asset_paths()
-            for rel_path in ChunkLimiter.iter(
-                asset_paths,
-                every=self.YIELD_EVERY_FOR_ASSETS,
-            ):
+            for rel_path in GapTool.iter(asset_paths):
                 compressed = db.get_asset(rel_path)
                 if not compressed:
                     continue
@@ -61,6 +55,6 @@ class TranslationItemService:
 
         items: list[dict[str, Any]] = db.get_all_items()
         result: list[Item] = []
-        for item_dict in ChunkLimiter.iter(items):
+        for item_dict in GapTool.iter(items):
             result.append(Item.from_dict(item_dict))
         return result

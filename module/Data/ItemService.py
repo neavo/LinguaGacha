@@ -2,7 +2,7 @@ from typing import Any
 
 from model.Item import Item
 from module.Data.ProjectSession import ProjectSession
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 class ItemService:
@@ -28,7 +28,7 @@ class ItemService:
         else:
             items = db.get_all_items()
             index = {}
-            for idx, item in ChunkLimiter.iter(enumerate(items)):
+            for idx, item in GapTool.iter(enumerate(items)):
                 item_id = item.get("id")
                 if isinstance(item_id, int):
                     index[item_id] = idx
@@ -47,7 +47,7 @@ class ItemService:
 
         # 解锁后构造 Item，避免长时间占用状态锁
         result: list[Item] = []
-        for item_dict in ChunkLimiter.iter(cache):
+        for item_dict in GapTool.iter(cache):
             result.append(Item.from_dict(item_dict))
         return result
 
@@ -76,7 +76,7 @@ class ItemService:
 
     def replace_all_items(self, items: list[Item]) -> list[int]:
         items_dict: list[dict[str, Any]] = []
-        for item in ChunkLimiter.iter(items):
+        for item in GapTool.iter(items):
             items_dict.append(item.to_dict())
 
         with self.session.state_lock:
@@ -88,17 +88,17 @@ class ItemService:
         ids = db.set_items(items_dict)
 
         # 同步回写 ID
-        for item, item_id in ChunkLimiter.iter(zip(items, ids)):
+        for item, item_id in GapTool.iter(zip(items, ids)):
             if isinstance(item_id, int):
                 item.set_id(item_id)
 
         # 刷新缓存（保持与 DB 一致）
         new_cache: list[dict[str, Any]] = []
-        for item in ChunkLimiter.iter(items):
+        for item in GapTool.iter(items):
             new_cache.append(item.to_dict())
 
         new_index: dict[int, int] = {}
-        for idx, item_dict in ChunkLimiter.iter(enumerate(new_cache)):
+        for idx, item_dict in GapTool.iter(enumerate(new_cache)):
             item_id = item_dict.get("id")
             if isinstance(item_id, int):
                 new_index[item_id] = idx

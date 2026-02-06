@@ -1,4 +1,3 @@
-import json
 import os
 from functools import partial
 from typing import TYPE_CHECKING
@@ -14,6 +13,7 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.Utils.JSONTool import JSONTool
 from widget.LineEditMessageBox import LineEditMessageBox
 
 
@@ -131,8 +131,7 @@ class QualityRulePresetManager:
 
         try:
             data = [v for v in self.page.entries if str(v.get("src", "")).strip()]
-            with open(path, "w", encoding="utf-8") as writer:
-                writer.write(json.dumps(data, indent=4, ensure_ascii=False))
+            JSONTool.save_file(path, data, indent=4)
             self.show_toast(
                 Base.ToastType.SUCCESS, Localizer.get().quality_save_preset_success
             )

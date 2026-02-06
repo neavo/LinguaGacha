@@ -1,5 +1,4 @@
 import dataclasses
-import json
 import os
 import threading
 from enum import StrEnum
@@ -11,6 +10,7 @@ from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
+from module.Utils.JSONTool import JSONTool
 
 
 @dataclasses.dataclass
@@ -99,8 +99,8 @@ class Config:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 if os.path.isfile(path):
-                    with open(path, "r", encoding="utf-8-sig") as reader:
-                        config: dict = json.load(reader)
+                    config: Any = JSONTool.load_file(path)
+                    if isinstance(config, dict):
                         for k, v in config.items():
                             if hasattr(self, k):
                                 setattr(self, k, v)
@@ -134,9 +134,7 @@ class Config:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as writer:
-                    json.dump(
-                        dataclasses.asdict(self), writer, indent=4, ensure_ascii=False
-                    )
+                    writer.write(JSONTool.dumps(dataclasses.asdict(self), indent=4))
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 

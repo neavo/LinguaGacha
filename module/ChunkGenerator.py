@@ -2,7 +2,7 @@ from collections.abc import Iterator
 
 from base.Base import Base
 from model.Item import Item
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 class ChunkGenerator:
@@ -39,7 +39,7 @@ class ChunkGenerator:
         token_length: int = 0
         chunk: list[Item] = []
 
-        for i, item in ChunkLimiter.iter(enumerate(items)):
+        for i, item in GapTool.iter(enumerate(items)):
             # 跳过状态不是 未翻译 的数据
             if item.get_status() != Base.ProjectStatus.NONE:
                 skip = skip + 1

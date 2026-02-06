@@ -15,6 +15,7 @@ import httpx
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
 
+
 class VersionManager(Base):
 
     class Status(StrEnum):
@@ -219,7 +220,7 @@ class VersionManager(Base):
                     break
 
             if not browser_download_url:
-                raise Exception(f"未找到适用于 {plat} 的资源文件")
+                raise Exception(f"no browser_download_url")
 
             with httpx.stream("GET", browser_download_url, timeout = 60, follow_redirects = True) as response:
                 response.raise_for_status()

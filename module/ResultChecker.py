@@ -8,7 +8,7 @@ from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 class WarningType(StrEnum):
@@ -194,7 +194,7 @@ class ResultChecker(Base):
         )
 
         # 2. 紧凑循环处理
-        for item in ChunkLimiter.iter(items):
+        for item in GapTool.iter(items):
             warnings = self.check_item(
                 item,
                 glossary=prepared_glossary,

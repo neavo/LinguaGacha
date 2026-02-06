@@ -204,8 +204,3 @@ class TextHelper:
             encoding = "utf-8-sig"
 
         return encoding
-
-    # 获取文件编码 (兼容性别名)
-    @classmethod
-    def get_enconding(cls, path: str, add_sig_to_utf8: bool) -> str:
-        return cls.get_encoding(path=path, add_sig_to_utf8=add_sig_to_utf8)

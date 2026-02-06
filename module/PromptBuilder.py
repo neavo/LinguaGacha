@@ -1,4 +1,3 @@
-import json
 import threading
 from functools import lru_cache
 
@@ -8,6 +7,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.Utils.JSONTool import JSONTool
 
 
 class PromptBuilder(Base):
@@ -284,8 +284,7 @@ class PromptBuilder(Base):
     # 构建输入
     def build_inputs(self, srcs: list[str]) -> str:
         inputs = "\n".join(
-            json.dumps({str(i): line}, indent=None, ensure_ascii=False)
-            for i, line in enumerate(srcs)
+            JSONTool.dumps({str(i): line}) for i, line in enumerate(srcs)
         )
 
         if self.config.target_language == BaseLanguage.Enum.ZH:
