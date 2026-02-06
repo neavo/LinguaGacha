@@ -1,4 +1,3 @@
-import json
 import os
 import threading
 from typing import ClassVar
@@ -6,6 +5,7 @@ from typing import ClassVar
 from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
+from module.Utils.JSONTool import JSONTool
 
 
 class ModelManager:
@@ -59,8 +59,8 @@ class ModelManager:
         """从 preset_models.json 加载预设模型数据"""
         preset_path = os.path.join(self.get_preset_dir(), self.PRESET_BUILTIN_FILENAME)
         try:
-            with open(preset_path, "r", encoding="utf-8-sig") as reader:
-                return json.load(reader)
+            data = JSONTool.load_file(preset_path)
+            return data if isinstance(data, list) else []
         except Exception:
             return []
 
@@ -80,8 +80,8 @@ class ModelManager:
             return {}
 
         try:
-            with open(template_path, "r", encoding="utf-8-sig") as reader:
-                return json.load(reader)
+            data = JSONTool.load_file(template_path)
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
 

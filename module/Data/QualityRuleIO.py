@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +5,7 @@ import openpyxl
 import openpyxl.worksheet.worksheet
 
 from module.Data.SpreadsheetUtil import SpreadsheetUtil
+from module.Utils.JSONTool import JSONTool
 
 
 class QualityRuleIO:
@@ -32,8 +32,7 @@ class QualityRuleIO:
     def load_from_json_file(path: str) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
 
-        with open(path, "r", encoding="utf-8-sig") as reader:
-            inputs: Any = json.load(reader)
+        inputs: Any = JSONTool.load_file(path)
 
         # 标准字典列表：[{"src": "...", "dst": "...", ...}, ...]
         if isinstance(inputs, list):
@@ -215,5 +214,4 @@ class QualityRuleIO:
         book.save(f"{base}.xlsx")
 
         # JSON
-        with open(f"{base}.json", "w", encoding="utf-8") as writer:
-            writer.write(json.dumps(rules, indent=4, ensure_ascii=False))
+        JSONTool.save_file(f"{base}.json", rules, indent=4)

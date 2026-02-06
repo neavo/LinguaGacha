@@ -17,6 +17,7 @@ dependencies = [
     "rich",
     "opencc_pyo3",
     "openpyxl",
+    "orjson",
     "json-repair",
     "lxml",
     "beautifulsoup4",

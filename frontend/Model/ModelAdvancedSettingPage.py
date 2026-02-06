@@ -1,5 +1,3 @@
-import json
-
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import QLayout
@@ -14,6 +12,7 @@ from qfluentwidgets import SwitchButton
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from module.Utils.JSONTool import JSONTool
 from widget.CustomTextEdit import CustomTextEdit
 from widget.GroupCard import GroupCard
 from widget.SliderCard import SliderCard
@@ -293,7 +292,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return True
 
             try:
-                parsed = json.loads(text)
+                parsed = JSONTool.loads(text)
                 # 类型校验：必须是 dict
                 if not isinstance(parsed, dict):
                     plain_text_edit.set_error(True)
@@ -301,7 +300,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 plain_text_edit.set_error(False)
                 self.save_request_field("extra_headers", parsed)
                 return True
-            except json.JSONDecodeError:
+            except Exception:
                 plain_text_edit.set_error(True)
                 return False
 
@@ -312,7 +311,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return
 
             try:
-                parsed = json.loads(text)
+                parsed = JSONTool.loads(text)
                 if not isinstance(parsed, dict):
                     self.emit(
                         Base.Event.TOAST,
@@ -321,7 +320,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                             "message": Localizer.get().model_advanced_setting_page_json_format_error,
                         },
                     )
-            except json.JSONDecodeError:
+            except Exception:
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -344,9 +343,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             plain_text_edit.setFixedHeight(192)
             headers = request_config.get("extra_headers", {})
             if headers:
-                plain_text_edit.setPlainText(
-                    json.dumps(headers, indent=2, ensure_ascii=False)
-                )
+                plain_text_edit.setPlainText(JSONTool.dumps(headers, indent=4))
             plain_text_edit.setPlaceholderText(
                 Localizer.get().model_advanced_setting_page_headers_placeholder
             )
@@ -394,7 +391,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return True
 
             try:
-                parsed = json.loads(text)
+                parsed = JSONTool.loads(text)
                 # 类型校验：必须是 dict
                 if not isinstance(parsed, dict):
                     plain_text_edit.set_error(True)
@@ -402,7 +399,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 plain_text_edit.set_error(False)
                 self.save_request_field("extra_body", parsed)
                 return True
-            except json.JSONDecodeError:
+            except Exception:
                 plain_text_edit.set_error(True)
                 return False
 
@@ -413,7 +410,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                 return
 
             try:
-                parsed = json.loads(text)
+                parsed = JSONTool.loads(text)
                 if not isinstance(parsed, dict):
                     self.emit(
                         Base.Event.TOAST,
@@ -422,7 +419,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
                             "message": Localizer.get().model_advanced_setting_page_json_format_error,
                         },
                     )
-            except json.JSONDecodeError:
+            except Exception:
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -445,9 +442,7 @@ class ModelAdvancedSettingPage(MessageBoxBase, Base):
             plain_text_edit.setFixedHeight(192)
             body = request_config.get("extra_body", {})
             if body:
-                plain_text_edit.setPlainText(
-                    json.dumps(body, indent=2, ensure_ascii=False)
-                )
+                plain_text_edit.setPlainText(JSONTool.dumps(body, indent=4))
             plain_text_edit.setPlaceholderText(
                 Localizer.get().model_advanced_setting_page_body_placeholder
             )

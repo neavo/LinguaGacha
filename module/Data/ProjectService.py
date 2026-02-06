@@ -9,7 +9,7 @@ from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 class ProjectService(Base):
@@ -137,7 +137,7 @@ class ProjectService(Base):
             self.print("")
 
             items_dicts: list[dict] = []
-            for item in ChunkLimiter.iter(items):
+            for item in GapTool.iter(items):
                 items_dicts.append(item.to_dict())
             db.set_items(items_dicts)
 

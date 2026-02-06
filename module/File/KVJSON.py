@@ -1,4 +1,3 @@
-import json
 import os
 
 from base.Base import Base
@@ -7,6 +6,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Text.TextHelper import TextHelper
+from module.Utils.JSONTool import JSONTool
 
 
 class KVJSON(Base):
@@ -45,7 +45,10 @@ class KVJSON(Base):
         encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
 
         # 数据处理
-        json_data: dict[str, str] = json.loads(content.decode(encoding))
+        if encoding.lower() in ("utf-8", "utf-8-sig"):
+            json_data: dict[str, str] = JSONTool.loads(content)
+        else:
+            json_data: dict[str, str] = JSONTool.loads(content.decode(encoding))
 
         # 格式校验
         if not isinstance(json_data, dict):
@@ -116,9 +119,8 @@ class KVJSON(Base):
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(abs_path, "w", encoding="utf-8") as writer:
                 writer.write(
-                    json.dumps(
+                    JSONTool.dumps(
                         {item.get_src(): item.get_dst() for item in group_items},
                         indent=4,
-                        ensure_ascii=False,
                     )
                 )

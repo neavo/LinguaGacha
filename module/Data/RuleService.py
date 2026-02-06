@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Any
 
@@ -7,6 +6,7 @@ from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
 from module.Data.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
+from module.Utils.JSONTool import JSONTool
 
 
 class RuleService:
@@ -82,8 +82,7 @@ class RuleService:
 
         def load_json(path: str) -> list[dict[str, Any]] | None:
             try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                data = JSONTool.load_file(path)
                 return data if isinstance(data, list) else None
             except Exception as e:
                 LogManager.get().error(f"Failed to load preset: {path}", e)

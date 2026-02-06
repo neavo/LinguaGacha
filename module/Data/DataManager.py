@@ -22,7 +22,7 @@ from module.Data.Type import RULE_META_KEYS
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
 
 
 @dataclass(frozen=True)
@@ -534,7 +534,7 @@ class DataManager(Base):
         )
 
         items_dict: list[dict[str, Any]] = []
-        for item in ChunkLimiter.iter(items):
+        for item in GapTool.iter(items):
             items_dict.append(item.to_dict())
 
         meta = {

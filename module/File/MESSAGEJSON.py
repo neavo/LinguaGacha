@@ -1,4 +1,3 @@
-import json
 import os
 
 from base.Base import Base
@@ -7,6 +6,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Text.TextHelper import TextHelper
+from module.Utils.JSONTool import JSONTool
 
 
 class MESSAGEJSON(Base):
@@ -64,7 +64,10 @@ class MESSAGEJSON(Base):
         encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
 
         # 数据处理
-        json_data: list[dict] = json.loads(content.decode(encoding))
+        if encoding.lower() in ("utf-8", "utf-8-sig"):
+            json_data = JSONTool.loads(content)
+        else:
+            json_data = JSONTool.loads(content.decode(encoding))
 
         # 格式校验
         if not isinstance(json_data, list):
@@ -156,8 +159,7 @@ class MESSAGEJSON(Base):
                         }
                     )
 
-            with open(abs_path, "w", encoding="utf-8") as writer:
-                writer.write(json.dumps(result, indent=4, ensure_ascii=False))
+            JSONTool.save_file(abs_path, result, indent=4)
 
     # 还原姓名字段
     def revert_name(self, items: list[Item]) -> None:

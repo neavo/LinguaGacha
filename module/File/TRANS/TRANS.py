@@ -1,5 +1,4 @@
 import itertools
-import json
 import os
 
 from base.Base import Base
@@ -11,7 +10,8 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
+from module.Utils.JSONTool import JSONTool
 
 
 class TRANS(Base):
@@ -39,8 +39,8 @@ class TRANS(Base):
         items: list[Item] = []
 
         # 数据处理
-        # .trans 文件固定使用 utf-8-sig
-        json_data = json.loads(content.decode("utf-8-sig"))
+        # .trans 文件固定为 UTF-8（可能带 BOM），直接按 bytes 解析避免 decode 大字符串。
+        json_data = JSONTool.loads(content)
 
         # 有效性校验
         if not isinstance(json_data, dict):
@@ -67,7 +67,7 @@ class TRANS(Base):
             context_list = entry.get("context", [])
             parameters_list = entry.get("parameters", [])
 
-            for tag, data, context, parameter in ChunkLimiter.iter(
+            for tag, data, context, parameter in GapTool.iter(
                 itertools.zip_longest(
                     tags_list if tags_list is not None else [],
                     data_list if data_list is not None else [],
@@ -115,7 +115,7 @@ class TRANS(Base):
         # 去重
         if self.config.deduplication_in_trans:
             translation: dict[str, str] = {}
-            for item in ChunkLimiter.iter(
+            for item in GapTool.iter(
                 [v for v in items if v.get_status() == Base.ProjectStatus.NONE]
             ):
                 src = item.get_src()
@@ -158,102 +158,102 @@ class TRANS(Base):
             decompressed = DataManager.get().get_asset_decompressed(rel_path)
             if decompressed is None:
                 continue
-            original_content = decompressed.decode("utf-8-sig")
-            json_data = json.loads(original_content)
 
-            with open(abs_path, "w", encoding="utf-8") as writer:
-                # 有效性校验
-                if not isinstance(json_data, dict):
-                    continue
+            # 反序列化
+            json_data = JSONTool.loads(decompressed)
 
-                # 获取项目信息
-                project: dict = json_data.get("project", {})
-                files: dict = project.get("files", {})
+            # 有效性校验
+            if not isinstance(json_data, dict):
+                continue
 
-                # 获取处理实体
-                processor: NONE = self.get_processor(project)
-                processor.post_process()
+            # 获取项目信息
+            project: dict = json_data.get("project", {})
+            files: dict = project.get("files", {})
 
-                # 去重
-                if self.config.deduplication_in_trans:
-                    translation: dict[str, str] = {}
-                    for item in [
-                        v
-                        for v in sorted_items
-                        if v.get_status() == Base.ProjectStatus.PROCESSED
-                    ]:
-                        src = item.get_src()
-                        dst = item.get_dst()
-                        if src not in translation:
-                            translation[src] = dst
-                    for item in [
-                        v
-                        for v in sorted_items
-                        if v.get_status() == Base.ProjectStatus.DUPLICATED
-                    ]:
-                        src = item.get_src()
-                        dst = item.get_dst()
-                        if src in translation:
-                            item.set_dst(translation[src])
+            # 获取处理实体
+            processor: NONE = self.get_processor(project)
+            processor.post_process()
 
-                # 处理数据
-                path: str = ""
-                for path in files.keys():
-                    tags_out: list[list[str]] = []
-                    data_out: list[list[str]] = []
-                    context_out: list[list[str]] = []
-                    parameters_out: list[list[dict[str, str]]] = []
-                    for item in tag_group.get(path, []):
-                        data_out.append([item.get_src(), item.get_dst()])
+            # 去重
+            if self.config.deduplication_in_trans:
+                translation: dict[str, str] = {}
+                for item in [
+                    v
+                    for v in sorted_items
+                    if v.get_status() == Base.ProjectStatus.PROCESSED
+                ]:
+                    src = item.get_src()
+                    dst = item.get_dst()
+                    if src not in translation:
+                        translation[src] = dst
+                for item in [
+                    v
+                    for v in sorted_items
+                    if v.get_status() == Base.ProjectStatus.DUPLICATED
+                ]:
+                    src = item.get_src()
+                    dst = item.get_dst()
+                    if src in translation:
+                        item.set_dst(translation[src])
 
-                        extra_field_raw = item.get_extra_field()
-                        extra_field: dict = (
-                            extra_field_raw if isinstance(extra_field_raw, dict) else {}
+            # 处理数据
+            path: str = ""
+            for path in files.keys():
+                tags_out: list[list[str]] = []
+                data_out: list[list[str]] = []
+                context_out: list[list[str]] = []
+                parameters_out: list[list[dict[str, str]]] = []
+                for item in tag_group.get(path, []):
+                    data_out.append([item.get_src(), item.get_dst()])
+
+                    extra_field_raw = item.get_extra_field()
+                    extra_field: dict = (
+                        extra_field_raw if isinstance(extra_field_raw, dict) else {}
+                    )
+                    tags_out.append(extra_field.get("tag", []))
+                    context_out.append(extra_field.get("context", []))
+
+                    # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
+                    if item.get_status() in (
+                        Base.ProjectStatus.EXCLUDED,
+                        Base.ProjectStatus.PROCESSED_IN_PAST,
+                    ):
+                        parameter_raw = extra_field.get("parameter", [])
+                        parameters_out.append(
+                            [v for v in parameter_raw if isinstance(v, dict)]
+                            if isinstance(parameter_raw, list)
+                            else []
                         )
-                        tags_out.append(extra_field.get("tag", []))
-                        context_out.append(extra_field.get("context", []))
-
-                        # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
-                        if item.get_status() in (
-                            Base.ProjectStatus.EXCLUDED,
-                            Base.ProjectStatus.PROCESSED_IN_PAST,
-                        ):
-                            parameter_raw = extra_field.get("parameter", [])
-                            parameters_out.append(
-                                [v for v in parameter_raw if isinstance(v, dict)]
-                                if isinstance(parameter_raw, list)
-                                else []
-                            )
-                        # 否则，判断与计算分区翻译功能参数
-                        else:
-                            parameters_out.append(
-                                processor.generate_parameter(
+                    # 否则，判断与计算分区翻译功能参数
+                    else:
+                        parameters_out.append(
+                            processor.generate_parameter(
+                                src=item.get_src(),
+                                context=extra_field.get("context", []),
+                                parameter=extra_field.get("parameter", []),
+                                block=processor.filter(
                                     src=item.get_src(),
+                                    path=path,
+                                    tag=extra_field.get("tag", []),
                                     context=extra_field.get("context", []),
-                                    parameter=extra_field.get("parameter", []),
-                                    block=processor.filter(
-                                        src=item.get_src(),
-                                        path=path,
-                                        tag=extra_field.get("tag", []),
-                                        context=extra_field.get("context", []),
-                                    ),
-                                )
+                                ),
                             )
+                        )
 
-                    # 清理
-                    if all(v is None or len(v) == 0 for v in tags_out):
-                        tags_out = []
-                    if all(v is None or len(v) == 0 for v in parameters_out):
-                        parameters_out = []
+                # 清理
+                if all(v is None or len(v) == 0 for v in tags_out):
+                    tags_out = []
+                if all(v is None or len(v) == 0 for v in parameters_out):
+                    parameters_out = []
 
-                    # 赋值
-                    json_data["project"]["files"][path]["tags"] = tags_out
-                    json_data["project"]["files"][path]["data"] = data_out
-                    json_data["project"]["files"][path]["context"] = context_out
-                    json_data["project"]["files"][path]["parameters"] = parameters_out
+                # 赋值
+                json_data["project"]["files"][path]["tags"] = tags_out
+                json_data["project"]["files"][path]["data"] = data_out
+                json_data["project"]["files"][path]["context"] = context_out
+                json_data["project"]["files"][path]["parameters"] = parameters_out
 
-                # 写入文件
-                json.dump(json_data, writer, indent=None, ensure_ascii=False)
+            # 写入文件
+            JSONTool.save_file(abs_path, json_data, indent=0)
 
     # 获取处理实体
     def get_processor(self, project: dict) -> NONE:

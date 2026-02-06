@@ -1,5 +1,4 @@
 import contextlib
-import json
 import sqlite3
 import threading
 from datetime import datetime
@@ -9,7 +8,8 @@ from typing import Any
 from typing import Generator
 
 from base.Base import Base
-from module.Utils.ChunkLimiter import ChunkLimiter
+from module.Utils.GapTool import GapTool
+from module.Utils.JSONTool import JSONTool
 
 
 class LGDatabase(Base):
@@ -148,14 +148,14 @@ class LGDatabase(Base):
             row = cursor.fetchone()
             if row is None:
                 return default
-            return json.loads(row["value"])
+            return JSONTool.loads(row["value"])
 
     def set_meta(self, key: str, value: Any) -> None:
         """设置元数据"""
         with self.connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                (key, json.dumps(value, ensure_ascii=False)),
+                (key, JSONTool.dumps(value)),
             )
             conn.commit()
 
@@ -163,7 +163,9 @@ class LGDatabase(Base):
         """获取所有元数据"""
         with self.connection() as conn:
             cursor = conn.execute("SELECT key, value FROM meta")
-            return {row["key"]: json.loads(row["value"]) for row in cursor.fetchall()}
+            return {
+                row["key"]: JSONTool.loads(row["value"]) for row in cursor.fetchall()
+            }
 
     # ========== 资产操作 ==========
 
@@ -207,8 +209,8 @@ class LGDatabase(Base):
         with self.connection() as conn:
             cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
             result = []
-            for row in ChunkLimiter.iter(cursor):
-                data = json.loads(row["data"])
+            for row in GapTool.iter(cursor):
+                data = JSONTool.loads(row["data"])
                 data["id"] = row["id"]
                 result.append(data)
             return result
@@ -218,7 +220,7 @@ class LGDatabase(Base):
         with self.connection() as conn:
             item_id = item.get("id")
             data = {k: v for k, v in item.items() if k != "id"}
-            data_json = json.dumps(data, ensure_ascii=False)
+            data_json = JSONTool.dumps(data)
 
             if item_id is None:
                 cursor = conn.execute(
@@ -242,10 +244,10 @@ class LGDatabase(Base):
         with self.connection() as conn:
             conn.execute("DELETE FROM items")
             ids = []
-            for item in ChunkLimiter.iter(items):
+            for item in GapTool.iter(items):
                 item_id = item.get("id")
                 data = {k: v for k, v in item.items() if k != "id"}
-                data_json = json.dumps(data, ensure_ascii=False)
+                data_json = JSONTool.dumps(data)
 
                 if item_id is not None:
                     conn.execute(
@@ -276,9 +278,8 @@ class LGDatabase(Base):
             if items:
                 params = [
                     (
-                        json.dumps(
+                        JSONTool.dumps(
                             {k: v for k, v in item.items() if k != "id"},
-                            ensure_ascii=False,
                         ),
                         item["id"],
                     )
@@ -294,14 +295,12 @@ class LGDatabase(Base):
                     conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
                     conn.execute(
                         "INSERT INTO rules (type, data) VALUES (?, ?)",
-                        (rule_type, json.dumps(rule_data, ensure_ascii=False)),
+                        (rule_type, JSONTool.dumps(rule_data)),
                     )
 
             # 3. 更新元数据
             if meta:
-                meta_params = [
-                    (k, json.dumps(v, ensure_ascii=False)) for k, v in meta.items()
-                ]
+                meta_params = [(k, JSONTool.dumps(v)) for k, v in meta.items()]
                 conn.executemany(
                     "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                     meta_params,
@@ -325,7 +324,7 @@ class LGDatabase(Base):
 
             # 检查第一行数据结构
             try:
-                first_data = json.loads(rows[0]["data"])
+                first_data = JSONTool.loads(rows[0]["data"])
             except Exception:
                 return []
 
@@ -337,7 +336,7 @@ class LGDatabase(Base):
             result = []
             for row in rows:
                 try:
-                    data = json.loads(row["data"])
+                    data = JSONTool.loads(row["data"])
                     if isinstance(data, dict):
                         result.append(data)
                     elif isinstance(data, list):
@@ -353,7 +352,7 @@ class LGDatabase(Base):
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             conn.execute(
                 "INSERT INTO rules (type, data) VALUES (?, ?)",
-                (rule_type, json.dumps(rules, ensure_ascii=False)),
+                (rule_type, JSONTool.dumps(rules)),
             )
             conn.commit()
 
@@ -367,7 +366,7 @@ class LGDatabase(Base):
             row = cursor.fetchone()
             if row is None:
                 return ""
-            return json.loads(row["data"]).get("text", "")
+            return JSONTool.loads(row["data"]).get("text", "")
 
     def set_rule_text(self, rule_type: RuleType, text: str) -> None:
         """设置文本类型的规则（如自定义提示词）"""
@@ -375,7 +374,7 @@ class LGDatabase(Base):
             conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
             conn.execute(
                 "INSERT INTO rules (type, data) VALUES (?, ?)",
-                (rule_type, json.dumps({"text": text}, ensure_ascii=False)),
+                (rule_type, JSONTool.dumps({"text": text})),
             )
             conn.commit()
 
@@ -401,7 +400,8 @@ class LGDatabase(Base):
         with self.connection() as conn:
             meta_cursor = conn.execute("SELECT key, value FROM meta")
             meta = {
-                row["key"]: json.loads(row["value"]) for row in meta_cursor.fetchall()
+                row["key"]: JSONTool.loads(row["value"])
+                for row in meta_cursor.fetchall()
             }
 
             file_count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]

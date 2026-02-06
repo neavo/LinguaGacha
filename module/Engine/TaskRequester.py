@@ -1,5 +1,4 @@
 import dataclasses
-import json
 import re
 import time
 from contextlib import contextmanager
@@ -24,6 +23,7 @@ from module.Engine.TaskRequesterStream import StreamControl
 from module.Engine.TaskRequesterStream import StreamSession
 from module.Engine.TaskRequesterStream import StreamStrategy
 from module.Engine.TaskRequesterStream import safe_close_resource
+from module.Utils.JSONTool import JSONTool
 
 
 class TaskRequester(Base):
@@ -570,13 +570,11 @@ class TaskRequester(Base):
         except Exception as e:
             return e, "", "", 0, 0
 
-        response_result = json.dumps(
+        response_result = JSONTool.dumps(
             {
                 str(i): line.strip()
                 for i, line in enumerate(str(response_result).strip().splitlines())
             },
-            indent=None,
-            ensure_ascii=False,
         )
 
         return None, response_think, response_result, input_tokens, output_tokens
