@@ -34,12 +34,42 @@ class JSONTool:
         - indent=2: 2 空格缩进（orjson）
         - 其他: 指定空格缩进（标准库）
         """
+        return cls.dumps_bytes(obj, indent=indent).decode("utf-8")
+
+    @classmethod
+    def dumps_bytes(cls, obj: Any, *, indent: int = 0) -> bytes:
+        """序列化为 UTF-8 JSON bytes。
+
+        约束：必须保证返回值可直接写入文件，避免孤立代理字符导致的编码失败。
+        注意：孤立代理字符（如 \\ud800）会被转义为 \\\\ud800，读回时不会还原（有损但安全）。
+        """
         if indent == 0:
-            return orjson.dumps(obj).decode("utf-8")
+            try:
+                return orjson.dumps(obj)
+            except TypeError as e:
+                # orjson 对孤立代理（如 \ud800）会抛错，降级到标准库并转义写回
+                try:
+                    text = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+                except TypeError:
+                    # 不是孤立代理问题，而是对象不可序列化，抛出原始异常
+                    raise e from None
+                return text.encode("utf-8", errors="backslashreplace")
         elif indent == 2:
-            return orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode("utf-8")
+            try:
+                return orjson.dumps(obj, option=orjson.OPT_INDENT_2)
+            except TypeError as e:
+                try:
+                    text = json.dumps(obj, ensure_ascii=False, indent=indent)
+                except TypeError:
+                    raise e from None
+                return text.encode("utf-8", errors="backslashreplace")
         else:
-            return json.dumps(obj, ensure_ascii=False, indent=indent)
+            # 其他 indent 值走标准库，大多数情况能正常编码，仅在存在孤立代理时降级
+            text = json.dumps(obj, ensure_ascii=False, indent=indent)
+            try:
+                return text.encode("utf-8")
+            except UnicodeEncodeError:
+                return text.encode("utf-8", errors="backslashreplace")
 
     @classmethod
     def repair_loads(cls, text: str) -> Any:
@@ -60,22 +90,10 @@ class JSONTool:
 
     @classmethod
     def save_file(cls, path: str | Path, obj: Any, *, indent: int = 4) -> None:
-        """写入对象为 JSON 文件。
+        """写入对象为 JSON 文件，先完成序列化再写入，避免失败时文件被截断。"""
+        # 先完成序列化再打开文件，避免序列化失败导致目标文件被截断/写入半截内容。
+        data = cls.dumps_bytes(obj, indent=indent)
 
-        性能路径：
-        - indent=0: orjson 紧凑模式，直接写入 bytes（最快）
-        - indent=2: orjson 2空格缩进，直接写入 bytes（次快）
-        - indent=4: 标准库 json.dump 直接写入文件对象（兼容性）
-        """
-        if indent == 0:
-            # 紧凑模式：orjson 直接写 bytes，避免编解码开销
-            with open(path, "wb") as f:
-                f.write(orjson.dumps(obj))
-        elif indent == 2:
-            # 2空格缩进：orjson 直接写 bytes
-            with open(path, "wb") as f:
-                f.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
-        else:
-            # 其他缩进：标准库直接写入文件对象，避免中间字符串
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(obj, f, ensure_ascii=False, indent=indent)
+        # 写入文件
+        with open(path, "wb") as f:
+            f.write(data)
