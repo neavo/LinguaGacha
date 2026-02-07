@@ -83,6 +83,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260208 v0.54.1
+  - Performance and compatibility optimizations
+
 - 20260205 v0.54.0
   - feat - CLI mode supports quality rules such as `Glossary`
     - [#403](https://github.com/neavo/LinguaGacha/issues/403)

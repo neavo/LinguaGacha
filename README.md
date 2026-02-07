@@ -78,6 +78,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260208 v0.54.1
+  - 性能与兼容性优化
+
 - 20260205 v0.54.0
   - 功能 - CLI 模式支持 `术语表` 等质量规则
     - [#403](https://github.com/neavo/LinguaGacha/issues/403)
