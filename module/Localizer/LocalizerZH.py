@@ -68,10 +68,26 @@ class LocalizerZH:
     alert_delete_preset: str = "确定要删除 {NAME} 吗 …?"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
-    search_regex_on: str = "正则模式\n当前状态：已启用"
-    search_regex_off: str = "正则模式\n当前状态：未启用"
-    search_filter_on: str = "过滤模式\n当前状态：已启用"
-    search_filter_off: str = "过滤模式\n当前状态：未启用"
+    search_regex_on: str = (
+        "正则模式"
+        "\n"
+        "当前状态：已启用"
+    )
+    search_regex_off: str = (
+        "正则模式"
+        "\n"
+        "当前状态：未启用"
+    )
+    search_filter_on: str = (
+        "过滤模式"
+        "\n"
+        "当前状态：已启用"
+    )
+    search_filter_off: str = (
+        "过滤模式"
+        "\n"
+        "当前状态：未启用"
+    )
     search_regex_invalid: str = "正则表达式无效"
     search_no_match: str = "未找到匹配项"
     search_regex_btn: str = "正则"
@@ -117,24 +133,45 @@ class LocalizerZH:
     log_crash: str = "出现严重错误，应用即将退出，错误信息已保存至日志文件 …"
     log_proxy: str = "网络代理已启用 …"
     log_expert_mode: str = "专家模式已启用 …"
-    log_api_test_fail: str = "接口测试失败 …\n原因：{REASON}"
+    log_api_test_fail: str = (
+        "接口测试失败 …"
+        "\n"
+        "原因：{REASON}"
+    )
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
     log_unknown_reason: str = "未知原因"
     log_cli_verify_language: str = "参数发生错误：无效的语言 …"
     log_cli_quality_rule_file_not_found: str = (
-        "参数发生错误：规则文件不存在 …\n参数：{ARG}\n路径：{PATH}"
+        "参数发生错误：规则文件不存在 …"
+        "\n"
+        "参数：{ARG}"
+        "\n"
+        "路径：{PATH}"
     )
     log_cli_quality_rule_file_unsupported: str = (
-        "参数发生错误：规则文件格式不受支持（仅支持 .json/.xlsx） …\n参数：{ARG}\n路径：{PATH}"
+        "参数发生错误：规则文件格式不受支持（仅支持 .json/.xlsx） …"
+        "\n"
+        "参数：{ARG}"
+        "\n"
+        "路径：{PATH}"
     )
     log_cli_quality_rule_import_failed: str = (
-        "质量规则导入失败 …\n参数：{ARG}\n路径：{PATH}\n原因：{REASON}"
+        "质量规则导入失败 …"
+        "\n"
+        "参数：{ARG}"
+        "\n"
+        "路径：{PATH}"
+        "\n"
+        "原因：{REASON}"
     )
     log_cli_text_preserve_mode_invalid: str = (
-        "参数发生错误：文本保护参数组合无效 …\n"
-        "--text_preserve_mode: {MODE}\n"
-        "--text_preserve: {PATH}\n"
+        "参数发生错误：文本保护参数组合无效 …"
+        "\n"
+        "--text_preserve_mode: {MODE}"
+        "\n"
+        "--text_preserve: {PATH}"
+        "\n"
         "说明：mode=custom 时必须提供 --text_preserve；提供 --text_preserve 时 mode 必须为 custom"
     )
 
@@ -301,7 +338,14 @@ class LocalizerZH:
     workbench_toast_invalid_lg: str = "请选择 .lg 工程文件"
     workbench_toast_drop_multi_not_supported: str = "一次只能拖拽一个文件或文件夹"
     workbench_msg_file_not_found_title: str = "文件不存在"
-    workbench_msg_file_not_found_content: str = "工程文件已被移动或删除：\n{PATH}\n\n是否从最近打开列表中移除 …?"
+    workbench_msg_file_not_found_content: str = (
+        "工程文件已被移动或删除："
+        "\n"
+        "{PATH}"
+        "\n"
+        "\n"
+        "是否从最近打开列表中移除 …?"
+    )
     workbench_msg_close_confirm: str = "确定要关闭当前工程吗 …?"
     workbench_progress_creating: str = "正在创建工程 …"
     workbench_progress_loading: str = "正在加载工程 …"
@@ -354,7 +398,11 @@ class LocalizerZH:
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
     proofreading_page_export_failed: str = "生成失败"
-    proofreading_page_export_tooltip: str = "生成译文\n先保存数据，然后生成译文文件"
+    proofreading_page_export_tooltip: str = (
+        "生成译文"
+        "\n"
+        "先保存数据，然后生成译文文件"
+    )
     proofreading_page_col_status: str = "状态"
     proofreading_page_more: str = "更多"
     proofreading_page_no_cache: str = "未找到缓存文件，请先执行翻译任务"

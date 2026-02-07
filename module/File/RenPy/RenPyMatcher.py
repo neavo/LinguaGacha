@@ -1,6 +1,6 @@
-from module.File.RenPyTL.RenPyTlAst import StatementNode
-from module.File.RenPyTL.RenPyTlAst import StmtKind
-from module.File.RenPyTL.RenPyTlAst import TranslateBlock
+from module.File.RenPy.RenPyAst import StatementNode
+from module.File.RenPy.RenPyAst import StmtKind
+from module.File.RenPy.RenPyAst import TranslateBlock
 
 
 def drop_normalized_speaker(key: str) -> str:

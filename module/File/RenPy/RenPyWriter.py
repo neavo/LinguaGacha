@@ -1,14 +1,14 @@
 from base.Base import Base
 from model.Item import Item
-from module.File.RenPyTL.RenPyTlLexer import build_skeleton
-from module.File.RenPyTL.RenPyTlLexer import escape_renpy_string
-from module.File.RenPyTL.RenPyTlLexer import scan_double_quoted_literals
-from module.File.RenPyTL.RenPyTlLexer import sha1_hex
-from module.File.RenPyTL.RenPyTlLexer import split_indent
-from module.File.RenPyTL.RenPyTlLexer import strip_comment_prefix
+from module.File.RenPy.RenPyLexer import build_skeleton
+from module.File.RenPy.RenPyLexer import escape_renpy_string
+from module.File.RenPy.RenPyLexer import scan_double_quoted_literals
+from module.File.RenPy.RenPyLexer import sha1_hex
+from module.File.RenPy.RenPyLexer import split_indent
+from module.File.RenPy.RenPyLexer import strip_comment_prefix
 
 
-class RenPyTlWriter(Base):
+class RenPyWriter(Base):
     def apply_items_to_lines(
         self, lines: list[str], items: list[Item]
     ) -> tuple[int, int]:
