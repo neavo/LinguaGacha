@@ -744,12 +744,12 @@ class TaskRequester(Base):
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1024,
+                    thinking_budget=512,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1536,
+                    thinking_budget=1024,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.HIGH:
@@ -766,12 +766,12 @@ class TaskRequester(Base):
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1024,
+                    thinking_budget=512,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1536,
+                    thinking_budget=1024,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.HIGH:
@@ -849,11 +849,11 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 result["thinking"] = {"type": "disabled"}
             elif self.thinking_level == ThinkingLevel.LOW:
-                result["thinking"] = {"type": "enabled", "budget_tokens": 1024}
+                result["thinking"] = {"type": "enabled", "budget_tokens": 512}
                 result.pop("top_p", None)
                 result.pop("temperature", None)
             elif self.thinking_level == ThinkingLevel.MEDIUM:
-                result["thinking"] = {"type": "enabled", "budget_tokens": 1536}
+                result["thinking"] = {"type": "enabled", "budget_tokens": 1024}
                 result.pop("top_p", None)
                 result.pop("temperature", None)
             elif self.thinking_level == ThinkingLevel.HIGH:
