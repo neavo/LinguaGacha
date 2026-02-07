@@ -13,7 +13,7 @@ from module.File.EPUB import EPUB
 from module.File.KVJSON import KVJSON
 from module.File.MD import MD
 from module.File.MESSAGEJSON import MESSAGEJSON
-from module.File.RENPY import RENPY
+from module.File.RenPy.RenPy import RenPy
 from module.File.SRT import SRT
 from module.File.TRANS.TRANS import TRANS
 from module.File.TXT import TXT
@@ -102,7 +102,7 @@ class FileManager(Base):
                 )
             )
             items.extend(
-                RENPY(self.config).read_from_path(
+                RenPy(self.config).read_from_path(
                     [path for path in paths if path.lower().endswith(".rpy")],
                     base_path,
                 )
@@ -152,7 +152,7 @@ class FileManager(Base):
             else:
                 items.extend(XLSX(self.config).read_from_stream(content, rel_path))
         elif path_lower.endswith(".rpy"):
-            items.extend(RENPY(self.config).read_from_stream(content, rel_path))
+            items.extend(RenPy(self.config).read_from_stream(content, rel_path))
         elif path_lower.endswith(".trans"):
             items.extend(TRANS(self.config).read_from_stream(content, rel_path))
         elif path_lower.endswith(".json"):
@@ -195,7 +195,7 @@ class FileManager(Base):
                 EPUB(self.config).write_to_path(items)
                 XLSX(self.config).write_to_path(items)
                 WOLFXLSX(self.config).write_to_path(items)
-                RENPY(self.config).write_to_path(items)
+                RenPy(self.config).write_to_path(items)
                 TRANS(self.config).write_to_path(items)
                 KVJSON(self.config).write_to_path(items)
                 MESSAGEJSON(self.config).write_to_path(items)

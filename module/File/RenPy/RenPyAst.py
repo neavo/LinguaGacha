@@ -63,6 +63,6 @@ class TranslateBlock:
 
 
 @dataclasses.dataclass
-class RenPyTlDocument:
+class RenPyDocument:
     lines: list[str]
     blocks: list[TranslateBlock]

@@ -1,20 +1,20 @@
 from base.Base import Base
 from model.Item import Item
-from module.File.RenPyTL.RenPyTlAst import BlockKind
-from module.File.RenPyTL.RenPyTlAst import RenPyTlDocument
-from module.File.RenPyTL.RenPyTlAst import Slot
-from module.File.RenPyTL.RenPyTlAst import SlotRole
-from module.File.RenPyTL.RenPyTlAst import StatementNode
-from module.File.RenPyTL.RenPyTlAst import TranslateBlock
-from module.File.RenPyTL.RenPyTlLexer import is_translatable_text
-from module.File.RenPyTL.RenPyTlLexer import looks_like_resource_path
-from module.File.RenPyTL.RenPyTlLexer import sha1_hex
-from module.File.RenPyTL.RenPyTlMatcher import match_template_to_target
-from module.File.RenPyTL.RenPyTlMatcher import pair_old_new
+from module.File.RenPy.RenPyAst import BlockKind
+from module.File.RenPy.RenPyAst import RenPyDocument
+from module.File.RenPy.RenPyAst import Slot
+from module.File.RenPy.RenPyAst import SlotRole
+from module.File.RenPy.RenPyAst import StatementNode
+from module.File.RenPy.RenPyAst import TranslateBlock
+from module.File.RenPy.RenPyLexer import is_translatable_text
+from module.File.RenPy.RenPyLexer import looks_like_resource_path
+from module.File.RenPy.RenPyLexer import sha1_hex
+from module.File.RenPy.RenPyMatcher import match_template_to_target
+from module.File.RenPy.RenPyMatcher import pair_old_new
 
 
-class RenPyTlExtractor(Base):
-    def extract(self, doc: RenPyTlDocument, rel_path: str) -> list[Item]:
+class RenPyExtractor(Base):
+    def extract(self, doc: RenPyDocument, rel_path: str) -> list[Item]:
         items: list[Item] = []
 
         for block in doc.blocks:

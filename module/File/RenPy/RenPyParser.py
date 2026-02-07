@@ -1,17 +1,16 @@
 import re
 
-from module.File.RenPyTL.RenPyTlAst import BlockKind
-from module.File.RenPyTL.RenPyTlAst import RenPyTlDocument
-from module.File.RenPyTL.RenPyTlAst import StatementNode
-from module.File.RenPyTL.RenPyTlAst import StmtKind
-from module.File.RenPyTL.RenPyTlAst import TranslateBlock
-from module.File.RenPyTL.RenPyTlLexer import build_skeleton
-from module.File.RenPyTL.RenPyTlLexer import normalize_speaker_token
-from module.File.RenPyTL.RenPyTlLexer import normalize_ws
-from module.File.RenPyTL.RenPyTlLexer import scan_double_quoted_literals
-from module.File.RenPyTL.RenPyTlLexer import split_indent
-from module.File.RenPyTL.RenPyTlLexer import strip_comment_prefix
-
+from module.File.RenPy.RenPyAst import BlockKind
+from module.File.RenPy.RenPyAst import RenPyDocument
+from module.File.RenPy.RenPyAst import StatementNode
+from module.File.RenPy.RenPyAst import StmtKind
+from module.File.RenPy.RenPyAst import TranslateBlock
+from module.File.RenPy.RenPyLexer import build_skeleton
+from module.File.RenPy.RenPyLexer import normalize_speaker_token
+from module.File.RenPy.RenPyLexer import normalize_ws
+from module.File.RenPy.RenPyLexer import scan_double_quoted_literals
+from module.File.RenPy.RenPyLexer import split_indent
+from module.File.RenPy.RenPyLexer import strip_comment_prefix
 
 RE_TRANSLATE_HEADER = re.compile(
     r"^translate\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\s*:\s*$"
@@ -103,7 +102,7 @@ def parse_statement(
     )
 
 
-def parse_document(lines: list[str]) -> RenPyTlDocument:
+def parse_document(lines: list[str]) -> RenPyDocument:
     blocks: list[TranslateBlock] = []
 
     i = 0
@@ -136,4 +135,4 @@ def parse_document(lines: list[str]) -> RenPyTlDocument:
         )
 
     # Slot selection happens in extractor after matching.
-    return RenPyTlDocument(lines=lines, blocks=blocks)
+    return RenPyDocument(lines=lines, blocks=blocks)

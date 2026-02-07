@@ -2,18 +2,17 @@ import os
 import re
 
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.File.RenPyTL.RenPyTlExtractor import RenPyTlExtractor
-from module.File.RenPyTL.RenPyTlLexer import sha1_hex
-from module.File.RenPyTL.RenPyTlParser import parse_document
-from module.File.RenPyTL.RenPyTlWriter import RenPyTlWriter
+from module.File.RenPy.RenPyExtractor import RenPyExtractor
+from module.File.RenPy.RenPyLexer import sha1_hex
+from module.File.RenPy.RenPyParser import parse_document
+from module.File.RenPy.RenPyWriter import RenPyWriter
 from module.Text.TextHelper import TextHelper
 
 
-class RENPY(Base):
+class RenPy(Base):
     RE_TRANSLATE_HEADER = re.compile(
         r"^translate\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\s*:\s*$"
     )
@@ -57,8 +56,6 @@ class RENPY(Base):
 
         # 初始化
         self.config = config
-        self.source_language: BaseLanguage.Enum = config.source_language
-        self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
     def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
@@ -81,7 +78,7 @@ class RENPY(Base):
         lines = text.splitlines()
 
         doc = parse_document(lines)
-        extractor = RenPyTlExtractor()
+        extractor = RenPyExtractor()
         return extractor.extract(doc, rel_path)
 
     # 写入数据
@@ -102,8 +99,8 @@ class RENPY(Base):
 
         dm = DataManager.get()
         output_path = dm.get_translated_path()
-        writer = RenPyTlWriter()
-        extractor = RenPyTlExtractor()
+        writer = RenPyWriter()
+        extractor = RenPyExtractor()
 
         for rel_path, group_items in group.items():
             original = dm.get_asset_decompressed(rel_path)
@@ -137,7 +134,7 @@ class RENPY(Base):
 
     def build_items_for_writeback(
         self,
-        extractor: RenPyTlExtractor,
+        extractor: RenPyExtractor,
         rel_path: str,
         lines: list[str],
         items: list[Item],

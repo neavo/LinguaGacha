@@ -3,8 +3,7 @@ import os
 import re
 
 from model.Item import Item
-from module.File.RenPyTL.RenPyTlAst import StringLiteral
-
+from module.File.RenPy.RenPyAst import StringLiteral
 
 PLACEHOLDER = '"{}"'
 

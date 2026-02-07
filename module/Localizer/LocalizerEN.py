@@ -68,10 +68,26 @@ class LocalizerEN(LocalizerZH):
     alert_delete_preset: str = "Confirm to delete {NAME} …?"
     search_prev_match: str = "Previous match"
     search_next_match: str = "Next match"
-    search_regex_on: str = "Regex Mode\nCurrent Status: Enabled"
-    search_regex_off: str = "Regex Mode\nCurrent Status: Disabled"
-    search_filter_on: str = "Filter Mode\nCurrent Status: Enabled"
-    search_filter_off: str = "Filter Mode\nCurrent Status: Disabled"
+    search_regex_on: str = (
+        "Regex Mode"
+        "\n"
+        "Current Status: Enabled"
+    )
+    search_regex_off: str = (
+        "Regex Mode"
+        "\n"
+        "Current Status: Disabled"
+    )
+    search_filter_on: str = (
+        "Filter Mode"
+        "\n"
+        "Current Status: Enabled"
+    )
+    search_filter_off: str = (
+        "Filter Mode"
+        "\n"
+        "Current Status: Disabled"
+    )
     search_regex_invalid: str = "Invalid regular expression"
     search_no_match: str = "No matches found"
     search_regex_btn: str = "Regex"
@@ -117,24 +133,45 @@ class LocalizerEN(LocalizerZH):
     log_crash: str = "A critical error has occurred, app will now exit, error detail has been saved to the log file …"
     log_proxy: str = "Network proxy enabled …"
     log_expert_mode: str = "Expert Mode Enabled …"
-    log_api_test_fail: str = "API test failed …\nReason: {REASON}"
+    log_api_test_fail: str = (
+        "API test failed …"
+        "\n"
+        "Reason: {REASON}"
+    )
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
     log_unknown_reason: str = "Unknown Reason"
     log_cli_verify_language: str = "parameter error: invalid language …"
     log_cli_quality_rule_file_not_found: str = (
-        "parameter error: rule file not found …\nArgument: {ARG}\nPath: {PATH}"
+        "parameter error: rule file not found …"
+        "\n"
+        "Argument: {ARG}"
+        "\n"
+        "Path: {PATH}"
     )
     log_cli_quality_rule_file_unsupported: str = (
-        "parameter error: unsupported rule file format (only .json/.xlsx) …\nArgument: {ARG}\nPath: {PATH}"
+        "parameter error: unsupported rule file format (only .json/.xlsx) …"
+        "\n"
+        "Argument: {ARG}"
+        "\n"
+        "Path: {PATH}"
     )
     log_cli_quality_rule_import_failed: str = (
-        "quality rule import failed …\nArgument: {ARG}\nPath: {PATH}\nReason: {REASON}"
+        "quality rule import failed …"
+        "\n"
+        "Argument: {ARG}"
+        "\n"
+        "Path: {PATH}"
+        "\n"
+        "Reason: {REASON}"
     )
     log_cli_text_preserve_mode_invalid: str = (
-        "parameter error: invalid text preserve options …\n"
-        "--text_preserve_mode: {MODE}\n"
-        "--text_preserve: {PATH}\n"
+        "parameter error: invalid text preserve options …"
+        "\n"
+        "--text_preserve_mode: {MODE}"
+        "\n"
+        "--text_preserve: {PATH}"
+        "\n"
         "Note: mode=custom requires --text_preserve; providing --text_preserve requires mode=custom"
     )
 
@@ -301,7 +338,14 @@ class LocalizerEN(LocalizerZH):
     workbench_toast_invalid_lg: str = "Please select a .lg project file"
     workbench_toast_drop_multi_not_supported: str = "Only one file or folder can be dropped at a time"
     workbench_msg_file_not_found_title: str = "File Not Found"
-    workbench_msg_file_not_found_content: str = "Project file has been moved or deleted:\n{PATH}\n\nRemove from recent list?"
+    workbench_msg_file_not_found_content: str = (
+        "Project file has been moved or deleted:"
+        "\n"
+        "{PATH}"
+        "\n"
+        "\n"
+        "Remove from recent list?"
+    )
     workbench_msg_close_confirm: str = "Are you sure you want to close the current project?"
     workbench_progress_creating: str = "Creating project …"
     workbench_progress_loading: str = "Loading project …"
@@ -354,7 +398,11 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_copy_src_done: str = "Source copied to clipboard"
     proofreading_page_copy_dst_done: str = "Translation copied to clipboard"
     proofreading_page_export_failed: str = "Generation failed"
-    proofreading_page_export_tooltip: str = "Generate\nSave the data first, then generate the translation file"
+    proofreading_page_export_tooltip: str = (
+        "Generate"
+        "\n"
+        "Save the data first, then generate the translation file"
+    )
     proofreading_page_col_status: str = "Status"
     proofreading_page_more: str = "More"
     proofreading_page_no_cache: str = "No cache file found, please run translation task first"
