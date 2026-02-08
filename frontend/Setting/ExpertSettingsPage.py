@@ -2,12 +2,16 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QLayout
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
+from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
+from widget.MenuButtonCard import MenuButtonCard
 from widget.SpinCard import SpinCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
@@ -40,6 +44,7 @@ class ExpertSettingsPage(QWidget, Base):
         self.root.addWidget(scroll_area)
 
         # 添加控件
+        self.add_widget_response_check_settings(scroll_area_vbox, config, window)
         self.add_widget_preceding_lines_threshold(scroll_area_vbox, config, window)
         self.add_widget_clean_ruby(scroll_area_vbox, config, window)
         self.add_widget_deduplication_in_trans(scroll_area_vbox, config, window)
@@ -53,6 +58,86 @@ class ExpertSettingsPage(QWidget, Base):
 
         # 填充
         scroll_area_vbox.addStretch(1)
+
+    # 结果检查规则设置
+    def add_widget_response_check_settings(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        menu = RoundMenu(parent=window)
+
+        action_check_similarity = Action(
+            Localizer.get().expert_settings_page_response_check_similarity, self
+        )
+        action_check_similarity.setCheckable(True)
+        menu.addAction(action_check_similarity)
+
+        action_check_kana = Action(
+            Localizer.get().expert_settings_page_response_check_kana_residue, self
+        )
+        action_check_kana.setCheckable(True)
+        menu.addAction(action_check_kana)
+
+        action_check_hangeul = Action(
+            Localizer.get().expert_settings_page_response_check_hangeul_residue, self
+        )
+        action_check_hangeul.setCheckable(True)
+        menu.addAction(action_check_hangeul)
+
+        def sync_action_checked(config: Config) -> None:
+            action_check_kana.setChecked(config.check_kana_residue)
+            action_check_hangeul.setChecked(config.check_hangeul_residue)
+            action_check_similarity.setChecked(config.check_similarity)
+
+            action_check_kana.setIcon(
+                BaseIcon.CIRCLE_CHECK if config.check_kana_residue else BaseIcon.CIRCLE
+            )
+            action_check_hangeul.setIcon(
+                BaseIcon.CIRCLE_CHECK
+                if config.check_hangeul_residue
+                else BaseIcon.CIRCLE
+            )
+            action_check_similarity.setIcon(
+                BaseIcon.CIRCLE_CHECK if config.check_similarity else BaseIcon.CIRCLE
+            )
+
+        def on_check_kana_triggered() -> None:
+            config = Config().load()
+            config.check_kana_residue = action_check_kana.isChecked()
+            config.save()
+            sync_action_checked(config)
+
+        def on_check_hangeul_triggered() -> None:
+            config = Config().load()
+            config.check_hangeul_residue = action_check_hangeul.isChecked()
+            config.save()
+            sync_action_checked(config)
+
+        def on_check_similarity_triggered() -> None:
+            config = Config().load()
+            config.check_similarity = action_check_similarity.isChecked()
+            config.save()
+            sync_action_checked(config)
+
+        def before_show_menu(widget: MenuButtonCard) -> None:
+            config = Config().load()
+            sync_action_checked(config)
+
+        action_check_kana.triggered.connect(lambda _: on_check_kana_triggered())
+        action_check_hangeul.triggered.connect(lambda _: on_check_hangeul_triggered())
+        action_check_similarity.triggered.connect(
+            lambda _: on_check_similarity_triggered()
+        )
+
+        card = MenuButtonCard(
+            title=Localizer.get().expert_settings_page_response_check_settings,
+            description=Localizer.get().expert_settings_page_response_check_settings_desc,
+            button_text=Localizer.get().expert_settings_page_response_check_settings_button,
+            before_show_menu=before_show_menu,
+        )
+        card.set_menu(menu)
+        sync_action_checked(config)
+
+        parent.addWidget(card)
 
     # 参考上文行数阈值
     def add_widget_preceding_lines_threshold(

@@ -479,6 +479,12 @@ class LocalizerEN(LocalizerZH):
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "Preceding Lines Threshold"
     expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, disabled by default"
+    expert_settings_page_response_check_settings: str = "Result Check Rules"
+    expert_settings_page_response_check_settings_desc: str = "In translation tasks, the validity of results is checked based on enabled rules, all enabled by default"
+    expert_settings_page_response_check_settings_button: str = "Rules Settings"
+    expert_settings_page_response_check_kana_residue: str = "Kana Residue Check"
+    expert_settings_page_response_check_hangeul_residue: str = "Hangeul Residue Check"
+    expert_settings_page_response_check_similarity: str = "Similarity Check"
     expert_settings_page_clean_ruby: str = "Clean Ruby Text"
     expert_settings_page_clean_ruby_desc: str = (
         "Removes the phonetic ruby characters from annotations, retaining only the main text, disabled by default"
