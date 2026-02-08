@@ -101,6 +101,7 @@ class ProgressToast:
             try:
                 self.info_bar.close()
             except RuntimeError:
+                # InfoBar 可能已被 Qt 销毁或已关闭，忽略即可。
                 pass
 
             self.info_bar = None
@@ -275,6 +276,7 @@ class ProgressToast:
         try:
             self.info_bar.close()
         except RuntimeError:
+            # InfoBar 可能已被 Qt 销毁或已关闭，忽略即可。
             pass
 
         self.info_bar = None

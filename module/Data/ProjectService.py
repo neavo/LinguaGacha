@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from base.Base import Base
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
 from module.Data.Type import ProgressCallback
@@ -80,7 +81,7 @@ class ProjectService(Base):
                 with open(file_path, "rb") as f:
                     original_data = f.read()
             except Exception as e:
-                self.error(f"Failed to read source file: {file_path}", e)
+                LogManager.get().error(f"Failed to read source file - {file_path}", e)
                 continue
 
             compressed = ZstdCodec.compress(original_data)
@@ -89,7 +90,7 @@ class ProjectService(Base):
             try:
                 items.extend(file_manager.parse_asset(rel_path, original_data))
             except Exception as e:
-                self.error(f"Failed to parse asset: {rel_path}", e)
+                LogManager.get().error(f"Failed to parse asset - {rel_path}", e)
 
             self.report_progress(
                 i + 1,
@@ -117,24 +118,24 @@ class ProjectService(Base):
                 progress_cb=prefilter_progress,
             )
 
-            self.info(
+            LogManager.get().info(
                 Localizer.get().engine_task_rule_filter.replace(
                     "{COUNT}", str(prefilter_result.stats.rule_skipped)
                 )
             )
-            self.info(
+            LogManager.get().info(
                 Localizer.get().engine_task_language_filter.replace(
                     "{COUNT}", str(prefilter_result.stats.language_skipped)
                 )
             )
-            self.info(
+            LogManager.get().info(
                 Localizer.get().translator_mtool_optimizer_pre_log.replace(
                     "{COUNT}", str(prefilter_result.stats.mtool_skipped)
                 )
             )
 
             # 控制台输出完毕后留一个空行，便于区分后续日志。
-            self.print("")
+            LogManager.get().print("")
 
             items_dicts: list[dict] = []
             for item in GapTool.iter(items):

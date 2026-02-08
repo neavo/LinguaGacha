@@ -13,6 +13,7 @@ from typing import NamedTuple
 from lxml import etree
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 
@@ -287,7 +288,7 @@ class EPUBAst(Base):
         # 2.0 / 3.0 / 3.2 ...
         try:
             major = int(opf_version.split(".", 1)[0])
-        except Exception:
+        except ValueError:
             major = 2
 
         opf_dir = posixpath.dirname(opf_path)
@@ -726,7 +727,7 @@ class EPUBAst(Base):
                         )
                         processed_paths.add(pkg.nav_path)
                     except Exception as e:
-                        self.warning(
+                        LogManager.get().warning(
                             f"Failed to process nav document: {pkg.nav_path}", e
                         )
 
@@ -739,7 +740,9 @@ class EPUBAst(Base):
                         self.extract_items_from_ncx(pkg.ncx_path, raw, rel_path)
                     )
                 except Exception as e:
-                    self.warning(f"Failed to process NCX document: {pkg.ncx_path}", e)
+                    LogManager.get().warning(
+                        f"Failed to process NCX document: {pkg.ncx_path}", e
+                    )
 
         return items
 

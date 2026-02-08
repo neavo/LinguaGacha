@@ -8,6 +8,7 @@ from typing import Any
 from typing import ClassVar
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.AssetService import AssetService
@@ -135,7 +136,7 @@ class DataManager(Base):
                 try:
                     __class__.TextPreserveMode(raw_mode)
                     mode_valid = True
-                except Exception:
+                except ValueError:
                     mode_valid = False
 
             if not mode_valid:
@@ -294,7 +295,7 @@ class DataManager(Base):
             },
         )
         threading.Thread(
-            target=self._project_prefilter_worker, args=(token,), daemon=True
+            target=self.project_prefilter_worker, args=(token,), daemon=True
         ).start()
 
     def run_project_prefilter(self, config: Config, *, reason: str) -> None:
@@ -368,9 +369,9 @@ class DataManager(Base):
                 "lg_path": lg_path,
             },
         )
-        self._project_prefilter_worker(token)
+        self.project_prefilter_worker(token)
 
-    def _project_prefilter_worker(self, token: int) -> None:
+    def project_prefilter_worker(self, token: int) -> None:
         """预过滤工作线程/同步入口。
 
         - 串行执行：同一时间只允许一个 worker 运行
@@ -400,24 +401,24 @@ class DataManager(Base):
                             and last_result is not None
                             and last_request is not None
                         ):
-                            self.info(
+                            LogManager.get().info(
                                 Localizer.get().engine_task_rule_filter.replace(
                                     "{COUNT}", str(last_result.stats.rule_skipped)
                                 )
                             )
-                            self.info(
+                            LogManager.get().info(
                                 Localizer.get().engine_task_language_filter.replace(
                                     "{COUNT}", str(last_result.stats.language_skipped)
                                 )
                             )
-                            self.info(
+                            LogManager.get().info(
                                 Localizer.get().translator_mtool_optimizer_pre_log.replace(
                                     "{COUNT}", str(last_result.stats.mtool_skipped)
                                 )
                             )
 
                             # 仅在控制台输出统计信息，避免 UI Toast 产生噪音。
-                            self.print("")
+                            LogManager.get().print("")
                             self.emit(
                                 Base.Event.PROJECT_PREFILTER_UPDATED,
                                 {
@@ -451,7 +452,7 @@ class DataManager(Base):
                     continue
 
                 last_request = request
-                result = self._apply_project_prefilter_once(request)
+                result = self.apply_project_prefilter_once(request)
 
                 with self.prefilter_cond:
                     self.prefilter_last_handled_seq = request.seq
@@ -461,7 +462,12 @@ class DataManager(Base):
                     updated = True
                     last_result = result
         except Exception as e:
-            self.error("Project prefilter failed", e)
+            reason = last_request.reason if last_request else "unknown"
+            lg_path = last_request.lg_path if last_request else ""
+            LogManager.get().error(
+                f"Project prefilter failed: reason={reason} lg_path={lg_path}",
+                e,
+            )
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -485,7 +491,7 @@ class DataManager(Base):
                 self.prefilter_active_token = 0
                 self.prefilter_cond.notify_all()
 
-    def _apply_project_prefilter_once(
+    def apply_project_prefilter_once(
         self, request: ProjectPrefilterRequest
     ) -> ProjectPrefilterResult | None:
         """执行一次预过滤并写入 DB。
@@ -568,7 +574,7 @@ class DataManager(Base):
         if isinstance(raw, str):
             try:
                 return Base.ProjectStatus(raw)
-            except Exception:
+            except ValueError:
                 return Base.ProjectStatus.NONE
         return Base.ProjectStatus.NONE
 
@@ -711,7 +717,7 @@ class DataManager(Base):
         if isinstance(raw, str):
             try:
                 return __class__.TextPreserveMode(raw)
-            except Exception:
+            except ValueError:
                 pass
 
         return __class__.TextPreserveMode.SMART
@@ -723,7 +729,7 @@ class DataManager(Base):
                 if isinstance(mode, __class__.TextPreserveMode)
                 else __class__.TextPreserveMode(str(mode))
             )
-        except Exception:
+        except ValueError:
             normalized = __class__.TextPreserveMode.OFF
 
         # 新语义的唯一权威来源

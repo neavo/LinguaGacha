@@ -192,6 +192,7 @@ class TextHelper:
                 if res is not None:
                     encoding = res.encoding
         except Exception:
+            # 编码探测失败时回退默认值即可，避免影响主流程。
             pass
 
         # utf-8 是 ascii 的严格超集

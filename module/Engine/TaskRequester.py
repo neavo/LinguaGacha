@@ -311,12 +311,12 @@ class TaskRequester(Base):
             usage: Any = getattr(completion, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except Exception:
+            except (TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-            except Exception:
+            except (TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -396,12 +396,12 @@ class TaskRequester(Base):
             usage: Any = getattr(message, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-            except Exception:
+            except (TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-            except Exception:
+            except (TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -480,14 +480,14 @@ class TaskRequester(Base):
             last_usage: Any = state.last_usage
             try:
                 input_tokens = int(last_usage.prompt_token_count)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 total_token_count = int(last_usage.total_token_count)
                 prompt_token_count = int(last_usage.prompt_token_count)
                 output_tokens = total_token_count - prompt_token_count
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -744,17 +744,17 @@ class TaskRequester(Base):
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=512,
+                    thinking_budget=384,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1024,
+                    thinking_budget=768,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.HIGH:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=2048,
+                    thinking_budget=1024,
                     include_thoughts=True,
                 )
         # Gemini 2.5 Flash
@@ -766,17 +766,17 @@ class TaskRequester(Base):
                 )
             elif self.thinking_level == ThinkingLevel.LOW:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=512,
+                    thinking_budget=384,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.MEDIUM:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=1024,
+                    thinking_budget=768,
                     include_thoughts=True,
                 )
             elif self.thinking_level == ThinkingLevel.HIGH:
                 config_args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=2048,
+                    thinking_budget=1024,
                     include_thoughts=True,
                 )
 
@@ -849,15 +849,15 @@ class TaskRequester(Base):
             if self.thinking_level == ThinkingLevel.OFF:
                 result["thinking"] = {"type": "disabled"}
             elif self.thinking_level == ThinkingLevel.LOW:
-                result["thinking"] = {"type": "enabled", "budget_tokens": 512}
+                result["thinking"] = {"type": "enabled", "budget_tokens": 384}
                 result.pop("top_p", None)
                 result.pop("temperature", None)
             elif self.thinking_level == ThinkingLevel.MEDIUM:
-                result["thinking"] = {"type": "enabled", "budget_tokens": 1024}
+                result["thinking"] = {"type": "enabled", "budget_tokens": 768}
                 result.pop("top_p", None)
                 result.pop("temperature", None)
             elif self.thinking_level == ThinkingLevel.HIGH:
-                result["thinking"] = {"type": "enabled", "budget_tokens": 2048}
+                result["thinking"] = {"type": "enabled", "budget_tokens": 1024}
                 result.pop("top_p", None)
                 result.pop("temperature", None)
 

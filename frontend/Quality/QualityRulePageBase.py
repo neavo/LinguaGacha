@@ -27,6 +27,7 @@ from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from module.Config import Config
 from module.Data.QualityRuleIO import QualityRuleIO
@@ -565,7 +566,7 @@ class QualityRulePageBase(QWidget, Base):
             # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
             self.ignore_next_quality_rule_update = True
         except Exception as e:
-            self.error("Failed to save rules", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -650,7 +651,7 @@ class QualityRulePageBase(QWidget, Base):
             # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
             self.ignore_next_quality_rule_update = True
         except Exception as e:
-            self.error("Failed to delete rule", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
                 Base.Event.TOAST,
                 {

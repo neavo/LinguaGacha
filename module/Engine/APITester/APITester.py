@@ -3,6 +3,7 @@ import threading
 import time
 
 from base.Base import Base
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Engine.APITester.APITesterResult import APITestResult
 from module.Engine.APITester.APITesterResult import KeyTestResult
@@ -53,7 +54,14 @@ class APITester(Base):
             ).start()
         except Exception as e:
             engine.set_status(Base.TaskStatus.IDLE)
-            self.error(Localizer.get().task_failed, e)
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
 
     # 接口测试开始
     def api_test_start_target(self, event: Base.Event, data: dict) -> None:
@@ -129,9 +137,13 @@ class APITester(Base):
 
             requester = TaskRequester(config, model_test)
 
-            self.print("")
-            self.info(Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]")
-            self.info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
+            LogManager.get().print("")
+            LogManager.get().info(
+                Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]"
+            )
+            LogManager.get().info(
+                Localizer.get().api_tester_messages + "\n" + f"{messages}"
+            )
 
             # 记录开始时间
             start_time_ns = time.perf_counter_ns()
@@ -172,7 +184,7 @@ class APITester(Base):
                     )
                 )
 
-                self.warning(
+                LogManager.get().warning(
                     Localizer.get().log_api_test_fail.replace("{REASON}", reason)
                 )
             else:
@@ -188,14 +200,14 @@ class APITester(Base):
                 )
 
                 if response_think == "":
-                    self.info(
+                    LogManager.get().info(
                         Localizer.get().engine_response_result + "\n" + response_result
                     )
                 else:
-                    self.info(
+                    LogManager.get().info(
                         Localizer.get().engine_response_think + "\n" + response_think
                     )
-                    self.info(
+                    LogManager.get().info(
                         Localizer.get().engine_response_result + "\n" + response_result
                     )
 
@@ -206,7 +218,7 @@ class APITester(Base):
                     .replace("{OUTPUT}", str(output_tokens))
                     .replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
                 )
-                self.info(token_info)
+                LogManager.get().info(token_info)
 
         # 统计结果
         success_results = [r for r in key_results if r.success]
@@ -220,13 +232,13 @@ class APITester(Base):
             .replace("{SUCCESS}", str(len(success_results)))
             .replace("{FAILURE}", str(len(failure_results)))
         )
-        self.print("")
-        self.info(result_msg)
+        LogManager.get().print("")
+        LogManager.get().info(result_msg)
 
         # 失败密钥
         if failure_results:
             failed_masked_keys = [r.masked_key for r in failure_results]
-            self.warning(
+            LogManager.get().warning(
                 Localizer.get().api_tester_result_failure
                 + "\n"
                 + "\n".join(failed_masked_keys)

@@ -17,12 +17,10 @@
 - **安装依赖**: `uv sync`
 - **升级依赖**: `uv sync -U`
 - **启动应用**: `uv run app.py`
-
 ### 3.2 Lint & Format
 用 Ruff 做 lint + format + import 排序，改哪扫哪，勿扩大范围
 - `uv run ruff check --fix <file_path>`
 - `uv run ruff format <file_path>`
-
 ### 3.3 测试
 本项目无自动化测试框架，验证方式：
 - **脚本优先**: 不依赖 GUI 的逻辑编写验证脚本并执行
@@ -48,10 +46,12 @@
 - **现代语法**: 优先 `A | None`、`list[str]` 而非 `Optional[A]`、`List[str]`
 - **数据载体**: 优先用 `dataclasses`，跨线程传递用 `@dataclass(frozen=True)`
 ### 4.6 错误处理与日志
-- 捕获异常时必须保留堆栈：`self.error("Message", e)` 或 `LogManager.get().error("Message", e)`
-- 禁止使用内置 `print()`，统一走 `Base`/`LogManager`
-- 只捕获 `Exception`，不要捕获 `BaseException`
-- 不要吞异常，如需降级处理，至少记录一次 error/warning
+- **日志接口**: 统一使用 `LogManager.get().debug/info/warning/error(msg, e)` 记录日志
+- **记录异常**: 需记录异常时，必须将 `e` 传入日志方法以自动提取堆栈；禁止手动 `traceback.format_exc()`
+- **静默忽略**: 仅对"预期且无害"的情况允许 `except: pass`（不记录日志），但必须注释说明原因
+- **致命异常**: 不可恢复的异常无需捕获，直接冒泡由顶层机制统一记录堆栈并退出
+- **级别选择**: `error` 用于影响功能的错误；`warning` 用于可恢复/降级场景；`info` 用于正常流程
+- **异常链**: 需要包装语义时用 `raise ... from e` 保留原始堆栈
 ### 4.7 前端开发
 - **UI 库**: 尽可能使用 `qfluentwidgets` 组件
 - **主题适配**: 必须支持亮/暗主题，避免硬编码颜色
@@ -60,7 +60,7 @@
 - **通信**: 组件间通信必须使用事件总线（`Base.emit` / `Base.subscribe`）
 - **资源管理**: UI 图片、图标统一放 `resource/` 并通过配置或相对路径引用
 ### 4.8 本地化 `module/Localizer`
-- **禁止硬编码**: 所有用户可见的日志与界面文本必须在 `Localizer**.py` 中定义
+- **禁止硬编码**: 所有用户可见的界面文本（Toast/Dialog/界面文案）必须在 `Localizer**.py` 中定义
 - **行数对齐**: 修改时必须保持 ZH、EN 文件行数一致
 - **动态获取**: 使用 `Localizer.get().your_variable_name`
 - **优先复用**: 优先复用全局通用文本或相近语义的文本

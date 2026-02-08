@@ -3,6 +3,7 @@ import threading
 from typing import ClassVar
 
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from model.Model import Model
 from model.Model import ModelType
 from module.Utils.JSONTool import JSONTool
@@ -61,7 +62,8 @@ class ModelManager:
         try:
             data = JSONTool.load_file(preset_path)
             return data if isinstance(data, list) else []
-        except Exception:
+        except Exception as e:
+            LogManager.get().warning(f"Failed to load preset models - {preset_path}", e)
             return []
 
     def load_template(self, model_type: ModelType) -> dict:
@@ -82,7 +84,10 @@ class ModelManager:
         try:
             data = JSONTool.load_file(template_path)
             return data if isinstance(data, dict) else {}
-        except Exception:
+        except Exception as e:
+            LogManager.get().warning(
+                f"Failed to load model template: {template_path}", e
+            )
             return {}
 
     def initialize_models(self, existing_models: list[dict]) -> tuple[list[dict], int]:
