@@ -479,8 +479,6 @@ class LocalizerZH:
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "参考上文行数阈值"
     expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认禁用"
-    expert_settings_page_preceding_disable_on_local: str = "本地接口启用参考上文"
-    expert_settings_page_preceding_disable_on_local_desc: str = "本地模型性能较差，参考上文功能大部分时候是负面效果，默认禁用"
     expert_settings_page_clean_ruby: str = "清理原文中的注音文本"
     expert_settings_page_clean_ruby_desc: str = (
         "移除注音上标中的注音部分，仅保留正文部分，默认禁用"

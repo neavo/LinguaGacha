@@ -298,7 +298,6 @@ class PromptBuilder(Base):
         srcs: list[str],
         samples: list[str],
         precedings: list[Item],
-        local_flag: bool,
     ) -> tuple[list[dict], list[str]]:
         # 初始化
         messages: list[dict[str, str]] = []
@@ -308,11 +307,10 @@ class PromptBuilder(Base):
         content = self.build_main()
 
         # 参考上文
-        if not local_flag or self.config.enable_preceding_on_local:
-            result = self.build_preceding(precedings)
-            if result != "":
-                content = content + "\n" + result
-                console_log.append(result)
+        result = self.build_preceding(precedings)
+        if result != "":
+            content = content + "\n" + result
+            console_log.append(result)
 
         # 术语表
         glossary_enable = (

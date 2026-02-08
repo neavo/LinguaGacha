@@ -479,8 +479,6 @@ class LocalizerEN(LocalizerZH):
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "Preceding Lines Threshold"
     expert_settings_page_preceding_lines_threshold_desc: str = "Maximum number of preceding lines to include as context for each translation task, disabled by default"
-    expert_settings_page_preceding_disable_on_local: str = "Enable Preceding Lines for Local Interface"
-    expert_settings_page_preceding_disable_on_local_desc: str = "Local models perform relatively poorly, so the preceding Lines feature often has negative effects, disabled by default"
     expert_settings_page_clean_ruby: str = "Clean Ruby Text"
     expert_settings_page_clean_ruby_desc: str = (
         "Removes the phonetic ruby characters from annotations, retaining only the main text, disabled by default"
