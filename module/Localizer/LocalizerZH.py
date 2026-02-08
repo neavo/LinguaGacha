@@ -479,6 +479,12 @@ class LocalizerZH:
     # 专家设置
     expert_settings_page_preceding_lines_threshold: str = "参考上文行数阈值"
     expert_settings_page_preceding_lines_threshold_desc: str = "每个翻译任务最多可携带的参考上文的行数，默认禁用"
+    expert_settings_page_response_check_settings: str = "结果检查规则"
+    expert_settings_page_response_check_settings_desc: str = "翻译任务中会根据启用规则检查结果的合法性，默认全部启用"
+    expert_settings_page_response_check_settings_button: str = "规则设置"
+    expert_settings_page_response_check_kana_residue: str = "假名残留检查"
+    expert_settings_page_response_check_hangeul_residue: str = "谚文残留检查"
+    expert_settings_page_response_check_similarity: str = "相似度检查"
     expert_settings_page_clean_ruby: str = "清理原文中的注音文本"
     expert_settings_page_clean_ruby_desc: str = (
         "移除注音上标中的注音部分，仅保留正文部分，默认禁用"

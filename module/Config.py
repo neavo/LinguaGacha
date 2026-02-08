@@ -52,6 +52,9 @@ class Config:
     clean_ruby: bool = False
     deduplication_in_trans: bool = True
     deduplication_in_bilingual: bool = True
+    check_kana_residue: bool = True
+    check_hangeul_residue: bool = True
+    check_similarity: bool = True
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
 
@@ -146,6 +149,9 @@ class Config:
         self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True
         self.deduplication_in_bilingual: bool = True
+        self.check_kana_residue: bool = True
+        self.check_hangeul_residue: bool = True
+        self.check_similarity: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
 

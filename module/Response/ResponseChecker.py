@@ -124,22 +124,25 @@ class ResponseChecker(Base):
                 dst = rule.sub("", dst)
 
             # 当原文语言为日语，且译文中包含平假名或片假名字符时，判断为 假名残留
-            if self.config.source_language == BaseLanguage.Enum.JA and (
-                TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)
+            if (
+                self.config.check_kana_residue
+                and self.config.source_language == BaseLanguage.Enum.JA
+                and (TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst))
             ):
                 checks.append(__class__.Error.LINE_ERROR_KANA)
                 continue
 
             # 当原文语言为韩语，且译文中包含谚文字符时，判断为 谚文残留
             if (
-                self.config.source_language == BaseLanguage.Enum.KO
+                self.config.check_hangeul_residue
+                and self.config.source_language == BaseLanguage.Enum.KO
                 and TextHelper.KO.any_hangeul(dst)
             ):
                 checks.append(__class__.Error.LINE_ERROR_HANGEUL)
                 continue
 
             # 判断是否包含或相似
-            if (
+            if self.config.check_similarity and (
                 src in dst
                 or dst in src
                 or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80
