@@ -17,6 +17,7 @@ from qfluentwidgets import RoundMenu
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
@@ -190,7 +191,7 @@ class CustomPromptPage(QWidget, Base):
             with open(path, "r", encoding="utf-8-sig") as reader:
                 text = reader.read().strip()
         except Exception as e:
-            self.error("", e)
+            LogManager.get().error(f"Failed to import custom prompt - {path}", e)
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -219,7 +220,7 @@ class CustomPromptPage(QWidget, Base):
             with open(str(final_path), "w", encoding="utf-8") as writer:
                 writer.write(self.main_text.toPlainText().strip())
         except Exception as e:
-            self.error("", e)
+            LogManager.get().error(f"Failed to export custom prompt - {path}", e)
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -425,8 +426,16 @@ class CustomPromptPage(QWidget, Base):
             try:
                 with open(path, "r", encoding="utf-8-sig") as reader:
                     prompt = reader.read().strip()
-            except Exception:
-                pass
+            except Exception as e:
+                LogManager.get().error(f"Failed to apply preset - {path}", e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+                return
 
             # 保存数据
             self.set_custom_prompt_data(prompt)
@@ -479,7 +488,16 @@ class CustomPromptPage(QWidget, Base):
                     )
                     dialog.accept()
                 except Exception as e:
-                    self.error("", e)
+                    LogManager.get().error(
+                        f"Failed to save custom prompt preset: {path}", e
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
 
             dialog = LineEditMessageBox(
                 window, Localizer.get().quality_save_preset_title, on_save
@@ -515,7 +533,17 @@ class CustomPromptPage(QWidget, Base):
                     )
                     dialog.accept()
                 except Exception as e:
-                    self.error("", e)
+                    LogManager.get().error(
+                        f"Failed to rename preset: {item['path']} -> {new_path}",
+                        e,
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
 
             dialog = LineEditMessageBox(window, Localizer.get().rename, on_rename)
             dialog.get_line_edit().setText(item["name"])
@@ -551,7 +579,16 @@ class CustomPromptPage(QWidget, Base):
                         },
                     )
                 except Exception as e:
-                    self.error("", e)
+                    LogManager.get().error(
+                        f"Failed to delete preset: {item['path']}", e
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
 
         def triggered() -> None:
             menu = RoundMenu("", widget)

@@ -19,6 +19,7 @@ from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.PaginationBar import PaginationBar
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
@@ -224,7 +225,7 @@ class ProofreadingPage(QWidget, Base):
                     return
                 self.quality_rules_refreshed.emit(checker, warning_map)
             except Exception as e:
-                self.error("Refresh quality rules failed", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -406,7 +407,7 @@ class ProofreadingPage(QWidget, Base):
                 result = ProofreadingLoadService.load_snapshot(lg_path, toast_cycle)
                 self.items_loaded.emit(token, result)
             except Exception as e:
-                self.error(Localizer.get().proofreading_page_load_failed, e)
+                LogManager.get().error(Localizer.get().proofreading_page_load_failed, e)
                 self.items_loaded.emit(
                     token,
                     ProofreadingLoadResult(
@@ -576,7 +577,7 @@ class ProofreadingPage(QWidget, Base):
                 )
                 self.filter_done.emit(data_version, filtered)
             except Exception as e:
-                self.error("Filter failed", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.filter_done.emit(data_version, [])
 
         threading.Thread(target=filter_task, daemon=True).start()
@@ -1042,7 +1043,7 @@ class ProofreadingPage(QWidget, Base):
                 DataManager.get().save_item(item)
                 success = True
             except Exception as e:
-                self.error("Save item failed", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 item.set_dst(old_dst)
                 item.set_status(old_status)
 
@@ -1106,7 +1107,7 @@ class ProofreadingPage(QWidget, Base):
                 warnings = checker.check_item(item)
                 self.item_rechecked.emit(item, warnings)
             except Exception as e:
-                self.error("Recheck item failed", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.item_rechecked.emit(item, [])
 
         threading.Thread(target=task, daemon=True).start()
@@ -1370,7 +1371,7 @@ class ProofreadingPage(QWidget, Base):
         try:
             DataManager.get().save_item(item)
         except Exception as e:
-            self.error("Save item failed", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
 
         # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
         if success:
@@ -1425,7 +1426,7 @@ class ProofreadingPage(QWidget, Base):
 
                 self.save_done.emit(True)
             except Exception as e:
-                self.error(f"{Localizer.get().proofreading_page_save_failed}", e)
+                LogManager.get().error(Localizer.get().proofreading_page_save_failed, e)
                 self.save_done.emit(False)
 
         threading.Thread(target=task, daemon=True).start()
@@ -1531,8 +1532,8 @@ class ProofreadingPage(QWidget, Base):
                 FileManager(config).write_to_path(items_all)
                 self.export_done.emit(True, "")
             except Exception as e:
-                self.error("Export failed", e)
-                self.export_done.emit(False, str(e))
+                LogManager.get().error(Localizer.get().task_failed, e)
+                self.export_done.emit(False, "")
 
         threading.Thread(target=task, daemon=True).start()
 

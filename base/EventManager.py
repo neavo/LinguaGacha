@@ -114,7 +114,13 @@ class EventManager(QObject):
                 handler(event, data)
             except Exception as e:
                 # 事件回调属于 UI 线程关键路径：不能让单个 handler 异常中断后续分发。
-                LogManager.get().error(f"", e)
+                handler_name = getattr(handler, "__qualname__", repr(handler))
+                event_value = self.get_event_value(event)
+                data_type = type(data).__name__
+                LogManager.get().error(
+                    f"Event handler raised: event={event_value} handler={handler_name} data_type={data_type}",
+                    e,
+                )
 
     def get_event_value(self, event: StrEnum) -> str:
         value = getattr(event, "value", None)

@@ -119,7 +119,8 @@ class QualityRuleIconRenderer:
         is_dark = isDarkTheme()
         try:
             dpr = float(table.devicePixelRatioF())
-        except Exception:
+        except (AttributeError, TypeError, RuntimeError):
+            # 在部分 Qt 对象/生命周期阶段可能取不到 DPR，回退到 1.0。
             dpr = 1.0
 
         key = (
@@ -164,7 +165,8 @@ class QualityRuleIconRenderer:
 
         try:
             pixmap.setDevicePixelRatio(dpr)
-        except Exception:
+        except (AttributeError, TypeError, RuntimeError):
+            # 设置 DPR 失败不影响绘制结果，可忽略。
             pass
         return pixmap
 

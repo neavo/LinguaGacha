@@ -11,6 +11,7 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.Utils.JSONTool import JSONTool
@@ -137,7 +138,7 @@ class QualityRulePresetManager:
             )
             return True
         except Exception as e:
-            self.page.error("Failed to save preset", e)
+            LogManager.get().error(f"Failed to save preset - {path}", e)
             return False
 
     def rename_preset(self, item: dict[str, str], new_name: str) -> bool:
@@ -159,7 +160,7 @@ class QualityRulePresetManager:
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
             return True
         except Exception as e:
-            self.page.error("Failed to rename preset", e)
+            LogManager.get().error(f"Failed to rename preset - {item['path']}", e)
             return False
 
     def delete_preset(self, item: dict[str, str]) -> None:
@@ -187,7 +188,7 @@ class QualityRulePresetManager:
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
         except Exception as e:
-            self.page.error("Failed to delete preset", e)
+            LogManager.get().error(f"Failed to delete preset - {item['path']}", e)
 
     def set_default_preset(self, item: dict[str, str]) -> None:
         current_config = Config().load()
@@ -225,7 +226,7 @@ class QualityRulePresetManager:
             self.page.ignore_next_quality_rule_update = True
             self.page.save_entries(self.page.entries)
         except Exception as e:
-            self.page.error("Failed to reset rules", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.show_toast(Base.ToastType.ERROR, Localizer.get().task_failed)
             return
 

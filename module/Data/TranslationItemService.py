@@ -1,6 +1,7 @@
 from typing import Any
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.ProjectSession import ProjectSession
@@ -47,7 +48,10 @@ class TranslationItemService:
                     continue
                 try:
                     content = ZstdCodec.decompress(compressed)
-                except Exception:
+                except Exception as e:
+                    LogManager.get().warning(
+                        f"Failed to decompress asset: {rel_path}", e
+                    )
                     continue
                 parsed_items.extend(file_manager.parse_asset(rel_path, content))
 

@@ -41,6 +41,7 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.EventManager import EventManager
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
@@ -92,7 +93,10 @@ class CreateProjectThread(QThread):
             # 成功
             self.finished_signal.emit(True, None)
         except Exception as e:
-            # 失败
+            LogManager.get().error(
+                f"Failed to create project: {self.source_path} -> {self.output_path}",
+                e,
+            )
             self.finished_signal.emit(False, str(e))
 
 
@@ -1095,8 +1099,16 @@ class WorkbenchPage(ScrollArea, Base):
                 2, self.project_info_panel
             )  # 插入到 selected_file_display 下方
         except Exception as e:
-            self.error(
-                Localizer.get().workbench_error_read_preview.replace("{ERROR}", str(e))
+            message = Localizer.get().workbench_error_read_preview.replace(
+                "{ERROR}", str(e)
+            )
+            LogManager.get().error(f"Failed to read project preview - {path}", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": message,
+                },
             )
 
     def on_recent_clicked(self, path: str) -> None:
@@ -1201,6 +1213,7 @@ class WorkbenchPage(ScrollArea, Base):
 
                 self.reset_new_project_state()
             except Exception as e:
+                LogManager.get().error(f"Failed to load created project - {path}", e)
                 # 虽然创建成功但后续处理失败
                 self.emit(
                     Base.Event.TOAST,
@@ -1249,6 +1262,9 @@ class WorkbenchPage(ScrollArea, Base):
             config.add_recent_project(self.selected_lg_path, name)
             config.save()
         except Exception as e:
+            LogManager.get().error(
+                f"Failed to load project: {self.selected_lg_path}", e
+            )
             self.emit(
                 Base.Event.TOAST,
                 {

@@ -178,6 +178,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
         except (TypeError, RuntimeError):
+            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
     def on_theme_changed(self) -> None:

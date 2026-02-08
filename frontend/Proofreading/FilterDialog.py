@@ -392,7 +392,18 @@ class FilterDialog(MessageBoxBase):
                 parent=self.window(),  # 使用 window() 获取顶层窗口作为父组件
             )
         except Exception as e:
-            LogManager.get().error("", e)
+            LogManager.get().error(
+                f"Failed to write proofreading report: {output_path}", e
+            )
+            InfoBar.error(
+                title=Localizer.get().task_failed,
+                content="",
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=5000,
+                parent=self.window(),
+            )
 
     def build_glossary_error_map(self) -> None:
         """构建术语错误明细映射"""

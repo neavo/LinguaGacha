@@ -267,6 +267,7 @@ class SearchCard(CardWidget):
             try:
                 table.setUpdatesEnabled(True)
             except RuntimeError:
+                # 表格可能已被 Qt 销毁，无法恢复 updatesEnabled，忽略即可。
                 pass
 
     def apply_table_search(self) -> None:

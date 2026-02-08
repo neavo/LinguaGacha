@@ -2,7 +2,6 @@ from enum import StrEnum
 from typing import Callable
 
 from base.EventManager import EventManager
-from base.LogManager import LogManager
 
 
 class Base:
@@ -12,8 +11,6 @@ class Base:
         PROGRESS_TOAST_SHOW = "PROGRESS_TOAST_SHOW"  # 显示进度 Toast
         PROGRESS_TOAST_UPDATE = "PROGRESS_TOAST_UPDATE"  # 更新进度 Toast
         PROGRESS_TOAST_HIDE = "PROGRESS_TOAST_HIDE"  # 隐藏进度 Toast
-        PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"  # 项目 - 检查
-        PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"  # 项目 - 检查完成
         APITEST_RUN = "APITEST_RUN"  # 测试 - 开始
         APITEST_DONE = "APITEST_DONE"  # 测试 - 完成
         TRANSLATION_RUN = "TRANSLATION_RUN"  # 翻译 - 开始
@@ -35,15 +32,17 @@ class Base:
         APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"  # 更新 - 下载报错
         APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"  # 更新 - 下载更新
         APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"  # 更新 - 解压
-        QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
-        CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
+        PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"  # 项目 - 检查
+        PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"  # 项目 - 检查完成
         PROJECT_PREFILTER_RUN = "PROJECT_PREFILTER_RUN"  # 工程 - 预过滤开始
         PROJECT_PREFILTER_DONE = "PROJECT_PREFILTER_DONE"  # 工程 - 预过滤完成
         PROJECT_PREFILTER_UPDATED = (
             "PROJECT_PREFILTER_UPDATED"  # 工程 - 预过滤结果已更新
         )
+        CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
+        QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
 
     # 接口格式
     class APIFormat(StrEnum):
@@ -94,56 +93,6 @@ class Base:
     # 构造函数
     def __init__(self) -> None:
         pass
-
-    # PRINT
-    def print(
-        self,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        LogManager.get().print(msg, e, file, console)
-
-    # DEBUG
-    def debug(
-        self,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        LogManager.get().debug(msg, e, file, console)
-
-    # INFO
-    def info(
-        self,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        LogManager.get().info(msg, e, file, console)
-
-    # ERROR
-    def error(
-        self,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        LogManager.get().error(msg, e, file, console)
-
-    # WARNING
-    def warning(
-        self,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        LogManager.get().warning(msg, e, file, console)
 
     # 触发事件
     def emit(self, event: Event, data: dict) -> None:

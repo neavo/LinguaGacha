@@ -21,6 +21,7 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SubtitleLabel
 
 from base.Base import Base
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomSearchLineEdit
@@ -196,7 +197,7 @@ class ModelSelectorPage(MessageBoxBase, Base):
                 )
                 return [model.id for model in client.models.list()]
         except Exception as e:
-            self.debug(Localizer.get().model_selector_page_fail, e)
+            LogManager.get().debug(Localizer.get().model_selector_page_fail, e)
             self.emit(
                 Base.Event.TOAST,
                 {
