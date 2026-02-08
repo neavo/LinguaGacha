@@ -57,8 +57,8 @@
 - **主题适配**: 必须支持亮/暗主题，避免硬编码颜色
 - **多线程**: UI 耗时操作必须放在 `threading.Thread`
 - **线程与 UI**: 后台线程不要直接操作 UI，通过事件总线回到 UI 层刷新
-- **通信**: 组件间通信必须使用事件总线（`Base.emit` / `Base.subscribe`）
-- **资源管理**: UI 图片、图标统一放 `resource/` 并通过配置或相对路径引用
+- **组件通信**: 组件间通信必须使用事件总线（`Base.emit` / `Base.subscribe`）
+- **资源管理**: 图标优先使用 `base/BaseIcon.py`，其他美术资源放 `resource/` 并通过配置或相对路径引用
 ### 4.8 本地化 `module/Localizer`
 - **禁止硬编码**: 所有用户可见的界面文本（Toast/Dialog/界面文案）必须在 `Localizer**.py` 中定义
 - **行数对齐**: 修改时必须保持 ZH、EN 文件行数一致

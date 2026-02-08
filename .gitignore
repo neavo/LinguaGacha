@@ -1,5 +1,6 @@
 /.venv
 /uv.lock
+/openspec
 __pycache__
 
 /*log*
