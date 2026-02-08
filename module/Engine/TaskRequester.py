@@ -68,8 +68,8 @@ class TaskRequester(Base):
 
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
 
-    STREAM_DEGRADATION_SINGLE_CHAR_THRESHOLD: int = 100
-    STREAM_DEGRADATION_ALTERNATING_CHAR_THRESHOLD: int = 100
+    # 阈值统一按"重复次数"统计，避免不同周期下的字符数语义不一致。
+    STREAM_DEGRADATION_REPEAT_THRESHOLD: int = 50
 
     STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 2048
 
@@ -195,10 +195,21 @@ class TaskRequester(Base):
 
     @dataclasses.dataclass
     class DegradationDetector:
+        """流式退化检测器。
+
+        - 周期 1：`AAA...`，按连续单字符重复次数计数。
+        - 周期 2：`ABAB...`，按完整 `AB` 循环次数计数。
+        - 周期 3：`ABCABC...`，按完整 `ABC` 循环次数计数。
+        """
+
         last_char: str | None = None
         second_last_char: str | None = None
+        third_last_char: str | None = None
         single_run: int = 0
         alternating_run: int = 0
+        alternating_char_run: int = 0
+        period_3_run: int = 0
+        period_3_char_run: int = 0
 
         def feed(self, text: str) -> bool:
             for ch in text:
@@ -208,7 +219,10 @@ class TaskRequester(Base):
                 if self.last_char is None:
                     self.last_char = ch
                     self.single_run = 1
-                    self.alternating_run = 1
+                    self.alternating_char_run = 1
+                    self.alternating_run = 0
+                    self.period_3_char_run = 1
+                    self.period_3_run = 0
                     continue
 
                 if ch == self.last_char:
@@ -216,10 +230,7 @@ class TaskRequester(Base):
                 else:
                     self.single_run = 1
 
-                if (
-                    self.single_run
-                    >= TaskRequester.STREAM_DEGRADATION_SINGLE_CHAR_THRESHOLD
-                ):
+                if self.single_run >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD:
                     return True
 
                 if (
@@ -227,16 +238,50 @@ class TaskRequester(Base):
                     and ch == self.second_last_char
                     and self.second_last_char != self.last_char
                 ):
-                    self.alternating_run += 1
+                    # 只有满足 AB 位置回环时才延长周期 2 序列，避免把普通重复误算为退化。
+                    self.alternating_char_run += 1
                 else:
-                    self.alternating_run = 2 if ch != self.last_char else 1
+                    self.alternating_char_run = 2 if ch != self.last_char else 1
+
+                self.alternating_run = self.alternating_char_run // 2
 
                 if (
                     self.alternating_run
-                    >= TaskRequester.STREAM_DEGRADATION_ALTERNATING_CHAR_THRESHOLD
+                    >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD
                 ):
                     return True
 
+                if (
+                    self.third_last_char is not None
+                    and self.second_last_char is not None
+                    and ch == self.third_last_char
+                    and self.third_last_char != self.second_last_char
+                    and self.second_last_char != self.last_char
+                    and self.third_last_char != self.last_char
+                ):
+                    # 周期 3 必须满足三字符都不同，避免把 ABAA 这类模式误判为 ABC 循环。
+                    self.period_3_char_run += 1
+                elif (
+                    self.second_last_char is not None
+                    and ch != self.last_char
+                    and ch != self.second_last_char
+                    and self.last_char != self.second_last_char
+                ):
+                    # 当窗口首次形成 3 个不同字符时，从 1 轮 ABC 候选重新开始计数。
+                    self.period_3_char_run = 3
+                else:
+                    # 一旦不满足周期 3 条件，回落到最小窗口，避免跨模式串联误判。
+                    self.period_3_char_run = 1
+
+                self.period_3_run = self.period_3_char_run // 3
+                if (
+                    self.period_3_run
+                    >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD
+                ):
+                    return True
+
+                # 状态只在本轮检测结束后推进，确保所有判断都基于同一时刻的历史窗口。
+                self.third_last_char = self.second_last_char
                 self.second_last_char = self.last_char
                 self.last_char = ch
 
