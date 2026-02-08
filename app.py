@@ -2,6 +2,7 @@ import ctypes
 import os
 import signal
 import sys
+import threading
 import time
 from types import TracebackType
 
@@ -42,11 +43,46 @@ def excepthook(
     os.kill(os.getpid(), signal.SIGTERM)
 
 
+def thread_excepthook(args: threading.ExceptHookArgs) -> None:
+    """子线程未捕获异常处理。
+
+    注意：hook 本身不得抛异常，避免递归/抑制后续 hook 调用。
+    """
+
+    try:
+        thread_name = getattr(getattr(args, "thread", None), "name", "<unknown>")
+        LogManager.get().error(
+            f"Uncaught exception in thread: {thread_name}",
+            getattr(args, "exc_value", None),
+        )
+    except Exception:
+        # 兜底：异常处理路径中再抛异常只会让排障更困难
+        pass
+
+
+def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
+    """析构/GC 阶段不可引发异常处理。
+
+    注意：不要持久化保存 unraisable.object / exc_value 等引用（可能导致对象复活/引用环）。
+    """
+
+    try:
+        obj_repr = repr(getattr(unraisable, "object", None))
+        err_msg = getattr(unraisable, "err_msg", "") or ""
+        LogManager.get().warning(
+            f"Unraisable exception: {err_msg} object={obj_repr}",
+            getattr(unraisable, "exc_value", None),
+        )
+    except Exception:
+        # 兜底：异常处理路径中再抛异常只会让排障更困难
+        pass
+
+
 if __name__ == "__main__":
     # 捕获全局异常
-    sys.excepthook = lambda exc_type, exc_value, exc_traceback: excepthook(
-        exc_type, exc_value, exc_traceback
-    )
+    sys.excepthook = excepthook
+    threading.excepthook = thread_excepthook
+    sys.unraisablehook = unraisable_hook
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":

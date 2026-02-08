@@ -17,6 +17,7 @@ from qfluentwidgets import qconfig
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
@@ -214,6 +215,7 @@ class GlossaryPage(QualityRulePageBase):
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
         except (TypeError, RuntimeError):
+            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
     def on_theme_changed(self) -> None:
@@ -351,7 +353,7 @@ class GlossaryPage(QualityRulePageBase):
             # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
             self.ignore_next_quality_rule_update = True
         except Exception as e:
-            self.error("Failed to delete rules", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -408,7 +410,7 @@ class GlossaryPage(QualityRulePageBase):
             # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
             self.ignore_next_quality_rule_update = True
         except Exception as e:
-            self.error("Failed to save rules", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
                 Base.Event.TOAST,
                 {

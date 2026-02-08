@@ -7,6 +7,7 @@ import zipfile
 from lxml import etree
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.File.EPUB.EPUBAst import EPUBAst
@@ -270,7 +271,7 @@ class EPUBAstWriter(Base):
                             zip_writer.writestr(name, self.serialize_doc(root))
                         except Exception as e:
                             # 解析/回写失败时原样写回，避免破坏 epub
-                            self.warning(
+                            LogManager.get().warning(
                                 f"Failed to apply translations to {name}, keeping original",
                                 e,
                             )

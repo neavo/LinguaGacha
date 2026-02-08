@@ -90,6 +90,7 @@ class CustomTextEdit(PlainTextEdit):
         try:
             qconfig.themeChangedFinished.disconnect(self.refresh_style)
         except (TypeError, RuntimeError):
+            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
     def setReadOnly(self, ro: bool) -> None:

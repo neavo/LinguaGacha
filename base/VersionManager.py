@@ -13,13 +13,12 @@ from typing import Self
 import httpx
 
 from base.Base import Base
+from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
 
 class VersionManager(Base):
-
     class Status(StrEnum):
-
         NONE = "NONE"
         NEW_VERSION = "NEW_VERSION"
         UPDATING = "UPDATING"
@@ -64,22 +63,22 @@ class VersionManager(Base):
         with self.lock:
             if not self.extracting:
                 threading.Thread(
-                    target = self.app_update_extract_task,
-                    args = (event, data),
+                    target=self.app_update_extract_task,
+                    args=(event, data),
                 ).start()
 
     # 检查
     def app_update_check_run(self, event: Base.Event, data: dict) -> None:
         threading.Thread(
-            target = self.app_update_check_start_task,
-            args = (event, data),
+            target=self.app_update_check_start_task,
+            args=(event, data),
         ).start()
 
     # 下载
     def app_update_download_run(self, event: Base.Event, data: dict) -> None:
         threading.Thread(
-            target = self.app_update_download_start_task,
-            args = (event, data),
+            target=self.app_update_download_start_task,
+            args=(event, data),
         ).start()
 
     # 解压（仅 Windows 会调用此方法）
@@ -90,67 +89,88 @@ class VersionManager(Base):
         # 删除临时文件
         try:
             os.remove("./app.exe.bak")
-        except Exception:
-            pass
+        except FileNotFoundError:
+            pass  # 备份文件可能不存在，可忽略
+        except OSError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
         try:
             os.remove("./version.txt.bak")
-        except Exception:
-            pass
+        except FileNotFoundError:
+            pass  # 备份文件可能不存在，可忽略
+        except OSError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
 
         # 备份文件
         try:
             os.rename("./app.exe", "./app.exe.bak")
-        except Exception:
-            pass
+        except FileNotFoundError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
+        except OSError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
         try:
             os.rename("./version.txt", "./version.txt.bak")
-        except Exception:
-            pass
+        except FileNotFoundError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
+        except OSError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
 
         # 开始更新
-        error = None
+        error: Exception | None = None
         try:
             with zipfile.ZipFile(__class__.TEMP_PATH) as zip_file:
                 zip_file.extractall("./")
 
             # 先复制再删除的方式实现覆盖同名文件
-            shutil.copytree("./LinguaGacha/", "./", dirs_exist_ok = True)
-            shutil.rmtree("./LinguaGacha/", ignore_errors = True)
+            shutil.copytree("./LinguaGacha/", "./", dirs_exist_ok=True)
+            shutil.rmtree("./LinguaGacha/", ignore_errors=True)
         except Exception as e:
             error = e
-            self.error("", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
 
         # 更新失败则还原备份文件
         if error is not None:
             try:
                 os.remove("./app.exe")
-            except Exception:
-                pass
+            except FileNotFoundError:
+                pass  # 目标文件可能不存在，可忽略
+            except OSError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
             try:
                 os.remove("./version.txt")
-            except Exception:
-                pass
+            except FileNotFoundError:
+                pass  # 目标文件可能不存在，可忽略
+            except OSError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
             try:
                 os.rename("./app.exe.bak", "./app.exe")
-            except Exception:
-                pass
+            except FileNotFoundError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
+            except OSError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
             try:
                 os.rename("./version.txt.bak", "./version.txt")
-            except Exception:
-                pass
+            except FileNotFoundError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
+            except OSError as e:
+                LogManager.get().warning(Localizer.get().task_failed, e)
 
         # 删除临时文件
         try:
             os.remove(__class__.TEMP_PATH)
-        except Exception:
-            pass
+        except FileNotFoundError:
+            pass  # 临时文件可能已被清理
+        except OSError as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
 
         # 显示提示
-        self.emit(Base.Event.TOAST, {
-            "type": Base.ToastType.SUCCESS,
-            "message": Localizer.get().app_new_version_waiting_restart,
-            "duration": 60 * 1000,
-        })
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().app_new_version_waiting_restart,
+                "duration": 60 * 1000,
+            },
+        )
 
         # 倒计时后关闭应用并打开更新日志
         print("")
@@ -164,26 +184,38 @@ class VersionManager(Base):
     def app_update_check_start_task(self, event: Base.Event, data: dict) -> None:
         try:
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout = 60)
+            response = httpx.get(__class__.API_URL, timeout=60)
             response.raise_for_status()
 
             result: dict = response.json()
-            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version())[-1]
-            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0"))[-1]
+            a, b, c = re.findall(
+                r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version()
+            )[-1]
+            x, y, z = re.findall(
+                r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0")
+            )[-1]
 
             # 使用元组比较简化版本号判断
             if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
                 self.set_status(VersionManager.Status.NEW_VERSION)
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
-                    "duration": 60 * 1000,
-                })
-                self.emit(Base.Event.APP_UPDATE_CHECK_DONE, {
-                    "new_version": True,
-                })
-        except Exception:
-            pass
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().app_new_version_toast.replace(
+                            "{VERSION}", f"v{x}.{y}.{z}"
+                        ),
+                        "duration": 60 * 1000,
+                    },
+                )
+                self.emit(
+                    Base.Event.APP_UPDATE_CHECK_DONE,
+                    {
+                        "new_version": True,
+                    },
+                )
+        except Exception as e:
+            LogManager.get().warning(Localizer.get().task_failed, e)
 
     # 下载
     def app_update_download_start_task(self, event: Base.Event, data: dict) -> None:
@@ -194,18 +226,21 @@ class VersionManager(Base):
             # macOS/Linux：跳过下载，直接打开发布页面
             if sys.platform in ("darwin", "linux"):
                 self.set_status(VersionManager.Status.DOWNLOADED)
-                self.emit(Base.Event.TOAST, {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().app_new_version_success,
-                    "duration": 60 * 1000,
-                })
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().app_new_version_success,
+                        "duration": 60 * 1000,
+                    },
+                )
                 # 直接打开发布页面供手动下载
                 webbrowser.open(__class__.RELEASE_URL)
                 self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
                 return
 
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout = 60)
+            response = httpx.get(__class__.API_URL, timeout=60)
             response.raise_for_status()
 
             # 根据平台选择正确的资源文件
@@ -220,9 +255,11 @@ class VersionManager(Base):
                     break
 
             if not browser_download_url:
-                raise Exception(f"no browser_download_url")
+                raise Exception("no browser_download_url")
 
-            with httpx.stream("GET", browser_download_url, timeout = 60, follow_redirects = True) as response:
+            with httpx.stream(
+                "GET", browser_download_url, timeout=60, follow_redirects=True
+            ) as response:
                 response.raise_for_status()
 
                 # 获取文件总大小
@@ -234,33 +271,45 @@ class VersionManager(Base):
                     raise Exception("Content-Length is 0 ...")
 
                 # 写入文件并更新进度
-                os.remove(__class__.TEMP_PATH) if os.path.isfile(__class__.TEMP_PATH) else None
-                os.makedirs(os.path.dirname(__class__.TEMP_PATH), exist_ok = True)
+                os.remove(__class__.TEMP_PATH) if os.path.isfile(
+                    __class__.TEMP_PATH
+                ) else None
+                os.makedirs(os.path.dirname(__class__.TEMP_PATH), exist_ok=True)
                 with open(__class__.TEMP_PATH, "wb") as writer:
-                    for chunk in response.iter_bytes(chunk_size = 1024 * 1024):
+                    for chunk in response.iter_bytes(chunk_size=1024 * 1024):
                         if chunk is not None:
                             writer.write(chunk)
                             downloaded_size = downloaded_size + len(chunk)
                             if total_size > downloaded_size:
-                                self.emit(Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, {
-                                    "total_size": total_size,
-                                    "downloaded_size": downloaded_size,
-                                })
+                                self.emit(
+                                    Base.Event.APP_UPDATE_DOWNLOAD_UPDATE,
+                                    {
+                                        "total_size": total_size,
+                                        "downloaded_size": downloaded_size,
+                                    },
+                                )
                             else:
                                 self.set_status(VersionManager.Status.DOWNLOADED)
-                                self.emit(Base.Event.TOAST, {
-                                    "type": Base.ToastType.SUCCESS,
-                                    "message": Localizer.get().app_new_version_success,
-                                    "duration": 60 * 1000,
-                                })
+                                self.emit(
+                                    Base.Event.TOAST,
+                                    {
+                                        "type": Base.ToastType.SUCCESS,
+                                        "message": Localizer.get().app_new_version_success,
+                                        "duration": 60 * 1000,
+                                    },
+                                )
                                 self.emit(Base.Event.APP_UPDATE_DOWNLOAD_DONE, {})
         except Exception as e:
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.set_status(VersionManager.Status.NONE)
-            self.emit(Base.Event.TOAST, {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().app_new_version_failure + str(e),
-                "duration": 60 * 1000,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().app_new_version_failure,
+                    "duration": 60 * 1000,
+                },
+            )
             self.emit(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, {})
 
     def get_status(self) -> Status:

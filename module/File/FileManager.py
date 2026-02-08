@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from model.Project import Project
 from module.Config import Config
@@ -126,7 +127,7 @@ class FileManager(Base):
                 )
             )
         except Exception as e:
-            self.error(f"{Localizer.get().log_read_file_fail}", e)
+            LogManager.get().error(Localizer.get().log_read_file_fail, e)
 
         return project, items
 
@@ -203,6 +204,6 @@ class FileManager(Base):
                 # 在上下文内获取路径，确保包含时间戳后缀
                 output_path = dm.get_translated_path()
         except Exception as e:
-            self.error(f"{Localizer.get().log_write_file_fail}", e)
+            LogManager.get().error(Localizer.get().log_write_file_fail, e)
 
         return output_path

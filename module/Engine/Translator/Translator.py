@@ -11,6 +11,7 @@ import httpx
 from rich.progress import TaskID
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -179,7 +180,14 @@ class Translator(Base):
             ).start()
         except Exception as e:
             engine.set_status(Base.TaskStatus.IDLE)
-            self.error(Localizer.get().task_failed, e)
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
 
     # 翻译停止事件
     def translation_require_stop(self, event: Base.Event, data: dict) -> None:
@@ -234,7 +242,7 @@ class Translator(Base):
                 # 触发状态检查以同步 UI
                 self.emit(Base.Event.PROJECT_CHECK_RUN, {})
             except Exception as e:
-                self.error(f"{Localizer.get().task_failed}", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -281,7 +289,7 @@ class Translator(Base):
 
                 self.emit(Base.Event.PROJECT_CHECK_RUN, {})
             except Exception as e:
-                self.error(f"{Localizer.get().task_failed}", e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -439,23 +447,25 @@ class Translator(Base):
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
             # 输出开始翻译的日志
-            self.print("")
-            self.info(
+            LogManager.get().print("")
+            LogManager.get().info(
                 f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
             )
-            self.info(f"{Localizer.get().api_url} - {self.model.get('api_url', '')}")
-            self.info(
+            LogManager.get().info(
+                f"{Localizer.get().api_url} - {self.model.get('api_url', '')}"
+            )
+            LogManager.get().info(
                 f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}"
             )
-            self.print("")
+            LogManager.get().print("")
             if self.model.get("api_format") != Base.APIFormat.SAKURALLM:
-                self.info(
+                LogManager.get().info(
                     PromptBuilder(
                         self.config,
                         quality_snapshot=self.quality_snapshot,
                     ).build_main()
                 )
-                self.print("")
+                LogManager.get().print("")
 
             task_limiter = TaskLimiter(
                 rps=rps_limit,
@@ -484,10 +494,10 @@ class Translator(Base):
             # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
                 # 日志
-                self.print("")
-                self.info(Localizer.get().engine_task_done)
-                self.info(Localizer.get().engine_task_save)
-                self.print("")
+                LogManager.get().print("")
+                LogManager.get().info(Localizer.get().engine_task_done)
+                LogManager.get().info(Localizer.get().engine_task_save)
+                LogManager.get().print("")
 
                 # 通知
                 self.emit(
@@ -499,13 +509,13 @@ class Translator(Base):
                 )
             else:
                 # 停止翻译（可能是主动停止，也可能是其他原因未完成）
-                self.print("")
+                LogManager.get().print("")
                 if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                    self.info(Localizer.get().engine_task_stop)
+                    LogManager.get().info(Localizer.get().engine_task_stop)
                 else:
-                    self.warning(Localizer.get().engine_task_fail)
-                self.info(Localizer.get().engine_task_save)
-                self.print("")
+                    LogManager.get().warning(Localizer.get().engine_task_fail)
+                LogManager.get().info(Localizer.get().engine_task_save)
+                LogManager.get().print("")
 
                 # 通知
                 self.emit(
@@ -518,7 +528,14 @@ class Translator(Base):
                     },
                 )
         except Exception as e:
-            self.error(f"{Localizer.get().task_failed}", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
         finally:
             # 等待最后的回调执行完毕
             time.sleep(1.0)
@@ -710,6 +727,7 @@ class Translator(Base):
                 if isinstance(response_json, list) and response_json:
                     max_concurrency = len(response_json)
             except Exception:
+                # slots 接口仅用于推导并发上限，失败可忽略（会回退到 rpm/默认值）。
                 pass
 
         if max_concurrency == 0:
@@ -786,7 +804,7 @@ class Translator(Base):
             return None
 
         # 筛选
-        self.print("")
+        LogManager.get().print("")
         items_kvjson: list[Item] = []
         with ProgressBar(transient=True) as progress:
             pid = progress.new()
@@ -816,7 +834,7 @@ class Translator(Base):
                         items.append(item_ex)
 
         # 打印日志
-        self.info(Localizer.get().translator_mtool_optimizer_post_log)
+        LogManager.get().info(Localizer.get().translator_mtool_optimizer_post_log)
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
@@ -842,10 +860,12 @@ class Translator(Base):
 
         # 写入文件并获取实际输出路径（带时间戳）
         output_path = FileManager(self.config).write_to_path(items)
-        self.print("")
+        LogManager.get().print("")
 
-        self.info(Localizer.get().engine_task_save_done.replace("{PATH}", output_path))
-        self.print("")
+        LogManager.get().info(
+            Localizer.get().engine_task_save_done.replace("{PATH}", output_path)
+        )
+        LogManager.get().print("")
 
         # 打开输出文件夹
         if self.config.output_folder_open_on_finish:

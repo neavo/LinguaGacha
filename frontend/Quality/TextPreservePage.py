@@ -13,6 +13,7 @@ from qfluentwidgets import RoundMenu
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from frontend.Quality.TextPreserveEditPanel import TextPreserveEditPanel
 from module.Config import Config
@@ -258,7 +259,7 @@ class TextPreservePage(QualityRulePageBase):
             # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
             self.ignore_next_quality_rule_update = True
         except Exception as e:
-            self.error("Failed to delete rules", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
                 Base.Event.TOAST,
                 {

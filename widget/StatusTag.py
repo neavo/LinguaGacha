@@ -108,6 +108,7 @@ class StatusTag(QLabel):
         try:
             qconfig.themeChanged.disconnect(self.update_style)
         except (TypeError, RuntimeError):
+            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
     def update_style(self) -> None:

@@ -19,6 +19,7 @@ from qfluentwidgets import TableWidget
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -416,7 +417,7 @@ class NameFieldExtractionPage(QWidget, Base):
                 new_items.sort(key=lambda x: x["src"])
                 self.extract_finished.emit(new_items)
             except Exception as e:
-                self.error(Localizer.get().task_failed, e)
+                LogManager.get().error(Localizer.get().task_failed, e)
                 self.extract_failed.emit()
 
         threading.Thread(target=extract_task, daemon=True).start()

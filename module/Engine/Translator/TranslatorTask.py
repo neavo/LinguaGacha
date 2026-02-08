@@ -84,7 +84,7 @@ class TranslatorTask(Base):
                 self.local_flag,
             )
         except Exception as e:
-            self.error(f"{Localizer.get().task_failed}", e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             return {
                 "row_count": 0,
                 "input_tokens": 0,
@@ -334,7 +334,9 @@ class TranslatorTask(Base):
                 input_tokens = 0
                 output_tokens = 0
             else:
-                self.error(f"{Localizer.get().task_failed}\n{msg}", exception)
+                LogManager.get().error(
+                    f"{Localizer.get().task_failed}\n{msg}", exception
+                )
                 return {
                     "row_count": 0,
                     "input_tokens": 0,
@@ -405,53 +407,53 @@ class TranslatorTask(Base):
         if is_force_accept:
             style = "#9ACD32"
             message = Localizer.get().translator_response_check_fail_force
-            log_func = self.warning
+            log_func = LogManager.get().warning
         elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail.replace(
                 "{REASON}", reason
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_TIMEOUT for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail_all.replace(
                 "{REASON}", Localizer.get().response_checker_fail_timeout
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DEGRADATION for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail_all.replace(
                 "{REASON}", reason
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DATA for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail.replace(
                 "{REASON}", reason
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail.replace(
                 "{REASON}", reason
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif all(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "red"
             message = Localizer.get().translator_response_check_fail_all.replace(
                 "{REASON}", reason
             )
-            log_func = self.error
+            log_func = LogManager.get().error
         elif any(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "yellow"
             message = Localizer.get().translator_response_check_fail_part.replace(
                 "{REASON}", reason
             )
-            log_func = self.warning
+            log_func = LogManager.get().warning
         else:
             style = "green"
             message = stats_info
-            log_func = self.info
+            log_func = LogManager.get().info
 
         # 添加日志 (按顺序：统计信息 -> 状态消息 -> 子任务信息)
         header_logs = [stats_info]
@@ -616,7 +618,8 @@ class TranslatorTask(Base):
                 # 执行翻译（同步请求路径）
                 result = translator_task.start()
                 success = bool(result.get("row_count", 0) > 0)
-            except Exception:
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
                 success = False
             finally:
                 # 回调通知

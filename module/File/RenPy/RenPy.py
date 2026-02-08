@@ -2,6 +2,7 @@ import os
 import re
 
 from base.Base import Base
+from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -122,7 +123,7 @@ class RenPy(Base):
             applied, skipped = writer.apply_items_to_lines(lines, items_to_apply)
             if skipped > 0:
                 # 导出阶段的写回是“尽量写回但不写错行”，因此这里记录 skipped 便于排查。
-                self.warning(
+                LogManager.get().warning(
                     f"RENPY 导出写回跳过 {skipped} 条: {rel_path} (applied={applied})",
                     console=False,
                 )

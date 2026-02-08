@@ -8,6 +8,7 @@ from typing import Any
 from typing import Generator
 
 from base.Base import Base
+from base.LogManager import LogManager
 from module.Utils.GapTool import GapTool
 from module.Utils.JSONTool import JSONTool
 
@@ -325,7 +326,10 @@ class LGDatabase(Base):
             # 检查第一行数据结构
             try:
                 first_data = JSONTool.loads(rows[0]["data"])
-            except Exception:
+            except Exception as e:
+                LogManager.get().warning(
+                    f"Failed to decode rules JSON: type={rule_type.value}", e
+                )
                 return []
 
             # 如果是新格式（单行存储列表），直接返回
@@ -334,6 +338,7 @@ class LGDatabase(Base):
 
             # 如果是旧格式（多行存储字典），聚合返回
             result = []
+            had_decode_error = False
             for row in rows:
                 try:
                     data = JSONTool.loads(row["data"])
@@ -342,7 +347,13 @@ class LGDatabase(Base):
                     elif isinstance(data, list):
                         # 兼容性处理：如果混合了列表行
                         result.extend(data)
-                except Exception:
+                except Exception as e:
+                    if not had_decode_error:
+                        LogManager.get().warning(
+                            f"Failed to decode rule row JSON: type={rule_type.value}",
+                            e,
+                        )
+                        had_decode_error = True
                     continue
             return result
 

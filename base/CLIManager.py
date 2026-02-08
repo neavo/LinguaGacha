@@ -7,6 +7,7 @@ from typing import Self
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleIO import QualityRuleIO
@@ -56,7 +57,7 @@ class CLIManager(Base):
                 .log_cli_quality_rule_file_not_found.replace("{ARG}", arg_name)
                 .replace("{PATH}", path)
             )
-            self.error(message)
+            LogManager.get().error(message)
             return False
 
         lower = path.lower()
@@ -66,7 +67,7 @@ class CLIManager(Base):
                 .log_cli_quality_rule_file_unsupported.replace("{ARG}", arg_name)
                 .replace("{PATH}", path)
             )
-            self.error(message)
+            LogManager.get().error(message)
             return False
 
         return True
@@ -96,7 +97,7 @@ class CLIManager(Base):
                     .replace("{PATH}", path)
                     .replace("{REASON}", str(e))
                 )
-                self.error(message, e)
+                LogManager.get().error(message, e)
                 return None
 
         # 默认：不使用任何规则（包含工程内 rules/meta）。
@@ -142,7 +143,7 @@ class CLIManager(Base):
                     .log_cli_text_preserve_mode_invalid.replace("{MODE}", "custom")
                     .replace("{PATH}", "")
                 )
-                self.error(message)
+                LogManager.get().error(message)
                 return None
 
             data = load_rule_list("--text_preserve", text_preserve_path)
@@ -161,7 +162,7 @@ class CLIManager(Base):
                     .log_cli_text_preserve_mode_invalid.replace("{MODE}", "smart")
                     .replace("{PATH}", text_preserve_path)
                 )
-                self.error(message)
+                LogManager.get().error(message)
                 return None
             text_preserve_mode = DataManager.TextPreserveMode.SMART
         else:
@@ -171,7 +172,7 @@ class CLIManager(Base):
                     .log_cli_text_preserve_mode_invalid.replace("{MODE}", "off")
                     .replace("{PATH}", text_preserve_path)
                 )
-                self.error(message)
+                LogManager.get().error(message)
                 return None
             text_preserve_mode = DataManager.TextPreserveMode.OFF
 
@@ -206,7 +207,7 @@ class CLIManager(Base):
                     )
                     .replace("{PATH}", custom_prompt_zh_path)
                 )
-                self.error(message)
+                LogManager.get().error(message)
                 return None
             try:
                 with open(custom_prompt_zh_path, "r", encoding="utf-8-sig") as reader:
@@ -221,7 +222,7 @@ class CLIManager(Base):
                     .replace("{PATH}", custom_prompt_zh_path)
                     .replace("{REASON}", str(e))
                 )
-                self.error(message, e)
+                LogManager.get().error(message, e)
                 return None
 
         if isinstance(custom_prompt_en_path, str) and custom_prompt_en_path:
@@ -233,7 +234,7 @@ class CLIManager(Base):
                     )
                     .replace("{PATH}", custom_prompt_en_path)
                 )
-                self.error(message)
+                LogManager.get().error(message)
                 return None
             try:
                 with open(custom_prompt_en_path, "r", encoding="utf-8-sig") as reader:
@@ -248,7 +249,7 @@ class CLIManager(Base):
                     .replace("{PATH}", custom_prompt_en_path)
                     .replace("{REASON}", str(e))
                 )
-                self.error(message, e)
+                LogManager.get().error(message, e)
                 return None
 
         glossary_src_set = {str(v.get("src", "")).strip() for v in glossary_entries}
@@ -343,42 +344,42 @@ class CLIManager(Base):
         project_path = args.project
         if args.create:
             if not args.input or not project_path:
-                self.error(
+                LogManager.get().error(
                     "Creating a project requires --input and --project arguments."
                 )
                 self.exit()
                 return True
 
             if not os.path.exists(args.input):
-                self.error(f"Input path does not exist: {args.input}")
+                LogManager.get().error(f"Input path does not exist: {args.input}")
                 self.exit()
                 return True
 
-            self.info(f"Creating project at: {project_path}")
+            LogManager.get().info(f"Creating project at: {project_path}")
             try:
                 # Create project
                 DataManager.get().create_project(args.input, project_path)
             except Exception as e:
-                self.error(f"Failed to create project: {e}")
+                LogManager.get().error(f"Failed to create project: {project_path}", e)
                 self.exit()
                 return True
 
         # Load Project
         if project_path:
             if not os.path.exists(project_path):
-                self.error(f"Project file not found: {project_path}")
+                LogManager.get().error(f"Project file not found: {project_path}")
                 self.exit()
                 return True
 
             try:
                 DataManager.get().load_project(project_path)
-                self.info(f"Project loaded: {project_path}")
+                LogManager.get().info(f"Project loaded: {project_path}")
             except Exception as e:
-                self.error(f"Failed to load project: {e}")
+                LogManager.get().error(f"Failed to load project - {project_path}", e)
                 self.exit()
                 return True
         else:
-            self.error("A project file must be specified using --project.")
+            LogManager.get().error("A project file must be specified using --project …")
             self.exit()
             return True
 
@@ -393,7 +394,9 @@ class CLIManager(Base):
         elif self.verify_language(args.source_language):
             config.source_language = BaseLanguage.Enum(args.source_language)
         else:
-            self.error(f"--source_language {Localizer.get().log_cli_verify_language}")
+            LogManager.get().error(
+                f"--source_language {Localizer.get().log_cli_verify_language}"
+            )
             self.exit()
 
         if not isinstance(args.target_language, str):
@@ -401,7 +404,9 @@ class CLIManager(Base):
         elif self.verify_language(args.target_language):
             config.target_language = BaseLanguage.Enum(args.target_language)
         else:
-            self.error(f"--target_language {Localizer.get().log_cli_verify_language}")
+            LogManager.get().error(
+                f"--target_language {Localizer.get().log_cli_verify_language}"
+            )
             self.exit()
 
         quality_snapshot = self.build_quality_snapshot_for_cli(
@@ -471,7 +476,7 @@ class CLIManager(Base):
             dm.set_project_status(Base.ProjectStatus.NONE)
             return True
         except Exception as e:
-            self.error(Localizer.get().task_failed, e)
+            LogManager.get().error(Localizer.get().task_failed, e)
             return False
 
     def translation_reset_failed_sync(self) -> None:
