@@ -49,7 +49,6 @@ class Config:
 
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
-    enable_preceding_on_local: bool = False
     clean_ruby: bool = False
     deduplication_in_trans: bool = True
     deduplication_in_bilingual: bool = True
@@ -144,7 +143,6 @@ class Config:
     def reset_expert_settings(self) -> None:
         # ExpertSettingsPage
         self.preceding_lines_threshold: int = 0
-        self.enable_preceding_on_local: bool = False
         self.clean_ruby: bool = True
         self.deduplication_in_trans: bool = True
         self.deduplication_in_bilingual: bool = True

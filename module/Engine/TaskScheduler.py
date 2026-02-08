@@ -1,5 +1,4 @@
 import math
-import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -123,22 +122,9 @@ class TaskScheduler(Base):
 
     def create_task(self, context: TaskContext) -> TranslatorTask:
         """根据上下文创建 TranslatorTask"""
-        # 重新初始化 local_flag，或者从外部传入。这里为了简单直接计算。
-        api_url = self.model.get("api_url", "")
-
-        local_flag = (
-            re.search(
-                r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-                api_url,
-                flags=re.IGNORECASE,
-            )
-            is not None
-        )
-
         task = TranslatorTask(
             config=self.config,
             model=self.model,
-            local_flag=local_flag,
             items=context.items,
             precedings=context.precedings,
             is_sub_task=not context.is_initial,

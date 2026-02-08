@@ -1,5 +1,4 @@
 import os
-import re
 import threading
 import time
 import webbrowser
@@ -7,7 +6,6 @@ from itertools import zip_longest
 from typing import Any
 from typing import Optional
 
-import httpx
 from rich.progress import TaskID
 
 from base.Base import Base
@@ -687,24 +685,10 @@ class Translator(Base):
         # 设置项目状态
         dm.set_project_status(status)
 
-    # 初始化本地标识
-    def initialize_local_flag(self) -> bool:
-        if not hasattr(self, "model") or self.model is None:
-            return False
-        api_url = self.model.get("api_url", "")
-        return (
-            re.search(
-                r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-                api_url,
-                flags=re.IGNORECASE,
-            )
-            is not None
-        )
-
     def initialize_task_limits(self) -> tuple[int, int, int]:
         """推导任务并发与速率上限。
 
-        - `concurrency_limit=0` 表示自动：优先尝试读取 llama.cpp /slots，其次根据 rpm 估算。
+        - `concurrency_limit=0` 表示自动：根据 rpm 估算。
         - 未配置 rpm 时，沿用旧行为：rps 默认为 concurrency，避免短时间突发。
         """
         if not hasattr(self, "model") or self.model is None:
@@ -713,22 +697,6 @@ class Translator(Base):
         threshold = self.model.get("threshold", {})
         max_concurrency = max(0, int(threshold.get("concurrency_limit", 0) or 0))
         rpm_limit = max(0, int(threshold.get("rpm_limit", 0) or 0))
-
-        # 当 concurrency_limit=0 时，且为本地模型，尝试获取 llama.cpp 槽数。
-        if max_concurrency == 0 and self.initialize_local_flag():
-            try:
-                api_url = self.model.get("api_url", "")
-                response = httpx.get(
-                    re.sub(r"/v1$", "", api_url) + "/slots",
-                    timeout=2.0,
-                )
-                response.raise_for_status()
-                response_json = response.json()
-                if isinstance(response_json, list) and response_json:
-                    max_concurrency = len(response_json)
-            except Exception:
-                # slots 接口仅用于推导并发上限，失败可忽略（会回退到 rpm/默认值）。
-                pass
 
         if max_concurrency == 0:
             if rpm_limit > 0:

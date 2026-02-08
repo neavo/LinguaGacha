@@ -1,5 +1,4 @@
 import itertools
-import re
 import threading
 import time
 from functools import lru_cache
@@ -32,7 +31,6 @@ class TranslatorTask(Base):
         self,
         config: Config,
         model: dict,
-        local_flag: bool,
         items: list[Item],
         precedings: list[Item],
         is_sub_task: bool = False,
@@ -51,7 +49,6 @@ class TranslatorTask(Base):
         ]
         self.config = config
         self.model = model  # 新模型数据结构
-        self.local_flag = local_flag
         self.is_sub_task = is_sub_task  # 是否为拆分后的子任务或重试任务
         self.split_count = 0
         self.token_threshold = 0
@@ -81,7 +78,6 @@ class TranslatorTask(Base):
                 self.items,
                 self.processors,
                 self.precedings,
-                self.local_flag,
             )
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
@@ -97,7 +93,6 @@ class TranslatorTask(Base):
         items: list[Item],
         processors: list[TextProcessor],
         precedings: list[Item],
-        local_flag: bool,
     ) -> dict:
         srcs: list[str] = []
         samples: list[str] = []
@@ -124,7 +119,7 @@ class TranslatorTask(Base):
         api_format = self.model.get("api_format", "OpenAI")
         if api_format != Base.APIFormat.SAKURALLM:
             messages, console_log = self.prompt_builder.generate_prompt(
-                srcs, samples, precedings, local_flag
+                srcs, samples, precedings
             )
         else:
             messages, console_log = self.prompt_builder.generate_prompt_sakura(srcs)
@@ -254,10 +249,9 @@ class TranslatorTask(Base):
         items: list[Item],
         processors: list[TextProcessor],
         precedings: list[Item],
-        local_flag: bool,
     ) -> dict:
         start_time = time.time()
-        prepared = self.prepare_request_data(items, processors, precedings, local_flag)
+        prepared = self.prepare_request_data(items, processors, precedings)
 
         if prepared.get("done"):
             result = prepared.get("result")
@@ -594,22 +588,10 @@ class TranslatorTask(Base):
                 if not model:
                     return
 
-                # 判断是否为本地模型
-                api_url = model.get("api_url", "")
-                local_flag = (
-                    re.search(
-                        r"^http[s]*://localhost|^http[s]*://\d+\.\d+\.\d+\.\d+",
-                        api_url,
-                        flags=re.IGNORECASE,
-                    )
-                    is not None
-                )
-
                 # 创建翻译任务（跳过术语表合并和响应校验）
                 translator_task = TranslatorTask(
                     config=config,
                     model=model,
-                    local_flag=local_flag,
                     items=[item],
                     precedings=[],
                     skip_response_check=True,
