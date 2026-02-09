@@ -51,6 +51,11 @@ class TaskRequester(Base):
         re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
     )
 
+    # OpenAI
+    RE_GPT5: tuple[re.Pattern, ...] = (
+        re.compile(r"gpt-5", flags=re.IGNORECASE),
+    )
+
     # OpenAI Compatible
     RE_GLM: tuple[re.Pattern, ...] = (
         re.compile(r"glm-4\.5", flags=re.IGNORECASE),
@@ -71,7 +76,10 @@ class TaskRequester(Base):
     # 阈值统一按"重复次数"统计，避免不同周期下的字符数语义不一致。
     STREAM_DEGRADATION_REPEAT_THRESHOLD: int = 50
 
-    STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 2048
+    # 这是收尾时的保险检查，不是主流程。
+    # 理论上 150 个有效字符就可能判定重复，但实际文本常夹杂空格和换行。
+    # 所以这里留一定的字符窗口，多看一点，避免漏判。
+    STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 512
 
     SDK_TIMEOUT_BUFFER_S: int = 5
 
@@ -647,7 +655,12 @@ class TaskRequester(Base):
 
         extra_body: dict[str, Any] = {}
 
-        if any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
+        if any(v.search(self.model_id) is not None for v in __class__.RE_GPT5):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["reasoning_effort"] = "none"
+            else:
+                extra_body["reasoning_effort"] = self.thinking_level.lower()
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
             thinking_type = (
                 "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
             )
