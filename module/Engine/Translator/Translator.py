@@ -230,10 +230,6 @@ class Translator(Base):
                 # 5. 更新本地缓存
                 self.extras = dm.get_translation_extras()
 
-                # 隐藏“重置中”提示，进入预过滤阶段。
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-                resetting_toast_active = False
-
                 # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
                 dm.run_project_prefilter(self.config, reason="translation_reset")
 
