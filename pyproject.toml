@@ -24,6 +24,21 @@ dependencies = [
     "charset-normalizer",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pyfakefs",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=module --cov-branch --cov-report=term-missing"
+
+[tool.coverage.run]
+data_file = "tests/.coverage"
+
 [tool.uv]
 override-dependencies = [
     "pyqt5-qt5==5.15.18; sys_platform != 'win32'",
