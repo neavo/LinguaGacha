@@ -26,7 +26,7 @@ class PaginationBar(QWidget):
     BTN_SIZE = 28
     FONT_SIZE = 12
     ICON_SIZE = 16
-    PAGE_SIZE = 100
+    DEFAULT_PAGE_SIZE = 100
 
     # 防抖时间（毫秒）
     EMIT_DEBOUNCE_MS = 80
@@ -34,7 +34,13 @@ class PaginationBar(QWidget):
     # 信号定义
     page_changed = pyqtSignal(int)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        page_size: int | None = None,
+        page_info_template: str | None = None,
+    ) -> None:
         if parent is None:
             super().__init__()
         else:
@@ -44,6 +50,17 @@ class PaginationBar(QWidget):
         self.current_page: int = 1
         self.total_pages: int = 1
         self.total_items: int = 0
+
+        self.page_size: int = (
+            page_size
+            if isinstance(page_size, int) and page_size > 0
+            else self.DEFAULT_PAGE_SIZE
+        )
+        self.page_info_template: str | None = (
+            page_info_template
+            if isinstance(page_info_template, str) and page_info_template
+            else None
+        )
 
         # 合并短时间内的连续翻页点击，避免 UI 主线程渲染排队造成“粘手感”。
         self.pending_emit_page: int | None = None
@@ -128,7 +145,9 @@ class PaginationBar(QWidget):
         self.btn_next.setEnabled(self.current_page < self.total_pages)
 
         # 更新页码信息: "第 1/10 页"
-        page_info = Localizer.get().proofreading_page_page_info
+        page_info = (
+            self.page_info_template or Localizer.get().proofreading_page_page_info
+        )
         page_info = page_info.replace("{CURRENT}", str(self.current_page))
         page_info = page_info.replace("{TOTAL}", str(self.total_pages))
         self.page_info_label.setText(page_info)
@@ -136,7 +155,7 @@ class PaginationBar(QWidget):
     def set_total(self, total: int) -> None:
         """设置总条目数"""
         self.total_items = total
-        self.total_pages = max(1, (total + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+        self.total_pages = max(1, (total + self.page_size - 1) // self.page_size)
         self.current_page = min(self.current_page, self.total_pages)
         self.update_display()
 
@@ -152,7 +171,19 @@ class PaginationBar(QWidget):
 
     def get_page_size(self) -> int:
         """获取每页条数"""
-        return self.PAGE_SIZE
+        return self.page_size
+
+    def set_page_size(self, page_size: int) -> None:
+        if not isinstance(page_size, int) or page_size <= 0:
+            return
+        self.page_size = page_size
+        self.set_total(self.total_items)
+
+    def set_page_info_template(self, template: str) -> None:
+        if not isinstance(template, str) or not template:
+            return
+        self.page_info_template = template
+        self.update_display()
 
     def get_total_items(self) -> int:
         """获取总条目数"""

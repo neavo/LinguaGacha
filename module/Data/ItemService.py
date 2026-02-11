@@ -51,6 +51,16 @@ class ItemService:
             result.append(Item.from_dict(item_dict))
         return result
 
+    def get_all_item_dicts(self) -> list[dict[str, Any]]:
+        """获取 items 的原始 dict 列表（不构造 Item 对象）。
+
+        该方法适合用于后台线程做聚合计算，避免 UI 线程构造大量对象导致卡顿。
+        """
+
+        self.load_item_cache_if_needed()
+        with self.session.state_lock:
+            return list(self.session.item_cache or [])
+
     def save_item(self, item: Item) -> int:
         item_dict = item.to_dict()
 

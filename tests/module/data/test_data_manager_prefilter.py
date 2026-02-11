@@ -270,7 +270,7 @@ def test_apply_project_prefilter_once_updates_batch_and_meta(
     monkeypatch: pytest.MonkeyPatch, data_manager: Any
 ) -> None:
     class FakeLocalizer:
-        data_processing = "processing"
+        toast_processing = "processing"
 
     monkeypatch.setattr(
         data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
@@ -330,7 +330,7 @@ def test_apply_project_prefilter_once_drops_result_when_project_changes_before_w
     monkeypatch: pytest.MonkeyPatch, data_manager: Any
 ) -> None:
     class FakeLocalizer:
-        data_processing = "processing"
+        toast_processing = "processing"
 
     monkeypatch.setattr(
         data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)

@@ -150,3 +150,82 @@ def test_get_and_set_rule_text_roundtrip(database: LGDatabase) -> None:
     database.set_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
 
     assert database.get_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+
+
+def test_get_items_by_file_path_filters_by_json_extract(database: LGDatabase) -> None:
+    id_a1 = database.set_item({"src": "a1", "file_path": "a.txt"})
+    database.set_item({"src": "b1", "file_path": "b.txt"})
+    id_a2 = database.set_item({"src": "a2", "file_path": "a.txt"})
+
+    items = database.get_items_by_file_path("a.txt")
+
+    assert [item["id"] for item in items] == [id_a1, id_a2]
+    assert [item["src"] for item in items] == ["a1", "a2"]
+
+
+def test_delete_items_by_file_path_removes_matching_items(database: LGDatabase) -> None:
+    database.set_item({"src": "a1", "file_path": "a.txt"})
+    id_b1 = database.set_item({"src": "b1", "file_path": "b.txt"})
+    database.set_item({"src": "a2", "file_path": "a.txt"})
+
+    deleted = database.delete_items_by_file_path("a.txt")
+
+    assert deleted == 2
+    assert database.get_all_items() == [
+        {"id": id_b1, "src": "b1", "file_path": "b.txt"}
+    ]
+    assert database.get_items_by_file_path("a.txt") == []
+    assert database.get_items_by_file_path("b.txt") == [
+        {"id": id_b1, "src": "b1", "file_path": "b.txt"}
+    ]
+
+
+def test_update_asset_path_renames_asset_record(database: LGDatabase) -> None:
+    database.add_asset("a.txt", b"raw", original_size=3)
+
+    updated = database.update_asset_path("a.txt", "b.txt")
+
+    assert updated == 1
+    assert database.asset_path_exists("a.txt") is False
+    assert database.asset_path_exists("b.txt") is True
+
+
+def test_delete_asset_removes_record(database: LGDatabase) -> None:
+    database.add_asset("a.bin", b"v1", original_size=2)
+    assert database.get_asset("a.bin") == b"v1"
+
+    database.delete_asset("a.bin")
+
+    assert database.get_asset("a.bin") is None
+
+
+def test_update_asset_replaces_data(database: LGDatabase) -> None:
+    database.add_asset("a.bin", b"v1", original_size=2)
+
+    database.update_asset("a.bin", b"v2", original_size=2)
+
+    assert database.get_asset("a.bin") == b"v2"
+
+
+def test_insert_items_appends_without_clearing(database: LGDatabase) -> None:
+    id_old = database.set_item({"src": "old", "file_path": "old.txt"})
+
+    ids_new = database.insert_items(
+        [
+            {"src": "n1", "file_path": "new.txt"},
+            {"src": "n2", "file_path": "new.txt"},
+        ]
+    )
+
+    assert len(ids_new) == 2
+    items = database.get_all_items()
+    assert [item["id"] for item in items] == [id_old, *ids_new]
+    assert [item["src"] for item in items] == ["old", "n1", "n2"]
+
+
+def test_asset_path_exists_returns_correct_bool(database: LGDatabase) -> None:
+    assert database.asset_path_exists("a.bin") is False
+
+    database.add_asset("a.bin", b"raw", original_size=3)
+
+    assert database.asset_path_exists("a.bin") is True

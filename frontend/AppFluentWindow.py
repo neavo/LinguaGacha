@@ -35,6 +35,7 @@ from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.ToolBoxPage import ToolBoxPage
 from frontend.Extra.TSConversionPage import TSConversionPage
 from frontend.Model.ModelPage import ModelPage
+from frontend.ProjectPage import ProjectPage
 from frontend.Proofreading import ProofreadingPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.GlossaryPage import GlossaryPage
@@ -43,13 +44,12 @@ from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation import TranslationPage
-from frontend.WorkbenchPage import WorkbenchPage
+from frontend.Workbench import WorkbenchPage
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.ProgressToast import ProgressToast
-
 
 # ==================== 图标常量 ====================
 # 这里统一抽取页面/导航用到的图标，便于按语义检查与后续替换。
@@ -61,6 +61,7 @@ ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.COG  # 侧边栏底部：应用设置
 ICON_NAV_MODEL: BaseIcon = BaseIcon.SLACK  # 侧边栏：模型管理
 ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
 ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
+ICON_NAV_WORKBENCH: BaseIcon = BaseIcon.LAYOUT_DASHBOARD  # 侧边栏：工作台
 ICON_NAV_CLOSE_PROJECT: BaseIcon = BaseIcon.SQUARE_POWER  # 侧边栏：关闭当前工程
 
 ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏：基础设置
@@ -175,12 +176,12 @@ class AppFluentWindow(FluentWindow, Base):
 
     def switchTo(self, interface: QWidget):
         """切换页面"""
-        # 如果未加载工程且目标页面是工程依赖页面，则重定向到工作台
-        if not DataManager.get().is_loaded() and interface != self.workbench_page:
+        # 如果未加载工程且目标页面是工程依赖页面，则重定向到工程页
+        if not DataManager.get().is_loaded() and interface != self.project_page:
             if self.is_project_dependent(interface):
                 # 记录用户的原始意图，以便加载后跳转
                 self.pending_target_interface = interface
-                interface = self.workbench_page
+                interface = self.project_page
             else:
                 # 切换到非项目页面（如设置），清除之前的跳转意图
                 self.pending_target_interface = None
@@ -237,6 +238,7 @@ class AppFluentWindow(FluentWindow, Base):
         return [
             "translation_page",
             "proofreading_page",
+            "workbench_page",
             "glossary_page",
             "text_preserve_page",
             "replacement_page",
@@ -404,7 +406,7 @@ class AppFluentWindow(FluentWindow, Base):
             # 二次确认
             box = MessageBox(
                 Localizer.get().warning,
-                Localizer.get().workbench_msg_close_confirm,
+                Localizer.get().project_msg_close_confirm,
                 self,
             )
             box.yesButton.setText(Localizer.get().confirm)
@@ -462,9 +464,9 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 开始添加页面
     def add_pages(self) -> None:
-        # 创建工作台页面（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
-        self.workbench_page = WorkbenchPage("workbench_page", self)
-        self.stackedWidget.addWidget(self.workbench_page)
+        # 创建工程页（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
+        self.project_page = ProjectPage("project_page", self)
+        self.stackedWidget.addWidget(self.project_page)
 
         self.add_project_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
@@ -518,8 +520,8 @@ class AppFluentWindow(FluentWindow, Base):
             position=NavigationItemPosition.BOTTOM,
         )
 
-        # 设置默认页面为工作台页面
-        self.switchTo(self.workbench_page)
+        # 设置默认页面为工程页
+        self.switchTo(self.project_page)
 
         # 初始化侧边栏状态
         self.update_navigation_status()
@@ -551,6 +553,15 @@ class AppFluentWindow(FluentWindow, Base):
             self.proofreading_page,
             ICON_NAV_PROOFREADING.qicon(),
             Localizer.get().app_proofreading_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 工作台（文件管理）
+        self.workbench_page = WorkbenchPage("workbench_page", self)
+        self.addSubInterface(
+            self.workbench_page,
+            ICON_NAV_WORKBENCH.qicon(),
+            Localizer.get().app_workbench_page,
             NavigationItemPosition.SCROLL,
         )
 
@@ -702,7 +713,7 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 工程加载后的处理
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
-        """工程加载后切换到翻译页面"""
+        """工程加载后切换到默认页面"""
         # 更新侧边栏状态
         self.update_navigation_status()
 
@@ -711,14 +722,14 @@ class AppFluentWindow(FluentWindow, Base):
             self.switchTo(self.pending_target_interface)
             self.pending_target_interface = None
         else:
-            self.switchTo(self.translation_page)
+            self.switchTo(self.workbench_page)
 
-        # 刷新工作台最近打开列表
-        self.workbench_page.refresh_recent_list()
+        # 刷新工程页最近打开列表
+        self.project_page.refresh_recent_list()
 
     # 工程卸载后的处理
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
-        """工程卸载后返回工作台"""
+        """工程卸载后返回工程页"""
         # 更新侧边栏状态
         self.update_navigation_status()
-        self.switchTo(self.workbench_page)
+        self.switchTo(self.project_page)
