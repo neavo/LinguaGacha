@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+import pytest
 
 from model.Item import Item
 from module.Config import Config
@@ -53,6 +54,68 @@ def test_process_ncx_replaces_text_nodes(config: Config) -> None:
     assert "new" in xml
 
 
+def test_process_ncx_falls_back_when_lxml_parser_fails(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr("toc.ncx", "<ncx><text>old</text></ncx>")
+
+    from bs4 import BeautifulSoup as RealBeautifulSoup
+
+    def fake_bs(markup: str, features: str):
+        if features == "lxml-xml":
+            raise RuntimeError("boom")
+        return RealBeautifulSoup(markup, features)
+
+    monkeypatch.setattr("module.File.EPUB.EPUBLegacy.BeautifulSoup", fake_bs)
+
+    item = Item.from_dict({"src": "old", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_ncx(reader, writer, "toc.ncx", {"toc.ncx": [item]})
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        xml = result_zip.read("toc.ncx").decode("utf-8")
+    assert "new" in xml
+
+
+def test_process_ncx_skips_empty_text_nodes(config: Config) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr("toc.ncx", "<ncx><text> </text><text>old</text></ncx>")
+
+    item = Item.from_dict({"src": "old", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_ncx(reader, writer, "toc.ncx", {"toc.ncx": [item]})
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        xml = result_zip.read("toc.ncx").decode("utf-8")
+    assert "new" in xml
+
+
+def test_process_ncx_noop_when_no_target_items(config: Config) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr("toc.ncx", "<ncx><text>old</text></ncx>")
+
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_ncx(reader, writer, "toc.ncx", {"toc.ncx": []})
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        xml = result_zip.read("toc.ncx").decode("utf-8")
+    assert "old" in xml
+
+
 def test_process_html_writes_bilingual_on_non_nav_page(config: Config) -> None:
     config.deduplication_in_bilingual = False
     legacy = EPUBLegacy(config)
@@ -76,6 +139,120 @@ def test_process_html_writes_bilingual_on_non_nav_page(config: Config) -> None:
         html = result_zip.read("text/ch1.xhtml").decode("utf-8")
     assert "new" in html
     assert "opacity:0.50;" in html
+
+
+def test_process_html_cleans_class_and_style_and_skips_nested_tags(
+    config: Config,
+) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr(
+            "text/ch1.xhtml",
+            (
+                "<html><body>"
+                "<div class='vrtl keep' style='writing-mode:vertical-rl;color:red;'><p>old</p></div>"
+                "<p>t1</p><p>t2</p>"
+                "</body></html>"
+            ),
+        )
+
+    item = Item.from_dict({"src": "t1", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_html(
+                reader,
+                writer,
+                "text/ch1.xhtml",
+                {"text/ch1.xhtml": [item]},
+                bilingual=False,
+            )
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        html = result_zip.read("text/ch1.xhtml").decode("utf-8")
+    assert "keep" in html
+    assert "writing-mode" not in html
+    assert "color:red" in html
+
+
+def test_process_html_sets_dom_string_when_source_not_in_dom(config: Config) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr("text/ch1.xhtml", "<html><body><p>something</p></body></html>")
+
+    item = Item.from_dict({"src": "old", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_html(
+                reader,
+                writer,
+                "text/ch1.xhtml",
+                {"text/ch1.xhtml": [item]},
+                bilingual=False,
+            )
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        html = result_zip.read("text/ch1.xhtml").decode("utf-8")
+    assert "new" in html
+
+
+def test_process_html_bilingual_skips_nav_page_insertion(config: Config) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr(
+            "text/nav.xhtml",
+            "<html><body><nav epub:type='toc'></nav><p>old</p></body></html>",
+        )
+
+    item = Item.from_dict({"src": "old", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_html(
+                reader,
+                writer,
+                "text/nav.xhtml",
+                {"text/nav.xhtml": [item]},
+                bilingual=True,
+            )
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        html = result_zip.read("text/nav.xhtml").decode("utf-8")
+    assert "new" in html
+    assert "opacity:0.50;" not in html
+
+
+def test_process_html_bilingual_deduplicates_when_src_equals_dst(
+    config: Config,
+) -> None:
+    config.deduplication_in_bilingual = True
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr("text/ch1.xhtml", "<html><body><p>same</p></body></html>")
+
+    item = Item.from_dict(
+        {"src": "same", "dst": "same", "file_type": Item.FileType.EPUB}
+    )
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_html(
+                reader,
+                writer,
+                "text/ch1.xhtml",
+                {"text/ch1.xhtml": [item]},
+                bilingual=True,
+            )
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        html = result_zip.read("text/ch1.xhtml").decode("utf-8")
+    assert "same" in html
+    assert "opacity:0.50;" not in html
 
 
 def test_build_epub_returns_early_when_no_epub_items(
@@ -150,3 +327,42 @@ def test_build_epub_dispatches_css_opf_ncx_html_and_binary(
     assert "newtoc" in ncx
     assert "new" in html
     assert binary == b"RAW"
+
+
+def test_build_epub_writes_raw_css_and_opf_when_decode_fails(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    legacy = EPUBLegacy(config)
+    src = io.BytesIO()
+    bad_css = b"\xff\xfe\x00"
+    bad_opf = b"\xff\xfe\x00"
+    with zipfile.ZipFile(src, "w") as zf:
+        zf.writestr("styles/main.css", bad_css)
+        zf.writestr("content.opf", bad_opf)
+        zf.writestr("text/ch1.xhtml", "<html><body><p>old</p></body></html>")
+
+    items = [
+        Item.from_dict(
+            {
+                "src": "old",
+                "dst": "new",
+                "row": 1,
+                "file_type": Item.FileType.EPUB,
+                "tag": "text/ch1.xhtml",
+            }
+        )
+    ]
+
+    out_path = Path("/workspace/out/bad.epub")
+    legacy.build_epub(
+        original_epub_bytes=src.getvalue(),
+        items=items,
+        out_path=str(out_path),
+        bilingual=False,
+    )
+
+    with zipfile.ZipFile(out_path, "r") as zf:
+        assert zf.read("styles/main.css") == bad_css
+        assert zf.read("content.opf") == bad_opf

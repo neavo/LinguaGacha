@@ -2,6 +2,7 @@ import pytest
 
 from base.BaseLanguage import BaseLanguage
 from module.Filter.LanguageFilter import LanguageFilter
+from module.Text.TextHelper import TextHelper
 
 
 class TestLanguageFilterZH:
@@ -74,3 +75,13 @@ class TestLanguageFilterOtherLanguages:
         self, lang: BaseLanguage.Enum, text: str
     ) -> None:
         assert LanguageFilter.filter(text, lang) is False
+
+
+def test_filter_returns_false_when_any_is_not_callable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DummyLanguage:
+        any = 123
+
+    monkeypatch.setattr(TextHelper, "FAKE", DummyLanguage, raising=False)
+    assert LanguageFilter.filter("whatever", "FAKE") is False

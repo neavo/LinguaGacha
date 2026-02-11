@@ -2,11 +2,15 @@ import re
 import sys
 import types
 
+import pytest
+
+from model.Item import Item
+from module.Config import Config
 from module.Fixer.CodeFixer import CodeFixer
 
 
 def install_fake_text_processor(
-    monkeypatch: object,
+    monkeypatch: pytest.MonkeyPatch,
     pattern: re.Pattern[str] | None,
 ) -> None:
     fake_module = types.ModuleType("module.TextProcessor")
@@ -14,7 +18,7 @@ def install_fake_text_processor(
     class FakeTextProcessor:
         def __init__(
             self,
-            config: object,
+            config: Config,
             item: object,
             quality_snapshot: object = None,
         ) -> None:
@@ -28,11 +32,14 @@ def install_fake_text_processor(
             del custom, text_type
             return pattern
 
-    fake_module.TextProcessor = FakeTextProcessor
+    setattr(fake_module, "TextProcessor", FakeTextProcessor)
     monkeypatch.setitem(sys.modules, "module.TextProcessor", fake_module)
 
 
 class TestCodeFixer:
+    def test_init_does_not_crash(self) -> None:
+        CodeFixer()
+
     def test_is_ordered_subset_returns_mismatch_indexes(self) -> None:
         flag, mismatch_indexes = CodeFixer.is_ordered_subset(
             ["<1>", "<3>"],
@@ -51,28 +58,54 @@ class TestCodeFixer:
         assert flag is False
         assert mismatch_indexes == []
 
-    def test_fix_remove_extra_codes_from_destination(self, monkeypatch: object) -> None:
+    def test_fix_remove_extra_codes_from_destination(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         install_fake_text_processor(monkeypatch, re.compile(r"<[^>]+>"))
 
         src = "A<1>B<2>C"
         dst = "A<1>B<x><2>C"
 
-        assert CodeFixer.fix(src, dst, "RPGMAKER", object()) == "A<1>B<2>C"
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "A<1>B<2>C"
 
-    def test_fix_return_original_when_rule_is_none(self, monkeypatch: object) -> None:
+    def test_fix_return_original_when_destination_has_fewer_codes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_fake_text_processor(monkeypatch, re.compile(r"<[^>]+>"))
+
+        src = "A<1>B<2>C"
+        dst = "A<1>BC"
+
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == dst
+
+    def test_fix_preserves_whitespace_matches_in_regex(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_fake_text_processor(monkeypatch, re.compile(r"\s+|<[^>]+>"))
+
+        src = "A<1> B<2> C"
+        dst = "A<1>  B<x><2> C"
+
+        assert (
+            CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "A<1>  B<2> C"
+        )
+
+    def test_fix_return_original_when_rule_is_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         install_fake_text_processor(monkeypatch, None)
 
         src = "A<1>B"
         dst = "A<1><x>B"
 
-        assert CodeFixer.fix(src, dst, "RPGMAKER", object()) == dst
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == dst
 
     def test_fix_return_original_when_not_ordered_subset(
-        self, monkeypatch: object
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         install_fake_text_processor(monkeypatch, re.compile(r"<[^>]+>"))
 
         src = "A<1>B<2>C"
         dst = "A<1><x>B<3>C"
 
-        assert CodeFixer.fix(src, dst, "RPGMAKER", object()) == dst
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == dst

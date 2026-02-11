@@ -1,3 +1,4 @@
+from typing import cast
 from types import SimpleNamespace
 import threading
 from unittest.mock import MagicMock
@@ -7,6 +8,7 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Data.ProjectSession import ProjectSession
 from module.Data.TranslationItemService import TranslationItemService
 
 
@@ -15,7 +17,7 @@ def build_service(db: object | None) -> TranslationItemService:
         state_lock=threading.RLock(),
         db=db,
     )
-    return TranslationItemService(session)
+    return TranslationItemService(cast(ProjectSession, session))
 
 
 def test_get_items_for_translation_returns_cached_items_for_new_and_continue() -> None:
@@ -107,7 +109,47 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
     assert logger.warning.call_count == 1
 
 
+def test_get_items_for_translation_reset_skips_missing_asset_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = SimpleNamespace(
+        get_all_asset_paths=MagicMock(return_value=["a.txt", "b.txt"]),
+        get_asset=MagicMock(side_effect=[None, b"c2"]),
+    )
+    service = build_service(db)
+
+    class FakeFileManager:
+        def __init__(self, config: Config) -> None:
+            del config
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            return [Item(src=f"{rel_path}:{content.decode()}")]
+
+    monkeypatch.setattr(
+        "module.Data.TranslationItemService.FileManager", FakeFileManager
+    )
+    monkeypatch.setattr(
+        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        staticmethod(lambda data: b"decoded-" + data),
+    )
+
+    items = service.get_items_for_translation(Config(), Base.TranslationMode.RESET)
+
+    assert [item.get_src() for item in items] == ["b.txt:decoded-c2"]
+
+
 def test_get_items_for_translation_returns_empty_when_db_missing() -> None:
     service = build_service(None)
 
     assert service.get_items_for_translation(Config(), Base.TranslationMode.NEW) == []
+
+
+def test_get_items_for_translation_unknown_mode_falls_back_to_all_items() -> None:
+    db = SimpleNamespace(
+        get_all_items=MagicMock(return_value=[{"id": 1, "src": "A", "dst": "B"}])
+    )
+    service = build_service(db)
+
+    items = service.get_items_for_translation(Config(), "UNKNOWN")  # type: ignore[arg-type]
+
+    assert [item.get_id() for item in items] == [1]

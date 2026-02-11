@@ -24,6 +24,25 @@ def test_read_from_stream_splits_lines(
     assert all(item.get_file_type() == Item.FileType.TXT for item in items)
 
 
+def test_read_from_path_reads_multiple_files(
+    fs,
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("module.File.TXT.TextHelper.get_encoding", lambda **_: "utf-8")
+
+    fs.create_file("/fake/input/a.txt", contents="A\nB\n", create_missing_dirs=True)
+    fs.create_file("/fake/input/b.txt", contents="C", create_missing_dirs=True)
+
+    items = TXT(config).read_from_path(
+        ["/fake/input/a.txt", "/fake/input/b.txt"],
+        "/fake/input",
+    )
+
+    assert [item.get_src() for item in items] == ["A", "B", "C"]
+    assert {item.get_file_path() for item in items} == {"a.txt", "b.txt"}
+
+
 def test_write_to_path_writes_translated_and_bilingual_files(
     config: Config,
     dummy_data_manager: DummyDataManager,

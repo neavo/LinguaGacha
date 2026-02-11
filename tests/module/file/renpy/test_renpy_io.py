@@ -134,6 +134,107 @@ def test_write_to_path_logs_skipped_and_writes_output(
     assert "RENPY 导出写回跳过 1 条" in warning_messages[0]
 
 
+def test_write_to_path_uniform_name_when_config_enabled_and_no_skipped(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config.write_translated_name_fields_to_file = True
+    handler = RenPy(config)
+    renpy_module = sys.modules[RenPy.__module__]
+
+    monkeypatch.setattr(renpy_module.DataManager, "get", lambda: dummy_data_manager)
+    monkeypatch.setattr(renpy_module.TextHelper, "get_encoding", lambda **_: "utf-8")
+
+    warning_messages: list[str] = []
+
+    class DummyLogger:
+        def warning(self, msg: str, console: bool = False) -> None:
+            del console
+            warning_messages.append(msg)
+
+    monkeypatch.setattr(renpy_module.LogManager, "get", lambda: DummyLogger())
+
+    observed_name_dst: list[str | list[str] | None] = []
+
+    class DummyWriter:
+        def apply_items_to_lines(
+            self,
+            lines: list[str],
+            items_to_apply: list[Item],
+        ) -> tuple[int, int]:
+            observed_name_dst.append(items_to_apply[0].get_name_dst())
+            lines[-1] = '    e "patched"'
+            return 1, 0
+
+    monkeypatch.setattr(renpy_module, "RenPyWriter", DummyWriter)
+
+    rel_path = "script/a.rpy"
+    dummy_data_manager.assets[rel_path] = b'translate chinese start:\n    e "old"'
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "name_src": "Alice",
+            "name_dst": "Alicia",
+            "file_type": Item.FileType.RENPY,
+            "file_path": rel_path,
+            "extra_field": {
+                "renpy": {
+                    "pair": {"target_line": 2},
+                    "block": {"lang": "chinese", "label": "start"},
+                    "digest": {
+                        "template_raw_sha1": "a",
+                        "template_raw_rstrip_sha1": "a",
+                    },
+                }
+            },
+        }
+    )
+
+    handler.write_to_path([item])
+
+    out_file = Path(dummy_data_manager.get_translated_path()) / rel_path
+    assert out_file.exists()
+    assert observed_name_dst == ["Alicia"]
+    assert warning_messages == []
+
+
+def test_write_to_path_skips_when_original_asset_missing(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = RenPy(config)
+    renpy_module = sys.modules[RenPy.__module__]
+    monkeypatch.setattr(renpy_module.DataManager, "get", lambda: dummy_data_manager)
+
+    rel_path = "script/missing.rpy"
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "file_type": Item.FileType.RENPY,
+            "file_path": rel_path,
+            "extra_field": {
+                "renpy": {
+                    "pair": {"target_line": 2},
+                    "block": {"lang": "chinese", "label": "start"},
+                    "digest": {
+                        "template_raw_sha1": "a",
+                        "template_raw_rstrip_sha1": "a",
+                    },
+                }
+            },
+        }
+    )
+
+    handler.write_to_path([item])
+
+    out_file = Path(dummy_data_manager.get_translated_path()) / rel_path
+    assert out_file.exists() is False
+
+
 def test_build_items_for_writeback_mixed_mode_revert_and_uniform(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,

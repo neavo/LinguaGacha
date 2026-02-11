@@ -1,3 +1,4 @@
+from typing import cast
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ import pytest
 
 from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
+from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
 
 
@@ -18,7 +20,7 @@ def build_service(db: object | None) -> tuple[RuleService, SimpleNamespace]:
         rule_cache={},
         rule_text_cache={},
     )
-    return RuleService(session), session
+    return RuleService(cast(ProjectSession, session)), session
 
 
 def test_get_and_set_rules_cache_behavior() -> None:
@@ -36,6 +38,32 @@ def test_get_and_set_rules_cache_behavior() -> None:
     session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "cached"
     service.set_rules_cached(LGDatabase.RuleType.GLOSSARY, [{"src": "A", "dst": "甲"}])
     db.set_rules.assert_called_once()
+    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+
+
+def test_get_rules_cached_returns_empty_when_db_missing() -> None:
+    service, session = build_service(None)
+    assert session.rule_cache == {}
+
+    assert service.get_rules_cached(LGDatabase.RuleType.GLOSSARY) == []
+
+
+def test_get_rule_text_cached_returns_empty_when_db_missing() -> None:
+    service, session = build_service(None)
+    assert session.rule_text_cache == {}
+
+    assert service.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == ""
+
+
+def test_set_rules_cached_updates_cache_even_when_db_missing() -> None:
+    service, session = build_service(None)
+    session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "stale"
+
+    service.set_rules_cached(LGDatabase.RuleType.GLOSSARY, [{"src": "A", "dst": "B"}])
+
+    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
+        {"src": "A", "dst": "B"}
+    ]
     assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
 
 
@@ -59,6 +87,16 @@ def test_get_and_set_rule_text_cache_behavior() -> None:
     db.set_rule_text.assert_called_once_with(
         LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "new"
     )
+    assert LGDatabase.RuleType.CUSTOM_PROMPT_ZH not in session.rule_cache
+
+
+def test_set_rule_text_cached_updates_cache_even_when_db_missing() -> None:
+    service, session = build_service(None)
+    session.rule_cache[LGDatabase.RuleType.CUSTOM_PROMPT_ZH] = [{"src": "A"}]
+
+    service.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+
+    assert session.rule_text_cache[LGDatabase.RuleType.CUSTOM_PROMPT_ZH] == "prompt"
     assert LGDatabase.RuleType.CUSTOM_PROMPT_ZH not in session.rule_cache
 
 
@@ -160,3 +198,38 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
 
     assert loaded == ["术语表"]
     assert logger.error.call_count == 1
+
+
+def test_initialize_project_rules_logs_and_skips_custom_prompts_when_open_fails(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    root_path = Path("/workspace/rule_service_open_fail")
+    root_path.mkdir(parents=True, exist_ok=True)
+    custom_zh = root_path / "zh.txt"
+    custom_en = root_path / "en.txt"
+    custom_zh.write_text("中文提示词", encoding="utf-8")
+    custom_en.write_text("English prompt", encoding="utf-8")
+
+    config = Config(
+        custom_prompt_zh_default_preset=str(custom_zh),
+        custom_prompt_en_default_preset=str(custom_en),
+    )
+    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+
+    def fake_open(*args: object, **kwargs: object) -> object:
+        raise OSError("boom")
+
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    logger = MagicMock()
+    monkeypatch.setattr("module.Data.RuleService.LogManager.get", lambda: logger)
+
+    db = MagicMock()
+    service, _ = build_service(db)
+
+    loaded = service.initialize_project_rules(db)
+
+    assert loaded == []
+    assert logger.error.call_count == 2
+    db.set_rule_text.assert_not_called()
