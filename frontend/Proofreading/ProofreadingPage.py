@@ -162,6 +162,7 @@ class ProofreadingPage(QWidget, Base):
         self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
+        self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
         self.subscribe(
             Base.Event.PROJECT_PREFILTER_UPDATED, self.on_project_prefilter_updated
@@ -197,6 +198,15 @@ class ProofreadingPage(QWidget, Base):
         del event_data
         self.mark_data_stale(new_cycle=True)
         self.schedule_reload("prefilter_updated")
+
+    def on_project_file_update(self, event: Base.Event, event_data: dict) -> None:
+        """工程文件变更（工作台增删改重命名）后同步校对页数据。"""
+        del event
+        del event_data
+        # 文件内容/路径变更会影响 items 快照与筛选范围；即便页面不可见也要标记 stale，
+        # 这样用户切回校对页时 showEvent 才会触发自动 reload。
+        self.mark_data_stale(new_cycle=True)
+        self.schedule_reload("project_file_update")
 
     def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
         if not event_data:

@@ -32,8 +32,10 @@ def build_manager(*, loaded: bool = True) -> Any:
             delete_items_by_file_path=MagicMock(return_value=0),
             delete_asset=MagicMock(),
             update_asset=MagicMock(),
+            update_asset_path=MagicMock(return_value=1),
             insert_items=MagicMock(return_value=[]),
             asset_path_exists=MagicMock(return_value=False),
+            get_all_asset_paths=MagicMock(return_value=[]),
             update_batch=MagicMock(),
         )
     dm.session = SimpleNamespace(
@@ -556,6 +558,9 @@ def test_update_file_matches_by_src_and_returns_stats(
     dm = build_manager()
     dm.session.asset_decompress_cache = {"a.txt": b"cached"}
 
+    dm.session.db.asset_path_exists = MagicMock(side_effect=lambda p: p == "a.txt")
+    dm.session.db.get_all_asset_paths = MagicMock(return_value=["a.txt"])
+
     dm.session.db.get_items_by_file_path = MagicMock(
         return_value=[
             {
@@ -633,14 +638,16 @@ def test_update_file_matches_by_src_and_returns_stats(
     assert "a.txt" not in dm.session.asset_decompress_cache
     dm.item_service.clear_item_cache.assert_called_once()
     dm.emit.assert_called_once_with(
-        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+        Base.Event.PROJECT_FILE_UPDATE,
+        {"rel_path": "new.txt", "old_rel_path": "a.txt"},
     )
 
     inserted = dm.session.db.insert_items.call_args.args[0]
     assert inserted[0]["dst"] == "A1"
     assert inserted[0]["name_dst"] == "N1"
-    assert inserted[1]["dst"] == "A2"
-    assert inserted[1]["name_dst"] == "N2"
+    # 同 src 存在多种译法时：选择出现次数最多的 dst；并列则取最早出现的。
+    assert inserted[1]["dst"] == "A1"
+    assert inserted[1]["name_dst"] == "N1"
     assert inserted[2]["src"] == "c"
     assert inserted[2]["dst"] == ""
 

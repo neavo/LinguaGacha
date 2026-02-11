@@ -204,6 +204,32 @@ class LGDatabase(Base):
             )
             local_conn.commit()
 
+    def update_asset_path(
+        self,
+        old_path: str,
+        new_path: str,
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
+        """更新 assets.path（文件名/相对路径）。
+
+        返回：更新的行数。
+        """
+
+        if conn is not None:
+            cursor = conn.execute(
+                "UPDATE assets SET path = ? WHERE path = ?",
+                (new_path, old_path),
+            )
+            return int(cursor.rowcount)
+
+        with self.connection() as local_conn:
+            cursor = local_conn.execute(
+                "UPDATE assets SET path = ? WHERE path = ?",
+                (new_path, old_path),
+            )
+            local_conn.commit()
+            return int(cursor.rowcount)
+
     def get_asset(self, path: str) -> bytes | None:
         """获取资产数据"""
         with self.connection() as conn:
@@ -235,7 +261,8 @@ class LGDatabase(Base):
     def get_all_asset_paths(self) -> list[str]:
         """获取所有资产路径"""
         with self.connection() as conn:
-            cursor = conn.execute("SELECT path FROM assets ORDER BY path")
+            # 用 id 保持“插入顺序”稳定：更新文件名(path)不会导致工作台列表位置跳动。
+            cursor = conn.execute("SELECT path FROM assets ORDER BY id")
             return [row["path"] for row in cursor.fetchall()]
 
     def get_asset_count(self) -> int:

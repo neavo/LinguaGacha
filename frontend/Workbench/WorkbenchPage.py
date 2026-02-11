@@ -1,5 +1,4 @@
 import threading
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +8,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -22,10 +22,10 @@ from qfluentwidgets import StrongBodyLabel
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
-from base.LogManager import LogManager
 from frontend.Workbench.WorkbenchTableWidget import WorkbenchTableWidget
 from model.Item import Item
 from module.Data.DataManager import DataManager
+from module.Data.DataManager import WorkbenchSnapshot
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
@@ -97,10 +97,18 @@ class WorkbenchPage(ScrollArea, Base):
         self.setWidgetResizable(True)
         self.enableTransparentBackground()
         self.file_entries: list[dict[str, Any]] = []
+        # 刷新后希望聚焦/保持选中的文件（例如“更新文件”重命名后）。
+        self.pending_focus_rel_path: str | None = None
 
         self.table_widget: WorkbenchTableWidget | None = None
         self.command_bar_card: CommandBarCard | None = None
         self.btn_add_file = None
+
+        # 文件列表的聚合计算可能很重（大量 items 时），统一放到后台线程做。
+        self.refresh_lock = threading.Lock()
+        self.refresh_cond = threading.Condition(self.refresh_lock)
+        self.refresh_running: bool = False
+        self.refresh_pending: bool = False
 
         self.container = QWidget(self)
         self.container.setStyleSheet("background: transparent;")
@@ -138,7 +146,7 @@ class WorkbenchPage(ScrollArea, Base):
             unit_file,
         )
         self.card_total_items = StatCard(
-            Localizer.get().workbench_stat_total_items,
+            Localizer.get().workbench_stat_total_lines,
             unit_line,
         )
         self.card_translated = StatCard(
@@ -167,6 +175,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.table_widget.update_clicked.connect(self.on_update_file)
         self.table_widget.reset_clicked.connect(self.on_reset_file)
         self.table_widget.delete_clicked.connect(self.on_delete_file)
+        self.table_widget.itemSelectionChanged.connect(self.update_controls_enabled)
         self.main_layout.addWidget(self.table_widget, 1)
 
     def build_footer_section(self) -> None:
@@ -198,7 +207,8 @@ class WorkbenchPage(ScrollArea, Base):
     def update_controls_enabled(self) -> None:
         loaded = DataManager.get().is_loaded()
         busy = self.is_engine_busy()
-        readonly = (not loaded) or busy
+        file_op_running = DataManager.get().is_file_op_running()
+        readonly = (not loaded) or busy or file_op_running
 
         if self.btn_add_file is not None:
             self.btn_add_file.setEnabled(not readonly)
@@ -218,77 +228,106 @@ class WorkbenchPage(ScrollArea, Base):
 
     def on_project_file_update(self, event: Base.Event, data: dict) -> None:
         del event
-        del data
+        snapshot = data.get("snapshot")
+        if isinstance(snapshot, WorkbenchSnapshot):
+            self.apply_snapshot(snapshot)
+            return
+
+        rel_path = data.get("rel_path")
+        if isinstance(rel_path, str) and rel_path:
+            # 后台更新完成后刷新列表，并尽量将焦点保持在更新后的文件上。
+            self.pending_focus_rel_path = rel_path
         self.refresh_all()
 
     def refresh_all(self) -> None:
-        dm = DataManager.get()
+        self.request_refresh()
 
-        asset_paths = dm.get_all_asset_paths()
-        items = dm.get_all_items()
+    def request_refresh(self) -> None:
+        start_worker = False
+        with self.refresh_cond:
+            self.refresh_pending = True
+            if self.refresh_running:
+                self.refresh_cond.notify_all()
+                return
 
-        file_count = len(asset_paths)
-        total_items = len(items)
+            self.refresh_running = True
+            start_worker = True
 
-        translated = 0
-        for item in GapTool.iter(items):
-            if item.get_status() in (
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.PROCESSED_IN_PAST,
-            ):
-                translated += 1
-        untranslated = max(0, total_items - translated)
+        if not start_worker:
+            return
 
-        self.card_file_count.set_value(file_count)
-        self.card_total_items.set_value(total_items)
-        self.card_translated.set_value(translated)
-        self.card_untranslated.set_value(untranslated)
+        threading.Thread(target=self.refresh_worker, daemon=True).start()
 
-        count_by_path: dict[str, int] = defaultdict(int)
-        file_type_by_path: dict[str, Item.FileType] = {}
-        for item in GapTool.iter(items):
-            count_by_path[item.get_file_path()] += 1
-            path = item.get_file_path()
-            if path and path not in file_type_by_path:
-                file_type = item.get_file_type()
-                if file_type != Item.FileType.NONE:
-                    file_type_by_path[path] = file_type
+    def refresh_worker(self) -> None:
+        while True:
+            with self.refresh_cond:
+                if not self.refresh_pending:
+                    self.refresh_running = False
+                    return
+                self.refresh_pending = False
+
+            snapshot = DataManager.get().build_workbench_snapshot()
+            self.emit(Base.Event.PROJECT_FILE_UPDATE, {"snapshot": snapshot})
+
+    def apply_snapshot(self, snapshot: WorkbenchSnapshot) -> None:
+        selected_rel_path = (
+            self.table_widget.get_selected_rel_path() if self.table_widget else ""
+        )
+
+        self.card_file_count.set_value(snapshot.file_count)
+        self.card_total_items.set_value(snapshot.total_items)
+        self.card_translated.set_value(snapshot.translated)
+        self.card_untranslated.set_value(snapshot.untranslated)
 
         entries: list[dict[str, Any]] = []
-        for rel_path in GapTool.iter(asset_paths):
-            fmt = self.get_format_label(file_type_by_path.get(rel_path), rel_path)
+        for entry in GapTool.iter(snapshot.entries):
+            fmt = self.get_format_label(entry.file_type, entry.rel_path)
             entries.append(
                 {
-                    "rel_path": rel_path,
+                    "rel_path": entry.rel_path,
                     "format": fmt,
-                    "item_count": count_by_path.get(rel_path, 0),
+                    "item_count": entry.item_count,
                 }
             )
 
         self.file_entries = entries
-
         if self.table_widget is not None:
             self.table_widget.set_entries(entries, fixed_rows=self.TABLE_MIN_ROWS)
+
+            focus_rel_path = self.pending_focus_rel_path or selected_rel_path
+            self.pending_focus_rel_path = None
+            if focus_rel_path:
+                for row, entry in enumerate(entries):
+                    if entry.get("rel_path") == focus_rel_path:
+                        self.table_widget.selectRow(row)
+                        cell = self.table_widget.item(
+                            row, WorkbenchTableWidget.COL_FILE
+                        )
+                        if cell is not None:
+                            self.table_widget.scrollToItem(
+                                cell, QAbstractItemView.ScrollHint.PositionAtCenter
+                            )
+                        break
         self.update_controls_enabled()
 
     def get_format_label(self, file_type: Item.FileType | None, rel_path: str) -> str:
         if file_type == Item.FileType.MD:
-            return Localizer.get().project_fmt_markdown
+            return Localizer.get().workbench_fmt_markdown
         if file_type == Item.FileType.RENPY:
-            return Localizer.get().project_fmt_renpy
+            return Localizer.get().workbench_fmt_renpy
         if file_type == Item.FileType.KVJSON:
-            return Localizer.get().project_fmt_mtool
+            return Localizer.get().workbench_fmt_mtool
         if file_type == Item.FileType.MESSAGEJSON:
-            return Localizer.get().project_fmt_sextractor
+            return Localizer.get().workbench_fmt_sextractor
         if file_type == Item.FileType.TRANS:
-            return Localizer.get().project_fmt_trans_proj
+            return Localizer.get().workbench_fmt_trans_proj
         if file_type == Item.FileType.WOLFXLSX:
-            return Localizer.get().project_fmt_wolf
+            return Localizer.get().workbench_fmt_wolf
         if file_type == Item.FileType.XLSX:
             # 这里不区分导出源，按大类展示。
-            return Localizer.get().project_fmt_trans_export
+            return Localizer.get().workbench_fmt_trans_export
         if file_type == Item.FileType.EPUB:
-            return Localizer.get().project_fmt_ebook
+            return Localizer.get().workbench_fmt_ebook
 
         suffix = Path(rel_path).suffix.lower()
         if suffix in {".srt", ".ass"}:
@@ -298,10 +337,6 @@ class WorkbenchPage(ScrollArea, Base):
 
         fallback = Path(rel_path).suffix.lstrip(".")
         return fallback.upper() if fallback else "-"
-
-    def run_in_thread(self, fn) -> None:
-        t = threading.Thread(target=fn, daemon=True)
-        t.start()
 
     def on_add_file_clicked(self) -> None:
         if self.is_engine_busy():
@@ -322,29 +357,7 @@ class WorkbenchPage(ScrollArea, Base):
         if not file_path:
             return
 
-        def worker() -> None:
-            try:
-                DataManager.get().add_file(file_path)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().workbench_toast_add_success,
-                    },
-                )
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to add file: {file_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-
-        self.run_in_thread(worker)
+        DataManager.get().schedule_add_file(file_path)
 
     def on_update_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
@@ -365,38 +378,17 @@ class WorkbenchPage(ScrollArea, Base):
         if not file_path:
             return
 
-        def worker() -> None:
-            try:
-                stats = DataManager.get().update_file(rel_path, file_path)
-                matched = str(stats.get("matched", 0))
-                new_count = str(stats.get("new", 0))
-                stat_text = (
-                    Localizer.get()
-                    .workbench_update_stat.replace("{MATCHED}", matched)
-                    .replace("{NEW}", new_count)
-                )
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": f"{Localizer.get().workbench_toast_update_success} - {stat_text}",
-                    },
-                )
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(
-                    f"Failed to update file: {rel_path} -> {file_path}", e
-                )
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
+        box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().workbench_msg_update_confirm,
+            self,
+        )
+        box.yesButton.setText(Localizer.get().confirm)
+        box.cancelButton.setText(Localizer.get().cancel)
+        if not box.exec():
+            return
 
-        self.run_in_thread(worker)
+        DataManager.get().schedule_update_file(rel_path, file_path)
 
     def on_reset_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
@@ -412,29 +404,7 @@ class WorkbenchPage(ScrollArea, Base):
         if not box.exec():
             return
 
-        def worker() -> None:
-            try:
-                DataManager.get().reset_file(rel_path)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().workbench_toast_reset_success,
-                    },
-                )
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to reset file: {rel_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-
-        self.run_in_thread(worker)
+        DataManager.get().schedule_reset_file(rel_path)
 
     def on_delete_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
@@ -450,26 +420,4 @@ class WorkbenchPage(ScrollArea, Base):
         if not box.exec():
             return
 
-        def worker() -> None:
-            try:
-                DataManager.get().delete_file(rel_path)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().workbench_toast_delete_success,
-                    },
-                )
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to delete file: {rel_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-
-        self.run_in_thread(worker)
+        DataManager.get().schedule_delete_file(rel_path)

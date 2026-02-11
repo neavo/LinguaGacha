@@ -180,6 +180,16 @@ def test_delete_items_by_file_path_removes_matching_items(database: LGDatabase) 
     ]
 
 
+def test_update_asset_path_renames_asset_record(database: LGDatabase) -> None:
+    database.add_asset("a.txt", b"raw", original_size=3)
+
+    updated = database.update_asset_path("a.txt", "b.txt")
+
+    assert updated == 1
+    assert database.asset_path_exists("a.txt") is False
+    assert database.asset_path_exists("b.txt") is True
+
+
 def test_delete_asset_removes_record(database: LGDatabase) -> None:
     database.add_asset("a.bin", b"v1", original_size=2)
     assert database.get_asset("a.bin") == b"v1"

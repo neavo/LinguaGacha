@@ -70,7 +70,7 @@ class WorkbenchTableWidget(TableWidget):
             [
                 Localizer.get().workbench_col_file_path,
                 Localizer.get().workbench_col_format,
-                Localizer.get().workbench_col_item_count,
+                Localizer.get().workbench_col_line_count,
                 Localizer.get().workbench_col_actions,
             ]
         )
@@ -299,6 +299,12 @@ class WorkbenchTableWidget(TableWidget):
             )
         )
         menu.exec(a0.globalPos())
+
+    def get_selected_rel_path(self) -> str:
+        row = self.get_selected_row()
+        if row < 0:
+            return ""
+        return self.get_rel_path_at_row(row)
 
     def set_vertical_header_labels(self, labels: list[str]) -> None:
         if not labels:
