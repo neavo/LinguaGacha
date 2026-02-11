@@ -1070,9 +1070,13 @@ class ProjectPage(ScrollArea, Base):
         self.recent_projects_container.setVisible(False)
 
         # 清除旧的选中显示（如果存在）
+        if self.project_info_panel:
+            self.project_info_panel.deleteLater()
+            self.project_info_panel = None
+
         if self.selected_file_display:
             self.selected_file_display.deleteLater()
-            self.project_info_panel.deleteLater()
+            self.selected_file_display = None
 
         # 显示选中的文件
         file_name = Path(path).name

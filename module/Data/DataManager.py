@@ -883,7 +883,20 @@ class DataManager(Base):
         asset_paths = self.get_all_asset_paths()
         item_dicts = self.item_service.get_all_item_dicts()
 
-        total_items = len(item_dicts)
+        # 工作台的条目统计口径对齐“可翻译条目”，避免把预过滤跳过项也算作未翻译。
+        counted_statuses = {
+            Base.ProjectStatus.NONE,
+            Base.ProjectStatus.PROCESSING,
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.PROCESSED_IN_PAST,
+            Base.ProjectStatus.ERROR,
+        }
+        translated_statuses = {
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.PROCESSED_IN_PAST,
+        }
+
+        total_items = 0
         translated = 0
         count_by_path: dict[str, int] = defaultdict(int)
         file_type_by_path: dict[str, Item.FileType] = {}
@@ -892,29 +905,27 @@ class DataManager(Base):
             if not isinstance(rel_path, str) or rel_path == "":
                 continue
 
-            count_by_path[rel_path] += 1
+            if rel_path not in file_type_by_path:
+                raw_type = item.get("file_type")
+                if (
+                    isinstance(raw_type, str)
+                    and raw_type
+                    and raw_type != Item.FileType.NONE
+                ):
+                    try:
+                        file_type_by_path[rel_path] = Item.FileType(raw_type)
+                    except ValueError:
+                        # 旧数据或外部导入可能存在未知类型，这里保持 NONE。
+                        pass
 
             status = item.get("status", Base.ProjectStatus.NONE)
-            if status in (
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.PROCESSED_IN_PAST,
-            ):
+            if status not in counted_statuses:
+                continue
+
+            total_items += 1
+            count_by_path[rel_path] += 1
+            if status in translated_statuses:
                 translated += 1
-
-            if rel_path in file_type_by_path:
-                continue
-
-            raw_type = item.get("file_type")
-            if not isinstance(raw_type, str) or raw_type == "":
-                continue
-            if raw_type == Item.FileType.NONE:
-                continue
-
-            try:
-                file_type_by_path[rel_path] = Item.FileType(raw_type)
-            except ValueError:
-                # 旧数据或外部导入可能存在未知类型，这里保持 NONE。
-                continue
 
         untranslated = max(0, total_items - translated)
         entries: list[WorkbenchFileEntrySnapshot] = []
@@ -956,6 +967,8 @@ class DataManager(Base):
             )
             try:
                 self.add_file(file_path)
+                # 文件变更会引入/移除条目：需要重新跑预过滤，确保跳过/重复等状态一致。
+                self.run_project_prefilter(Config().load(), reason="file_op")
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,
@@ -994,6 +1007,7 @@ class DataManager(Base):
             )
             try:
                 self.update_file(rel_path, new_file_path)
+                self.run_project_prefilter(Config().load(), reason="file_op")
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,
@@ -1035,6 +1049,7 @@ class DataManager(Base):
             )
             try:
                 self.reset_file(rel_path)
+                self.run_project_prefilter(Config().load(), reason="file_op")
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,
@@ -1073,6 +1088,7 @@ class DataManager(Base):
             )
             try:
                 self.delete_file(rel_path)
+                self.run_project_prefilter(Config().load(), reason="file_op")
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,

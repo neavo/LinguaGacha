@@ -287,33 +287,85 @@ class LGDatabase(Base):
     def get_items_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
         """按 file_path（JSON 内字段）获取翻译条目"""
         with self.connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, data FROM items WHERE json_extract(data, '$.file_path') = ? ORDER BY id",
-                (file_path,),
-            )
-            result = []
-            for row in GapTool.iter(cursor):
-                data = JSONTool.loads(row["data"])
-                data["id"] = row["id"]
-                result.append(data)
-            return result
+            try:
+                cursor = conn.execute(
+                    "SELECT id, data FROM items WHERE json_extract(data, '$.file_path') = ? ORDER BY id",
+                    (file_path,),
+                )
+                result: list[dict[str, Any]] = []
+                for row in GapTool.iter(cursor):
+                    data = JSONTool.loads(row["data"])
+                    data["id"] = row["id"]
+                    result.append(data)
+                return result
+            except sqlite3.OperationalError as e:
+                # 部分运行环境可能缺少 SQLite JSON1 扩展（json_extract 不可用）。
+                if "json_extract" not in str(e):
+                    raise
+
+                cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
+                result = []
+                for row in GapTool.iter(cursor):
+                    data = JSONTool.loads(row["data"])
+                    if data.get("file_path") != file_path:
+                        continue
+                    data["id"] = row["id"]
+                    result.append(data)
+                return result
 
     def delete_items_by_file_path(
         self, file_path: str, conn: sqlite3.Connection | None = None
     ) -> int:
         """按 file_path（JSON 内字段）删除翻译条目，返回删除行数"""
-        if conn is not None:
-            cursor = conn.execute(
+
+        def delete_with_json_extract(target_conn: sqlite3.Connection) -> int:
+            cursor = target_conn.execute(
                 "DELETE FROM items WHERE json_extract(data, '$.file_path') = ?",
                 (file_path,),
             )
             return int(cursor.rowcount)
 
+        def delete_with_fallback(target_conn: sqlite3.Connection) -> int:
+            cursor = target_conn.execute("SELECT id, data FROM items")
+            ids: list[int] = []
+            for row in GapTool.iter(cursor):
+                data = JSONTool.loads(row["data"])
+                if data.get("file_path") == file_path:
+                    ids.append(int(row["id"]))
+
+            deleted = 0
+            # 避免过长 IN 子句：分块删除。
+            chunk_size = 500
+            for i in range(0, len(ids), chunk_size):
+                chunk = ids[i : i + chunk_size]
+                placeholders = ",".join("?" for _ in chunk)
+                cur = target_conn.execute(
+                    f"DELETE FROM items WHERE id IN ({placeholders})",
+                    tuple(chunk),
+                )
+                deleted += int(cur.rowcount)
+            return deleted
+
+        if conn is not None:
+            try:
+                return delete_with_json_extract(conn)
+            except sqlite3.OperationalError as e:
+                if "json_extract" not in str(e):
+                    raise
+                return delete_with_fallback(conn)
+
         with self.connection() as local_conn:
-            cursor = local_conn.execute(
-                "DELETE FROM items WHERE json_extract(data, '$.file_path') = ?",
-                (file_path,),
-            )
+            try:
+                cursor = local_conn.execute(
+                    "DELETE FROM items WHERE json_extract(data, '$.file_path') = ?",
+                    (file_path,),
+                )
+            except sqlite3.OperationalError as e:
+                if "json_extract" not in str(e):
+                    raise
+                deleted = delete_with_fallback(local_conn)
+                local_conn.commit()
+                return deleted
             local_conn.commit()
             return int(cursor.rowcount)
 
