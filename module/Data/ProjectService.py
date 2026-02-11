@@ -108,7 +108,7 @@ class ProjectService(Base):
             # 创建期预过滤：把翻译期会跳过的条目提前标记并落库，
             # 避免在未执行翻译前进入校对页时暴露噪音条目。
             def prefilter_progress(current: int, total: int) -> None:
-                self.report_progress(current, total, Localizer.get().data_processing)
+                self.report_progress(current, total, Localizer.get().toast_processing)
 
             prefilter_result = ProjectPrefilter.apply(
                 items=items,

@@ -257,7 +257,7 @@ class DropZone(FileDisplayCard):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().workbench_toast_drop_multi_not_supported,
+                    "message": Localizer.get().project_toast_drop_multi_not_supported,
                 },
             )
             return
@@ -303,9 +303,9 @@ class SelectedFileDisplay(FileDisplayCard):
 
         # 状态
         status_text = (
-            Localizer.get().workbench_project_ready
+            Localizer.get().project_project_ready
             if is_ready
-            else Localizer.get().workbench_project_preparing
+            else Localizer.get().project_project_preparing
         )
         status_label = CaptionLabel(status_text, self)
         status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -352,7 +352,7 @@ class SelectedFileDisplay(FileDisplayCard):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().workbench_toast_drop_multi_not_supported,
+                    "message": Localizer.get().project_toast_drop_multi_not_supported,
                 },
             )
             return
@@ -477,9 +477,9 @@ class ProjectInfoPanel(SimpleCardWidget):
 
         # 添加信息行
         fields = [
-            ("file_count", Localizer.get().workbench_info_file_count),
-            ("created_at", Localizer.get().workbench_info_created_at),
-            ("updated_at", Localizer.get().workbench_info_update),
+            ("file_count", Localizer.get().project_info_file_count),
+            ("created_at", Localizer.get().project_info_created_at),
+            ("updated_at", Localizer.get().project_info_update),
         ]
 
         for key, label in fields:
@@ -511,7 +511,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             progress_header_layout.setContentsMargins(0, 0, 0, 0)
 
             progress_label = CaptionLabel(
-                Localizer.get().workbench_info_progress, progress_header
+                Localizer.get().project_info_progress, progress_header
             )
             progress_header_layout.addWidget(progress_label)
 
@@ -541,7 +541,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             total = info.get("total_items", 0)
 
             left_stat = CaptionLabel(
-                Localizer.get().workbench_info_translated.replace(
+                Localizer.get().project_info_translated.replace(
                     "{COUNT}", f"{translated:,}"
                 ),
                 stats_frame,
@@ -551,7 +551,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             stats_layout.addStretch()
 
             right_stat = CaptionLabel(
-                Localizer.get().workbench_info_total.replace("{COUNT}", f"{total:,}"),
+                Localizer.get().project_info_total.replace("{COUNT}", f"{total:,}"),
                 stats_frame,
             )
             stats_layout.addWidget(right_stat)
@@ -581,7 +581,7 @@ class EmptyRecentProjectState(QWidget):
         self.icon_widget = IconWidget(ICON_HISTORY_EMPTY, self)
         self.icon_widget.setFixedSize(64, 64)
 
-        self.label = BodyLabel(Localizer.get().workbench_recent_empty, self)
+        self.label = BodyLabel(Localizer.get().project_recent_empty, self)
 
         self.v_layout.addWidget(
             self.icon_widget, alignment=Qt.AlignmentFlag.AlignCenter
@@ -622,8 +622,8 @@ class SupportedFormatItem(CardWidget):
         layout.addWidget(self.ext_label)
 
 
-class WorkbenchPage(ScrollArea, Base):
-    """工作台页面"""
+class ProjectPage(ScrollArea, Base):
+    """工程页（新建/打开工程）"""
 
     def __init__(self, object_name: str, parent=None) -> None:
         super().__init__(parent)
@@ -703,8 +703,8 @@ class WorkbenchPage(ScrollArea, Base):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addLayout(
             self.create_header(
-                Localizer.get().workbench_new_project_title,
-                Localizer.get().workbench_new_project_subtitle,
+                Localizer.get().project_new_project_title,
+                Localizer.get().project_new_project_subtitle,
                 "#0078d4",
             )
         )
@@ -714,7 +714,7 @@ class WorkbenchPage(ScrollArea, Base):
         # 拖拽区域
         self.new_drop_zone = DropZone(
             ICON_DROP_SOURCE_EMPTY,
-            Localizer.get().workbench_drop_zone_source_title,
+            Localizer.get().project_drop_zone_source_title,
             "",
             card,
         )
@@ -731,7 +731,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         # 标题
         features_title = StrongBodyLabel(
-            Localizer.get().workbench_fmt_title, features_frame
+            Localizer.get().project_fmt_title, features_frame
         )
         features_layout.addWidget(features_title)
 
@@ -744,35 +744,35 @@ class WorkbenchPage(ScrollArea, Base):
 
         features = [
             (
-                f"{Localizer.get().workbench_fmt_subtitle} / {Localizer.get().workbench_fmt_ebook} / {Localizer.get().workbench_fmt_markdown}",
+                f"{Localizer.get().project_fmt_subtitle} / {Localizer.get().project_fmt_ebook} / {Localizer.get().project_fmt_markdown}",
                 ".srt .ass .txt .epub .md",
             ),
             (
-                Localizer.get().workbench_fmt_renpy,
+                Localizer.get().project_fmt_renpy,
                 ".rpy",
             ),
             (
-                Localizer.get().workbench_fmt_mtool,
+                Localizer.get().project_fmt_mtool,
                 ".json",
             ),
             (
-                Localizer.get().workbench_fmt_sextractor,
+                Localizer.get().project_fmt_sextractor,
                 ".txt .json .xlsx",
             ),
             (
-                Localizer.get().workbench_fmt_vntextpatch,
+                Localizer.get().project_fmt_vntextpatch,
                 ".json",
             ),
             (
-                Localizer.get().workbench_fmt_trans_proj,
+                Localizer.get().project_fmt_trans_proj,
                 ".trans",
             ),
             (
-                Localizer.get().workbench_fmt_trans_export,
+                Localizer.get().project_fmt_trans_export,
                 ".xlsx",
             ),
             (
-                Localizer.get().workbench_fmt_wolf,
+                Localizer.get().project_fmt_wolf,
                 ".xlsx",
             ),
         ]
@@ -794,9 +794,7 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout = QVBoxLayout(btn_container)
         btn_layout.setContentsMargins(0, 24, 0, 0)  # 增加顶部间距
 
-        self.new_btn = PrimaryPushButton(
-            Localizer.get().workbench_new_project_btn, card
-        )
+        self.new_btn = PrimaryPushButton(Localizer.get().project_new_project_btn, card)
         self.new_btn.setFixedSize(160, 36)  # 固定宽度
         self.new_btn.setEnabled(False)
         self.new_btn.clicked.connect(self.on_create_project)
@@ -820,8 +818,8 @@ class WorkbenchPage(ScrollArea, Base):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addLayout(
             self.create_header(
-                Localizer.get().workbench_open_project_title,
-                Localizer.get().workbench_open_project_subtitle,
+                Localizer.get().project_open_project_title,
+                Localizer.get().project_open_project_subtitle,
                 "#5e45cd",  # 使用不同的强调色区分
             )
         )
@@ -831,7 +829,7 @@ class WorkbenchPage(ScrollArea, Base):
         # 拖拽区域（默认状态）/ 选中显示
         self.open_drop_zone = DropZone(
             ICON_DROP_PROJECT_EMPTY,
-            Localizer.get().workbench_drop_zone_lg_title,
+            Localizer.get().project_drop_zone_lg_title,
             "",
             card,
         )
@@ -849,7 +847,7 @@ class WorkbenchPage(ScrollArea, Base):
         recent_layout.setSpacing(10)
 
         recent_title = StrongBodyLabel(
-            Localizer.get().workbench_recent_projects_title,
+            Localizer.get().project_recent_projects_title,
             self.recent_projects_container,
         )
         recent_layout.addWidget(recent_title)
@@ -868,7 +866,7 @@ class WorkbenchPage(ScrollArea, Base):
         btn_layout.setContentsMargins(0, 24, 0, 0)
 
         self.open_btn = PrimaryPushButton(
-            Localizer.get().workbench_open_project_title, card
+            Localizer.get().project_open_project_title, card
         )
         self.open_btn.setFixedSize(160, 36)
         self.open_btn.setEnabled(False)
@@ -965,7 +963,7 @@ class WorkbenchPage(ScrollArea, Base):
     def select_source_folder(self):
         """选择源目录"""
         path = QFileDialog.getExistingDirectory(
-            self, Localizer.get().workbench_select_source_dir_title
+            self, Localizer.get().project_select_source_dir_title
         )
         if path:
             self.on_source_dropped(path)
@@ -988,9 +986,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.selected_source_path = None
         self.new_btn.setEnabled(False)
         self.new_drop_zone.set_icon(ICON_DROP_SOURCE_EMPTY)
-        self.new_drop_zone.set_text(
-            Localizer.get().workbench_drop_zone_source_title, ""
-        )
+        self.new_drop_zone.set_text(Localizer.get().project_drop_zone_source_title, "")
 
     def on_source_dropped(self, path: str) -> None:
         """源文件/目录拖入"""
@@ -1005,7 +1001,7 @@ class WorkbenchPage(ScrollArea, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().workbench_toast_no_valid_file,
+                    "message": Localizer.get().project_toast_no_valid_file,
                 },
             )
             self.reset_new_project_state()
@@ -1022,7 +1018,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.new_drop_zone.set_icon(ICON_DROP_SOURCE_READY)
         self.new_drop_zone.set_text(
             file_name,
-            Localizer.get().workbench_drop_ready_source.replace("{COUNT}", count_str),
+            Localizer.get().project_drop_ready_source.replace("{COUNT}", count_str),
         )
         self.new_btn.setEnabled(True)
 
@@ -1030,9 +1026,9 @@ class WorkbenchPage(ScrollArea, Base):
         """点击选择 .lg 文件"""
         path, _ = QFileDialog.getOpenFileName(
             self,
-            Localizer.get().workbench_select_project_title,
+            Localizer.get().project_select_project_title,
             "",
-            Localizer.get().workbench_file_filter_lg,
+            Localizer.get().project_file_filter_lg,
         )
         if path:
             self.on_lg_dropped(path)
@@ -1044,7 +1040,7 @@ class WorkbenchPage(ScrollArea, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().workbench_toast_invalid_lg,
+                    "message": Localizer.get().project_toast_invalid_lg,
                 },
             )
             return
@@ -1052,8 +1048,8 @@ class WorkbenchPage(ScrollArea, Base):
         if not os.path.exists(path):
             # 文件不存在，提示移除
             box = MessageBox(
-                Localizer.get().workbench_msg_file_not_found_title,
-                Localizer.get().workbench_msg_file_not_found_content.replace(
+                Localizer.get().project_msg_file_not_found_title,
+                Localizer.get().project_msg_file_not_found_content.replace(
                     "{PATH}", path
                 ),
                 self,
@@ -1099,7 +1095,7 @@ class WorkbenchPage(ScrollArea, Base):
                 2, self.project_info_panel
             )  # 插入到 selected_file_display 下方
         except Exception as e:
-            message = Localizer.get().workbench_error_read_preview.replace(
+            message = Localizer.get().project_error_read_preview.replace(
                 "{ERROR}", str(e)
             )
             LogManager.get().error(f"Failed to read project preview - {path}", e)
@@ -1129,9 +1125,9 @@ class WorkbenchPage(ScrollArea, Base):
             default_name = Path(self.selected_source_path).name + ".lg"
             path, _ = QFileDialog.getSaveFileName(
                 self,
-                Localizer.get().workbench_save_project_title,
+                Localizer.get().project_save_project_title,
                 default_name,
-                Localizer.get().workbench_file_filter_lg,
+                Localizer.get().project_file_filter_lg,
             )
         else:
             # 自动生成文件名
@@ -1179,7 +1175,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "message": Localizer.get().workbench_progress_creating,
+                "message": Localizer.get().project_progress_creating,
                 "indeterminate": False,
                 "current": 0,
                 "total": 100,
@@ -1219,7 +1215,7 @@ class WorkbenchPage(ScrollArea, Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().workbench_toast_load_fail.replace(
+                        "message": Localizer.get().project_toast_load_fail.replace(
                             "{ERROR}", str(e)
                         ),
                     },
@@ -1231,7 +1227,7 @@ class WorkbenchPage(ScrollArea, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().workbench_toast_create_fail.replace(
+                    "message": Localizer.get().project_toast_create_fail.replace(
                         "{ERROR}", str(result)
                     ),
                 },
@@ -1248,7 +1244,7 @@ class WorkbenchPage(ScrollArea, Base):
             self.emit(
                 Base.Event.PROGRESS_TOAST_SHOW,
                 {
-                    "message": Localizer.get().workbench_progress_loading,
+                    "message": Localizer.get().project_progress_loading,
                     "indeterminate": True,
                 },
             )
@@ -1269,7 +1265,7 @@ class WorkbenchPage(ScrollArea, Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().workbench_toast_load_fail.replace(
+                    "message": Localizer.get().project_toast_load_fail.replace(
                         "{ERROR}", str(e)
                     ),
                 },

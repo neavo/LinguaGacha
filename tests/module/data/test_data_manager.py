@@ -12,6 +12,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.LGDatabase import LGDatabase
+from module.Localizer.Localizer import Localizer
 
 
 data_manager_module = importlib.import_module("module.Data.DataManager")
@@ -19,10 +20,27 @@ data_manager_module = importlib.import_module("module.Data.DataManager")
 
 def build_manager(*, loaded: bool = True) -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
+    db = None
+    if loaded:
+        conn = SimpleNamespace(commit=MagicMock())
+        db = SimpleNamespace(
+            open=MagicMock(),
+            close=MagicMock(),
+            connection=MagicMock(return_value=contextlib.nullcontext(conn)),
+            add_asset=MagicMock(return_value=1),
+            get_items_by_file_path=MagicMock(return_value=[]),
+            delete_items_by_file_path=MagicMock(return_value=0),
+            delete_asset=MagicMock(),
+            update_asset=MagicMock(),
+            insert_items=MagicMock(return_value=[]),
+            asset_path_exists=MagicMock(return_value=False),
+            update_batch=MagicMock(),
+        )
     dm.session = SimpleNamespace(
-        db=object() if loaded else None,
+        db=db,
         lg_path="/workspace/demo/project.lg" if loaded else None,
         state_lock=threading.RLock(),
+        asset_decompress_cache={},
     )
     dm.state_lock = dm.session.state_lock
 
@@ -465,3 +483,216 @@ def test_on_config_updated_schedules_prefilter_only_on_relevant_keys_and_loaded(
     dm.is_prefilter_needed = MagicMock(return_value=True)
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
     dm.schedule_project_prefilter.assert_not_called()
+
+
+def test_add_file_rejects_duplicate_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+
+    with pytest.raises(ValueError) as exc:
+        dm.add_file("/workspace/a.txt")
+
+    assert str(exc.value) == Localizer.get().workbench_msg_file_exists
+
+
+def test_add_file_rejects_unsupported_extension() -> None:
+    dm = build_manager()
+
+    with pytest.raises(ValueError) as exc:
+        dm.add_file("/workspace/a.bad")
+
+    assert str(exc.value) == Localizer.get().workbench_msg_unsupported_format
+
+
+def test_add_file_success_emits_event_and_clears_cache(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=False)
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "A",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                )
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    path = tmp_path / "a.txt"
+    path.write_bytes(b"hello")
+
+    dm.add_file(str(path))
+
+    assert dm.session.db.add_asset.call_args.args[0] == "a.txt"
+    assert dm.session.db.add_asset.call_args.args[2] == 5
+    assert isinstance(dm.session.db.add_asset.call_args.args[1], (bytes, bytearray))
+    assert dm.session.db.insert_items.call_args.args[0][0]["src"] == "A"
+
+    dm.item_service.clear_item_cache.assert_called_once()
+    dm.emit.assert_called_once_with(
+        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+    )
+
+
+def test_update_file_matches_by_src_and_returns_stats(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.asset_decompress_cache = {"a.txt": b"cached"}
+
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "A1",
+                "name_dst": "N1",
+                "status": Base.ProjectStatus.PROCESSED,
+                "retry_count": 1,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            },
+            {
+                "id": 2,
+                "src": "a",
+                "dst": "A2",
+                "name_dst": "N2",
+                "status": Base.ProjectStatus.ERROR,
+                "retry_count": 0,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            },
+        ]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                ),
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                ),
+                Item.from_dict(
+                    {
+                        "src": "c",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                ),
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    conn = SimpleNamespace(commit=MagicMock())
+    dm.session.db.connection = MagicMock(return_value=contextlib.nullcontext(conn))
+
+    new_path = tmp_path / "new.txt"
+    new_path.write_bytes(b"data")
+
+    stats = dm.update_file("a.txt", str(new_path))
+
+    assert stats == {"matched": 2, "new": 1, "total": 3}
+    conn.commit.assert_called_once()
+
+    assert "a.txt" not in dm.session.asset_decompress_cache
+    dm.item_service.clear_item_cache.assert_called_once()
+    dm.emit.assert_called_once_with(
+        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+    )
+
+    inserted = dm.session.db.insert_items.call_args.args[0]
+    assert inserted[0]["dst"] == "A1"
+    assert inserted[0]["name_dst"] == "N1"
+    assert inserted[1]["dst"] == "A2"
+    assert inserted[1]["name_dst"] == "N2"
+    assert inserted[2]["src"] == "c"
+    assert inserted[2]["dst"] == ""
+
+
+def test_reset_file_clears_translation_fields() -> None:
+    dm = build_manager()
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "X",
+                "name_dst": "N",
+                "status": Base.ProjectStatus.PROCESSED,
+                "retry_count": 3,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            }
+        ]
+    )
+
+    dm.reset_file("a.txt")
+
+    dm.session.db.update_batch.assert_called_once()
+    updated = dm.session.db.update_batch.call_args.kwargs["items"]
+    assert updated[0]["dst"] == ""
+    assert updated[0]["name_dst"] is None
+    assert updated[0]["status"] == Base.ProjectStatus.NONE
+    assert updated[0]["retry_count"] == 0
+    assert updated[0]["src"] == "a"
+
+    dm.item_service.clear_item_cache.assert_called_once()
+    dm.emit.assert_called_once_with(
+        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+    )
+
+
+def test_delete_file_emits_event_and_clears_caches() -> None:
+    dm = build_manager()
+    dm.session.asset_decompress_cache = {"a.txt": b"cached"}
+
+    conn = SimpleNamespace(commit=MagicMock())
+    dm.session.db.connection = MagicMock(return_value=contextlib.nullcontext(conn))
+
+    dm.delete_file("a.txt")
+
+    dm.session.db.delete_items_by_file_path.assert_called_once_with("a.txt", conn=conn)
+    dm.session.db.delete_asset.assert_called_once_with("a.txt", conn=conn)
+    conn.commit.assert_called_once()
+
+    dm.item_service.clear_item_cache.assert_called_once()
+    assert "a.txt" not in dm.session.asset_decompress_cache
+    dm.emit.assert_called_once_with(
+        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+    )

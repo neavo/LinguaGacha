@@ -1,4 +1,6 @@
+import os
 import threading
+from collections import defaultdict
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +22,7 @@ from module.Data.MetaService import MetaService
 from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
 from module.Data.Type import RULE_META_KEYS
+from module.Data.ZstdCodec import ZstdCodec
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
@@ -385,7 +388,7 @@ class DataManager(Base):
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "message": Localizer.get().data_processing,
+                "message": Localizer.get().toast_processing,
                 # 先显示不定进度：加载 items 前无法给出可信 total，避免进度条长时间停在 0%。
                 "indeterminate": True,
             },
@@ -514,7 +517,7 @@ class DataManager(Base):
         self.emit(
             Base.Event.PROGRESS_TOAST_SHOW,
             {
-                "message": Localizer.get().data_processing,
+                "message": Localizer.get().toast_processing,
                 "indeterminate": False,
                 "current": 0,
                 "total": progress_total,
@@ -525,7 +528,7 @@ class DataManager(Base):
             self.emit(
                 Base.Event.PROGRESS_TOAST_UPDATE,
                 {
-                    "message": Localizer.get().data_processing,
+                    "message": Localizer.get().toast_processing,
                     "current": current,
                     "total": total,
                 },
@@ -829,6 +832,152 @@ class DataManager(Base):
 
     def get_asset_decompressed(self, rel_path: str) -> bytes | None:
         return self.asset_service.get_asset_decompressed(rel_path)
+
+    # ===================== project file ops =====================
+
+    def add_file(self, file_path: str) -> None:
+        ext = Path(file_path).suffix.lower()
+        if ext not in self.get_supported_extensions():
+            raise ValueError(Localizer.get().workbench_msg_unsupported_format)
+
+        rel_path = os.path.basename(file_path)
+
+        with self.state_lock:
+            db = self.session.db
+        if db is None:
+            raise RuntimeError("工程未加载")
+
+        if db.asset_path_exists(rel_path):
+            raise ValueError(Localizer.get().workbench_msg_file_exists)
+
+        with open(file_path, "rb") as f:
+            original_data = f.read()
+
+        # 避免循环依赖：延迟导入 FileManager
+        from module.File.FileManager import FileManager
+
+        file_manager = FileManager(Config().load())
+        items = file_manager.parse_asset(rel_path, original_data)
+        items_dicts: list[dict[str, Any]] = []
+        for item in GapTool.iter(items):
+            items_dicts.append(item.to_dict())
+
+        compressed = ZstdCodec.compress(original_data)
+        db.add_asset(rel_path, compressed, len(original_data))
+        db.insert_items(items_dicts)
+
+        self.item_service.clear_item_cache()
+        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
+
+    def update_file(self, rel_path: str, new_file_path: str) -> dict:
+        with self.state_lock:
+            db = self.session.db
+        if db is None:
+            raise RuntimeError("工程未加载")
+
+        old_items = db.get_items_by_file_path(rel_path)
+
+        with open(new_file_path, "rb") as f:
+            original_data = f.read()
+
+        from module.File.FileManager import FileManager
+
+        file_manager = FileManager(Config().load())
+        new_items = file_manager.parse_asset(rel_path, original_data)
+        new_items_dicts: list[dict[str, Any]] = []
+        for item in GapTool.iter(new_items):
+            new_items_dicts.append(item.to_dict())
+
+        def pick_file_type(items: list[dict[str, Any]]) -> str:
+            for item in GapTool.iter(items):
+                raw = item.get("file_type")
+                if isinstance(raw, str) and raw and raw != Item.FileType.NONE:
+                    return raw
+            return str(Item.FileType.NONE)
+
+        old_type = pick_file_type(old_items)
+        new_type = pick_file_type(new_items_dicts)
+        if old_type != new_type:
+            raise ValueError(Localizer.get().workbench_msg_update_format_mismatch)
+
+        src_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for item in GapTool.iter(old_items):
+            src = item.get("src")
+            if isinstance(src, str):
+                src_map[src].append(item)
+
+        matched = 0
+        new_count = 0
+        for item in GapTool.iter(new_items_dicts):
+            src = item.get("src")
+            if not isinstance(src, str):
+                new_count += 1
+                continue
+
+            candidates = src_map.get(src)
+            if not candidates:
+                new_count += 1
+                continue
+
+            old = candidates.pop(0)
+            if not candidates:
+                src_map.pop(src, None)
+
+            item["dst"] = old.get("dst", "")
+            item["name_dst"] = old.get("name_dst")
+            item["status"] = old.get("status", Base.ProjectStatus.NONE)
+            item["retry_count"] = old.get("retry_count", 0)
+            matched += 1
+
+        compressed = ZstdCodec.compress(original_data)
+        with db.connection() as conn:
+            db.update_asset(rel_path, compressed, len(original_data), conn=conn)
+            db.delete_items_by_file_path(rel_path, conn=conn)
+            db.insert_items(new_items_dicts, conn=conn)
+            conn.commit()
+
+        self.item_service.clear_item_cache()
+        with self.state_lock:
+            self.session.asset_decompress_cache.pop(rel_path, None)
+        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
+
+        total = len(new_items_dicts)
+        return {"matched": matched, "new": total - matched, "total": total}
+
+    def reset_file(self, rel_path: str) -> None:
+        with self.state_lock:
+            db = self.session.db
+        if db is None:
+            raise RuntimeError("工程未加载")
+
+        items = db.get_items_by_file_path(rel_path)
+        for item in GapTool.iter(items):
+            item["dst"] = ""
+            item["name_dst"] = None
+            item["status"] = Base.ProjectStatus.NONE
+            item["retry_count"] = 0
+
+        if items:
+            db.update_batch(items=items)
+
+        self.item_service.clear_item_cache()
+        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
+
+    def delete_file(self, rel_path: str) -> None:
+        with self.state_lock:
+            db = self.session.db
+        if db is None:
+            raise RuntimeError("工程未加载")
+
+        with db.connection() as conn:
+            db.delete_items_by_file_path(rel_path, conn=conn)
+            db.delete_asset(rel_path, conn=conn)
+            conn.commit()
+
+        self.item_service.clear_item_cache()
+        with self.state_lock:
+            self.session.asset_decompress_cache.pop(rel_path, None)
+        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
 
     # ===================== export path =====================
 

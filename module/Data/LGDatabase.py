@@ -182,6 +182,28 @@ class LGDatabase(Base):
                 raise ValueError("Failed to get lastrowid")
             return cursor.lastrowid
 
+    def update_asset(
+        self,
+        path: str,
+        data: bytes,
+        original_size: int,
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """更新资产数据（已压缩的数据）"""
+        if conn is not None:
+            conn.execute(
+                "UPDATE assets SET data = ?, original_size = ?, compressed_size = ? WHERE path = ?",
+                (data, original_size, len(data), path),
+            )
+            return
+
+        with self.connection() as local_conn:
+            local_conn.execute(
+                "UPDATE assets SET data = ?, original_size = ?, compressed_size = ? WHERE path = ?",
+                (data, original_size, len(data), path),
+            )
+            local_conn.commit()
+
     def get_asset(self, path: str) -> bytes | None:
         """获取资产数据"""
         with self.connection() as conn:
@@ -190,6 +212,25 @@ class LGDatabase(Base):
             if row is None:
                 return None
             return row["data"]
+
+    def delete_asset(self, path: str, conn: sqlite3.Connection | None = None) -> None:
+        """删除指定路径的资产记录"""
+        if conn is not None:
+            conn.execute("DELETE FROM assets WHERE path = ?", (path,))
+            return
+
+        with self.connection() as local_conn:
+            local_conn.execute("DELETE FROM assets WHERE path = ?", (path,))
+            local_conn.commit()
+
+    def asset_path_exists(self, path: str) -> bool:
+        """检查资产路径是否已存在"""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM assets WHERE path = ? LIMIT 1",
+                (path,),
+            )
+            return cursor.fetchone() is not None
 
     def get_all_asset_paths(self) -> list[str]:
         """获取所有资产路径"""
@@ -215,6 +256,39 @@ class LGDatabase(Base):
                 data["id"] = row["id"]
                 result.append(data)
             return result
+
+    def get_items_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
+        """按 file_path（JSON 内字段）获取翻译条目"""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, data FROM items WHERE json_extract(data, '$.file_path') = ? ORDER BY id",
+                (file_path,),
+            )
+            result = []
+            for row in GapTool.iter(cursor):
+                data = JSONTool.loads(row["data"])
+                data["id"] = row["id"]
+                result.append(data)
+            return result
+
+    def delete_items_by_file_path(
+        self, file_path: str, conn: sqlite3.Connection | None = None
+    ) -> int:
+        """按 file_path（JSON 内字段）删除翻译条目，返回删除行数"""
+        if conn is not None:
+            cursor = conn.execute(
+                "DELETE FROM items WHERE json_extract(data, '$.file_path') = ?",
+                (file_path,),
+            )
+            return int(cursor.rowcount)
+
+        with self.connection() as local_conn:
+            cursor = local_conn.execute(
+                "DELETE FROM items WHERE json_extract(data, '$.file_path') = ?",
+                (file_path,),
+            )
+            local_conn.commit()
+            return int(cursor.rowcount)
 
     def set_item(self, item: dict[str, Any]) -> int:
         """保存单个翻译条目"""
@@ -262,6 +336,39 @@ class LGDatabase(Base):
                     )
                     ids.append(cursor.lastrowid)
             conn.commit()
+            return ids
+
+    def insert_items(
+        self,
+        items: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[int]:
+        """批量插入翻译条目（不清空已有记录），返回新 ID 列表"""
+        if conn is not None:
+            ids = []
+            for item in GapTool.iter(items):
+                data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
+                cursor = conn.execute(
+                    "INSERT INTO items (data) VALUES (?)",
+                    (data_json,),
+                )
+                if cursor.lastrowid is None:
+                    raise ValueError("Failed to get lastrowid")
+                ids.append(int(cursor.lastrowid))
+            return ids
+
+        with self.connection() as local_conn:
+            ids = []
+            for item in GapTool.iter(items):
+                data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
+                cursor = local_conn.execute(
+                    "INSERT INTO items (data) VALUES (?)",
+                    (data_json,),
+                )
+                if cursor.lastrowid is None:
+                    raise ValueError("Failed to get lastrowid")
+                ids.append(int(cursor.lastrowid))
+            local_conn.commit()
             return ids
 
     def update_batch(
