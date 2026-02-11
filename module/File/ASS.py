@@ -157,13 +157,13 @@ class ASS(Base):
                     self.config.deduplication_in_bilingual
                     and item.get_src() == item.get_dst()
                 ):
-                    line = extra_field.replace(
-                        "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
+                    # 去重：原文与译文一致时，不再拼接两份内容。
+                    result.append(
+                        extra_field.replace(
+                            "{{CONTENT}}",
+                            item.get_dst().replace("\n", "\\N"),
+                        )
                     )
-                    line = line.replace(
-                        "{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1
-                    )
-                    result.append(line)
                 else:
                     line = extra_field.replace(
                         "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
