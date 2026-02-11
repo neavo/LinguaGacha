@@ -34,6 +34,7 @@ class Base:
         APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"  # 更新 - 解压
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
+        PROJECT_FILE_UPDATE = "PROJECT_FILE_UPDATE"  # 工程 - 文件变更
         PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"  # 项目 - 检查
         PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"  # 项目 - 检查完成
         PROJECT_PREFILTER_RUN = "PROJECT_PREFILTER_RUN"  # 工程 - 预过滤开始
