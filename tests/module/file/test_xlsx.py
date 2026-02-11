@@ -48,6 +48,39 @@ def test_read_from_stream_reads_status_for_common_rows(config: Config) -> None:
     assert items[2].get_dst() == ""
 
 
+def test_read_from_stream_skips_rows_with_missing_source(config: Config) -> None:
+    content = build_xlsx_bytes(
+        [
+            (1, 1, "src1"),
+            (1, 2, "dst1"),
+            (3, 1, "src3"),
+        ]
+    )
+
+    items = XLSX(config).read_from_stream(content, "sheet.xlsx")
+
+    assert len(items) == 2
+    assert [item.get_src() for item in items] == ["src1", "src3"]
+
+
+def test_read_from_stream_marks_empty_source_as_excluded(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    assert isinstance(sheet, Worksheet)
+    cast(Cell, sheet.cell(row=1, column=1)).value = ""
+    cast(Cell, sheet.cell(row=1, column=2)).value = "x"
+
+    monkeypatch.setattr("module.File.XLSX.openpyxl.load_workbook", lambda *_: workbook)
+
+    items = XLSX(config).read_from_stream(b"bytes", "sheet.xlsx")
+
+    assert len(items) == 1
+    assert items[0].get_status() == Base.ProjectStatus.EXCLUDED
+
+
 def test_read_from_stream_skips_wolf_sheet(config: Config) -> None:
     content = build_xlsx_bytes(
         [
@@ -90,6 +123,32 @@ def test_is_wold_xlsx_detects_required_headers(config: Config) -> None:
     cast(Cell, sheet.cell(row=1, column=4)).value = "Info"
 
     assert XLSX(config).is_wold_xlsx(sheet) is True
+
+
+@pytest.mark.parametrize(
+    "col,value",
+    [
+        (1, "wrong"),
+        (2, "wrong"),
+        (3, "wrong"),
+        (4, "wrong"),
+    ],
+)
+def test_is_wold_xlsx_returns_false_when_header_missing(
+    col: int,
+    value: str,
+    config: Config,
+) -> None:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    assert isinstance(sheet, Worksheet)
+    cast(Cell, sheet.cell(row=1, column=1)).value = "Code"
+    cast(Cell, sheet.cell(row=1, column=2)).value = "Flag"
+    cast(Cell, sheet.cell(row=1, column=3)).value = "Type"
+    cast(Cell, sheet.cell(row=1, column=4)).value = "Info"
+    cast(Cell, sheet.cell(row=1, column=col)).value = value
+
+    assert XLSX(config).is_wold_xlsx(sheet) is False
 
 
 def test_write_to_path_writes_sorted_rows_to_excel(
@@ -149,3 +208,37 @@ def test_write_to_path_writes_sorted_rows_to_excel(
     assert captured["row2_col2"] == "row2-dst"
     assert captured["width_a"] == 64
     assert captured["width_b"] == 64
+
+
+def test_read_from_path_reads_files(
+    fs,
+    config: Config,
+) -> None:
+    fs.pause()
+    try:
+        content = build_xlsx_bytes([(1, 1, "src"), (1, 2, "dst")])
+    finally:
+        fs.resume()
+    input_root = Path("/fake/input")
+    path = input_root / "a.xlsx"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+    items = XLSX(config).read_from_path([str(path)], str(input_root))
+
+    assert len(items) == 1
+    assert items[0].get_file_path() == "a.xlsx"
+
+
+def test_read_from_stream_returns_empty_when_active_sheet_is_not_worksheet(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DummyBook:
+        active = object()
+
+    monkeypatch.setattr(
+        "module.File.XLSX.openpyxl.load_workbook", lambda *_: DummyBook()
+    )
+
+    assert XLSX(config).read_from_stream(b"bytes", "a.xlsx") == []

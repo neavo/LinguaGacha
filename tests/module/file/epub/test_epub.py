@@ -128,3 +128,50 @@ def test_insert_target_and_insert_source_target(config: Config) -> None:
 
     assert handler.insert_target("out/book.epub") == "out/book.zh.epub"
     assert handler.insert_source_target("out/book.epub") == "out/book.ja.zh.epub"
+
+
+def test_read_from_path_delegates_to_ast_reader(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    handler = EPUB(config)
+    calls: list[tuple[bytes, str]] = []
+
+    class DummyAst:
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            calls.append((content, rel_path))
+            return [Item.from_dict({"src": rel_path, "file_type": Item.FileType.EPUB})]
+
+    handler.ast = DummyAst()
+    Path("/fake/input").mkdir(parents=True, exist_ok=True)
+    Path("/fake/input/book.epub").write_bytes(b"raw")
+
+    items = handler.read_from_path(["/fake/input/book.epub"], "/fake/input")
+
+    assert calls == [(b"raw", "book.epub")]
+    assert [i.get_src() for i in items] == ["book.epub"]
+
+
+def test_write_to_path_skips_when_original_asset_missing(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epub_module = sys.modules[EPUB.__module__]
+    monkeypatch.setattr(epub_module.DataManager, "get", lambda: dummy_data_manager)
+    handler = EPUB(config)
+    called: list[bool] = []
+
+    def fake_build(**kwargs) -> None:
+        del kwargs
+        called.append(True)
+
+    handler.build_epub_from_items = fake_build
+    items = [
+        make_epub_item("novel/missing.epub", {"epub": {"parts": [{"slot": "text"}]}})
+    ]
+
+    handler.write_to_path(items)
+
+    assert called == []

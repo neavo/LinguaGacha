@@ -51,3 +51,71 @@ def test_filter_blocks_database_value_when_source_in_block_text() -> None:
     )
 
     assert result == [True]
+
+
+def test_pre_process_and_post_process_refresh_block_text() -> None:
+    project = {
+        "files": {
+            "a.json": {
+                "data": [["block_me", ""]],
+                "context": [["common/110.json/commands/29/Database/stringArgs/1"]],
+            }
+        }
+    }
+    processor = WOLF(project)
+
+    processor.pre_process()
+    assert processor.block_text == {"block_me"}
+
+    processor.block_text = set()
+    processor.post_process()
+    assert processor.block_text == {"block_me"}
+
+
+def test_filter_blocks_when_src_contains_blacklisted_extension() -> None:
+    processor = WOLF(project={"files": {}})
+    processor.block_text = set()
+
+    assert processor.filter("sound.mp3", "path", [], ["a", "b", "c"]) == [
+        True,
+        True,
+        True,
+    ]
+
+
+def test_filter_blocks_when_tag_is_red_or_blue() -> None:
+    processor = WOLF(project={"files": {}})
+    processor.block_text = set()
+
+    assert processor.filter("hello", "path", ["red"], ["x/y"]) == [True]
+
+
+def test_filter_default_allows_when_no_rules_match() -> None:
+    processor = WOLF(project={"files": {}})
+    processor.block_text = set()
+
+    assert processor.filter("hello", "path", [], ["x/y"]) == [False]
+
+
+def test_generate_block_text_returns_empty_when_files_is_not_dict() -> None:
+    processor = WOLF(project={"files": {}})
+
+    assert processor.generate_block_text({"files": []}) == set()
+
+
+def test_generate_block_text_skips_rows_with_non_string_data() -> None:
+    project = {
+        "files": {
+            "a.json": {
+                "data": [None, [123], ["ok", ""]],
+                "context": [
+                    ["common/110.json/commands/29/Database/stringArgs/1"],
+                    ["common/110.json/commands/29/Database/stringArgs/1"],
+                    ["common/110.json/commands/29/Database/stringArgs/1"],
+                ],
+            }
+        }
+    }
+    processor = WOLF(project)
+
+    assert processor.generate_block_text(project) == {"ok"}

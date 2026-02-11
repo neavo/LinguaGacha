@@ -36,6 +36,12 @@ def test_read_from_stream_marks_code_block_and_image_as_excluded(
     assert items[5].get_status() == Base.ProjectStatus.NONE
 
 
+def test_insert_source_target(config: Config) -> None:
+    handler = MD(config)
+
+    assert handler.insert_source_target("docs/readme.md") == "docs/readme.ja.zh.md"
+
+
 def test_write_to_path_writes_target_language_file(
     config: Config,
     dummy_data_manager: DummyDataManager,
@@ -79,3 +85,21 @@ def test_write_to_path_writes_target_language_file(
     )
     assert output_file.exists()
     assert output_file.read_text(encoding="utf-8") == "甲\n乙"
+
+
+def test_read_from_path_reads_files(
+    fs,
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("module.File.MD.TextHelper.get_encoding", lambda **_: "utf-8")
+    fs.create_file(
+        "/fake/input/readme.md",
+        contents="标题\n正文",
+        create_missing_dirs=True,
+    )
+
+    items = MD(config).read_from_path(["/fake/input/readme.md"], "/fake/input")
+
+    assert [item.get_src() for item in items] == ["标题", "正文"]
+    assert {item.get_file_path() for item in items} == {"readme.md"}

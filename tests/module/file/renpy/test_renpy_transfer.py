@@ -151,3 +151,154 @@ def test_build_items_for_writeback_returns_items_directly_when_all_ast(
     )
 
     assert result is items
+
+
+def test_transfer_legacy_translations_skips_non_string_extra_and_empty_src(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    legacy_items = [
+        Item.from_dict({"row": 1, "extra_field": "translate chinese start:"}),
+        Item.from_dict({"row": 2, "extra_field": {"not": "str"}}),
+        Item.from_dict({"row": 3, "src": "", "extra_field": '    # e "Hello"'}),
+    ]
+    new_item = make_ast_item(
+        lang="chinese",
+        label="start",
+        digest="missing",
+        target_line=10,
+        src="Hello",
+        dst="",
+        name_src=None,
+        name_dst=None,
+    )
+
+    handler.transfer_legacy_translations(
+        legacy_items, [new_item], skip_target_lines=None
+    )
+    assert new_item.get_dst() == ""
+
+
+def test_transfer_legacy_translations_no_candidates_keeps_dst(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    legacy_raw = '    # e "Hello"'
+    legacy_items = [
+        Item.from_dict({"row": 1, "extra_field": "translate chinese start:"}),
+        Item.from_dict(
+            {
+                "row": 2,
+                "src": "Hello",
+                "dst": "你好",
+                "extra_field": legacy_raw,
+            }
+        ),
+    ]
+    new_item = make_ast_item(
+        lang="chinese",
+        label="start",
+        digest="different",
+        target_line=10,
+        src="Hello",
+        dst="",
+        name_src=None,
+        name_dst=None,
+    )
+
+    handler.transfer_legacy_translations(
+        legacy_items, [new_item], skip_target_lines=None
+    )
+    assert new_item.get_dst() == ""
+
+
+def test_transfer_legacy_translations_does_not_set_name_when_candidate_name_missing(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    legacy_raw = '    # e "Hello"'
+    legacy_items = [
+        Item.from_dict({"row": 1, "extra_field": "translate chinese start:"}),
+        Item.from_dict(
+            {
+                "row": 2,
+                "src": "Hello",
+                "dst": "你好",
+                "name_dst": None,
+                "extra_field": legacy_raw,
+            }
+        ),
+    ]
+    new_item = make_ast_item(
+        lang="chinese",
+        label="start",
+        digest=sha1_hex(legacy_raw),
+        target_line=10,
+        src="Hello",
+        dst="",
+        name_src="Alice",
+        name_dst=None,
+    )
+
+    handler.transfer_legacy_translations(
+        legacy_items, [new_item], skip_target_lines=None
+    )
+    assert new_item.get_dst() == "你好"
+    assert new_item.get_name_dst() is None
+
+
+def test_transfer_ast_translations_no_candidates_keeps_dst_and_written_lines_empty(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    existing = [Item.from_dict({"extra_field": "legacy"})]
+    new_items = [
+        make_ast_item(
+            lang="chinese",
+            label="start",
+            digest="abc",
+            target_line=10,
+            src="hello",
+            dst="",
+        )
+    ]
+
+    written = handler.transfer_ast_translations(existing, new_items)
+    assert new_items[0].get_dst() == ""
+    assert written == set()
+
+
+def test_transfer_ast_translations_does_not_add_written_line_when_target_line_zero(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    digest = "abc"
+    existing = [
+        make_ast_item(
+            lang="chinese",
+            label="start",
+            digest=digest,
+            target_line=10,
+            src="hello",
+            dst="你好",
+            name_src="Alice",
+            name_dst=None,
+        )
+    ]
+    new_items = [
+        make_ast_item(
+            lang="chinese",
+            label="start",
+            digest=digest,
+            target_line=0,
+            src="hello",
+            dst="",
+            name_src="Alice",
+            name_dst=None,
+        )
+    ]
+
+    written = handler.transfer_ast_translations(existing, new_items)
+    assert new_items[0].get_dst() == "你好"
+    assert new_items[0].get_name_dst() is None
+    assert written == set()

@@ -96,6 +96,55 @@ def test_read_from_path_dispatches_all_supported_extensions(
     assert calls["messagejson"][0][0].endswith("/i.json")
 
 
+def test_read_from_path_accepts_single_file_path(
+    config: Config,
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del fs
+    root_path = Path("/workspace/input")
+    root_path.mkdir(parents=True, exist_ok=True)
+    file_path = root_path / "a.MD"
+    file_path.write_bytes(b"dummy")
+
+    calls: dict[str, tuple[list[str], str]] = {}
+
+    def build_reader(name: str):
+        class Reader:
+            def __init__(self, _: Config) -> None:
+                pass
+
+            def read_from_path(
+                self, abs_paths: list[str], input_path: str
+            ) -> list[Item]:
+                calls[name] = (list(abs_paths), input_path)
+                if not abs_paths:
+                    return []
+                return [Item.from_dict({"src": name})]
+
+        return Reader
+
+    monkeypatch.setattr("module.File.FileManager.MD", build_reader("md"))
+    monkeypatch.setattr("module.File.FileManager.TXT", build_reader("txt"))
+    monkeypatch.setattr("module.File.FileManager.ASS", build_reader("ass"))
+    monkeypatch.setattr("module.File.FileManager.SRT", build_reader("srt"))
+    monkeypatch.setattr("module.File.FileManager.EPUB", build_reader("epub"))
+    monkeypatch.setattr("module.File.FileManager.XLSX", build_reader("xlsx"))
+    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", build_reader("wolfxlsx"))
+    monkeypatch.setattr("module.File.FileManager.RenPy", build_reader("renpy"))
+    monkeypatch.setattr("module.File.FileManager.TRANS", build_reader("trans"))
+    monkeypatch.setattr("module.File.FileManager.KVJSON", build_reader("kvjson"))
+    monkeypatch.setattr(
+        "module.File.FileManager.MESSAGEJSON", build_reader("messagejson")
+    )
+
+    _, items = FileManager(config).read_from_path(str(file_path))
+
+    assert [i.get_src() for i in items] == ["md"]
+    assert calls["md"][1] == str(root_path)
+    assert calls["md"][0][0].replace("\\", "/").endswith("/a.MD")
+
+
 def test_parse_asset_falls_back_between_wolf_xlsx_and_xlsx(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
@@ -131,6 +180,41 @@ def test_parse_asset_falls_back_between_wolf_xlsx_and_xlsx(
     assert called == {"wolf": 1, "xlsx": 1}
 
 
+def test_parse_asset_uses_wolf_xlsx_when_it_returns_items(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, int] = {"wolf": 0, "xlsx": 0}
+
+    class WolfReader:
+        def __init__(self, _: Config) -> None:
+            pass
+
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            del content
+            del rel_path
+            called["wolf"] += 1
+            return [Item.from_dict({"src": "wolf"})]
+
+    class XlsxReader:
+        def __init__(self, _: Config) -> None:
+            pass
+
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            del content
+            del rel_path
+            called["xlsx"] += 1
+            return [Item.from_dict({"src": "xlsx"})]
+
+    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", WolfReader)
+    monkeypatch.setattr("module.File.FileManager.XLSX", XlsxReader)
+
+    items = FileManager(config).parse_asset("a.xlsx", b"bytes")
+
+    assert [item.get_src() for item in items] == ["wolf"]
+    assert called == {"wolf": 1, "xlsx": 0}
+
+
 def test_parse_asset_falls_back_between_kv_and_message_json(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
@@ -164,6 +248,81 @@ def test_parse_asset_falls_back_between_kv_and_message_json(
 
     assert [item.get_src() for item in items] == ["message"]
     assert called == {"kv": 1, "message": 1}
+
+
+def test_parse_asset_uses_kvjson_when_it_returns_items(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, int] = {"kv": 0, "message": 0}
+
+    class KvReader:
+        def __init__(self, _: Config) -> None:
+            pass
+
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            del content
+            del rel_path
+            called["kv"] += 1
+            return [Item.from_dict({"src": "kv"})]
+
+    class MessageReader:
+        def __init__(self, _: Config) -> None:
+            pass
+
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            del content
+            del rel_path
+            called["message"] += 1
+            return [Item.from_dict({"src": "message"})]
+
+    monkeypatch.setattr("module.File.FileManager.KVJSON", KvReader)
+    monkeypatch.setattr("module.File.FileManager.MESSAGEJSON", MessageReader)
+
+    items = FileManager(config).parse_asset("a.json", b"bytes")
+
+    assert [item.get_src() for item in items] == ["kv"]
+    assert called == {"kv": 1, "message": 0}
+
+
+@pytest.mark.parametrize(
+    "rel_path,expected",
+    [
+        ("a.md", "md"),
+        ("a.txt", "txt"),
+        ("a.ass", "ass"),
+        ("a.srt", "srt"),
+        ("a.epub", "epub"),
+        ("a.rpy", "renpy"),
+        ("a.trans", "trans"),
+    ],
+)
+def test_parse_asset_dispatches_simple_extensions(
+    rel_path: str,
+    expected: str,
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Reader:
+        def __init__(self, _: Config) -> None:
+            pass
+
+        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+            del content
+            del rel_path
+            return [Item.from_dict({"src": expected})]
+
+    monkeypatch.setattr("module.File.FileManager.MD", Reader)
+    monkeypatch.setattr("module.File.FileManager.TXT", Reader)
+    monkeypatch.setattr("module.File.FileManager.ASS", Reader)
+    monkeypatch.setattr("module.File.FileManager.SRT", Reader)
+    monkeypatch.setattr("module.File.FileManager.EPUB", Reader)
+    monkeypatch.setattr("module.File.FileManager.RenPy", Reader)
+    monkeypatch.setattr("module.File.FileManager.TRANS", Reader)
+
+    items = FileManager(config).parse_asset(rel_path, b"bytes")
+
+    assert [item.get_src() for item in items] == [expected]
 
 
 def test_read_from_assets_combines_results(config: Config) -> None:
@@ -247,3 +406,66 @@ def test_write_to_path_calls_all_writers_and_returns_output(
         "kvjson": 1,
         "messagejson": 1,
     }
+
+
+def test_read_from_path_logs_error_when_walk_raises(
+    config: Config,
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del fs
+    root = Path("/workspace/input")
+    root.mkdir(parents=True, exist_ok=True)
+
+    class DummyLocalizer:
+        log_read_file_fail = "read failed"
+
+    errors: list[tuple[str, Exception]] = []
+
+    class DummyLogger:
+        def error(self, msg: str, e: Exception) -> None:
+            errors.append((msg, e))
+
+    monkeypatch.setattr(
+        "module.File.FileManager.Localizer.get", lambda: DummyLocalizer()
+    )
+    monkeypatch.setattr("module.File.FileManager.LogManager.get", lambda: DummyLogger())
+
+    def boom(*args, **kwargs):
+        del args
+        del kwargs
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("module.File.FileManager.os.walk", boom)
+
+    _, items = FileManager(config).read_from_path(str(root))
+
+    assert items == []
+    assert errors and errors[0][0] == "read failed"
+
+
+def test_write_to_path_logs_error_when_data_manager_get_raises(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DummyLocalizer:
+        log_write_file_fail = "write failed"
+
+    errors: list[tuple[str, Exception]] = []
+
+    class DummyLogger:
+        def error(self, msg: str, e: Exception) -> None:
+            errors.append((msg, e))
+
+    monkeypatch.setattr(
+        "module.File.FileManager.Localizer.get", lambda: DummyLocalizer()
+    )
+    monkeypatch.setattr("module.File.FileManager.LogManager.get", lambda: DummyLogger())
+
+    def boom():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("module.File.FileManager.DataManager.get", boom)
+
+    assert FileManager(config).write_to_path([]) == ""
+    assert errors and errors[0][0] == "write failed"

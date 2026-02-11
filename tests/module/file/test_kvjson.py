@@ -44,6 +44,27 @@ def test_read_from_stream_returns_empty_when_json_is_not_dict(
     assert KVJSON(config).read_from_stream(b"[]", "a.json") == []
 
 
+def test_read_from_stream_decodes_non_utf8_payload(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "module.File.KVJSON.TextHelper.get_encoding", lambda **_: "latin-1"
+    )
+    received: list[object] = []
+
+    def fake_loads(payload: object):
+        received.append(payload)
+        return {"k": "v"}
+
+    monkeypatch.setattr("module.File.KVJSON.JSONTool.loads", fake_loads)
+
+    items = KVJSON(config).read_from_stream(b'{"k":"v"}', "a.json")
+
+    assert received and isinstance(received[0], str)
+    assert [item.get_src() for item in items] == ["k"]
+
+
 def test_write_to_path_writes_json_mapping(
     config: Config,
     dummy_data_manager: DummyDataManager,
@@ -80,3 +101,23 @@ def test_write_to_path_writes_json_mapping(
         "k1": "v1",
         "k2": "v2",
     }
+
+
+def test_read_from_path_reads_files(
+    fs,
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "module.File.KVJSON.TextHelper.get_encoding", lambda **_: "utf-8"
+    )
+    fs.create_file(
+        "/fake/input/a.json",
+        contents='{"k":"v"}',
+        create_missing_dirs=True,
+    )
+
+    items = KVJSON(config).read_from_path(["/fake/input/a.json"], "/fake/input")
+
+    assert len(items) == 1
+    assert items[0].get_file_path() == "a.json"
