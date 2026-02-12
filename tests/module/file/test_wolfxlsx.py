@@ -277,3 +277,40 @@ def test_write_to_path_falls_back_to_new_workbook_when_asset_missing(
     assert captured["width_b"] == 64
     assert captured["src"] == "原文"
     assert captured["dst"] == "译文"
+
+
+def test_write_to_path_keeps_empty_dst_as_empty_cell(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_save(workbook: openpyxl.Workbook, path: str) -> None:
+        sheet = workbook.active
+        assert isinstance(sheet, Worksheet)
+        captured["dst"] = sheet.cell(row=2, column=WOLFXLSX.COL_DST_TEXT).value
+        output_file = Path(path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"xlsx")
+
+    monkeypatch.setattr("module.File.WOLFXLSX.openpyxl.Workbook.save", fake_save)
+    monkeypatch.setattr(
+        "module.File.WOLFXLSX.DataManager.get", lambda: dummy_data_manager
+    )
+
+    WOLFXLSX(config).write_to_path(
+        [
+            Item.from_dict(
+                {
+                    "src": "原文",
+                    "dst": "",
+                    "row": 2,
+                    "file_type": Item.FileType.WOLFXLSX,
+                    "file_path": "wolf/empty.xlsx",
+                }
+            )
+        ]
+    )
+
+    assert captured["dst"] == ""

@@ -108,7 +108,7 @@ class RenPyWriter(Base):
                 if isinstance(name_dst_raw, str) and name_dst_raw != "":
                     result[idx] = name_dst_raw
             elif role_str in {"DIALOGUE", "STRING"}:
-                result[idx] = item.get_dst()
+                result[idx] = item.get_effective_dst()
 
         return result
 

@@ -58,7 +58,9 @@ class KVJSON(Base):
         for k, v in json_data.items():
             if isinstance(k, str) and isinstance(v, str):
                 src = k
-                dst = v
+                # KVJSON 属于展示型格式：writer 可能会把未翻译项导出为 value==key；
+                # 回读时需把这种兜底视为“无译文”。
+                dst = "" if v == src else v
                 if src == "":
                     items.append(
                         Item.from_dict(
@@ -72,7 +74,7 @@ class KVJSON(Base):
                             }
                         )
                     )
-                elif dst != "" and src != dst:
+                elif dst != "" and dst != src:
                     items.append(
                         Item.from_dict(
                             {
@@ -120,7 +122,10 @@ class KVJSON(Base):
             with open(abs_path, "w", encoding="utf-8") as writer:
                 writer.write(
                     JSONTool.dumps(
-                        {item.get_src(): item.get_dst() for item in group_items},
+                        {
+                            item.get_src(): item.get_effective_dst()
+                            for item in group_items
+                        },
                         indent=4,
                     )
                 )

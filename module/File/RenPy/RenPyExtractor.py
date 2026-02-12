@@ -77,8 +77,6 @@ class RenPyExtractor(Base):
             return None
 
         status = self.get_status(src, dst)
-        if status == Base.ProjectStatus.NONE and dst == "":
-            dst = src
 
         extra_field = self.build_extra_field(
             block,
@@ -90,7 +88,7 @@ class RenPyExtractor(Base):
         return Item.from_dict(
             {
                 "src": src,
-                "dst": dst if dst != "" else src,
+                "dst": dst,
                 "name_src": name_src,
                 "name_dst": name_dst,
                 "extra_field": extra_field,

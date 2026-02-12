@@ -56,7 +56,7 @@ class TXT(Base):
                 Item.from_dict(
                     {
                         "src": line,
-                        "dst": line,
+                        "dst": "",
                         "row": len(items),
                         "file_type": Item.FileType.TXT,
                         "file_path": rel_path,
@@ -86,7 +86,9 @@ class TXT(Base):
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(self.insert_target(abs_path), "w", encoding="utf-8") as writer:
-                writer.write("\n".join([item.get_dst() for item in group_items]))
+                writer.write(
+                    "\n".join([item.get_effective_dst() for item in group_items])
+                )
 
         # 分别处理每个文件（双语）
         for rel_path, group_items in group.items():
@@ -97,11 +99,10 @@ class TXT(Base):
             ) as writer:
                 result: list[str] = []
                 for item in group_items:
-                    if (
-                        self.config.deduplication_in_bilingual
-                        and item.get_src() == item.get_dst()
-                    ):
-                        result.append(item.get_dst())
+                    src = item.get_src()
+                    effective_dst = item.get_effective_dst()
+                    if self.config.deduplication_in_bilingual and src == effective_dst:
+                        result.append(effective_dst)
                     else:
-                        result.append(f"{item.get_src()}\n{item.get_dst()}")
+                        result.append(f"{src}\n{effective_dst}")
                 writer.write("\n".join(result))

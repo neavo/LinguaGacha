@@ -75,7 +75,7 @@ class SRT(Base):
                 Item.from_dict(
                     {
                         "src": "\n".join(chunk[2:]),
-                        "dst": "\n".join(chunk[2:]),
+                        "dst": "",
                         "extra_field": chunk[1],
                         "row": int(chunk[0]),
                         "file_type": Item.FileType.SRT,
@@ -135,14 +135,14 @@ class SRT(Base):
                     row = str(item.get_row())
                     time_code = str(item.get_extra_field())
                     src = item.get_src()
-                    dst = item.get_dst()
+                    effective_dst = item.get_effective_dst()
 
                     # 写入翻译文件
-                    f_out.write(f"{row}\n{time_code}\n{dst}\n\n")
+                    f_out.write(f"{row}\n{time_code}\n{effective_dst}\n\n")
 
                     # 写入双语文件
-                    if self.config.deduplication_in_bilingual and src == dst:
-                        content = dst
+                    if self.config.deduplication_in_bilingual and src == effective_dst:
+                        content = effective_dst
                     else:
-                        content = f"{src}\n{dst}"
+                        content = f"{src}\n{effective_dst}"
                     f_bi.write(f"{row}\n{time_code}\n{content}\n\n")

@@ -123,7 +123,8 @@ class EPUBAstWriter(Base):
                 continue
 
             # 译文行数必须与槽位一致
-            dst_lines = item.get_dst().split("\n")
+            effective_dst = item.get_effective_dst()
+            dst_lines = effective_dst.split("\n")
             if len(dst_lines) != len(parts):
                 skipped += 1
                 continue
@@ -165,7 +166,7 @@ class EPUBAstWriter(Base):
             # 双语插入需要保留原文块的快照（必须在写回译文前 clone）
             if allow_bilingual_insert and not (
                 self.config.deduplication_in_bilingual
-                and item.get_src() == item.get_dst()
+                and item.get_src() == effective_dst
             ):
                 block_path = epub.get("block_path")
                 if isinstance(block_path, str) and block_path != "":

@@ -55,7 +55,7 @@ class NONE:
         self, path: str, data: list[str], tag: list[str], context: list[str]
     ) -> tuple[str, str, list[str], str, bool]:
         src: str = data[0] if len(data) > 0 and isinstance(data[0], str) else ""
-        dst: str = data[1] if len(data) > 1 and isinstance(data[1], str) else src
+        dst: str = data[1] if len(data) > 1 and isinstance(data[1], str) else ""
         updated_tag = tag
 
         # 如果数据为空，则跳过

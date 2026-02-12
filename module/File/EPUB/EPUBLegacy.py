@@ -107,7 +107,7 @@ class EPUBLegacy(Base):
                     continue
 
                 item_obj = target_items.pop(0)
-                dom.string = item_obj.get_dst()
+                dom.string = item_obj.get_effective_dst()
 
             zip_writer.writestr(path, str(bs))
 
@@ -158,12 +158,13 @@ class EPUBLegacy(Base):
                     continue
 
                 item_obj = target_items.pop(0)
+                effective_dst = item_obj.get_effective_dst()
 
                 # 双语（导航页除外，避免链接重复指向）
                 if bilingual and not is_nav_page:
                     if not self.config.deduplication_in_bilingual or (
                         self.config.deduplication_in_bilingual
-                        and item_obj.get_src() != item_obj.get_dst()
+                        and item_obj.get_src() != effective_dst
                     ):
                         line_src = copy.copy(dom)
                         line_src["style"] = (
@@ -176,12 +177,12 @@ class EPUBLegacy(Base):
                 if item_obj.get_src() in str(dom):
                     dom.replace_with(
                         BeautifulSoup(
-                            str(dom).replace(item_obj.get_src(), item_obj.get_dst()),
+                            str(dom).replace(item_obj.get_src(), effective_dst),
                             "html.parser",
                         )
                     )
                 elif not is_nav_page:
-                    dom.string = item_obj.get_dst()
+                    dom.string = effective_dst
 
             self.fix_svg_attributes(bs)
             zip_writer.writestr(path, str(bs))

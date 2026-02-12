@@ -70,7 +70,7 @@ class MD(Base):
                     Item.from_dict(
                         {
                             "src": line,
-                            "dst": line,
+                            "dst": "",
                             "row": len(items),
                             "file_type": Item.FileType.MD,
                             "file_path": rel_path,
@@ -84,7 +84,7 @@ class MD(Base):
                     Item.from_dict(
                         {
                             "src": line,
-                            "dst": line,
+                            "dst": "",
                             "row": len(items),
                             "file_type": Item.FileType.MD,
                             "file_path": rel_path,
@@ -113,4 +113,6 @@ class MD(Base):
             abs_path = os.path.join(output_path, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(self.insert_target(abs_path), "w", encoding="utf-8") as writer:
-                writer.write("\n".join([item.get_dst() for item in group_items]))
+                writer.write(
+                    "\n".join([item.get_effective_dst() for item in group_items])
+                )

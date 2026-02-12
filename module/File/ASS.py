@@ -99,7 +99,7 @@ class ASS(Base):
                 Item.from_dict(
                     {
                         "src": content_val.replace("\\N", "\n"),
-                        "dst": content_val.replace("\\N", "\n"),
+                        "dst": "",
                         "extra_field": extra_field,
                         "row": len(items),
                         "file_type": Item.FileType.ASS,
@@ -136,9 +136,10 @@ class ASS(Base):
                 extra_field: str = (
                     extra_field_raw if isinstance(extra_field_raw, str) else ""
                 )
+                effective_dst = item.get_effective_dst()
                 result.append(
                     extra_field.replace(
-                        "{{CONTENT}}", item.get_dst().replace("\n", "\\N")
+                        "{{CONTENT}}", effective_dst.replace("\n", "\\N")
                     )
                 )
 
@@ -153,26 +154,23 @@ class ASS(Base):
                 extra_field: str = (
                     extra_field_raw if isinstance(extra_field_raw, str) else ""
                 )
-                if (
-                    self.config.deduplication_in_bilingual
-                    and item.get_src() == item.get_dst()
-                ):
+                src = item.get_src()
+                effective_dst = item.get_effective_dst()
+                if self.config.deduplication_in_bilingual and src == effective_dst:
                     # 去重：原文与译文一致时，不再拼接两份内容。
                     result.append(
                         extra_field.replace(
                             "{{CONTENT}}",
-                            item.get_dst().replace("\n", "\\N"),
+                            effective_dst.replace("\n", "\\N"),
                         )
                     )
                 else:
                     line = extra_field.replace(
                         "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
                     )
+                    line = line.replace("{{CONTENT}}", src.replace("\n", "\\N"), 1)
                     line = line.replace(
-                        "{{CONTENT}}", item.get_src().replace("\n", "\\N"), 1
-                    )
-                    line = line.replace(
-                        "{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1
+                        "{{CONTENT}}", effective_dst.replace("\n", "\\N"), 1
                     )
                     result.append(line)
 

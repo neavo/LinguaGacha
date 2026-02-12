@@ -210,6 +210,41 @@ def test_write_to_path_writes_sorted_rows_to_excel(
     assert captured["width_b"] == 64
 
 
+def test_write_to_path_keeps_empty_dst_as_empty_cell(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_save(workbook: openpyxl.Workbook, path: str) -> None:
+        sheet = workbook.active
+        assert isinstance(sheet, Worksheet)
+        captured["dst"] = sheet.cell(row=1, column=2).value
+        output_file = Path(path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"xlsx")
+
+    monkeypatch.setattr("module.File.XLSX.openpyxl.Workbook.save", fake_save)
+    monkeypatch.setattr("module.File.XLSX.DataManager.get", lambda: dummy_data_manager)
+
+    XLSX(config).write_to_path(
+        [
+            Item.from_dict(
+                {
+                    "src": "row1-src",
+                    "dst": "",
+                    "row": 1,
+                    "file_type": Item.FileType.XLSX,
+                    "file_path": "excel/empty.xlsx",
+                }
+            )
+        ]
+    )
+
+    assert captured["dst"] == ""
+
+
 def test_read_from_path_reads_files(
     fs,
     config: Config,

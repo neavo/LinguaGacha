@@ -178,6 +178,11 @@ class Item:
         with self.lock:
             return self.dst
 
+    # 获取用于展示型导出的译文（未翻译时用原文兜底）
+    def get_effective_dst(self) -> str:
+        with self.lock:
+            return self.dst if self.dst != "" else self.src
+
     # 设置译文
     def set_dst(self, dst: str) -> None:
         with self.lock:

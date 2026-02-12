@@ -76,7 +76,7 @@ def test_build_item_sets_status_and_extra_field() -> None:
 
     assert isinstance(item, Item)
     assert item.get_src() == "Hello"
-    assert item.get_dst() == "Hello"
+    assert item.get_dst() == ""
     assert item.get_name_src() == "Alice"
     assert item.get_name_dst() == "Alice"
     assert "renpy" in item.get_extra_field()
