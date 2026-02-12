@@ -37,6 +37,37 @@ def test_read_from_stream_extracts_name_and_message(
     assert items[1].get_name_src() == ["Bob", "Carol"]
     assert items[2].get_name_src() is None
 
+    # MESSAGEJSON 作为展示型格式：读取时不预填 dst。
+    assert [item.get_src() for item in items] == ["msg1", "msg2", "msg3"]
+    assert [item.get_dst() for item in items] == ["", "", ""]
+
+
+def test_write_to_path_falls_back_to_src_when_dst_empty(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "module.File.MESSAGEJSON.DataManager.get", lambda: dummy_data_manager
+    )
+    items = [
+        Item.from_dict(
+            {
+                "src": "s1",
+                "dst": "",
+                "row": 1,
+                "file_type": Item.FileType.MESSAGEJSON,
+                "file_path": "message/a.json",
+            }
+        )
+    ]
+
+    MESSAGEJSON(config).write_to_path(items)
+
+    output_file = Path(dummy_data_manager.get_translated_path()) / "message" / "a.json"
+    result = json.loads(output_file.read_text(encoding="utf-8"))
+    assert result == [{"message": "s1"}]
+
 
 def test_read_from_stream_decodes_non_utf8_payload(
     config: Config,

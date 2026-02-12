@@ -26,7 +26,7 @@ def test_read_from_stream_extracts_dialogue_content(
     items = ASS(config).read_from_stream(content, "sub.ass")
 
     assert items[-1].get_src() == "第一行\n第二行"
-    assert items[-1].get_dst() == "第一行\n第二行"
+    assert items[-1].get_dst() == ""
     assert items[-1].get_extra_field() == (
         "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{{CONTENT}}"
     )

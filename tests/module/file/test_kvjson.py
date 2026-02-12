@@ -30,6 +30,9 @@ def test_read_from_stream_sets_status_by_src_dst(
     assert items[0].get_status() == Base.ProjectStatus.EXCLUDED
     assert items[1].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
     assert items[2].get_status() == Base.ProjectStatus.NONE
+    # value==key 视为未翻译：dst 需为空字符串。
+    assert items[2].get_src() == "待翻"
+    assert items[2].get_dst() == ""
 
 
 def test_read_from_stream_returns_empty_when_json_is_not_dict(
@@ -92,6 +95,15 @@ def test_write_to_path_writes_json_mapping(
                 "file_path": "json/data.json",
             }
         ),
+        Item.from_dict(
+            {
+                "src": "k3",
+                "dst": "",
+                "row": 2,
+                "file_type": Item.FileType.KVJSON,
+                "file_path": "json/data.json",
+            }
+        ),
     ]
 
     KVJSON(config).write_to_path(items)
@@ -100,6 +112,7 @@ def test_write_to_path_writes_json_mapping(
     assert json.loads(output_file.read_text(encoding="utf-8")) == {
         "k1": "v1",
         "k2": "v2",
+        "k3": "k3",
     }
 
 

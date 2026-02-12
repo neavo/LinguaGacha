@@ -610,7 +610,7 @@ class EPUBAst(Base):
             item = Item.from_dict(
                 {
                     "src": src,
-                    "dst": src,
+                    "dst": "",
                     "tag": doc_path,
                     "row": spine_index * self.ROW_MULTIPLIER + unit_index,
                     "file_type": Item.FileType.EPUB,
@@ -653,7 +653,7 @@ class EPUBAst(Base):
             item = Item.from_dict(
                 {
                     "src": text,
-                    "dst": text,
+                    "dst": "",
                     "tag": ncx_path,
                     "row": self.ROW_BASE_NCX + unit_index,
                     "file_type": Item.FileType.EPUB,

@@ -38,6 +38,23 @@ def test_check_handles_empty_and_aqua_and_processed_states() -> None:
     assert status == Base.ProjectStatus.PROCESSED_IN_PAST
 
 
+def test_check_sets_empty_dst_when_translation_column_missing() -> None:
+    processor = NONE(project={})
+
+    src, dst, tag, status, skip_internal_filter = processor.check(
+        "a",
+        ["src-only"],
+        [],
+        ["ctx"],
+    )
+
+    assert src == "src-only"
+    assert dst == ""
+    assert tag == []
+    assert status == Base.ProjectStatus.NONE
+    assert skip_internal_filter is False
+
+
 def test_filter_blocks_by_tag_or_blacklist_ext() -> None:
     processor = NONE(project={})
 

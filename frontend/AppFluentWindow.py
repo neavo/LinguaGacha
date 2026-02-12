@@ -466,7 +466,11 @@ class AppFluentWindow(FluentWindow, Base):
     def add_pages(self) -> None:
         # 创建工程页（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
         self.project_page = ProjectPage("project_page", self)
-        self.stackedWidget.addWidget(self.project_page)
+
+        # 重要：不要在这里把 project_page 先塞进 stackedWidget。
+        # QFluentWidgets 只有在添加第一个 SubInterface（stackedWidget.count() == 1）时
+        # 才会连接 stackedWidget.currentChanged -> _onCurrentInterfaceChanged，用于同步导航高亮。
+        # 如果提前 addWidget(project_page)，这条连接永远不会建立，后续 switchTo() 只切页面不切高亮。
 
         self.add_project_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
@@ -477,6 +481,9 @@ class AppFluentWindow(FluentWindow, Base):
         self.add_quality_pages()
         self.navigationInterface.addSeparator(NavigationItemPosition.SCROLL)
         self.add_extra_pages()
+
+        # 在至少一个 addSubInterface() 触发初始化之后，再把工程页加入 stackedWidget。
+        self.stackedWidget.addWidget(self.project_page)
 
         # 主题切换按钮
         theme_navigation_button = NavigationPushButton(
@@ -522,6 +529,9 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 设置默认页面为工程页
         self.switchTo(self.project_page)
+
+        # 初始状态没有工程，工程页也不在侧边栏里；显式选中一个“中性”入口，避免高亮停留在某个业务页。
+        self.navigationInterface.setCurrentItem("avatar_navigation_widget")
 
         # 初始化侧边栏状态
         self.update_navigation_status()

@@ -95,7 +95,7 @@ class MESSAGEJSON(Base):
                 Item.from_dict(
                     {
                         "src": entry_message,
-                        "dst": entry_message,
+                        "dst": "",
                         "name_src": name,
                         "name_dst": name,
                         "row": len(items),
@@ -137,25 +137,26 @@ class MESSAGEJSON(Base):
 
             result = []
             for item in sorted_items:
+                message = item.get_effective_dst()
                 name = item.get_name_dst()
                 if isinstance(name, str):
                     result.append(
                         {
                             "name": name,
-                            "message": item.get_dst(),
+                            "message": message,
                         }
                     )
                 elif isinstance(name, list):
                     result.append(
                         {
                             "names": name,
-                            "message": item.get_dst(),
+                            "message": message,
                         }
                     )
                 else:
                     result.append(
                         {
-                            "message": item.get_dst(),
+                            "message": message,
                         }
                     )
 
