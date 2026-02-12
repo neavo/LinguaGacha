@@ -79,6 +79,20 @@ class TestProjectPrefilterFilterPhase:
         )
         assert item.get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
 
+    def test_source_language_all_disables_language_skipped(self) -> None:
+        items = [make_item(src="Hello World"), make_item(src="你好世界")]
+        result = ProjectPrefilter.apply(
+            items,
+            source_language=BaseLanguage.ALL,
+            target_language=BaseLanguage.Enum.ZH,
+            mtool_optimizer_enable=False,
+        )
+
+        assert result.stats.language_skipped == 0
+        assert all(
+            item.get_status() != Base.ProjectStatus.LANGUAGE_SKIPPED for item in items
+        )
+
     def test_rule_filter_takes_priority_over_language_filter(self) -> None:
         # "12345" 会同时命中规则过滤和语言过滤，但规则过滤优先（先检查）
         item = make_item(src="12345")

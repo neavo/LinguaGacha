@@ -5,6 +5,10 @@ from module.Text.TextHelper import TextHelper
 class LanguageFilter:
     @staticmethod
     def filter(src: str, source_language: BaseLanguage.Enum | str) -> bool:
+        # "ALL" 表示关闭语言过滤。
+        if source_language == BaseLanguage.ALL:
+            return False
+
         # 获取语言判断函数
         if source_language == BaseLanguage.Enum.ZH:
             func = TextHelper.CJK.any

@@ -40,8 +40,10 @@ class Config:
     scale_factor: str = ""
 
     # BasicSettingsPage
-    source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA
-    target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
+    # 配置文件持久化为字符串，因此运行时也允许 str（例如 target_language="ZH"）。
+    # 仅 source_language 支持 BaseLanguage.ALL（关闭语言过滤），target_language 不支持 ALL。
+    source_language: BaseLanguage.Enum | str = BaseLanguage.Enum.JA
+    target_language: BaseLanguage.Enum | str = BaseLanguage.Enum.ZH
     project_save_mode: str = ProjectSaveMode.MANUAL
     project_fixed_path: str = ""
     output_folder_open_on_finish: bool = False
@@ -180,13 +182,16 @@ class Config:
     # 更新模型配置
     def set_model(self, model_data: dict[str, Any]) -> None:
         """更新模型配置"""
+        models = self.models or []
         model_id = model_data.get("id")
-        for i, model in enumerate(self.models or []):
+        for i, model in enumerate(models):
             if model.get("id") == model_id:
-                self.models[i] = model_data
+                models[i] = model_data
                 break
+
+        self.models = models
         # 同步到 ModelManager
-        ModelManager.get().set_models(self.models)
+        ModelManager.get().set_models(models)
 
     # 获取激活的模型
     def get_active_model(self) -> dict[str, Any] | None:

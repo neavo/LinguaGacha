@@ -85,3 +85,7 @@ def test_filter_returns_false_when_any_is_not_callable(
 
     monkeypatch.setattr(TextHelper, "FAKE", DummyLanguage, raising=False)
     assert LanguageFilter.filter("whatever", "FAKE") is False
+
+
+def test_filter_returns_false_when_source_language_is_all() -> None:
+    assert LanguageFilter.filter("Hello 你好 123", BaseLanguage.ALL) is False

@@ -34,6 +34,11 @@ class BasicSettingsPage(QWidget, Base):
                 BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()
             ]
 
+        # 仅原文语言支持“全部”，译文语言保持原列表不变。
+        self.source_languages = [
+            Localizer.get().basic_settings_page_source_language_all
+        ] + self.languages
+
         # 设置容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
@@ -93,23 +98,31 @@ class BasicSettingsPage(QWidget, Base):
         self, parent: QLayout, config: Config, windows: FluentWindow
     ) -> None:
         def init(widget: ComboBoxCard) -> None:
-            if config.source_language in BaseLanguage.get_languages():
+            languages = BaseLanguage.get_languages()
+            if config.source_language == BaseLanguage.ALL:
+                widget.get_combo_box().setCurrentIndex(0)
+            elif config.source_language in languages:
                 widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.source_language)
+                    languages.index(config.source_language) + 1
                 )
 
         def current_changed(widget: ComboBoxCard) -> None:
             config = Config().load()
-            config.source_language = BaseLanguage.get_languages()[
-                widget.get_combo_box().currentIndex()
-            ]
+
+            languages = BaseLanguage.get_languages()
+            index = widget.get_combo_box().currentIndex()
+            if index == 0:
+                config.source_language = BaseLanguage.ALL
+            else:
+                config.source_language = languages[index - 1]
+
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
         self.source_language_card = ComboBoxCard(
             Localizer.get().basic_settings_page_source_language_title,
             Localizer.get().basic_settings_page_source_language_content,
-            items=self.languages,
+            items=self.source_languages,
             init=init,
             current_changed=current_changed,
         )

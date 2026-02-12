@@ -144,6 +144,7 @@ class LocalizerZH:
     log_write_file_fail: str = "文件写入失败 …"
     log_unknown_reason: str = "未知原因"
     log_cli_verify_language: str = "参数发生错误：无效的语言 …"
+    log_cli_target_language_all_unsupported: str = "译文语言不支持 ALL …"
     log_cli_quality_rule_file_not_found: str = (
         "参数发生错误：规则文件不存在 …"
         "\n"
@@ -503,6 +504,7 @@ class LocalizerZH:
     basic_settings_page_project_save_mode_source: str = "源文件路径"
     basic_settings_page_source_language_title: str = "原文语言"
     basic_settings_page_source_language_content: str = "设置当前项目中输入文本的语言"
+    basic_settings_page_source_language_all: str = "全部"
     basic_settings_page_target_language_title: str = "译文语言"
     basic_settings_page_target_language_content: str = "设置当前项目中输出文本的语言"
     basic_settings_page_output_folder_open_on_finish_title: str = "任务完成时打开输出文件夹"
