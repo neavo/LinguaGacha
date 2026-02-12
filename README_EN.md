@@ -83,6 +83,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260212 v0.56.0
+  - feat - Workbench #415
+    - You can `Add`, `Delete`, and `Update` source files here
+    - `Update` will preserve data as much as possible, suitable for incremental update of `Novels`/`Games`
+  - perf - Refactor `TRANS` file parser
+
 - 20260209 v0.55.0
   - feat - Result Validation Rules (Expert Settings)
   - feat - Support for Thinking Level settings for GPT-5 series models
@@ -91,12 +97,6 @@
 
 - 20260208 v0.54.1
   - Performance and compatibility optimizations
-
-- 20260205 v0.54.0
-  - feat - CLI mode supports quality rules such as `Glossary`
-    - [#403](https://github.com/neavo/LinguaGacha/issues/403)
-  - fix - EPUB text parsing compatibility optimization
-    - [#404](https://github.com/neavo/LinguaGacha/issues/404) [#406](https://github.com/neavo/LinguaGacha/issues/406) [#412](https://github.com/neavo/LinguaGacha/issues/412)
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
