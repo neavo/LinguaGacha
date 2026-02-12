@@ -103,6 +103,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.table_widget: WorkbenchTableWidget | None = None
         self.command_bar_card: CommandBarCard | None = None
         self.btn_add_file = None
+        self.btn_export_translation = None
 
         # 文件列表的聚合计算可能很重（大量 items 时），统一放到后台线程做。
         self.refresh_lock = threading.Lock()
@@ -198,6 +199,15 @@ class WorkbenchPage(ScrollArea, Base):
             )
         )
 
+        self.command_bar_card.add_separator()
+        self.btn_export_translation = self.command_bar_card.add_action(
+            Action(
+                BaseIcon.FILE_INPUT,
+                Localizer.get().export_translation,
+                triggered=self.on_export_translation_clicked,
+            )
+        )
+
     def is_engine_busy(self) -> bool:
         return (
             Engine.get().get_status() != Base.TaskStatus.IDLE
@@ -212,6 +222,10 @@ class WorkbenchPage(ScrollArea, Base):
 
         if self.btn_add_file is not None:
             self.btn_add_file.setEnabled(not readonly)
+
+        # 生成译文不依赖“引擎空闲”，允许翻译过程中导出；但需要工程已加载且不处于文件操作中。
+        if self.btn_export_translation is not None:
+            self.btn_export_translation.setEnabled(loaded and (not file_op_running))
 
         if self.table_widget is not None:
             self.table_widget.set_readonly(readonly)
@@ -358,6 +372,36 @@ class WorkbenchPage(ScrollArea, Base):
             return
 
         DataManager.get().schedule_add_file(file_path)
+
+    def on_export_translation_clicked(self) -> None:
+        if not DataManager.get().is_loaded():
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            return
+
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().export_translation_confirm,
+            self,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        if not message_box.exec():
+            return
+
+        self.emit(Base.Event.TRANSLATION_EXPORT, {})
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().task_success,
+            },
+        )
 
     def on_update_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
