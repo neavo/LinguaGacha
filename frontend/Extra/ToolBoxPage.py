@@ -1,9 +1,10 @@
-from typing import Callable
+from collections.abc import Callable
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QLayout
+from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
@@ -31,8 +32,8 @@ class ItemCard(CardWidget):
         parent: QWidget,
         title: str,
         description: str,
-        init: Callable = None,
-        clicked: Callable = None,
+        init: Callable[["ItemCard"], None] | None = None,
+        clicked: Callable[["ItemCard"], None] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -64,11 +65,19 @@ class ItemCard(CardWidget):
         # 添加描述
         self.description_label = CaptionLabel(description, self)
         self.description_label.setWordWrap(True)
+        # 描述文本不应随卡片剩余空间垂直居中，保持顶端对齐更稳定。
+        # 只指定垂直方向即可：水平方向默认保持左对齐。
+        self.description_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.description_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
         self.description_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
         self.description_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )  # 在上层控件上禁用鼠标事件以将事件向下层传播
-        self.root.addWidget(self.description_label, 1)
+        self.root.addWidget(self.description_label)
+        # 用底部弹簧吃掉剩余高度，让分割线与描述之间的视觉间距更一致。
+        self.root.addStretch(1)
 
         if callable(init):
             init(self)
