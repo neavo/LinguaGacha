@@ -144,6 +144,7 @@ class LocalizerEN(LocalizerZH):
     log_write_file_fail: str = "File writing failed …"
     log_unknown_reason: str = "Unknown Reason"
     log_cli_verify_language: str = "parameter error: invalid language …"
+    log_cli_target_language_all_unsupported: str = "ALL is not supported …"
     log_cli_quality_rule_file_not_found: str = (
         "parameter error: rule file not found …"
         "\n"
@@ -503,6 +504,7 @@ class LocalizerEN(LocalizerZH):
     basic_settings_page_project_save_mode_source: str = "Source File Path"
     basic_settings_page_source_language_title: str = "Source Language"
     basic_settings_page_source_language_content: str = "Set the language of the input text in the current project"
+    basic_settings_page_source_language_all: str = "All"
     basic_settings_page_target_language_title: str = "Target Language"
     basic_settings_page_target_language_content: str = "Set the language of the output text in the current project"
     basic_settings_page_output_folder_open_on_finish_title: str = "Open Output Folder on Task Completion"

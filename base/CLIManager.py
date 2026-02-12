@@ -389,25 +389,32 @@ class CLIManager(Base):
         else:
             config = Config().load()
 
-        if not isinstance(args.source_language, str):
-            pass
-        elif self.verify_language(args.source_language):
-            config.source_language = BaseLanguage.Enum(args.source_language)
-        else:
-            LogManager.get().error(
-                f"--source_language {Localizer.get().log_cli_verify_language}"
-            )
-            self.exit()
+        if isinstance(args.source_language, str):
+            source_language = args.source_language.strip().upper()
+            if source_language == BaseLanguage.ALL:
+                config.source_language = BaseLanguage.ALL
+            elif self.verify_language(source_language):
+                config.source_language = BaseLanguage.Enum(source_language)
+            else:
+                LogManager.get().error(
+                    f"--source_language {Localizer.get().log_cli_verify_language}"
+                )
+                self.exit()
 
-        if not isinstance(args.target_language, str):
-            pass
-        elif self.verify_language(args.target_language):
-            config.target_language = BaseLanguage.Enum(args.target_language)
-        else:
-            LogManager.get().error(
-                f"--target_language {Localizer.get().log_cli_verify_language}"
-            )
-            self.exit()
+        if isinstance(args.target_language, str):
+            target_language = args.target_language.strip().upper()
+            if target_language == BaseLanguage.ALL:
+                LogManager.get().error(
+                    f"--target_language {Localizer.get().log_cli_target_language_all_unsupported}"
+                )
+                self.exit()
+            elif self.verify_language(target_language):
+                config.target_language = BaseLanguage.Enum(target_language)
+            else:
+                LogManager.get().error(
+                    f"--target_language {Localizer.get().log_cli_verify_language}"
+                )
+                self.exit()
 
         quality_snapshot = self.build_quality_snapshot_for_cli(
             glossary_path=args.glossary,

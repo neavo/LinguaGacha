@@ -31,6 +31,72 @@ def reset_prompt_builder_cache(request: pytest.FixtureRequest) -> None:
 
 
 class TestPromptBuilder:
+    def test_build_main_renders_any_language_when_source_language_is_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_base",
+            classmethod(
+                lambda cls, language: "BASE {source_language}->{target_language}"
+            ),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+
+        config = Config(
+            source_language=BaseLanguage.ALL,
+            target_language=BaseLanguage.Enum.EN,
+            auto_glossary_enable=False,
+        )
+        snapshot = FakeQualitySnapshot(
+            custom_prompt_en_enable=False,
+            custom_prompt_zh_enable=False,
+        )
+
+        result = PromptBuilder(
+            config=config, quality_snapshot=cast(Any, snapshot)
+        ).build_main()
+
+        assert "{source_language}" not in result
+        assert PromptBuilder.SOURCE_PLACEHOLDER_EN in result
+
+    def test_build_main_raises_when_target_language_is_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_base",
+            classmethod(
+                lambda cls, language: "BASE {source_language}->{target_language}"
+            ),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+
+        config = Config(
+            source_language=BaseLanguage.Enum.JA,
+            target_language=BaseLanguage.ALL,
+            auto_glossary_enable=False,
+        )
+        snapshot = FakeQualitySnapshot(
+            custom_prompt_en_enable=False,
+            custom_prompt_zh_enable=False,
+        )
+
+        with pytest.raises(ValueError, match="target_language"):
+            PromptBuilder(
+                config=config, quality_snapshot=cast(Any, snapshot)
+            ).build_main()
+
     def test_build_main_uses_custom_prompt_when_enabled(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

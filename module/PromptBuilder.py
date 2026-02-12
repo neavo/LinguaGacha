@@ -14,6 +14,10 @@ class PromptBuilder(Base):
     # 类线程锁
     LOCK: threading.Lock = threading.Lock()
 
+    # "原文/Source" 提示词占位文本（用于 source_language=ALL 时）
+    SOURCE_PLACEHOLDER_ZH: str = "原文"
+    SOURCE_PLACEHOLDER_EN: str = "Source"
+
     def __init__(
         self, config: Config, quality_snapshot: QualityRuleSnapshot | None = None
     ) -> None:
@@ -96,15 +100,41 @@ class PromptBuilder(Base):
 
     # 获取主提示词
     def build_main(self) -> str:
+        languages = BaseLanguage.get_languages()
+
+        # 设计约束：ALL 只用于原文语言（关闭语言过滤），译文语言必须是具体语言。
+        if self.config.target_language == BaseLanguage.ALL:
+            raise ValueError("target_language does not support ALL")
+        if self.config.target_language not in languages:
+            raise ValueError(f"invalid target_language: {self.config.target_language}")
+
         # 判断提示词语言
         if self.config.target_language == BaseLanguage.Enum.ZH:
             prompt_language = BaseLanguage.Enum.ZH
-            source_language = BaseLanguage.get_name_zh(self.config.source_language)
+            source_placeholder = __class__.SOURCE_PLACEHOLDER_ZH
+            if self.config.source_language == BaseLanguage.ALL:
+                source_language = source_placeholder
+            elif self.config.source_language in languages:
+                source_language = BaseLanguage.get_name_zh(self.config.source_language)
+            else:
+                source_language = source_placeholder
             target_language = BaseLanguage.get_name_zh(self.config.target_language)
         else:
             prompt_language = BaseLanguage.Enum.EN
-            source_language = BaseLanguage.get_name_en(self.config.source_language)
+            source_placeholder = __class__.SOURCE_PLACEHOLDER_EN
+            if self.config.source_language == BaseLanguage.ALL:
+                source_language = source_placeholder
+            elif self.config.source_language in languages:
+                source_language = BaseLanguage.get_name_en(self.config.source_language)
+            else:
+                source_language = source_placeholder
             target_language = BaseLanguage.get_name_en(self.config.target_language)
+
+        # 兜底：保证替换文本非空。
+        if not source_language:
+            source_language = source_placeholder
+        if not target_language:
+            raise ValueError(f"invalid target_language: {self.config.target_language}")
 
         with __class__.LOCK:
             # 前缀

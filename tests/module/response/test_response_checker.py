@@ -317,3 +317,69 @@ class TestResponseCheckerCheckLines:
         )
 
         assert checks == [ResponseChecker.Error.NONE]
+
+
+class TestResponseCheckerSourceLanguageALL:
+    """验证 source_language=BaseLanguage.ALL 时，ResponseChecker 不会因语言过滤短路。"""
+
+    @pytest.fixture(autouse=True)
+    def setup_fake_processor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        install_fake_text_processor(monkeypatch, None)
+
+    def test_check_lines_does_not_short_circuit_with_source_language_all(
+        self,
+    ) -> None:
+        """当 source_language=ALL 时，LanguageFilter 返回 False，不会跳过检查。
+        此时对于"相似原文译文"会触发相似度检查（而非直接返回 NONE）。"""
+        checker = create_checker(
+            Config(
+                source_language=BaseLanguage.ALL,
+                target_language=BaseLanguage.Enum.ZH,
+                check_kana_residue=False,
+                check_hangeul_residue=False,
+                check_similarity=True,
+            )
+        )
+
+        checks = checker.check_lines(
+            ["Hello World"], ["Hello World"], Item.TextType.NONE
+        )
+
+        assert checks == [ResponseChecker.Error.LINE_ERROR_SIMILARITY]
+
+    def test_check_lines_with_source_language_all_allows_valid_translation(
+        self,
+    ) -> None:
+        """当 source_language=ALL 时，正常的翻译仍能通过检查（不因语言过滤被错误标记）。
+        原文是日文，译文是中文，能正常通过检查。"""
+        checker = create_checker(
+            Config(
+                source_language=BaseLanguage.ALL,
+                target_language=BaseLanguage.Enum.ZH,
+                check_kana_residue=False,
+                check_hangeul_residue=False,
+                check_similarity=True,
+            )
+        )
+
+        checks = checker.check_lines(["こんにちは"], ["你好"], Item.TextType.NONE)
+
+        assert checks == [ResponseChecker.Error.NONE]
+
+    def test_check_lines_with_source_language_all_and_empty_translation(
+        self,
+    ) -> None:
+        """当 source_language=ALL 时，译文为空仍应判定为 EMPTY_LINE（不因语言过滤被跳过）。"""
+        checker = create_checker(
+            Config(
+                source_language=BaseLanguage.ALL,
+                target_language=BaseLanguage.Enum.ZH,
+                check_kana_residue=False,
+                check_hangeul_residue=False,
+                check_similarity=False,
+            )
+        )
+
+        checks = checker.check_lines(["Hello World"], [""], Item.TextType.NONE)
+
+        assert checks == [ResponseChecker.Error.LINE_ERROR_EMPTY_LINE]
