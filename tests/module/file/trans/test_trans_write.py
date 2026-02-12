@@ -176,5 +176,5 @@ def test_write_to_path_cleans_empty_tags_and_parameters(
         (dummy_data_manager.translated_path / rel_path).read_text(encoding="utf-8")
     )
     file_obj = result["project"]["files"][tag_path]
-    assert file_obj["tags"] == []
-    assert file_obj["parameters"] == []
+    assert file_obj["tags"] == [[]]
+    assert file_obj["parameters"] == [[]]

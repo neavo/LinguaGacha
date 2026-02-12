@@ -43,7 +43,10 @@ class WOLF(NONE):
         self, src: str, path: str, tag: list[str], context: list[str]
     ) -> list[bool]:
         if any(v in src for v in WOLF.BLACKLIST_EXT):
-            return [True] * len(context)
+            return [True] * (len(context) if len(context) > 0 else 1)
+
+        if not context:
+            return [any(v in ("red", "blue") for v in tag)]
 
         block: list[bool] = []
         for address in context:
