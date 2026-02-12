@@ -109,7 +109,7 @@ def test_check_removes_gold_tag_when_not_filtered() -> None:
     assert skip_internal_filter is False
 
 
-def test_check_adds_gold_tag_when_all_blocked_and_no_color_tags() -> None:
+def test_check_does_not_add_gold_tag_when_all_blocked_and_no_color_tags() -> None:
     processor = NONE(project={})
 
     src, dst, tag, status, skip_internal_filter = processor.check(
@@ -121,7 +121,7 @@ def test_check_adds_gold_tag_when_all_blocked_and_no_color_tags() -> None:
 
     assert src == "a.mp3"
     assert dst == ""
-    assert "gold" in tag
+    assert "gold" not in tag
     assert status == Base.ProjectStatus.EXCLUDED
     assert skip_internal_filter is False
 

@@ -27,7 +27,7 @@ class RPGMAKER(NONE):
         self, src: str, path: str, tag: list[str], context: list[str]
     ) -> list[bool]:
         if any(v in src for v in RPGMAKER.BLACKLIST_EXT):
-            return [True] * len(context)
+            return [True] * (len(context) if len(context) > 0 else 1)
 
         # 路径缓存
         if getattr(self, "cached_path", None) != path:
@@ -37,7 +37,10 @@ class RPGMAKER(NONE):
             )
 
         if self.cached_path_blocked:
-            return [True] * len(context)
+            return [True] * (len(context) if len(context) > 0 else 1)
+
+        if not context:
+            return [any(v in ("red", "blue") for v in tag)]
 
         block: list[bool] = []
         for address in context:
