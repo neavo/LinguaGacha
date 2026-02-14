@@ -39,7 +39,6 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
-from module.Utils.FontTool import FontTool
 
 # ==================== 图标常量 ====================
 
@@ -337,7 +336,7 @@ class ProofreadingPage(Base, QWidget):
 
         # 本页统一写死字号与图标尺寸，避免跨平台/主题的细微差异造成视觉不一致。
         base_font = QFont(self.command_bar_card.command_bar.font())
-        FontTool.set_font_size_px(base_font, self.ui_font_px)
+        base_font.setPixelSize(self.ui_font_px)
         self.command_bar_card.command_bar.setFont(base_font)
         self.command_bar_card.command_bar.setIconSize(
             QSize(self.ui_icon_px, self.ui_icon_px)

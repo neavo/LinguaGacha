@@ -15,8 +15,6 @@ from qfluentwidgets import CardWidget
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import isDarkTheme
 
-from module.Utils.FontTool import FontTool
-
 
 class QualityRuleEditPanelBase(QWidget):
     """质量规则编辑面板抽象基类。"""
@@ -85,7 +83,7 @@ class QualityRuleEditPanelBase(QWidget):
 
     def apply_button_style(self, button: TransparentPushButton) -> None:
         font = QFont(button.font())
-        FontTool.set_font_size_px(font, self.FONT_SIZE)
+        font.setPixelSize(self.FONT_SIZE)
         button.setFont(font)
         button.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         button.setMinimumHeight(self.BTN_SIZE)
@@ -107,7 +105,7 @@ class QualityRuleEditPanelBase(QWidget):
         label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         label.setMinimumWidth(40)
         font = QFont(label.font())
-        FontTool.set_font_size_px(font, self.FONT_SIZE)
+        font.setPixelSize(self.FONT_SIZE)
         font.setBold(True)
         label.setFont(font)
         label.setTextColor(QColor(214, 143, 0), QColor(255, 183, 77))
@@ -118,12 +116,12 @@ class QualityRuleEditPanelBase(QWidget):
     def apply_caption_label_style(self, label: CaptionLabel) -> None:
         label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         font = QFont(label.font())
-        FontTool.set_font_size_px(font, self.FONT_SIZE)
+        font.setPixelSize(self.FONT_SIZE)
         label.setFont(font)
 
     def apply_text_edit_style(self, text_edit: QWidget) -> None:
         font = QFont(text_edit.font())
-        FontTool.set_font_size_px(font, self.FONT_SIZE)
+        font.setPixelSize(self.FONT_SIZE)
         text_edit.setFont(font)
         text_edit.setMinimumHeight(self.TEXT_MIN_HEIGHT)
         text_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

@@ -79,6 +79,18 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         h_scroll.valueChanged.connect(self.hide_tooltip)
         v_scroll.valueChanged.connect(self.hide_tooltip)
 
+    def resolve_status(self, raw: Any) -> Base.ProjectStatus | None:
+        """Qt 的 QVariant 可能会把 StrEnum 退化成 str，这里统一归一化。"""
+
+        if isinstance(raw, Base.ProjectStatus):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return Base.ProjectStatus(raw)
+            except ValueError:
+                return None
+        return None
+
     # ========== 绘制 ==========
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
@@ -90,15 +102,12 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         # 先让 TableItemDelegate 绘制背景/hover/pressed/selected 等样式。
         super().paint(painter, option, index)
 
-        status = index.data(ProofreadingTableModel.STATUS_ROLE)
+        raw_status = index.data(ProofreadingTableModel.STATUS_ROLE)
         warnings = index.data(ProofreadingTableModel.WARNINGS_ROLE)
 
         has_warning = bool(isinstance(warnings, tuple) and warnings)
-        icon_status = (
-            self.STATUS_ICONS.get(status)
-            if isinstance(status, Base.ProjectStatus)
-            else None
-        )
+        status = self.resolve_status(raw_status)
+        icon_status = self.STATUS_ICONS.get(status) if status is not None else None
         if icon_status is None and not has_warning:
             return
 
@@ -210,18 +219,13 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> str:
-        status = index.data(ProofreadingTableModel.STATUS_ROLE)
+        raw_status = index.data(ProofreadingTableModel.STATUS_ROLE)
         warnings = index.data(ProofreadingTableModel.WARNINGS_ROLE)
 
-        warnings_tuple: tuple[WarningType, ...] = (
-            warnings if isinstance(warnings, tuple) else tuple()
-        )
+        warnings_tuple = warnings if isinstance(warnings, tuple) else tuple()
 
-        icon_status = (
-            self.STATUS_ICONS.get(status)
-            if isinstance(status, Base.ProjectStatus)
-            else None
-        )
+        status = self.resolve_status(raw_status)
+        icon_status = self.STATUS_ICONS.get(status) if status is not None else None
         status_pixmap = (
             self.get_icon_pixmap(icon_status) if icon_status is not None else None
         )
@@ -245,19 +249,34 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         self.tooltip_anchor.setGeometry(rect)
 
     def build_status_tooltip(self, status: Any) -> str:
-        if not isinstance(status, Base.ProjectStatus):
+        resolved = self.resolve_status(status)
+        if resolved is None:
             return ""
-        if status not in self.STATUS_ICONS:
+        if resolved not in self.STATUS_ICONS:
             return ""
         return (
             f"{Localizer.get().proofreading_page_filter_status}\n"
-            f"{Localizer.get().status}{ProofreadingLabels.get_status_label(status)}"
+            f"{Localizer.get().status}{ProofreadingLabels.get_status_label(resolved)}"
         )
 
-    def build_warning_tooltip(self, warnings: tuple[WarningType, ...]) -> str:
+    def build_warning_tooltip(self, warnings: tuple[WarningType | str, ...]) -> str:
         if not warnings:
             return ""
-        warning_texts = [ProofreadingLabels.get_warning_label(e) for e in warnings]
+
+        warning_texts: list[str] = []
+        for e in warnings:
+            if isinstance(e, WarningType):
+                warning_texts.append(ProofreadingLabels.get_warning_label(e))
+                continue
+            if isinstance(e, str):
+                try:
+                    warning_texts.append(
+                        ProofreadingLabels.get_warning_label(WarningType(e))
+                    )
+                except ValueError:
+                    warning_texts.append(e)
+                continue
+            warning_texts.append(str(e))
         return (
             f"{Localizer.get().proofreading_page_result_check}\n"
             f"{Localizer.get().status}{' | '.join(warning_texts)}"

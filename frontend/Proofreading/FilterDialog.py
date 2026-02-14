@@ -52,7 +52,6 @@ from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
-from module.Utils.FontTool import FontTool
 
 
 class FilterListItemWidget(QWidget):
@@ -477,7 +476,7 @@ class FilterDialog(MessageBoxBase):
     def setup_small_button(self, btn: QWidget) -> None:
         btn.setFixedHeight(26)
         font = btn.font()
-        FontTool.set_font_size_px(font, 12)
+        font.setPixelSize(12)
         btn.setFont(font)
 
     def setup_filter_list_widget(self, list_widget: ListWidget) -> None:

@@ -1,26 +1,31 @@
+from __future__ import annotations
+
 import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QWidget
 
 from qfluentwidgets import isDarkTheme
 
 
 class WaveformWidget(QLabel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
 
         # 自动填充背景
         # self.setAutoFillBackground(True)
 
         # 设置字体
-        self.font = QFont("Consolas", 8)
+        # 注意：不要使用 self.font 作为属性名，会覆盖 QWidget.font() 方法。
+        self.wave_font = QFont("Consolas", 8)
 
         # 每个字符所占用的空间
-        self.point_size = self.font.pointSize()
+        self.point_size: int = int(self.wave_font.pointSize())
 
         # 历史数据
         self.history = [0]
@@ -40,7 +45,7 @@ class WaveformWidget(QLabel):
         self.timer.start(int(1000 / self.refresh_rate))
 
     # 刷新
-    def tick(self):
+    def tick(self) -> None:
         if time.time() - self.last_add_value_time >= (1 / self.refresh_rate):
             # 如果周期内数据没有更新，则重复最后一个数据
             self.repeat()
@@ -48,10 +53,11 @@ class WaveformWidget(QLabel):
         # 刷新界面
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent | None) -> None:
+        del event
         # 初始化画笔
         painter = QPainter(self)
-        painter.setFont(self.font)
+        painter.setFont(self.wave_font)
         painter.setPen(Qt.GlobalColor.white if isDarkTheme() else Qt.GlobalColor.black)
 
         # 归一化以增大波形起伏
@@ -81,11 +87,11 @@ class WaveformWidget(QLabel):
             x = x - self.point_size
 
     # 重复最后的数据
-    def repeat(self):
+    def repeat(self) -> None:
         self.add_value(self.history[-1] if len(self.history) > 0 else 0)
 
     # 添加数据
-    def add_value(self, value: int):
+    def add_value(self, value: int) -> None:
         if len(self.history) >= self.matrix_width:
             self.history.pop(0)
 
@@ -95,7 +101,7 @@ class WaveformWidget(QLabel):
         self.last_add_value_time = time.time()
 
     # 设置矩阵大小
-    def set_matrix_size(self, width: int, height: int):
+    def set_matrix_size(self, width: int, height: int) -> None:
         self.matrix_width = width
         self.matrix_height = height
         self.max_width = self.matrix_width * self.point_size

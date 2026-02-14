@@ -36,7 +36,6 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
-from module.Utils.FontTool import FontTool
 from widget.StatusTag import StatusTagType
 from widget.StatusTag import StatusTag
 
@@ -121,7 +120,7 @@ class ProofreadingEditPanel(QWidget):
         self.file_path_label.setMinimumWidth(1)
         self.file_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         label_font = QFont(self.file_path_label.font())
-        FontTool.set_font_size_px(label_font, self.FONT_SIZE)
+        label_font.setPixelSize(self.FONT_SIZE)
         self.file_path_label.setFont(label_font)
         file_layout.addWidget(self.file_path_label, 1)
 
@@ -136,7 +135,7 @@ class ProofreadingEditPanel(QWidget):
         self.row_index_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         self.row_index_label.setMinimumWidth(40)
         idx_font = QFont(self.row_index_label.font())
-        FontTool.set_font_size_px(idx_font, self.FONT_SIZE)
+        idx_font.setPixelSize(self.FONT_SIZE)
         idx_font.setBold(True)
         self.row_index_label.setFont(idx_font)
         # 序号需要在亮/暗主题下都足够醒目。
@@ -214,14 +213,14 @@ class ProofreadingEditPanel(QWidget):
         )
         self.src_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         label_font = QFont(self.src_label.font())
-        FontTool.set_font_size_px(label_font, self.FONT_SIZE)
+        label_font.setPixelSize(self.FONT_SIZE)
         self.src_label.setFont(label_font)
         editor_layout.addWidget(self.src_label)
 
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
         src_font = QFont(self.src_text.font())
-        FontTool.set_font_size_px(src_font, self.FONT_SIZE)
+        src_font.setPixelSize(self.FONT_SIZE)
         self.src_text.setFont(src_font)
         # 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
         self.src_text.setMinimumHeight(self.TEXT_MIN_HEIGHT)
@@ -239,7 +238,7 @@ class ProofreadingEditPanel(QWidget):
 
         self.dst_text = CustomTextEdit(self.editor_card)
         dst_font = QFont(self.dst_text.font())
-        FontTool.set_font_size_px(dst_font, self.FONT_SIZE)
+        dst_font.setPixelSize(self.FONT_SIZE)
         self.dst_text.setFont(dst_font)
         self.dst_text.setMinimumHeight(self.TEXT_MIN_HEIGHT)
         self.dst_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -318,7 +317,7 @@ class ProofreadingEditPanel(QWidget):
 
     def apply_fixed_button_style(self, button: TransparentPushButton) -> None:
         font = QFont(button.font())
-        FontTool.set_font_size_px(font, self.FONT_SIZE)
+        font.setPixelSize(self.FONT_SIZE)
         button.setFont(font)
         button.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         button.setMinimumHeight(self.BTN_SIZE)
