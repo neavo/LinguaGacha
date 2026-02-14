@@ -30,6 +30,9 @@ class ProofreadingLoadResult:
     items: list[Item] = field(default_factory=list)
     warning_map: dict[int, list[WarningType]] = field(default_factory=dict)
     checker: ResultChecker | None = None
+    failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = field(
+        default_factory=dict
+    )
     filter_options: ProofreadingFilterOptions = field(
         default_factory=ProofreadingFilterOptions
     )
@@ -88,8 +91,14 @@ class ProofreadingLoadService:
 
         checker = ResultChecker(config)
         warning_map = checker.check_items(items)
-        filter_options = ProofreadingDomain.build_default_filter_options(
+        failed_terms_by_item_key = ProofreadingDomain.build_failed_glossary_terms_cache(
             items, warning_map, checker
+        )
+        filter_options = ProofreadingDomain.build_default_filter_options(
+            items,
+            warning_map,
+            checker,
+            failed_terms_by_item_key=failed_terms_by_item_key,
         )
 
         return ProofreadingLoadResult(
@@ -101,5 +110,6 @@ class ProofreadingLoadService:
             items=items,
             warning_map=warning_map,
             checker=checker,
+            failed_terms_by_item_key=failed_terms_by_item_key,
             filter_options=filter_options,
         )

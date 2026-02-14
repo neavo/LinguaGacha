@@ -13,15 +13,12 @@ from PyQt5.QtWidgets import QBoxLayout
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
-from qfluentwidgets import TableWidget
 from qfluentwidgets import TransparentPushButton
-from qfluentwidgets import getFont
 from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
@@ -33,6 +30,9 @@ from module.Config import Config
 from module.Data.QualityRuleIO import QualityRuleIO
 from module.Data.QualityRuleMerge import QualityRuleMerge
 from module.Localizer.Localizer import Localizer
+from widget.AppTable import AppTableModelBase
+from widget.AppTable import AppTableView
+from widget.AppTable import ColumnSpec
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -137,23 +137,26 @@ class QualityRulePageBase(QWidget, Base):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(8)
 
-        self.table = TableWidget(body_widget)
-        self.table.setBorderVisible(False)
-        self.table.setSelectRightClickedRow(True)
+        self.table = AppTableView(body_widget)
         self.table.setAlternatingRowColors(True)
-        self.table.setColumnCount(len(self.get_list_headers()))
-        self.table.setHorizontalHeaderLabels(self.get_list_headers())
 
-        v_header = cast(QHeaderView, self.table.verticalHeader())
-        v_header.setVisible(True)
-        v_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
-        v_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         # 左侧列表只读
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
 
         self.setup_table_style()
+
+        self.column_specs = self.get_column_specs()
+        self.table_model: AppTableModelBase[dict[str, Any]] = AppTableModelBase(
+            self.table.ui_font,
+            self.column_specs,
+            row_key_getter=self.get_entry_key,
+            parent=self,
+        )
+        self.table.setModel(self.table_model)
+        self.table.apply_column_specs(self.column_specs)
+        self.refresh_table()
 
         self.edit_panel = self.create_edit_panel(body_widget)
 
@@ -187,7 +190,7 @@ class QualityRulePageBase(QWidget, Base):
                 },
             )
 
-        self.search_card.bind_table(self.table, self.get_search_columns(), notify)
+        self.search_card.bind_view(self.table, self.get_search_columns(), notify)
 
         self.search_card.on_back_clicked(lambda w: self.on_search_back_clicked())
         self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
@@ -196,7 +199,7 @@ class QualityRulePageBase(QWidget, Base):
         self.search_card.on_search_mode_changed(lambda w: self.on_search_mode_changed())
 
     def setup_table_style(self) -> None:
-        self.ui_font = getFont(12)
+        self.ui_font = self.table.ui_font
         self.ui_font.setHintingPreference(self.table.font().hintingPreference())
         header_qss = "QHeaderView::section {\n    font: 12px --FontFamilies;\n}\n"
         setCustomStyleSheet(self.table, header_qss, header_qss)
@@ -352,101 +355,73 @@ class QualityRulePageBase(QWidget, Base):
 
     # ==================== 列表渲染/选择 ====================
 
-    def refresh_table(self) -> None:
-        self.table.blockSignals(True)
-        self.table.setUpdatesEnabled(False)
+    def get_entry_key(self, entry: dict[str, Any]) -> str:
+        value = entry.get("src", "")
+        return str(value).strip() if value is not None else ""
 
+    def get_column_specs(self) -> list[ColumnSpec[dict[str, Any]]]:
         headers = self.get_list_headers()
-        col_count = len(headers)
-        self.table.setColumnCount(col_count)
-        self.table.setHorizontalHeaderLabels(headers)
 
-        target_count = max(20, len(self.entries))
-        self.table.setRowCount(target_count)
+        def make_display_getter(col: int) -> Callable[[dict[str, Any]], str]:
+            def getter(row: dict[str, Any]) -> str:
+                values = self.get_row_values(row)
+                if 0 <= col < len(values):
+                    value = values[col]
+                    return value if isinstance(value, str) else str(value)
+                return ""
 
-        for row in range(target_count):
-            values = ("",) * col_count
-            editable = False
+            return getter
 
-            if row < len(self.entries):
-                values = self.get_row_values(self.entries[row])
-                editable = True
-                entry = self.entries[row]
-            else:
-                entry = None
+        specs: list[ColumnSpec[dict[str, Any]]] = []
+        for col, header in enumerate(headers):
+            specs.append(
+                ColumnSpec(
+                    header=header,
+                    alignment=Qt.AlignmentFlag.AlignCenter,
+                    display_getter=make_display_getter(col),
+                )
+            )
+        return specs
 
-            for col in range(col_count):
-                if self.update_table_cell(row, col, entry, editable):
-                    continue
-                item = self.table.item(row, col)
-                if item is None:
-                    item = QTableWidgetItem()
-                    self.table.setItem(row, col, item)
+    def map_source_row_to_view_row(self, source_row: int) -> int:
+        return self.table.map_source_row_to_view_row(self.table_model, source_row)
 
-                item.setText(values[col] if col < len(values) else "")
-                ui_font = getattr(self, "ui_font", None)
-                if ui_font is not None:
-                    item.setFont(ui_font)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if editable:
-                    flags = item.flags()
-                    flags |= Qt.ItemFlag.ItemIsEnabled
-                    flags |= Qt.ItemFlag.ItemIsSelectable
-                    flags &= ~Qt.ItemFlag.ItemIsEditable
-                    item.setFlags(flags)
-                else:
-                    # 空白行保持样式铺满，但不允许选中。
-                    flags = item.flags()
-                    flags |= Qt.ItemFlag.ItemIsEnabled
-                    flags &= ~Qt.ItemFlag.ItemIsSelectable
-                    flags &= ~Qt.ItemFlag.ItemIsEditable
-                    item.setFlags(flags)
+    def get_current_source_row(self) -> int:
+        row = self.table.get_current_source_row()
+        if row < 0 or row >= len(self.entries):
+            return -1
+        return int(row)
 
-        self.table.setUpdatesEnabled(True)
-        self.table.blockSignals(False)
+    def get_selected_entry_rows(self) -> list[int]:
+        return [
+            r
+            for r in self.table.get_selected_source_rows()
+            if 0 <= r < len(self.entries)
+        ]
+
+    def refresh_table(self) -> None:
+        self.table_model.set_rows(self.entries)
+        self.table.update_row_number_width(len(self.entries))
 
     def refresh_table_row(self, row: int) -> None:
         """仅刷新单行，避免保存时全量刷新。"""
-        if row < 0 or row >= self.table.rowCount():
+        if row < 0 or row >= len(self.entries):
             return
 
-        col_count = self.table.columnCount()
-        values = ("",) * col_count
-        editable = False
+        if self.table_model.columnCount() <= 0:
+            return
 
-        if row < len(self.entries):
-            values = self.get_row_values(self.entries[row])
-            editable = True
-            entry = self.entries[row]
-        else:
-            entry = None
-
-        for col in range(col_count):
-            if self.update_table_cell(row, col, entry, editable):
-                continue
-            item = self.table.item(row, col)
-            if item is None:
-                item = QTableWidgetItem()
-                self.table.setItem(row, col, item)
-
-            item.setText(values[col] if col < len(values) else "")
-            ui_font = getattr(self, "ui_font", None)
-            if ui_font is not None:
-                item.setFont(ui_font)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if editable:
-                flags = item.flags()
-                flags |= Qt.ItemFlag.ItemIsEnabled
-                flags |= Qt.ItemFlag.ItemIsSelectable
-                flags &= ~Qt.ItemFlag.ItemIsEditable
-                item.setFlags(flags)
-            else:
-                # 空白行保持样式铺满，但不允许选中。
-                flags = item.flags()
-                flags |= Qt.ItemFlag.ItemIsEnabled
-                flags &= ~Qt.ItemFlag.ItemIsSelectable
-                flags &= ~Qt.ItemFlag.ItemIsEditable
-                item.setFlags(flags)
+        top_left = self.table_model.index(row, 0)
+        bottom_right = self.table_model.index(row, self.table_model.columnCount() - 1)
+        self.table_model.dataChanged.emit(
+            top_left,
+            bottom_right,
+            [
+                int(Qt.ItemDataRole.DisplayRole),
+                int(Qt.ItemDataRole.ToolTipRole),
+                int(Qt.ItemDataRole.DecorationRole),
+            ],
+        )
 
     def select_row(self, row: int) -> None:
         if row < 0 or row >= len(self.entries):
@@ -454,8 +429,14 @@ class QualityRulePageBase(QWidget, Base):
             self.apply_selection(-1)
             return
 
+        view_row = self.map_source_row_to_view_row(row)
+        if view_row < 0:
+            self.table.clearSelection()
+            self.apply_selection(-1)
+            return
+
         self.block_selection_change = True
-        self.table.selectRow(row)
+        self.table.selectRow(view_row)
         self.block_selection_change = False
         self.apply_selection(row)
 
@@ -463,7 +444,7 @@ class QualityRulePageBase(QWidget, Base):
         if self.block_selection_change:
             return
 
-        row = self.table.currentRow()
+        row = self.get_current_source_row()
         if row < 0 or row >= len(self.entries):
             self.apply_selection(-1)
             return
@@ -478,7 +459,9 @@ class QualityRulePageBase(QWidget, Base):
             if self.current_index < 0:
                 return
             self.block_selection_change = True
-            self.table.selectRow(self.current_index)
+            view_row = self.map_source_row_to_view_row(self.current_index)
+            if view_row >= 0:
+                self.table.selectRow(view_row)
             self.block_selection_change = False
 
         self.run_with_unsaved_guard(action, revert)
@@ -601,7 +584,9 @@ class QualityRulePageBase(QWidget, Base):
 
             if self.current_index >= 0 and self.current_index < len(self.entries):
                 self.block_selection_change = True
-                self.table.selectRow(self.current_index)
+                view_row = self.map_source_row_to_view_row(self.current_index)
+                if view_row >= 0:
+                    self.table.selectRow(view_row)
                 self.block_selection_change = False
                 self.edit_panel.bind_entry(
                     self.entries[self.current_index], self.current_index + 1
@@ -704,12 +689,26 @@ class QualityRulePageBase(QWidget, Base):
                 break
 
         if duplicate_index < 0:
-            self.entries[self.current_index] = dict(entry)
+            # 关键：保持 entries[row] 的 dict 对象引用不变。
+            # AppTableModelBase 在 set_rows() 时保存了行对象引用；若这里直接替换 dict，
+            # 列表侧只 emit dataChanged 将无法拿到新对象，导致图标/文本不刷新。
+            existing = self.entries[self.current_index]
+            if isinstance(existing, dict):
+                existing.clear()
+                existing.update(entry)
+            else:
+                self.entries[self.current_index] = dict(entry)
             return False, ""
 
         keep_index = min(self.current_index, duplicate_index)
         drop_index = max(self.current_index, duplicate_index)
-        self.entries[keep_index] = dict(entry)
+
+        keep_existing = self.entries[keep_index]
+        if isinstance(keep_existing, dict):
+            keep_existing.clear()
+            keep_existing.update(entry)
+        else:
+            self.entries[keep_index] = dict(entry)
         del self.entries[drop_index]
         self.current_index = keep_index
         return True, Localizer.get().quality_merge_duplication

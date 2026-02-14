@@ -7,7 +7,6 @@ from PyQt5.QtCore import QUrl
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -26,6 +25,7 @@ from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+from widget.AppTable import ColumnSpec
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
@@ -135,21 +135,29 @@ class GlossaryPage(QualityRulePageBase):
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1, 2)
 
-    def update_table_cell(
-        self,
-        row: int,
-        col: int,
-        entry: dict[str, Any] | None,
-        editable: bool,
-    ) -> bool:
-        if col != self.CASE_COLUMN_INDEX:
-            return False
+    def get_column_specs(self) -> list[ColumnSpec[dict[str, Any]]]:
+        specs = super().get_column_specs()
+        if self.CASE_COLUMN_INDEX < 0 or self.CASE_COLUMN_INDEX >= len(specs):
+            return specs
 
-        case_sensitive = False
-        if entry is not None:
-            case_sensitive = bool(entry.get("case_sensitive", False))
-        self.update_case_cell_item(row, case_sensitive, editable)
-        return True
+        header = specs[self.CASE_COLUMN_INDEX].header
+
+        def get_case_sensitive(row: dict[str, Any]) -> bool:
+            return bool(row.get("case_sensitive", False))
+
+        specs[self.CASE_COLUMN_INDEX] = ColumnSpec(
+            header=header,
+            width_mode=ColumnSpec.WidthMode.FIXED,
+            width=self.CASE_COLUMN_WIDTH,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+            display_getter=lambda row: "",
+            decoration_getter=lambda row: self.rule_icon_renderer.get_pixmap(
+                self.table,
+                [RuleIconSpec(ICON_CASE_SENSITIVE, get_case_sensitive(row))],
+            ),
+            tooltip_getter=lambda row: self.get_case_tooltip(get_case_sensitive(row)),
+        )
+        return specs
 
     def on_entries_reloaded(self) -> None:
         if hasattr(self, "switch_card"):
@@ -194,6 +202,8 @@ class GlossaryPage(QualityRulePageBase):
                 self.table,
                 icon_column_index=self.CASE_COLUMN_INDEX,
                 icon_size=self.CASE_ICON_SIZE,
+                icon_count=1,
+                on_icon_clicked=self.on_rule_icon_clicked,
             )
         )
         header = self.table.horizontalHeader()
@@ -211,10 +221,20 @@ class GlossaryPage(QualityRulePageBase):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.on_table_context_menu)
 
+    def on_rule_icon_clicked(self, row: int, icon_index: int) -> None:
+        del icon_index
+        if row < 0 or row >= len(self.entries):
+            return
+
+        enabled = not bool(self.entries[row].get("case_sensitive", False))
+        self.run_with_unsaved_guard(
+            lambda: self.set_case_sensitive_for_rows([row], enabled)
+        )
+
     def disconnect_theme_signals(self) -> None:
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
@@ -228,51 +248,6 @@ class GlossaryPage(QualityRulePageBase):
             if case_sensitive
             else f"{Localizer.get().rule_case_sensitive}\n{Localizer.get().status_disabled}"
         )
-
-    def update_case_cell_item(
-        self, row: int, case_sensitive: bool, editable: bool
-    ) -> None:
-        item = self.table.item(row, self.CASE_COLUMN_INDEX)
-        if item is None:
-            item = QTableWidgetItem()
-            self.table.setItem(row, self.CASE_COLUMN_INDEX, item)
-
-        item.setText("")
-        item.setFont(self.ui_font)
-        item.setData(
-            Qt.ItemDataRole.TextAlignmentRole,
-            int(Qt.AlignmentFlag.AlignCenter),
-        )
-
-        if editable:
-            item.setData(
-                Qt.ItemDataRole.DecorationRole,
-                self.rule_icon_renderer.get_pixmap(
-                    self.table,
-                    [RuleIconSpec(ICON_CASE_SENSITIVE, case_sensitive)],
-                ),
-            )
-            item.setToolTip(self.get_case_tooltip(case_sensitive))
-        else:
-            item.setData(Qt.ItemDataRole.DecorationRole, None)
-            item.setToolTip("")
-
-        if editable:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            flags |= Qt.ItemFlag.ItemIsSelectable
-            item.setFlags(flags)
-        else:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            item.setFlags(flags)
-
-    def get_selected_entry_rows(self) -> list[int]:
-        selection_model = self.table.selectionModel()
-        if selection_model is None:
-            return []
-        rows = [index.row() for index in selection_model.selectedRows()]
-        return sorted({row for row in rows if 0 <= row < len(self.entries)})
 
     def on_table_context_menu(self, position: QPoint) -> None:
         rows = self.get_selected_entry_rows()

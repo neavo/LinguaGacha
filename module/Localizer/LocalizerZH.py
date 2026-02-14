@@ -416,7 +416,6 @@ class LocalizerZH:
     proofreading_page_status_error: str = "翻译失败"
     proofreading_page_status_processed_in_past: str = "历史完成"
     proofreading_page_status_non_target_source_language: str = "非目标原文语言"
-    proofreading_page_page_info: str = "第 {CURRENT} / {TOTAL} 页"
     proofreading_page_warning_text_preserve: str = "文本保护失效"
     proofreading_page_warning_similarity: str = "相似度过高"
     proofreading_page_warning_glossary: str = "术语表未生效"

@@ -1,6 +1,8 @@
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import threading
 from typing import Any
 from typing import cast
 
@@ -8,11 +10,15 @@ from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import QPointF
 from PyQt5.QtCore import QRect
 from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QHideEvent
 from PyQt5.QtGui import QPainter
 from PyQt5.QtGui import QPolygonF
 from PyQt5.QtGui import QPen
+from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QListWidgetItem
@@ -197,8 +203,24 @@ class FilterListDelegate(ListItemDelegate):
         editor.setGeometry(option.rect)
 
 
+@dataclass(frozen=True)
+class FilterRefreshComputeResult:
+    token: int
+    file_counts: dict[str, int]
+    status_counts: dict[Base.ProjectStatus, int]
+    warning_counts: dict[str | WarningType, int]
+    term_counts_sorted: tuple[tuple[tuple[str, str], int], ...]
+    glossary_active: bool
+
+
 class FilterDialog(MessageBoxBase):
     """双栏式筛选对话框：左栏文件范围，右栏筛选条件与术语明细，全联动刷新"""
+
+    # 防抖时间（毫秒）：合并连续点击导致的刷新请求。
+    FILTER_CHANGE_DEBOUNCE_MS: int = 120
+
+    # 后台 compute 完成后回到 UI 线程 apply。
+    refresh_computed = pyqtSignal(object)
 
     LIST_STYLE = """
             ListWidget, QListWidget, QListView {
@@ -251,18 +273,33 @@ class FilterDialog(MessageBoxBase):
         self.warning_map = warning_map
         self.result_checker = result_checker
 
-        # 预计算术语错误明细：{ (src, dst): [item, ...] }
-        self.glossary_error_map: dict[tuple[str, str], list[Item]] = {}
-        self.build_glossary_error_map()
+        # glossary failure cache（由 Page 在加载/规则刷新后构建并传入）。
+        self.failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
+        self.all_glossary_terms: set[tuple[str, str]] = set()
 
-        # 持久化保存术语选中状态，初始化为全选
-        self.term_checked_state: set[tuple[str, str]] = set(
-            self.glossary_error_map.keys()
-        )
+        # 持久化保存术语选中状态（跨 refresh 保持）。
+        self.term_checked_state: set[tuple[str, str]] = set()
+
+        # 计数文本的 base_label 与上一轮 count（用于避免无效 setText / repaint）。
+        self.status_base_labels: dict[Base.ProjectStatus, str] = {}
+        self.status_count_cache: dict[Base.ProjectStatus, int] = {}
+        self.warning_base_labels: dict[str | WarningType, str] = {}
+        self.warning_count_cache: dict[str | WarningType, int] = {}
+
+        # 术语列表当前顺序（用于尽量避免重复 clear + rebuild）。
+        self.term_list_order: tuple[tuple[str, str], ...] = ()
+
+        # refresh 调度/竞态控制
+        self.refresh_token: int = 0
+        self.refresh_timer: QTimer = QTimer(self)
+        self.refresh_timer.setSingleShot(True)
+        self.refresh_timer.timeout.connect(self.start_refresh_compute)
+
+        self.refresh_computed.connect(self.on_refresh_computed_ui)
 
         self.init_ui()
-        # 初始化后刷新一次联动数据
-        self.refresh_all()
+
+        # 注意：不在构造函数内触发重计算/重建（保证对话框尽快可交互）。
 
     def export_error_report(self) -> None:
         """导出错误报告"""
@@ -392,9 +429,7 @@ class FilterDialog(MessageBoxBase):
                 parent=self.window(),  # 使用 window() 获取顶层窗口作为父组件
             )
         except Exception as e:
-            LogManager.get().error(
-                f"Failed to write proofreading report: {output_path}", e
-            )
+            LogManager.get().error(f"写入校对报告失败: {output_path}", e)
             InfoBar.error(
                 title=Localizer.get().task_failed,
                 content="",
@@ -404,19 +439,6 @@ class FilterDialog(MessageBoxBase):
                 duration=5000,
                 parent=self.window(),
             )
-
-    def build_glossary_error_map(self) -> None:
-        """构建术语错误明细映射"""
-        for item in self.items:
-            if WarningType.GLOSSARY not in ProofreadingDomain.get_item_warnings(
-                item, self.warning_map
-            ):
-                continue
-            failed_terms = self.result_checker.get_failed_glossary_terms(item)
-            for term in failed_terms:
-                if term not in self.glossary_error_map:
-                    self.glossary_error_map[term] = []
-                self.glossary_error_map[term].append(item)
 
     def init_ui(self) -> None:
         """初始化双栏布局 UI"""
@@ -744,6 +766,18 @@ class FilterDialog(MessageBoxBase):
 
         return card
 
+    def showEvent(self, e: QShowEvent) -> None:
+        super().showEvent(e)
+
+        # 对话框显示后再触发首次刷新，保证 UI 线程可交互。
+        self.schedule_refresh(delay_ms=0)
+
+    def hideEvent(self, a0: QHideEvent | None) -> None:
+        super().hideEvent(a0)
+
+        # 对话框关闭后不再需要占用大快照；下次打开会通过 update_snapshot 重新注入。
+        self.release_snapshot()
+
     # =========================================
     # 事件处理
     # =========================================
@@ -756,7 +790,10 @@ class FilterDialog(MessageBoxBase):
         self.refresh_all()
 
     def on_term_item_clicked(self, item: QListWidgetItem) -> None:
-        """处理术语列表项点击：切换激活状态，刷新信息"""
+        """处理术语列表项点击：切换激活状态。
+
+        术语勾选只影响最终返回的 filter options，不参与联动计数刷新。
+        """
         widget = self.term_list.itemWidget(item)
         if isinstance(widget, FilterListItemWidget):
             widget.set_checked(not widget.is_checked())
@@ -799,12 +836,12 @@ class FilterDialog(MessageBoxBase):
             widget.set_checked(False)
 
     # =========================================
-    # 全量联动刷新
+    # 全量联动刷新（防抖 + 后台 compute + 主线程 apply）
     # =========================================
 
-    def get_current_filtered_items(self) -> list[Item]:
-        """根据当前所有筛选条件获取符合条件的条目列表"""
-        # 根据 widget 的选中状态判断文件是否激活
+    def build_linked_filter_options_snapshot(self) -> ProofreadingFilterOptions:
+        """捕获“联动计数/术语统计”使用的筛选选项快照。"""
+
         selected_files = {
             path
             for path, widget in self.file_list_widgets.items()
@@ -818,13 +855,18 @@ class FilterDialog(MessageBoxBase):
             w for w, btn in self.warning_buttons.items() if btn.isChecked()
         }
 
-        options = ProofreadingFilterOptions(
+        # 保持历史行为：术语勾选仅用于“最终筛选结果”，不参与联动计数。
+        # 这样用户在勾术语时 UI 不会被迫反复重算计数，也避免计数口径随术语变来变去。
+        return ProofreadingFilterOptions(
             warning_types=selected_warnings,
             statuses=selected_statuses,
             file_paths=selected_files,
             glossary_terms=set(),
         )
-        # 保持历史行为：筛选对话框内的联动计数不受术语勾选影响。
+
+    def get_current_filtered_items(self) -> list[Item]:
+        """根据当前所有筛选条件获取符合条件的条目列表"""
+        options = self.build_linked_filter_options_snapshot()
         return ProofreadingDomain.filter_items(
             items=self.items,
             warning_map=self.warning_map,
@@ -834,47 +876,161 @@ class FilterDialog(MessageBoxBase):
             enable_glossary_term_filter=False,
         )
 
-    def refresh_all(self) -> None:
-        """全量联动刷新：所有模块的计数都基于当前筛选结果"""
-        filtered_items = self.get_current_filtered_items()
+    def schedule_refresh(self, *, delay_ms: int | None = None) -> None:
+        """安排一次联动刷新（防抖合并）。"""
 
-        # 更新文件列表计数
-        file_counts = Counter(item.get_file_path() for item in filtered_items)
+        # token 每次变化都递增：后台结果回到 UI 线程后只允许最新 token 生效。
+        self.refresh_token += 1
+        self.refresh_timer.stop()
+        self.refresh_timer.start(
+            self.FILTER_CHANGE_DEBOUNCE_MS if delay_ms is None else delay_ms
+        )
+
+    def refresh_all(self) -> None:
+        """触发一次联动刷新（带防抖）。"""
+
+        self.schedule_refresh()
+
+    def start_refresh_compute(self) -> None:
+        """由防抖 timer 触发，在 UI 线程捕获快照并启动后台 compute。"""
+
+        token = self.refresh_token
+        options_snapshot = self.build_linked_filter_options_snapshot()
+        # items 是大列表：只在 UI 线程整体替换，不做原地修改；这里直接引用避免频繁 copy。
+        # warning_map / failed_terms 可能在后台任务回调里增量更新；为避免 compute 线程读到并发修改，
+        # 在 UI 线程先拷贝一份 dict 快照。
+        items_snapshot = self.items
+        warning_map_snapshot = dict(self.warning_map) if self.warning_map else {}
+        checker_snapshot = self.result_checker
+        failed_terms_snapshot = (
+            dict(self.failed_terms_by_item_key) if self.failed_terms_by_item_key else {}
+        )
+
+        glossary_btn = self.warning_buttons.get(WarningType.GLOSSARY)
+        glossary_active = bool(glossary_btn.isChecked()) if glossary_btn else False
+
+        def task() -> None:
+            try:
+                filtered_items = ProofreadingDomain.filter_items(
+                    items=items_snapshot,
+                    warning_map=warning_map_snapshot,
+                    options=options_snapshot,
+                    checker=checker_snapshot,
+                    enable_search_filter=False,
+                    enable_glossary_term_filter=False,
+                )
+
+                file_counts = Counter(item.get_file_path() for item in filtered_items)
+                status_counts = Counter(item.get_status() for item in filtered_items)
+
+                warning_counts: dict[str | WarningType, int] = {}
+                no_warning_count = 0
+                for item in filtered_items:
+                    item_warnings = ProofreadingDomain.get_item_warnings(
+                        item, warning_map_snapshot
+                    )
+                    if item_warnings:
+                        for w in item_warnings:
+                            warning_counts[w] = warning_counts.get(w, 0) + 1
+                    else:
+                        no_warning_count += 1
+                warning_counts[ProofreadingFilterOptions.NO_WARNING_TAG] = (
+                    no_warning_count
+                )
+
+                term_counts_sorted: tuple[tuple[tuple[str, str], int], ...] = ()
+                if glossary_active:
+                    term_counts: dict[tuple[str, str], int] = {}
+                    for item in filtered_items:
+                        item_warnings = ProofreadingDomain.get_item_warnings(
+                            item, warning_map_snapshot
+                        )
+                        if WarningType.GLOSSARY not in item_warnings:
+                            continue
+
+                        key = ProofreadingDomain.get_warning_key(item)
+                        terms = failed_terms_snapshot.get(key)
+                        if terms is None:
+                            terms = (
+                                tuple(checker_snapshot.get_failed_glossary_terms(item))
+                                if checker_snapshot is not None
+                                else ()
+                            )
+                        for term in terms:
+                            term_counts[term] = term_counts.get(term, 0) + 1
+
+                    term_counts_sorted = tuple(
+                        sorted(term_counts.items(), key=lambda x: x[1], reverse=True)
+                    )
+
+                self.refresh_computed.emit(
+                    FilterRefreshComputeResult(
+                        token=token,
+                        file_counts=dict(file_counts),
+                        status_counts=dict(status_counts),
+                        warning_counts=warning_counts,
+                        term_counts_sorted=term_counts_sorted,
+                        glossary_active=glossary_active,
+                    )
+                )
+            except Exception as e:
+                LogManager.get().error("校对筛选：联动刷新计算失败", e)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def on_refresh_computed_ui(self, payload: object) -> None:
+        if not isinstance(payload, FilterRefreshComputeResult):
+            return
+        if not self.isVisible():
+            return
+        if payload.token != self.refresh_token:
+            return
+        try:
+            self.widget.setUpdatesEnabled(False)
+            self.apply_file_counts(payload.file_counts)
+            self.apply_status_counts(payload.status_counts)
+            self.apply_warning_counts(payload.warning_counts)
+            self.apply_term_list(
+                payload.term_counts_sorted, active=payload.glossary_active
+            )
+        finally:
+            self.widget.setUpdatesEnabled(True)
+
+    def apply_file_counts(self, file_counts: dict[str, int]) -> None:
         for path, widget in self.file_list_widgets.items():
             count = file_counts.get(path, 0)
             if widget.get_count() != count:
                 widget.set_count(count)
 
-        # 更新状态标签计数
-        status_counts = Counter(item.get_status() for item in filtered_items)
+    def apply_status_counts(self, status_counts: dict[Base.ProjectStatus, int]) -> None:
         for status, btn in self.status_buttons.items():
             count = status_counts.get(status, 0)
-            base_label = btn.text().rsplit(" • ", 1)[0]
+            if self.status_count_cache.get(status) == count:
+                continue
+
+            base_label = self.status_base_labels.get(status)
+            if base_label is None:
+                base_label = btn.text().rsplit(" • ", 1)[0]
+                self.status_base_labels[status] = base_label
+
             btn.setText(f"{base_label} • {count}")
+            self.status_count_cache[status] = count
 
-        # 更新警告标签计数
-        warning_counts: dict[str | WarningType, int] = {}
-        no_warning_count = 0
-        for item in filtered_items:
-            item_warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-            if item_warnings:
-                for w in item_warnings:
-                    warning_counts[w] = warning_counts.get(w, 0) + 1
-            else:
-                no_warning_count += 1
-
+    def apply_warning_counts(
+        self, warning_counts: dict[str | WarningType, int]
+    ) -> None:
         for warning_type, btn in self.warning_buttons.items():
-            count = (
-                no_warning_count
-                if warning_type == ProofreadingFilterOptions.NO_WARNING_TAG
-                else warning_counts.get(warning_type, 0)
-            )
-            base_label = btn.text().rsplit(" • ", 1)[0]
-            btn.setText(f"{base_label} • {count}")
+            count = warning_counts.get(warning_type, 0)
+            if self.warning_count_cache.get(warning_type) == count:
+                continue
 
-        # 更新术语明细
-        glossary_active = self.warning_buttons[WarningType.GLOSSARY].isChecked()
-        self.refresh_term_list(filtered_items, glossary_active)
+            base_label = self.warning_base_labels.get(warning_type)
+            if base_label is None:
+                base_label = btn.text().rsplit(" • ", 1)[0]
+                self.warning_base_labels[warning_type] = base_label
+
+            btn.setText(f"{base_label} • {count}")
+            self.warning_count_cache[warning_type] = count
 
     def sync_term_widgets_to_state(self) -> None:
         """将当前可见 widget 的状态同步到持久化存储（增量更新）"""
@@ -886,46 +1042,30 @@ class FilterDialog(MessageBoxBase):
                 else:
                     self.term_checked_state.discard(term)
 
-    def refresh_term_list(self, filtered_items: list[Item], active: bool) -> None:
-        """刷新术语明细列表"""
+    def apply_term_list(
+        self,
+        sorted_terms: tuple[tuple[tuple[str, str], int], ...],
+        *,
+        active: bool,
+    ) -> None:
+        """应用术语明细列表（仅在主线程更新 Qt 对象）。"""
 
-        # 先同步当前状态
+        # 先同步当前状态，避免 rebuild 丢失用户勾选。
         self.sync_term_widgets_to_state()
 
-        self.term_list.clear()
-        self.term_list_items.clear()
-        self.term_list_widgets: dict[tuple[str, str], FilterListItemWidget] = {}
-
-        # 更新控件启用状态
         self.term_search.setEnabled(active)
         self.btn_select_all_terms.setEnabled(active)
         self.btn_clear_terms.setEnabled(active)
         self.term_list.setEnabled(active)
 
         if not active:
-            # 未激活状态：显示禁用提示
             self.term_empty_label.setText(
                 Localizer.get().proofreading_page_filter_no_glossary_error
             )
             self.term_empty_label.show()
             self.term_list.hide()
+            self.term_list_order = ()
             return
-
-        # 计算当前筛选结果中的术语错误频次
-        filtered_set = {ProofreadingDomain.get_warning_key(i) for i in filtered_items}
-        term_counts: dict[tuple[str, str], int] = {}
-
-        for term, items in self.glossary_error_map.items():
-            count = sum(
-                1
-                for i in items
-                if ProofreadingDomain.get_warning_key(i) in filtered_set
-            )
-            if count > 0:
-                term_counts[term] = count
-
-        # 按频次降序排列
-        sorted_terms = sorted(term_counts.items(), key=lambda x: x[1], reverse=True)
 
         if not sorted_terms:
             self.term_empty_label.setText(
@@ -933,35 +1073,167 @@ class FilterDialog(MessageBoxBase):
             )
             self.term_empty_label.show()
             self.term_list.hide()
+            self.term_list_order = ()
             return
 
         self.term_empty_label.hide()
         self.term_list.show()
 
-        for term, count in sorted_terms:
-            src, dst = term
-            display_text = f"{src} → {dst}"
+        new_order = tuple(term for term, _ in sorted_terms)
+        if self.term_list_order == new_order:
+            for term, count in sorted_terms:
+                widget = self.term_list_widgets.get(term)
+                if widget is None:
+                    continue
+                if widget.get_count() != count:
+                    widget.set_count(count)
+            return
 
-            list_item = QListWidgetItem()
-            list_item.setSizeHint(QSize(-1, 40))
-            list_item.setData(Qt.ItemDataRole.UserRole, term)  # 存储术语 Key
+        self.term_list_order = new_order
+        self.term_list.setUpdatesEnabled(False)
+        try:
+            self.term_list.clear()
+            self.term_list_items.clear()
+            self.term_list_widgets = {}
 
-            self.term_list.addItem(list_item)
+            for term, count in sorted_terms:
+                src, dst = term
+                display_text = f"{src} → {dst}"
 
-            # 创建自定义 widget 并设置
-            item_widget = FilterListItemWidget(display_text, self.term_list)
-            # 从持久化状态恢复选中
-            item_widget.set_checked(term in self.term_checked_state)
-            item_widget.set_count(count)
-            item_widget.set_tooltip(display_text)
-            self.term_list.setItemWidget(list_item, item_widget)
+                list_item = QListWidgetItem()
+                list_item.setSizeHint(QSize(-1, 40))
+                list_item.setData(Qt.ItemDataRole.UserRole, term)
+                self.term_list.addItem(list_item)
 
-            self.term_list_items[term] = list_item
-            self.term_list_widgets[term] = item_widget
+                item_widget = FilterListItemWidget(display_text, self.term_list)
+                item_widget.set_checked(term in self.term_checked_state)
+                item_widget.set_count(count)
+                item_widget.set_tooltip(display_text)
+                self.term_list.setItemWidget(list_item, item_widget)
+
+                self.term_list_items[term] = list_item
+                self.term_list_widgets[term] = item_widget
+        finally:
+            self.term_list.setUpdatesEnabled(True)
+
+        # rebuild 后需要重新应用关键字过滤
+        self.filter_term_list(self.term_search.text())
+
+    def release_snapshot(self) -> None:
+        """释放与工程强绑定的大快照，减少常驻内存占用。
+
+        FilterDialog 会被 ProofreadingPage 复用；对话框隐藏时清掉大对象引用，
+        下次打开前会通过 update_snapshot(...) 重新注入数据。
+        """
+
+        # 隐藏后不再需要刷新，避免 timer 触发后台 compute。
+        self.refresh_token += 1
+        self.refresh_timer.stop()
+
+        self.items = []
+        self.warning_map = {}
+        self.failed_terms_by_item_key = {}
+        self.all_glossary_terms = set()
+        self.term_list_order = ()
 
     # =========================================
     # 公共接口
     # =========================================
+
+    def update_snapshot(
+        self,
+        *,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        result_checker: ResultChecker,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
+    ) -> None:
+        """更新对话框的数据源与内部缓存。
+
+        用于 ProofreadingPage 复用 FilterDialog 实例，避免每次打开都重建控件树。
+        """
+
+        # 先失效所有在途 refresh 结果，避免旧快照覆盖新状态。
+        self.refresh_token += 1
+        self.refresh_timer.stop()
+
+        self.items = [
+            i
+            for i in items
+            if i.get_status()
+            not in (
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.DUPLICATED,
+                Base.ProjectStatus.RULE_SKIPPED,
+            )
+        ]
+        self.warning_map = warning_map
+        self.result_checker = result_checker
+
+        # 当成只读快照使用：Page 在刷新时会整体替换 dict，而不是原地 mutate。
+        self.failed_terms_by_item_key = failed_terms_by_item_key or {}
+        all_terms: set[tuple[str, str]] = set()
+        for terms in self.failed_terms_by_item_key.values():
+            all_terms.update(terms)
+        self.all_glossary_terms = all_terms
+
+        # 数据源变化可能导致文件列表范围变化：必要时重建列表。
+        new_paths = {item.get_file_path() for item in self.items}
+        old_paths = set(self.file_list_items.keys())
+        if new_paths != old_paths:
+            prev_checked = {
+                path: widget.is_checked()
+                for path, widget in self.file_list_widgets.items()
+            }
+            self.rebuild_file_list(sorted(new_paths), prev_checked=prev_checked)
+
+        # 让下一次 apply_term_list 强制 rebuild，以便同步 checkbox 状态。
+        self.term_list_order = ()
+
+        # 快照更新后若对话框可见，尽快刷新一次。
+        if self.isVisible():
+            self.schedule_refresh(delay_ms=0)
+
+    def rebuild_file_list(
+        self, file_paths: list[str], *, prev_checked: dict[str, bool] | None = None
+    ) -> None:
+        self.file_list.setUpdatesEnabled(False)
+        try:
+            self.file_list.clear()
+            self.file_list_items = {}
+            self.file_list_widgets = {}
+
+            for path in file_paths:
+                list_item = QListWidgetItem()
+                list_item.setSizeHint(QSize(-1, 40))
+                list_item.setData(Qt.ItemDataRole.UserRole, path)
+                self.file_list.addItem(list_item)
+
+                item_widget = FilterListItemWidget(path, self.file_list)
+                item_widget.set_checked(
+                    True if prev_checked is None else prev_checked.get(path, True)
+                )
+                item_widget.set_count(0)
+                item_widget.set_tooltip(path)
+                self.file_list.setItemWidget(list_item, item_widget)
+
+                self.file_list_items[path] = list_item
+                self.file_list_widgets[path] = item_widget
+        finally:
+            self.file_list.setUpdatesEnabled(True)
+
+        self.filter_file_list(self.file_search.text())
+
+    def reset_for_open(self) -> None:
+        """每次打开对话框前重置瞬时状态。"""
+
+        # 失效在途结果，避免复用实例时出现“旧 token 结果覆盖”。
+        self.refresh_token += 1
+        self.refresh_timer.stop()
+
+        # 保持与“每次新建对话框”一致：搜索框不跨次打开保留。
+        self.file_search.setText("")
+        self.term_search.setText("")
 
     def get_filter_options(self) -> ProofreadingFilterOptions:
         # 强制同步当前可见 widget 的状态到持久化存储，以防最后的操作没有触发刷新
@@ -1022,10 +1294,13 @@ class FilterDialog(MessageBoxBase):
         # 在 refresh_all 前预设术语持久化状态
         glossary_terms = resolved.glossary_terms
         if glossary_terms is None:
-            glossary_terms = set(self.glossary_error_map.keys())
+            glossary_terms = set(self.all_glossary_terms)
         self.term_checked_state = set(glossary_terms)
         # 关键修复：设置了新状态后，必须清空旧的 widget 引用
         # 防止随后的 refresh_all -> sync 将旧 UI 的全选状态同步回来覆盖掉刚设置的状态
         self.term_list_widgets = {}
+        self.term_list_order = ()
 
-        self.refresh_all()
+        if self.isVisible():
+            # 对话框可见时，立刻刷新一次以同步计数与术语勾选 UI。
+            self.schedule_refresh(delay_ms=0)
