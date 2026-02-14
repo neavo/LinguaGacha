@@ -746,11 +746,169 @@ def test_update_file_matches_by_src_and_returns_stats(
     inserted = dm.session.db.insert_items.call_args.args[0]
     assert inserted[0]["dst"] == "A1"
     assert inserted[0]["name_dst"] == "N1"
+    assert inserted[0]["status"] == Base.ProjectStatus.PROCESSED
+    assert inserted[0]["retry_count"] == 1
     # 同 src 存在多种译法时：选择出现次数最多的 dst；并列则取最早出现的。
     assert inserted[1]["dst"] == "A1"
     assert inserted[1]["name_dst"] == "N1"
+    assert inserted[1]["status"] == Base.ProjectStatus.PROCESSED
+    assert inserted[1]["retry_count"] == 1
     assert inserted[2]["src"] == "c"
     assert inserted[2]["dst"] == ""
+    assert inserted[2]["status"] == Base.ProjectStatus.NONE
+
+
+def test_update_file_only_inherits_translation_from_processed_items(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "OLD",
+                "name_dst": "N",
+                "status": Base.ProjectStatus.ERROR,
+                "retry_count": 3,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            }
+        ]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                )
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    new_path = tmp_path / "a.txt"
+    new_path.write_bytes(b"data")
+
+    dm.update_file("a.txt", str(new_path))
+
+    inserted = dm.session.db.insert_items.call_args.args[0]
+    assert inserted[0]["dst"] == ""
+    assert inserted[0]["name_dst"] is None
+    assert inserted[0]["status"] == Base.ProjectStatus.NONE
+    assert inserted[0]["retry_count"] == 0
+
+
+def test_update_file_does_not_override_structural_status(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "OLD",
+                "name_dst": "N",
+                "status": Base.ProjectStatus.PROCESSED,
+                "retry_count": 1,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            }
+        ]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                        "status": Base.ProjectStatus.EXCLUDED,
+                    }
+                )
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    new_path = tmp_path / "a.txt"
+    new_path.write_bytes(b"data")
+
+    dm.update_file("a.txt", str(new_path))
+
+    inserted = dm.session.db.insert_items.call_args.args[0]
+    assert inserted[0]["dst"] == "OLD"
+    assert inserted[0]["name_dst"] == "N"
+    assert inserted[0]["status"] == Base.ProjectStatus.EXCLUDED
+    assert inserted[0]["retry_count"] == 1
+
+
+def test_build_workbench_snapshot_excludes_structural_statuses() -> None:
+    dm = build_manager()
+    dm.asset_service.get_all_asset_paths = MagicMock(return_value=["a.txt"])
+    dm.item_service.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "file_path": "a.txt",
+                "file_type": "TXT",
+                "status": Base.ProjectStatus.EXCLUDED,
+            },
+            {
+                "file_path": "a.txt",
+                "file_type": "TXT",
+                "status": Base.ProjectStatus.RULE_SKIPPED,
+            },
+            {
+                "file_path": "a.txt",
+                "file_type": "TXT",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "file_path": "a.txt",
+                "file_type": "TXT",
+                "status": Base.ProjectStatus.PROCESSED,
+            },
+        ]
+    )
+
+    snapshot = dm.build_workbench_snapshot()
+
+    assert snapshot.file_count == 1
+    assert snapshot.total_items == 2
+    assert snapshot.translated == 1
+    assert snapshot.untranslated == 1
+    assert snapshot.entries[0].rel_path == "a.txt"
+    assert snapshot.entries[0].item_count == 2
 
 
 def test_update_file_raises_on_format_mismatch(
