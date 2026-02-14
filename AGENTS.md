@@ -27,7 +27,8 @@
 
 ## 4. 代码规范
 ### 4.1 注释
-关键逻辑 **必须** 写单行注释解释 **为什么**，而不是做什么
+- 所有类、方法以及关键逻辑 **必须** 写注释解释 **为什么**
+- **优先** 使用 `# …` 形式的注释
 ### 4.2 控制流
 优先使用显式的 `if-else` 结构以保持逻辑清晰易读，当嵌套超过两层时优先使用 `elif` 拉平分支结构
 ### 4.3 DRY
@@ -50,7 +51,7 @@
 - **静默忽略**: 仅对"预期且无害"的情况允许 `except: pass`（不记录日志），但必须注释说明原因
 - **致命异常**: 不可恢复的异常无需捕获，直接冒泡由顶层机制统一记录堆栈并退出
 - **级别选择**: `error` 用于影响功能的错误；`warning` 用于可恢复/降级场景；`info` 用于正常流程
-- **异常链**: 需要包装语义时用 `raise ... from e` 保留原始堆栈
+- **异常链**: 需要包装语义时用 `raise … from e` 保留原始堆栈
 ### 4.7 前端开发
 - **UI 库**: 尽可能使用 `qfluentwidgets` 组件
 - **主题适配**: 必须支持亮/暗主题，避免硬编码颜色
@@ -85,7 +86,7 @@ self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
 - **DataManager**: 数据单例入口，负责 `load_project` / `unload_project` / `open_db` / `close_db`
 - **ProjectSession**: 会话状态的单一来源，禁止跨模块共享可变对象引用
 - **LGDatabase**: `.lg` 的 SQLite 访问类（schema + SQL + 序列化）
-- **批量写入**: 统一走 `DataManager.update_batch(...)`
+- **批量写入**: 统一走 `DataManager.update_batch(…)`
 ### 5.3 文件处理 `module/File`
 - **FileManager**: 统一的文件读写入口
 ### 5.4 配置系统 `module/Config.py`

@@ -11,6 +11,7 @@ description: 基于 pytest 的 TDD 测试工作流，触发词：TDD、补测试
 2. **Test Behavior**: Verify observable outcomes, not internal implementation
 3. **Isolation**: File system always uses `pyfakefs` `fs` fixture; database prefers `:memory:`; network and external SDKs use `unittest.mock.patch`
 4. **Meaningful Tests**: Each test validates a requirement and can fail
+5. **Coverage**: Each testable unit must achieve > 90% branch coverage; treat < 90% as a defect unless explicitly justified
 
 ## Mock Strategy
 
@@ -28,8 +29,15 @@ description: 基于 pytest 的 TDD 测试工作流，触发词：TDD、补测试
 ```bash
 uv run pytest tests/ -v
 uv run pytest tests/ --cov=<module> --cov-branch --cov-report=term-missing
-uv run pytest tests/ --cov=<module> --cov-branch --cov-fail-under=80
+uv run pytest tests/ --cov=<module> --cov-branch --cov-fail-under=90
 ```
+
+## Coverage Requirements
+
+- **Target**: Every testable unit must achieve **> 90% branch coverage**
+- **Enforcement**: Use `--cov-branch --cov-fail-under=90` in CI and local runs
+- **Exception**: If a unit cannot reach 90%, document the justification inline and obtain explicit approval
+- **Measurement**: Always use branch coverage (`--cov-branch`), not just line coverage
 
 ## File Naming
 
