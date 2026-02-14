@@ -117,6 +117,8 @@ class DataManager(Base):
         self.prefilter_cond = threading.Condition(self.prefilter_lock)
         self.prefilter_running: bool = False
         self.prefilter_pending: bool = False
+
+        # token：标记一次 worker 生命周期（用于事件关联/合并）；seq：标记请求顺序（用于等待/测试可观测性）。
         self.prefilter_token: int = 0
         self.prefilter_active_token: int = 0
         self.prefilter_request_seq: int = 0
@@ -346,6 +348,7 @@ class DataManager(Base):
         start_worker = False
         with self.prefilter_cond:
             if self.prefilter_running:
+                # 同步调用遇到“已有 worker 正在跑”时：只更新最新请求并等待其落库完成，保证 meta/items 一致。
                 token = self.prefilter_active_token
                 self.prefilter_request_seq += 1
                 seq = self.prefilter_request_seq
@@ -1141,6 +1144,7 @@ class DataManager(Base):
         self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
 
     def update_file(self, rel_path: str, new_file_path: str) -> dict:
+        """更新工程内文件：以新文件为准，仅继承旧工程的完成态译文成果。"""
         with self.state_lock:
             db = self.session.db
         if db is None:
@@ -1232,23 +1236,52 @@ class DataManager(Base):
                     src_best[src] = cand
                     break
 
+        # “更新文件”的语义：新文件为权威来源；旧工程只允许提供“已完成译文成果”。
+        inheritable_statuses = {
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.PROCESSED_IN_PAST,
+        }
+        # 结构性状态来自解析/预过滤的可重算结果（例如 EXCLUDED），不应被旧工程完成态覆盖。
+        structural_statuses = {
+            Base.ProjectStatus.EXCLUDED,
+            Base.ProjectStatus.RULE_SKIPPED,
+            Base.ProjectStatus.LANGUAGE_SKIPPED,
+            Base.ProjectStatus.DUPLICATED,
+        }
+
+        def normalize_status(raw: object) -> Base.ProjectStatus:
+            if isinstance(raw, Base.ProjectStatus):
+                return raw
+            if isinstance(raw, str):
+                try:
+                    return Base.ProjectStatus(raw)
+                except ValueError:
+                    return Base.ProjectStatus.NONE
+            return Base.ProjectStatus.NONE
+
         matched = 0
-        new_count = 0
         for item in GapTool.iter(new_items_dicts):
             src = item.get("src")
             if not isinstance(src, str):
-                new_count += 1
                 continue
 
             old = src_best.get(src)
             if not old:
-                new_count += 1
                 continue
 
-            item["dst"] = old.get("dst", "")
-            item["name_dst"] = old.get("name_dst")
-            item["status"] = old.get("status", Base.ProjectStatus.NONE)
-            item["retry_count"] = old.get("retry_count", 0)
+            old_status = normalize_status(old.get("status", Base.ProjectStatus.NONE))
+            if old_status in inheritable_statuses:
+                item["dst"] = old.get("dst", "")
+                item["name_dst"] = old.get("name_dst")
+                item["retry_count"] = old.get("retry_count", 0)
+
+                new_status = normalize_status(
+                    item.get("status", Base.ProjectStatus.NONE)
+                )
+                if new_status not in structural_statuses:
+                    item["status"] = old_status
+
+            # matched 表示“按 src 找到旧条目候选”，不等价于“发生了继承”。
             matched += 1
 
         compressed = ZstdCodec.compress(original_data)
