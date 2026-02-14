@@ -7,7 +7,6 @@ import time
 from types import TracebackType
 
 from PySide6.QtCore import Qt
-from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
@@ -24,6 +23,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.Utils.FontPolicy import FontPolicy
 
 
 def excepthook(
@@ -177,10 +177,14 @@ if __name__ == "__main__":
     # 设置应用图标
     app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
 
-    # 设置全局字体属性，解决狗牙问题
-    font = QFont()
+    # 设置全局字体属性，解决狗牙问题。
+    # 注意：不要用 QFont() 覆盖系统字体尺寸，否则 pointSize() 可能是 -1 并触发 Qt 警告。
+    font = QFont(app.font())
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
+
+    # 全局字体规范化：将像素字号字体转换为合法 pointSizeF，消除 setPointSize(-1) warning。
+    FontPolicy.install(app)
 
     # 启动任务引擎
     Engine.get().run()

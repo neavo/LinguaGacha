@@ -16,8 +16,6 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
-from module.Utils.FontTool import FontTool
-
 
 class StatusTagType(StrEnum):
     INFO = "INFO"
@@ -128,7 +126,7 @@ class StatusTag(QLabel):
         font = QFont(self.base_font)
         font_size = self.font_size_value
         if font_size:
-            FontTool.set_font_size_px(font, font_size)
+            font.setPixelSize(font_size)
         self.cached_font = font
         self.setFont(font)
 

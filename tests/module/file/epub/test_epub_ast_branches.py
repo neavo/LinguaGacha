@@ -277,3 +277,406 @@ def test_read_from_stream_processes_nav_and_ncx_and_skips_non_html_spine(
     assert all("img/a.png" not in doc for doc, _ in called_docs)
     assert len(items) == 1
     assert items[0].get_src().endswith("toc.ncx")
+
+
+def test_build_elem_path_records_sibling_index(config: Config) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>1</p><p>2</p><p>3</p></body></html>")
+    p2 = root.xpath(".//*[local-name()='p']")[1]
+
+    path = handler.build_elem_path(root, p2)
+
+    assert path.endswith("/p[2]")
+
+
+def test_find_by_path_returns_none_on_empty_path(config: Config) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>t</p></body></html>")
+
+    assert handler.find_by_path(root, "") is None
+    assert handler.find_by_path(root, "/") is None
+
+
+def test_parse_opf_skips_empty_manifest_href_and_empty_idref(config: Config) -> None:
+    handler = EPUBAst(config)
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>
+  <manifest>
+    <item id='chap1' href='text/ch1.xhtml' media-type='application/xhtml+xml'/>
+    <item id='emptyhref' href='' media-type='application/xhtml+xml'/>
+    <item id='nav' href='nav.xhtml' media-type='application/xhtml+xml' properties='cover-image nav'/>
+  </manifest>
+  <spine toc='missing-ncx'>
+    <itemref idref=''/>
+    <itemref idref='chap1'/>
+  </spine>
+</package>
+"""
+    content = build_zip_with_files({"OEBPS/content.opf": opf})
+
+    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+        pkg = handler.parse_opf(zf, "OEBPS/content.opf")
+
+    assert pkg.spine_paths == ["OEBPS/text/ch1.xhtml"]
+    assert pkg.nav_path == "OEBPS/nav.xhtml"
+
+
+def test_parse_opf_handles_missing_spine_and_missing_ncx(config: Config) -> None:
+    handler = EPUBAst(config)
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>
+  <manifest>
+    <item id='chap1' href='text/ch1.xhtml' media-type='application/xhtml+xml'/>
+  </manifest>
+</package>
+"""
+    content = build_zip_with_files({"OEBPS/content.opf": opf})
+
+    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+        pkg = handler.parse_opf(zf, "OEBPS/content.opf")
+
+    assert pkg.spine_paths == []
+    assert pkg.nav_path is None
+    assert pkg.ncx_path is None
+
+
+def test_parse_xhtml_or_html_uses_recover_xml_when_strict_fails(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    calls: list[int] = []
+
+    def fake_fromstring(data: bytes, parser=None):
+        del data
+        del parser
+        calls.append(1)
+        if len(calls) in {1, 2}:
+            raise ValueError("strict failed")
+        return etree.Element("html")
+
+    monkeypatch.setattr("module.File.EPUB.EPUBAst.etree.fromstring", fake_fromstring)
+
+    root = handler.parse_xhtml_or_html(b"<html><body><p>&foo;</p></body></html>")
+
+    assert isinstance(root, etree._Element)
+    assert len(calls) == 3
+
+
+def test_parse_xhtml_or_html_uses_html_parser_when_xml_fails(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    calls: list[int] = []
+
+    def fake_fromstring(data: bytes, parser=None):
+        del data
+        del parser
+        calls.append(1)
+        if len(calls) < 4:
+            raise ValueError("xml failed")
+        return etree.Element("html")
+
+    monkeypatch.setattr("module.File.EPUB.EPUBAst.etree.fromstring", fake_fromstring)
+
+    root = handler.parse_xhtml_or_html(b"<html><body><p>&foo;</p></body></html>")
+
+    assert isinstance(root, etree._Element)
+    assert len(calls) == 4
+
+
+def test_parse_xhtml_or_html_raises_value_error_when_all_parsers_fail(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+
+    def always_fail(data: bytes, parser=None):
+        del data
+        del parser
+        raise ValueError("nope")
+
+    monkeypatch.setattr("module.File.EPUB.EPUBAst.etree.fromstring", always_fail)
+
+    with pytest.raises(ValueError, match="Failed to parse html/xhtml"):
+        handler.parse_xhtml_or_html(b"<html><body><p>&foo;</p></body></html>")
+
+
+def test_parse_ncx_xml_raises_value_error_when_all_parsers_fail(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+
+    def always_fail(data: bytes, parser=None):
+        del data
+        del parser
+        raise ValueError("nope")
+
+    monkeypatch.setattr("module.File.EPUB.EPUBAst.etree.fromstring", always_fail)
+
+    with pytest.raises(ValueError, match="Failed to parse ncx"):
+        handler.parse_ncx_xml(b"<ncx><text>A</text></ncx>")
+
+
+def test_iter_translatable_text_slots_skips_script_and_handles_missing_path_map(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(
+        b"<html><body><p><span>Mid</span><script>SKIP</script>Tail</p></body></html>"
+    )
+    p = root.xpath(".//*[local-name()='p']")[0]
+
+    # 故意传入不完整的 path_map，让 get_path 走回退逻辑。
+    path_map = {id(root): "/html[1]"}
+    slots = handler.iter_translatable_text_slots(root, p, path_map=path_map)
+
+    assert [t for _ref, t in slots] == ["Mid", "Tail"]
+    assert slots[0][0].path.endswith("/span[1]")
+    assert slots[1][0].path.endswith("/script[1]")
+
+
+def test_has_block_descendant_detects_nested_block_tags(config: Config) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<div><span><p>t</p></span></div>")
+    span = root.xpath(".//*[local-name()='span']")[0]
+    p = root.xpath(".//*[local-name()='p']")[0]
+
+    assert handler.has_block_descendant(root) is True
+    assert handler.has_block_descendant(span) is True
+    assert handler.has_block_descendant(p) is False
+
+
+def test_extract_items_from_document_skips_whitespace_only_blocks(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    raw = b"<html><body><p>   </p><p>A</p></body></html>"
+
+    items = handler.extract_items_from_document(
+        doc_path="text/ch1.xhtml",
+        raw=raw,
+        spine_index=0,
+        rel_path="book.epub",
+        is_nav=False,
+    )
+
+    assert [it.get_src() for it in items] == ["A"]
+
+
+def test_read_from_stream_does_not_process_nav_twice_when_nav_in_spine(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+
+    container = b"""<?xml version='1.0'?>
+<container xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>
+  <rootfiles>
+    <rootfile full-path='OEBPS/content.opf'/>
+  </rootfiles>
+</container>
+"""
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>
+  <manifest>
+    <item id='chap1' href='text/ch1.xhtml' media-type='application/xhtml+xml'/>
+    <item id='nav' href='nav.xhtml' media-type='application/xhtml+xml' properties='nav'/>
+  </manifest>
+  <spine>
+    <itemref idref='chap1'/>
+    <itemref idref='nav'/>
+  </spine>
+</package>
+"""
+    epub_bytes = build_zip_with_files(
+        {
+            "META-INF/container.xml": container,
+            "OEBPS/content.opf": opf,
+            "OEBPS/text/ch1.xhtml": b"<html><body><p>ok</p></body></html>",
+            "OEBPS/nav.xhtml": b"<html><body><nav>toc</nav></body></html>",
+        }
+    )
+
+    called_docs: list[tuple[str, bool]] = []
+
+    def fake_extract_doc(
+        doc_path: str,
+        raw: bytes,
+        spine_index: int,
+        rel_path: str,
+        is_nav: bool = False,
+    ) -> list[Item]:
+        del raw
+        del spine_index
+        del rel_path
+        called_docs.append((doc_path, is_nav))
+        return []
+
+    monkeypatch.setattr(handler, "extract_items_from_document", fake_extract_doc)
+
+    handler.read_from_stream(epub_bytes, "book.epub")
+
+    assert called_docs.count(("OEBPS/nav.xhtml", True)) == 1
+
+
+def test_read_from_stream_skips_nav_when_not_html_extension(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+
+    container = b"""<?xml version='1.0'?>
+<container xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>
+  <rootfiles>
+    <rootfile full-path='OEBPS/content.opf'/>
+  </rootfiles>
+</container>
+"""
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>
+  <manifest>
+    <item id='chap1' href='text/ch1.xhtml' media-type='application/xhtml+xml'/>
+    <item id='nav' href='nav.xml' media-type='application/xml' properties='nav'/>
+  </manifest>
+  <spine>
+    <itemref idref='chap1'/>
+  </spine>
+</package>
+"""
+    epub_bytes = build_zip_with_files(
+        {
+            "META-INF/container.xml": container,
+            "OEBPS/content.opf": opf,
+            "OEBPS/text/ch1.xhtml": b"<html><body><p>ok</p></body></html>",
+            "OEBPS/nav.xml": b"<nav>toc</nav>",
+        }
+    )
+
+    called_docs: list[str] = []
+
+    def fake_extract_doc(
+        doc_path: str,
+        raw: bytes,
+        spine_index: int,
+        rel_path: str,
+        is_nav: bool = False,
+    ) -> list[Item]:
+        del raw
+        del spine_index
+        del rel_path
+        del is_nav
+        called_docs.append(doc_path)
+        return []
+
+    monkeypatch.setattr(handler, "extract_items_from_document", fake_extract_doc)
+
+    handler.read_from_stream(epub_bytes, "book.epub")
+
+    assert called_docs == ["OEBPS/text/ch1.xhtml"]
+
+
+def test_extract_items_from_ncx_skips_non_element_xpath_results(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    text_elem = etree.Element("text")
+    text_elem.text = "A"
+
+    class DummyRoot:
+        def xpath(self, expr: str):
+            del expr
+            return ["not-element", text_elem]
+
+    monkeypatch.setattr(handler, "parse_ncx_xml", lambda raw: DummyRoot())
+    monkeypatch.setattr(
+        handler, "build_elem_path", lambda root, elem: "/ncx[1]/text[1]"
+    )
+
+    items = handler.extract_items_from_ncx("toc.ncx", b"ignored", "book.epub")
+
+    assert [it.get_src() for it in items] == ["A"]
+
+
+def test_parse_xhtml_or_html_skips_entity_fix_when_no_ampersand(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    calls: list[int] = []
+
+    def fake_fromstring(data: bytes, parser=None):
+        del data
+        del parser
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("strict failed")
+        return etree.Element("html")
+
+    monkeypatch.setattr("module.File.EPUB.EPUBAst.etree.fromstring", fake_fromstring)
+
+    root = handler.parse_xhtml_or_html(b"<html><body><p>hi</p></body></html>")
+
+    assert isinstance(root, etree._Element)
+    assert len(calls) == 2
+
+
+def test_iter_translatable_text_slots_builds_paths_when_no_path_map(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>Head</p></body></html>")
+    p = root.xpath(".//*[local-name()='p']")[0]
+
+    slots = handler.iter_translatable_text_slots(root, p)
+
+    assert len(slots) == 1
+    assert slots[0][0].path == handler.build_elem_path(root, p)
+    assert slots[0][1] == "Head"
+
+
+def test_has_block_descendant_skips_non_str_tag_and_self(config: Config) -> None:
+    handler = EPUBAst(config)
+
+    class DummyElem:
+        def __init__(
+            self, tag: object, descendants: list[DummyElem] | None = None
+        ) -> None:
+            self.tag = tag
+            self._descendants = descendants or []
+
+        def iterdescendants(self):
+            return iter(self._descendants)
+
+    root = DummyElem("div")
+    non_str_tag = DummyElem(123)
+    block = DummyElem("p")
+    root._descendants = [non_str_tag, root, block]
+
+    assert handler.has_block_descendant(root) is True
+
+
+def test_build_elem_path_does_not_break_when_sibling_scan_misses_current(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>1</p><p>2</p></body></html>")
+    p2 = root.xpath(".//*[local-name()='p']")[1]
+
+    def only_first_child(elem):
+        for child in elem:
+            if isinstance(child.tag, str):
+                yield child
+                break
+
+    monkeypatch.setattr(
+        "module.File.EPUB.EPUBAst.EPUBAst.iter_children_elements", only_first_child
+    )
+
+    path = handler.build_elem_path(root, p2)
+
+    assert path.endswith("/p[1]")

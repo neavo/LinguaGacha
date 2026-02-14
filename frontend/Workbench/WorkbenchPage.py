@@ -29,7 +29,6 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
 from widget.CommandBarCard import CommandBarCard
-from module.Utils.FontTool import FontTool
 
 
 class StatCard(SimpleCardWidget):
@@ -183,7 +182,7 @@ class WorkbenchPage(Base, ScrollArea):
         self.main_layout.addWidget(self.command_bar_card)
 
         base_font = QFont(self.command_bar_card.command_bar.font())
-        FontTool.set_font_size_px(base_font, self.FONT_SIZE)
+        base_font.setPixelSize(self.FONT_SIZE)
         self.command_bar_card.command_bar.setFont(base_font)
         self.command_bar_card.command_bar.setIconSize(
             QSize(self.ICON_SIZE, self.ICON_SIZE)

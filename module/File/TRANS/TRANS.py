@@ -57,6 +57,11 @@ class TRANS(Base):
         index_translation = (
             index_translation_raw if isinstance(index_translation_raw, int) else 1
         )
+        # 防止负索引导致错误取值（Python list[-1] 等）。
+        if index_original < 0:
+            index_original = 0
+        if index_translation < 0:
+            index_translation = 1
 
         # 获取处理实体
         processor: NONE = self.get_processor(project)
