@@ -1,7 +1,7 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import RoundMenu
@@ -16,7 +16,7 @@ from widget.SpinCard import SpinCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
-class ExpertSettingsPage(QWidget, Base):
+class ExpertSettingsPage(Base, QWidget):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))

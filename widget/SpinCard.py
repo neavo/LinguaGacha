@@ -1,22 +1,28 @@
 from typing import Callable
 
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
 from qfluentwidgets import CardWidget
 from qfluentwidgets import SpinBox
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
-class SpinCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init: Callable = None, value_changed: Callable = None) -> None:
+class SpinCard(CardWidget):
+    def __init__(
+        self,
+        title: str,
+        description: str,
+        init: Callable = None,
+        value_changed: Callable = None,
+    ) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.container = QHBoxLayout(self)
-        self.container.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.container.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()

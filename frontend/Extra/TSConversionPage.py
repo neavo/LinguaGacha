@@ -2,9 +2,9 @@ import threading
 from typing import Any
 
 import opencc_pyo3
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -29,11 +29,11 @@ from widget.SwitchButtonCard import SwitchButtonCard
 ICON_ACTION_START: BaseIcon = BaseIcon.PLAY  # 命令栏：开始转换
 
 
-class TSConversionPage(QWidget, Base):
+class TSConversionPage(Base, QWidget):
     # 定义信号用于进度更新
-    progress_updated = pyqtSignal(str, int, int)  # (message, current, total)
-    progress_show = pyqtSignal(str, int, int)  # (message, current, total)
-    progress_finished = pyqtSignal(str)  # 导出目录路径
+    progress_updated = Signal(str, int, int)  # (message, current, total)
+    progress_show = Signal(str, int, int)  # (message, current, total)
+    progress_finished = Signal(str)  # 导出目录路径
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)

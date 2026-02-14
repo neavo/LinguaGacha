@@ -3,14 +3,14 @@ import threading
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -64,17 +64,15 @@ class NameFieldExtractionTableModel(AppTableModelBase[dict[str, Any]]):
         return cast(Qt.ItemFlags, flags)
 
 
-class NameFieldExtractionPage(QWidget, Base):
+class NameFieldExtractionPage(Base, QWidget):
     BASE: str = "name_field_extraction"
 
     # 定义信号用于跨线程更新 UI
-    update_signal = pyqtSignal(int)
-    progress_updated = pyqtSignal(
-        str, int, int
-    )  # 进度更新信号 (content, current, total)
-    progress_finished = pyqtSignal()  # 进度完成信号
-    extract_finished = pyqtSignal(list)
-    extract_failed = pyqtSignal()
+    update_signal = Signal(int)
+    progress_updated = Signal(str, int, int)  # 进度更新信号 (content, current, total)
+    progress_finished = Signal()  # 进度完成信号
+    extract_finished = Signal(list)
+    extract_failed = Signal()
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)

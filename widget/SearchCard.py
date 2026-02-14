@@ -2,16 +2,16 @@ import re
 import time
 from typing import Callable
 
-from PyQt5.QtCore import QAbstractItemModel
-from PyQt5.QtCore import QItemSelectionModel
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QSortFilterProxyModel
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QAbstractItemModel
+from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QSortFilterProxyModel
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import PillPushButton
@@ -107,8 +107,8 @@ class SearchCardProxyModel(QSortFilterProxyModel):
 class SearchCard(CardWidget):
     """搜索卡片组件，支持普通/正则搜索模式及上下跳转"""
 
-    search_mode_changed = pyqtSignal(bool)
-    search_triggered = pyqtSignal(str, bool, bool)
+    search_mode_changed = Signal(bool)
+    search_triggered = Signal(str, bool, bool)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)

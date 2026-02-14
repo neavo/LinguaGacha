@@ -6,10 +6,11 @@ import threading
 import time
 from types import TracebackType
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtCore import qInstallMessageHandler
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
@@ -99,9 +100,8 @@ if __name__ == "__main__":
             # 设置新的控制台模式
             kernel32.SetConsoleMode(hStdin, mode)
 
-    # 1. 全局缩放使能 (Enable High DPI Scaling)
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-    # 2. 适配非整数倍缩放 (Adapt non-integer scaling)
+    # Qt6 默认启用 High DPI Scaling；无需再设置 AA_EnableHighDpiScaling（已弃用）。
+    # 适配非整数倍缩放 (Adapt non-integer scaling)
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -143,9 +143,9 @@ if __name__ == "__main__":
 
     # 打印日志
     LogManager.get().info(f"LinguaGacha {version}")
-    LogManager.get().info(
-        Localizer.get().log_expert_mode
-    ) if LogManager.get().is_expert_mode() else None
+    if LogManager.get().is_expert_mode():
+        LogManager.get().info(Localizer.get().log_expert_mode)
+    LogManager.get().print("")
 
     # 网络代理
     if not config.proxy_enable or config.proxy_url == "":
@@ -179,10 +179,7 @@ if __name__ == "__main__":
 
     # 设置全局字体属性，解决狗牙问题
     font = QFont()
-    if config.font_hinting:
-        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
-    else:
-        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
 
     # 启动任务引擎

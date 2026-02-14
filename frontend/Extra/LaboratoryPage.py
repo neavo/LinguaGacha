@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 
 from base.Base import Base
@@ -10,7 +10,7 @@ from module.Localizer.Localizer import Localizer
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
-class LaboratoryPage(QWidget, Base):
+class LaboratoryPage(Base, QWidget):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))

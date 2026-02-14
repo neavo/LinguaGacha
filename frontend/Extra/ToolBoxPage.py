@@ -1,12 +1,12 @@
 from collections.abc import Callable
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import FlowLayout
@@ -87,7 +87,7 @@ class ItemCard(CardWidget):
             self.title_button.clicked.connect(lambda: clicked(self))
 
 
-class ToolBoxPage(QWidget, Base):
+class ToolBoxPage(Base, QWidget):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))

@@ -1,16 +1,16 @@
 import os
 import signal
 import time
-from typing import cast
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtWidgets import QDesktopWidget
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QCursor
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
@@ -81,13 +81,16 @@ ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
 ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
 
 
-class AppFluentWindow(FluentWindow, Base):
+class AppFluentWindow(Base, FluentWindow):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
     HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
 
     def __init__(self) -> None:
+        # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
+        self.progress_toast: ProgressToast | None = None
+
         super().__init__()
 
         # 设置主题颜色
@@ -100,12 +103,15 @@ class AppFluentWindow(FluentWindow, Base):
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
-        desktop_widget = cast(QDesktopWidget, QApplication.desktop())
-        desktop = desktop_widget.availableGeometry()
-        self.move(
-            desktop.width() // 2 - self.width() // 2,
-            desktop.height() // 2 - self.height() // 2,
+        screen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         )
+        if screen is not None:
+            desktop = screen.availableGeometry()
+            self.move(
+                desktop.x() + desktop.width() // 2 - self.width() // 2,
+                desktop.y() + desktop.height() // 2 - self.height() // 2,
+            )
 
         # 设置侧边栏宽度
         self.navigationInterface.setExpandWidth(256)
@@ -296,6 +302,10 @@ class AppFluentWindow(FluentWindow, Base):
 
     # 响应显示进度 Toast 事件
     def progress_toast_show(self, event: Base.Event, data: dict) -> None:
+        progress_toast = self.progress_toast
+        if progress_toast is None:
+            return
+
         # 窗口最小化时不显示，避免动画错误
         if self.isMinimized():
             return
@@ -307,7 +317,7 @@ class AppFluentWindow(FluentWindow, Base):
 
         # 记录开始时间（如果是首次显示）
         # 若用户手动关闭过进度 Toast，再次显示时也需要重新计时
-        if self.progress_start_time == 0.0 or not self.progress_toast.is_visible():
+        if self.progress_start_time == 0.0 or not progress_toast.is_visible():
             self.progress_start_time = time.time()
 
         message = data.get("message", "")
@@ -316,21 +326,28 @@ class AppFluentWindow(FluentWindow, Base):
         total = data.get("total", 0)
 
         if is_indeterminate:
-            self.progress_toast.show_indeterminate(message)
+            progress_toast.show_indeterminate(message)
         else:
-            self.progress_toast.show_progress(message, current, total)
+            progress_toast.show_progress(message, current, total)
 
     # 响应更新进度 Toast 事件
     def progress_toast_update(self, event: Base.Event, data: dict) -> None:
+        progress_toast = self.progress_toast
+        if progress_toast is None:
+            return
+
         message = data.get("message", "")
         current = data.get("current", 0)
         total = data.get("total", 0)
 
-        self.progress_toast.set_content(message)
-        self.progress_toast.set_progress(current, total)
+        progress_toast.set_content(message)
+        progress_toast.set_progress(current, total)
 
     # 响应隐藏进度 Toast 事件
     def progress_toast_hide(self, event: Base.Event, data: dict) -> None:
+        if self.progress_toast is None:
+            return
+
         # 未显示时直接返回
         if self.progress_start_time == 0.0:
             return
@@ -352,13 +369,16 @@ class AppFluentWindow(FluentWindow, Base):
         """实际执行隐藏操作"""
         self.progress_hide_timer = None
         self.progress_start_time = 0.0
-        self.progress_toast.hide_toast()
+        progress_toast = self.progress_toast
+        if progress_toast is not None:
+            progress_toast.hide_toast()
 
     # 重写窗口大小变化事件，更新进度 Toast 位置
     def resizeEvent(self, e) -> None:
         super().resizeEvent(e)
-        if self.progress_toast.is_visible():
-            self.progress_toast.update_position()
+        progress_toast = self.progress_toast
+        if progress_toast is not None and progress_toast.is_visible():
+            progress_toast.update_position()
 
     # 切换主题
     def switch_theme(self) -> None:

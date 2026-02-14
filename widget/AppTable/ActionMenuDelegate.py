@@ -4,17 +4,17 @@ from dataclasses import dataclass
 from typing import Callable
 from typing import Optional
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QRect
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QMouseEvent
-from PyQt5.QtGui import QIcon
-from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QStyleOptionViewItem
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QRect
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QIcon
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QStyleOptionViewItem
 from qfluentwidgets import Action
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableItemDelegate
@@ -197,12 +197,9 @@ class ActionMenuDelegate(TableItemDelegate):
         if cached is not None:
             return cached
 
-        size_px = max(1, int(round(self.ICON_SIZE * dpr)))
-        pixmap = icon.icon().pixmap(size_px, size_px)
-        try:
-            pixmap.setDevicePixelRatio(dpr)
-        except AttributeError, TypeError, RuntimeError:
-            pass
+        # Qt6 的 QIcon.pixmap() 会返回带 DPR 的 pixmap；这里传逻辑尺寸即可。
+        # 若手动乘 dpr 会导致图标在高 DPI 下被放大一截。
+        pixmap = icon.icon().pixmap(self.ICON_SIZE, self.ICON_SIZE)
 
         self.pixmap_cache[key] = pixmap
         return pixmap

@@ -3,10 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QIcon
-from PyQt5.QtGui import QPainter
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QIcon
+from PySide6.QtGui import QPainter
 from qfluentwidgets import FluentIconBase
 from qfluentwidgets import Theme
 from qfluentwidgets import getIconColor

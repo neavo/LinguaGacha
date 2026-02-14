@@ -92,8 +92,9 @@ class Base:
         RESET = "RESET"  # 重置任务 (强制重解析 Assets)
 
     # 构造函数
-    def __init__(self) -> None:
-        pass
+    # Base 作为 mixin 使用：需要支持 Qt 组件的协作式多继承初始化。
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
 
     # 触发事件
     def emit(self, event: Event, data: dict) -> None:

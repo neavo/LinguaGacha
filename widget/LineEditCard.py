@@ -1,24 +1,30 @@
 from typing import Callable
 
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import StrongBodyLabel
 
 from widget.CustomLineEdit import CustomLineEdit
 
-class LineEditCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init: Callable = None, text_changed: Callable = None) -> None:
+class LineEditCard(CardWidget):
+    def __init__(
+        self,
+        title: str,
+        description: str,
+        init: Callable = None,
+        text_changed: Callable = None,
+    ) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.root = QHBoxLayout(self)
-        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.vbox_container = QWidget(self)

@@ -1,15 +1,15 @@
 import time
 from enum import StrEnum
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTime
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTime
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FlowLayout
@@ -45,7 +45,7 @@ ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重�
 ICON_ACTION_TIMER: BaseIcon = BaseIcon.TIMER  # 命令栏：定时器
 
 
-class TranslationPage(QWidget, Base):
+class TranslationPage(Base, QWidget):
     # Token 显示模式
     class TokenDisplayMode(StrEnum):
         INPUT = "INPUT"
@@ -540,9 +540,9 @@ class TranslationPage(QWidget, Base):
 
     def animate_token_card_switch(self) -> None:
         """为累计消耗卡片的数值标签执行淡入淡出动效"""
-        from PyQt5.QtCore import QEasingCurve
-        from PyQt5.QtCore import QPropertyAnimation
-        from PyQt5.QtWidgets import QGraphicsOpacityEffect
+        from PySide6.QtCore import QEasingCurve
+        from PySide6.QtCore import QPropertyAnimation
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
 
         value_label = self.token.value_label
         unit_label = self.token.unit_label

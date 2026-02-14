@@ -6,9 +6,9 @@ from typing import Any
 from typing import Callable
 from typing import Self
 
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
 
 from base.LogManager import LogManager
 
@@ -47,10 +47,10 @@ class EventManager(QObject):
 
     # 自定义信号
     # 字典类型或者其他复杂对象应该使用 object 作为信号参数类型，这样可以传递任意 Python 对象，包括 dict
-    signal: pyqtSignal = pyqtSignal(StrEnum, object)
+    signal: Signal = Signal(StrEnum, object)
 
     # 将高频事件合并到一次 UI flush 中，避免 UI 线程事件队列积压。
-    flush_signal: pyqtSignal = pyqtSignal()
+    flush_signal: Signal = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -184,8 +184,9 @@ class EventManager(QObject):
 
             if need_connect_destroyed:
                 owner.destroyed.connect(
-                    lambda obj=None,
-                    owner_id=owner_id: self.cleanup_owner_subscriptions(owner_id)
+                    lambda obj=None, owner_id=owner_id: (
+                        self.cleanup_owner_subscriptions(owner_id)
+                    )
                 )
             return
 

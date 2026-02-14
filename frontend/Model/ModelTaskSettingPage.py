@@ -1,7 +1,7 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
@@ -12,7 +12,7 @@ from module.Localizer.Localizer import Localizer
 from widget.SpinCard import SpinCard
 
 
-class ModelTaskSettingPage(MessageBoxBase, Base):
+class ModelTaskSettingPage(Base, MessageBoxBase):
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 

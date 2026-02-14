@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QAbstractItemModel
-from PyQt5.QtCore import QAbstractProxyModel
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QContextMenuEvent
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QAbstractItemModel
+from PySide6.QtCore import QAbstractProxyModel
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import TableView
 from qfluentwidgets import getFont
 from qfluentwidgets import setCustomStyleSheet
@@ -27,7 +27,7 @@ class AppTableView(TableView):
     ROW_HEIGHT: int = 40
     ROW_NUMBER_MIN_WIDTH: int = 40
 
-    itemSelectionChanged = pyqtSignal()
+    itemSelectionChanged = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

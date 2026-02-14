@@ -3,18 +3,18 @@ from typing import Any
 from typing import Callable
 from typing import cast
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QBoxLayout
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QBoxLayout
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
@@ -45,7 +45,7 @@ ICON_ACTION_PRESET: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单
 ICON_ACTION_WIKI: BaseIcon = BaseIcon.CIRCLE_QUESTION_MARK  # 命令栏：打开 Wiki
 
 
-class QualityRulePageBase(QWidget, Base):
+class QualityRulePageBase(Base, QWidget):
     """质量规则页的复合布局基类。
 
     约束：

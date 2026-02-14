@@ -1,16 +1,18 @@
 from typing import Callable
 
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import StrongBodyLabel
 
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomLineEdit
 
-class LineEditMessageBox(MessageBoxBase):
 
-    def __init__(self, parent: QWidget, title: str, message_box_close: Callable = None) -> None:
-        super().__init__(parent = parent)
+class LineEditMessageBox(MessageBoxBase):
+    def __init__(
+        self, parent: QWidget, title: str, message_box_close: Callable = None
+    ) -> None:
+        super().__init__(parent=parent)
 
         # 初始化
         self.message_box_close = message_box_close
@@ -20,7 +22,7 @@ class LineEditMessageBox(MessageBoxBase):
         self.cancelButton.setText(Localizer.get().cancel)
 
         # 设置主布局
-        self.viewLayout.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.viewLayout.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 标题
         self.title_label = StrongBodyLabel(title, self)

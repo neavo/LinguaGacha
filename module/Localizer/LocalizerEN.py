@@ -223,8 +223,6 @@ class LocalizerEN(LocalizerZH):
     # 应用设置
     app_settings_page_expert_title: str = "Expert Mode"
     app_settings_page_expert_content: str = "Enabling this feature will display more log information and provide more advanced setting options (takes effect after app restart)"
-    app_settings_page_font_hinting_title: str = "Font Hinting"
-    app_settings_page_font_hinting_content: str = "Enabling this feature will render the edges of UI fonts more smoothly (takes effect after app restart)"
     app_settings_page_scale_factor_title: str = "Global Scale Factor"
     app_settings_page_scale_factor_content: str = "Enabling this feature will scale the app interface according to the selected ratio (takes effect after app restart)"
     app_settings_page_proxy_url: str = "Example - http://127.0.0.1:7890"

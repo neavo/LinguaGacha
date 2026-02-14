@@ -6,25 +6,25 @@ import threading
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QPointF
-from PyQt5.QtCore import QRect
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QHideEvent
-from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPolygonF
-from PyQt5.QtGui import QPen
-from PyQt5.QtGui import QShowEvent
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QListWidgetItem
-from PyQt5.QtWidgets import QStyleOptionViewItem
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QPointF
+from PySide6.QtCore import QRect
+from PySide6.QtCore import QSize
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPolygonF
+from PySide6.QtGui import QPen
+from PySide6.QtGui import QShowEvent
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QListWidgetItem
+from PySide6.QtWidgets import QStyleOptionViewItem
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import BodyLabel
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
@@ -52,6 +52,7 @@ from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
+from module.Utils.FontTool import FontTool
 
 
 class FilterListItemWidget(QWidget):
@@ -169,8 +170,8 @@ class FilterListItemWidget(QWidget):
             check_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(check_pen)
 
-            origin = checkbox_rect.topLeft()
-            w = self.checkbox_size
+            origin = QPointF(checkbox_rect.topLeft())
+            w = float(self.checkbox_size)
             p1 = origin + QPointF(w * 0.27, w * 0.5)
             p2 = origin + QPointF(w * 0.44, w * 0.68)
             p3 = origin + QPointF(w * 0.75, w * 0.34)
@@ -220,7 +221,7 @@ class FilterDialog(MessageBoxBase):
     FILTER_CHANGE_DEBOUNCE_MS: int = 120
 
     # 后台 compute 完成后回到 UI 线程 apply。
-    refresh_computed = pyqtSignal(object)
+    refresh_computed = Signal(object)
 
     LIST_STYLE = """
             ListWidget, QListWidget, QListView {
@@ -476,7 +477,7 @@ class FilterDialog(MessageBoxBase):
     def setup_small_button(self, btn: QWidget) -> None:
         btn.setFixedHeight(26)
         font = btn.font()
-        font.setPixelSize(12)
+        FontTool.set_font_size_px(font, 12)
         btn.setFont(font)
 
     def setup_filter_list_widget(self, list_widget: ListWidget) -> None:

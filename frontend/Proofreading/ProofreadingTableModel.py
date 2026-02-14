@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QAbstractTableModel
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PySide6.QtCore import QAbstractTableModel
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
 from model.Item import Item

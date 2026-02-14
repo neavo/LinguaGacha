@@ -2,16 +2,16 @@ import re
 import threading
 from typing import Callable
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QFont
-from PyQt5.QtGui import QShowEvent
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QShowEvent
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -39,6 +39,7 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
+from module.Utils.FontTool import FontTool
 
 # ==================== 图标常量 ====================
 
@@ -47,7 +48,7 @@ ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：打开搜索栏
 ICON_ACTION_FILTER: BaseIcon = BaseIcon.FUNNEL  # 命令栏：打开筛选面板
 
 
-class ProofreadingPage(QWidget, Base):
+class ProofreadingPage(Base, QWidget):
     """校对任务主页面"""
 
     # 布局常量
@@ -76,19 +77,17 @@ class ProofreadingPage(QWidget, Base):
     }
 
     # 信号定义
-    items_loaded = pyqtSignal(int, object)  # (token, payload)
-    filter_done = pyqtSignal(int, list)  # (data_version, filtered_items)
-    match_indices_built = pyqtSignal(int, object)  # (token, payload)
-    translate_done = pyqtSignal(object, bool)  # 翻译完成信号
-    save_done = pyqtSignal(bool)  # 保存完成信号
-    export_done = pyqtSignal(bool, str)  # 导出完成信号 (success, error_msg)
-    item_saved = pyqtSignal(object, bool)  # 单条保存完成信号
-    item_rechecked = pyqtSignal(object, list, object)  # (item, warnings, failed_terms)
-    progress_updated = pyqtSignal(
-        str, int, int
-    )  # 进度更新信号 (content, current, total)
-    progress_finished = pyqtSignal()  # 进度完成信号
-    quality_rules_refreshed = pyqtSignal(
+    items_loaded = Signal(int, object)  # (token, payload)
+    filter_done = Signal(int, list)  # (data_version, filtered_items)
+    match_indices_built = Signal(int, object)  # (token, payload)
+    translate_done = Signal(object, bool)  # 翻译完成信号
+    save_done = Signal(bool)  # 保存完成信号
+    export_done = Signal(bool, str)  # 导出完成信号 (success, error_msg)
+    item_saved = Signal(object, bool)  # 单条保存完成信号
+    item_rechecked = Signal(object, list, object)  # (item, warnings, failed_terms)
+    progress_updated = Signal(str, int, int)  # 进度更新信号 (content, current, total)
+    progress_finished = Signal()  # 进度完成信号
+    quality_rules_refreshed = Signal(
         object, dict, object
     )  # (checker, warning_map, failed_terms_by_item_key)
 
@@ -338,7 +337,7 @@ class ProofreadingPage(QWidget, Base):
 
         # 本页统一写死字号与图标尺寸，避免跨平台/主题的细微差异造成视觉不一致。
         base_font = QFont(self.command_bar_card.command_bar.font())
-        base_font.setPixelSize(self.ui_font_px)
+        FontTool.set_font_size_px(base_font, self.ui_font_px)
         self.command_bar_card.command_bar.setFont(base_font)
         self.command_bar_card.command_bar.setIconSize(
             QSize(self.ui_icon_px, self.ui_icon_px)

@@ -1,9 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import StrongBodyLabel

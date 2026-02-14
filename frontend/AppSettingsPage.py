@@ -1,10 +1,10 @@
 import os
 import signal
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
 from qfluentwidgets import MessageBox
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import SwitchButton
@@ -17,8 +17,8 @@ from widget.ComboBoxCard import ComboBoxCard
 from widget.LineEditCard import LineEditCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
-class AppSettingsPage(QWidget, Base):
 
+class AppSettingsPage(Base, QWidget):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
@@ -29,7 +29,7 @@ class AppSettingsPage(QWidget, Base):
         # 设置主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
-        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 创建滚动区域的内容容器
         scroll_area_vbox_widget = QWidget()
@@ -37,7 +37,7 @@ class AppSettingsPage(QWidget, Base):
         scroll_area_vbox.setContentsMargins(0, 0, 0, 0)
 
         # 创建滚动区域
-        scroll_area = SingleDirectionScrollArea(orient = Qt.Orientation.Vertical)
+        scroll_area = SingleDirectionScrollArea(orient=Qt.Orientation.Vertical)
         scroll_area.setWidget(scroll_area_vbox_widget)
         scroll_area.setWidgetResizable(True)
         scroll_area.enableTransparentBackground()
@@ -47,7 +47,6 @@ class AppSettingsPage(QWidget, Base):
 
         # 添加控件
         self.add_widget_expert_mode(scroll_area_vbox, config, window)
-        self.add_widget_font_hinting(scroll_area_vbox, config, window)
         self.add_widget_scale_factor(scroll_area_vbox, config, window)
         self.add_widget_proxy(scroll_area_vbox, config, window)
 
@@ -55,12 +54,12 @@ class AppSettingsPage(QWidget, Base):
         scroll_area_vbox.addStretch(1)
 
     # 专家模式
-    def add_widget_expert_mode(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_expert_mode(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
 
         def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.expert_mode
-            )
+            widget.get_switch_button().setChecked(config.expert_mode)
 
         def checked_changed(widget: SwitchButtonCard) -> None:
             config = Config().load()
@@ -68,7 +67,9 @@ class AppSettingsPage(QWidget, Base):
             config.expert_mode = widget.get_switch_button().isChecked()
             config.save()
 
-            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
+            message_box = MessageBox(
+                Localizer.get().warning, Localizer.get().app_settings_page_close, self
+            )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
@@ -78,45 +79,17 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             SwitchButtonCard(
-                title = Localizer.get().app_settings_page_expert_title,
-                description = Localizer.get().app_settings_page_expert_content,
-                init = init,
-                checked_changed = checked_changed,
-            )
-        )
-
-    # 字体优化
-    def add_widget_font_hinting(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.font_hinting
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            config = Config().load()
-            config.font_hinting =  widget.get_switch_button().isChecked()
-            config.save()
-
-            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
-            message_box.yesButton.setText(Localizer.get().confirm)
-            message_box.cancelButton.hide()
-
-            # 关闭应用
-            if message_box.exec():
-                os.kill(os.getpid(), signal.SIGTERM)
-
-        parent.addWidget(
-            SwitchButtonCard(
-                title = Localizer.get().app_settings_page_font_hinting_title,
-                description = Localizer.get().app_settings_page_font_hinting_content,
-                init = init,
-                checked_changed = checked_changed,
+                title=Localizer.get().app_settings_page_expert_title,
+                description=Localizer.get().app_settings_page_expert_content,
+                init=init,
+                checked_changed=checked_changed,
             )
         )
 
     # 全局缩放
-    def add_widget_scale_factor(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_scale_factor(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
 
         def init(widget: ComboBoxCard) -> None:
             widget.get_combo_box().setCurrentIndex(
@@ -128,7 +101,9 @@ class AppSettingsPage(QWidget, Base):
             config.scale_factor = widget.get_combo_box().text()
             config.save()
 
-            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
+            message_box = MessageBox(
+                Localizer.get().warning, Localizer.get().app_settings_page_close, self
+            )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
@@ -138,23 +113,27 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             ComboBoxCard(
-                title = Localizer.get().app_settings_page_scale_factor_title,
-                description = Localizer.get().app_settings_page_scale_factor_content,
-                items = (Localizer.get().auto, "50%", "75%", "150%", "200%"),
-                init = init,
-                current_changed = current_changed,
+                title=Localizer.get().app_settings_page_scale_factor_title,
+                description=Localizer.get().app_settings_page_scale_factor_content,
+                items=(Localizer.get().auto, "50%", "75%", "150%", "200%"),
+                init=init,
+                current_changed=current_changed,
             )
         )
 
     # 网络代理
-    def add_widget_proxy(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_proxy(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
 
         def checked_changed(swicth_button: SwitchButton, checked: bool) -> None:
             config = Config().load()
             config.proxy_enable = checked
             config.save()
 
-            message_box = MessageBox(Localizer.get().warning, Localizer.get().app_settings_page_close, self)
+            message_box = MessageBox(
+                Localizer.get().warning, Localizer.get().app_settings_page_close, self
+            )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.hide()
 
@@ -165,13 +144,17 @@ class AppSettingsPage(QWidget, Base):
         def init(widget: LineEditCard) -> None:
             widget.get_line_edit().setText(config.proxy_url)
             widget.get_line_edit().setFixedWidth(256)
-            widget.get_line_edit().setPlaceholderText(Localizer.get().app_settings_page_proxy_url)
+            widget.get_line_edit().setPlaceholderText(
+                Localizer.get().app_settings_page_proxy_url
+            )
 
             swicth_button = SwitchButton()
             swicth_button.setOnText("")
             swicth_button.setOffText("")
             swicth_button.setChecked(config.proxy_enable)
-            swicth_button.checkedChanged.connect(lambda checked: checked_changed(swicth_button, checked))
+            swicth_button.checkedChanged.connect(
+                lambda checked: checked_changed(swicth_button, checked)
+            )
             widget.add_spacing(8)
             widget.add_widget(swicth_button)
 
@@ -182,9 +165,9 @@ class AppSettingsPage(QWidget, Base):
 
         parent.addWidget(
             LineEditCard(
-                title = Localizer.get().app_settings_page_proxy_url_title,
-                description = Localizer.get().app_settings_page_proxy_url_content,
-                init = init,
-                text_changed = text_changed,
+                title=Localizer.get().app_settings_page_proxy_url_title,
+                description=Localizer.get().app_settings_page_proxy_url_content,
+                init=init,
+                text_changed=text_changed,
             )
         )
