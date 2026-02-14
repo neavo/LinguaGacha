@@ -83,23 +83,31 @@ class ProofreadingDomain:
             else ProofreadingFilterOptions.from_dict(options)
         )
 
-        warning_types = resolved.warning_types
-        if warning_types is None:
-            warning_types: set[WarningType | str] = set()
+        warning_types: set[WarningType | str]
+        if resolved.warning_types is None:
+            warning_types = set()
             warning_types.update(WarningType)
             warning_types.add(ProofreadingFilterOptions.NO_WARNING_TAG)
+        else:
+            warning_types = set(resolved.warning_types)
 
-        statuses = resolved.statuses
-        if statuses is None:
+        statuses: set[Base.ProjectStatus]
+        if resolved.statuses is None:
             statuses = set(cls.DEFAULT_STATUSES)
+        else:
+            statuses = set(resolved.statuses)
 
-        file_paths = resolved.file_paths
-        if file_paths is None:
+        file_paths: set[str]
+        if resolved.file_paths is None:
             file_paths = {item.get_file_path() for item in items}
+        else:
+            file_paths = set(resolved.file_paths)
 
-        glossary_terms = resolved.glossary_terms
-        if glossary_terms is None:
+        glossary_terms: set[tuple[str, str]]
+        if resolved.glossary_terms is None:
             glossary_terms = set()
+        else:
+            glossary_terms = set(resolved.glossary_terms)
 
         return ProofreadingFilterOptions(
             warning_types=warning_types,
@@ -144,6 +152,8 @@ class ProofreadingDomain:
         items: list[Item],
         warning_map: dict[int, list[WarningType]],
         checker: ResultChecker | None,
+        *,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
     ) -> ProofreadingFilterOptions:
         warning_types: set[WarningType | str] = set()
         warning_types.update(WarningType)
@@ -152,7 +162,10 @@ class ProofreadingDomain:
         file_paths = {item.get_file_path() for item in items}
 
         glossary_terms: set[tuple[str, str]] = set()
-        if checker is not None:
+        if failed_terms_by_item_key is not None:
+            for terms in failed_terms_by_item_key.values():
+                glossary_terms.update(terms)
+        elif checker is not None:
             for item in items:
                 # 只有存在术语警告的条目才会产出失败术语明细，避免无意义扫描。
                 if WarningType.GLOSSARY in cls.get_item_warnings(item, warning_map):
@@ -173,6 +186,7 @@ class ProofreadingDomain:
         options: ProofreadingFilterOptions | dict[str, Any] | None,
         checker: ResultChecker | None,
         *,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
         search_keyword: str = "",
         search_is_regex: bool = False,
         enable_search_filter: bool = False,
@@ -218,7 +232,17 @@ class ProofreadingDomain:
                     and WarningType.GLOSSARY in item_warnings
                     and WarningType.GLOSSARY in warning_types
                 ):
-                    item_terms = checker.get_failed_glossary_terms(item)
+                    item_key = cls.get_warning_key(item)
+                    cached_terms = (
+                        failed_terms_by_item_key.get(item_key)
+                        if failed_terms_by_item_key is not None
+                        else None
+                    )
+                    item_terms = (
+                        cached_terms
+                        if cached_terms is not None
+                        else checker.get_failed_glossary_terms(item)
+                    )
                     if glossary_terms:
                         if not any(term in glossary_terms for term in item_terms):
                             continue
@@ -247,3 +271,27 @@ class ProofreadingDomain:
             filtered.append(item)
 
         return filtered
+
+    @classmethod
+    def build_failed_glossary_terms_cache(
+        cls,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        checker: ResultChecker | None,
+    ) -> dict[int, tuple[tuple[str, str], ...]]:
+        """构建 item_key -> failed_terms 缓存。
+
+        该缓存用于 glossary term filter 与筛选对话框统计复用，避免重复调用
+        ResultChecker.get_failed_glossary_terms() 扫描文本。
+        """
+
+        if checker is None:
+            return {}
+
+        cache: dict[int, tuple[tuple[str, str], ...]] = {}
+        for item in items:
+            if WarningType.GLOSSARY not in cls.get_item_warnings(item, warning_map):
+                continue
+            key = cls.get_warning_key(item)
+            cache[key] = tuple(checker.get_failed_glossary_terms(item))
+        return cache

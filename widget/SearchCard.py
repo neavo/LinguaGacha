@@ -2,10 +2,15 @@ import re
 import time
 from typing import Callable
 
+from PyQt5.QtCore import QAbstractItemModel
+from PyQt5.QtCore import QItemSelectionModel
+from PyQt5.QtCore import QModelIndex
+from PyQt5.QtCore import QSortFilterProxyModel
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QTableWidget
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
@@ -28,6 +33,77 @@ ICON_PREV_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_UP  # 搜索栏：上一个�
 ICON_NEXT_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_DOWN  # 搜索栏：下一个匹配
 
 
+class SearchCardProxyModel(QSortFilterProxyModel):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.keyword: str = ""
+        self.regex_mode: bool = False
+        self.filter_mode: bool = False
+        self.columns: tuple[int, ...] = ()
+        self.keyword_lower: str = ""
+        self.pattern: re.Pattern[str] | None = None
+
+    def set_search(
+        self,
+        keyword: str,
+        *,
+        columns: tuple[int, ...],
+        regex_mode: bool,
+        filter_mode: bool,
+    ) -> None:
+        self.keyword = keyword
+        self.regex_mode = bool(regex_mode)
+        self.filter_mode = bool(filter_mode)
+        self.columns = columns
+        self.keyword_lower = keyword.lower()
+        self.pattern = None
+        if self.regex_mode and keyword:
+            try:
+                self.pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                self.pattern = None
+        self.invalidateFilter()
+
+    def filterAcceptsRow(
+        self,
+        source_row: int,
+        source_parent: QModelIndex,
+    ) -> bool:  # noqa: N802
+        del source_parent
+
+        if not self.filter_mode:
+            return True
+
+        keyword = self.keyword
+        if not keyword:
+            return True
+
+        source = self.sourceModel()
+        if source is None:
+            return True
+
+        columns = self.columns
+        if not columns:
+            return True
+
+        texts: list[str] = []
+        for col in columns:
+            index = source.index(source_row, col)
+            value = index.data(int(Qt.ItemDataRole.DisplayRole))
+            text = str(value).strip() if value is not None else ""
+            if text:
+                texts.append(text)
+
+        if not texts:
+            return False
+
+        if self.pattern is not None:
+            return any(self.pattern.search(text) for text in texts)
+
+        keyword_lower = self.keyword_lower
+        return any(keyword_lower in text.lower() for text in texts)
+
+
 class SearchCard(CardWidget):
     """搜索卡片组件，支持普通/正则搜索模式及上下跳转"""
 
@@ -46,12 +122,14 @@ class SearchCard(CardWidget):
         self.search_last_trigger_regex_mode: bool = False
         self.search_trigger_debounce_seconds: float = 0.2
 
-        # 可选：表格绑定模式（用于 TableWidget 类页面的通用搜索/筛选/跳转）。
-        self.bound_table: QTableWidget | None = None
-        self.bound_columns: tuple[int, ...] = ()
-        self.bound_notify: Callable[[str, str], None] | None = None
-        self.bound_matches: list[int] = []
-        self.bound_current_match_index: int = -1
+        # 可选：Model/View 绑定模式（QAbstractItemView + QSortFilterProxyModel）。
+        self.bound_view: QAbstractItemView | None = None
+        self.bound_view_columns: tuple[int, ...] = ()
+        self.bound_view_notify: Callable[[str, str], None] | None = None
+        self.bound_view_source_model: QAbstractItemModel | None = None
+        self.bound_view_proxy: SearchCardProxyModel | None = None
+        self.bound_view_matches: list[int] = []
+        self.bound_view_current_match_index: int = -1
 
         # 设置容器布局
         self.setBorderRadius(4)
@@ -228,47 +306,51 @@ class SearchCard(CardWidget):
         """重置匹配信息为默认状态"""
         self.match_label.setText(Localizer.get().search_no_result)
 
-    # ==================== 可选：Table 绑定搜索 ====================
+    # ==================== 可选：Model/View 绑定搜索 ====================
 
-    def bind_table(
+    def bind_view(
         self,
-        table: QTableWidget,
+        view: QAbstractItemView,
         columns: tuple[int, ...],
         notify: Callable[[str, str], None] | None = None,
     ) -> None:
-        """绑定一个 QTableWidget 并启用内置搜索/筛选逻辑。
+        self.bound_view_matches = []
+        self.bound_view_current_match_index = -1
 
-        notify(level, message): level 建议为 'error'/'warning'/'info'。
-        """
+        self.bound_view = view
+        self.bound_view_columns = columns
+        self.bound_view_notify = notify
 
-        self.bound_table = table
-        self.bound_columns = columns
-        self.bound_notify = notify
+        source_model = view.model()
+        if source_model is None:
+            self.bound_view_source_model = None
+            self.bound_view_proxy = None
+            return
+
+        proxy = SearchCardProxyModel(view)
+        proxy.setSourceModel(source_model)
+        view.setModel(proxy)
+
+        self.bound_view_source_model = source_model
+        self.bound_view_proxy = proxy
         self.clear_table_search_state()
 
     def clear_table_search_state(self) -> None:
-        """清理表格搜索状态：取消筛选、清空匹配。"""
+        """清理搜索状态：取消筛选、清空匹配。"""
 
-        self.bound_matches = []
-        self.bound_current_match_index = -1
+        self.bound_view_matches = []
+        self.bound_view_current_match_index = -1
 
-        table = self.bound_table
-        if table is None:
-            return
+        proxy = self.bound_view_proxy
+        if proxy is not None:
+            proxy.set_search(
+                "",
+                columns=self.bound_view_columns,
+                regex_mode=self.regex_mode,
+                filter_mode=False,
+            )
 
-        try:
-            table.setUpdatesEnabled(False)
-            for row in range(table.rowCount()):
-                table.setRowHidden(row, False)
-        except RuntimeError:
-            # 绑定的表格可能已被 Qt 销毁（例如页面销毁时），此时静默跳过。
-            return
-        finally:
-            try:
-                table.setUpdatesEnabled(True)
-            except RuntimeError:
-                # 表格可能已被 Qt 销毁，无法恢复 updatesEnabled，忽略即可。
-                pass
+        return
 
     def apply_table_search(self) -> None:
         """根据当前 keyword/filter/regex 状态应用搜索（用于模式切换/回车触发）。"""
@@ -278,12 +360,17 @@ class SearchCard(CardWidget):
     def run_table_search(self, reverse: bool) -> None:
         """执行一次“查找上一个/下一个”。
 
-        - filter_mode 开启时：隐藏不匹配行与空白行
-        - regex_mode 开启时：正则非法会触发 notify('error', ...)
+        兼容历史 API：当前实现仅支持 Model/View 绑定路径。
         """
 
-        table = self.bound_table
-        if table is None:
+        if self.bound_view is None or self.bound_view_proxy is None:
+            return
+        self.run_view_search(reverse)
+
+    def run_view_search(self, reverse: bool) -> None:
+        view = self.bound_view
+        proxy = self.bound_view_proxy
+        if view is None or proxy is None:
             return
 
         keyword = self.get_keyword()
@@ -295,81 +382,36 @@ class SearchCard(CardWidget):
         if self.regex_mode:
             is_valid, error_msg = self.validate_regex()
             if not is_valid:
-                if callable(self.bound_notify):
-                    self.bound_notify(
+                if callable(self.bound_view_notify):
+                    self.bound_view_notify(
                         "error",
                         f"{Localizer.get().search_regex_invalid}: {error_msg}",
                     )
                 return
 
-        matches, empty_rows = self.build_table_matches(
-            table=table,
-            keyword=keyword,
-            use_regex=self.regex_mode,
-            columns=self.bound_columns,
+        proxy.set_search(
+            keyword,
+            columns=self.bound_view_columns,
+            regex_mode=self.regex_mode,
+            filter_mode=self.filter_mode,
         )
 
-        if self.filter_mode:
-            self.apply_table_row_filter(table, matches, empty_rows, keyword)
-        else:
-            self.clear_table_row_filter(table)
+        matches = self.build_model_matches(
+            model=proxy,
+            keyword=keyword,
+            use_regex=self.regex_mode,
+            columns=self.bound_view_columns,
+        )
 
         if not matches:
             self.set_match_info(0, 0)
-            if callable(self.bound_notify):
-                self.bound_notify("warning", Localizer.get().search_no_match)
+            if callable(self.bound_view_notify):
+                self.bound_view_notify("warning", Localizer.get().search_no_match)
             return
 
-        target_row = self.pick_next_match(matches, table.currentRow(), reverse)
-        self.update_table_match_selection(table, matches, target_row)
-
-    @staticmethod
-    def build_table_matches(
-        table: QTableWidget,
-        keyword: str,
-        use_regex: bool,
-        columns: tuple[int, ...],
-    ) -> tuple[list[int], set[int]]:
-        """扫描表格内容，返回 (match_rows, empty_rows)。"""
-
-        matches: list[int] = []
-        empty_rows: set[int] = set()
-
-        if use_regex:
-            try:
-                pattern = re.compile(keyword, re.IGNORECASE)
-            except re.error:
-                return [], set()
-            keyword_lower = ""
-        else:
-            pattern = None
-            keyword_lower = keyword.lower()
-
-        for row in range(table.rowCount()):
-            texts: list[str] = []
-            for col in columns:
-                item = table.item(row, col)
-                if not item:
-                    continue
-                text = item.text().strip()
-                if text:
-                    texts.append(text)
-
-            if not texts:
-                empty_rows.add(row)
-                continue
-
-            if not keyword:
-                continue
-
-            if pattern:
-                if any(pattern.search(text) for text in texts):
-                    matches.append(row)
-            else:
-                if any(keyword_lower in text.lower() for text in texts):
-                    matches.append(row)
-
-        return matches, empty_rows
+        current_row = self.get_view_current_row(view)
+        target_row = self.pick_next_match(matches, current_row, reverse)
+        self.update_view_match_selection(view, matches, target_row)
 
     @staticmethod
     def pick_next_match(matches: list[int], current_row: int, reverse: bool) -> int:
@@ -387,47 +429,85 @@ class SearchCard(CardWidget):
             return next_matches[0]
         return matches[0]
 
-    def apply_table_row_filter(
-        self,
-        table: QTableWidget,
-        matches: list[int],
-        empty_rows: set[int],
+    @staticmethod
+    def build_model_matches(
+        *,
+        model: QAbstractItemModel,
         keyword: str,
-    ) -> None:
-        table.setUpdatesEnabled(False)
-        match_set = set(matches)
-        for row in range(table.rowCount()):
-            if not keyword:
-                table.setRowHidden(row, False)
-                continue
-            if row in empty_rows:
-                table.setRowHidden(row, True)
-                continue
-            table.setRowHidden(row, row not in match_set)
-        table.setUpdatesEnabled(True)
+        use_regex: bool,
+        columns: tuple[int, ...],
+    ) -> list[int]:
+        matches: list[int] = []
+        if not keyword:
+            return matches
 
-    def clear_table_row_filter(self, table: QTableWidget) -> None:
-        table.setUpdatesEnabled(False)
-        for row in range(table.rowCount()):
-            table.setRowHidden(row, False)
-        table.setUpdatesEnabled(True)
+        if use_regex:
+            try:
+                pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                return matches
+            keyword_lower = ""
+        else:
+            pattern = None
+            keyword_lower = keyword.lower()
 
-    def update_table_match_selection(
-        self, table: QTableWidget, matches: list[int], target_row: int
+        row_count = model.rowCount()
+        for row in range(row_count):
+            texts: list[str] = []
+            for col in columns:
+                index = model.index(row, col)
+                value = index.data(int(Qt.ItemDataRole.DisplayRole))
+                text = str(value).strip() if value is not None else ""
+                if text:
+                    texts.append(text)
+
+            if not texts:
+                continue
+
+            if pattern is not None:
+                if any(pattern.search(text) for text in texts):
+                    matches.append(row)
+            else:
+                if any(keyword_lower in text.lower() for text in texts):
+                    matches.append(row)
+
+        return matches
+
+    @staticmethod
+    def get_view_current_row(view: QAbstractItemView) -> int:
+        index = view.currentIndex()
+        if not index.isValid():
+            return -1
+        return int(index.row())
+
+    def update_view_match_selection(
+        self, view: QAbstractItemView, matches: list[int], target_row: int
     ) -> None:
         if target_row < 0:
-            self.bound_matches = []
-            self.bound_current_match_index = -1
+            self.bound_view_matches = []
+            self.bound_view_current_match_index = -1
             self.clear_match_info()
             return
 
-        self.bound_matches = matches
-        self.bound_current_match_index = matches.index(target_row)
-        self.set_match_info(self.bound_current_match_index + 1, len(matches))
-        table.setCurrentCell(target_row, 0)
-        item = table.item(target_row, 0)
-        if item:
-            table.scrollToItem(item)
+        self.bound_view_matches = matches
+        self.bound_view_current_match_index = matches.index(target_row)
+        self.set_match_info(self.bound_view_current_match_index + 1, len(matches))
+
+        model = view.model()
+        selection_model = view.selectionModel()
+        if model is None or selection_model is None:
+            return
+
+        index = model.index(target_row, 0)
+        if not index.isValid():
+            return
+
+        selection_model.setCurrentIndex(
+            index,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect,
+        )
+        view.selectRow(target_row)
+        view.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
 
     def validate_regex(self) -> tuple[bool, str]:
         """验证正则表达式合法性，返回 (是否有效, 错误信息)"""

@@ -196,13 +196,6 @@ class TextPreservePage(QualityRulePageBase):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.on_table_context_menu)
 
-    def get_selected_entry_rows(self) -> list[int]:
-        selection_model = self.table.selectionModel()
-        if selection_model is None:
-            return []
-        rows = [index.row() for index in selection_model.selectedRows()]
-        return sorted({row for row in rows if 0 <= row < len(self.entries)})
-
     def on_table_context_menu(self, position: QPoint) -> None:
         rows = self.get_selected_entry_rows()
         if not rows:

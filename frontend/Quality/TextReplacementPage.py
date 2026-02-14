@@ -7,7 +7,6 @@ from PyQt5.QtCore import QSize
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QTableWidgetItem
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -25,6 +24,7 @@ from frontend.Quality.TextReplacementEditPanel import TextReplacementEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+from widget.AppTable import ColumnSpec
 from widget.SwitchButtonCard import SwitchButtonCard
 
 
@@ -149,19 +149,50 @@ class TextReplacementPage(QualityRulePageBase):
         entry: dict[str, Any] | None,
         editable: bool,
     ) -> bool:
-        if col != self.RULE_COLUMN_INDEX:
-            return False
-
-        regex = False
-        case_sensitive = False
-        if entry is not None:
-            regex = bool(entry.get("regex", False))
-            case_sensitive = bool(entry.get("case_sensitive", False))
-        self.update_rule_cell_item(row, regex, case_sensitive, editable)
-        return True
+        del row
+        del col
+        del entry
+        del editable
+        return False
 
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1)
+
+    def get_column_specs(self) -> list[ColumnSpec[dict[str, Any]]]:
+        specs = super().get_column_specs()
+        if self.RULE_COLUMN_INDEX < 0 or self.RULE_COLUMN_INDEX >= len(specs):
+            return specs
+
+        header = specs[self.RULE_COLUMN_INDEX].header
+
+        def get_regex(row: dict[str, Any]) -> bool:
+            return bool(row.get("regex", False))
+
+        def get_case_sensitive(row: dict[str, Any]) -> bool:
+            return bool(row.get("case_sensitive", False))
+
+        specs[self.RULE_COLUMN_INDEX] = ColumnSpec(
+            header=header,
+            width_mode=ColumnSpec.WidthMode.FIXED,
+            width=self.RULE_COLUMN_WIDTH,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+            display_getter=lambda row: "",
+            decoration_getter=lambda row: self.rule_icon_renderer.get_pixmap(
+                self.table,
+                [
+                    RuleIconSpec(ICON_RULE_REGEX, get_regex(row)),
+                    RuleIconSpec(
+                        ICON_RULE_CASE_SENSITIVE,
+                        get_case_sensitive(row),
+                    ),
+                ],
+            ),
+            tooltip_getter=lambda row: self.build_rule_tooltip(
+                get_regex(row),
+                get_case_sensitive(row),
+            ),
+        )
+        return specs
 
     def validate_entry(self, entry: dict[str, Any]) -> tuple[bool, str]:
         if hasattr(self, "edit_panel"):
@@ -229,6 +260,8 @@ class TextReplacementPage(QualityRulePageBase):
                 self.table,
                 icon_column_index=self.RULE_COLUMN_INDEX,
                 icon_size=self.RULE_ICON_SIZE,
+                icon_count=2,
+                on_icon_clicked=self.on_rule_icon_clicked,
             )
         )
 
@@ -237,12 +270,21 @@ class TextReplacementPage(QualityRulePageBase):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.on_table_context_menu)
 
-    def get_selected_entry_rows(self) -> list[int]:
-        selection_model = self.table.selectionModel()
-        if selection_model is None:
-            return []
-        rows = [index.row() for index in selection_model.selectedRows()]
-        return sorted({row for row in rows if 0 <= row < len(self.entries)})
+    def on_rule_icon_clicked(self, row: int, icon_index: int) -> None:
+        if row < 0 or row >= len(self.entries):
+            return
+
+        if icon_index == 0:
+            enabled = not bool(self.entries[row].get("regex", False))
+            self.run_with_unsaved_guard(lambda: self.set_regex_for_rows([row], enabled))
+            return
+
+        if icon_index == 1:
+            enabled = not bool(self.entries[row].get("case_sensitive", False))
+            self.run_with_unsaved_guard(
+                lambda: self.set_case_sensitive_for_rows([row], enabled)
+            )
+            return
 
     def on_table_context_menu(self, position: QPoint) -> None:
         rows = self.get_selected_entry_rows()
@@ -503,56 +545,13 @@ class TextReplacementPage(QualityRulePageBase):
     def disconnect_theme_signals(self) -> None:
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
     def on_theme_changed(self) -> None:
         self.rule_icon_renderer.clear_cache()
         self.refresh_table()
-
-    def update_rule_cell_item(
-        self, row: int, regex: bool, case_sensitive: bool, editable: bool
-    ) -> None:
-        item = self.table.item(row, self.RULE_COLUMN_INDEX)
-        if item is None:
-            item = QTableWidgetItem()
-            self.table.setItem(row, self.RULE_COLUMN_INDEX, item)
-
-        item.setText("")
-        ui_font = getattr(self, "ui_font", None)
-        if ui_font is not None:
-            item.setFont(ui_font)
-        item.setData(
-            Qt.ItemDataRole.TextAlignmentRole,
-            int(Qt.AlignmentFlag.AlignCenter),
-        )
-
-        if editable:
-            item.setData(
-                Qt.ItemDataRole.DecorationRole,
-                self.rule_icon_renderer.get_pixmap(
-                    self.table,
-                    [
-                        RuleIconSpec(ICON_RULE_REGEX, regex),
-                        RuleIconSpec(ICON_RULE_CASE_SENSITIVE, case_sensitive),
-                    ],
-                ),
-            )
-            item.setToolTip(self.build_rule_tooltip(regex, case_sensitive))
-        else:
-            item.setData(Qt.ItemDataRole.DecorationRole, None)
-            item.setToolTip("")
-
-        if editable:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            flags |= Qt.ItemFlag.ItemIsSelectable
-            item.setFlags(flags)
-        else:
-            flags: Qt.ItemFlags = Qt.ItemFlags(Qt.ItemFlag.NoItemFlags)
-            flags |= Qt.ItemFlag.ItemIsEnabled
-            item.setFlags(flags)
 
     def build_rule_tooltip(self, regex: bool, case_sensitive: bool) -> str:
         regex_line = (

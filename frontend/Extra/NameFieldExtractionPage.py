@@ -4,18 +4,17 @@ from typing import Any
 from typing import cast
 
 from PyQt5.QtCore import QPoint
+from PyQt5.QtCore import QModelIndex
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QHeaderView
 from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QTableWidgetItem
 from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
-from qfluentwidgets import TableWidget
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -25,6 +24,9 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from widget.AppTable import AppTableModelBase
+from widget.AppTable import AppTableView
+from widget.AppTable import ColumnSpec
 from widget.CommandBarCard import CommandBarCard
 from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
@@ -38,6 +40,28 @@ ICON_ACTION_TRANSLATE: BaseIcon = BaseIcon.LANGUAGES  # 命令栏：翻译提取
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
 ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置/清空
 ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
+
+
+class NameFieldExtractionTableModel(AppTableModelBase[dict[str, Any]]):
+    COL_SRC: int = 0
+    COL_DST: int = 1
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlags:  # noqa: N802
+        flags = super().flags(index)
+        if not index.isValid():
+            return flags
+
+        if index.column() != self.COL_DST:
+            return flags
+
+        row_object = self.row_object(index.row())
+        if row_object is None:
+            return flags
+
+        src = str(row_object.get("src", "")).strip()
+        if not src:
+            flags = flags & ~Qt.ItemFlag.ItemIsEditable
+        return cast(Qt.ItemFlags, flags)
 
 
 class NameFieldExtractionPage(QWidget, Base):
@@ -102,7 +126,7 @@ class NameFieldExtractionPage(QWidget, Base):
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         def delete_row() -> None:
-            row = self.table.currentRow()
+            row = self.table.get_current_source_row()
             if row >= 0 and row < len(self.items):
                 del self.items[row]
                 self.refresh_table()
@@ -121,43 +145,51 @@ class NameFieldExtractionPage(QWidget, Base):
                 return
             menu.exec(viewport.mapToGlobal(position))
 
-        self.table = TableWidget(self)
+        self.table = AppTableView(self)
         parent.addWidget(self.table)
 
-        # 设置表格属性
-        self.table.setColumnCount(3)
-        self.table.setBorderVisible(False)
-        self.table.setSelectRightClickedRow(True)
-        self.table.setAlternatingRowColors(True)
-        cast(Any, self.table.verticalHeader()).setVisible(True)
+        self.column_specs: list[ColumnSpec[dict[str, Any]]] = [
+            ColumnSpec(
+                header=Localizer.get().table_col_source,
+                width_mode=ColumnSpec.WidthMode.FIXED,
+                width=300,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+                display_getter=lambda row: str(row.get("src", "")),
+                tooltip_getter=lambda row: (
+                    f"{Localizer.get().name_field_extraction_context}:\n{row.get('context', '')}"
+                    if row.get("context")
+                    else ""
+                ),
+            ),
+            ColumnSpec(
+                header=Localizer.get().table_col_translation,
+                width_mode=ColumnSpec.WidthMode.FIXED,
+                width=300,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+                display_getter=lambda row: str(row.get("dst", "")),
+                editable=True,
+                set_value=self.on_dst_edited,
+            ),
+            ColumnSpec(
+                header=Localizer.get().proofreading_page_col_status,
+                width_mode=ColumnSpec.WidthMode.STRETCH,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+                display_getter=lambda row: str(row.get("status", "")),
+            ),
+        ]
 
-        # 设置表格列宽
-        self.table.setColumnWidth(0, 300)
-        self.table.setColumnWidth(1, 300)
-        header = self.table.horizontalHeader()
-        if header is not None:
-            header.setStretchLastSection(True)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-
-        # 设置水平表头
-        v_header = self.table.verticalHeader()
-        if v_header is not None:
-            v_header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table.setHorizontalHeaderLabels(
-            (
-                Localizer.get().table_col_source,  # 原文
-                Localizer.get().table_col_translation,  # 译文
-                Localizer.get().proofreading_page_col_status,  # 状态
-            )
+        self.table_model: NameFieldExtractionTableModel = NameFieldExtractionTableModel(
+            self.table.ui_font,
+            self.column_specs,
+            parent=self,
         )
+        self.table.setModel(self.table_model)
+        self.table.apply_column_specs(self.column_specs)
 
-        # 绑定表格修改事件
-        self.table.itemChanged.connect(self.on_table_item_changed)
+        header = cast(QHeaderView, self.table.horizontalHeader())
+        header.setStretchLastSection(True)
         self.table.customContextMenuRequested.connect(custom_context_menu_requested)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-
-        if header is not None:
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
         self.refresh_table()
 
@@ -199,7 +231,7 @@ class NameFieldExtractionPage(QWidget, Base):
             }
             self.show_toast(type_map.get(level, Base.ToastType.INFO), message)
 
-        self.search_card.bind_table(self.table, self.get_search_columns(), notify)
+        self.search_card.bind_view(self.table, self.get_search_columns(), notify)
 
         # 创建命令栏
         self.command_bar_card = CommandBarCard()
@@ -439,98 +471,40 @@ class NameFieldExtractionPage(QWidget, Base):
 
     def refresh_table(self) -> None:
         """完全刷新表格显示"""
-        self.table.blockSignals(True)  # 暂停信号，避免批量更新时触发 itemChanged
+        self.table_model.set_rows(self.items)
+        self.table.update_row_number_width(len(self.items))
 
-        # 确保至少有 30 行，避免页面空白
-        target_count = max(30, len(self.items))
-        self.table.setRowCount(target_count)
-
-        for row in range(target_count):
-            if row < len(self.items):
-                item_data = self.items[row]
-                src = item_data["src"]
-                dst = item_data["dst"]
-                status = item_data["status"]
-                tooltip = f"{Localizer.get().name_field_extraction_context}:\n{item_data['context']}"
-            else:
-                # 空白行
-                src = ""
-                dst = ""
-                status = ""
-                tooltip = ""
-
-            # 原文 (带上下文 Tooltip)
-            item_src = self.table.item(row, 0)
-            if not item_src:
-                item_src = QTableWidgetItem()
-                item_src.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, 0, item_src)
-
-            item_src.setText(src)
-            item_src.setToolTip(tooltip)
-            src_flags: Qt.ItemFlags = (
-                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-            )
-            item_src.setFlags(src_flags)  # 只读
-
-            # 译文
-            item_dst = self.table.item(row, 1)
-            if not item_dst:
-                item_dst = QTableWidgetItem()
-                item_dst.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, 1, item_dst)
-
-            item_dst.setText(dst)
-            if not src:
-                # 如果没有原文，译文也禁止编辑，避免误操作
-                item_dst.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            else:
-                # 恢复可编辑状态
-                dst_flags: Qt.ItemFlags = (
-                    Qt.ItemFlag.ItemIsEnabled
-                    | Qt.ItemFlag.ItemIsSelectable
-                    | Qt.ItemFlag.ItemIsEditable
-                )
-                item_dst.setFlags(dst_flags)
-
-            # 状态
-            item_status = self.table.item(row, 2)
-            if not item_status:
-                item_status = QTableWidgetItem()
-                item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, 2, item_status)
-
-            item_status.setText(status)
-            item_status.setFlags(Qt.ItemFlag.ItemIsEnabled)  # 只读
-
-        self.table.blockSignals(False)
-
-    def on_table_item_changed(self, item: QTableWidgetItem) -> None:
-        """处理表格手动编辑"""
-        row = item.row()
-        col = item.column()
-
-        # 越界检查 (防止编辑空白行导致崩溃)
-        if row >= len(self.items):
+    def emit_row_changed(self, row: int) -> None:
+        if row < 0 or row >= len(self.items):
+            return
+        if self.table_model.columnCount() <= 0:
             return
 
-        # 只有译文列(1)是可编辑的
-        if col == 1:
-            new_val = item.text().strip()
-            self.items[row]["dst"] = new_val
-            # 如果用户手动输入了内容，状态设为 Processed，否则 None
-            self.items[row]["status"] = (
-                Localizer.get().proofreading_page_status_processed
-                if new_val
-                else Localizer.get().proofreading_page_status_none
-            )
+        top_left = self.table_model.index(row, 0)
+        bottom_right = self.table_model.index(row, self.table_model.columnCount() - 1)
+        self.table_model.dataChanged.emit(
+            top_left,
+            bottom_right,
+            [
+                int(Qt.ItemDataRole.DisplayRole),
+                int(Qt.ItemDataRole.ToolTipRole),
+                int(Qt.ItemDataRole.DecorationRole),
+            ],
+        )
 
-            # 更新状态列显示
-            self.table.blockSignals(True)
-            item_status = self.table.item(row, 2)
-            if item_status:
-                item_status.setText(self.items[row]["status"])
-            self.table.blockSignals(False)
+    def on_dst_edited(self, row_object: dict[str, Any], value: object) -> bool:
+        src = str(row_object.get("src", "")).strip()
+        if not src:
+            return False
+
+        new_val = str(value).strip() if value is not None else ""
+        row_object["dst"] = new_val
+        row_object["status"] = (
+            Localizer.get().proofreading_page_status_processed
+            if new_val
+            else Localizer.get().proofreading_page_status_none
+        )
+        return True
 
     def translate_names(self) -> None:
         """翻译列表中的名字"""
@@ -552,15 +526,11 @@ class NameFieldExtractionPage(QWidget, Base):
             return
 
         # 更新状态为 处理中
-        self.table.blockSignals(True)
         for i in indices_to_translate:
             self.items[i]["status"] = (
                 Localizer.get().translation_page_status_translating
             )
-            item_status = self.table.item(i, 2)
-            if item_status:
-                item_status.setText(Localizer.get().translation_page_status_translating)
-        self.table.blockSignals(False)
+            self.emit_row_changed(i)
 
         count = len(indices_to_translate)
         # 显示进度 Toast
@@ -665,19 +635,7 @@ class NameFieldExtractionPage(QWidget, Base):
 
     def update_row(self, row: int) -> None:
         """信号槽：更新指定行的 UI"""
-        if 0 <= row < self.table.rowCount():
-            item_data = self.items[row]
-
-            self.table.blockSignals(True)
-            # 更新译文
-            item_dst = self.table.item(row, 1)
-            if item_dst and item_dst.text() != item_data["dst"]:
-                item_dst.setText(item_data["dst"])
-            # 更新状态
-            item_status = self.table.item(row, 2)
-            if item_status:
-                item_status.setText(item_data["status"])
-            self.table.blockSignals(False)
+        self.emit_row_changed(row)
 
     def save_to_glossary(self) -> None:
         """保存到术语表"""

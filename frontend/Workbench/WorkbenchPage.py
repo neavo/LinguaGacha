@@ -8,7 +8,6 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QAbstractItemView
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QVBoxLayout
@@ -89,7 +88,6 @@ class WorkbenchPage(ScrollArea, Base):
 
     FONT_SIZE: int = 12
     ICON_SIZE: int = 16
-    TABLE_MIN_ROWS: int = 30
 
     def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -306,7 +304,7 @@ class WorkbenchPage(ScrollArea, Base):
 
         self.file_entries = entries
         if self.table_widget is not None:
-            self.table_widget.set_entries(entries, fixed_rows=self.TABLE_MIN_ROWS)
+            self.table_widget.set_entries(entries)
 
             focus_rel_path = self.pending_focus_rel_path or selected_rel_path
             self.pending_focus_rel_path = None
@@ -314,13 +312,7 @@ class WorkbenchPage(ScrollArea, Base):
                 for row, entry in enumerate(entries):
                     if entry.get("rel_path") == focus_rel_path:
                         self.table_widget.selectRow(row)
-                        cell = self.table_widget.item(
-                            row, WorkbenchTableWidget.COL_FILE
-                        )
-                        if cell is not None:
-                            self.table_widget.scrollToItem(
-                                cell, QAbstractItemView.ScrollHint.PositionAtCenter
-                            )
+                        self.table_widget.scroll_to_row(row)
                         break
         self.update_controls_enabled()
 
