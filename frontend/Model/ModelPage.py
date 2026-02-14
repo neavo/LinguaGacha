@@ -1,9 +1,9 @@
 from functools import partial
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import FluentWindow
@@ -36,7 +36,7 @@ ICON_RESET_MODEL: BaseIcon = BaseIcon.REFRESH_CW  # 预设模型操作：重置�
 ICON_DELETE_MODEL: BaseIcon = BaseIcon.TRASH_2  # 自定义模型操作：删除
 
 
-class ModelPage(QWidget, Base):
+class ModelPage(Base, QWidget):
     """模型管理页面，将模型分为4类显示在不同卡片中"""
 
     # 各模型类型的品牌色
@@ -304,7 +304,8 @@ class ModelPage(QWidget, Base):
             button.setMenu(menu)
             card.add_widget(button)
 
-    def model_test_start(self, model_id: str) -> None:
+    # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
+    def model_test_start(self, model_id: str, checked: bool = False) -> None:
         """执行接口测试"""
         self.emit(Base.Event.APITEST_RUN, {"model_id": model_id})
 
@@ -336,7 +337,7 @@ class ModelPage(QWidget, Base):
         # 刷新显示
         self.refresh_all_categories()
 
-    def delete_model(self, model_id: str) -> None:
+    def delete_model(self, model_id: str, checked: bool = False) -> None:
         """删除模型"""
         config = Config().load()
         manager = ModelManager.get()
@@ -374,7 +375,7 @@ class ModelPage(QWidget, Base):
         # 刷新显示
         self.refresh_all_categories()
 
-    def activate_model(self, model_id: str) -> None:
+    def activate_model(self, model_id: str, checked: bool = False) -> None:
         """激活模型"""
         config = Config().load()
         config.set_active_model_id(model_id)
@@ -383,25 +384,29 @@ class ModelPage(QWidget, Base):
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_model_basic_setting_page(self, model_id: str) -> None:
+    def show_model_basic_setting_page(
+        self, model_id: str, checked: bool = False
+    ) -> None:
         """显示基础设置对话框"""
         ModelBasicSettingPage(model_id, self.window).exec()
 
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_model_task_setting_page(self, model_id: str) -> None:
+    def show_model_task_setting_page(
+        self, model_id: str, checked: bool = False
+    ) -> None:
         """显示任务设置对话框"""
         ModelTaskSettingPage(model_id, self.window).exec()
 
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_advanced_edit_page(self, model_id: str) -> None:
+    def show_advanced_edit_page(self, model_id: str, checked: bool = False) -> None:
         """显示编辑参数对话框"""
         ModelAdvancedSettingPage(model_id, self.window).exec()
 
-    def reset_preset_model(self, model_id: str) -> None:
+    def reset_preset_model(self, model_id: str, checked: bool = False) -> None:
         """重置预设模型"""
         config = Config().load()
         manager = ModelManager.get()

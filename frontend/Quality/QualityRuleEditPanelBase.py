@@ -2,18 +2,20 @@ from typing import Any
 
 from typing import cast
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import isDarkTheme
+
+from module.Utils.FontTool import FontTool
 
 
 class QualityRuleEditPanelBase(QWidget):
@@ -30,9 +32,9 @@ class QualityRuleEditPanelBase(QWidget):
     DIVIDER_DARK_COLOR: str = "rgba(255, 255, 255, 0.08)"
     DIVIDER_LIGHT_COLOR: str = "rgba(0, 0, 0, 0.08)"
 
-    add_requested = pyqtSignal()
-    save_requested = pyqtSignal()
-    delete_requested = pyqtSignal()
+    add_requested = Signal()
+    save_requested = Signal()
+    delete_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -83,7 +85,7 @@ class QualityRuleEditPanelBase(QWidget):
 
     def apply_button_style(self, button: TransparentPushButton) -> None:
         font = QFont(button.font())
-        font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(font, self.FONT_SIZE)
         button.setFont(font)
         button.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         button.setMinimumHeight(self.BTN_SIZE)
@@ -105,7 +107,7 @@ class QualityRuleEditPanelBase(QWidget):
         label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         label.setMinimumWidth(40)
         font = QFont(label.font())
-        font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(font, self.FONT_SIZE)
         font.setBold(True)
         label.setFont(font)
         label.setTextColor(QColor(214, 143, 0), QColor(255, 183, 77))
@@ -116,12 +118,12 @@ class QualityRuleEditPanelBase(QWidget):
     def apply_caption_label_style(self, label: CaptionLabel) -> None:
         label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         font = QFont(label.font())
-        font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(font, self.FONT_SIZE)
         label.setFont(font)
 
     def apply_text_edit_style(self, text_edit: QWidget) -> None:
         font = QFont(text_edit.font())
-        font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(font, self.FONT_SIZE)
         text_edit.setFont(font)
         text_edit.setMinimumHeight(self.TEXT_MIN_HEIGHT)
         text_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

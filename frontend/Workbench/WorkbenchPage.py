@@ -2,16 +2,16 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QFrame
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFrame
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import MessageBox
@@ -29,6 +29,7 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
 from widget.CommandBarCard import CommandBarCard
+from module.Utils.FontTool import FontTool
 
 
 class StatCard(SimpleCardWidget):
@@ -83,7 +84,7 @@ class StatCard(SimpleCardWidget):
         self.value_label.setText(f"{value:,}")
 
 
-class WorkbenchPage(ScrollArea, Base):
+class WorkbenchPage(Base, ScrollArea):
     """工作台页面（文件管理）"""
 
     FONT_SIZE: int = 12
@@ -182,7 +183,7 @@ class WorkbenchPage(ScrollArea, Base):
         self.main_layout.addWidget(self.command_bar_card)
 
         base_font = QFont(self.command_bar_card.command_bar.font())
-        base_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(base_font, self.FONT_SIZE)
         self.command_bar_card.command_bar.setFont(base_font)
         self.command_bar_card.command_bar.setIconSize(
             QSize(self.ICON_SIZE, self.ICON_SIZE)

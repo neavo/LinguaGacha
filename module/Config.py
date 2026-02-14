@@ -36,7 +36,6 @@ class Config:
     expert_mode: bool = False
     proxy_url: str = ""
     proxy_enable: bool = False
-    font_hinting: bool = True
     scale_factor: str = ""
 
     # BasicSettingsPage

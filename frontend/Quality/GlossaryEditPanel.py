@@ -1,10 +1,10 @@
 from typing import Any
 
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QShortcut
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtGui import QShortcut
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import ToolTipFilter
@@ -177,7 +177,7 @@ class GlossaryEditPanel(QualityRuleEditPanelBase):
     def disconnect_theme_signals(self) -> None:
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import cast
 
-from PyQt5.QtCore import QItemSelection
-from PyQt5.QtCore import QItemSelectionModel
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QContextMenuEvent
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHeaderView
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QItemSelection
+from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TableView
@@ -45,9 +45,9 @@ class ProofreadingTableWidget(TableView):
     ICON_BATCH_RESET_TRANSLATION: BaseIcon = BaseIcon.ERASER
 
     # 信号定义：对外仅暴露必要交互。批量操作覆盖“单选=批量(1)”场景，避免信号语义重复。
-    itemSelectionChanged = pyqtSignal()
-    batch_retranslate_clicked = pyqtSignal(list)  # (items) 批量重新翻译
-    batch_reset_translation_clicked = pyqtSignal(list)  # (items) 批量重置翻译
+    itemSelectionChanged = Signal()
+    batch_retranslate_clicked = Signal(list)  # (items) 批量重新翻译
+    batch_reset_translation_clicked = Signal(list)  # (items) 批量重置翻译
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

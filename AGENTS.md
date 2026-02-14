@@ -3,7 +3,7 @@
 
 ## 1. 项目背景
 - **简介**: 基于 LLM 的次世代视觉小说、电子书及字幕翻译工具
-- **技术栈**: Python 3.14, PyQt5, PyQt-Fluent-Widgets
+- **技术栈**: Python 3.14, PySide6, PySide6-Fluent-Widgets
 
 ## 2. 核心原则
 1. **第一性原理**: 立足于第一性原理剖析问题，善用工具以提升效率

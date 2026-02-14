@@ -1,15 +1,15 @@
 import time
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QFont
-from PyQt5.QtGui import QPainter
-from PyQt5.QtWidgets import QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import QLabel
 
 from qfluentwidgets import isDarkTheme
 
-class WaveformWidget(QLabel):
 
+class WaveformWidget(QLabel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

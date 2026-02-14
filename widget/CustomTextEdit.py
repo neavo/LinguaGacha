@@ -1,10 +1,10 @@
 from typing import Callable
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QTextOption
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QTextOption
 from qfluentwidgets import PlainTextEdit
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
@@ -89,7 +89,7 @@ class CustomTextEdit(PlainTextEdit):
         """断开全局信号连接，避免内存泄漏"""
         try:
             qconfig.themeChangedFinished.disconnect(self.refresh_style)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 

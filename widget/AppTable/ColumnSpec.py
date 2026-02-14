@@ -6,9 +6,9 @@ from typing import Callable
 from typing import Generic
 from typing import TypeVar
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
-from PyQt5.QtGui import QPixmap
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtGui import QPixmap
 
 RowT = TypeVar("RowT")
 

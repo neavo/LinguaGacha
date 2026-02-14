@@ -2,22 +2,22 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QThread
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QCursor
-from PyQt5.QtGui import QDragEnterEvent
-from PyQt5.QtGui import QDropEvent
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QFrame
-from PyQt5.QtWidgets import QGridLayout
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QCursor
+from PySide6.QtGui import QDragEnterEvent
+from PySide6.QtGui import QDropEvent
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFrame
+from PySide6.QtWidgets import QGridLayout
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import BodyLabel
 from qfluentwidgets import CaptionLabel
@@ -63,7 +63,7 @@ class CreateProjectThread(QThread):
     """创建工程后台线程"""
 
     # 信号：(是否成功, 结果数据/错误信息)
-    finished_signal = pyqtSignal(bool, object)
+    finished_signal = Signal(bool, object)
 
     def __init__(self, source_path: str, output_path: str) -> None:
         super().__init__()
@@ -164,9 +164,9 @@ class FileDisplayCard(CardWidget):
 class DropZone(FileDisplayCard):
     """拖拽区域组件"""
 
-    fileDropped = pyqtSignal(str)  # 文件/目录拖入信号
-    clicked = pyqtSignal()  # 点击信号
-    clear_clicked = pyqtSignal()  # 清除信号
+    fileDropped = Signal(str)  # 文件/目录拖入信号
+    clicked = Signal()  # 点击信号
+    clear_clicked = Signal()  # 清除信号
 
     def __init__(
         self, icon: FluentIconBase, title: str, subtitle: str, parent=None
@@ -272,9 +272,9 @@ class DropZone(FileDisplayCard):
 class SelectedFileDisplay(FileDisplayCard):
     """已选文件显示组件"""
 
-    clicked = pyqtSignal()
-    fileDropped = pyqtSignal(str)
-    clear_clicked = pyqtSignal()  # 清除信号
+    clicked = Signal()
+    fileDropped = Signal(str)
+    clear_clicked = Signal()  # 清除信号
 
     def __init__(self, file_name: str, is_ready: bool = True, parent=None) -> None:
         super().__init__(parent)
@@ -367,8 +367,8 @@ class SelectedFileDisplay(FileDisplayCard):
 class RecentProjectItem(QFrame):
     """最近打开的项目条目"""
 
-    clicked = pyqtSignal(str)  # 传递项目路径
-    remove_clicked = pyqtSignal(str)  # 删除信号
+    clicked = Signal(str)  # 传递项目路径
+    remove_clicked = Signal(str)  # 删除信号
 
     def __init__(self, name: str, path: str, parent=None) -> None:
         super().__init__(parent)
@@ -622,7 +622,7 @@ class SupportedFormatItem(CardWidget):
         layout.addWidget(self.ext_label)
 
 
-class ProjectPage(ScrollArea, Base):
+class ProjectPage(Base, ScrollArea):
     """工程页（新建/打开工程）"""
 
     def __init__(self, object_name: str, parent=None) -> None:

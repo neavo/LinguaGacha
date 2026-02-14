@@ -4,13 +4,13 @@ import dataclasses
 from typing import Callable
 from typing import Optional
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QSortFilterProxyModel
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QMouseEvent
-from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPixmap
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QSortFilterProxyModel
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPixmap
 from qfluentwidgets import TableItemDelegate
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor

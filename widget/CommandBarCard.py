@@ -1,19 +1,19 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QHBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout
 from qfluentwidgets import Action
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CommandBar
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
-class CommandBarCard(CardWidget):
 
+class CommandBarCard(CardWidget):
     def __init__(self) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.hbox = QHBoxLayout(self)
-        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.hbox.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.command_bar = CommandBar()

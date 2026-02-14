@@ -1,9 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import PillToolButton
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition

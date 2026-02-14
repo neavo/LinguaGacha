@@ -1,12 +1,12 @@
 import re
 from typing import Callable
 
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import HyperlinkLabel
@@ -35,6 +35,12 @@ class SwitchButtonCard(CardWidget):
         self.title_label = StrongBodyLabel(title, self)
         self.vbox.addWidget(self.title_label)
 
+        # 描述区单独容器：用更紧凑的 spacing，避免多行拆分导致行距过大。
+        desc_container = QWidget(self)
+        desc_layout = QVBoxLayout(desc_container)
+        desc_layout.setContentsMargins(0, 0, 0, 0)
+        desc_layout.setSpacing(2)
+
         # 按 <br> 分割为多行，然后每行单独处理超链接
         lines = re.split(r"<br\s*/?>", description)
 
@@ -50,7 +56,7 @@ class SwitchButtonCard(CardWidget):
             if len(parts) == 1:
                 label = CaptionLabel(line, self)
                 label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-                self.vbox.addWidget(label)
+                desc_layout.addWidget(label)
             else:
                 # 解析描述文本中的超链接
                 line_container = QWidget()
@@ -83,7 +89,9 @@ class SwitchButtonCard(CardWidget):
                         line_layout.addWidget(link_label)
 
                 line_layout.addStretch(1)
-                self.vbox.addWidget(line_container)
+                desc_layout.addWidget(line_container)
+
+        self.vbox.addWidget(desc_container)
 
         self.hbox.addLayout(self.vbox)
 

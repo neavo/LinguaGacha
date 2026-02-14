@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QContextMenuEvent
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import RoundMenu
 
@@ -37,9 +37,9 @@ class WorkbenchTableWidget(AppTableView):
     COL_ACTIONS_WIDTH = 60
     ROW_NUMBER_MIN_WIDTH = 40
 
-    update_clicked = pyqtSignal(str)
-    reset_clicked = pyqtSignal(str)
-    delete_clicked = pyqtSignal(str)
+    update_clicked = Signal(str)
+    reset_clicked = Signal(str)
+    delete_clicked = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

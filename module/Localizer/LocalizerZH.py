@@ -223,8 +223,6 @@ class LocalizerZH:
     # 应用设置
     app_settings_page_expert_title: str = "专家模式"
     app_settings_page_expert_content: str = "启用此功能后，将显示更多日志信息并提供更多高级设置选项（将在应用重启后生效）"
-    app_settings_page_font_hinting_title: str = "字体优化"
-    app_settings_page_font_hinting_content: str = "启用此功能后，应用内 UI 字体的边缘渲染将更加圆润（将在应用重启后生效）"
     app_settings_page_scale_factor_title: str = "全局缩放比例"
     app_settings_page_scale_factor_content: str = "启用此功能后，应用界面将按照所选比例进行缩放（将在应用重启后生效）"
     app_settings_page_proxy_url: str = "示例 - http://127.0.0.1:7890"

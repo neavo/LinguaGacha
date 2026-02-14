@@ -2,8 +2,8 @@ import os
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -163,7 +163,7 @@ class QualityRulePresetManager:
             LogManager.get().error(f"Failed to rename preset - {item['path']}", e)
             return False
 
-    def delete_preset(self, item: dict[str, str]) -> None:
+    def delete_preset(self, item: dict[str, str], checked: bool = False) -> None:
         message_box = MessageBox(
             Localizer.get().warning,
             Localizer.get().alert_delete_preset.format(NAME=item["name"]),
@@ -190,7 +190,7 @@ class QualityRulePresetManager:
         except Exception as e:
             LogManager.get().error(f"Failed to delete preset - {item['path']}", e)
 
-    def set_default_preset(self, item: dict[str, str]) -> None:
+    def set_default_preset(self, item: dict[str, str], checked: bool = False) -> None:
         current_config = Config().load()
         setattr(current_config, self.default_preset_config_key, item["path"])
         current_config.save()
@@ -199,7 +199,7 @@ class QualityRulePresetManager:
             Base.ToastType.SUCCESS, Localizer.get().quality_set_default_preset_success
         )
 
-    def cancel_default_preset(self) -> None:
+    def cancel_default_preset(self, checked: bool = False) -> None:
         current_config = Config().load()
         setattr(current_config, self.default_preset_config_key, "")
         current_config.save()
@@ -251,7 +251,7 @@ class QualityRulePresetManager:
             Action(
                 ICON_RULE_SAVE_PRESET,
                 Localizer.get().quality_save_preset,
-                triggered=lambda: self.page.run_with_unsaved_guard(
+                triggered=lambda checked=False: self.page.run_with_unsaved_guard(
                     self.prompt_save_preset
                 ),
             )
@@ -268,7 +268,7 @@ class QualityRulePresetManager:
                     ICON_PRESET_IMPORT,
                     Localizer.get().quality_import,
                     triggered=partial(
-                        lambda p: self.page.run_with_unsaved_guard(
+                        lambda p, checked=False: self.page.run_with_unsaved_guard(
                             lambda: self.apply_preset(p)
                         ),
                         item["path"],
@@ -308,7 +308,7 @@ class QualityRulePresetManager:
                     ICON_PRESET_IMPORT,
                     Localizer.get().quality_import,
                     triggered=partial(
-                        lambda p: self.page.run_with_unsaved_guard(
+                        lambda p, checked=False: self.page.run_with_unsaved_guard(
                             lambda: self.apply_preset(p)
                         ),
                         item["path"],
@@ -363,7 +363,7 @@ class QualityRulePresetManager:
         )
         dialog.exec()
 
-    def prompt_rename_preset(self, item: dict[str, str]) -> None:
+    def prompt_rename_preset(self, item: dict[str, str], checked: bool = False) -> None:
         def on_rename(dialog: LineEditMessageBox, text: str) -> None:
             if self.rename_preset(item, text):
                 dialog.accept()

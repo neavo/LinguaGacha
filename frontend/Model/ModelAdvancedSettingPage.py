@@ -1,8 +1,8 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QUrl
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
@@ -18,7 +18,7 @@ from widget.GroupCard import GroupCard
 from widget.SliderCard import SliderCard
 
 
-class ModelAdvancedSettingPage(MessageBoxBase, Base):
+class ModelAdvancedSettingPage(Base, MessageBoxBase):
     TOP_P_DEFAULT: float = 0.95
     TEMPERATURE_DEFAULT: float = 0.95
     PRESENCE_PENALTY_DEFAULT: float = 0.00

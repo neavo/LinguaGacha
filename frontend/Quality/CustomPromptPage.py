@@ -2,11 +2,11 @@ import os
 from functools import partial
 from pathlib import Path
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CommandButton
 from qfluentwidgets import FluentWindow
@@ -48,7 +48,7 @@ ICON_PRESET_RENAME: BaseIcon = BaseIcon.PENCIL_LINE  # 子菜单动作：重命�
 ICON_PRESET_DELETE: BaseIcon = BaseIcon.TRASH_2  # 子菜单动作：删除
 
 
-class CustomPromptPage(QWidget, Base):
+class CustomPromptPage(Base, QWidget):
     def __init__(
         self, text: str, window: FluentWindow, language: BaseLanguage.Enum
     ) -> None:
@@ -244,7 +244,7 @@ class CustomPromptPage(QWidget, Base):
         del config
         del window
 
-        def triggered() -> None:
+        def triggered(checked: bool = False) -> None:
             path, _ = QFileDialog.getOpenFileName(
                 None,
                 Localizer.get().select_file,
@@ -269,7 +269,7 @@ class CustomPromptPage(QWidget, Base):
     ) -> None:
         del config
 
-        def triggered() -> None:
+        def triggered(checked: bool = False) -> None:
             path, _ = QFileDialog.getSaveFileName(
                 window,
                 Localizer.get().select_file,
@@ -293,7 +293,7 @@ class CustomPromptPage(QWidget, Base):
     def add_command_bar_action_save(
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
-        def triggered() -> None:
+        def triggered(checked: bool = False) -> None:
             # 保存数据
             self.set_custom_prompt_data(self.main_text.toPlainText().strip())
 
@@ -358,7 +358,7 @@ class CustomPromptPage(QWidget, Base):
 
             return builtin_presets, user_presets
 
-        def set_default_preset(item: dict) -> None:
+        def set_default_preset(item: dict, checked: bool = False) -> None:
             key = f"custom_prompt_{self.language_code}_default_preset"
             # 重新加载配置以防止覆盖其他页面的修改
             current_config = Config().load()
@@ -376,7 +376,7 @@ class CustomPromptPage(QWidget, Base):
                 },
             )
 
-        def cancel_default_preset() -> None:
+        def cancel_default_preset(checked: bool = False) -> None:
             key = f"custom_prompt_{self.language_code}_default_preset"
             # 重新加载配置以防止覆盖其他页面的修改
             current_config = Config().load()
@@ -394,7 +394,7 @@ class CustomPromptPage(QWidget, Base):
                 },
             )
 
-        def reset() -> None:
+        def reset(checked: bool = False) -> None:
             message_box = MessageBox(
                 Localizer.get().alert, Localizer.get().alert_confirm_reset_data, window
             )
@@ -421,7 +421,7 @@ class CustomPromptPage(QWidget, Base):
                 },
             )
 
-        def apply_preset(path: str) -> None:
+        def apply_preset(path: str, checked: bool = False) -> None:
             prompt: str = ""
             try:
                 with open(path, "r", encoding="utf-8-sig") as reader:
@@ -452,7 +452,7 @@ class CustomPromptPage(QWidget, Base):
                 },
             )
 
-        def save_preset() -> None:
+        def save_preset(checked: bool = False) -> None:
             def on_save(dialog: LineEditMessageBox, text: str) -> None:
                 if not text.strip():
                     return
@@ -504,7 +504,7 @@ class CustomPromptPage(QWidget, Base):
             )
             dialog.exec()
 
-        def rename_preset(item: dict) -> None:
+        def rename_preset(item: dict, checked: bool = False) -> None:
             def on_rename(dialog: LineEditMessageBox, text: str) -> None:
                 if not text.strip():
                     return
@@ -549,7 +549,7 @@ class CustomPromptPage(QWidget, Base):
             dialog.get_line_edit().setText(item["name"])
             dialog.exec()
 
-        def delete_preset(item: dict) -> None:
+        def delete_preset(item: dict, checked: bool = False) -> None:
             message_box = MessageBox(
                 Localizer.get().warning,
                 Localizer.get().alert_delete_preset.format(NAME=item["name"]),
@@ -590,7 +590,7 @@ class CustomPromptPage(QWidget, Base):
                         },
                     )
 
-        def triggered() -> None:
+        def triggered(checked: bool = False) -> None:
             menu = RoundMenu("", widget)
 
             # 重置

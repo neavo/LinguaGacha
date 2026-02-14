@@ -2,11 +2,11 @@ import re
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QHeaderView
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QHeaderView
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox

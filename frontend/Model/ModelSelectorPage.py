@@ -4,15 +4,15 @@ import anthropic
 import openai
 from google import genai
 from google.genai import types
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QListWidgetItem
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QListWidgetItem
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import IndeterminateProgressRing
@@ -28,9 +28,9 @@ from widget.CustomLineEdit import CustomSearchLineEdit
 from widget.Separator import Separator
 
 
-class ModelSelectorPage(MessageBoxBase, Base):
+class ModelSelectorPage(Base, MessageBoxBase):
     # 模型加载完成信号
-    models_loaded = pyqtSignal(list)
+    models_loaded = Signal(list)
 
     # 列表区域固定高度
     LIST_HEIGHT = 392
@@ -90,17 +90,17 @@ class ModelSelectorPage(MessageBoxBase, Base):
         self.loading_container.setFixedHeight(__class__.LIST_HEIGHT)
         loading_layout = QVBoxLayout(self.loading_container)
         loading_layout.setContentsMargins(0, 0, 0, 0)
-        loading_layout.setAlignment(Qt.AlignCenter)
+        loading_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.loading_ring = IndeterminateProgressRing(self.loading_container)
         self.loading_ring.setFixedSize(48, 48)
-        loading_layout.addWidget(self.loading_ring, 0, Qt.AlignCenter)
+        loading_layout.addWidget(self.loading_ring, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.loading_label = CaptionLabel(
             Localizer.get().model_selector_page_loading, self.loading_container
         )
         self.loading_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        loading_layout.addWidget(self.loading_label, 0, Qt.AlignCenter)
+        loading_layout.addWidget(self.loading_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.viewLayout.addWidget(self.loading_container)
 

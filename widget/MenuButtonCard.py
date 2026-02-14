@@ -1,13 +1,13 @@
 import re
 from typing import Callable
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import HyperlinkLabel

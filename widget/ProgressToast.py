@@ -1,10 +1,10 @@
 from typing import Any
 from typing import cast
 
-from PyQt5 import sip
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QWidget
+from shiboken6 import isValid
 from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
@@ -54,9 +54,9 @@ class ProgressToast:
             return False
 
         try:
-            return not sip.isdeleted(cast(Any, obj))
+            return isValid(cast(Any, obj))
         except Exception:
-            # 兜底：在少数情况下 sip.isdeleted 可能不可用或不接受该对象
+            # 兜底：在少数情况下 shiboken6.isValid 可能抛异常（例如非 Qt 对象）
             try:
                 getattr(obj, "objectName")()
             except Exception:
@@ -144,7 +144,7 @@ class ProgressToast:
         info_bar.hBoxLayout.removeWidget(info_bar.iconWidget)
 
         # 调整 textLayout 对齐方式和边距，使其垂直居中
-        align_vcenter = getattr(Qt, "AlignVCenter")
+        align_vcenter = Qt.AlignmentFlag.AlignVCenter
         info_bar.textLayout.setAlignment(align_vcenter)
         info_bar.textLayout.setContentsMargins(0, 0, 0, 0)
 

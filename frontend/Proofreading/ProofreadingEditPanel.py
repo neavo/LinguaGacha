@@ -1,20 +1,20 @@
 import threading
 from typing import cast
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QFont
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QFrame
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QShortcut
-from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import QFrame
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtGui import QShortcut
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
@@ -36,6 +36,7 @@ from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
+from module.Utils.FontTool import FontTool
 from widget.StatusTag import StatusTagType
 from widget.StatusTag import StatusTag
 
@@ -64,12 +65,12 @@ class ProofreadingEditPanel(QWidget):
     GLOSSARY_STATUS_DELAY_MS = 120
 
     # 信号定义
-    save_requested = pyqtSignal(object, str)
-    copy_src_requested = pyqtSignal(object)
-    copy_dst_requested = pyqtSignal(object)
-    retranslate_requested = pyqtSignal(object)
-    reset_translation_requested = pyqtSignal(object)
-    glossary_status_computed = pyqtSignal(object)
+    save_requested = Signal(object, str)
+    copy_src_requested = Signal(object)
+    copy_dst_requested = Signal(object)
+    retranslate_requested = Signal(object)
+    reset_translation_requested = Signal(object)
+    glossary_status_computed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -120,7 +121,7 @@ class ProofreadingEditPanel(QWidget):
         self.file_path_label.setMinimumWidth(1)
         self.file_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         label_font = QFont(self.file_path_label.font())
-        label_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(label_font, self.FONT_SIZE)
         self.file_path_label.setFont(label_font)
         file_layout.addWidget(self.file_path_label, 1)
 
@@ -135,7 +136,7 @@ class ProofreadingEditPanel(QWidget):
         self.row_index_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         self.row_index_label.setMinimumWidth(40)
         idx_font = QFont(self.row_index_label.font())
-        idx_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(idx_font, self.FONT_SIZE)
         idx_font.setBold(True)
         self.row_index_label.setFont(idx_font)
         # 序号需要在亮/暗主题下都足够醒目。
@@ -213,14 +214,14 @@ class ProofreadingEditPanel(QWidget):
         )
         self.src_label.setTextColor(QColor(128, 128, 128), QColor(128, 128, 128))
         label_font = QFont(self.src_label.font())
-        label_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(label_font, self.FONT_SIZE)
         self.src_label.setFont(label_font)
         editor_layout.addWidget(self.src_label)
 
         self.src_text = CustomTextEdit(self.editor_card)
         self.src_text.setReadOnly(True)
         src_font = QFont(self.src_text.font())
-        src_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(src_font, self.FONT_SIZE)
         self.src_text.setFont(src_font)
         # 默认更紧凑，且允许窗口变矮时继续压缩，避免右侧整体产生滚动条。
         self.src_text.setMinimumHeight(self.TEXT_MIN_HEIGHT)
@@ -238,7 +239,7 @@ class ProofreadingEditPanel(QWidget):
 
         self.dst_text = CustomTextEdit(self.editor_card)
         dst_font = QFont(self.dst_text.font())
-        dst_font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(dst_font, self.FONT_SIZE)
         self.dst_text.setFont(dst_font)
         self.dst_text.setMinimumHeight(self.TEXT_MIN_HEIGHT)
         self.dst_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -300,7 +301,7 @@ class ProofreadingEditPanel(QWidget):
     def disconnect_theme_signals(self) -> None:
         try:
             qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
@@ -317,7 +318,7 @@ class ProofreadingEditPanel(QWidget):
 
     def apply_fixed_button_style(self, button: TransparentPushButton) -> None:
         font = QFont(button.font())
-        font.setPixelSize(self.FONT_SIZE)
+        FontTool.set_font_size_px(font, self.FONT_SIZE)
         button.setFont(font)
         button.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         button.setMinimumHeight(self.BTN_SIZE)

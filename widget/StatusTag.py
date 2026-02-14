@@ -3,18 +3,20 @@ from typing import Any
 from typing import ClassVar
 from typing import cast
 
-from PyQt5.QtCore import QSize
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from PyQt5.QtGui import QFont
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPaintEvent
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPaintEvent
+from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
+
+from module.Utils.FontTool import FontTool
 
 
 class StatusTagType(StrEnum):
@@ -107,7 +109,7 @@ class StatusTag(QLabel):
     def disconnect_style_signals(self) -> None:
         try:
             qconfig.themeChanged.disconnect(self.update_style)
-        except (TypeError, RuntimeError):
+        except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 
@@ -126,7 +128,7 @@ class StatusTag(QLabel):
         font = QFont(self.base_font)
         font_size = self.font_size_value
         if font_size:
-            font.setPixelSize(font_size)
+            FontTool.set_font_size_px(font, font_size)
         self.cached_font = font
         self.setFont(font)
 

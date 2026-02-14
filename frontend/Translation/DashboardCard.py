@@ -1,10 +1,10 @@
 from typing import Callable
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QGraphicsOpacityEffect
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CardWidget
 from qfluentwidgets import IconWidget
 from qfluentwidgets import LargeTitleLabel

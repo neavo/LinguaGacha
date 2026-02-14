@@ -1,24 +1,30 @@
 from typing import Callable
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtWidgets import QVBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout
 from qfluentwidgets import Slider
 from qfluentwidgets import CardWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import StrongBodyLabel
 
-class SliderCard(CardWidget):
 
-    def __init__(self, title: str, description: str, init: Callable = None, slider_released: Callable = None) -> None:
+class SliderCard(CardWidget):
+    def __init__(
+        self,
+        title: str,
+        description: str,
+        init: Callable = None,
+        slider_released: Callable = None,
+    ) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.root = QHBoxLayout(self)
-        self.root.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.root.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.vbox = QVBoxLayout()

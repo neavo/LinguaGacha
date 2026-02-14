@@ -1,16 +1,16 @@
 from typing import Callable
 
-from PyQt5.QtCore import QTime
+from PySide6.QtCore import QTime
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import TimeEdit
 
 from module.Localizer.Localizer import Localizer
 
-class TimerMessageBox(MessageBoxBase):
 
+class TimerMessageBox(MessageBoxBase):
     def __init__(self, parent, title: str, message_box_close: Callable = None) -> None:
-        super().__init__(parent = parent)
+        super().__init__(parent=parent)
 
         # 初始化
         self.delay = 0
@@ -21,7 +21,7 @@ class TimerMessageBox(MessageBoxBase):
         self.cancelButton.setText(Localizer.get().cancel)
 
         # 设置主布局
-        self.viewLayout.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.viewLayout.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 标题
         self.title_label = StrongBodyLabel(title, self)

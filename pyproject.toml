@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
     # System
-    "PyQt-Fluent-Widgets[full]",
+    "PySide6",
+    "PySide6-Fluent-Widgets[full]",
     "openai",
     "anthropic",
     "google-genai",
@@ -38,12 +39,6 @@ addopts = "--cov=module --cov-branch --cov-report=term-missing"
 
 [tool.coverage.run]
 data_file = "tests/.coverage"
-
-[tool.uv]
-override-dependencies = [
-    "pyqt5-qt5==5.15.18; sys_platform != 'win32'",
-    "pyqt5-qt5==5.15.2; sys_platform == 'win32'",
-]
 
 [tool.ruff]
 force-exclude = true        # 强制应用排除规则

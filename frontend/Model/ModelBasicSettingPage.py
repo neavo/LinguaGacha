@@ -1,7 +1,7 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import ComboBox
 from qfluentwidgets import DropDownPushButton
@@ -30,7 +30,7 @@ ICON_MODEL_ID_EDIT: BaseIcon = BaseIcon.PENCIL_LINE  # 模型 ID：编辑/修改
 ICON_MODEL_ID_SYNC: BaseIcon = BaseIcon.REFRESH_CW  # 模型 ID：同步/更新
 
 
-class ModelBasicSettingPage(MessageBoxBase, Base):
+class ModelBasicSettingPage(Base, MessageBoxBase):
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 

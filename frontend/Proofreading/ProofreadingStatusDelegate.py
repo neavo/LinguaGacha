@@ -3,22 +3,22 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from PyQt5.QtCore import QEvent
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import QPoint
-from PyQt5.QtCore import QRect
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QHelpEvent
-from PyQt5.QtGui import QMouseEvent
-from PyQt5.QtGui import QPainter
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QAbstractItemView
-from PyQt5.QtWidgets import QScrollBar
-from PyQt5.QtWidgets import QTableView
-from PyQt5.QtWidgets import QStyleOptionViewItem
-from PyQt5.QtWidgets import QWidget
+from PySide6.QtCore import QEvent
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QObject
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QRect
+from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QHelpEvent
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QScrollBar
+from PySide6.QtWidgets import QTableView
+from PySide6.QtWidgets import QStyleOptionViewItem
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import TableItemDelegate
 from qfluentwidgets import ToolTip
 from qfluentwidgets import ToolTipPosition
@@ -139,12 +139,9 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         if cached is not None:
             return cached
 
-        size_px = max(1, int(round(self.ICON_SIZE * dpr)))
-        pixmap = icon.icon().pixmap(size_px, size_px)
-        try:
-            pixmap.setDevicePixelRatio(dpr)
-        except AttributeError, TypeError, RuntimeError:
-            pass
+        # Qt6 下 QIcon.pixmap() 会返回带 DPR 的 pixmap；这里传逻辑尺寸即可。
+        # 若手动 setDevicePixelRatio()，在部分平台会把 DPR 覆盖成错误值，导致图标被放大。
+        pixmap = icon.icon().pixmap(self.ICON_SIZE, self.ICON_SIZE)
 
         self.pixmap_cache[key] = pixmap
         return pixmap

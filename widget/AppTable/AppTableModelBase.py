@@ -8,11 +8,11 @@ from typing import Generic
 from typing import TypeVar
 from typing import cast
 
-from PyQt5.QtCore import QAbstractTableModel
-from PyQt5.QtCore import QModelIndex
-from PyQt5.QtCore import QObject
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PySide6.QtCore import QAbstractTableModel
+from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QObject
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from widget.AppTable.ColumnSpec import ColumnSpec
 
