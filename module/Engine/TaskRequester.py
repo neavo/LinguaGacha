@@ -66,6 +66,7 @@ class TaskRequester(Base):
     RE_DOUBAO: tuple[re.Pattern, ...] = (
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
+        re.compile(r"doubao-seed-2-0", flags=re.IGNORECASE),
     )
     RE_DEEPSEEK: tuple[re.Pattern, ...] = (
         re.compile(r"deepseek", flags=re.IGNORECASE),
