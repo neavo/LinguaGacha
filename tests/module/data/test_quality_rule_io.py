@@ -7,7 +7,7 @@ import pytest
 from openpyxl.cell.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
-from module.Data.QualityRuleIO import QualityRuleIO
+from module.QualityRule.QualityRuleIO import QualityRuleIO
 
 
 def test_load_rules_from_file_dispatches_by_extension(
@@ -102,7 +102,7 @@ def test_load_from_xlsx_file_skips_header_and_parses_booleans(
     cast(Cell, sheet.cell(row=2, column=5)).value = "TRUE"
     cast(Cell, sheet.cell(row=3, column=1)).value = ""
     monkeypatch.setattr(
-        "module.Data.QualityRuleIO.openpyxl.load_workbook",
+        "module.QualityRule.QualityRuleIO.openpyxl.load_workbook",
         lambda *_args, **_kwargs: book,
     )
 
@@ -133,7 +133,9 @@ def test_export_rules_writes_xlsx_and_json(fs, monkeypatch: pytest.MonkeyPatch) 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_bytes(b"xlsx")
 
-    monkeypatch.setattr("module.Data.QualityRuleIO.openpyxl.Workbook.save", fake_save)
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.openpyxl.Workbook.save", fake_save
+    )
 
     output_base = Path("/workspace/quality/exported_rules")
     output_base.parent.mkdir(parents=True, exist_ok=True)

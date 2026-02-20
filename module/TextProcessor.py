@@ -17,7 +17,7 @@ from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.RubyCleaner import RubyCleaner
 from module.Utils.JSONTool import JSONTool
 

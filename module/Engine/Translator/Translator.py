@@ -13,7 +13,8 @@ from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleMerger import QualityRuleMerger
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
@@ -634,9 +635,8 @@ class Translator(Base):
                     }
                 )
 
-        added_entries = snapshot.merge_glossary_entries(incoming)
-        if not added_entries:
-            return None
+        # 快照用于运行时质量检查/提示词一致性；写回入口的去重/补空由统一合并器负责。
+        snapshot.merge_glossary_entries(incoming)
 
         # CLI 模式可禁用规则写回：保留本次快照的增量效果，但不触碰工程缓存/落库。
         if not persist:
@@ -645,26 +645,12 @@ class Translator(Base):
         dm = DataManager.get()
         # 与 UI 写入串行化：避免 auto glossary 覆盖用户在翻译过程中的手动编辑。
         with dm.state_lock:
-            current_data: list[dict] = dm.get_glossary()
-            current_keys = {str(v.get("src", "")).strip() for v in current_data}
-
-            changed = False
-            for entry in added_entries:
-                src = str(entry.get("src", "")).strip()
-                if not src:
-                    continue
-                if src in current_keys:
-                    continue
-                current_data.append(dict(entry))
-                current_keys.add(src)
-                changed = True
-
-            if not changed:
-                return None
-
-            # 仅更新内存缓存，实际写入由外层 update_batch 统一提交。
-            dm.set_glossary(current_data, save=False)
-            return current_data
+            merged, _report = dm.merge_glossary_incoming(
+                incoming,
+                merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+                save=False,
+            )
+            return merged
 
     def save_translation_state(
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING

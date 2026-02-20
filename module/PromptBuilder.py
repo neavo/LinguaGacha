@@ -6,7 +6,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Utils.JSONTool import JSONTool
 
 
