@@ -42,6 +42,7 @@ class TaskRequester(Base):
     )
     RE_GEMINI_3_PRO: re.Pattern = re.compile(r"gemini-3-pro", flags=re.IGNORECASE)
     RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
+    RE_GEMINI_3_1_PRO: re.Pattern = re.compile(r"gemini-3\.1-pro", flags=re.IGNORECASE)
 
     # Claude
     RE_CLAUDE: tuple[re.Pattern, ...] = (
@@ -51,24 +52,22 @@ class TaskRequester(Base):
         re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
     )
 
-    # OpenAI
+    # OpenAI - GPT5
     RE_GPT5: tuple[re.Pattern, ...] = (
         re.compile(r"gpt-5", flags=re.IGNORECASE),
     )
 
-    # OpenAI Compatible
-    RE_GLM: tuple[re.Pattern, ...] = (
-        re.compile(r"glm-4\.5", flags=re.IGNORECASE),
-        re.compile(r"glm-4\.6", flags=re.IGNORECASE),
-        re.compile(r"glm-4\.7", flags=re.IGNORECASE),
-    )
-    RE_KIMI: tuple[re.Pattern, ...] = (re.compile(r"kimi", flags=re.IGNORECASE),)
+    # OpenAI - DOUBAO
     RE_DOUBAO: tuple[re.Pattern, ...] = (
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
         re.compile(r"doubao-seed-2-0", flags=re.IGNORECASE),
     )
-    RE_DEEPSEEK: tuple[re.Pattern, ...] = (
+
+    # OpenAI - THINKING_TYPE
+    RE_THINKING_TYPE: tuple[re.Pattern, ...] = (
+        re.compile(r"glm", flags=re.IGNORECASE),
+        re.compile(r"kimi", flags=re.IGNORECASE),
         re.compile(r"deepseek", flags=re.IGNORECASE),
     )
 
@@ -655,30 +654,17 @@ class TaskRequester(Base):
         result.setdefault("stream_options", {"include_usage": True})
 
         extra_body: dict[str, Any] = {}
-
         if any(v.search(self.model_id) is not None for v in __class__.RE_GPT5):
             if self.thinking_level == ThinkingLevel.OFF:
                 extra_body["reasoning_effort"] = "none"
             else:
                 extra_body["reasoning_effort"] = self.thinking_level.lower()
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_GLM):
-            thinking_type = (
-                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
-            )
-            extra_body["thinking"] = {"type": thinking_type}
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_KIMI):
-            thinking_type = (
-                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
-            )
-            extra_body["thinking"] = {"type": thinking_type}
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
             if self.thinking_level == ThinkingLevel.OFF:
                 extra_body["reasoning_effort"] = "minimal"
-                extra_body["thinking"] = {"type": "disabled"}
             else:
                 extra_body["reasoning_effort"] = self.thinking_level.lower()
-                extra_body["thinking"] = {"type": "enabled"}
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_DEEPSEEK):
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_THINKING_TYPE):
             thinking_type = (
                 "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
             )
@@ -750,8 +736,29 @@ class TaskRequester(Base):
             }
         )
 
-        # Gemini 3 Pro
-        if __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
+        # Gemini
+        if __class__.RE_GEMINI_3_1_PRO.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MEDIUM,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH,
+                    include_thoughts=True,
+                )
+        elif __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.LOW,
@@ -772,7 +779,6 @@ class TaskRequester(Base):
                     thinking_level=types.ThinkingLevel.HIGH,
                     include_thoughts=True,
                 )
-        # Gemini 3 Flash
         elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -794,7 +800,6 @@ class TaskRequester(Base):
                     thinking_level=types.ThinkingLevel.HIGH,
                     include_thoughts=True,
                 )
-        # Gemini 2.5 Pro
         elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
@@ -816,7 +821,6 @@ class TaskRequester(Base):
                     thinking_budget=1024,
                     include_thoughts=True,
                 )
-        # Gemini 2.5 Flash
         elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
             if self.thinking_level == ThinkingLevel.OFF:
                 config_args["thinking_config"] = types.ThinkingConfig(
