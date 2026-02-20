@@ -68,6 +68,18 @@ class QualityRuleMerger:
         order: int
         is_existing: bool
 
+    @dataclass(frozen=True)
+    class Kept:
+        """合并后被保留下来的条目。
+
+        为什么需要单独建模：合并过程需要同时携带“稳定顺序锚点(order)”与“去重判定 key”，
+        最终再转换回纯 entry 列表。
+        """
+
+        order: int
+        key: object
+        entry: dict[str, Any]
+
     @staticmethod
     def normalize_src(src: Any) -> str:
         if not isinstance(src, str):
@@ -170,13 +182,7 @@ class QualityRuleMerger:
         deduped = 0
         conflicts: list[QualityRuleMerger.Conflict] = []
 
-        @dataclass(frozen=True)
-        class _Kept:
-            order: int
-            key: object
-            entry: dict[str, Any]
-
-        kept: list[_Kept] = []
+        kept: list[QualityRuleMerger.Kept] = []
 
         def record_conflict(
             *,
@@ -317,7 +323,9 @@ class QualityRuleMerger:
                         filled += 1
 
                 kept.append(
-                    _Kept(order=items_sorted[0].order, key=src_fold, entry=base)
+                    __class__.Kept(
+                        order=items_sorted[0].order, key=src_fold, entry=base
+                    )
                 )
                 continue
 
@@ -339,7 +347,9 @@ class QualityRuleMerger:
                         updated += 1
                     if filled_changed:
                         filled += 1
-                kept.append(_Kept(order=norm_items[0].order, key=key_obj, entry=base))
+                kept.append(
+                    __class__.Kept(order=norm_items[0].order, key=key_obj, entry=base)
+                )
 
         kept_sorted = sorted(kept, key=lambda k: k.order)
         merged = [k.entry for k in kept_sorted]
