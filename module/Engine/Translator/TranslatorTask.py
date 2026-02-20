@@ -13,7 +13,7 @@ from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequesterErrors import RequestCancelledError

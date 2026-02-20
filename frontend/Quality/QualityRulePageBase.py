@@ -27,9 +27,9 @@ from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from module.Config import Config
-from module.Data.QualityRuleIO import QualityRuleIO
-from module.Data.QualityRuleMerge import QualityRuleMerge
 from module.Localizer.Localizer import Localizer
+from module.QualityRule.QualityRuleIO import QualityRuleIO
+from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from widget.AppTable import AppTableModelBase
 from widget.AppTable import AppTableView
 from widget.AppTable import ColumnSpec
@@ -60,9 +60,6 @@ class QualityRulePageBase(Base, QWidget):
     # 子类可覆盖：预设目录名、默认预设配置键
     PRESET_DIR_NAME: str = ""
     DEFAULT_PRESET_CONFIG_KEY: str = ""
-
-    # 子类可覆盖：合并提示时是否仍显示保存成功
-    SKIP_SUCCESS_TOAST_ON_MERGE: bool = False
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -113,6 +110,30 @@ class QualityRulePageBase(Base, QWidget):
 
     def create_empty_entry(self) -> dict[str, Any]:
         raise NotImplementedError
+
+    def get_merge_rule_type(self) -> QualityRuleMerger.RuleType:
+        """返回当前页面对应的规则类型（用于判重 key 与字段级合并）。
+
+        质量规则的重复 key 在不同类型上有不同语义（尤其是 TEXT_PRESERVE
+        必须按 casefold 去重），合并器需要明确类型才能做正确收敛。
+        """
+
+        if len(self.QUALITY_RULE_TYPES) == 1:
+            value = next(iter(self.QUALITY_RULE_TYPES))
+            try:
+                return QualityRuleMerger.RuleType(str(value))
+            except ValueError:
+                pass
+
+        if hasattr(self, "rule_type"):
+            raw = getattr(self, "rule_type")
+            if hasattr(raw, "value"):
+                try:
+                    return QualityRuleMerger.RuleType(str(raw.value))
+                except ValueError:
+                    pass
+
+        return QualityRuleMerger.RuleType.GLOSSARY
 
     def update_table_cell(
         self,
@@ -604,14 +625,14 @@ class QualityRulePageBase(Base, QWidget):
                 },
             )
 
-        if not merged or not self.SKIP_SUCCESS_TOAST_ON_MERGE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_save,
-                },
-            )
+        # 合并提示与保存成功是两个不同信号：即使发生了去重/覆盖，也要明确告诉用户保存已完成。
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().toast_save,
+            },
+        )
 
         action = self.pending_action
         self.pending_action = None
@@ -670,8 +691,8 @@ class QualityRulePageBase(Base, QWidget):
         返回 (是否发生合并, 合并提示文案)。
         """
 
-        src = str(entry.get("src", "")).strip()
-        entry["src"] = src
+        normalized = QualityRuleMerger.normalize_entry(entry)
+        src = str(normalized.get("src", "")).strip()
 
         if not src:
             # 空 src 等价于删除该条目。
@@ -680,37 +701,100 @@ class QualityRulePageBase(Base, QWidget):
             self.current_index = -1
             return False, ""
 
-        duplicate_index = -1
-        for i, existing in enumerate(self.entries):
-            if i == self.current_index:
-                continue
-            if str(existing.get("src", "")).strip() == src:
-                duplicate_index = i
-                break
+        rule_type = self.get_merge_rule_type()
+        incoming_fold = QualityRuleMerger.fold_src(src)
+        incoming_case_sensitive = bool(normalized.get("case_sensitive", False))
 
-        if duplicate_index < 0:
-            # 关键：保持 entries[row] 的 dict 对象引用不变。
-            # AppTableModelBase 在 set_rows() 时保存了行对象引用；若这里直接替换 dict，
-            # 列表侧只 emit dataChanged 将无法拿到新对象，导致图标/文本不刷新。
+        # 仅在“可能影响列表结构”的场景调用合并器：
+        # - 同 key 需要收敛（dedup）
+        # - 混合大小写敏感语义导致同 fold 必须收敛为 1 条
+        target_group_indices: list[int] = []
+
+        if rule_type == QualityRuleMerger.RuleType.TEXT_PRESERVE:
+            for i, existing in enumerate(self.entries):
+                if i == self.current_index:
+                    continue
+                existing_src = QualityRuleMerger.normalize_src(existing.get("src"))
+                if not existing_src:
+                    continue
+                if QualityRuleMerger.fold_src(existing_src) == incoming_fold:
+                    target_group_indices.append(i)
+        else:
+            fold_has_case_insensitive = not incoming_case_sensitive
+            for i, existing in enumerate(self.entries):
+                if i == self.current_index:
+                    continue
+                existing_src = QualityRuleMerger.normalize_src(existing.get("src"))
+                if not existing_src:
+                    continue
+                if QualityRuleMerger.fold_src(existing_src) != incoming_fold:
+                    continue
+                if not bool(existing.get("case_sensitive", False)):
+                    fold_has_case_insensitive = True
+                    break
+
+            for i, existing in enumerate(self.entries):
+                if i == self.current_index:
+                    continue
+                existing_src = QualityRuleMerger.normalize_src(existing.get("src"))
+                if not existing_src:
+                    continue
+
+                if fold_has_case_insensitive:
+                    if QualityRuleMerger.fold_src(existing_src) == incoming_fold:
+                        target_group_indices.append(i)
+                    continue
+
+                if existing_src == src:
+                    target_group_indices.append(i)
+
+        remove_indices = sorted({self.current_index, *target_group_indices})
+        if len(remove_indices) == 1:
+            # 常见路径：只是更新当前行，不触发结构变化。
             existing = self.entries[self.current_index]
             if isinstance(existing, dict):
                 existing.clear()
-                existing.update(entry)
+                existing.update(normalized)
             else:
-                self.entries[self.current_index] = dict(entry)
+                self.entries[self.current_index] = dict(normalized)
             return False, ""
 
-        keep_index = min(self.current_index, duplicate_index)
-        drop_index = max(self.current_index, duplicate_index)
+        existing_group = [self.entries[i] for i in target_group_indices]
+        merged_group, _report = QualityRuleMerger.merge(
+            rule_type=rule_type,
+            existing=existing_group,
+            incoming=[normalized],
+            merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        )
+        if not merged_group:
+            # 理论上不应发生：src 已保证非空。这里按“删除当前与重复项”兜底。
+            for idx in sorted(remove_indices, reverse=True):
+                if 0 <= idx < len(self.entries):
+                    del self.entries[idx]
+            self.current_index = -1
+            return True, Localizer.get().quality_merge_duplication
 
-        keep_existing = self.entries[keep_index]
-        if isinstance(keep_existing, dict):
-            keep_existing.clear()
-            keep_existing.update(entry)
-        else:
-            self.entries[keep_index] = dict(entry)
-        del self.entries[drop_index]
-        self.current_index = keep_index
+        merged_entry = merged_group[0]
+        remove_set = set(remove_indices)
+        insert_at = min(remove_indices)
+
+        new_entries: list[dict[str, Any]] = []
+        inserted_index = -1
+
+        for i, old in enumerate(self.entries):
+            if i == insert_at:
+                inserted_index = len(new_entries)
+                new_entries.append(merged_entry)
+            if i in remove_set:
+                continue
+            new_entries.append(old)
+
+        if inserted_index < 0:
+            inserted_index = len(new_entries)
+            new_entries.append(merged_entry)
+
+        self.entries = new_entries
+        self.current_index = inserted_index
         return True, Localizer.get().quality_merge_duplication
 
     def cleanup_empty_entries(self) -> None:
@@ -755,7 +839,12 @@ class QualityRulePageBase(Base, QWidget):
             current_src = str(self.entries[self.current_index].get("src", "")).strip()
 
         incoming = QualityRuleIO.load_rules_from_file(path)
-        merged, report = QualityRuleMerge.merge_overwrite(self.entries, incoming)
+        merged, report = QualityRuleMerger.merge(
+            rule_type=self.get_merge_rule_type(),
+            existing=self.entries,
+            incoming=incoming,
+            merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        )
         self.entries = merged
         self.cleanup_empty_entries()
         self.save_entries(self.entries)
@@ -778,7 +867,7 @@ class QualityRulePageBase(Base, QWidget):
             },
         )
 
-        if report.updated > 0:
+        if report.updated > 0 or report.deduped > 0:
             self.emit(
                 Base.Event.TOAST,
                 {

@@ -10,8 +10,8 @@ from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleIO import QualityRuleIO
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleIO import QualityRuleIO
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Localizer.Localizer import Localizer
 
 
