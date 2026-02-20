@@ -41,7 +41,6 @@ ICON_KG_LINK: BaseIcon = BaseIcon.BOT  # 命令栏：跳转 KeywordGacha
 class GlossaryPage(QualityRulePageBase):
     PRESET_DIR_NAME: str = "glossary"
     DEFAULT_PRESET_CONFIG_KEY: str = "glossary_default_preset"
-    SKIP_SUCCESS_TOAST_ON_MERGE: bool = True
 
     CASE_COLUMN_INDEX: int = 3
     CASE_COLUMN_WIDTH: int = 80

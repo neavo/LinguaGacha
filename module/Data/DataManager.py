@@ -26,6 +26,7 @@ from module.Data.ZstdCodec import ZstdCodec
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
+from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.Utils.GapTool import GapTool
 
 
@@ -699,9 +700,32 @@ class DataManager(Base):
         data: list[dict[str, Any]],
         save: bool = True,
     ) -> None:
-        self.rule_service.set_rules_cached(rule_type, data, save)
+        normalized = self.normalize_quality_rules_for_write(rule_type, data)
+        self.rule_service.set_rules_cached(rule_type, normalized, save)
         if save:
             self.emit_quality_rule_update(rule_types=[rule_type])
+
+    def normalize_quality_rules_for_write(
+        self, rule_type: LGDatabase.RuleType, data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """写入口兜底：落库前统一收敛重复与空 src。
+
+        为什么放在 DataManager：这里是规则写入的权威入口，能覆盖 UI 手动保存/导入、
+        自动术语表写回、以及未来新增入口，保证落库后不变式成立。
+        """
+
+        try:
+            quality_type = QualityRuleMerger.RuleType(rule_type.value)
+        except ValueError:
+            return data
+
+        merged, _ = QualityRuleMerger.merge(
+            rule_type=quality_type,
+            existing=[],
+            incoming=data,
+            merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        )
+        return merged
 
     def get_rule_text_cached(self, rule_type: LGDatabase.RuleType) -> str:
         return self.rule_service.get_rule_text_cached(rule_type)
@@ -727,6 +751,44 @@ class DataManager(Base):
 
     def set_glossary(self, data: list[dict[str, Any]], save: bool = True) -> None:
         self.set_rules_cached(LGDatabase.RuleType.GLOSSARY, data, save)
+
+    def merge_glossary_incoming(
+        self,
+        incoming: list[dict[str, Any]],
+        *,
+        merge_mode: QualityRuleMerger.MergeMode,
+        save: bool = False,
+    ) -> tuple[list[dict[str, Any]] | None, QualityRuleMerger.Report]:
+        """将 incoming 合并进当前 glossary，并按 merge_mode 收敛重复。
+
+        自动术语表写回是隐式入口，必须用 FILL_EMPTY（只补空、且不改变
+        case_sensitive），避免在翻译过程中覆盖用户的显式编辑。
+        """
+
+        with self.state_lock:
+            current = self.get_glossary()
+            merged, report = QualityRuleMerger.merge(
+                rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+                existing=current,
+                incoming=incoming,
+                merge_mode=merge_mode,
+            )
+
+            changed = any(
+                (
+                    report.added,
+                    report.updated,
+                    report.filled,
+                    report.deduped,
+                    report.skipped_empty_src,
+                )
+            )
+            if not changed:
+                return None, report
+
+            # 仅更新缓存；实际写入由调用方决定是否通过 update_batch 提交。
+            self.set_glossary(merged, save=save)
+            return merged, report
 
     def get_glossary_enable(self) -> bool:
         return bool(self.get_meta("glossary_enable", True))

@@ -6,7 +6,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.ChunkGenerator import ChunkGenerator
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Translator.TranslatorTask import TranslatorTask
 
 

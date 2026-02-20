@@ -4,7 +4,7 @@ from rich import print
 
 from model.Item import Item
 from module.Config import Config
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
 class CodeFixer:

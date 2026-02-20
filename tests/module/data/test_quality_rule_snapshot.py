@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
 def test_capture_collects_rules_and_filters_empty_src(monkeypatch) -> None:
@@ -20,7 +20,7 @@ def test_capture_collects_rules_and_filters_empty_src(monkeypatch) -> None:
         get_custom_prompt_en=lambda: "",
     )
     monkeypatch.setattr(
-        "module.Data.QualityRuleSnapshot.DataManager.get", lambda: fake_dm
+        "module.QualityRule.QualityRuleSnapshot.DataManager.get", lambda: fake_dm
     )
 
     snapshot = QualityRuleSnapshot.capture()
