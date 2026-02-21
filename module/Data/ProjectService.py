@@ -128,11 +128,13 @@ class ProjectService(Base):
                     "{COUNT}", str(prefilter_result.stats.language_skipped)
                 )
             )
-            LogManager.get().info(
-                Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                    "{COUNT}", str(prefilter_result.stats.mtool_skipped)
+            # 仅在开关开启时输出 MTool 预处理日志，避免“未启用但仍提示已完成”的误导。
+            if config.mtool_optimizer_enable:
+                LogManager.get().info(
+                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                        "{COUNT}", str(prefilter_result.stats.mtool_skipped)
+                    )
                 )
-            )
 
             # 控制台输出完毕后留一个空行，便于区分后续日志。
             LogManager.get().print("")

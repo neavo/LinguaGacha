@@ -442,11 +442,13 @@ class DataManager(Base):
                                     "{COUNT}", str(last_result.stats.language_skipped)
                                 )
                             )
-                            LogManager.get().info(
-                                Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                                    "{COUNT}", str(last_result.stats.mtool_skipped)
+                            # 仅在开关开启时输出 MTool 预处理日志，避免“未启用但仍提示已完成”的误导。
+                            if last_request.mtool_optimizer_enable:
+                                LogManager.get().info(
+                                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                                        "{COUNT}", str(last_result.stats.mtool_skipped)
+                                    )
                                 )
-                            )
 
                             # 仅在控制台输出统计信息，避免 UI Toast 产生噪音。
                             LogManager.get().print("")
