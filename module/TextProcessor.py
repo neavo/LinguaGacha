@@ -8,6 +8,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Fixer.CodeFixer import CodeFixer
 from module.Fixer.EscapeFixer import EscapeFixer
 from module.Fixer.HangeulFixer import HangeulFixer
@@ -16,7 +17,6 @@ from module.Fixer.NumberFixer import NumberFixer
 from module.Fixer.PunctuationFixer import PunctuationFixer
 from module.Localizer.Localizer import Localizer
 from module.Normalizer import Normalizer
-from module.Data.DataManager import DataManager
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.RubyCleaner import RubyCleaner
 from module.Utils.JSONTool import JSONTool
@@ -104,7 +104,7 @@ class TextProcessor(Base):
             if custom_data:
                 data = [v for v in custom_data if isinstance(v, str) and v.strip()]
         else:
-            path: str = f"./resource/text_preserve_preset/{language.lower()}/{text_type.lower()}.json"
+            path: str = f"resource/preset/text_preserve/{language.lower()}/{text_type.lower()}.json"
             try:
                 raw = JSONTool.load_file(path)
                 if isinstance(raw, list):
