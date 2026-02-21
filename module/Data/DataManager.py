@@ -230,8 +230,22 @@ class DataManager(Base):
             db.close()
 
     def on_translation_activity(self, event: Base.Event, data: dict) -> None:
+        del data
         # 翻译过程中 items 会频繁写入 DB；items 缓存不追实时，统一失效更安全。
         self.item_service.clear_item_cache()
+
+        # 复用 PROJECT_FILE_UPDATE 作为“工作台快照失效/需要重算”的信号：
+        # 翻译结束/重置会批量改写 items 状态，但不对应单一 rel_path 的文件变更。
+        refresh_events = {
+            Base.Event.TRANSLATION_DONE,
+            Base.Event.TRANSLATION_RESET,
+            Base.Event.TRANSLATION_RESET_FAILED,
+        }
+        if event not in refresh_events:
+            return
+        if not self.is_loaded():
+            return
+        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"reason": event.value})
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event

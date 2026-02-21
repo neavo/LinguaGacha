@@ -88,6 +88,7 @@ class WorkbenchPage(Base, ScrollArea):
 
     FONT_SIZE: int = 12
     ICON_SIZE: int = 16
+    TRANSLATION_REFRESH_THROTTLE_MS: int = 500
 
     def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -125,11 +126,42 @@ class WorkbenchPage(Base, ScrollArea):
         self.busy_timer.timeout.connect(self.update_controls_enabled)
         self.busy_timer.start(500)
 
+        # 翻译进度更新可能很高频：用节流合并刷新请求，避免后台线程高频重算快照。
+        self.translation_refresh_timer = QTimer(self)
+        self.translation_refresh_timer.setSingleShot(True)
+        self.translation_refresh_timer.timeout.connect(
+            self.on_translation_refresh_timeout
+        )
+
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
+        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.on_translation_update)
 
         self.refresh_all()
+
+    def on_translation_update(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+
+        # 仅页面可见时刷新：隐藏页不做无意义的聚合计算。
+        if not self.isVisible():
+            return
+        if not DataManager.get().is_loaded():
+            return
+
+        # 500ms throttle（而不是 debounce）：持续有进度更新时，也能按固定节奏刷新统计。
+        if self.translation_refresh_timer.isActive():
+            return
+        self.translation_refresh_timer.start(self.TRANSLATION_REFRESH_THROTTLE_MS)
+
+    def on_translation_refresh_timeout(self) -> None:
+        # timeout 触发时再做一次保护：避免用户刚切走页面仍触发后台重算。
+        if not self.isVisible():
+            return
+        if not DataManager.get().is_loaded():
+            return
+        self.request_refresh()
 
     def build_stats_section(self) -> None:
         stats_frame = QFrame(self.container)
