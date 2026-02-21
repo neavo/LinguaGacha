@@ -227,12 +227,45 @@ class TestPromptBuilder:
             precedings=[Item(src="history")],
         )
 
-        content = messages[0]["content"]
-        assert "参考上文：" in content
-        assert "术语表" in content
-        assert "控制字符示例：" in content
-        assert "输入：" in content
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+
+        system_content = messages[0]["content"]
+        user_content = messages[1]["content"]
+
+        assert system_content == "控制符必须原样保留"
+        assert "参考上文：" not in system_content
+        assert "术语表" not in system_content
+        assert "控制字符示例：" not in system_content
+        assert "输入：" not in system_content
+
+        assert "参考上文：" in user_content
+        assert "术语表" in user_content
+        assert "控制字符示例：" in user_content
+        assert "输入：" in user_content
         assert any("HP -> 生命值" in line for line in console_log)
+
+    def test_generate_prompt_control_samples_only_gated_by_system_instruction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(PromptBuilder, "build_main", lambda self: "普通内容")
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(Any, FakeQualitySnapshot(glossary_enable=False)),
+        )
+
+        messages, console_log = builder.generate_prompt(
+            srcs=["这里提到控制符"],
+            samples=["<a>"],
+            precedings=[Item(src="控制符")],
+        )
+
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+
+        user_content = messages[1]["content"]
+        assert "控制字符示例" not in user_content
+        assert not any("控制字符示例" in line for line in console_log)
 
     def test_generate_prompt_sakura_includes_glossary_when_enabled(self) -> None:
         config = Config(target_language=BaseLanguage.Enum.ZH)
@@ -397,10 +430,14 @@ class TestPromptBuilder:
             precedings=[],
         )
 
-        content = messages[0]["content"]
-        assert "术语表" not in content
-        assert "控制字符示例" not in content
-        assert "输入：" in content
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[0]["content"] == "main"
+
+        user_content = messages[1]["content"]
+        assert "术语表" not in user_content
+        assert "控制字符示例" not in user_content
+        assert "输入：" in user_content
         assert console_log == []
 
     def test_generate_prompt_uses_data_manager_glossary_when_no_snapshot(
@@ -429,8 +466,12 @@ class TestPromptBuilder:
             precedings=[],
         )
 
-        content = messages[0]["content"]
-        assert "术语表" in content
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[0]["content"] == "main"
+
+        user_content = messages[1]["content"]
+        assert "术语表" in user_content
         assert any("HP -> 生命值" in line for line in console_log)
 
     def test_get_custom_prompt_data_from_snapshot_for_en(self) -> None:
@@ -667,7 +708,10 @@ class TestPromptBuilder:
             precedings=[],
         )
 
-        assert messages == [{"role": "user", "content": "main"}]
+        assert messages == [
+            {"role": "system", "content": "main"},
+            {"role": "user", "content": ""},
+        ]
         assert console_log == []
 
     def test_generate_prompt_sakura_uses_default_content_when_glossary_enabled_but_empty(

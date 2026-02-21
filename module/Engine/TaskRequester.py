@@ -53,9 +53,7 @@ class TaskRequester(Base):
     )
 
     # OpenAI - GPT5
-    RE_GPT5: tuple[re.Pattern, ...] = (
-        re.compile(r"gpt-5", flags=re.IGNORECASE),
-    )
+    RE_GPT5: tuple[re.Pattern, ...] = (re.compile(r"gpt-5", flags=re.IGNORECASE),)
 
     # OpenAI - DOUBAO
     RE_DOUBAO: tuple[re.Pattern, ...] = (
@@ -364,12 +362,12 @@ class TaskRequester(Base):
             usage: Any = getattr(completion, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -449,12 +447,12 @@ class TaskRequester(Base):
             usage: Any = getattr(message, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -533,14 +531,14 @@ class TaskRequester(Base):
             last_usage: Any = state.last_usage
             try:
                 input_tokens = int(last_usage.prompt_token_count)
-            except (AttributeError, TypeError, ValueError):
+            except AttributeError, TypeError, ValueError:
                 input_tokens = 0
 
             try:
                 total_token_count = int(last_usage.total_token_count)
                 prompt_token_count = int(last_usage.prompt_token_count)
                 output_tokens = total_token_count - prompt_token_count
-            except (AttributeError, TypeError, ValueError):
+            except AttributeError, TypeError, ValueError:
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -664,7 +662,9 @@ class TaskRequester(Base):
                 extra_body["reasoning_effort"] = "minimal"
             else:
                 extra_body["reasoning_effort"] = self.thinking_level.lower()
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_THINKING_TYPE):
+        elif any(
+            v.search(self.model_id) is not None for v in __class__.RE_THINKING_TYPE
+        ):
             thinking_type = (
                 "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
             )
@@ -714,6 +714,20 @@ class TaskRequester(Base):
     def generate_google_args(
         self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
+        system_texts: list[str] = []
+        user_texts: list[str] = []
+        for msg in messages:
+            content = msg.get("content")
+            if not isinstance(content, str):
+                continue
+
+            role = msg.get("role")
+            if role == "system":
+                if content.strip() != "":
+                    system_texts.append(content)
+            elif role == "user":
+                user_texts.append(content)
+
         config_args: dict[str, Any] = dict(args)
         config_args.update(
             {
@@ -846,9 +860,12 @@ class TaskRequester(Base):
         if self.extra_body:
             config_args.update(self.extra_body)
 
+        if system_texts:
+            config_args["system_instruction"] = "\n\n".join(system_texts)
+
         return {
             "model": self.model_id,
-            "contents": [v.get("content") for v in messages if v.get("role") == "user"],
+            "contents": user_texts,
             "config": types.GenerateContentConfig(**config_args),
         }
 
@@ -895,15 +912,29 @@ class TaskRequester(Base):
     def generate_anthropic_args(
         self, messages: list[dict[str, str]], args: dict[str, Any]
     ) -> dict:
+        system_texts: list[str] = []
+        filtered_messages: list[dict[str, str]] = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "system":
+                if isinstance(content, str) and content.strip() != "":
+                    system_texts.append(content)
+                continue
+            filtered_messages.append(msg)
+
         result: dict[str, Any] = dict(args)
         result.update(
             {
                 "model": self.model_id,
-                "messages": messages,
+                "messages": filtered_messages,
                 "max_tokens": self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
             }
         )
+
+        if system_texts:
+            result["system"] = "\n\n".join(system_texts)
 
         result.pop("presence_penalty", None)
         result.pop("frequency_penalty", None)
