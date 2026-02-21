@@ -74,7 +74,7 @@ class CreateProjectThread(QThread):
         try:
             # 设置进度回调
             def progress_callback(current: int, total: int, message: str) -> None:
-                EventManager.get().emit(
+                EventManager.get().emit_event(
                     Base.Event.PROGRESS_TOAST_UPDATE,
                     {
                         "message": message,
@@ -253,7 +253,7 @@ class DropZone(FileDisplayCard):
             return
 
         if len(urls) != 1:
-            EventManager.get().emit(
+            EventManager.get().emit_event(
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,
@@ -348,7 +348,7 @@ class SelectedFileDisplay(FileDisplayCard):
             return
 
         if len(urls) != 1:
-            EventManager.get().emit(
+            EventManager.get().emit_event(
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.WARNING,

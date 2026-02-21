@@ -32,7 +32,7 @@ class EventManager(QObject):
         func: Callable[..., Any]
         ref: weakref.WeakMethod
 
-        def resolve(self) -> Callable[[StrEnum, Any], None] | None:
+        def resolve(self) -> Callable[[Any, Any], None] | None:
             resolved = self.ref()
             if resolved is None:
                 return None
@@ -47,7 +47,9 @@ class EventManager(QObject):
 
     # 自定义信号
     # 字典类型或者其他复杂对象应该使用 object 作为信号参数类型，这样可以传递任意 Python 对象，包括 dict
-    signal: Signal = Signal(StrEnum, object)
+    # 注意：PySide6 在跨线程 queued emit 时，对自定义类型签名的封送/转换更容易出问题；
+    # 这里统一使用 object 以确保事件总线在各平台/版本下稳定工作。
+    signal: Signal = Signal(object, object)
 
     # 将高频事件合并到一次 UI flush 中，避免 UI 线程事件队列积压。
     flush_signal: Signal = Signal()
@@ -56,13 +58,15 @@ class EventManager(QObject):
         super().__init__()
 
         self.lock = threading.RLock()
+        # 以 event 的字符串值作为唯一 key：避免 StrEnum/str 的 hash 语义差异导致查找失效。
         self.event_callbacks: dict[
-            StrEnum,
-            list[Callable[[StrEnum, Any], None] | EventManager.WeakHandler],
+            str,
+            list[Callable[[Any, Any], None] | EventManager.WeakHandler],
         ] = {}
         self.owner_cleanup_connected: set[int] = set()
 
-        self.pending_latest: dict[StrEnum, object] = {}
+        # coalescing 只保留“最后一次的原始事件对象 + payload”，保证 handler 仍收到 StrEnum。
+        self.pending_latest: dict[str, tuple[StrEnum, object]] = {}
         self.flush_scheduled: bool = False
 
         # PyQt 的 connect 支持指定 ConnectionType，但类型存根未覆盖该重载。
@@ -78,16 +82,15 @@ class EventManager(QObject):
         return cls.__instance__
 
     # 处理事件
-    def process_event(self, event: StrEnum, data: object) -> None:
+    def process_event(self, event: object, data: object) -> None:
+        event_key = self.get_event_value(event)
         with self.lock:
-            entries = self.event_callbacks.get(event)
+            entries = self.event_callbacks.get(event_key)
             if not entries:
                 return
 
-            handlers: list[Callable[[StrEnum, Any], None]] = []
-            cleaned: list[
-                Callable[[StrEnum, Any], None] | EventManager.WeakHandler
-            ] = []
+            handlers: list[Callable[[Any, Any], None]] = []
+            cleaned: list[Callable[[Any, Any], None] | EventManager.WeakHandler] = []
             removed_dead = False
 
             for entry in entries:
@@ -105,9 +108,9 @@ class EventManager(QObject):
 
             if removed_dead:
                 if cleaned:
-                    self.event_callbacks[event] = cleaned
+                    self.event_callbacks[event_key] = cleaned
                 else:
-                    self.event_callbacks.pop(event, None)
+                    self.event_callbacks.pop(event_key, None)
 
         for handler in handlers:
             try:
@@ -115,14 +118,14 @@ class EventManager(QObject):
             except Exception as e:
                 # 事件回调属于 UI 线程关键路径：不能让单个 handler 异常中断后续分发。
                 handler_name = getattr(handler, "__qualname__", repr(handler))
-                event_value = self.get_event_value(event)
+                event_value = event_key
                 data_type = type(data).__name__
                 LogManager.get().error(
                     f"Event handler raised: event={event_value} handler={handler_name} data_type={data_type}",
                     e,
                 )
 
-    def get_event_value(self, event: StrEnum) -> str:
+    def get_event_value(self, event: object) -> str:
         value = getattr(event, "value", None)
         if isinstance(value, str) and value != "":
             return value
@@ -140,14 +143,16 @@ class EventManager(QObject):
         if not pending:
             return
 
-        for event, data in pending.items():
+        for _event_key, pair in pending.items():
+            event, data = pair
             self.process_event(event, data)
 
     # 触发事件
-    def emit(self, event: StrEnum, data: object) -> None:
+    def emit_event(self, event: StrEnum, data: object) -> None:
+        event_key = self.get_event_value(event)
         if self.should_coalesce(event):
             with self.lock:
-                self.pending_latest[event] = data
+                self.pending_latest[event_key] = (event, data)
                 if self.flush_scheduled:
                     return
                 self.flush_scheduled = True
@@ -158,11 +163,11 @@ class EventManager(QObject):
         self.signal.emit(event, data)
 
     # 订阅事件
-    def subscribe(
-        self, event: StrEnum, handler: Callable[[StrEnum, Any], None]
-    ) -> None:
+    def subscribe(self, event: StrEnum, handler: Callable[[Any, Any], None]) -> None:
         if not callable(handler):
             return
+
+        event_key = self.get_event_value(event)
 
         owner = getattr(handler, "__self__", None)
         func = getattr(handler, "__func__", None)
@@ -177,7 +182,7 @@ class EventManager(QObject):
 
             need_connect_destroyed = False
             with self.lock:
-                self.event_callbacks.setdefault(event, []).append(entry)
+                self.event_callbacks.setdefault(event_key, []).append(entry)
                 if owner_id not in self.owner_cleanup_connected:
                     self.owner_cleanup_connected.add(owner_id)
                     need_connect_destroyed = True
@@ -191,7 +196,7 @@ class EventManager(QObject):
             return
 
         with self.lock:
-            self.event_callbacks.setdefault(event, []).append(handler)
+            self.event_callbacks.setdefault(event_key, []).append(handler)
 
     def cleanup_owner_subscriptions(self, owner_id: int) -> None:
         with self.lock:
@@ -213,11 +218,10 @@ class EventManager(QObject):
                     self.event_callbacks.pop(event, None)
 
     # 取消订阅事件
-    def unsubscribe(
-        self, event: StrEnum, handler: Callable[[StrEnum, Any], None]
-    ) -> None:
+    def unsubscribe(self, event: StrEnum, handler: Callable[[Any, Any], None]) -> None:
+        event_key = self.get_event_value(event)
         with self.lock:
-            entries = self.event_callbacks.get(event)
+            entries = self.event_callbacks.get(event_key)
             if not entries:
                 return
 
@@ -244,4 +248,4 @@ class EventManager(QObject):
                     break
 
             if not entries:
-                self.event_callbacks.pop(event, None)
+                self.event_callbacks.pop(event_key, None)
