@@ -291,3 +291,126 @@ def test_schedule_update_reset_delete_reject_when_operation_running(
 
     assert FakeThread.instances == []
     assert dm.emit.call_count == 3
+
+
+def test_schedule_update_file_emits_warning_toast_on_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.update_file = MagicMock(side_effect=ValueError("bad"))
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_update_file("a.txt", "/tmp/new.txt")
+
+    events = [call.args[0] for call in dm.emit.call_args_list]
+    assert Base.Event.TOAST in events
+    assert dm.file_op_running is False
+
+
+def test_schedule_update_file_emits_error_toast_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.update_file = MagicMock(side_effect=RuntimeError("boom"))
+
+    logger = SimpleNamespace(error=MagicMock())
+    monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_update_file("a.txt", "/tmp/new.txt")
+
+    logger.error.assert_called_once()
+    events = [call.args[0] for call in dm.emit.call_args_list]
+    assert Base.Event.TOAST in events
+    assert dm.file_op_running is False
+
+
+def test_schedule_reset_file_success_runs_prefilter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.reset_file = MagicMock()
+    dm.run_project_prefilter = MagicMock()
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_reset_file("a.txt")
+
+    dm.reset_file.assert_called_once_with("a.txt")
+    dm.run_project_prefilter.assert_called_once_with(config, reason="file_op")
+    assert dm.file_op_running is False
+
+
+def test_schedule_reset_file_emits_error_toast_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.reset_file = MagicMock(side_effect=RuntimeError("boom"))
+
+    logger = SimpleNamespace(error=MagicMock())
+    monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_reset_file("a.txt")
+
+    logger.error.assert_called_once()
+    events = [call.args[0] for call in dm.emit.call_args_list]
+    assert Base.Event.TOAST in events
+    assert dm.file_op_running is False
+
+
+def test_schedule_delete_file_success_runs_prefilter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.delete_file = MagicMock()
+    dm.run_project_prefilter = MagicMock()
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_delete_file("a.txt")
+
+    dm.delete_file.assert_called_once_with("a.txt")
+    dm.run_project_prefilter.assert_called_once_with(config, reason="file_op")
+    assert dm.file_op_running is False
+
+
+def test_schedule_delete_file_emits_warning_toast_on_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.delete_file = MagicMock(side_effect=ValueError("bad"))
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+
+    dm.schedule_delete_file("a.txt")
+
+    events = [call.args[0] for call in dm.emit.call_args_list]
+    assert Base.Event.TOAST in events
+    assert dm.file_op_running is False
+
+
+def test_build_workbench_snapshot_treats_none_file_type_as_unset() -> None:
+    dm = build_manager_for_snapshot(
+        ["a.txt"],
+        [
+            {
+                "file_path": "a.txt",
+                "status": Base.ProjectStatus.NONE,
+                "file_type": Item.FileType.NONE,
+            }
+        ],
+    )
+
+    snapshot = dm.build_workbench_snapshot()
+
+    assert snapshot.total_items == 1
+    assert snapshot.entries[0].item_count == 1
+    assert snapshot.entries[0].file_type == Item.FileType.NONE

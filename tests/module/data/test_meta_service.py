@@ -51,3 +51,17 @@ def test_set_meta_updates_db_and_cache() -> None:
 
     db.set_meta.assert_called_once_with("lang", "zh")
     assert session.meta_cache["lang"] == "zh"
+
+
+def test_get_meta_returns_default_when_db_missing_and_cache_miss() -> None:
+    service, _ = build_service(None)
+
+    assert service.get_meta("missing", "fallback") == "fallback"
+
+
+def test_set_meta_updates_cache_when_db_missing() -> None:
+    service, session = build_service(None)
+
+    service.set_meta("theme", "light")
+
+    assert session.meta_cache["theme"] == "light"

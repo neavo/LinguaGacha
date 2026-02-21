@@ -24,6 +24,20 @@ def test_get_asset_and_paths_return_defaults_when_db_missing() -> None:
     assert service.get_asset("a.txt") is None
 
 
+def test_get_all_asset_paths_reads_from_db() -> None:
+    db = SimpleNamespace(get_all_asset_paths=MagicMock(return_value=["a.txt", "b.txt"]))
+    service, _ = build_service(db)
+
+    assert service.get_all_asset_paths() == ["a.txt", "b.txt"]
+
+
+def test_get_asset_decompressed_returns_none_when_asset_missing() -> None:
+    db = SimpleNamespace(get_asset=MagicMock(return_value=None))
+    service, _ = build_service(db)
+
+    assert service.get_asset_decompressed("missing") is None
+
+
 def test_get_asset_decompressed_uses_cache_and_lru(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

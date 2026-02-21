@@ -469,3 +469,13 @@ def test_write_to_path_logs_error_when_data_manager_get_raises(
 
     assert FileManager(config).write_to_path([]) == ""
     assert errors and errors[0][0] == "write failed"
+
+
+def test_read_from_path_returns_empty_when_path_not_exists(config: Config) -> None:
+    _, items = FileManager(config).read_from_path("/workspace/not-exists")
+
+    assert items == []
+
+
+def test_parse_asset_returns_empty_for_unknown_extension(config: Config) -> None:
+    assert FileManager(config).parse_asset("a.bin", b"bytes") == []

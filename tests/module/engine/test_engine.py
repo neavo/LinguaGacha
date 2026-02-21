@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import sys
 
 import pytest
 
@@ -84,3 +85,45 @@ def test_translate_single_item_delegates_to_translator_task(
     assert len(calls) == 1
     assert calls[0][0] is item
     assert calls[0][1] is config
+
+
+def test_run_initializes_api_tester_and_translator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeAPITester:
+        pass
+
+    class FakeTranslator:
+        pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "module.Engine.APITester.APITester",
+        SimpleNamespace(APITester=FakeAPITester),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "module.Engine.Translator.Translator",
+        SimpleNamespace(Translator=FakeTranslator),
+    )
+
+    engine = Engine()
+    engine.run()
+
+    assert isinstance(engine.api_test, FakeAPITester)
+    assert isinstance(engine.translator, FakeTranslator)
+
+
+def test_get_running_task_count_without_translator_uses_single_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = Engine()
+    fake_threads = [
+        SimpleNamespace(name="ENGINE_SINGLE"),
+        SimpleNamespace(name="worker"),
+    ]
+    monkeypatch.setattr(
+        "module.Engine.Engine.threading.enumerate", lambda: fake_threads
+    )
+
+    assert engine.get_running_task_count() == 1

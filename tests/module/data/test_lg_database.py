@@ -296,6 +296,35 @@ class FakeConn:
         self.conn.commit()
 
 
+class CursorWithoutLastRowId:
+    def __init__(self) -> None:
+        self.lastrowid = None
+
+
+class NoLastRowIdConn:
+    def execute(self, sql: str, params: tuple = ()) -> CursorWithoutLastRowId:
+        _ = sql
+        _ = params
+        return CursorWithoutLastRowId()
+
+    def commit(self) -> None:
+        return
+
+
+class JsonExtractErrorConn:
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def execute(self, sql: str, params: tuple = ()):
+        _ = params
+        if "json_extract" in sql:
+            raise sqlite3.OperationalError(self.message)
+        raise AssertionError("unexpected sql")
+
+    def commit(self) -> None:
+        return
+
+
 def test_get_items_by_file_path_falls_back_when_json_extract_missing(
     database: LGDatabase, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -452,3 +481,236 @@ def test_asset_path_exists_returns_correct_bool(database: LGDatabase) -> None:
     database.add_asset("a.bin", b"raw", original_size=3)
 
     assert database.asset_path_exists("a.bin") is True
+
+
+def test_add_asset_raises_when_cursor_has_no_lastrowid(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_conn = NoLastRowIdConn()
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[NoLastRowIdConn, None, None]:
+        yield fake_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    with pytest.raises(ValueError, match="Failed to get lastrowid"):
+        database.add_asset("a.bin", b"raw", original_size=3)
+
+
+def test_set_item_raises_when_insert_cursor_has_no_lastrowid(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_conn = NoLastRowIdConn()
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[NoLastRowIdConn, None, None]:
+        yield fake_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    with pytest.raises(ValueError, match="Failed to get lastrowid"):
+        database.set_item({"src": "x"})
+
+
+def test_insert_items_raises_when_conn_cursor_has_no_lastrowid() -> None:
+    db = LGDatabase(":memory:")
+
+    with pytest.raises(ValueError, match="Failed to get lastrowid"):
+        db.insert_items(
+            [{"src": "x"}], conn=cast(sqlite3.Connection, NoLastRowIdConn())
+        )
+
+
+def test_insert_items_raises_when_local_cursor_has_no_lastrowid(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_conn = NoLastRowIdConn()
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[NoLastRowIdConn, None, None]:
+        yield fake_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    with pytest.raises(ValueError, match="Failed to get lastrowid"):
+        database.insert_items([{"src": "x"}])
+
+
+def test_get_items_by_file_path_reraises_non_json_extract_operational_error(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_conn = JsonExtractErrorConn("database is locked")
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[JsonExtractErrorConn, None, None]:
+        yield fake_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        database.get_items_by_file_path("a.txt")
+
+
+def test_delete_items_by_file_path_with_conn_uses_json_extract_delete(
+    database: LGDatabase,
+) -> None:
+    database.set_item({"src": "a1", "file_path": "a.txt"})
+    database.set_item({"src": "b1", "file_path": "b.txt"})
+
+    with database.connection() as conn:
+        deleted = database.delete_items_by_file_path("a.txt", conn=conn)
+        conn.commit()
+
+    assert deleted == 1
+    assert database.get_items_by_file_path("a.txt") == []
+
+
+def test_delete_items_by_file_path_with_conn_reraises_non_json_extract_error() -> None:
+    db = LGDatabase(":memory:")
+    fake_conn = JsonExtractErrorConn("database is locked")
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        db.delete_items_by_file_path("a.txt", conn=cast(sqlite3.Connection, fake_conn))
+
+
+def test_delete_items_by_file_path_without_conn_reraises_non_json_extract_error(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_conn = JsonExtractErrorConn("database is locked")
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[JsonExtractErrorConn, None, None]:
+        yield fake_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        database.delete_items_by_file_path("a.txt")
+
+
+def test_update_batch_returns_early_when_no_data(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = False
+
+    @contextlib.contextmanager
+    def fake_connection() -> Generator[sqlite3.Connection, None, None]:
+        nonlocal called
+        called = True
+        assert database.keep_alive_conn is not None
+        yield database.keep_alive_conn
+
+    monkeypatch.setattr(database, "connection", fake_connection)
+
+    database.update_batch()
+
+    assert called is False
+
+
+def test_update_batch_handles_items_without_id_rules_only_and_no_meta(
+    database: LGDatabase,
+) -> None:
+    database.update_batch(
+        items=[{"src": "no-id"}],
+        rules={
+            LGDatabase.RuleType.POST_REPLACEMENT: [
+                {"src": "A", "dst": "B", "info": "", "regex": False}
+            ]
+        },
+    )
+
+    assert database.get_rules(LGDatabase.RuleType.POST_REPLACEMENT) == [
+        {"src": "A", "dst": "B", "info": "", "regex": False}
+    ]
+
+
+def test_update_batch_skips_rules_when_only_items_and_meta_are_provided(
+    database: LGDatabase,
+) -> None:
+    item_id = database.set_item({"src": "before", "dst": "old"})
+
+    database.update_batch(
+        items=[{"id": item_id, "src": "after", "dst": "new"}],
+        meta={"k": "v"},
+    )
+
+    assert database.get_all_items() == [{"id": item_id, "src": "after", "dst": "new"}]
+    assert database.get_meta("k") == "v"
+
+
+def test_update_batch_supports_rules_only(database: LGDatabase) -> None:
+    database.update_batch(
+        rules={
+            LGDatabase.RuleType.TEXT_PRESERVE: [
+                {"src": "A", "dst": "B", "info": "", "regex": False}
+            ]
+        }
+    )
+
+    assert database.get_rules(LGDatabase.RuleType.TEXT_PRESERVE) == [
+        {"src": "A", "dst": "B", "info": "", "regex": False}
+    ]
+
+
+def test_get_rules_returns_empty_when_no_rows(database: LGDatabase) -> None:
+    assert database.get_rules(LGDatabase.RuleType.TEXT_PRESERVE) == []
+
+
+def test_get_rules_handles_list_row_and_multiple_decode_errors(
+    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr("module.Data.LGDatabase.LogManager.get", lambda: logger)
+
+    with database.connection() as conn:
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, '{"src":"A","dst":"甲"}'),
+        )
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, '[{"src":"B","dst":"乙"}]'),
+        )
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, "123"),
+        )
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, '{"src":"C","dst":"丙"}'),
+        )
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, "bad-json-1"),
+        )
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.PRE_REPLACEMENT, "bad-json-2"),
+        )
+        conn.commit()
+
+    assert database.get_rules(LGDatabase.RuleType.PRE_REPLACEMENT) == [
+        {"src": "A", "dst": "甲"},
+        {"src": "B", "dst": "乙"},
+        {"src": "C", "dst": "丙"},
+    ]
+    logger.warning.assert_called_once()
+
+
+def test_set_rules_overwrites_existing_rows(database: LGDatabase) -> None:
+    with database.connection() as conn:
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.RuleType.GLOSSARY, '{"src":"old","dst":"旧"}'),
+        )
+        conn.commit()
+
+    database.set_rules(
+        LGDatabase.RuleType.GLOSSARY,
+        [{"src": "new", "dst": "新", "info": "", "regex": False}],
+    )
+
+    assert database.get_rules(LGDatabase.RuleType.GLOSSARY) == [
+        {"src": "new", "dst": "新", "info": "", "regex": False}
+    ]

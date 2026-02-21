@@ -259,3 +259,31 @@ def test_write_to_path_uniform_name_and_writes_message_only_entry(
     hero_entries = [v for v in result if v.get("name") is not None]
     assert [v["name"] for v in hero_entries] == ["勇者", "勇者", "勇者"]
     assert {"message": "m3"} in result
+
+
+def test_revert_name_skips_item_when_name_src_is_none(config: Config) -> None:
+    handler = MESSAGEJSON(config)
+    items = [
+        Item.from_dict({"name_src": None, "name_dst": "keep"}),
+        Item.from_dict({"name_src": "hero", "name_dst": "old"}),
+    ]
+
+    handler.revert_name(items)
+
+    assert items[0].get_name_dst() == "keep"
+    assert items[1].get_name_dst() == "hero"
+
+
+def test_uniform_name_skips_assignment_for_non_string_name_source(
+    config: Config,
+) -> None:
+    handler = MESSAGEJSON(config)
+    items = [
+        Item.from_dict({"name_src": "hero", "name_dst": "勇者"}),
+        Item.from_dict({"name_src": ("hero",), "name_dst": ("勇者",)}),
+    ]
+
+    handler.uniform_name(items)
+
+    assert items[0].get_name_dst() == "勇者"
+    assert items[1].get_name_dst() == ("勇者",)

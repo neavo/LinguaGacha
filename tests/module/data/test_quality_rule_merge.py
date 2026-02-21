@@ -1,3 +1,6 @@
+from typing import Any
+from typing import cast
+
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -143,3 +146,109 @@ def test_merge_fill_empty_does_not_overwrite_non_empty_or_case_sensitive() -> No
     assert merged[0]["dst"] == "生命值"
     assert merged[0]["case_sensitive"] is True
     assert report.filled == 1  # info 从空被补齐
+
+
+def test_merge_defaults_to_overwrite_when_merge_mode_missing() -> None:
+    merged, report = QualityRuleMerger.merge(
+        rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+        existing=[{"src": "HP", "dst": "旧值", "info": "old"}],
+        incoming=[{"src": "hp", "dst": "新值", "info": "new"}],
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["dst"] == "新值"
+    assert report.updated == 1
+
+
+def test_merge_skips_non_dict_entries_in_input() -> None:
+    incoming = cast(
+        list[dict[str, Any]],
+        ["bad", {"src": "MP", "dst": "魔力"}],
+    )
+
+    merged, report = QualityRuleMerger.merge(
+        rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+        existing=[{"src": "HP", "dst": "生命值"}],
+        incoming=incoming,
+        merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+    )
+
+    assert [v["src"] for v in merged] == ["HP", "MP"]
+    assert report.added == 1
+
+
+def test_merge_fill_empty_for_text_preserve_only_fills_info() -> None:
+    merged, report = QualityRuleMerger.merge(
+        rule_type=QualityRuleMerger.RuleType.TEXT_PRESERVE,
+        existing=[{"src": "Tag", "info": ""}],
+        incoming=[{"src": "TAG", "info": "保留标签"}],
+        merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["info"] == "保留标签"
+    assert report.filled == 1
+    assert report.updated == 0
+
+
+def test_merge_fill_empty_for_pre_replacement_dedupes_same_src_norm() -> None:
+    merged, report = QualityRuleMerger.merge(
+        rule_type=QualityRuleMerger.RuleType.PRE_REPLACEMENT,
+        existing=[
+            {
+                "src": "HP",
+                "dst": "",
+                "regex": True,
+                "case_sensitive": True,
+            },
+            {
+                "src": "HP",
+                "dst": "旧值",
+                "regex": False,
+                "case_sensitive": True,
+            },
+        ],
+        incoming=[
+            {
+                "src": "HP",
+                "dst": "新值",
+                "regex": False,
+                "case_sensitive": True,
+            }
+        ],
+        merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["src"] == "HP"
+    assert merged[0]["dst"] == "旧值"
+    assert merged[0]["regex"] is True
+    assert report.deduped == 2
+    assert report.filled == 1
+
+
+def test_merge_overwrite_updates_in_same_src_norm_group() -> None:
+    merged, report = QualityRuleMerger.merge(
+        rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+        existing=[
+            {
+                "src": "HP",
+                "dst": "旧值",
+                "info": "old",
+                "case_sensitive": True,
+            },
+            {
+                "src": "HP",
+                "dst": "新值",
+                "info": "new",
+                "case_sensitive": True,
+            },
+        ],
+        incoming=[],
+        merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["dst"] == "新值"
+    assert report.updated == 1
+    assert report.deduped == 1

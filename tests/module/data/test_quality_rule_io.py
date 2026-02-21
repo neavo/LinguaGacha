@@ -7,6 +7,7 @@ import pytest
 from openpyxl.cell.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
+from module.Data.SpreadsheetUtil import SpreadsheetUtil
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 
 
@@ -85,6 +86,48 @@ def test_load_from_json_file_supports_list_actors_and_dict_formats(
     ]
 
 
+def test_load_from_json_file_skips_non_string_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.JSONTool.load_file",
+        lambda _path: {1: "one", "A": "甲", 2: "two"},
+    )
+
+    result = QualityRuleIO.load_from_json_file("/workspace/quality/kv.json")
+
+    assert result == [
+        {
+            "src": "A",
+            "dst": "甲",
+            "info": "",
+            "regex": False,
+            "case_sensitive": False,
+        }
+    ]
+
+
+def test_load_from_json_file_handles_actor_rows_with_partial_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.JSONTool.load_file",
+        lambda _path: [
+            {"id": 7, "name": "", "nickname": "小勇"},
+            {"id": 8, "name": "勇者", "nickname": ""},
+        ],
+    )
+
+    result = QualityRuleIO.load_from_json_file("/workspace/quality/actors.json")
+
+    assert [item["src"] for item in result] == [
+        "\\nn[7]",
+        "\\NN[7]",
+        "\\n[8]",
+        "\\N[8]",
+    ]
+
+
 def test_load_from_xlsx_file_skips_header_and_parses_booleans(
     fs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -116,6 +159,85 @@ def test_load_from_xlsx_file_skips_header_and_parses_booleans(
             "case_sensitive": True,
         }
     ]
+
+
+def test_load_from_xlsx_file_returns_empty_when_active_is_not_worksheet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeWorkbook:
+        active = "not-worksheet"
+
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.openpyxl.load_workbook",
+        lambda *_args, **_kwargs: FakeWorkbook(),
+    )
+
+    assert QualityRuleIO.load_from_xlsx_file("/workspace/quality/rules.xlsx") == []
+
+
+def test_load_from_xlsx_file_skips_rows_with_none_first_cell(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    book = openpyxl.Workbook()
+    sheet = book.active
+    assert isinstance(sheet, Worksheet)
+
+    cast(Cell, sheet.cell(row=1, column=1)).value = "src"
+    cast(Cell, sheet.cell(row=1, column=2)).value = "dst"
+    cast(Cell, sheet.cell(row=2, column=1)).value = "HP"
+    cast(Cell, sheet.cell(row=2, column=2)).value = "生命值"
+    cast(Cell, sheet.cell(row=3, column=1)).value = None
+    cast(Cell, sheet.cell(row=3, column=2)).value = "应跳过"
+    cast(Cell, sheet.cell(row=4, column=1)).value = "MP"
+    cast(Cell, sheet.cell(row=4, column=2)).value = "魔力"
+
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.openpyxl.load_workbook",
+        lambda *_args, **_kwargs: book,
+    )
+
+    result = QualityRuleIO.load_from_xlsx_file("/workspace/quality/rules.xlsx")
+
+    assert [item["src"] for item in result] == ["HP", "MP"]
+
+
+def test_load_from_xlsx_file_skips_rows_when_reader_returns_none(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    book = openpyxl.Workbook()
+    sheet = book.active
+    assert isinstance(sheet, Worksheet)
+
+    cast(Cell, sheet.cell(row=1, column=1)).value = "src"
+    cast(Cell, sheet.cell(row=1, column=2)).value = "dst"
+    cast(Cell, sheet.cell(row=2, column=1)).value = "IGNORED"
+    cast(Cell, sheet.cell(row=2, column=2)).value = "忽略"
+
+    original_get = SpreadsheetUtil.get_cell_value
+
+    def fake_get_cell_value(
+        ws: Worksheet,
+        row: int,
+        column: int,
+    ) -> str | None:
+        if row == 2 and column == 1:
+            return None
+        return original_get(ws, row, column)
+
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.openpyxl.load_workbook",
+        lambda *_args, **_kwargs: book,
+    )
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.SpreadsheetUtil.get_cell_value",
+        fake_get_cell_value,
+    )
+
+    result = QualityRuleIO.load_from_xlsx_file("/workspace/quality/rules.xlsx")
+
+    assert result == []
 
 
 def test_export_rules_writes_xlsx_and_json(fs, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,3 +283,18 @@ def test_export_rules_writes_xlsx_and_json(fs, monkeypatch: pytest.MonkeyPatch) 
     assert captured["header"] == "src"
     assert captured["row2_col1"] == "A"
     assert captured["row2_col2"] == "甲"
+
+
+def test_export_rules_raises_when_active_sheet_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeWorkbook:
+        active = None
+
+    monkeypatch.setattr(
+        "module.QualityRule.QualityRuleIO.openpyxl.Workbook",
+        lambda: FakeWorkbook(),
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to create worksheet"):
+        QualityRuleIO.export_rules("/workspace/quality/rules", [{"src": "A"}])

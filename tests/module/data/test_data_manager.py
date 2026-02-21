@@ -13,6 +13,7 @@ from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
+from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 data_manager_module = importlib.import_module("module.Data.DataManager")
@@ -1147,3 +1148,537 @@ def test_delete_file_emits_event_and_clears_caches() -> None:
     dm.emit.assert_called_once_with(
         Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
     )
+
+
+def test_on_translation_activity_does_not_emit_when_project_unloaded() -> None:
+    dm = build_manager(loaded=False)
+    dm.item_service.clear_item_cache = MagicMock()
+
+    dm.on_translation_activity(Base.Event.TRANSLATION_DONE, {})
+
+    dm.item_service.clear_item_cache.assert_called_once()
+    dm.emit.assert_not_called()
+
+
+def test_emit_quality_rule_update_ignores_empty_fields() -> None:
+    dm = build_manager()
+
+    dm.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
+    dm.emit_quality_rule_update(meta_keys=["glossary_enable"])
+    dm.emit_quality_rule_update()
+
+    assert dm.emit.call_args_list[0].args == (
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"rule_types": ["GLOSSARY"]},
+    )
+    assert dm.emit.call_args_list[1].args == (
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"meta_keys": ["glossary_enable"]},
+    )
+    assert dm.emit.call_args_list[2].args == (Base.Event.QUALITY_RULE_UPDATE, {})
+
+
+def test_status_and_translation_extras_setters_delegate_to_meta() -> None:
+    dm = build_manager()
+    dm.set_meta = MagicMock()
+
+    dm.set_project_status(Base.ProjectStatus.PROCESSED)
+    dm.set_translation_extras({"line": 2})
+
+    assert dm.set_meta.call_args_list[0].args == ("project_status", "PROCESSED")
+    assert dm.set_meta.call_args_list[1].args == ("translation_extras", {"line": 2})
+
+
+def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
+    dm = build_manager()
+    dm.rule_service.get_rules_cached = MagicMock(return_value=[{"src": "A"}])
+    dm.rule_service.get_rule_text_cached = MagicMock(return_value="prompt")
+    dm.set_rules_cached = MagicMock()
+    dm.set_rule_text_cached = MagicMock()
+    dm.item_service.save_item = MagicMock(return_value=10)
+    dm.item_service.replace_all_items = MagicMock(return_value=[10, 11])
+
+    assert dm.get_rules_cached(LGDatabase.RuleType.GLOSSARY) == [{"src": "A"}]
+    assert dm.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+    assert dm.get_glossary() == [{"src": "A"}]
+    assert dm.get_text_preserve() == [{"src": "A"}]
+    assert dm.get_pre_replacement() == [{"src": "A"}]
+    assert dm.get_post_replacement() == [{"src": "A"}]
+    assert dm.get_custom_prompt_zh() == "prompt"
+    assert dm.get_custom_prompt_en() == "prompt"
+
+    dm.set_text_preserve([{"src": "tp"}])
+    dm.set_pre_replacement([{"src": "pre"}])
+    dm.set_post_replacement([{"src": "post"}])
+    dm.set_custom_prompt_zh("zh")
+    dm.set_custom_prompt_en("en")
+
+    assert dm.set_rules_cached.call_args_list[0].args == (
+        LGDatabase.RuleType.TEXT_PRESERVE,
+        [{"src": "tp"}],
+        True,
+    )
+    assert dm.set_rules_cached.call_args_list[1].args == (
+        LGDatabase.RuleType.PRE_REPLACEMENT,
+        [{"src": "pre"}],
+        True,
+    )
+    assert dm.set_rules_cached.call_args_list[2].args == (
+        LGDatabase.RuleType.POST_REPLACEMENT,
+        [{"src": "post"}],
+        True,
+    )
+    assert dm.set_rule_text_cached.call_args_list[0].args == (
+        LGDatabase.RuleType.CUSTOM_PROMPT_ZH,
+        "zh",
+    )
+    assert dm.set_rule_text_cached.call_args_list[1].args == (
+        LGDatabase.RuleType.CUSTOM_PROMPT_EN,
+        "en",
+    )
+
+    sample_item = Item(src="hello")
+    assert dm.save_item(sample_item) == 10
+    assert dm.replace_all_items([sample_item]) == [10, 11]
+    dm.item_service.clear_item_cache.reset_mock()
+    dm.clear_item_cache()
+    dm.item_service.clear_item_cache.assert_called_once()
+
+    assert dm.get_asset("a.txt") is None
+    assert dm.get_asset_decompressed("a.txt") is None
+
+
+@pytest.mark.parametrize(
+    ("getter", "meta_key", "default", "raw", "expected"),
+    [
+        ("get_glossary_enable", "glossary_enable", True, 0, False),
+        (
+            "get_pre_replacement_enable",
+            "pre_translation_replacement_enable",
+            True,
+            "yes",
+            True,
+        ),
+        (
+            "get_post_replacement_enable",
+            "post_translation_replacement_enable",
+            True,
+            "",
+            False,
+        ),
+        ("get_custom_prompt_zh_enable", "custom_prompt_zh_enable", False, 1, True),
+        ("get_custom_prompt_en_enable", "custom_prompt_en_enable", False, 0, False),
+    ],
+)
+def test_boolean_meta_getters_normalize_to_bool(
+    getter: str, meta_key: str, default: bool, raw: object, expected: bool
+) -> None:
+    dm = build_manager()
+    dm.get_meta = MagicMock(return_value=raw)
+
+    assert getattr(dm, getter)() is expected
+    dm.get_meta.assert_called_once_with(meta_key, default)
+
+
+@pytest.mark.parametrize(
+    ("setter", "meta_key", "value", "expected"),
+    [
+        ("set_glossary_enable", "glossary_enable", 0, False),
+        (
+            "set_pre_replacement_enable",
+            "pre_translation_replacement_enable",
+            "non-empty",
+            True,
+        ),
+        (
+            "set_post_replacement_enable",
+            "post_translation_replacement_enable",
+            "",
+            False,
+        ),
+        ("set_custom_prompt_zh_enable", "custom_prompt_zh_enable", 1, True),
+        ("set_custom_prompt_en_enable", "custom_prompt_en_enable", None, False),
+    ],
+)
+def test_boolean_meta_setters_normalize_to_bool(
+    setter: str, meta_key: str, value: object, expected: bool
+) -> None:
+    dm = build_manager()
+    dm.set_meta = MagicMock()
+
+    getattr(dm, setter)(value)
+
+    dm.set_meta.assert_called_once_with(meta_key, expected)
+
+
+def test_normalize_quality_rules_for_write_returns_input_on_unknown_type() -> None:
+    dm = build_manager()
+    data = [{"src": "A", "dst": "B"}]
+
+    class UnknownRuleType:
+        value = "UNKNOWN"
+
+    result = dm.normalize_quality_rules_for_write(cast(Any, UnknownRuleType()), data)
+
+    assert result == data
+
+
+def test_merge_glossary_incoming_returns_none_when_no_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[{"src": "A", "dst": "B"}])
+    dm.set_glossary = MagicMock()
+
+    empty_report = QualityRuleMerger.Report(
+        added=0,
+        updated=0,
+        filled=0,
+        deduped=0,
+        skipped_empty_src=0,
+        conflicts=(),
+    )
+    monkeypatch.setattr(
+        data_manager_module.QualityRuleMerger,
+        "merge",
+        MagicMock(return_value=([{"src": "A", "dst": "B"}], empty_report)),
+    )
+
+    merged, report = dm.merge_glossary_incoming(
+        incoming=[{"src": "A", "dst": "B"}],
+        merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        save=True,
+    )
+
+    assert merged is None
+    assert report == empty_report
+    dm.set_glossary.assert_not_called()
+
+
+def test_merge_glossary_incoming_updates_cache_when_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[{"src": "A", "dst": "B"}])
+    dm.set_glossary = MagicMock()
+
+    changed_report = QualityRuleMerger.Report(
+        added=1,
+        updated=0,
+        filled=0,
+        deduped=0,
+        skipped_empty_src=0,
+        conflicts=(),
+    )
+    merged_rules = [{"src": "A", "dst": "B"}, {"src": "C", "dst": "D"}]
+    monkeypatch.setattr(
+        data_manager_module.QualityRuleMerger,
+        "merge",
+        MagicMock(return_value=(merged_rules, changed_report)),
+    )
+
+    merged, report = dm.merge_glossary_incoming(
+        incoming=[{"src": "C", "dst": "D"}],
+        merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        save=False,
+    )
+
+    assert merged == merged_rules
+    assert report == changed_report
+    dm.set_glossary.assert_called_once_with(merged_rules, save=False)
+
+
+def test_file_operation_state_helpers() -> None:
+    dm = build_manager()
+    dm.file_op_lock = threading.Lock()
+    dm.file_op_running = False
+
+    assert dm.is_file_op_running() is False
+    assert dm.try_begin_file_operation() is True
+    assert dm.is_file_op_running() is True
+    assert dm.try_begin_file_operation() is False
+
+    dm.finish_file_operation()
+    assert dm.is_file_op_running() is False
+
+
+def test_add_update_reset_delete_raise_when_project_not_loaded() -> None:
+    dm = build_manager(loaded=False)
+
+    with pytest.raises(RuntimeError, match="工程未加载"):
+        dm.add_file("/workspace/a.txt")
+    with pytest.raises(RuntimeError, match="工程未加载"):
+        dm.update_file("a.txt", "/workspace/a.txt")
+    with pytest.raises(RuntimeError, match="工程未加载"):
+        dm.reset_file("a.txt")
+    with pytest.raises(RuntimeError, match="工程未加载"):
+        dm.delete_file("a.txt")
+
+
+def test_reset_file_skips_batch_update_when_items_empty() -> None:
+    dm = build_manager()
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[])
+
+    dm.reset_file("a.txt")
+
+    dm.session.db.update_batch.assert_not_called()
+    dm.item_service.clear_item_cache.assert_called_once()
+    dm.emit.assert_called_once_with(
+        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
+    )
+
+
+def test_get_meta_delegates_to_meta_service() -> None:
+    dm = build_manager()
+    dm.meta_service.get_meta = MagicMock(return_value="v")
+
+    assert dm.get_meta("k", "d") == "v"
+    dm.meta_service.get_meta.assert_called_once_with("k", "d")
+
+
+def test_update_batch_does_not_emit_when_rules_or_relevant_meta_missing() -> None:
+    dm = build_manager()
+    dm.emit_quality_rule_update = MagicMock()
+
+    dm.update_batch(items=[{"id": 1}])
+    dm.update_batch(meta={"name": "demo"})
+
+    dm.emit_quality_rule_update.assert_not_called()
+
+
+def test_data_manager_get_returns_existing_instance_when_set_during_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeLock:
+        def __enter__(self) -> None:
+            DataManager.instance = cast(Any, sentinel)
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+            del exc_type
+            del exc
+            del tb
+            return False
+
+    sentinel = object()
+    old_lock = DataManager.lock
+    DataManager.instance = None
+    monkeypatch.setattr(DataManager, "lock", FakeLock())
+    try:
+        assert DataManager.get() is sentinel
+    finally:
+        DataManager.lock = old_lock
+        DataManager.instance = None
+
+
+def test_update_file_with_empty_new_path_keeps_old_rel_path_before_open() -> None:
+    dm = build_manager()
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[])
+
+    with pytest.raises(FileNotFoundError):
+        dm.update_file("dir/a.txt", "")
+
+
+def test_update_file_rename_keeps_parent_and_handles_non_conflict_paths(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.asset_decompress_cache = {"dir/a.txt": b"cached"}
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+    dm.session.db.get_all_asset_paths = MagicMock(
+        return_value=[None, "", "dir/a.txt", "dir/c.txt"]
+    )
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": None,
+                "dst": "",
+                "status": Base.ProjectStatus.PROCESSED,
+                "file_type": Item.FileType.NONE,
+                "file_path": "dir/a.txt",
+            },
+            {
+                "id": 2,
+                "src": "a",
+                "dst": "X",
+                "name_dst": "NX",
+                "status": Base.ProjectStatus.PROCESSED,
+                "retry_count": 1,
+                "file_type": "TXT",
+                "file_path": "dir/a.txt",
+            },
+            {
+                "id": 3,
+                "src": "a",
+                "dst": "Y",
+                "name_dst": "NY",
+                "status": "BAD_STATUS",
+                "retry_count": 2,
+                "file_type": "TXT",
+                "file_path": "dir/a.txt",
+            },
+            {
+                "id": 4,
+                "src": "a",
+                "dst": "Y",
+                "name_dst": "NY2",
+                "status": "BAD_STATUS",
+                "retry_count": 3,
+                "file_type": "TXT",
+                "file_path": "dir/a.txt",
+            },
+        ]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            assert rel_path.replace("\\", "/") == "dir/b.txt"
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.NONE,
+                    }
+                ),
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                ),
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    conn = SimpleNamespace(commit=MagicMock())
+    dm.session.db.connection = MagicMock(return_value=contextlib.nullcontext(conn))
+
+    new_path = tmp_path / "b.txt"
+    new_path.write_bytes(b"data")
+
+    stats = dm.update_file("dir/a.txt", str(new_path))
+
+    assert stats == {"matched": 2, "new": 0, "total": 2}
+    update_args, update_kwargs = dm.session.db.update_asset_path.call_args
+    assert update_args[0] == "dir/a.txt"
+    assert update_args[1].replace("\\", "/") == "dir/b.txt"
+    assert update_kwargs["conn"] is conn
+    inserted = dm.session.db.insert_items.call_args.args[0]
+    assert inserted[0]["dst"] == ""
+    assert inserted[0]["status"] == Base.ProjectStatus.NONE
+    event, payload = dm.emit.call_args.args
+    assert event == Base.Event.PROJECT_FILE_UPDATE
+    assert payload["old_rel_path"] == "dir/a.txt"
+    assert payload["rel_path"].replace("\\", "/") == "dir/b.txt"
+
+
+def test_update_file_accepts_none_file_type_on_both_sides(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[{"id": 1, "src": "a", "file_type": Item.FileType.NONE}]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.NONE,
+                    }
+                )
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    conn = SimpleNamespace(commit=MagicMock())
+    dm.session.db.connection = MagicMock(return_value=contextlib.nullcontext(conn))
+
+    new_path = tmp_path / "a.txt"
+    new_path.write_bytes(b"data")
+
+    stats = dm.update_file("a.txt", str(new_path))
+
+    assert stats == {"matched": 1, "new": 0, "total": 1}
+
+
+def test_update_file_non_string_old_status_falls_back_to_none(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dm = build_manager()
+    dm.session.db.asset_path_exists = MagicMock(return_value=True)
+    dm.session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "OLD",
+                "status": None,
+                "file_type": "TXT",
+                "file_path": "a.txt",
+            }
+        ]
+    )
+
+    config = SimpleNamespace()
+    monkeypatch.setattr(
+        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
+    )
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del content
+            return [
+                Item.from_dict(
+                    {
+                        "src": "a",
+                        "file_path": rel_path,
+                        "file_type": Item.FileType.TXT,
+                    }
+                )
+            ]
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    conn = SimpleNamespace(commit=MagicMock())
+    dm.session.db.connection = MagicMock(return_value=contextlib.nullcontext(conn))
+
+    new_path = tmp_path / "a.txt"
+    new_path.write_bytes(b"data")
+
+    stats = dm.update_file("a.txt", str(new_path))
+
+    assert stats == {"matched": 1, "new": 0, "total": 1}
+    inserted = dm.session.db.insert_items.call_args.args[0]
+    assert inserted[0]["status"] == Base.ProjectStatus.NONE
+    assert inserted[0]["dst"] == ""

@@ -366,3 +366,33 @@ def test_build_epub_writes_raw_css_and_opf_when_decode_fails(
     with zipfile.ZipFile(out_path, "r") as zf:
         assert zf.read("styles/main.css") == bad_css
         assert zf.read("content.opf") == bad_opf
+
+
+def test_process_html_keeps_text_when_nav_page_and_source_not_found(
+    config: Config,
+) -> None:
+    legacy = EPUBLegacy(config)
+    src_buf = io.BytesIO()
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(src_buf, "w") as src_zip:
+        src_zip.writestr(
+            "text/nav.xhtml",
+            "<html><body><nav epub:type='toc'></nav><p>something</p></body></html>",
+        )
+
+    item = Item.from_dict({"src": "old", "dst": "new", "file_type": Item.FileType.EPUB})
+    with zipfile.ZipFile(io.BytesIO(src_buf.getvalue()), "r") as reader:
+        with zipfile.ZipFile(out_buf, "w") as writer:
+            legacy.process_html(
+                reader,
+                writer,
+                "text/nav.xhtml",
+                {"text/nav.xhtml": [item]},
+                bilingual=False,
+            )
+
+    with zipfile.ZipFile(io.BytesIO(out_buf.getvalue()), "r") as result_zip:
+        html = result_zip.read("text/nav.xhtml").decode("utf-8")
+
+    assert "new" not in html
+    assert "something" in html

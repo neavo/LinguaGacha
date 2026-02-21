@@ -373,3 +373,162 @@ def test_build_epub_uses_tag_as_doc_path_and_keeps_original_on_parse_failure(
 
     assert chapter == b"<html><body><p>old</p></body></html>"
     assert warnings != []
+
+
+def test_is_nav_page_ignores_non_element_nav_nodes(config: Config) -> None:
+    writer = EPUBAstWriter(config)
+    nav = etree.Element("nav", attrib={"id": "not-toc"})
+
+    class DummyRoot:
+        def xpath(self, expr: str):
+            del expr
+            return [123, nav]
+
+    assert writer.is_nav_page(DummyRoot()) is False
+
+
+def test_apply_items_to_tree_writes_tail_slot_without_bilingual_clone(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    ast = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>head</p>tail-old</body></html>")
+    p = root.xpath(".//*[local-name()='p']")[0]
+    p_path = ast.build_elem_path(root, p)
+    digest = ast.sha1_hex_with_null_separator([ast.normalize_slot_text(p.tail or "")])
+    item = Item.from_dict(
+        {
+            "src": "tail-old",
+            "dst": "tail-new",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": [{"slot": "tail", "path": p_path}],
+                    "block_path": "",
+                    "src_digest": digest,
+                }
+            },
+        }
+    )
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="text/ch1.xhtml",
+        items=[item],
+        bilingual=True,
+    )
+
+    assert applied == 1
+    assert skipped == 0
+    assert p.tail == "tail-new"
+    assert len(root.xpath(".//*[local-name()='p']")) == 1
+
+
+def test_apply_items_to_tree_skips_bilingual_clone_when_block_not_found(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    ast = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>old</p></body></html>")
+    p = root.xpath(".//*[local-name()='p']")[0]
+    p_path = ast.build_elem_path(root, p)
+    digest = ast.sha1_hex_with_null_separator(["old"])
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": [{"slot": "text", "path": p_path}],
+                    "block_path": "/missing[1]",
+                    "src_digest": digest,
+                }
+            },
+        }
+    )
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="text/ch1.xhtml",
+        items=[item],
+        bilingual=True,
+    )
+
+    assert applied == 1
+    assert skipped == 0
+    assert p.text == "new"
+    assert len(root.xpath(".//*[local-name()='p']")) == 1
+
+
+def test_apply_items_to_tree_skips_bilingual_clone_when_block_has_no_parent(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    ast = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>old</p></body></html>")
+    p = root.xpath(".//*[local-name()='p']")[0]
+    p_path = ast.build_elem_path(root, p)
+    root_path = ast.build_elem_path(root, root)
+    digest = ast.sha1_hex_with_null_separator(["old"])
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": [{"slot": "text", "path": p_path}],
+                    "block_path": root_path,
+                    "src_digest": digest,
+                }
+            },
+        }
+    )
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="text/ch1.xhtml",
+        items=[item],
+        bilingual=True,
+    )
+
+    assert applied == 1
+    assert skipped == 0
+    assert p.text == "new"
+
+
+def test_build_epub_skips_items_with_invalid_extra_shapes(config: Config, fs) -> None:
+    del fs
+    writer = EPUBAstWriter(config)
+    epub_bytes = build_zip_with_files(
+        {"text/ch1.xhtml": b"<html><body><p>old</p></body></html>"}
+    )
+    out_path = Path("/workspace/out/invalid-items.epub")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    items = [
+        Item.from_dict({"file_type": Item.FileType.TXT}),
+        Item.from_dict({"file_type": Item.FileType.EPUB, "extra_field": "bad"}),
+        Item.from_dict(
+            {
+                "file_type": Item.FileType.EPUB,
+                "extra_field": {"epub": "bad"},
+            }
+        ),
+        Item.from_dict(
+            {
+                "file_type": Item.FileType.EPUB,
+                "extra_field": {"epub": {}},
+            }
+        ),
+    ]
+
+    writer.build_epub(
+        original_epub_bytes=epub_bytes,
+        items=items,
+        out_path=str(out_path),
+        bilingual=False,
+    )
+
+    with zipfile.ZipFile(out_path, "r") as zf:
+        assert zf.read("text/ch1.xhtml") == b"<html><body><p>old</p></body></html>"

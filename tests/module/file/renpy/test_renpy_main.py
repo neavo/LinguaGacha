@@ -155,3 +155,95 @@ def test_uniform_name_handles_list_names_and_skips_invalid(config: Config) -> No
     assert items[0].get_name_dst() == ["勇者", "反派"]
     assert items[1].get_name_dst() == "x"
     assert items[2].get_name_dst() == "勇者"
+
+
+def test_build_ast_keys_supports_fallback_only_and_invalid_lang_label(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    fallback_only = Item.from_dict(
+        {
+            "extra_field": {
+                "renpy": {
+                    "block": {"lang": "chinese", "label": "start"},
+                    "digest": {
+                        "template_raw_sha1": None,
+                        "template_raw_rstrip_sha1": "fb",
+                    },
+                }
+            }
+        }
+    )
+    invalid_lang = Item.from_dict(
+        {
+            "extra_field": {
+                "renpy": {
+                    "block": {"lang": 1, "label": "start"},
+                    "digest": {
+                        "template_raw_sha1": "a",
+                        "template_raw_rstrip_sha1": "b",
+                    },
+                }
+            }
+        }
+    )
+
+    assert handler.build_ast_keys(fallback_only) == [("chinese", "start", "fb")]
+    assert handler.build_ast_keys(invalid_lang) == []
+
+
+def test_transfer_ast_translations_skips_existing_item_without_keys(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    existing = [
+        Item.from_dict(
+            {
+                "extra_field": {
+                    "renpy": {
+                        "block": {},
+                        "digest": {},
+                    }
+                }
+            }
+        )
+    ]
+    new_items = [
+        Item.from_dict(
+            {
+                "src": "hello",
+                "dst": "",
+                "extra_field": {
+                    "renpy": {
+                        "block": {"lang": "chinese", "label": "start"},
+                        "pair": {"target_line": 10},
+                        "digest": {
+                            "template_raw_sha1": "a",
+                            "template_raw_rstrip_sha1": "a",
+                        },
+                    }
+                },
+            }
+        )
+    ]
+
+    written = handler.transfer_ast_translations(existing, new_items)
+
+    assert written == set()
+    assert new_items[0].get_dst() == ""
+
+
+def test_revert_name_and_uniform_name_skip_non_supported_name_types(
+    config: Config,
+) -> None:
+    handler = RenPy(config)
+    items = [
+        Item.from_dict({"name_src": None, "name_dst": "keep-none"}),
+        Item.from_dict({"name_src": ("hero",), "name_dst": ("keep-tuple",)}),
+    ]
+
+    handler.revert_name(items)
+    handler.uniform_name(items)
+
+    assert items[0].get_name_dst() == "keep-none"
+    assert items[1].get_name_dst() == ("hero",)

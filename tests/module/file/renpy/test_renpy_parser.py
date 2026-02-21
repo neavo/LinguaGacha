@@ -60,3 +60,29 @@ def test_parse_document_collects_translate_blocks() -> None:
     assert doc.blocks[0].kind == BlockKind.STRINGS
     assert doc.blocks[1].kind == BlockKind.LABEL
     assert doc.blocks[1].statements[1].stmt_kind == StmtKind.TARGET
+
+
+def test_parse_statement_handles_blank_and_meta_comments() -> None:
+    blank = parse_statement(1, "", BlockKind.LABEL)
+    top_meta = parse_statement(2, "# TODO: check", BlockKind.LABEL)
+    indented_meta = parse_statement(3, "    # game/script.rpy:10", BlockKind.LABEL)
+
+    assert blank.stmt_kind == StmtKind.BLANK
+    assert blank.code == ""
+    assert top_meta.stmt_kind == StmtKind.META
+    assert indented_meta.stmt_kind == StmtKind.META
+
+
+def test_parse_document_skips_non_header_lines() -> None:
+    lines = [
+        "label start:",
+        '    e "hello"',
+        "translate chinese strings:",
+        '    old "a"',
+        '    new "b"',
+    ]
+
+    doc = parse_document(lines)
+
+    assert len(doc.blocks) == 1
+    assert doc.blocks[0].kind == BlockKind.STRINGS

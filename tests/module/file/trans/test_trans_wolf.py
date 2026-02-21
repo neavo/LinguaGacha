@@ -119,3 +119,10 @@ def test_generate_block_text_skips_rows_with_non_string_data() -> None:
     processor = WOLF(project)
 
     assert processor.generate_block_text(project) == {"ok"}
+
+
+def test_filter_without_context_uses_tag_rule() -> None:
+    processor = WOLF(project={"files": {}})
+    processor.block_text = set()
+
+    assert processor.filter("hello", "path", [], []) == [False]

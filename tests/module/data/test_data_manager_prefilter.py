@@ -756,3 +756,106 @@ def test_data_access_proxy_methods_delegate_to_services() -> None:
     assert dm.get_supported_extensions() == {".txt"}
     assert dm.collect_source_files("src") == ["a.txt"]
     assert dm.get_project_preview("demo.lg") == {"name": "demo"}
+
+
+def test_project_prefilter_worker_handles_pending_without_request(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
+    class FakeLocalizer:
+        toast_processing = "processing"
+
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
+
+    data_manager.prefilter_running = True
+    data_manager.prefilter_active_token = 3
+    data_manager.prefilter_pending = True
+    data_manager.prefilter_latest_request = None
+
+    data_manager.project_prefilter_worker(3)
+
+    events = [call.args[0] for call in data_manager.emit.call_args_list]
+    assert Base.Event.PROGRESS_TOAST_SHOW in events
+    assert Base.Event.PROGRESS_TOAST_HIDE in events
+    assert Base.Event.PROJECT_PREFILTER_DONE in events
+    assert Base.Event.PROJECT_PREFILTER_UPDATED not in events
+
+    done_payload = data_manager.emit.call_args_list[-1].args[1]
+    assert done_payload["reason"] == "unknown"
+
+
+def test_project_prefilter_worker_logs_mtool_stats_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
+    class FakeLocalizer:
+        toast_processing = "processing"
+        engine_task_rule_filter = "rule {COUNT}"
+        engine_task_language_filter = "lang {COUNT}"
+        translator_mtool_optimizer_pre_log = "mtool {COUNT}"
+
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
+
+    logger = SimpleNamespace(info=MagicMock(), print=MagicMock(), error=MagicMock())
+    monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
+
+    request = ProjectPrefilterRequest(
+        token=8,
+        seq=2,
+        lg_path="demo/project.lg",
+        reason="worker_mtool",
+        source_language="EN",
+        target_language="ZH",
+        mtool_optimizer_enable=True,
+    )
+    data_manager.prefilter_running = True
+    data_manager.prefilter_active_token = 8
+    data_manager.prefilter_pending = True
+    data_manager.prefilter_latest_request = request
+
+    expected_result = ProjectPrefilterResult(
+        stats=ProjectPrefilterStats(
+            rule_skipped=1, language_skipped=2, mtool_skipped=3
+        ),
+        prefilter_config={},
+    )
+    data_manager.apply_project_prefilter_once = MagicMock(return_value=expected_result)
+
+    data_manager.project_prefilter_worker(8)
+
+    info_messages = [call.args[0] for call in logger.info.call_args_list]
+    assert "mtool 3" in info_messages
+
+
+def test_project_prefilter_worker_skips_updated_event_when_apply_returns_none(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
+    class FakeLocalizer:
+        toast_processing = "processing"
+
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
+
+    request = ProjectPrefilterRequest(
+        token=9,
+        seq=5,
+        lg_path="demo/project.lg",
+        reason="none_result",
+        source_language="EN",
+        target_language="ZH",
+        mtool_optimizer_enable=False,
+    )
+    data_manager.prefilter_running = True
+    data_manager.prefilter_active_token = 9
+    data_manager.prefilter_pending = True
+    data_manager.prefilter_latest_request = request
+    data_manager.apply_project_prefilter_once = MagicMock(return_value=None)
+
+    data_manager.project_prefilter_worker(9)
+
+    events = [call.args[0] for call in data_manager.emit.call_args_list]
+    assert Base.Event.PROJECT_PREFILTER_UPDATED not in events
+    assert Base.Event.PROJECT_PREFILTER_DONE in events

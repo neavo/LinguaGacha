@@ -341,3 +341,64 @@ def test_create_logs_parse_errors_but_keeps_asset(
     assert fake_db.assets != []
     assert fake_db.items is None
     assert any("Failed to parse asset" in msg for msg in logger.errors)
+
+
+def test_create_logs_mtool_prefilter_count_when_optimizer_enabled(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    monkeypatch.setenv("LINGUAGACHA_APP_DIR", "/workspace/app")
+
+    service = ProjectService()
+    src_dir = Path("/workspace/project_service/src")
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / "a.txt").write_bytes(b"hello")
+
+    out_path = Path("/workspace/project_service/out/demo.lg")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fake_db = FakeDB()
+    logger = DummyLogger()
+
+    monkeypatch.setattr(
+        "module.Data.ProjectService.LGDatabase.create",
+        lambda output_path, project_name: fake_db,
+    )
+    monkeypatch.setattr("module.Data.ProjectService.LogManager.get", lambda: logger)
+    monkeypatch.setattr(
+        "module.Data.ProjectService.Localizer.get", lambda: DummyLocalizer()
+    )
+
+    class FakeConfig:
+        source_language = "JA"
+        target_language = "ZH"
+        mtool_optimizer_enable = True
+
+    monkeypatch.setattr(
+        "module.Data.ProjectService.Config.load",
+        lambda self: FakeConfig(),
+    )
+
+    class FakeFileManager:
+        def __init__(self, config) -> None:
+            del config
+
+        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
+            del rel_path
+            del original_data
+            return [Item.from_dict({"src": "s", "dst": "d", "row": 1})]
+
+    monkeypatch.setattr("module.Data.ProjectService.FileManager", FakeFileManager)
+    monkeypatch.setattr("module.Data.ProjectService.ZstdCodec.compress", lambda b: b)
+
+    monkeypatch.setattr(
+        "module.Data.ProjectService.ProjectPrefilter.apply",
+        lambda **kwargs: SimpleNamespace(
+            stats=SimpleNamespace(rule_skipped=0, language_skipped=0, mtool_skipped=3),
+            prefilter_config={"demo": True},
+        ),
+    )
+
+    service.create(source_path=str(src_dir), output_path=str(out_path))
+
+    assert any("mtool 3" in msg for msg in logger.infos)
