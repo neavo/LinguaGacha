@@ -64,6 +64,14 @@ class TestPunctuationFixer:
             PunctuationFixer.fix_start_end(src, dst, BaseLanguage.Enum.ZH) == "“你好”"
         )
 
+    def test_fix_start_end_keep_quotes_when_source_has_no_quote(self) -> None:
+        src = "你好"
+        dst = '"你好"'
+
+        assert (
+            PunctuationFixer.fix_start_end(src, dst, BaseLanguage.Enum.ZH) == '"你好"'
+        )
+
     def test_cjk_target_force_convert_corner_quotes(self) -> None:
         src = "\u300chello\u300d"
         dst = "\u201chello\u201d"

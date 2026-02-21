@@ -1,4 +1,6 @@
 from collections.abc import Generator
+from typing import Any
+from typing import cast
 
 import pytest
 from rich.progress import TaskID
@@ -46,6 +48,21 @@ def reset_progress_state() -> Generator[None, None, None]:
 
 
 class TestProgressBar:
+    def test_enter_reuses_existing_progress(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("module.ProgressBar.Progress", FakeProgress)
+
+        existing_progress = FakeProgress()
+        ProgressBar.progress = cast(Any, existing_progress)
+        bar = ProgressBar(transient=False)
+
+        entered = bar.__enter__()
+
+        assert entered is bar
+        assert ProgressBar.progress is existing_progress
+        assert existing_progress.started is False
+
     def test_context_manager_starts_and_stops_progress(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -70,3 +87,36 @@ class TestProgressBar:
     def test_update_is_noop_when_progress_not_started(self) -> None:
         bar = ProgressBar(transient=False)
         bar.update(TaskID(1), advance=1)
+
+    def test_exit_is_noop_when_progress_is_none(self) -> None:
+        bar = ProgressBar(transient=False)
+
+        bar.__exit__(None, None, None)
+
+        assert ProgressBar.progress is None
+
+    def test_exit_non_transient_does_not_remove_and_keeps_shared_progress(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("module.ProgressBar.Progress", FakeProgress)
+
+        owner = ProgressBar(transient=False)
+        owner.__enter__()
+        first_task_id = owner.new(total=2)
+        second_task_id = owner.new(total=3)
+
+        follower = ProgressBar(transient=False)
+        follower.__enter__()
+        follower_task_id = follower.new(total=1)
+
+        fake = ProgressBar.progress
+        assert isinstance(fake, FakeProgress)
+
+        owner.__exit__(None, None, None)
+
+        assert ProgressBar.progress is fake
+        assert fake.stopped is False
+        assert ("stop_task", first_task_id) in fake.operations
+        assert ("stop_task", second_task_id) in fake.operations
+        assert ("stop_task", follower_task_id) not in fake.operations
+        assert all(op[0] != "remove_task" for op in fake.operations)

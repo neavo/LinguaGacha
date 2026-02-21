@@ -59,6 +59,23 @@ def test_load_item_cache_if_needed_sets_empty_cache_when_db_none() -> None:
     assert session.item_cache_index == {}
 
 
+def test_load_item_cache_if_needed_skips_non_int_ids_in_index() -> None:
+    db = SimpleNamespace(
+        get_all_items=MagicMock(
+            return_value=[
+                {"id": "1", "src": "A"},
+                {"id": 2, "src": "B"},
+                {"src": "no-id"},
+            ]
+        )
+    )
+    service, session = build_service(db)
+
+    service.load_item_cache_if_needed()
+
+    assert session.item_cache_index == {2: 1}
+
+
 def test_load_item_cache_if_needed_does_not_override_when_cache_loaded_by_other_thread() -> (
     None
 ):
@@ -132,6 +149,20 @@ def test_save_item_raises_when_project_not_loaded() -> None:
         service.save_item(Item(src="A"))
 
 
+def test_save_item_does_not_touch_cache_when_cache_not_loaded() -> None:
+    db = SimpleNamespace(set_item=MagicMock(return_value=5))
+    service, session = build_service(db)
+    assert session.item_cache is None
+
+    item = Item(src="A")
+    item_id = service.save_item(item)
+
+    assert item_id == 5
+    assert item.get_id() == 5
+    assert session.item_cache is None
+    assert session.item_cache_index == {}
+
+
 def test_replace_all_items_rebuilds_cache_and_updates_ids() -> None:
     db = SimpleNamespace(set_items=MagicMock(return_value=[7, 8]))
     service, session = build_service(db)
@@ -142,6 +173,19 @@ def test_replace_all_items_rebuilds_cache_and_updates_ids() -> None:
     assert ids == [7, 8]
     assert items[1].get_id() == 8
     assert session.item_cache_index == {7: 0, 8: 1}
+
+
+def test_replace_all_items_skips_non_int_ids_when_syncing_back() -> None:
+    db = SimpleNamespace(set_items=MagicMock(return_value=[7, "bad-id"]))
+    service, session = build_service(db)
+    items = [Item(src="A"), Item(src="B")]
+
+    ids = service.replace_all_items(items)
+
+    assert ids == [7, "bad-id"]
+    assert items[0].get_id() == 7
+    assert items[1].get_id() is None
+    assert session.item_cache_index == {7: 0}
 
 
 def test_replace_all_items_raises_when_project_not_loaded() -> None:

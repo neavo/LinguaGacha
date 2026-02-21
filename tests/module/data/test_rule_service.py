@@ -67,6 +67,24 @@ def test_set_rules_cached_updates_cache_even_when_db_missing() -> None:
     assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
 
 
+def test_set_rules_cached_skips_db_write_when_save_disabled() -> None:
+    db = SimpleNamespace(set_rules=MagicMock())
+    service, session = build_service(db)
+    session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "stale"
+
+    service.set_rules_cached(
+        LGDatabase.RuleType.GLOSSARY,
+        [{"src": "A", "dst": "B"}],
+        save=False,
+    )
+
+    db.set_rules.assert_not_called()
+    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
+        {"src": "A", "dst": "B"}
+    ]
+    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+
+
 def test_get_and_set_rule_text_cache_behavior() -> None:
     db = SimpleNamespace(
         get_rule_text=MagicMock(return_value="prompt"),
@@ -198,6 +216,37 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
 
     assert loaded == ["术语表"]
     assert logger.error.call_count == 1
+
+
+def test_initialize_project_rules_skips_non_list_json_presets(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    root_path = Path("/workspace/rule_service_non_list")
+    root_path.mkdir(parents=True, exist_ok=True)
+    glossary = root_path / "glossary.json"
+    pre_replace = root_path / "pre.json"
+    post_replace = root_path / "post.json"
+
+    glossary.write_text(json.dumps({"src": "A", "dst": "甲"}), encoding="utf-8")
+    pre_replace.write_text(json.dumps({"src": "A", "dst": "B"}), encoding="utf-8")
+    post_replace.write_text(json.dumps({"src": "B", "dst": "A"}), encoding="utf-8")
+
+    config = Config(
+        glossary_default_preset=str(glossary),
+        pre_translation_replacement_default_preset=str(pre_replace),
+        post_translation_replacement_default_preset=str(post_replace),
+    )
+    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+
+    db = MagicMock()
+    service, _ = build_service(db)
+
+    loaded = service.initialize_project_rules(db)
+
+    assert loaded == []
+    db.set_rules.assert_not_called()
+    db.set_meta.assert_called_once_with("text_preserve_mode", "smart")
 
 
 def test_initialize_project_rules_logs_and_skips_custom_prompts_when_open_fails(

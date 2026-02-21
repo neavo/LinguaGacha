@@ -61,6 +61,24 @@ def test_timestamp_suffix_context_with_existing_dir_generates_timestamp(
     assert service.get_timestamp_suffix() == ""
 
 
+def test_timestamp_suffix_context_respects_custom_suffix_for_bilingual_path(
+    patched_localizer: None,
+    fs,
+) -> None:
+    del patched_localizer
+    del fs
+    service = ExportPathService()
+    root_path = Path("/workspace/export_path")
+    lg_path = str(root_path / "project.lg")
+    service.set_custom_suffix("_v2")
+
+    (root_path / "project_Translated_Bilingual_v2").mkdir(parents=True)
+
+    with service.timestamp_suffix_context(lg_path):
+        suffix = service.get_timestamp_suffix()
+        assert re.fullmatch(r"_\d{8}_\d{6}", suffix)
+
+
 def test_get_paths_include_custom_and_timestamp_suffix(
     patched_localizer: None,
     fs,

@@ -36,6 +36,9 @@ class TestStripAndSplit:
         assert TextHelper.strip_punctuation("  ...你好！！  ") == "你好"
         assert TextHelper.strip_punctuation("...！！") == ""
 
+    def test_strip_punctuation_returns_empty_for_whitespace_only(self) -> None:
+        assert TextHelper.strip_punctuation("   ") == ""
+
     def test_strip_arabic_numerals(self) -> None:
         assert TextHelper.strip_arabic_numerals("123abc456") == "abc"
         assert TextHelper.strip_arabic_numerals("abc123def") == "abc123def"
@@ -55,6 +58,10 @@ class TestStripAndSplit:
             "C",
             "D",
         ]
+
+    def test_split_by_punctuation_ignores_leading_and_trailing_delimiters(self) -> None:
+        text = "，，A,,B！！"
+        assert TextHelper.split_by_punctuation(text, split_by_space=False) == ["A", "B"]
 
 
 class TestLengthAndSimilarity:
@@ -124,3 +131,13 @@ class TestGetEncoding:
             return_value=FakeDetectionMatches(None),
         ):
             assert TextHelper.get_encoding(content=b"hello") == "utf-8-sig"
+
+    def test_get_encoding_falls_back_when_path_best_returns_none(self) -> None:
+        with patch(
+            "module.Text.TextHelper.charset_normalizer.from_path",
+            return_value=FakeDetectionMatches(None),
+        ):
+            assert TextHelper.get_encoding(path="dummy.txt") == "utf-8-sig"
+
+    def test_get_encoding_uses_default_when_no_input(self) -> None:
+        assert TextHelper.get_encoding(path=None, content=None) == "utf-8-sig"

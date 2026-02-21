@@ -49,3 +49,21 @@ def test_is_translatable_text() -> None:
     assert is_translatable_text("hello") is True
     assert is_translatable_text("[player_name]") is False
     assert is_translatable_text("{#language name and font}") is True
+
+
+def test_strip_comment_prefix_handles_hash_without_space() -> None:
+    assert strip_comment_prefix("#hello") == (True, "hello")
+
+
+def test_normalize_speaker_token_returns_original_for_non_speaker_pattern() -> None:
+    assert normalize_speaker_token('"hello"') == '"hello"'
+    assert normalize_speaker_token("123abc") == "123abc"
+
+
+def test_looks_like_resource_path_returns_false_for_blank_text() -> None:
+    assert looks_like_resource_path("   ") is False
+
+
+def test_is_translatable_text_covers_empty_and_markup_only_cases() -> None:
+    assert is_translatable_text("  ") is False
+    assert is_translatable_text("{b}{/b}") is False

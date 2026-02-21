@@ -32,3 +32,9 @@ def test_filter_blocks_by_tag_or_blacklist_address() -> None:
     assert by_tag == [True]
     assert by_address == [True]
     assert allow == [False]
+
+
+def test_filter_without_context_uses_tag_rule() -> None:
+    processor = RPGMAKER(project={})
+
+    assert processor.filter("hello", "Map001.json", [], []) == [False]

@@ -4,6 +4,11 @@ from module.Text import TextBase
 
 
 class TestTextBaseCommonBehavior:
+    def test_base_char_returns_none(self) -> None:
+        base = TextBase.TextBase()
+
+        assert base.char("A") is None
+
     def test_any_and_all_on_empty_text(self) -> None:
         cjk = TextBase.CJK()
 
@@ -19,6 +24,11 @@ class TestTextBaseCommonBehavior:
         cjk = TextBase.CJK()
 
         assert cjk.strip_non_target("  !!!???  ") == ""
+
+    def test_strip_non_target_returns_empty_on_blank_input(self) -> None:
+        cjk = TextBase.CJK()
+
+        assert cjk.strip_non_target("  \t\n  ") == ""
 
 
 class TestCJKAndLatin:
@@ -58,12 +68,36 @@ class TestJapaneseAndKorean:
 
         assert ja.katakana("ー") is False
 
+    def test_ja_hiragana_helpers(self) -> None:
+        ja = TextBase.JA()
+
+        assert ja.any_hiragana("abcあ") is True
+        assert ja.any_hiragana("ABC") is False
+        assert ja.all_hiragana("あい") is True
+        assert ja.all_hiragana("あA") is False
+
+    def test_ja_katakana_helpers(self) -> None:
+        ja = TextBase.JA()
+
+        assert ja.any_katakana("abcカ") is True
+        assert ja.any_katakana("abc") is False
+        assert ja.all_katakana("カタ") is True
+        assert ja.all_katakana("カあ") is False
+
     def test_ko_supports_cjk_and_hangul(self) -> None:
         ko = TextBase.KO()
 
         assert ko.char("你") is True
         assert ko.char("한") is True
         assert ko.char("A") is False
+
+    def test_ko_hangeul_helpers(self) -> None:
+        ko = TextBase.KO()
+
+        assert ko.any_hangeul("A한") is True
+        assert ko.any_hangeul("ABC") is False
+        assert ko.all_hangeul("한국") is True
+        assert ko.all_hangeul("한A") is False
 
 
 class TestOtherLanguageSets:

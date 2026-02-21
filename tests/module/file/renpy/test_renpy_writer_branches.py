@@ -175,3 +175,31 @@ def test_build_replacements_and_replace_literals_cover_guards() -> None:
     assert writer.replace_literals_by_index("no literal", {0: "x"}) == "no literal"
     replaced = writer.replace_literals_by_index('e "a" "b"', {0: "x"})
     assert replaced == 'e "x" "b"'
+
+
+def test_apply_item_rejects_label_when_template_line_is_not_comment() -> None:
+    writer = RenPyWriter()
+    lines = ['    e "old"', '    e "old"']
+    target_rest = lines[1].lstrip()
+    target_literals = scan_double_quoted_literals(target_rest)
+    target_skeleton = build_skeleton(target_rest, target_literals)
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "extra_field": {
+                "renpy": {
+                    "pair": {"template_line": 1, "target_line": 2},
+                    "digest": {
+                        "template_raw_sha1": sha1_hex(lines[0]),
+                        "target_skeleton_sha1": sha1_hex(target_skeleton),
+                        "target_string_count": len(target_literals),
+                    },
+                    "slots": [{"role": "DIALOGUE", "lit_index": 0}],
+                    "block": {"kind": "LABEL"},
+                }
+            },
+        }
+    )
+
+    assert writer.apply_item(lines, item) is False

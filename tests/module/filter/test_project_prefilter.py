@@ -334,3 +334,62 @@ class TestProjectPrefilterMToolIntegration:
         )
         assert result.stats.mtool_skipped == 0
         # clause 不应被 mtool 标记（但可能被 RuleFilter/LanguageFilter 标记）
+        assert clause.get_status() == Base.ProjectStatus.NONE
+
+
+class TestProjectPrefilterCoverageBranches:
+    """补齐回调与空输入分支，确保预过滤流程覆盖完整。"""
+
+    def test_apply_with_empty_items_and_callback_reports_nothing(self) -> None:
+        cb = MagicMock()
+
+        result = ProjectPrefilter.apply(
+            [],
+            source_language=BaseLanguage.Enum.EN,
+            target_language=BaseLanguage.Enum.ZH,
+            mtool_optimizer_enable=False,
+            progress_cb=cb,
+        )
+
+        assert result.stats.rule_skipped == 0
+        assert result.stats.language_skipped == 0
+        assert cb.call_count == 0
+
+    def test_mtool_preprocess_empty_list_reports_offset_progress(self) -> None:
+        cb = MagicMock()
+
+        skipped = ProjectPrefilter.mtool_optimizer_preprocess(
+            [],
+            progress_cb=cb,
+            progress_offset=3,
+            progress_total=10,
+        )
+
+        assert skipped == 0
+        cb.assert_called_once_with(3, 10)
+
+    def test_mtool_preprocess_progress_callback_reports_final_step(self) -> None:
+        cb = MagicMock()
+        multi_line = make_item(
+            src="Line A\nLine B",
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+        clause = make_item(
+            src="Line A",
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+
+        skipped = ProjectPrefilter.mtool_optimizer_preprocess(
+            [multi_line, clause],
+            progress_cb=cb,
+            progress_offset=6,
+            progress_total=18,
+            progress_every=100,
+        )
+
+        assert skipped == 1
+        assert cb.call_count >= 1
+        last_call = cb.call_args_list[-1]
+        assert last_call.args == (18, 18)

@@ -360,7 +360,6 @@ class DataManager(Base):
         target_language = str(config.target_language)
         mtool_optimizer_enable = bool(config.mtool_optimizer_enable)
 
-        start_worker = False
         with self.prefilter_cond:
             if self.prefilter_running:
                 # 同步调用遇到“已有 worker 正在跑”时：只更新最新请求并等待其落库完成，保证 meta/items 一致。
@@ -386,7 +385,6 @@ class DataManager(Base):
             token = self.prefilter_token
             self.prefilter_active_token = token
             self.prefilter_running = True
-            start_worker = True
 
             self.prefilter_request_seq += 1
             seq = self.prefilter_request_seq
@@ -402,9 +400,6 @@ class DataManager(Base):
             )
             self.prefilter_pending = True
             self.prefilter_cond.notify_all()
-
-        if not start_worker:
-            return
 
         self.emit(
             Base.Event.PROJECT_PREFILTER_RUN,
@@ -1294,25 +1289,23 @@ class DataManager(Base):
         for src, candidates in src_seen_order.items():
             dst_count: dict[str, int] = {}
             first_index: dict[str, int] = {}
+            first_item: dict[str, dict[str, Any]] = {}
             for idx, cand in enumerate(candidates):
                 dst = cand.get("dst")
                 dst_key = dst if isinstance(dst, str) else ""
                 dst_count[dst_key] = dst_count.get(dst_key, 0) + 1
                 if dst_key not in first_index:
                     first_index[dst_key] = idx
+                    # best_dst 的 tie-break 依赖“最早出现”，因此这里缓存第一个候选即可。
+                    first_item[dst_key] = cand
 
             # max by (count desc, first_index asc)
             best_dst = min(
                 dst_count,
                 key=lambda d: (-dst_count[d], first_index.get(d, 10**9)),
             )
-            # pick the earliest item with best_dst to preserve other fields (status/name_dst/etc.)
-            for cand in candidates:
-                dst = cand.get("dst")
-                dst_key = dst if isinstance(dst, str) else ""
-                if dst_key == best_dst:
-                    src_best[src] = cand
-                    break
+            # 选择最早出现的 best_dst 条目以保留其他字段（status/name_dst/etc.）。
+            src_best[src] = first_item[best_dst]
 
         # “更新文件”的语义：新文件为权威来源；旧工程只允许提供“已完成译文成果”。
         inheritable_statuses = {

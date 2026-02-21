@@ -302,3 +302,116 @@ def test_select_slots_and_tail_and_character_helpers() -> None:
     assert open_paren != -1
     assert close_paren != -1
     assert extractor.find_matching_paren(no_lit_inside, open_paren) == close_paren
+
+
+def test_extract_returns_empty_when_mapping_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor = RenPyExtractor()
+    block = build_block(
+        "label",
+        BlockKind.LABEL,
+        [
+            build_stmt(1, 'e "a"', StmtKind.TEMPLATE, BlockKind.LABEL),
+            build_stmt(2, 'e "b"', StmtKind.TARGET, BlockKind.LABEL),
+        ],
+    )
+    doc = RenPyDocument(lines=[], blocks=[block])
+
+    monkeypatch.setattr(
+        "module.File.RenPy.RenPyExtractor.match_template_to_target",
+        lambda _: {},
+    )
+
+    assert extractor.extract(doc, "a.rpy") == []
+
+
+def test_select_slots_routes_to_strings_and_returns_valid_string_slot() -> None:
+    extractor = RenPyExtractor()
+    block = build_block("strings", BlockKind.STRINGS, [])
+    stmt = build_stmt(1, 'old "hello"', StmtKind.TEMPLATE, BlockKind.STRINGS)
+
+    slots = extractor.select_slots(block, stmt)
+
+    assert len(slots) == 1
+    assert slots[0].role == SlotRole.STRING
+    assert slots[0].lit_index == 0
+
+
+def test_select_slots_for_label_handles_single_tail_dialogue_without_name() -> None:
+    extractor = RenPyExtractor()
+    stmt = build_stmt(1, 'e "hello"', StmtKind.TEMPLATE, BlockKind.LABEL)
+
+    slots = extractor.select_slots_for_label(stmt)
+
+    assert [v.role for v in slots] == [SlotRole.DIALOGUE]
+
+
+def test_select_slots_for_label_keeps_character_name_index_when_present() -> None:
+    extractor = RenPyExtractor()
+    stmt = build_stmt(
+        2,
+        'Character("Alice") "Hello"',
+        StmtKind.TEMPLATE,
+        BlockKind.LABEL,
+    )
+
+    slots = extractor.select_slots_for_label(stmt)
+
+    assert [v.role for v in slots] == [SlotRole.NAME, SlotRole.DIALOGUE]
+
+
+def test_find_character_name_lit_index_handles_missing_open_paren() -> None:
+    extractor = RenPyExtractor()
+
+    class WeirdCode(str):
+        def lstrip(self, chars=None):
+            del chars
+            return "Character("
+
+        def find(
+            self,
+            sub: str,
+            start: object | None = 0,
+            end: object | None = None,
+        ) -> int:
+            del sub
+            del start
+            del end
+            return -1
+
+    stmt = StatementNode(
+        line_no=1,
+        raw_line="Character",
+        indent="",
+        code=WeirdCode("Character"),
+        stmt_kind=StmtKind.TEMPLATE,
+        block_kind=BlockKind.LABEL,
+        literals=[],
+        strict_key="",
+        relaxed_key="",
+        string_count=0,
+    )
+
+    assert extractor.find_character_name_lit_index(stmt) is None
+
+
+def test_find_character_name_lit_index_ignores_literals_outside_call() -> None:
+    extractor = RenPyExtractor()
+    stmt = build_stmt(3, 'Character(name) "tail"', StmtKind.TEMPLATE, BlockKind.LABEL)
+
+    assert extractor.find_character_name_lit_index(stmt) is None
+
+
+def test_find_matching_paren_handles_nested_parentheses() -> None:
+    extractor = RenPyExtractor()
+    stmt = build_stmt(
+        4,
+        'Character(func("a"))',
+        StmtKind.TEMPLATE,
+        BlockKind.LABEL,
+    )
+    open_pos = stmt.code.find("(")
+
+    assert open_pos != -1
+    assert extractor.find_matching_paren(stmt, open_pos) == len(stmt.code) - 1

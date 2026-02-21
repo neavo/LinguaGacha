@@ -277,3 +277,53 @@ def test_read_from_stream_returns_empty_when_active_sheet_is_not_worksheet(
     )
 
     assert XLSX(config).read_from_stream(b"bytes", "a.xlsx") == []
+
+
+def test_read_from_stream_returns_empty_when_sheet_dimension_is_zero(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    assert isinstance(sheet, Worksheet)
+    cast(Cell, sheet.cell(row=1, column=1)).value = "src"
+
+    monkeypatch.setattr("module.File.XLSX.openpyxl.load_workbook", lambda *_: workbook)
+    monkeypatch.setattr(Worksheet, "max_row", property(lambda self: 0))
+
+    assert XLSX(config).read_from_stream(b"bytes", "a.xlsx") == []
+
+
+def test_write_to_path_skips_when_active_sheet_is_not_worksheet(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DummyBook:
+        def __init__(self) -> None:
+            self.active = object()
+
+        def save(self, path: str) -> None:
+            del path
+
+    monkeypatch.setattr("module.File.XLSX.openpyxl.Workbook", DummyBook)
+    monkeypatch.setattr("module.File.XLSX.DataManager.get", lambda: dummy_data_manager)
+
+    XLSX(config).write_to_path(
+        [
+            Item.from_dict(
+                {
+                    "src": "row1-src",
+                    "dst": "row1-dst",
+                    "row": 1,
+                    "file_type": Item.FileType.XLSX,
+                    "file_path": "excel/not-sheet.xlsx",
+                }
+            )
+        ]
+    )
+
+    output_file = (
+        Path(dummy_data_manager.get_translated_path()) / "excel" / "not-sheet.xlsx"
+    )
+    assert output_file.exists() is False

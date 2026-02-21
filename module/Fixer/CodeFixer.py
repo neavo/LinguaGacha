@@ -50,9 +50,7 @@ class CodeFixer:
 
         # 判断是否是有序子集
         flag, mismatchs = cls.is_ordered_subset(src_codes, dst_codes)
-        if flag:
-            if rule is None:
-                return dst
+        if flag and rule is not None:
             i: list[int] = [0]
             dst = rule.sub(lambda m: cls.repl(m, i, mismatchs), dst)
 
