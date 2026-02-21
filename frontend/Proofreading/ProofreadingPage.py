@@ -1095,7 +1095,7 @@ class ProofreadingPage(Base, QWidget):
         self.edit_panel.apply_saved_state()
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
-            self.table_widget.update_row_dst(row, item.get_dst())
+            self.table_widget.update_row_dst(row)
 
         # 结果检查可能较重，放到后台线程执行，避免 UI 卡顿。
         self.start_recheck_item(item)
@@ -1283,7 +1283,7 @@ class ProofreadingPage(Base, QWidget):
             self.recheck_item(item)
             row = self.table_widget.find_row_by_item(item)
             if row >= 0:
-                self.table_widget.update_row_dst(row, "")
+                self.table_widget.update_row_dst(row)
             if self.current_item is item:
                 warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
                 index = self.current_row_index + 1
@@ -1432,7 +1432,7 @@ class ProofreadingPage(Base, QWidget):
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             if success:
-                self.table_widget.update_row_dst(row, item.get_dst())
+                self.table_widget.update_row_dst(row)
             else:
                 # 失败也要刷新状态图标，否则 UI 可能仍显示旧状态。
                 warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
@@ -1593,7 +1593,7 @@ class ProofreadingPage(Base, QWidget):
         # 无论是否选中条目都需要同步（空态也应只读 + 禁用写入口）。
         self.edit_panel.set_readonly(self.is_readonly)
 
-    def showEvent(self, a0: QShowEvent | None) -> None:
+    def showEvent(self, a0: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(a0)
         self.check_engine_status()

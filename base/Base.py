@@ -97,8 +97,26 @@ class Base:
         super().__init__(*args, **kwargs)
 
     # 触发事件
-    def emit(self, event: Event, data: dict) -> None:
-        EventManager.get().emit(event, data)
+    def emit(self, signal: object, *args: object) -> bool:
+        """统一的 emit 入口。
+
+        说明：Qt 的 QObject 也定义了 emit()（旧式信号接口）。Base 作为 mixin
+        需要与 Qt 的多继承共存，因此这里提供一个兼容签名：
+
+        - 若 signal 是 Base.Event：走应用事件总线
+        - 否则：尝试委派给 Qt 的 QObject.emit
+        """
+
+        if isinstance(signal, Base.Event):
+            payload = args[0] if args else {}
+            payload_dict = payload if isinstance(payload, dict) else {}
+            EventManager.get().emit_event(signal, payload_dict)
+            return True
+
+        super_emit = getattr(super(), "emit", None)
+        if callable(super_emit):
+            return bool(super_emit(signal, *args))
+        return False
 
     # 订阅事件
     def subscribe(self, event: Event, hanlder: Callable) -> None:

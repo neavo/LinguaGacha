@@ -6,7 +6,9 @@ import threading
 import time
 from types import TracebackType
 
+from PySide6.QtCore import QMessageLogContext
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QtMsgType
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QIcon
@@ -26,10 +28,11 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 
 # QT 日志黑名单
-QT_LOG_BLACKLIST: tuple[str] = (
+QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
     "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
 )
+
 
 def excepthook(
     exc_type: type[BaseException],
@@ -48,6 +51,7 @@ def excepthook(
 
     os.kill(os.getpid(), signal.SIGTERM)
 
+
 def thread_excepthook(args: threading.ExceptHookArgs) -> None:
     """子线程未捕获异常处理。
 
@@ -61,7 +65,9 @@ def thread_excepthook(args: threading.ExceptHookArgs) -> None:
             getattr(args, "exc_value", None),
         )
     except Exception:
+        # 兜底：异常处理路径中再抛异常只会让排障更困难。
         pass
+
 
 def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
     """析构/GC 阶段不可引发异常处理。
@@ -77,13 +83,27 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
             getattr(unraisable, "exc_value", None),
         )
     except Exception:
+        # 兜底：异常处理路径中再抛异常只会让排障更困难。
         pass
 
-def qt_message_handler(type, context, msg):
+
+def qt_message_handler(
+    msg_type: QtMsgType,
+    context: QMessageLogContext,
+    msg: str,
+) -> None:
+    """Qt 日志处理器。
+
+    用于屏蔽已知的无害噪音日志，避免污染控制台输出。
+    """
+
+    del msg_type, context
+
     if any(v in msg for v in QT_LOG_BLACKLIST):
-        return None
+        pass
     else:
         print(msg)
+
 
 if __name__ == "__main__":
     # 捕获全局异常

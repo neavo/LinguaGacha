@@ -152,7 +152,7 @@ class ProofreadingTableWidget(TableView):
             # 行号列宽度仅与真实数据最大行号相关；占位行的序号为空。
             self.update_row_number_width(start_index + len(items))
 
-        self.scrollToTop()
+        # 保持滚动位置：数据源切换后，选中恢复/定位由 Page 层负责。
 
     def update_row_number_width(self, max_label_value: int) -> None:
         digits = len(str(max(1, max_label_value)))
@@ -181,10 +181,9 @@ class ProofreadingTableWidget(TableView):
 
         return self.table_model.find_row_by_item(item)
 
-    def update_row_dst(self, row: int, new_dst: str) -> None:
+    def update_row_dst(self, row: int) -> None:
         """更新指定行的译文（通过 dataChanged 精准刷新）。"""
 
-        del new_dst
         # DisplayRole 的 compact 缓存依赖 dst 内容；dst 变更时需精确失效。
         self.table_model.invalidate_display_cache_by_row(row, dst=True)
         index = self.table_model.index(row, self.COL_DST)
@@ -223,23 +222,16 @@ class ProofreadingTableWidget(TableView):
         if selection_model is None:
             return []
 
-        selection = selection_model.selection()
-        if selection.isEmpty():
+        # 避免 selectedIndexes()：全选时会返回 rows * cols 个 index，容易导致卡顿。
+        rows = {int(index.row()) for index in selection_model.selectedRows()}
+        if not rows:
             return []
 
-        # 避免 selectedIndexes()：全选时会返回 rows * cols 个 index，容易导致卡顿。
         items: list[Item] = []
-        seen_rows: set[int] = set()
-        for selection_range in selection:
-            top = int(selection_range.top())
-            bottom = int(selection_range.bottom())
-            for row in range(top, bottom + 1):
-                if row in seen_rows:
-                    continue
-                seen_rows.add(row)
-                item = self.get_item_at_row(row)
-                if item:
-                    items.append(item)
+        for row in sorted(rows):
+            item = self.get_item_at_row(row)
+            if item is not None:
+                items.append(item)
         return items
 
     def get_selected_row(self) -> int:
@@ -249,16 +241,8 @@ class ProofreadingTableWidget(TableView):
         if selection_model is None:
             return -1
 
-        selection = selection_model.selection()
-        if selection.isEmpty():
-            return -1
-
-        # selection 内部是 range 列表；取最小 top 即可，避免枚举所有行。
-        selected_row = None
-        for selection_range in selection:
-            top = int(selection_range.top())
-            selected_row = top if selected_row is None else min(selected_row, top)
-        return int(selected_row) if selected_row is not None else -1
+        rows = [int(index.row()) for index in selection_model.selectedRows()]
+        return min(rows) if rows else -1
 
     # ========== 右键菜单 ==========
     def contextMenuEvent(self, a0: QContextMenuEvent | None) -> None:  # noqa: N802
