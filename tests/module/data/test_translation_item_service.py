@@ -20,7 +20,7 @@ def build_service(db: object | None) -> TranslationItemService:
     return TranslationItemService(cast(ProjectSession, session))
 
 
-def test_get_items_for_translation_returns_cached_items_for_new_and_continue() -> None:
+def test_get_items_for_translation_returns_db_items_for_new_and_continue() -> None:
     db = SimpleNamespace(
         get_all_items=MagicMock(return_value=[{"id": 1, "src": "A", "dst": "甲"}])
     )

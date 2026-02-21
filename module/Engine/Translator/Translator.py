@@ -33,7 +33,7 @@ class Translator(Base):
     def __init__(self) -> None:
         super().__init__()
 
-        # 翻译过程中的 items 缓存（内存中维护，避免频繁读写数据库）
+        # 翻译过程中的 items 内存快照（仅用于本次任务，避免频繁读写数据库）
         self.items_cache: Optional[list[Item]] = None
 
         # 翻译进度额外数据
@@ -213,8 +213,8 @@ class Translator(Base):
         def task() -> None:
             resetting_toast_active = True
             try:
-                # 1. 重新解析资产以获取初始状态的条目
-                # 这里必须使用 RESET 模式来强制重新解析，而不是读缓存
+                # 1. 重新解析 assets 以获取初始状态的条目
+                # 这里必须使用 RESET 模式强制重解析 assets（避免沿用工程数据库里的既有条目/进度）
                 items = dm.get_items_for_translation(
                     self.config, Base.TranslationMode.RESET
                 )
@@ -228,7 +228,7 @@ class Translator(Base):
                 # 4. 设置项目状态为 NONE
                 dm.set_project_status(Base.ProjectStatus.NONE)
 
-                # 5. 更新本地缓存
+                # 5. 更新本地进度快照
                 self.extras = dm.get_translation_extras()
 
                 # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
@@ -305,20 +305,56 @@ class Translator(Base):
 
         # 复制一份以避免影响原始数据
         def start_export(event_name: str, task_data: dict) -> None:
-            # 如果正在翻译，从缓存获取数据以保证实时性；否则从数据库加载
-            if self.items_cache is not None:
-                items = self.copy_items()
-            else:
-                dm = DataManager.get()
-                if not dm.is_loaded():
+            toast_active = False
+            try:
+                self.emit(
+                    Base.Event.PROGRESS_TOAST_SHOW,
+                    {
+                        "message": Localizer.get().export_translation_progress,
+                        "indeterminate": True,
+                    },
+                )
+                toast_active = True
+
+                # 如果正在翻译，从内存快照获取数据以保证实时性；否则从数据库加载
+                if self.items_cache is not None:
+                    items = self.copy_items()
+                else:
+                    dm = DataManager.get()
+                    if not dm.is_loaded():
+                        return
+                    items = dm.get_all_items()
+
+                if not items:
                     return
-                items = dm.get_all_items()
 
-            if not items:
-                return
+                self.mtool_optimizer_postprocess(items)
+                self.check_and_wirte_result(items)
 
-            self.mtool_optimizer_postprocess(items)
-            self.check_and_wirte_result(items)
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                toast_active = False
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().task_success,
+                    },
+                )
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                if toast_active:
+                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                    toast_active = False
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+            finally:
+                if toast_active:
+                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
         threading.Thread(target=start_export, args=(event, data)).start()
 
@@ -380,8 +416,8 @@ class Translator(Base):
             TaskRequester.reset()
             PromptBuilder.reset()
 
-            # 1. 获取数据 (交给文件管理器，翻译器不再关心是读缓存还是重解析)
-            # 文件管理器会根据 mode 自动决定是从 DataStore 还是 Assets 加载
+            # 1. 获取数据：翻译器不再关心是从工程数据库加载，还是重解析 assets
+            # 具体数据来源由 TranslationItemService 按 mode 决定
             self.items_cache = dm.get_items_for_translation(self.config, mode)
 
             # 检查数据是否为空
@@ -566,7 +602,7 @@ class Translator(Base):
             # 重置内部状态（正常完成翻译）
             Engine.get().set_status(Base.TaskStatus.IDLE)
 
-            # 清理缓存
+            # 清理任务内存快照
             self.items_cache = None
 
             # 触发翻译停止完成的事件
@@ -575,13 +611,13 @@ class Translator(Base):
     # ========== 辅助方法 ==========
 
     def get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
-        """按状态统计缓存中的条目数量"""
+        """按状态统计任务内存快照中的条目数量。"""
         if self.items_cache is None:
             return 0
         return len([item for item in self.items_cache if item.get_status() == status])
 
     def copy_items(self) -> list[Item]:
-        """深拷贝缓存中的条目列表"""
+        """深拷贝任务内存快照中的条目列表。"""
         if self.items_cache is None:
             return []
         return [Item.from_dict(item.to_dict()) for item in self.items_cache]

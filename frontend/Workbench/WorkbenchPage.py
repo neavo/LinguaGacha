@@ -387,13 +387,6 @@ class WorkbenchPage(Base, ScrollArea):
             return
 
         self.emit(Base.Event.TRANSLATION_EXPORT, {})
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().task_success,
-            },
-        )
 
     def on_update_file(self, rel_path: str) -> None:
         if self.is_engine_busy():

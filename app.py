@@ -7,6 +7,7 @@ import time
 from types import TracebackType
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
@@ -23,8 +24,12 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Utils.FontPolicy import FontPolicy
 
+# QT 日志黑名单
+QT_LOG_BLACKLIST: tuple[str] = (
+    "Error calling Python override of QDialog::eventFilter()",
+    "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
+)
 
 def excepthook(
     exc_type: type[BaseException],
@@ -43,7 +48,6 @@ def excepthook(
 
     os.kill(os.getpid(), signal.SIGTERM)
 
-
 def thread_excepthook(args: threading.ExceptHookArgs) -> None:
     """子线程未捕获异常处理。
 
@@ -57,9 +61,7 @@ def thread_excepthook(args: threading.ExceptHookArgs) -> None:
             getattr(args, "exc_value", None),
         )
     except Exception:
-        # 兜底：异常处理路径中再抛异常只会让排障更困难
         pass
-
 
 def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
     """析构/GC 阶段不可引发异常处理。
@@ -75,15 +77,22 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
             getattr(unraisable, "exc_value", None),
         )
     except Exception:
-        # 兜底：异常处理路径中再抛异常只会让排障更困难
         pass
 
+def qt_message_handler(type, context, msg):
+    if any(v in msg for v in QT_LOG_BLACKLIST):
+        return None
+    else:
+        print(msg)
 
 if __name__ == "__main__":
     # 捕获全局异常
     sys.excepthook = excepthook
-    threading.excepthook = thread_excepthook
     sys.unraisablehook = unraisable_hook
+    threading.excepthook = thread_excepthook
+
+    # 捕获 QT 日志
+    qInstallMessageHandler(qt_message_handler)
 
     # 当运行在 Windows 系统且没有运行在新终端时，禁用快速编辑模式
     if os.name == "nt" and Console().color_system != "truecolor":
@@ -100,8 +109,7 @@ if __name__ == "__main__":
             # 设置新的控制台模式
             kernel32.SetConsoleMode(hStdin, mode)
 
-    # Qt6 默认启用 High DPI Scaling；无需再设置 AA_EnableHighDpiScaling（已弃用）。
-    # 适配非整数倍缩放 (Adapt non-integer scaling)
+    # 适配非整数倍缩放
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -182,9 +190,6 @@ if __name__ == "__main__":
     font = QFont(app.font())
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
-
-    # 全局字体规范化：将像素字号字体转换为合法 pointSizeF，消除 setPointSize(-1) warning。
-    FontPolicy.install(app)
 
     # 启动任务引擎
     Engine.get().run()

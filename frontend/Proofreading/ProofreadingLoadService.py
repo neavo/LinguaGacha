@@ -15,15 +15,12 @@ class ProofreadingLoadKind(StrEnum):
     OK = "ok"
     NO_PROJECT = "no_project"
     STALE = "stale"
-    NO_CACHE = "no_cache"
-    NO_REVIEW_ITEMS = "no_review_items"
     ERROR = "error"
 
 
 @dataclass
 class ProofreadingLoadResult:
     kind: ProofreadingLoadKind
-    toast_cycle: int
     lg_path: str
     config: Config | None = None
     items_all: list[Item] = field(default_factory=list)
@@ -46,9 +43,7 @@ class ProofreadingLoadService:
     """
 
     @staticmethod
-    def load_snapshot(
-        expected_lg_path: str, toast_cycle: int
-    ) -> ProofreadingLoadResult:
+    def load_snapshot(expected_lg_path: str) -> ProofreadingLoadResult:
         """加载校对页所需数据快照（同步逻辑）。
 
         为什么要传 expected_lg_path：用于在后台线程中识别“工程已切换/卸载”的竞态，
@@ -58,23 +53,22 @@ class ProofreadingLoadService:
         if not DataManager.get().is_loaded():
             return ProofreadingLoadResult(
                 kind=ProofreadingLoadKind.NO_PROJECT,
-                toast_cycle=toast_cycle,
                 lg_path=expected_lg_path,
             )
 
         if DataManager.get().get_lg_path() != expected_lg_path:
             return ProofreadingLoadResult(
                 kind=ProofreadingLoadKind.STALE,
-                toast_cycle=toast_cycle,
                 lg_path=expected_lg_path,
             )
 
         config = Config().load()
         items_all = DataManager.get().get_all_items()
         if not items_all:
+            # 工程创建/加载后可能仍没有任何条目（例如：空目录、无支持文件、解析失败等）。
+            # 这里不再区分“无缓存/无可校对项”等状态，统一回落为 OK + 空列表。
             return ProofreadingLoadResult(
-                kind=ProofreadingLoadKind.NO_CACHE,
-                toast_cycle=toast_cycle,
+                kind=ProofreadingLoadKind.OK,
                 lg_path=expected_lg_path,
                 config=config,
             )
@@ -82,8 +76,7 @@ class ProofreadingLoadService:
         items = ProofreadingDomain.build_review_items(items_all)
         if not items:
             return ProofreadingLoadResult(
-                kind=ProofreadingLoadKind.NO_REVIEW_ITEMS,
-                toast_cycle=toast_cycle,
+                kind=ProofreadingLoadKind.OK,
                 lg_path=expected_lg_path,
                 config=config,
                 items_all=items_all,
@@ -103,7 +96,6 @@ class ProofreadingLoadService:
 
         return ProofreadingLoadResult(
             kind=ProofreadingLoadKind.OK,
-            toast_cycle=toast_cycle,
             lg_path=expected_lg_path,
             config=config,
             items_all=items_all,
