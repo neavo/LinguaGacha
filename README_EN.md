@@ -83,6 +83,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260221 v0.56.1
+  - feat - Thinking level settings for more models
+    - `Gemini-3.1-Pro`
+    - `doubao-seed-2.0` series
+  - feat - Source language supports `All`
+  - Optimizations and improvements #426 #428 #429
+
 - 20260212 v0.56.0
   - feat - Workbench #415
     - You can `Add`, `Delete`, and `Update` source files here
@@ -94,9 +101,6 @@
   - feat - Support for Thinking Level settings for GPT-5 series models
   - feat - Removed local model detection and related features
   - perf - Degradation detection now covers three-character repetition types
-
-- 20260208 v0.54.1
-  - Performance and compatibility optimizations
 
 ### Development Guide 🛠️
 - This project is managed using [**uv**](https://github.com/astral-sh/uv)
