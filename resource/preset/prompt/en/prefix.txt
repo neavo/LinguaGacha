@@ -1,1 +1,1 @@
-Task goal is to translate {source_language} into {target_language}:
+The goal is to translate the text into {target_language}:

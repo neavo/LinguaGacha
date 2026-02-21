@@ -31,7 +31,7 @@ def reset_prompt_builder_cache(request: pytest.FixtureRequest) -> None:
 
 
 class TestPromptBuilder:
-    def test_build_main_renders_any_language_when_source_language_is_all(
+    def test_build_main_renders_target_language_when_source_language_is_all(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -40,9 +40,7 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder,
             "get_base",
-            classmethod(
-                lambda cls, language: "BASE {source_language}->{target_language}"
-            ),
+            classmethod(lambda cls, language: "BASE {target_language}"),
         )
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
@@ -62,8 +60,14 @@ class TestPromptBuilder:
             config=config, quality_snapshot=cast(Any, snapshot)
         ).build_main()
 
+        expected = (
+            "PREFIX\n"
+            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n"
+            + "SUFFIX"
+        )
+        assert result == expected
         assert "{source_language}" not in result
-        assert PromptBuilder.SOURCE_PLACEHOLDER_EN in result
+        assert "{target_language}" not in result
 
     def test_build_main_raises_when_target_language_is_all(
         self, monkeypatch: pytest.MonkeyPatch
@@ -74,9 +78,7 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder,
             "get_base",
-            classmethod(
-                lambda cls, language: "BASE {source_language}->{target_language}"
-            ),
+            classmethod(lambda cls, language: "BASE {target_language}"),
         )
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
@@ -122,7 +124,7 @@ class TestPromptBuilder:
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_zh_enable=True,
-            custom_prompt_zh="RULE: {source_language}->{target_language}",
+            custom_prompt_zh="RULE: {target_language}",
         )
 
         result = PromptBuilder(
@@ -130,7 +132,10 @@ class TestPromptBuilder:
             quality_snapshot=cast(Any, snapshot),
         ).build_main()
 
-        assert result == "PREFIX\nRULE: 日文->中文\nSUFFIX"
+        assert (
+            result
+            == f"PREFIX\nRULE: {BaseLanguage.get_name_zh(BaseLanguage.Enum.ZH)}\nSUFFIX"
+        )
 
     def test_build_glossary_respects_case_sensitive_flag(self) -> None:
         config = Config(target_language=BaseLanguage.Enum.ZH)
@@ -159,7 +164,7 @@ class TestPromptBuilder:
         assert builder.build_control_characters_samples("普通内容", ["<a>"]) == ""
 
         result = builder.build_control_characters_samples(
-            "控制字符必须在译文中原样保留", ["<a>", "<b>", "<a>", ""]
+            "控制符必须原样保留", ["<a>", "<b>", "<a>", ""]
         )
 
         assert result.startswith("控制字符示例：\n")
@@ -207,7 +212,7 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder,
             "build_main",
-            lambda self: "控制字符必须在译文中原样保留",
+            lambda self: "控制符必须原样保留",
         )
         config = Config(target_language=BaseLanguage.Enum.ZH)
         snapshot = FakeQualitySnapshot(
@@ -319,9 +324,7 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder,
             "get_base",
-            classmethod(
-                lambda cls, language: "BASE {source_language}->{target_language}"
-            ),
+            classmethod(lambda cls, language: "BASE {target_language}"),
         )
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
@@ -348,7 +351,7 @@ class TestPromptBuilder:
 
         expected = (
             "PREFIX\n"
-            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.JA)}->{BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n"
+            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n"
             + "GLOSSARY_SUFFIX"
         )
         assert result == expected
@@ -458,14 +461,133 @@ class TestPromptBuilder:
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_en_enable=True,
-            custom_prompt_en="RULE: {source_language}->{target_language}",
+            custom_prompt_en="RULE: {target_language}",
         )
 
         result = PromptBuilder(
             config=config, quality_snapshot=cast(Any, snapshot)
         ).build_main()
 
-        assert result == "PREFIX\nRULE: Japanese->English\nSUFFIX"
+        assert (
+            result
+            == f"PREFIX\nRULE: {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\nSUFFIX"
+        )
+
+    def test_build_main_uses_source_placeholder_for_zh_when_source_is_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_base",
+            classmethod(
+                lambda cls, language: "BASE {source_language}->{target_language}"
+            ),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+
+        config = Config(
+            source_language=BaseLanguage.ALL,
+            target_language=BaseLanguage.Enum.ZH,
+            auto_glossary_enable=False,
+        )
+        snapshot = FakeQualitySnapshot(
+            custom_prompt_zh_enable=False,
+            custom_prompt_en_enable=False,
+        )
+
+        result = PromptBuilder(
+            config=config,
+            quality_snapshot=cast(Any, snapshot),
+        ).build_main()
+
+        assert "BASE 原文->中文" in result
+
+    def test_build_main_raises_when_target_language_is_invalid(self) -> None:
+        builder = PromptBuilder(
+            config=Config(target_language=cast(Any, "INVALID")),
+            quality_snapshot=cast(Any, FakeQualitySnapshot()),
+        )
+
+        with pytest.raises(ValueError, match="invalid target_language"):
+            builder.build_main()
+
+    def test_build_main_falls_back_to_source_placeholder_when_source_name_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_base",
+            classmethod(
+                lambda cls, language: "BASE {source_language}->{target_language}"
+            ),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+        monkeypatch.setattr(
+            BaseLanguage,
+            "get_name_zh",
+            classmethod(
+                lambda cls, language: "" if language == BaseLanguage.Enum.JA else "中文"
+            ),
+        )
+
+        builder = PromptBuilder(
+            config=Config(
+                source_language=BaseLanguage.Enum.JA,
+                target_language=BaseLanguage.Enum.ZH,
+                auto_glossary_enable=False,
+            ),
+            quality_snapshot=cast(Any, FakeQualitySnapshot()),
+        )
+
+        assert "BASE 原文->中文" in builder.build_main()
+
+    def test_build_main_raises_when_target_language_name_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_base",
+            classmethod(
+                lambda cls, language: "BASE {source_language}->{target_language}"
+            ),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+        monkeypatch.setattr(
+            BaseLanguage,
+            "get_name_en",
+            classmethod(
+                lambda cls, language: (
+                    "Japanese" if language == BaseLanguage.Enum.JA else ""
+                )
+            ),
+        )
+
+        builder = PromptBuilder(
+            config=Config(
+                source_language=BaseLanguage.Enum.JA,
+                target_language=BaseLanguage.Enum.EN,
+                auto_glossary_enable=False,
+            ),
+            quality_snapshot=cast(Any, FakeQualitySnapshot()),
+        )
+
+        with pytest.raises(ValueError, match="invalid target_language"):
+            builder.build_main()
 
     def test_build_glossary_sakura_supports_case_sensitive_and_info_format(
         self,
@@ -489,6 +611,99 @@ class TestPromptBuilder:
 
         assert builder.build_glossary_sakura(["no match here"]) == ""
 
+    def test_build_glossary_returns_empty_when_case_insensitive_term_not_matched(
+        self,
+    ) -> None:
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(
+                Any,
+                FakeQualitySnapshot(
+                    glossary_entries=(
+                        {
+                            "src": "HP",
+                            "dst": "生命值",
+                            "case_sensitive": False,
+                        },
+                    )
+                ),
+            ),
+        )
+
+        assert builder.build_glossary(["no match"]) == ""
+
+    def test_build_glossary_sakura_returns_empty_when_case_sensitive_term_not_matched(
+        self,
+    ) -> None:
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(
+                Any,
+                FakeQualitySnapshot(
+                    glossary_entries=(
+                        {"src": "HP", "dst": "生命值", "case_sensitive": True},
+                    )
+                ),
+            ),
+        )
+
+        assert builder.build_glossary_sakura(["hp"]) == ""
+
+    def test_generate_prompt_skips_empty_glossary_and_empty_inputs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(PromptBuilder, "build_main", lambda self: "main")
+        monkeypatch.setattr(PromptBuilder, "build_glossary", lambda self, srcs: "")
+        monkeypatch.setattr(PromptBuilder, "build_inputs", lambda self, srcs: "")
+
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(Any, FakeQualitySnapshot(glossary_enable=True)),
+        )
+
+        messages, console_log = builder.generate_prompt(
+            srcs=["HP is low"],
+            samples=[],
+            precedings=[],
+        )
+
+        assert messages == [{"role": "user", "content": "main"}]
+        assert console_log == []
+
+    def test_generate_prompt_sakura_uses_default_content_when_glossary_enabled_but_empty(
+        self,
+    ) -> None:
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(
+                Any,
+                FakeQualitySnapshot(
+                    glossary_enable=True,
+                    glossary_entries=(
+                        {"src": "HP", "dst": "生命值", "case_sensitive": True},
+                    ),
+                ),
+            ),
+        )
+
+        messages, console_log = builder.generate_prompt_sakura(["hp が足りない"])
+
+        assert "根据以下术语表" not in messages[1]["content"]
+        assert messages[1]["content"].startswith("将下面的日文文本翻译成中文：")
+        assert console_log == []
+
+    def test_generate_prompt_sakura_skips_glossary_when_disabled(self) -> None:
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(Any, FakeQualitySnapshot(glossary_enable=False)),
+        )
+
+        messages, console_log = builder.generate_prompt_sakura(["HPが足りない"])
+
+        assert "根据以下术语表" not in messages[1]["content"]
+        assert messages[1]["content"].startswith("将下面的日文文本翻译成中文：")
+        assert console_log == []
+
     def test_build_control_characters_samples_uses_english_prefix(self) -> None:
         builder = PromptBuilder(
             config=Config(target_language=BaseLanguage.Enum.EN),
@@ -496,7 +711,7 @@ class TestPromptBuilder:
         )
 
         result = builder.build_control_characters_samples(
-            "code must be preserved in the translation as they are",
+            "control codes must be kept exactly as-is",
             ["<a>", "<a>", "<b>"],
         )
 
