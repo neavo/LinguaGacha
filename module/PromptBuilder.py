@@ -334,13 +334,14 @@ class PromptBuilder(Base):
         messages: list[dict[str, str]] = []
         console_log: list[str] = []
 
-        # 基础提示词
-        content = self.build_main()
+        # system=稳定指令（规则/格式约束）；user=本次任务动态数据。
+        instruction_text = self.build_main()
+        user_parts: list[str] = []
 
         # 参考上文
         result = self.build_preceding(precedings)
         if result != "":
-            content = content + "\n" + result
+            user_parts.append(result)
             console_log.append(result)
 
         # 术语表
@@ -352,28 +353,24 @@ class PromptBuilder(Base):
         if glossary_enable:
             result = self.build_glossary(srcs)
             if result != "":
-                content = content + "\n" + result
+                user_parts.append(result)
 
                 console_log.append(result)
 
         # 控制字符示例
-        result = self.build_control_characters_samples(content, samples)
+        # 触发条件只检查 system 指令文本，避免 user 数据误触发。
+        result = self.build_control_characters_samples(instruction_text, samples)
         if result != "":
-            content = content + "\n" + result
+            user_parts.append(result)
             console_log.append(result)
 
         # 输入
         result = self.build_inputs(srcs)
         if result != "":
-            content = content + "\n" + result
+            user_parts.append(result)
 
-        # 构建提示词列表
-        messages.append(
-            {
-                "role": "user",
-                "content": content,
-            }
-        )
+        messages.append({"role": "system", "content": instruction_text})
+        messages.append({"role": "user", "content": "\n".join(user_parts)})
 
         return messages, console_log
 
