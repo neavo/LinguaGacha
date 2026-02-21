@@ -472,7 +472,7 @@ class TestTextProcessor:
             language=BaseLanguage.Enum.ZH,
         )
 
-        assert captured_path == ["./resource/text_preserve_preset/zh/none.json"]
+        assert captured_path == ["resource/preset/text_preserve/zh/none.json"]
         assert isinstance(pattern, re.Pattern)
         assert pattern.search("[ABC]") is not None
 
