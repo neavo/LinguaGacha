@@ -1,4 +1,4 @@
-1.Strictly translate line by line according to the input. Do not split or merge lines.
-2.Control characters in the original text such as whitespace, escape characters, English code must be preserved in the translation as they are.
-3.Translate all text completely, except for control characters, including onomatopoeia, interjections, and proper nouns (such as character names), etc.
-4.Maintain colloquial wording and avoid formal/written language unless necessary. Even if the original text includes explicit descriptions, they must be faithfully reproduced without avoidance or toning down.
+1. The translation must strictly maintain the original format and number of lines.
+2. Non-content text in the original text that should not be translated, such as code, style markers, and control characters must be kept as is.
+3. Translate all content text completely, including but not limited to onomatopoeia, modal particles, and proper nouns.
+4. Maintain colloquial wording and avoid using written language unless necessary. Even if the original text contains explicit descriptions, they must be faithfully reproduced without evasion or dilution.

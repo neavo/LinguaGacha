@@ -112,9 +112,7 @@ class PromptBuilder(Base):
         if self.config.target_language == BaseLanguage.Enum.ZH:
             prompt_language = BaseLanguage.Enum.ZH
             source_placeholder = __class__.SOURCE_PLACEHOLDER_ZH
-            if self.config.source_language == BaseLanguage.ALL:
-                source_language = source_placeholder
-            elif self.config.source_language in languages:
+            if self.config.source_language in languages:
                 source_language = BaseLanguage.get_name_zh(self.config.source_language)
             else:
                 source_language = source_placeholder
@@ -122,15 +120,13 @@ class PromptBuilder(Base):
         else:
             prompt_language = BaseLanguage.Enum.EN
             source_placeholder = __class__.SOURCE_PLACEHOLDER_EN
-            if self.config.source_language == BaseLanguage.ALL:
-                source_language = source_placeholder
-            elif self.config.source_language in languages:
+            if self.config.source_language in languages:
                 source_language = BaseLanguage.get_name_en(self.config.source_language)
             else:
                 source_language = source_placeholder
             target_language = BaseLanguage.get_name_en(self.config.target_language)
 
-        # 兜底：保证替换文本非空。
+        # 兜底：保证替换文本非空
         if not source_language:
             source_language = source_placeholder
         if not target_language:
@@ -140,7 +136,7 @@ class PromptBuilder(Base):
             # 前缀
             prefix = __class__.get_prefix(prompt_language)
 
-            # 基本（从工程读取自定义提示词）
+            # 主体
             if (
                 prompt_language == BaseLanguage.Enum.ZH
                 and self.get_custom_prompt_enable(BaseLanguage.Enum.ZH)
@@ -297,10 +293,15 @@ class PromptBuilder(Base):
         if not unique_samples:
             return ""
 
-        if (
-            "控制字符必须在译文中原样保留" not in main
-            and "code must be preserved in the translation as they are" not in main
-        ):
+        # 只有在提示词中明确包含 控制符 时才添加相应示例
+        main_lower = main.lower()
+        has_instruction = (
+            "控制符" in main
+            or "控制字符" in main
+            or "control code" in main_lower
+            or "control character" in main_lower
+        )
+        if not has_instruction:
             return ""
 
         # 判断提示词语言

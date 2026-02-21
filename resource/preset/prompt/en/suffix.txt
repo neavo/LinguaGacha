@@ -1,4 +1,4 @@
-Output the translation result in the code block using JSONLINE, without extra explanation or clarification:
+Use JSONLINE to output translation results, without extra explanation or clarification:
 ```jsonline
 {"<INDEX>":"<Translated Text>"}
 ```
