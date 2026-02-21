@@ -133,13 +133,31 @@ def test_open_db_and_close_db_delegate_to_database() -> None:
     db.close.assert_called_once()
 
 
-def test_on_translation_activity_clears_item_cache() -> None:
+@pytest.mark.parametrize(
+    ("event", "expect_emit"),
+    [
+        (Base.Event.TRANSLATION_RUN, False),
+        (Base.Event.TRANSLATION_DONE, True),
+        (Base.Event.TRANSLATION_RESET, True),
+        (Base.Event.TRANSLATION_RESET_FAILED, True),
+    ],
+)
+def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
+    event: Base.Event, expect_emit: bool
+) -> None:
     dm = build_manager()
     dm.item_service.clear_item_cache = MagicMock()
 
-    dm.on_translation_activity(Base.Event.TRANSLATION_RUN, {})
+    dm.on_translation_activity(event, {})
 
     dm.item_service.clear_item_cache.assert_called_once()
+    if expect_emit:
+        dm.emit.assert_called_once_with(
+            Base.Event.PROJECT_FILE_UPDATE,
+            {"reason": event.value},
+        )
+    else:
+        dm.emit.assert_not_called()
 
 
 def test_emit_quality_rule_update_builds_payload() -> None:
