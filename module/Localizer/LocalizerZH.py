@@ -462,7 +462,7 @@ class LocalizerZH:
     workbench_msg_file_exists: str = "文件已存在，请使用更新功能"
     workbench_msg_unsupported_format: str = "不支持的文件格式"
     workbench_msg_update_format_mismatch: str = "文件格式不一致，无法更新"
-    workbench_msg_update_confirm: str = "确定要用所选文件更新当前文件吗 …?"
+    workbench_msg_update_confirm: str = "使用所选文件更新当前文件，当前的翻译数据将尽可能的保留"
     workbench_msg_update_name_conflict: str = "{NAME} 已存在 …"
     workbench_fmt_subtitle_file: str = "字幕文件"
     workbench_fmt_text_file: str = "纯文本"

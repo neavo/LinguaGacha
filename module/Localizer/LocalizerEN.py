@@ -462,7 +462,7 @@ class LocalizerEN(LocalizerZH):
     workbench_msg_file_exists: str = "File already exists, please use Update"
     workbench_msg_unsupported_format: str = "Unsupported file format"
     workbench_msg_update_format_mismatch: str = "File format mismatch, cannot update"
-    workbench_msg_update_confirm: str = "Update the current file with the selected file …?"
+    workbench_msg_update_confirm: str = "Update the current file with the selected file, current data will be preserved as possible"
     workbench_msg_update_name_conflict: str = "{NAME} already exists …"
     workbench_fmt_subtitle_file: str = "Subtitle File"
     workbench_fmt_text_file: str = "Plain Text"
