@@ -15,8 +15,6 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
-from qfluentwidgets import ToolTipFilter
-from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -33,7 +31,6 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
-from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
@@ -41,8 +38,6 @@ from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
 # ==================== 图标常量 ====================
-
-ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_INPUT  # 命令栏：导出译文
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：打开搜索栏
 ICON_ACTION_FILTER: BaseIcon = BaseIcon.FUNNEL  # 命令栏：打开筛选面板
 
@@ -81,13 +76,15 @@ class ProofreadingPage(Base, QWidget):
     match_indices_built = Signal(int, object)  # (token, payload)
     translate_done = Signal(object, bool)  # 翻译完成信号
     save_done = Signal(bool)  # 保存完成信号
-    export_done = Signal(bool, str)  # 导出完成信号 (success, error_msg)
     item_saved = Signal(object, bool)  # 单条保存完成信号
     item_rechecked = Signal(object, list, object)  # (item, warnings, failed_terms)
     progress_updated = Signal(str, int, int)  # 进度更新信号 (content, current, total)
     progress_finished = Signal()  # 进度完成信号
+    # 这里必须用 object：warning_map 的 key 来自 id(item)（int），
+    # 若声明为 dict，PySide6 会尝试把 dict 转为 C++ QVariantMap（要求 key 可转为 QString），
+    # 从而触发 Shiboken::Conversions::_pythonToCppCopy 的转换失败日志。
     quality_rules_refreshed = Signal(
-        object, dict, object
+        object, object, object
     )  # (checker, warning_map, failed_terms_by_item_key)
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -121,7 +118,6 @@ class ProofreadingPage(Base, QWidget):
         self.block_selection_change: bool = False
         self.pending_action: Callable[[], None] | None = None
         self.pending_revert: Callable[[], None] | None = None
-        self.pending_export: bool = False
 
         # 自动载入/同步调度
         self.data_stale: bool = True
@@ -130,9 +126,6 @@ class ProofreadingPage(Base, QWidget):
         self.reload_token: int = 0
         self.loading_token: int = 0
         self.data_version: int = 0
-        self.toast_cycle: int = 0
-        self.no_cache_toast_cycle: int = -1
-        self.no_review_items_toast_cycle: int = -1
         self.reload_timer: QTimer = QTimer(self)
         self.reload_timer.setSingleShot(True)
         self.reload_timer.timeout.connect(self.try_reload)
@@ -180,7 +173,6 @@ class ProofreadingPage(Base, QWidget):
         self.filter_done.connect(self.on_filter_done_ui)
         self.translate_done.connect(self.on_translate_done_ui)
         self.save_done.connect(self.on_save_done_ui)
-        self.export_done.connect(self.on_export_done_ui)
         self.item_saved.connect(self.on_item_saved_ui)
         self.item_rechecked.connect(self.on_item_rechecked_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
@@ -204,7 +196,7 @@ class ProofreadingPage(Base, QWidget):
     def on_project_prefilter_updated(self, event: Base.Event, event_data: dict) -> None:
         del event
         del event_data
-        self.mark_data_stale(new_cycle=True)
+        self.mark_data_stale()
         self.schedule_reload("prefilter_updated")
 
     def on_project_file_update(self, event: Base.Event, event_data: dict) -> None:
@@ -220,7 +212,7 @@ class ProofreadingPage(Base, QWidget):
             return
         # 文件内容/路径变更会影响 items 快照与筛选范围；即便页面不可见也要标记 stale，
         # 这样用户切回校对页时 showEvent 才会触发自动 reload。
-        self.mark_data_stale(new_cycle=True)
+        self.mark_data_stale()
         self.schedule_reload("project_file_update")
 
     def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
@@ -347,20 +339,6 @@ class ProofreadingPage(Base, QWidget):
         self.command_bar_card.set_minimum_width(640)
 
         # 功能按钮组
-        self.btn_export = self.command_bar_card.add_action(
-            Action(
-                ICON_ACTION_EXPORT,
-                Localizer.get().export_translation,
-                triggered=self.on_export_clicked,
-            )
-        )
-        self.btn_export.installEventFilter(
-            ToolTipFilter(self.btn_export, 300, ToolTipPosition.TOP)
-        )
-        self.btn_export.setToolTip(Localizer.get().proofreading_page_export_tooltip)
-        self.btn_export.setEnabled(False)
-
-        self.command_bar_card.add_separator()
         self.btn_search = self.command_bar_card.add_action(
             Action(
                 ICON_ACTION_SEARCH,
@@ -384,14 +362,8 @@ class ProofreadingPage(Base, QWidget):
 
     # ========== 自动载入 / 同步 ==========
 
-    def mark_data_stale(self, new_cycle: bool = True) -> None:
+    def mark_data_stale(self) -> None:
         self.data_stale = True
-        if not new_cycle:
-            return
-
-        self.toast_cycle += 1
-        self.no_cache_toast_cycle = -1
-        self.no_review_items_toast_cycle = -1
 
     def schedule_reload(self, reason: str) -> None:
         if not self.isVisible():
@@ -430,7 +402,6 @@ class ProofreadingPage(Base, QWidget):
         self.reload_token += 1
         token: int = self.reload_token
         self.loading_token = token
-        toast_cycle = self.toast_cycle
         lg_path = DataManager.get().get_lg_path() or ""
 
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
@@ -438,15 +409,14 @@ class ProofreadingPage(Base, QWidget):
         def task() -> None:
             try:
                 # 加载流程下沉到 LoadService，避免 Page 内联大量 dict payload 与分支逻辑。
-                result = ProofreadingLoadService.load_snapshot(lg_path, toast_cycle)
+                result = ProofreadingLoadService.load_snapshot(lg_path)
                 self.items_loaded.emit(token, result)
             except Exception as e:
-                LogManager.get().error(Localizer.get().proofreading_page_load_failed, e)
+                LogManager.get().error(Localizer.get().alert_no_data, e)
                 self.items_loaded.emit(
                     token,
                     ProofreadingLoadResult(
                         kind=ProofreadingLoadKind.ERROR,
-                        toast_cycle=toast_cycle,
                         lg_path=lg_path,
                     ),
                 )
@@ -462,7 +432,6 @@ class ProofreadingPage(Base, QWidget):
         self.indeterminate_hide()
 
         kind = payload.kind
-        toast_cycle = payload.toast_cycle
 
         if kind == ProofreadingLoadKind.STALE:
             # 工程已切换/卸载，丢弃旧线程结果。
@@ -474,7 +443,7 @@ class ProofreadingPage(Base, QWidget):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().proofreading_page_load_failed,
+                    "message": Localizer.get().alert_no_data,
                 },
             )
             return
@@ -488,32 +457,6 @@ class ProofreadingPage(Base, QWidget):
         self.failed_terms_by_item_key = dict(payload.failed_terms_by_item_key)
         self.filter_options = payload.filter_options
         self.data_version = token
-
-        # Toast 仅提示一次（同一次 stale 周期）。
-        if (
-            kind == ProofreadingLoadKind.NO_CACHE
-            and self.no_cache_toast_cycle != toast_cycle
-        ):
-            self.no_cache_toast_cycle = toast_cycle
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().proofreading_page_no_cache,
-                },
-            )
-        if (
-            kind == ProofreadingLoadKind.NO_REVIEW_ITEMS
-            and self.no_review_items_toast_cycle != toast_cycle
-        ):
-            self.no_review_items_toast_cycle = toast_cycle
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().proofreading_page_no_review_items,
-                },
-            )
 
         self.edit_panel.set_result_checker(self.result_checker)
 
@@ -536,13 +479,6 @@ class ProofreadingPage(Base, QWidget):
     def on_filter_clicked(self) -> None:
         """筛选按钮点击"""
         if not self.items or not self.result_checker:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().proofreading_page_no_cache,
-                },
-            )
             return
 
         checker = self.result_checker
@@ -1525,7 +1461,7 @@ class ProofreadingPage(Base, QWidget):
         self.save_data()
 
     def save_data(self) -> None:
-        """保存数据到缓存文件（异步执行）"""
+        """保存数据到工程数据库（异步执行）。"""
         if self.is_readonly or not self.config or not self.items_all:
             self.indeterminate_hide()
             return
@@ -1575,96 +1511,22 @@ class ProofreadingPage(Base, QWidget):
         extras["line"] = translated_count
         dm.set_translation_extras(extras)
 
-    # ========== 导出功能 ==========
-    def on_export_clicked(self) -> None:
-        """导出按钮点击"""
-        # 弹框让用户确认
-        message_box = MessageBox(
-            Localizer.get().confirm,
-            Localizer.get().export_translation_confirm,
-            self.main_window,
-        )
-        message_box.yesButton.setText(Localizer.get().confirm)
-        message_box.cancelButton.setText(Localizer.get().cancel)
-
-        if not message_box.exec():
-            return
-
-        # 先保存数据再导出，保证译文文件与缓存数据一致
-        self.pending_export = True
-        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
-        self.save_data()
-
     def on_save_done_ui(self, success: bool) -> None:
         """保存完成的 UI 更新（主线程）"""
-        # 检查是否有待处理的导出操作
-        pending_export = self.pending_export
-        self.pending_export = False
-
-        if pending_export:
-            # 导出流程中的保存
-            if success:
-                self.indeterminate_show(
-                    Localizer.get().proofreading_page_indeterminate_exporting
-                )
-                self.export_data()  # 异步执行，完成后由 export_done 信号触发隐藏
-            else:
-                self.indeterminate_hide()
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().proofreading_page_save_failed,
-                    },
-                )
-        else:
-            # 普通保存流程：成功时触发项目状态检查，失败时弹出错误提示
-            self.indeterminate_hide()
-            if success:
-                # 通知翻译页更新按钮状态
-                self.emit(Base.Event.PROJECT_CHECK_RUN, {})
-            else:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().proofreading_page_save_failed,
-                    },
-                )
-
-    def export_data(self) -> None:
-        """导出数据（异步执行）"""
-        if not self.config or not self.items_all:
-            self.export_done.emit(False, "")
+        # 普通保存流程：成功时触发项目状态检查，失败时弹出错误提示
+        self.indeterminate_hide()
+        if success:
+            # 通知翻译页更新按钮状态
+            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
             return
 
-        # 捕获当前状态的引用，避免子线程中访问 self 时产生竞态
-        config = self.config
-        items_all = self.items_all
-
-        def task() -> None:
-            try:
-                FileManager(config).write_to_path(items_all)
-                self.export_done.emit(True, "")
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                self.export_done.emit(False, "")
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def on_export_done_ui(self, success: bool, error_msg: str) -> None:
-        """导出完成的 UI 更新（主线程）"""
-        # 成功时直接隐藏进度条，失败时弹出错误提示
-        self.indeterminate_hide()
-        if not success:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": error_msg
-                    or Localizer.get().proofreading_page_export_failed,
-                },
-            )
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.ERROR,
+                "message": Localizer.get().proofreading_page_save_failed,
+            },
+        )
 
     # ========== 只读模式控制 ==========
     def on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
@@ -1676,7 +1538,7 @@ class ProofreadingPage(Base, QWidget):
             self.reload_pending = True
         if event == Base.Event.TRANSLATION_DONE:
             # 翻译完成视为一次新的数据周期。
-            self.mark_data_stale(new_cycle=True)
+            self.mark_data_stale()
 
         self.check_engine_status()
 
@@ -1718,13 +1580,10 @@ class ProofreadingPage(Base, QWidget):
             self.schedule_reload("engine_idle")
 
         # 2. 更新按钮状态
-        has_items_all = bool(self.items_all)
         has_items = bool(self.items)
 
         # 其他按钮只有在不繁忙且有数据时启用
-        can_operate_export = not is_busy and has_items_all
         can_operate_review = not is_busy and has_items
-        self.btn_export.setEnabled(can_operate_export)
         self.btn_search.setEnabled(can_operate_review)
         self.btn_filter.setEnabled(can_operate_review)
 
@@ -1785,7 +1644,7 @@ class ProofreadingPage(Base, QWidget):
     def on_translation_reset(self, event: Base.Event, data: dict) -> None:
         """响应翻译重置事件"""
         self.clear_all_data()
-        self.mark_data_stale(new_cycle=True)
+        self.mark_data_stale()
         self.schedule_reload("translation_reset")
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
@@ -1794,7 +1653,7 @@ class ProofreadingPage(Base, QWidget):
         del data
         self.clear_all_data()
         self.config = None
-        self.mark_data_stale(new_cycle=True)
+        self.mark_data_stale()
         self.schedule_reload("project_loaded")
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
@@ -1835,7 +1694,6 @@ class ProofreadingPage(Base, QWidget):
             self.filter_dialog.release_snapshot()
 
         # 重置按钮状态
-        self.btn_export.setEnabled(False)
         self.btn_search.setEnabled(False)
         self.btn_filter.setEnabled(False)
 

@@ -87,8 +87,8 @@ class Base:
 
     # 翻译模式 (用户意图)
     class TranslationMode(StrEnum):
-        NEW = "NEW"  # 新任务 (自动判定读缓存或重解析)
-        CONTINUE = "CONTINUE"  # 继续翻译 (读缓存)
+        NEW = "NEW"  # 新任务：从工程数据库加载条目，并初始化全新进度
+        CONTINUE = "CONTINUE"  # 继续翻译：从工程数据库加载条目，并恢复既有进度
         RESET = "RESET"  # 重置任务 (强制重解析 Assets)
 
     # 构造函数

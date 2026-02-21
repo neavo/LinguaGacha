@@ -5,16 +5,13 @@ from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTime
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import CaptionLabel
 from qfluentwidgets import FlowLayout
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import IndeterminateProgressRing
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import ProgressRing
@@ -33,12 +30,11 @@ from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
 
 # ==================== 图标常量 ====================
-# 统一收口本页使用到的图标，方便按语义核对（开始/停止/导出/重置等）。
+# 统一收口本页使用到的图标，方便按语义核对（开始/停止/重置等）。
 
 ICON_ACTION_START: BaseIcon = BaseIcon.PLAY  # 命令栏：开始翻译
 ICON_ACTION_CONTINUE: BaseIcon = BaseIcon.ROTATE_CW  # 命令栏：继续/重新启动翻译
 ICON_ACTION_STOP: BaseIcon = BaseIcon.CIRCLE_STOP  # 命令栏：停止翻译
-ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_INPUT  # 命令栏：导出翻译结果
 ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置
 ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.PAINTBRUSH  # 更多菜单：重置失败项
 ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置全部
@@ -64,6 +60,8 @@ class TranslationPage(Base, QWidget):
         self.data = {}
         self.timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
         self.is_prefiltering = False
+        # 仅用于避免误关其他模块触发的进度 Toast。
+        self.is_stopping_toast_active: bool = False
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -138,7 +136,13 @@ class TranslationPage(Base, QWidget):
             self.action_start.setIcon(ICON_ACTION_START)
 
         if status == Base.TaskStatus.IDLE:
-            self.indeterminate_hide()
+            if self.is_stopping_toast_active and event in (
+                Base.Event.TRANSLATION_DONE,
+                Base.Event.TRANSLATION_RESET,
+                Base.Event.PROJECT_UNLOADED,
+            ):
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.is_stopping_toast_active = False
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(True)
@@ -268,7 +272,7 @@ class TranslationPage(Base, QWidget):
         if display_mode == self.TokenDisplayMode.OUTPUT:
             token = self.data.get("total_output_tokens", 0)
         else:
-            # 兼容旧缓存：若无 total_input_tokens 字段，用 total_tokens - total_output_tokens 计算
+            # 兼容旧版本进度字段：若无 total_input_tokens，则用 total_tokens - total_output_tokens 估算
             token = self.data.get("total_input_tokens", 0)
             if token == 0:
                 token = self.data.get("total_tokens", 0) - self.data.get(
@@ -382,8 +386,7 @@ class TranslationPage(Base, QWidget):
 
         self.container.addWidget(self.flow_container, 1)
 
-        # 底部
-
+    # 底部
     def add_widget_foot(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
@@ -395,25 +398,11 @@ class TranslationPage(Base, QWidget):
         self.add_command_bar_action_start(self.command_bar_card, config, window)
         self.add_command_bar_action_stop(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_export(self.command_bar_card, config, window)
-        self.command_bar_card.add_separator()
         self.add_command_bar_action_reset(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_timer(self.command_bar_card, config, window)
 
-        # 添加信息条
-        self.indeterminate = IndeterminateProgressRing()
-        self.indeterminate.setFixedSize(16, 16)
-        self.indeterminate.setStrokeWidth(3)
-        self.indeterminate.hide()
-        self.info_label = CaptionLabel("", self)
-        self.info_label.setTextColor(QColor(96, 96, 96), QColor(160, 160, 160))
-        self.info_label.hide()
-
         self.command_bar_card.add_stretch(1)
-        self.command_bar_card.add_widget(self.info_label)
-        self.command_bar_card.add_spacing(4)
-        self.command_bar_card.add_widget(self.indeterminate)
 
     # 累计时间
     def add_time_card(
@@ -657,9 +646,14 @@ class TranslationPage(Base, QWidget):
 
             # 确认则触发停止翻译事件
             if message_box.exec():
-                self.indeterminate_show(
-                    Localizer.get().translation_page_indeterminate_stopping
+                self.emit(
+                    Base.Event.PROGRESS_TOAST_SHOW,
+                    {
+                        "message": Localizer.get().translation_page_indeterminate_stopping,
+                        "indeterminate": True,
+                    },
                 )
+                self.is_stopping_toast_active = True
                 self.emit(Base.Event.TRANSLATION_REQUIRE_STOP, {})
 
         self.action_stop = parent.add_action(
@@ -671,65 +665,6 @@ class TranslationPage(Base, QWidget):
             ),
         )
         self.action_stop.setEnabled(False)
-
-    # 导出已完成的内容
-    def add_command_bar_action_export(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
-    ) -> None:
-        def triggered() -> None:
-            # 校验是否有进度
-            has_progress = (
-                self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
-            )
-
-            if not has_progress:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().translation_page_export_no_progress,
-                    },
-                )
-                return
-
-            # 弹框让用户确认
-            message_box = MessageBox(
-                Localizer.get().confirm,
-                Localizer.get().export_translation_confirm,
-                window,
-            )
-            message_box.yesButton.setText(Localizer.get().confirm)
-            message_box.cancelButton.setText(Localizer.get().cancel)
-
-            if not message_box.exec():
-                return
-
-            self.do_export()
-
-        self.action_export = parent.add_action(
-            Action(
-                ICON_ACTION_EXPORT,
-                Localizer.get().export_translation,
-                parent,
-                triggered=triggered,
-            ),
-        )
-        self.action_export.installEventFilter(
-            ToolTipFilter(self.action_export, 300, ToolTipPosition.TOP)
-        )
-        self.action_export.setToolTip(Localizer.get().translation_page_export_tooltip)
-        self.action_export.setEnabled(True)  # 导出按钮始终启用，逻辑在点击时校验
-
-    def do_export(self) -> None:
-        """执行导出操作"""
-        self.emit(Base.Event.TRANSLATION_EXPORT, {})
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().task_success,
-            },
-        )
 
     # 重置翻译进度
     def add_command_bar_action_reset(
@@ -857,18 +792,6 @@ class TranslationPage(Base, QWidget):
         timer.setInterval(interval * 1000)
         timer.timeout.connect(timer_interval)
         timer.start()
-
-    # 显示信息条
-    def indeterminate_show(self, msg: str) -> None:
-        self.indeterminate.show()
-        self.info_label.show()
-        self.info_label.setText(msg)
-
-    # 隐藏信息条
-    def indeterminate_hide(self) -> None:
-        self.indeterminate.hide()
-        self.info_label.hide()
-        self.info_label.setText("")
 
     def clear_ui_cards(self) -> None:
         """清理所有 UI 卡片和进度显示"""
