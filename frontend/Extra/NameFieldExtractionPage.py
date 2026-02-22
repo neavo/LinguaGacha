@@ -213,13 +213,13 @@ class NameFieldExtractionPage(Base, QWidget):
         def next_clicked(widget: SearchCard) -> None:
             widget.run_table_search(reverse=False)
 
-        def search_mode_changed(widget: SearchCard) -> None:
+        def search_options_changed(widget: SearchCard) -> None:
             widget.apply_table_search()
 
         self.search_card.on_prev_clicked(prev_clicked)
         self.search_card.on_next_clicked(next_clicked)
         self.search_card.on_search_triggered(next_clicked)
-        self.search_card.on_search_mode_changed(search_mode_changed)
+        self.search_card.on_search_options_changed(search_options_changed)
 
         def notify(level: str, message: str) -> None:
             type_map = {

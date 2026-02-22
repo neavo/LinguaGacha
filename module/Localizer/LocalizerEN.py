@@ -68,6 +68,8 @@ class LocalizerEN(LocalizerZH):
     alert_file_already_exists: str = "File already exists …"
     alert_preset_already_exists: str = "Preset already exists, confirm overwrite …?"
     alert_delete_preset: str = "Confirm to delete {NAME} …?"
+    search_prev_btn: str = "Previous"
+    search_next_btn: str = "Next"
     search_prev_match: str = "Previous match"
     search_next_match: str = "Next match"
     search_regex_on: str = (
@@ -77,16 +79,6 @@ class LocalizerEN(LocalizerZH):
     )
     search_regex_off: str = (
         "Regex Mode"
-        "\n"
-        "Current Status: Disabled"
-    )
-    search_filter_on: str = (
-        "Filter Mode"
-        "\n"
-        "Current Status: Enabled"
-    )
-    search_filter_off: str = (
-        "Filter Mode"
         "\n"
         "Current Status: Disabled"
     )
@@ -392,6 +384,13 @@ class LocalizerEN(LocalizerZH):
 
     # 校对
     proofreading_page_filter: str = "Filter"
+    proofreading_page_replace_action: str = "Replace"
+    proofreading_page_replace_with_placeholder: str = "Replace with …"
+    proofreading_page_replace_btn: str = "Replace"
+    proofreading_page_replace_all_btn: str = "Replace All"
+    proofreading_page_replace_all_confirm: str = "Confirm to replace all …?"
+    proofreading_page_replace_done: str = "Replace complete: changed {N} items"
+    proofreading_page_replace_no_change: str = "No content to replace"
     proofreading_page_copy_src_done: str = "Source copied to clipboard"
     proofreading_page_copy_dst_done: str = "Translation copied to clipboard"
     proofreading_page_col_status: str = "Status"

@@ -217,7 +217,9 @@ class QualityRulePageBase(Base, QWidget):
         self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
         self.search_card.on_next_clicked(lambda w: self.on_search_next_clicked())
         self.search_card.on_search_triggered(lambda w: self.on_search_triggered())
-        self.search_card.on_search_mode_changed(lambda w: self.on_search_mode_changed())
+        self.search_card.on_search_options_changed(
+            lambda w: self.on_search_options_changed()
+        )
 
     def setup_table_style(self) -> None:
         self.ui_font = self.table.ui_font
@@ -828,7 +830,7 @@ class QualityRulePageBase(Base, QWidget):
     def on_search_triggered(self) -> None:
         self.run_with_unsaved_guard(lambda: self.search_card.run_table_search(False))
 
-    def on_search_mode_changed(self) -> None:
+    def on_search_options_changed(self) -> None:
         self.run_with_unsaved_guard(lambda: self.search_card.apply_table_search())
 
     # ==================== 命令栏 ====================
