@@ -327,6 +327,8 @@ def test_generate_sakura_args_uses_correct_token_key_and_stream_options() -> Non
     [
         ("gpt-5", ThinkingLevel.OFF, {"reasoning_effort": "none"}),
         ("gpt-5", ThinkingLevel.LOW, {"reasoning_effort": "low"}),
+        ("qwen3.5", ThinkingLevel.OFF, {"enable_thinking": False}),
+        ("qwen3.5", ThinkingLevel.HIGH, {"enable_thinking": True}),
         ("doubao-seed-2-0", ThinkingLevel.OFF, {"reasoning_effort": "minimal"}),
         ("doubao-seed-2-0", ThinkingLevel.HIGH, {"reasoning_effort": "high"}),
         ("glm-4", ThinkingLevel.OFF, {"thinking": {"type": "disabled"}}),
