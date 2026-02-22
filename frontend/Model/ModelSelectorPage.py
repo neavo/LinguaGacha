@@ -120,9 +120,6 @@ class ModelSelectorPage(Base, MessageBoxBase):
         self.model_list.hide()
         self.viewLayout.addWidget(self.model_list)
 
-        # 延迟加载模型列表，让 UI 先渲染
-        QTimer.singleShot(50, self.start_loading)
-
     def start_loading(self) -> None:
         """在后台线程中加载模型列表"""
         model_data: dict = Config().load().get_model(self.model_id)
