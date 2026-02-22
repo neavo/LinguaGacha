@@ -190,6 +190,7 @@ class ProofreadingDomain:
         search_keyword: str = "",
         search_is_regex: bool = False,
         enable_search_filter: bool = False,
+        search_in_dst_only: bool = False,
         enable_glossary_term_filter: bool = True,
     ) -> list[Item]:
         resolved = cls.normalize_filter_options(options, items)
@@ -258,14 +259,12 @@ class ProofreadingDomain:
             if enable_search_filter and search_keyword:
                 src = item.get_src()
                 dst = item.get_dst()
+                search_texts = (dst,) if search_in_dst_only else (src, dst)
                 if search_pattern is not None:
-                    if not (search_pattern.search(src) or search_pattern.search(dst)):
+                    if not any(search_pattern.search(text) for text in search_texts):
                         continue
                 elif keyword_lower:
-                    if (
-                        keyword_lower not in src.lower()
-                        and keyword_lower not in dst.lower()
-                    ):
+                    if not any(keyword_lower in text.lower() for text in search_texts):
                         continue
 
             filtered.append(item)

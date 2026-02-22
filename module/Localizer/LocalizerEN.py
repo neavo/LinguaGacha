@@ -70,6 +70,8 @@ class LocalizerEN(LocalizerZH):
     alert_delete_preset: str = "Confirm to delete {NAME} …?"
     search_prev_match: str = "Previous match"
     search_next_match: str = "Next match"
+    search_prev_item: str = "Prev"
+    search_next_item: str = "Next"
     search_regex_on: str = (
         "Regex Mode"
         "\n"
@@ -392,6 +394,14 @@ class LocalizerEN(LocalizerZH):
 
     # 校对
     proofreading_page_filter: str = "Filter"
+    proofreading_page_replace_action: str = "Replace"
+    proofreading_page_replace_with_placeholder: str = "Replace with …"
+    proofreading_page_replace_btn: str = "Replace"
+    proofreading_page_replace_all_btn: str = "Replace All"
+    proofreading_page_replace_all_confirm: str = "Replace all {COUNT} items in current scope? This action cannot be undone."
+    proofreading_page_replace_all_done: str = "Replace all completed: {COUNT} items changed"
+    proofreading_page_replace_all_no_change: str = "No content needs replacement"
+    proofreading_page_replace_all_failed: str = "Replace all failed"
     proofreading_page_copy_src_done: str = "Source copied to clipboard"
     proofreading_page_copy_dst_done: str = "Translation copied to clipboard"
     proofreading_page_col_status: str = "Status"

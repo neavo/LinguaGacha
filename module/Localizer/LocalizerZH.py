@@ -70,6 +70,8 @@ class LocalizerZH:
     alert_delete_preset: str = "确定要删除 {NAME} 吗 …?"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
+    search_prev_item: str = "上一个"
+    search_next_item: str = "下一个"
     search_regex_on: str = (
         "正则模式"
         "\n"
@@ -392,6 +394,14 @@ class LocalizerZH:
 
     # 校对
     proofreading_page_filter: str = "筛选"
+    proofreading_page_replace_action: str = "替换"
+    proofreading_page_replace_with_placeholder: str = "替换为 …"
+    proofreading_page_replace_btn: str = "替换"
+    proofreading_page_replace_all_btn: str = "全部替换"
+    proofreading_page_replace_all_confirm: str = "将对当前范围内的 {COUNT} 条执行全部替换，且无法撤销，是否继续？"
+    proofreading_page_replace_all_done: str = "全部替换完成：变更 {COUNT} 条"
+    proofreading_page_replace_all_no_change: str = "没有需要替换的内容"
+    proofreading_page_replace_all_failed: str = "全部替换失败"
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
     proofreading_page_col_status: str = "状态"

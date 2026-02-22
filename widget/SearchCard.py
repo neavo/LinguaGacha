@@ -14,15 +14,16 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
+from qfluentwidgets import IconWidget
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
 from qfluentwidgets import TransparentPushButton
-from qfluentwidgets import TransparentToolButton
 from qfluentwidgets import VerticalSeparator
 
 from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
+from widget.CustomLineEdit import CustomLineEdit
 from widget.CustomLineEdit import CustomSearchLineEdit
 
 
@@ -31,6 +32,9 @@ from widget.CustomLineEdit import CustomSearchLineEdit
 ICON_BACK: BaseIcon = BaseIcon.CIRCLE_ARROW_LEFT  # 搜索栏：返回
 ICON_PREV_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_UP  # 搜索栏：上一个匹配
 ICON_NEXT_MATCH: BaseIcon = BaseIcon.CIRCLE_CHEVRON_DOWN  # 搜索栏：下一个匹配
+ICON_REPLACE_FLOW: BaseIcon = BaseIcon.ARROW_RIGHT  # 替换模式：查找 -> 替换关系
+ICON_REPLACE_BTN: BaseIcon = BaseIcon.REPLACE  # 替换按钮图标
+ICON_REPLACE_ALL_BTN: BaseIcon = BaseIcon.REPLACE_ALL  # 全部替换按钮图标
 
 
 class SearchCardProxyModel(QSortFilterProxyModel):
@@ -109,6 +113,11 @@ class SearchCard(CardWidget):
 
     search_mode_changed = Signal(bool)
     search_triggered = Signal(str, bool, bool)
+    replace_mode_changed = Signal(bool)
+    replace_clicked = Signal()
+    replace_all_clicked = Signal()
+    replace_text_changed = Signal(str)
+    search_text_changed = Signal(str)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -116,6 +125,10 @@ class SearchCard(CardWidget):
         # 搜索模式：False=普通搜索，True=正则搜索
         self.regex_mode: bool = False
         self.filter_mode: bool = False
+        self.replace_feature_enabled: bool = False
+        self.replace_mode: bool = False
+        self.search_input_default_min_width: int = 172
+        self.replace_mode_input_width: int = 240
         self.search_last_trigger_time: float = 0.0
         self.search_last_trigger_keyword: str = ""
         self.search_last_trigger_filter_mode: bool = False
@@ -145,7 +158,8 @@ class SearchCard(CardWidget):
         self.back.setText(Localizer.get().back)
         self.root.addWidget(self.back)
 
-        self.root.addWidget(VerticalSeparator())
+        self.sep_after_back = VerticalSeparator()
+        self.root.addWidget(self.sep_after_back)
 
         # 2. 筛选模式切换按钮
         self.filter_btn = PillPushButton(Localizer.get().filter, self)
@@ -168,48 +182,139 @@ class SearchCard(CardWidget):
         self.update_regex_tooltip()
         self.root.addWidget(self.regex_btn)
 
-        self.root.addWidget(VerticalSeparator())
-
         # 4. 搜索输入框
         self.line_edit = CustomSearchLineEdit(self)
-        self.line_edit.setMinimumWidth(256)
+        self.line_edit.setMinimumWidth(self.search_input_default_min_width)
         self.line_edit.setPlaceholderText(Localizer.get().placeholder)
         self.line_edit.setClearButtonEnabled(True)
+        self.line_edit.textChanged.connect(self.search_text_changed.emit)
         self.root.addWidget(self.line_edit, 1)  # 让输入框自动拉伸占满空间
 
-        self.root.addWidget(VerticalSeparator())
+        # 5. 替换扩展区（仅在替换模式显示）
+        self.replace_container = QWidget(self)
+        self.replace_layout = QHBoxLayout(self.replace_container)
+        self.replace_layout.setContentsMargins(0, 0, 0, 0)
+        self.replace_layout.setSpacing(self.root.spacing())
 
-        # 5. 导航按钮
-        self.prev = TransparentToolButton(self)
+        self.replace_relation_icon = IconWidget(
+            ICON_REPLACE_FLOW, self.replace_container
+        )
+        self.replace_relation_icon.setFixedSize(16, 16)
+        self.replace_layout.addWidget(self.replace_relation_icon)
+
+        self.replace_edit = CustomLineEdit(self.replace_container)
+        self.replace_edit.setMinimumWidth(self.replace_mode_input_width)
+        self.replace_edit.setPlaceholderText(
+            Localizer.get().proofreading_page_replace_with_placeholder
+        )
+        self.replace_layout.addWidget(self.replace_edit, 1)
+
+        self.replace_btn = TransparentPushButton(self.replace_container)
+        self.replace_btn.setIcon(ICON_REPLACE_BTN)
+        self.replace_btn.setText(Localizer.get().proofreading_page_replace_btn)
+        self.replace_layout.addWidget(self.replace_btn)
+
+        self.replace_all_btn = TransparentPushButton(self.replace_container)
+        self.replace_all_btn.setIcon(ICON_REPLACE_ALL_BTN)
+        self.replace_all_btn.setText(Localizer.get().proofreading_page_replace_all_btn)
+        self.replace_layout.addWidget(self.replace_all_btn)
+
+        self.root.addWidget(self.replace_container)
+
+        # 6. 导航按钮
+        self.prev = TransparentPushButton(self)
         self.prev.setIcon(ICON_PREV_MATCH)
+        self.prev.setText(Localizer.get().search_prev_item)
         self.prev.setToolTip(Localizer.get().search_prev_match)
         self.prev.installEventFilter(ToolTipFilter(self.prev, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.prev)
 
-        self.next = TransparentToolButton(self)
+        self.next = TransparentPushButton(self)
         self.next.setIcon(ICON_NEXT_MATCH)
+        self.next.setText(Localizer.get().search_next_item)
         self.next.setToolTip(Localizer.get().search_next_match)
         self.next.installEventFilter(ToolTipFilter(self.next, 300, ToolTipPosition.TOP))
         self.root.addWidget(self.next)
 
-        self.root.addWidget(VerticalSeparator())
+        self.root.addStretch(1)
 
-        # 6. 匹配数量显示
+        # 7. 匹配数量显示
         self.match_label = CaptionLabel(Localizer.get().search_no_result, self)
+        self.match_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         self.match_label.setMinimumWidth(64)
         self.root.addWidget(self.match_label)
 
-        self.root.addStretch(1)
-
-        # 7. 右侧扩展区
+        # 8. 右侧扩展区
         self.right_container = QWidget(self)
         self.right_layout = QHBoxLayout(self.right_container)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
         self.right_layout.setSpacing(8)
         self.root.addWidget(self.right_container)
 
+        self.replace_btn.clicked.connect(self.replace_clicked.emit)
+        self.replace_all_btn.clicked.connect(self.replace_all_clicked.emit)
+        self.replace_edit.textChanged.connect(self.replace_text_changed.emit)
+
+        self.set_replace_feature_enabled(False)
+        self.set_replace_controls_enabled(False)
+
     def add_right_widget(self, widget: QWidget) -> None:
         self.right_layout.addWidget(widget)
+
+    def update_replace_visibility(self) -> None:
+        is_visible = self.replace_feature_enabled and self.replace_mode
+        self.replace_container.setVisible(is_visible)
+        self.filter_btn.setVisible(not is_visible)
+        self.prev.setVisible(not is_visible)
+        self.next.setVisible(not is_visible)
+        self.match_label.setVisible(not is_visible)
+        self.update_input_width_by_mode(is_visible)
+
+    def update_input_width_by_mode(self, replace_mode: bool) -> None:
+        if replace_mode:
+            self.line_edit.setFixedWidth(self.replace_mode_input_width)
+            self.replace_edit.setFixedWidth(self.replace_mode_input_width)
+            return
+
+        self.line_edit.setMinimumWidth(self.search_input_default_min_width)
+        self.line_edit.setMaximumWidth(16777215)
+        self.replace_edit.setMinimumWidth(self.replace_mode_input_width)
+        self.replace_edit.setMaximumWidth(16777215)
+
+    def set_replace_feature_enabled(self, enabled: bool) -> None:
+        self.replace_feature_enabled = bool(enabled)
+        if not self.replace_feature_enabled:
+            self.replace_mode = False
+            self.set_filter_mode(False, emit=False)
+        self.update_replace_visibility()
+
+    def set_replace_mode(self, enabled: bool) -> None:
+        target_mode = bool(enabled) and self.replace_feature_enabled
+        self.set_filter_mode(target_mode, emit=False)
+        if target_mode == self.replace_mode:
+            self.update_replace_visibility()
+            return
+        self.replace_mode = target_mode
+        self.update_replace_visibility()
+        self.replace_mode_changed.emit(self.replace_mode)
+
+    def is_replace_mode(self) -> bool:
+        return self.replace_mode
+
+    def get_replace_text(self) -> str:
+        return self.replace_edit.text()
+
+    def clear_replace_text(self) -> None:
+        self.replace_edit.setText("")
+
+    def set_replace_controls_enabled(self, enabled: bool) -> None:
+        can_replace = (
+            bool(enabled) and self.replace_feature_enabled and self.replace_mode
+        )
+        self.replace_btn.setEnabled(can_replace)
+        self.replace_all_btn.setEnabled(can_replace)
 
     def reset_state(self) -> None:
         """重置搜索 UI 状态。
@@ -218,13 +323,15 @@ class SearchCard(CardWidget):
         """
 
         self.regex_mode = False
-        self.filter_mode = False
-        self.filter_btn.setChecked(False)
+        self.set_filter_mode(False, emit=False)
+        self.replace_mode = False
         self.regex_btn.setChecked(False)
-        self.update_filter_tooltip()
         self.update_regex_tooltip()
 
         self.line_edit.setText("")
+        self.clear_replace_text()
+        self.set_replace_controls_enabled(False)
+        self.update_replace_visibility()
         self.clear_match_info()
 
         # 若绑定了表格，退出搜索时应恢复表格行可见性。
@@ -242,8 +349,12 @@ class SearchCard(CardWidget):
         self.filter_btn.setFont(font)
         self.regex_btn.setFont(font)
         self.line_edit.setFont(font)
+        self.replace_relation_icon.setFixedSize(16, 16)
+        self.replace_edit.setFont(font)
         self.prev.setFont(font)
         self.next.setFont(font)
+        self.replace_btn.setFont(font)
+        self.replace_all_btn.setFont(font)
         self.match_label.setFont(font)
 
     def on_regex_toggle(self) -> None:
@@ -263,9 +374,15 @@ class SearchCard(CardWidget):
 
     def on_filter_toggle(self) -> None:
         """筛选模式切换逻辑"""
-        self.filter_mode = self.filter_btn.isChecked()
+        self.set_filter_mode(self.filter_btn.isChecked())
+
+    def set_filter_mode(self, enabled: bool, *, emit: bool = True) -> None:
+        target = bool(enabled)
+        self.filter_mode = target
+        self.filter_btn.setChecked(target)
         self.update_filter_tooltip()
-        self.search_mode_changed.emit(self.filter_mode)
+        if emit:
+            self.search_mode_changed.emit(self.filter_mode)
 
     def update_filter_tooltip(self) -> None:
         """根据当前模式更新筛选按钮的 ToolTip"""
@@ -568,3 +685,18 @@ class SearchCard(CardWidget):
     def on_search_mode_changed(self, changed: Callable) -> None:
         """注册筛选模式切换回调"""
         self.search_mode_changed.connect(lambda value: changed(self))
+
+    def on_replace_mode_changed(self, changed: Callable) -> None:
+        self.replace_mode_changed.connect(lambda value: changed(self))
+
+    def on_replace_clicked(self, clicked: Callable) -> None:
+        self.replace_clicked.connect(lambda: clicked(self))
+
+    def on_replace_all_clicked(self, clicked: Callable) -> None:
+        self.replace_all_clicked.connect(lambda: clicked(self))
+
+    def on_replace_text_changed(self, changed: Callable) -> None:
+        self.replace_text_changed.connect(lambda value: changed(self))
+
+    def on_search_text_changed(self, changed: Callable) -> None:
+        self.search_text_changed.connect(lambda value: changed(self))
