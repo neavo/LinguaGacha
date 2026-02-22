@@ -55,6 +55,9 @@ class TaskRequester(Base):
     # OpenAI - GPT5
     RE_GPT5: tuple[re.Pattern, ...] = (re.compile(r"gpt-5", flags=re.IGNORECASE),)
 
+    # OpenAI - QWEN
+    RE_QWEN: tuple[re.Pattern, ...] = (re.compile(r"qwen3\.5", flags=re.IGNORECASE),)
+
     # OpenAI - DOUBAO
     RE_DOUBAO: tuple[re.Pattern, ...] = (
         re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
@@ -63,7 +66,7 @@ class TaskRequester(Base):
     )
 
     # OpenAI - THINKING_TYPE
-    RE_THINKING_TYPE: tuple[re.Pattern, ...] = (
+    RE_THINKING: tuple[re.Pattern, ...] = (
         re.compile(r"glm", flags=re.IGNORECASE),
         re.compile(r"kimi", flags=re.IGNORECASE),
         re.compile(r"deepseek", flags=re.IGNORECASE),
@@ -657,18 +660,21 @@ class TaskRequester(Base):
                 extra_body["reasoning_effort"] = "none"
             else:
                 extra_body["reasoning_effort"] = self.thinking_level.lower()
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_QWEN):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["enable_thinking"] = False
+            else:
+                extra_body["enable_thinking"] = True
         elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
             if self.thinking_level == ThinkingLevel.OFF:
                 extra_body["reasoning_effort"] = "minimal"
             else:
                 extra_body["reasoning_effort"] = self.thinking_level.lower()
-        elif any(
-            v.search(self.model_id) is not None for v in __class__.RE_THINKING_TYPE
-        ):
-            thinking_type = (
-                "disabled" if self.thinking_level == ThinkingLevel.OFF else "enabled"
-            )
-            extra_body["thinking"] = {"type": thinking_type}
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_THINKING):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["thinking"] = {"type": "disabled"}
+            else:
+                extra_body["thinking"] = {"type": "enabled"}
 
         extra_body.update(self.extra_body)
         result["extra_body"] = extra_body
