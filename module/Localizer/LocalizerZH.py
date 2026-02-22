@@ -68,6 +68,8 @@ class LocalizerZH:
     alert_file_already_exists: str = "文件已存在 …"
     alert_preset_already_exists: str = "预设已存在，是否确认覆盖 …?"
     alert_delete_preset: str = "确定要删除 {NAME} 吗 …?"
+    search_prev_btn: str = "上一个"
+    search_next_btn: str = "下一个"
     search_prev_match: str = "上一个匹配项"
     search_next_match: str = "下一个匹配项"
     search_regex_on: str = (
@@ -77,16 +79,6 @@ class LocalizerZH:
     )
     search_regex_off: str = (
         "正则模式"
-        "\n"
-        "当前状态：未启用"
-    )
-    search_filter_on: str = (
-        "过滤模式"
-        "\n"
-        "当前状态：已启用"
-    )
-    search_filter_off: str = (
-        "过滤模式"
         "\n"
         "当前状态：未启用"
     )
@@ -392,6 +384,13 @@ class LocalizerZH:
 
     # 校对
     proofreading_page_filter: str = "筛选"
+    proofreading_page_replace_action: str = "替换"
+    proofreading_page_replace_with_placeholder: str = "替换为 …"
+    proofreading_page_replace_btn: str = "替换"
+    proofreading_page_replace_all_btn: str = "全部替换"
+    proofreading_page_replace_all_confirm: str = "确认执行全部替换 …?"
+    proofreading_page_replace_done: str = "替换完成：变更 {N} 条"
+    proofreading_page_replace_no_change: str = "没有需要替换的内容"
     proofreading_page_copy_src_done: str = "已复制原文到剪贴板"
     proofreading_page_copy_dst_done: str = "已复制译文到剪贴板"
     proofreading_page_col_status: str = "状态"

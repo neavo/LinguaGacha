@@ -189,6 +189,7 @@ class ProofreadingDomain:
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
         search_keyword: str = "",
         search_is_regex: bool = False,
+        search_dst_only: bool = False,
         enable_search_filter: bool = False,
         enable_glossary_term_filter: bool = True,
     ) -> list[Item]:
@@ -259,10 +260,16 @@ class ProofreadingDomain:
                 src = item.get_src()
                 dst = item.get_dst()
                 if search_pattern is not None:
-                    if not (search_pattern.search(src) or search_pattern.search(dst)):
+                    if search_dst_only:
+                        if not search_pattern.search(dst):
+                            continue
+                    elif not (search_pattern.search(src) or search_pattern.search(dst)):
                         continue
                 elif keyword_lower:
-                    if (
+                    if search_dst_only:
+                        if keyword_lower not in dst.lower():
+                            continue
+                    elif (
                         keyword_lower not in src.lower()
                         and keyword_lower not in dst.lower()
                     ):

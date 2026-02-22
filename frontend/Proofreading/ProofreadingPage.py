@@ -1,5 +1,7 @@
 import re
 import threading
+from dataclasses import dataclass
+from typing import Any
 from typing import Callable
 
 from PySide6.QtCore import QSize
@@ -39,7 +41,16 @@ from widget.SearchCard import SearchCard
 
 # ==================== 图标常量 ====================
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：打开搜索栏
+ICON_ACTION_REPLACE: BaseIcon = BaseIcon.REPLACE  # 命令栏：打开替换栏
 ICON_ACTION_FILTER: BaseIcon = BaseIcon.FUNNEL  # 命令栏：打开筛选面板
+
+
+@dataclass(frozen=True)
+class ReplaceAllResult:
+    success: bool
+    changed_count: int
+    # (item_id, new_dst, new_status)
+    changes: tuple[tuple[int, str, Base.ProjectStatus], ...] = tuple()
 
 
 class ProofreadingPage(Base, QWidget):
@@ -52,7 +63,6 @@ class ProofreadingPage(Base, QWidget):
     # 防抖时间（毫秒）
     AUTO_RELOAD_DELAY_MS: int = 120
     QUALITY_RULE_REFRESH_DELAY_MS: int = 200
-    SEARCH_MATCH_BUILD_DEBOUNCE_MS: int = 200
 
     # 质量规则类型
     QUALITY_RULE_TYPES: set[str] = {
@@ -73,13 +83,13 @@ class ProofreadingPage(Base, QWidget):
     # 信号定义
     items_loaded = Signal(int, object)  # (token, payload)
     filter_done = Signal(int, list)  # (data_version, filtered_items)
-    match_indices_built = Signal(int, object)  # (token, payload)
     translate_done = Signal(object, bool)  # 翻译完成信号
     save_done = Signal(bool)  # 保存完成信号
     item_saved = Signal(object, bool)  # 单条保存完成信号
     item_rechecked = Signal(object, list, object)  # (item, warnings, failed_terms)
     progress_updated = Signal(str, int, int)  # 进度更新信号 (content, current, total)
     progress_finished = Signal()  # 进度完成信号
+    replace_all_done = Signal(object)  # 批量替换完成信号
     # 这里必须用 object：warning_map 的 key 来自 id(item)（int），
     # 若声明为 dict，PySide6 会尝试把 dict 转为 C++ QVariantMap（要求 key 可转为 QString），
     # 从而触发 Shiboken::Conversions::_pythonToCppCopy 的转换失败日志。
@@ -105,12 +115,17 @@ class ProofreadingPage(Base, QWidget):
         self.filter_dialog: FilterDialog | None = None
         self.search_keyword: str = ""  # 当前搜索关键词
         self.search_is_regex: bool = False  # 是否正则搜索
-        self.search_filter_mode: bool = False  # 是否筛选模式
+        self.search_replace_mode: bool = False  # True 表示仅在 dst 上查找/替换
         self.search_match_indices: list[int] = []  # 匹配项在 filtered_items 中的索引
         self.search_current_match: int = (
             -1
         )  # 当前匹配项索引（在 search_match_indices 中的位置）
-        self.search_build_token: int = 0
+        self.search_next_anchor_index: int | None = None
+        self.search_next_anchor_strict: bool = True
+        self.replace_once_last_item_index: int | None = None
+        self.replace_once_keep_match: bool = False
+        self.replace_once_pending_jump: bool = False
+        self.replace_once_pending_refilter_apply: bool = False
         self.pending_selected_item: Item | None = None
         self.current_item: Item | None = None
         # 分页已移除：该值表示当前条目在 filtered_items 中的绝对行索引。
@@ -118,6 +133,8 @@ class ProofreadingPage(Base, QWidget):
         self.block_selection_change: bool = False
         self.pending_action: Callable[[], None] | None = None
         self.pending_revert: Callable[[], None] | None = None
+        # Replace 后不立刻重筛，等待下一次显式搜索再刷新列表范围。
+        self.search_refilter_deferred: bool = False
 
         # 自动载入/同步调度
         self.data_stale: bool = True
@@ -134,10 +151,6 @@ class ProofreadingPage(Base, QWidget):
         self.quality_rule_refresh_timer.setSingleShot(True)
         self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
         self.pending_quality_rule_refresh: bool = False
-
-        self.search_build_timer: QTimer = QTimer(self)
-        self.search_build_timer.setSingleShot(True)
-        self.search_build_timer.timeout.connect(self.start_build_match_indices)
 
         self.ui_font_px = self.FONT_SIZE
         self.ui_icon_px = self.ICON_SIZE
@@ -178,7 +191,7 @@ class ProofreadingPage(Base, QWidget):
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
         self.quality_rules_refreshed.connect(self.on_quality_rules_refreshed_ui)
-        self.match_indices_built.connect(self.on_match_indices_built_ui)
+        self.replace_all_done.connect(self.on_replace_all_done_ui)
 
     def on_quality_rule_update(self, event: Base.Event, event_data: dict) -> None:
         del event
@@ -271,8 +284,27 @@ class ProofreadingPage(Base, QWidget):
                 result_checker=checker,
                 failed_terms_by_item_key=self.failed_terms_by_item_key,
             )
+
+        # Replace 场景下先只更新状态，不改变当前列表范围。
+        if self.search_refilter_deferred:
+            self.refresh_warning_state_without_refilter()
+            return
+
         # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新规则。
         self.apply_filter()
+
+    def refresh_warning_state_without_refilter(self) -> None:
+        """仅刷新当前列表状态，避免 Replace 后立即重筛导致条目瞬间消失。"""
+
+        for row, item in enumerate(self.filtered_items):
+            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+            self.table_widget.update_row_status(row, warnings)
+
+        if self.current_item is not None:
+            warnings = ProofreadingDomain.get_item_warnings(
+                self.current_item, self.warning_map
+            )
+            self.edit_panel.refresh_status_tags(self.current_item, warnings)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
@@ -320,7 +352,11 @@ class ProofreadingPage(Base, QWidget):
         self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
         self.search_card.on_next_clicked(lambda w: self.on_search_next_clicked())
         self.search_card.on_search_triggered(lambda w: self.do_search())
-        self.search_card.on_search_mode_changed(lambda w: self.on_search_mode_changed())
+        self.search_card.on_search_options_changed(
+            lambda w: self.on_search_options_changed()
+        )
+        self.search_card.on_replace_clicked(lambda w: self.on_replace_once_clicked())
+        self.search_card.on_replace_all_clicked(lambda w: self.on_replace_all_clicked())
 
         # 命令栏
         self.command_bar_card = CommandBarCard()
@@ -347,6 +383,15 @@ class ProofreadingPage(Base, QWidget):
             )
         )
         self.btn_search.setEnabled(False)
+
+        self.btn_replace = self.command_bar_card.add_action(
+            Action(
+                ICON_ACTION_REPLACE,
+                Localizer.get().proofreading_page_replace_action,
+                triggered=self.on_replace_clicked,
+            )
+        )
+        self.btn_replace.setEnabled(False)
 
         self.btn_filter = self.command_bar_card.add_action(
             Action(
@@ -516,6 +561,10 @@ class ProofreadingPage(Base, QWidget):
         if guard:
             self.run_with_unsaved_guard(lambda: self.apply_filter(False))
             return
+
+        # 任意显式筛选都视为一次“刷新确认”，消费 Replace 的延迟刷新标记。
+        self.search_refilter_deferred = False
+
         # 如果正在加载，则不重复触发
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
@@ -532,9 +581,9 @@ class ProofreadingPage(Base, QWidget):
         )
         keyword = self.search_keyword
         use_regex = self.search_is_regex
-        use_search_filter = self.search_filter_mode
+        search_dst_only = self.search_replace_mode
 
-        if use_search_filter and keyword and use_regex:
+        if keyword and use_regex:
             # 保持原有体验：正则非法时直接在 UI 线程提示，而不是让后台线程吞掉异常。
             try:
                 re.compile(keyword)
@@ -560,7 +609,8 @@ class ProofreadingPage(Base, QWidget):
                     failed_terms_by_item_key=failed_terms_by_item_key_ref,
                     search_keyword=keyword,
                     search_is_regex=use_regex,
-                    enable_search_filter=use_search_filter,
+                    search_dst_only=search_dst_only,
+                    enable_search_filter=True,
                     enable_glossary_term_filter=True,
                 )
                 self.filter_done.emit(data_version, filtered)
@@ -573,10 +623,9 @@ class ProofreadingPage(Base, QWidget):
     def on_filter_done_ui(self, data_version: int, filtered: list[Item]) -> None:
         """筛选完成的 UI 更新 (主线程)"""
         if data_version != self.data_version:
+            self.replace_once_pending_refilter_apply = False
             return
 
-        # filtered_items 即将切换，任何在途的匹配索引构建都应失效。
-        self.cancel_match_build()
         self.indeterminate_hide()
         self.filtered_items = filtered
 
@@ -591,13 +640,12 @@ class ProofreadingPage(Base, QWidget):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_card.clear_match_info()
-        should_build_match_indices = self.search_filter_mode and bool(
-            self.search_keyword
-        )
+        should_build_match_indices = bool(self.search_keyword)
         if should_build_match_indices:
-            # 筛选模式下 filtered_items 已满足搜索条件，匹配索引直接为全量范围，避免重复扫描。
+            # 搜索条件已在过滤阶段应用，匹配索引直接使用全量范围，避免重复扫描。
             self.search_match_indices = list(range(len(self.filtered_items)))
             if not self.search_match_indices:
+                self.search_next_anchor_index = None
                 self.search_card.set_match_info(0, 0)
                 self.emit(
                     Base.Event.TOAST,
@@ -606,32 +654,57 @@ class ProofreadingPage(Base, QWidget):
                         "message": Localizer.get().search_no_match,
                     },
                 )
+            elif self.search_next_anchor_index is not None:
+                self.search_current_match = self.pick_next_match_position(
+                    matches=self.search_match_indices,
+                    anchor=self.search_next_anchor_index,
+                    strict=self.search_next_anchor_strict,
+                )
+                self.search_next_anchor_index = None
+        else:
+            self.search_next_anchor_index = None
 
         self.restore_selected_item()
+
+        if self.replace_once_pending_refilter_apply:
+            self.replace_once_pending_refilter_apply = False
+            self.on_replace_once_clicked()
 
     # build_default_filter_options/build_review_items 已迁移到 ProofreadingDomain/ProofreadingLoadService。
 
     # ========== 搜索功能 ==========
     def on_search_clicked(self) -> None:
         """搜索按钮点击"""
+        self.search_card.set_replace_mode(False)
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
         # 聚焦到输入框
+        self.search_card.get_line_edit().setFocus()
+
+    def on_replace_clicked(self) -> None:
+        """替换按钮点击"""
+        self.search_card.setVisible(True)
+        self.command_bar_card.setVisible(False)
+        self.search_card.set_replace_mode(True)
+        # 替换模式仍优先聚焦查找框，方便用户先输入关键词再执行替换。
         self.search_card.get_line_edit().setFocus()
 
     def on_search_back_clicked(self) -> None:
         """搜索栏返回点击，清除搜索状态"""
 
         def action() -> None:
-            self.cancel_match_build()
             self.search_keyword = ""
             self.search_is_regex = False
+            self.search_replace_mode = False
+            self.search_refilter_deferred = False
+            self.replace_once_pending_jump = False
+            self.replace_once_pending_refilter_apply = False
             self.search_match_indices = []
             self.search_current_match = -1
-            self.search_card.clear_match_info()
-            if self.search_filter_mode:
-                self.pending_selected_item = None
-                self.apply_filter(False)
+            self.search_next_anchor_index = None
+            self.search_card.reset_state()
+            self.pending_selected_item = None
+            self.apply_filter(False)
             self.search_card.setVisible(False)
             self.command_bar_card.setVisible(True)
 
@@ -645,102 +718,34 @@ class ProofreadingPage(Base, QWidget):
 
         self.search_keyword = ""
         self.search_is_regex = False
-        self.search_filter_mode = False
+        self.search_replace_mode = False
+        self.search_refilter_deferred = False
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
         self.search_match_indices = []
         self.search_current_match = -1
+        self.search_next_anchor_index = None
         self.pending_selected_item = None
-
-        self.cancel_match_build()
 
         self.search_card.reset_state()
         self.search_card.setVisible(False)
         self.command_bar_card.setVisible(True)
 
-    def cancel_match_build(self) -> None:
-        """取消正在排队/在途的匹配索引构建。"""
-
-        self.search_build_token += 1
-        self.search_build_timer.stop()
-
-    def schedule_build_match_indices(self) -> None:
-        """为非筛选模式安排一次后台匹配索引构建（带 debounce）。"""
-
-        self.search_build_token += 1
-        self.search_build_timer.stop()
-
-        self.search_match_indices = []
-        self.search_current_match = -1
-        self.search_card.clear_match_info()
-
-        self.search_build_timer.start(self.SEARCH_MATCH_BUILD_DEBOUNCE_MS)
-
-    def start_build_match_indices(self) -> None:
-        """启动一次后台构建（由 debounce timer 触发，运行在 UI 线程）。"""
-
-        if self.search_filter_mode:
-            return
-        keyword = self.search_keyword
-        if not keyword:
-            return
-
-        token = self.search_build_token
-        is_regex = self.search_is_regex
-        data_version = self.data_version
-        items_snapshot = list(self.filtered_items)
-
-        def task() -> None:
-            indices = self.compute_match_indices(
-                items_snapshot, keyword=keyword, is_regex=is_regex
-            )
-
-            if token != self.search_build_token:
-                return
-            self.match_indices_built.emit(token, (data_version, tuple(indices)))
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def on_match_indices_built_ui(self, token: int, payload: object) -> None:
-        if token != self.search_build_token:
-            return
-        if self.search_filter_mode:
-            return
-        if not isinstance(payload, tuple) or len(payload) != 2:
-            return
-
-        data_version, indices = payload
-        if not isinstance(data_version, int) or data_version != self.data_version:
-            return
-        if not isinstance(indices, tuple):
-            return
-
-        self.search_match_indices = [i for i in indices if isinstance(i, int)]
-        if not self.search_match_indices:
-            self.search_card.set_match_info(0, 0)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().search_no_match,
-                },
-            )
-            return
-
-        self.search_current_match = 0
-        self.jump_to_match()
-
     def do_search(self) -> None:
         """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
         keyword = self.search_card.get_keyword()
+        self.search_replace_mode = self.search_card.is_replace_mode()
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
         if not keyword:
-            self.cancel_match_build()
             self.search_match_indices = []
             self.search_current_match = -1
+            self.search_next_anchor_index = None
             self.search_card.clear_match_info()
-            if self.search_filter_mode:
-                self.search_keyword = ""
-                self.search_is_regex = self.search_card.is_regex_mode()
-                self.pending_selected_item = None
-                self.apply_filter()
+            self.search_keyword = ""
+            self.search_is_regex = self.search_card.is_regex_mode()
+            self.pending_selected_item = None
+            self.apply_filter()
             return
 
         is_regex = self.search_card.is_regex_mode()
@@ -760,70 +765,53 @@ class ProofreadingPage(Base, QWidget):
 
         self.search_keyword = keyword
         self.search_is_regex = is_regex
+        self.search_next_anchor_index = None
 
-        if self.search_filter_mode:
-
-            def action() -> None:
-                self.pending_selected_item = None
-                self.apply_filter(False)
-
-            self.run_with_unsaved_guard(action)
-            return
-
-        # 非筛选模式：后台构建匹配索引（带 debounce），避免 UI 线程全量扫描。
-        self.schedule_build_match_indices()
-
-    def on_search_mode_changed(self) -> None:
         def action() -> None:
-            self.cancel_match_build()
-            self.search_filter_mode = self.search_card.is_filter_mode()
-            self.search_keyword = self.search_card.get_keyword()
-            self.search_is_regex = self.search_card.is_regex_mode()
-
-            self.search_match_indices = []
-            self.search_current_match = -1
-            self.search_card.clear_match_info()
-
-            if self.search_filter_mode and self.search_keyword and self.search_is_regex:
-                is_valid, error_msg = self.search_card.validate_regex()
-                if not is_valid:
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.ERROR,
-                            "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
-                        },
-                    )
-                    return
-
-            row = self.table_widget.get_selected_row()
-            self.pending_selected_item = (
-                self.table_widget.get_item_at_row(row) if row >= 0 else None
-            )
-
-            if self.search_filter_mode:
-                if not self.search_keyword:
-                    self.search_match_indices = []
-                    self.search_current_match = -1
-                    self.search_card.clear_match_info()
-                self.apply_filter(False)
-                return
-
+            self.pending_selected_item = None
             self.apply_filter(False)
 
         self.run_with_unsaved_guard(action)
 
-    def build_match_indices(self) -> None:
-        """构建匹配项索引列表 (修复变量未绑定隐患)"""
-        self.search_match_indices = self.compute_match_indices(
-            list(self.filtered_items),
-            keyword=self.search_keyword,
-            is_regex=self.search_is_regex,
+    def on_search_options_changed(self) -> None:
+        had_keyword = bool(self.search_keyword)
+        self.search_replace_mode = self.search_card.is_replace_mode()
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
+        self.search_keyword = self.search_card.get_keyword()
+        self.search_is_regex = self.search_card.is_regex_mode()
+
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_next_anchor_index = None
+        self.search_card.clear_match_info()
+
+        if self.search_keyword and self.search_is_regex:
+            is_valid, error_msg = self.search_card.validate_regex()
+            if not is_valid:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                    },
+                )
+                return
+
+        if not self.search_keyword:
+            if not had_keyword:
+                return
+
+        row = self.table_widget.get_selected_row()
+        self.pending_selected_item = (
+            self.table_widget.get_item_at_row(row) if row >= 0 else None
         )
+
+        self.run_with_unsaved_guard(lambda: self.apply_filter(False))
 
     @staticmethod
     def compute_match_indices(
-        items: list[Item], *, keyword: str, is_regex: bool
+        items: list[Item], *, keyword: str, is_regex: bool, match_dst_only: bool = False
     ) -> list[int]:
         if not keyword:
             return []
@@ -839,6 +827,10 @@ class ProofreadingPage(Base, QWidget):
             for idx, item in enumerate(items):
                 src = item.get_src()
                 dst = item.get_dst()
+                if match_dst_only:
+                    if pattern.search(dst):
+                        indices.append(idx)
+                    continue
                 if pattern.search(src) or pattern.search(dst):
                     indices.append(idx)
             return indices
@@ -847,14 +839,37 @@ class ProofreadingPage(Base, QWidget):
         for idx, item in enumerate(items):
             src = item.get_src()
             dst = item.get_dst()
+            if match_dst_only:
+                if keyword_lower in dst.lower():
+                    indices.append(idx)
+                continue
             if keyword_lower in src.lower() or keyword_lower in dst.lower():
                 indices.append(idx)
         return indices
 
+    @staticmethod
+    def pick_next_match_position(matches: list[int], anchor: int, strict: bool) -> int:
+        """在匹配列表中定位“下一处”的位置索引。"""
+        if not matches:
+            return -1
+
+        if strict:
+            for pos, match_index in enumerate(matches):
+                if match_index > anchor:
+                    return pos
+        else:
+            for pos, match_index in enumerate(matches):
+                if match_index >= anchor:
+                    return pos
+        return 0
+
     def restore_selected_item(self) -> None:
         if self.pending_selected_item is None:
-            if self.search_filter_mode and self.search_match_indices:
-                self.search_current_match = 0
+            if self.search_match_indices:
+                if self.search_current_match < 0 or self.search_current_match >= len(
+                    self.search_match_indices
+                ):
+                    self.search_current_match = 0
                 self.jump_to_match()
 
                 # jump_to_match() 会负责定位与选中。
@@ -880,7 +895,7 @@ class ProofreadingPage(Base, QWidget):
 
         if self.pending_selected_item not in self.filtered_items:
             self.pending_selected_item = None
-            if self.search_filter_mode and self.search_match_indices:
+            if self.search_match_indices:
                 self.search_current_match = 0
                 self.jump_to_match()
             return
@@ -945,6 +960,453 @@ class ProofreadingPage(Base, QWidget):
             self.search_current_match = 0
         self.jump_to_match()
 
+    def prepare_replace_context(self) -> bool:
+        """同步替换上下文并构建 Replace 模式匹配集合。"""
+        keyword = self.search_card.get_keyword()
+        if not keyword:
+            self.search_card.clear_match_info()
+            return False
+
+        is_regex = self.search_card.is_regex_mode()
+        if is_regex:
+            is_valid, error_msg = self.search_card.validate_regex()
+            if not is_valid:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                    },
+                )
+                return False
+
+        self.search_keyword = keyword
+        self.search_is_regex = is_regex
+        self.search_replace_mode = True
+
+        self.search_match_indices = self.compute_match_indices(
+            list(self.filtered_items),
+            keyword=self.search_keyword,
+            is_regex=self.search_is_regex,
+            match_dst_only=True,
+        )
+        if not self.search_match_indices:
+            self.search_current_match = -1
+            self.search_card.set_match_info(0, 0)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().search_no_match,
+                },
+            )
+            return False
+
+        selected_item_index = self.get_selected_item_index()
+        if selected_item_index in self.search_match_indices:
+            self.search_current_match = self.search_match_indices.index(
+                selected_item_index
+            )
+        elif self.search_current_match < 0 or self.search_current_match >= len(
+            self.search_match_indices
+        ):
+            self.search_current_match = 0
+
+        self.search_card.set_match_info(
+            self.search_current_match + 1, len(self.search_match_indices)
+        )
+        return True
+
+    @staticmethod
+    def replace_once_in_text(
+        *,
+        text: str,
+        keyword: str,
+        replacement: str,
+        is_regex: bool,
+    ) -> tuple[str, int]:
+        if is_regex:
+            pattern = re.compile(keyword, re.IGNORECASE)
+            return pattern.subn(replacement, text, count=1)
+
+        if not keyword:
+            return text, 0
+
+        # 与命中规则保持一致：非正则也按不区分大小写的字面量匹配处理。
+        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+        return pattern.subn(lambda m: replacement, text, count=1)
+
+    @staticmethod
+    def text_matches_keyword(*, text: str, keyword: str, is_regex: bool) -> bool:
+        if not keyword:
+            return False
+        if is_regex:
+            try:
+                pattern = re.compile(keyword, re.IGNORECASE)
+            except re.error:
+                return False
+            return pattern.search(text) is not None
+        return keyword.lower() in text.lower()
+
+    def should_refilter_before_replace(self, *, keyword: str, is_regex: bool) -> bool:
+        if self.search_refilter_deferred:
+            return False
+        if self.search_keyword != keyword:
+            return True
+        if self.search_is_regex != is_regex:
+            return True
+        if not self.search_replace_mode:
+            return True
+        return False
+
+    def on_replace_once_clicked(self) -> None:
+        if self.is_readonly:
+            return
+
+        def action() -> None:
+            if self.replace_once_pending_jump:
+                self.replace_once_pending_jump = False
+                if not self.prepare_replace_context():
+                    return
+                if self.search_current_match < 0 or self.search_current_match >= len(
+                    self.search_match_indices
+                ):
+                    self.search_current_match = 0
+                self.jump_to_match()
+                return
+
+            keyword = self.search_card.get_keyword()
+            is_regex = self.search_card.is_regex_mode()
+            if keyword and self.should_refilter_before_replace(
+                keyword=keyword,
+                is_regex=is_regex,
+            ):
+                if is_regex:
+                    is_valid, error_msg = self.search_card.validate_regex()
+                    if not is_valid:
+                        self.emit(
+                            Base.Event.TOAST,
+                            {
+                                "type": Base.ToastType.ERROR,
+                                "message": f"{Localizer.get().search_regex_invalid}: {error_msg}",
+                            },
+                        )
+                        return
+
+                # 首次直接点击 Replace 时，先按当前关键字刷新列表范围，再执行替换。
+                self.replace_once_pending_refilter_apply = True
+                self.search_keyword = keyword
+                self.search_is_regex = is_regex
+                self.search_replace_mode = True
+                self.search_next_anchor_index = None
+                self.pending_selected_item = None
+                self.apply_filter(False)
+                return
+
+            if not self.prepare_replace_context():
+                return
+
+            if self.search_current_match < 0 or self.search_current_match >= len(
+                self.search_match_indices
+            ):
+                self.search_current_match = 0
+
+            item_index = self.search_match_indices[self.search_current_match]
+            if item_index < 0 or item_index >= len(self.filtered_items):
+                return
+
+            target_item = self.filtered_items[item_index]
+            replace_text = self.search_card.get_replace_text()
+            new_dst, replaced_count = self.replace_once_in_text(
+                text=target_item.get_dst(),
+                keyword=self.search_keyword,
+                replacement=replace_text,
+                is_regex=self.search_is_regex,
+            )
+            if replaced_count <= 0:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().search_no_match,
+                    },
+                )
+                return
+
+            # 若当前条仍命中，则指向其后一个命中；若已不命中，则指向当前位置后的可见项。
+            self.search_next_anchor_index = item_index
+            self.search_next_anchor_strict = self.text_matches_keyword(
+                text=new_dst,
+                keyword=self.search_keyword,
+                is_regex=self.search_is_regex,
+            )
+            self.replace_once_last_item_index = item_index
+            self.replace_once_keep_match = self.search_next_anchor_strict
+            self.pending_action = self.on_replace_once_saved
+            self.pending_revert = None
+            self.on_edit_save_requested(target_item, new_dst)
+
+        self.run_with_unsaved_guard(action)
+
+    def on_replace_once_saved(self) -> None:
+        # Replace 之后保持当前列表，等用户下次显式搜索再重筛。
+        self.search_refilter_deferred = True
+
+        last_index = self.replace_once_last_item_index
+        keep_match = self.replace_once_keep_match
+        self.replace_once_last_item_index = None
+        self.replace_once_keep_match = False
+        self.search_next_anchor_index = None
+
+        # 方案 A：保存成功后在当前命中集合内推进。
+        if last_index is None or not self.search_match_indices:
+            self.replace_once_pending_jump = False
+            self.search_current_match = -1
+            self.search_card.set_match_info(0, 0)
+            return
+
+        try:
+            pos = self.search_match_indices.index(last_index)
+        except ValueError:
+            pos = self.search_current_match
+
+        if keep_match:
+            self.search_current_match = (max(pos, 0) + 1) % len(
+                self.search_match_indices
+            )
+        else:
+            if 0 <= pos < len(self.search_match_indices):
+                self.search_match_indices.pop(pos)
+
+            if not self.search_match_indices:
+                self.replace_once_pending_jump = False
+                self.search_current_match = -1
+                self.search_card.set_match_info(0, 0)
+                return
+
+            if pos >= len(self.search_match_indices):
+                pos = 0
+            self.search_current_match = max(pos, 0)
+
+        self.search_card.set_match_info(
+            self.search_current_match + 1, len(self.search_match_indices)
+        )
+        # 单步替换后先停留在当前条目；下一次点击再显式跳到下一个目标。
+        self.replace_once_pending_jump = True
+
+    def on_replace_all_clicked(self) -> None:
+        if self.is_readonly:
+            return
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
+        if not self.prepare_replace_context():
+            return
+
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_replace_all_confirm,
+            self.main_window,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        if not message_box.exec():
+            return
+
+        def action() -> None:
+            if not self.prepare_replace_context():
+                return
+
+            # 基础范围是 filtered_items；这里进一步收窄为当前命中集合。
+            target_indices = list(self.search_match_indices)
+            if not target_indices:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().search_no_match,
+                    },
+                )
+                return
+
+            target_items = [
+                self.filtered_items[index]
+                for index in target_indices
+                if 0 <= index < len(self.filtered_items)
+            ]
+            if not target_items:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.WARNING,
+                        "message": Localizer.get().search_no_match,
+                    },
+                )
+                return
+
+            keyword = self.search_keyword
+            replacement = self.search_card.get_replace_text()
+            is_regex = self.search_is_regex
+            self.indeterminate_show(
+                Localizer.get().proofreading_page_indeterminate_saving
+            )
+
+            def task() -> None:
+                changed_payload: list[dict[str, Any]] = []
+                changes: list[tuple[int, str, Base.ProjectStatus]] = []
+                changed_count = 0
+
+                if is_regex:
+                    try:
+                        pattern = re.compile(keyword, re.IGNORECASE)
+                    except re.error as e:
+                        LogManager.get().error(Localizer.get().task_failed, e)
+                        self.replace_all_done.emit(
+                            ReplaceAllResult(
+                                success=False,
+                                changed_count=0,
+                                changes=tuple(),
+                            )
+                        )
+                        return
+                else:
+                    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+
+                try:
+                    for item in target_items:
+                        old_dst = item.get_dst()
+                        old_status = item.get_status()
+
+                        if is_regex:
+                            new_dst, replaced_count = pattern.subn(replacement, old_dst)
+                        else:
+                            # 非正则替换：字面量、不区分大小写；replacement 按纯文本处理。
+                            new_dst, replaced_count = pattern.subn(
+                                lambda m: replacement, old_dst
+                            )
+
+                        if replaced_count <= 0 or new_dst == old_dst:
+                            continue
+
+                        item_dict = item.to_dict()
+                        if isinstance(item_dict.get("id"), int):
+                            new_status = old_status
+                            if old_status not in (
+                                Base.ProjectStatus.PROCESSED,
+                                Base.ProjectStatus.PROCESSED_IN_PAST,
+                            ):
+                                new_status = Base.ProjectStatus.PROCESSED
+
+                            item_dict["dst"] = new_dst
+                            item_dict["status"] = new_status
+                            changed_payload.append(item_dict)
+                            changes.append((item_dict["id"], new_dst, new_status))
+                            changed_count += 1
+
+                    if changed_count <= 0 or not changed_payload:
+                        self.replace_all_done.emit(
+                            ReplaceAllResult(
+                                success=True,
+                                changed_count=0,
+                                changes=tuple(),
+                            )
+                        )
+                        return
+
+                    DataManager.get().update_batch(items=changed_payload)
+                    self.replace_all_done.emit(
+                        ReplaceAllResult(
+                            success=True,
+                            changed_count=changed_count,
+                            changes=tuple(changes),
+                        )
+                    )
+                except Exception as e:
+                    LogManager.get().error(Localizer.get().task_failed, e)
+                    self.replace_all_done.emit(
+                        ReplaceAllResult(
+                            success=False,
+                            changed_count=0,
+                            changes=tuple(),
+                        )
+                    )
+
+            threading.Thread(target=task, daemon=True).start()
+
+        self.run_with_unsaved_guard(action)
+
+    def on_replace_all_done_ui(self, result: object) -> None:
+        self.indeterminate_hide()
+        if not isinstance(result, ReplaceAllResult):
+            return
+
+        if not result.success:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().proofreading_page_save_failed,
+                },
+            )
+            return
+
+        if result.changed_count <= 0:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().proofreading_page_replace_no_change,
+                },
+            )
+            return
+
+        item_by_id: dict[int, Item] = {}
+        for item in self.filtered_items:
+            item_id = item.get_id()
+            if isinstance(item_id, int):
+                item_by_id[item_id] = item
+
+        # UI 线程应用变更：避免后台线程直接修改共享 Item。
+        for item_id, new_dst, new_status in result.changes:
+            item = item_by_id.get(item_id)
+            if item is None:
+                continue
+
+            item.set_status(new_status)
+            item.set_dst(new_dst)
+
+            row = self.table_widget.find_row_by_item(item)
+            if row >= 0:
+                self.table_widget.update_row_dst(row)
+                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+                self.table_widget.update_row_status(row, warnings)
+
+        if self.current_item is not None:
+            row = self.table_widget.find_row_by_item(self.current_item)
+            if row >= 0:
+                warnings = ProofreadingDomain.get_item_warnings(
+                    self.current_item, self.warning_map
+                )
+                self.edit_panel.bind_item(self.current_item, row + 1, warnings)
+                self.edit_panel.set_readonly(self.is_readonly)
+
+        self.update_project_status_after_save()
+        # Replace 路径下延后列表重筛，仅刷新状态。
+        self.search_refilter_deferred = True
+        self.schedule_quality_rule_refresh()
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().proofreading_page_replace_done.replace(
+                    "{N}", str(result.changed_count)
+                ),
+            },
+        )
+
+        self.search_next_anchor_index = None
+        self.search_next_anchor_strict = True
+
     def get_selected_item_index(self) -> int:
         row = self.table_widget.get_selected_row()
         if row < 0:
@@ -991,6 +1453,8 @@ class ProofreadingPage(Base, QWidget):
             return
 
         row = self.table_widget.get_selected_row()
+        # 用户主动改选条目后，Replace 单击应立刻执行替换，不应沿用上一次的“仅跳转”状态。
+        self.replace_once_pending_jump = False
         if row < 0:
             self.current_item = None
             self.current_row_index = -1
@@ -1092,10 +1556,21 @@ class ProofreadingPage(Base, QWidget):
             self.pending_revert = None
             return
 
-        self.edit_panel.apply_saved_state()
         row = self.table_widget.find_row_by_item(item)
         if row >= 0:
             self.table_widget.update_row_dst(row)
+
+        if self.current_item is item:
+            if self.edit_panel.get_current_text() != item.get_dst():
+                # 替换条等外部动作会直接改写 item，保存成功后需要回填编辑区文本。
+                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+                index = row + 1 if row >= 0 else max(self.current_row_index + 1, 1)
+                self.edit_panel.bind_item(item, index, warnings)
+                self.edit_panel.set_readonly(self.is_readonly)
+            else:
+                self.edit_panel.apply_saved_state()
+        else:
+            self.edit_panel.apply_saved_state()
 
         # 结果检查可能较重，放到后台线程执行，避免 UI 卡顿。
         self.start_recheck_item(item)
@@ -1585,6 +2060,7 @@ class ProofreadingPage(Base, QWidget):
         # 其他按钮只有在不繁忙且有数据时启用
         can_operate_review = not is_busy and has_items
         self.btn_search.setEnabled(can_operate_review)
+        self.btn_replace.setEnabled(can_operate_review)
         self.btn_filter.setEnabled(can_operate_review)
 
         if is_busy != self.is_readonly:
@@ -1695,6 +2171,7 @@ class ProofreadingPage(Base, QWidget):
 
         # 重置按钮状态
         self.btn_search.setEnabled(False)
+        self.btn_replace.setEnabled(False)
         self.btn_filter.setEnabled(False)
 
         # 隐藏 loading
