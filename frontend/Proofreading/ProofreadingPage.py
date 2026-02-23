@@ -1290,7 +1290,7 @@ class ProofreadingPage(Base, QWidget):
                         item_dict = item.to_dict()
                         if isinstance(item_dict.get("id"), int):
                             new_status = old_status
-                            if old_status not in (
+                            if new_dst and old_status not in (
                                 Base.ProjectStatus.PROCESSED,
                                 Base.ProjectStatus.PROCESSED_IN_PAST,
                             ):
@@ -1360,7 +1360,8 @@ class ProofreadingPage(Base, QWidget):
             return
 
         item_by_id: dict[int, Item] = {}
-        for item in self.filtered_items:
+        # 全量可校对条目是页面内存状态的唯一来源，避免替换期间筛选变化导致漏回写。
+        for item in self.items:
             item_id = item.get_id()
             if isinstance(item_id, int):
                 item_by_id[item_id] = item
