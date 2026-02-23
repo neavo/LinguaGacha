@@ -177,7 +177,7 @@ class LocalizerEN(LocalizerZH):
     engine_task_fail: str = "Task failed to complete, some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
     engine_task_save: str = "Saving task results …"
-    engine_task_save_done: str = "Task results have been saved to the {PATH} directory …"
+    engine_task_save_done: str = "Task results have been saved to the [blue]{PATH}[/blue] …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
     engine_task_language_filter: str = "Language filtering completed, {COUNT} non-target source language entries were skipped in total …"
     engine_task_scheduler_stop_with_untranslated: str = "Task scheduler stopped, but {COUNT} items remain untranslated (potentially lost due to exceptions)"
