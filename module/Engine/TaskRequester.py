@@ -83,8 +83,11 @@ class TaskRequester(Base):
     STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 512
 
     SDK_TIMEOUT_BUFFER_S: int = 5
+    OUTPUT_TOKEN_LIMIT_AUTO: int = 0
+    LEGACY_OUTPUT_TOKEN_LIMIT_AUTO: int = -1
 
     def __init__(self, config: Config, model: dict) -> None:
+
         super().__init__()
         self.config = config
         self.model = model
@@ -132,7 +135,16 @@ class TaskRequester(Base):
     def should_use_max_completion_tokens(self) -> bool:
         return str(self.api_url).startswith("https://api.openai.com")
 
+    def apply_output_token_limit(self, args: dict[str, Any], token_key: str) -> None:
+        if self.output_token_limit in (
+            self.OUTPUT_TOKEN_LIMIT_AUTO,
+            self.LEGACY_OUTPUT_TOKEN_LIMIT_AUTO,
+        ):
+            return
+        args[token_key] = self.output_token_limit
+
     def get_sdk_timeout_seconds(self) -> int:
+
         # 同步模式下无法像 asyncio 那样快速取消阻塞拉取，因此依赖 SDK 超时来兜底退出。
         hard_timeout_s = max(1, int(self.config.request_timeout))
         return hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
@@ -584,11 +596,11 @@ class TaskRequester(Base):
             {
                 "model": self.model_id,
                 "messages": messages,
-                token_key: self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
                 "extra_body": self.extra_body,
             }
         )
+        self.apply_output_token_limit(result, token_key)
         result.setdefault("stream_options", {"include_usage": True})
         return result
 
@@ -648,10 +660,10 @@ class TaskRequester(Base):
             {
                 "model": self.model_id,
                 "messages": messages,
-                token_key: self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
             }
         )
+        self.apply_output_token_limit(result, token_key)
         result.setdefault("stream_options", {"include_usage": True})
 
         extra_body: dict[str, Any] = {}
@@ -737,7 +749,6 @@ class TaskRequester(Base):
         config_args: dict[str, Any] = dict(args)
         config_args.update(
             {
-                "max_output_tokens": self.output_token_limit,
                 "safety_settings": [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                     {
@@ -755,6 +766,7 @@ class TaskRequester(Base):
                 ],
             }
         )
+        self.apply_output_token_limit(config_args, "max_output_tokens")
 
         # Gemini
         if __class__.RE_GEMINI_3_1_PRO.search(self.model_id) is not None:
@@ -934,10 +946,10 @@ class TaskRequester(Base):
             {
                 "model": self.model_id,
                 "messages": filtered_messages,
-                "max_tokens": self.output_token_limit,
                 "extra_headers": self.build_extra_headers(),
             }
         )
+        self.apply_output_token_limit(result, "max_tokens")
 
         if system_texts:
             result["system"] = "\n\n".join(system_texts)

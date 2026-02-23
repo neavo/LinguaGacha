@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from contextlib import contextmanager
+from pathlib import Path
+
 from typing import Any
 from typing import Iterator
 from typing import cast
@@ -321,6 +324,11 @@ def test_generate_sakura_args_uses_correct_token_key_and_stream_options() -> Non
     assert result2["max_tokens"] == 10
     assert result2["stream_options"] == {"include_usage": False}
 
+    requester.output_token_limit = TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
+    result3 = requester.generate_sakura_args([], {})
+    assert "max_completion_tokens" not in result3
+    assert "max_tokens" not in result3
+
 
 @pytest.mark.parametrize(
     "model_id,thinking_level,expected",
@@ -360,6 +368,85 @@ def test_generate_openai_args_thinking_variants(
     for k, v in expected.items():
         assert extra_body[k] == v
     assert extra_body["x"] == 1
+
+
+@pytest.mark.parametrize(
+    "api_url,token_key",
+    [
+        ("https://api.openai.com/v1", "max_completion_tokens"),
+        ("https://example.invalid", "max_tokens"),
+    ],
+)
+def test_generate_openai_args_output_token_limit_strategy(
+    api_url: str, token_key: str
+) -> None:
+    requester = TaskRequester(
+        Config(),
+        {
+            "api_format": Base.APIFormat.OPENAI,
+            "api_key": "k",
+            "api_url": api_url,
+            "model_id": "m",
+            "threshold": {"output_token_limit": 7},
+        },
+    )
+
+    result = requester.generate_openai_args([], {})
+    assert result[token_key] == 7
+
+    requester.output_token_limit = TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
+    result_unset = requester.generate_openai_args([], {})
+    assert "max_completion_tokens" not in result_unset
+    assert "max_tokens" not in result_unset
+
+    requester.output_token_limit = TaskRequester.LEGACY_OUTPUT_TOKEN_LIMIT_AUTO
+    result_legacy = requester.generate_openai_args([], {})
+    assert "max_completion_tokens" not in result_legacy
+    assert "max_tokens" not in result_legacy
+
+
+def test_generate_google_args_output_token_limit_strategy() -> None:
+    requester = TaskRequester(
+        Config(),
+        {
+            "api_format": Base.APIFormat.GOOGLE,
+            "api_key": "k",
+            "api_url": "https://example.invalid",
+            "model_id": "gemini-test",
+            "threshold": {"output_token_limit": 7},
+        },
+    )
+
+    result = requester.generate_google_args([{"role": "user", "content": "U"}], {})
+    assert getattr(result["config"], "max_output_tokens") == 7
+
+    requester.output_token_limit = TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
+    result_unset = requester.generate_google_args(
+        [{"role": "user", "content": "U"}], {}
+    )
+    assert getattr(result_unset["config"], "max_output_tokens", None) is None
+
+
+def test_generate_anthropic_args_output_token_limit_strategy() -> None:
+    requester = TaskRequester(
+        Config(),
+        {
+            "api_format": Base.APIFormat.ANTHROPIC,
+            "api_key": "k",
+            "api_url": "https://example.invalid",
+            "model_id": "anthropic-test",
+            "threshold": {"output_token_limit": 7},
+        },
+    )
+
+    result = requester.generate_anthropic_args([{"role": "user", "content": "U"}], {})
+    assert result["max_tokens"] == 7
+
+    requester.output_token_limit = TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
+    result_unset = requester.generate_anthropic_args(
+        [{"role": "user", "content": "U"}], {}
+    )
+    assert "max_tokens" not in result_unset
 
 
 @dataclasses.dataclass
@@ -703,6 +790,50 @@ def test_generate_anthropic_args_fallthrough_when_thinking_level_is_unexpected()
     assert "thinking" not in args
     assert args["top_p"] == 0.1
     assert args["temperature"] == 0.2
+
+
+@pytest.mark.parametrize("language", ["zh", "en"])
+def test_builtin_preset_output_token_limit_defaults(language: str) -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    preset_path = (
+        project_root
+        / "resource"
+        / "preset"
+        / "model"
+        / language
+        / "preset_model_builtin.json"
+    )
+    models = json.loads(preset_path.read_text(encoding="utf-8"))
+
+    assert isinstance(models, list)
+    for model in models:
+        output_token_limit = model.get("threshold", {}).get("output_token_limit")
+        if model.get("api_format") == Base.APIFormat.SAKURALLM:
+            assert output_token_limit == 768
+        else:
+            assert output_token_limit == TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
+
+
+@pytest.mark.parametrize("language", ["zh", "en"])
+@pytest.mark.parametrize(
+    "preset_name",
+    [
+        "preset_model_custom_openai.json",
+        "preset_model_custom_google.json",
+        "preset_model_custom_anthropic.json",
+    ],
+)
+def test_custom_preset_output_token_limit_defaults(
+    language: str, preset_name: str
+) -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    preset_path = (
+        project_root / "resource" / "preset" / "model" / language / preset_name
+    )
+    model_data = json.loads(preset_path.read_text(encoding="utf-8"))
+
+    output_token_limit = model_data.get("threshold", {}).get("output_token_limit")
+    assert output_token_limit == TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
 
 
 def test_request_routes_and_engine_counters_always_balance() -> None:
