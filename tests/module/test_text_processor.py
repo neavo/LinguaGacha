@@ -60,7 +60,7 @@ class TestTextProcessor:
             pre_replacement_entries=(
                 {
                     "src": "ABC",
-                    "dst": "x",
+                    "dst": "\\c",
                     "regex": False,
                     "case_sensitive": False,
                 },
@@ -68,7 +68,7 @@ class TestTextProcessor:
         )
         processor = TextProcessor(Config(), None, snapshot)
 
-        assert processor.replace_pre_translation("abc AbC") == "x x"
+        assert processor.replace_pre_translation("abc AbC") == "\\c \\c"
 
     def test_prefix_suffix_process_extracts_codes(
         self, monkeypatch: pytest.MonkeyPatch
@@ -236,6 +236,22 @@ class TestTextProcessor:
         processor = TextProcessor(Config(), None, snapshot)
 
         assert processor.replace_post_translation("aa AA A") == "aa x x"
+
+    def test_replace_post_translation_supports_case_insensitive_literal(self) -> None:
+        snapshot = create_snapshot(
+            post_replacement_enable=True,
+            post_replacement_entries=(
+                {
+                    "src": "ABC",
+                    "dst": "\\c",
+                    "regex": False,
+                    "case_sensitive": False,
+                },
+            ),
+        )
+        processor = TextProcessor(Config(), None, snapshot)
+
+        assert processor.replace_post_translation("abc AbC") == "\\c \\c"
 
     def test_pre_process_skips_blank_lines_and_adds_markdown_sample(self) -> None:
         item = Item(src="   \nhello", text_type=Item.TextType.MD)
