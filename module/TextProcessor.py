@@ -374,7 +374,10 @@ class TextProcessor(Base):
                     # 需要转义特殊字符以确保按字面意义匹配
                     pattern_escaped = re.escape(pattern_text)
                     src = re.sub(
-                        pattern_escaped, replacement_text, src, flags=re.IGNORECASE
+                        pattern_escaped,
+                        lambda _: replacement_text,
+                        src,
+                        flags=re.IGNORECASE,
                     )
 
         return src
@@ -424,7 +427,10 @@ class TextProcessor(Base):
                     # 需要转义特殊字符以确保按字面意义匹配
                     pattern_escaped = re.escape(pattern_text)
                     dst = re.sub(
-                        pattern_escaped, replacement_text, dst, flags=re.IGNORECASE
+                        pattern_escaped,
+                        lambda _: replacement_text,
+                        dst,
+                        flags=re.IGNORECASE,
                     )
 
         return dst
