@@ -267,7 +267,8 @@ class LocalizerEN(LocalizerZH):
     model_basic_setting_page_input_token_title: str = "Input Token Limit"
     model_basic_setting_page_input_token_content: str = "Maximum number of tokens for each task input"
     model_basic_setting_page_output_token_title: str = "Output Token Limit"
-    model_basic_setting_page_output_token_content: str = "Maximum number of tokens for each task output"
+    model_basic_setting_page_output_token_content: str = "Maximum number of tokens for each task output, 0 = Automatic"
+
     model_basic_setting_page_rpm_title: str = "Requests Per Minute Limit (RPM)"
     model_basic_setting_page_rpm_content: str = (
         "Maximum total number of tasks executed per minute, i.e., the <font color='darkgoldenrod'><b>RPM</b></font> limit"

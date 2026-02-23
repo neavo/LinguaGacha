@@ -267,7 +267,8 @@ class LocalizerZH:
     model_basic_setting_page_input_token_title: str = "输入 Token 限制"
     model_basic_setting_page_input_token_content: str = "每个任务输入文本的最大 Token 数量"
     model_basic_setting_page_output_token_title: str = "输出 Token 限制"
-    model_basic_setting_page_output_token_content: str = "每个任务输出文本的最大 Token 数量"
+    model_basic_setting_page_output_token_content: str = "每个任务输出文本的最大 Token 数量，0 = 自动"
+
     model_basic_setting_page_rpm_title: str = "每分钟请求数限制 (RPM)"
     model_basic_setting_page_rpm_content: str = (
         "每分钟执行的任务总数量的最大值，即 <font color='darkgoldenrod'><b>RPM</b></font> 限制"

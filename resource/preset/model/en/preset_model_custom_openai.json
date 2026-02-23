@@ -13,7 +13,7 @@
     },
     "threshold": {
         "input_token_limit": 512,
-        "output_token_limit": 4096,
+        "output_token_limit": 0,
         "rpm_limit": 0,
         "concurrency_limit": 0
     },
