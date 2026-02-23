@@ -177,7 +177,7 @@ class LocalizerZH:
     engine_task_fail: str = "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
     engine_task_save: str = "正在保存任务结果 …"
-    engine_task_save_done: str = "任务结果已保存至 {PATH} 目录 …"
+    engine_task_save_done: str = "任务结果已保存至 [blue]{PATH}[/blue] …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
     engine_task_language_filter: str = "语言过滤已完成，共过滤 {COUNT} 个非目标原文语言条目 …"
     engine_task_scheduler_stop_with_untranslated: str = "任务调度器停止，但仍有 {COUNT} 个未翻译条目（可能因异常丢失）"
