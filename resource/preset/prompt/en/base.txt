@@ -1,4 +1,4 @@
-1. The translation must strictly maintain the original format and number of lines.
-2. Non-content text in the original text that should not be translated, such as code, style markers, and control characters must be kept as is.
-3. Translate all content text completely, including but not limited to onomatopoeia, modal particles, and proper nouns.
-4. Maintain colloquial wording and avoid using written language unless necessary. Even if the original text contains explicit descriptions, they must be faithfully reproduced without evasion or dilution.
+- The line count of the source and translation must correspond strictly; merging or splitting lines is strictly prohibited.
+- The translation should be vivid, natural, and conversational; avoid overly formal phrasing unless the source text is specifically that way.
+- The original details and style must be faithfully reproduced; explicit, vulgar, or extreme descriptions must not be avoided, whitewashed, or watered down.
+- Fully translate all content text, including sound effects and interjections, but preserve code, style markers, escape characters, and other control characters without actual content exactly as they are.
