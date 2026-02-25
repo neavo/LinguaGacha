@@ -647,15 +647,6 @@ class QualityRulePageBase(Base, QWidget):
             return
 
         row = self.get_current_source_row()
-        if row < 0 or row >= len(self.entries):
-            self.apply_selection(-1)
-            return
-
-        if row == self.current_index:
-            return
-
-        def action() -> None:
-            self.apply_selection(row)
 
         def revert() -> None:
             if self.current_index < 0:
@@ -665,6 +656,21 @@ class QualityRulePageBase(Base, QWidget):
             if view_row >= 0:
                 self.table.selectRow(view_row)
             self.block_selection_change = False
+
+        if row < 0 or row >= len(self.entries):
+            if self.edit_panel.has_unsaved_changes():
+                # 点击空白/占位行时也要先处理草稿，避免静默丢失。
+                self.run_with_unsaved_guard(lambda: self.select_row(-1), revert)
+                return
+            self.apply_selection(-1)
+            return
+
+        if row == self.current_index:
+            return
+
+        def action() -> None:
+            # 选中行切换后，列表与编辑区必须同步，避免“列表还是旧行”。
+            self.select_row(row)
 
         self.run_with_unsaved_guard(action, revert)
 
@@ -676,6 +682,38 @@ class QualityRulePageBase(Base, QWidget):
         self.edit_panel.bind_entry(self.entries[row], row + 1)
 
     def add_entry_after_current(self) -> None:
+        if self.current_index < 0 or self.current_index >= len(self.entries):
+            entry = self.edit_panel.get_current_entry()
+            src = str(entry.get("src", "")).strip()
+            if not src:
+                has_payload = False
+                for key, value in entry.items():
+                    if key == "src":
+                        continue
+                    if isinstance(value, str):
+                        if value.strip():
+                            has_payload = True
+                            break
+                        continue
+                    if isinstance(value, bool):
+                        if value:
+                            has_payload = True
+                            break
+                        continue
+                    if value:
+                        has_payload = True
+                        break
+
+                if has_payload:
+                    # 无选中且已有输入时，新增应先补齐 src，避免插入空行丢失输入。
+                    if hasattr(self, "edit_panel"):
+                        self.edit_panel.set_src_error(True)
+                    return
+            else:
+                # 无选中但已有完整输入时，新增等价于“落库并选中该条”。
+                self.save_current_entry(force_save=True)
+                return
+
         insert_index = (
             self.current_index + 1
             if 0 <= self.current_index < len(self.entries)
@@ -714,17 +752,22 @@ class QualityRulePageBase(Base, QWidget):
         self.save_entries(self.entries)
         self.refresh_table()
 
-    def save_current_entry(self) -> None:
+    def save_current_entry(self, *, force_save: bool = False) -> None:
+        if not force_save and not self.edit_panel.has_unsaved_changes():
+            # 避免无改动也提示保存，保持按钮状态与实际行为一致。
+            return
+        inserted_new_entry = False
         # 无选中项时，在末尾插入新条目
         if self.current_index < 0 or self.current_index >= len(self.entries):
             entry = self.edit_panel.get_current_entry()
             src = str(entry.get("src", "")).strip()
             if not src:
-                # 空 src 不创建条目
+                # 空 src 且无草稿内容时，不创建条目。
                 return
 
             self.entries.append(entry)
             self.current_index = len(self.entries) - 1
+            inserted_new_entry = True
 
         entry = self.edit_panel.get_current_entry()
         ok, error_msg = self.validate_entry(entry)
@@ -766,7 +809,7 @@ class QualityRulePageBase(Base, QWidget):
             return
 
         after_count = len(self.entries)
-        needs_full_refresh = merged or after_count != before_count
+        needs_full_refresh = merged or after_count != before_count or inserted_new_entry
 
         if needs_full_refresh:
             # 结构性变化会影响行数与占位行，直接全量刷新更稳妥。
