@@ -1,5 +1,6 @@
 import os
 import threading
+from enum import StrEnum
 from typing import ClassVar
 
 from base.BaseLanguage import BaseLanguage
@@ -23,6 +24,14 @@ class ModelManager:
     PRESET_CUSTOM_GOOGLE_FILENAME: str = "preset_model_custom_google.json"
     PRESET_CUSTOM_OPENAI_FILENAME: str = "preset_model_custom_openai.json"
     PRESET_CUSTOM_ANTHROPIC_FILENAME: str = "preset_model_custom_anthropic.json"
+
+    class ReorderOperation(StrEnum):
+        """模型组内排序操作类型。"""
+
+        MOVE_UP = "MOVE_UP"
+        MOVE_DOWN = "MOVE_DOWN"
+        MOVE_TOP = "MOVE_TOP"
+        MOVE_BOTTOM = "MOVE_BOTTOM"
 
     def __init__(self) -> None:
         self.models: list[Model] = []
@@ -310,3 +319,94 @@ class ModelManager:
             if model not in new_order:
                 new_order.append(model)
         self.models = new_order
+
+    @classmethod
+    def build_group_reordered_ids(
+        cls,
+        model_ids: list[str],
+        model_id: str,
+        operation: "ModelManager.ReorderOperation",
+    ) -> list[str]:
+        """
+        计算组内重排后的模型 ID 列表。
+        为什么做成纯函数：UI 与测试共享同一规则，避免边界行为分叉。
+        """
+        if not model_ids:
+            return []
+
+        if model_id not in model_ids:
+            return list(model_ids)
+
+        result = list(model_ids)
+        target_index = result.index(model_id)
+
+        if operation == cls.ReorderOperation.MOVE_UP:
+            if target_index <= 0:
+                return result
+            result[target_index - 1], result[target_index] = (
+                result[target_index],
+                result[target_index - 1],
+            )
+            return result
+        elif operation == cls.ReorderOperation.MOVE_DOWN:
+            if target_index >= len(result) - 1:
+                return result
+            result[target_index], result[target_index + 1] = (
+                result[target_index + 1],
+                result[target_index],
+            )
+            return result
+        elif operation == cls.ReorderOperation.MOVE_TOP:
+            if target_index <= 0:
+                return result
+            moved_id = result.pop(target_index)
+            result.insert(0, moved_id)
+            return result
+        elif operation == cls.ReorderOperation.MOVE_BOTTOM:
+            if target_index >= len(result) - 1:
+                return result
+            moved_id = result.pop(target_index)
+            result.append(moved_id)
+            return result
+        return result
+
+    @classmethod
+    def build_global_ordered_ids_for_group(
+        cls,
+        models_data: list[dict],
+        model_type: str,
+        reordered_group_ids: list[str],
+    ) -> list[str]:
+        """
+        根据组内新顺序构建全局 ordered_ids。
+        为什么单独封装：保证只调整目标分组，其他分组顺序保持原样。
+        """
+        if not models_data:
+            return []
+
+        result: list[str] = []
+        group_index = 0
+
+        for model_data in models_data:
+            current_type = model_data.get("type", ModelType.PRESET.value)
+            if current_type == model_type:
+                if group_index < len(reordered_group_ids):
+                    result.append(reordered_group_ids[group_index])
+                    group_index += 1
+                else:
+                    model_id = model_data.get("id", "")
+                    if model_id:
+                        result.append(model_id)
+            else:
+                model_id = model_data.get("id", "")
+                if model_id:
+                    result.append(model_id)
+
+        # 防御性补齐：避免异常输入导致目标分组尾部 ID 丢失。
+        while group_index < len(reordered_group_ids):
+            model_id = reordered_group_ids[group_index]
+            if model_id not in result:
+                result.append(model_id)
+            group_index += 1
+
+        return result

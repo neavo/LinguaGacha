@@ -506,6 +506,197 @@ class TestModelManager:
 
         assert [model.id for model in manager.get_models()] == ["c", "a", "b"]
 
+    def test_build_group_reordered_ids_returns_empty_for_empty_input(self) -> None:
+        # 为什么：空列表属于常见边界输入，重排逻辑应稳定返回空结果。
+        result = ModelManager.build_group_reordered_ids(
+            [],
+            "a",
+            ModelManager.ReorderOperation.MOVE_UP,
+        )
+
+        assert result == []
+
+    def test_build_group_reordered_ids_returns_copy_when_model_id_missing(self) -> None:
+        # 为什么：当目标 ID 不在列表中时，不应该改动原顺序，同时返回新列表避免外部误改引用。
+        model_ids = ["a", "b"]
+        result = ModelManager.build_group_reordered_ids(
+            model_ids,
+            "missing",
+            ModelManager.ReorderOperation.MOVE_DOWN,
+        )
+
+        assert result == ["a", "b"]
+        assert result is not model_ids
+
+    def test_build_group_reordered_ids_ignores_unknown_operation(self) -> None:
+        # 为什么：如果外部传入未知操作，函数应该“无事发生”而不是抛异常。
+        result = ModelManager.build_group_reordered_ids(
+            ["a", "b", "c"],
+            "b",
+            "UNKNOWN_OPERATION",
+        )
+
+        assert result == ["a", "b", "c"]
+
+    @pytest.mark.parametrize(
+        ("operation", "expected"),
+        [
+            (ModelManager.ReorderOperation.MOVE_UP, ["b", "a", "c", "d"]),
+            (ModelManager.ReorderOperation.MOVE_DOWN, ["a", "c", "b", "d"]),
+            (ModelManager.ReorderOperation.MOVE_TOP, ["b", "a", "c", "d"]),
+            (ModelManager.ReorderOperation.MOVE_BOTTOM, ["a", "c", "d", "b"]),
+        ],
+    )
+    def test_build_group_reordered_ids_supports_all_operations(
+        self,
+        operation: ModelManager.ReorderOperation,
+        expected: list[str],
+    ) -> None:
+        result = ModelManager.build_group_reordered_ids(
+            ["a", "b", "c", "d"],
+            "b",
+            operation,
+        )
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        ("model_id", "operation"),
+        [
+            ("a", ModelManager.ReorderOperation.MOVE_UP),
+            ("a", ModelManager.ReorderOperation.MOVE_TOP),
+            ("c", ModelManager.ReorderOperation.MOVE_DOWN),
+            ("c", ModelManager.ReorderOperation.MOVE_BOTTOM),
+        ],
+    )
+    def test_build_group_reordered_ids_keeps_boundary_items_unchanged(
+        self,
+        model_id: str,
+        operation: ModelManager.ReorderOperation,
+    ) -> None:
+        result = ModelManager.build_group_reordered_ids(
+            ["a", "b", "c"],
+            model_id,
+            operation,
+        )
+
+        assert result == ["a", "b", "c"]
+
+    def test_build_global_ordered_ids_for_group_only_changes_target_group(self) -> None:
+        models = [
+            build_model_data("p1", ModelType.PRESET.value),
+            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("o2", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("g1", ModelType.CUSTOM_GOOGLE.value),
+            build_model_data("o3", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("a1", ModelType.CUSTOM_ANTHROPIC.value),
+        ]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o2", "o3", "o1"],
+        )
+
+        manager = ModelManager()
+        manager.set_models(models)
+        manager.reorder_models(ordered_ids)
+
+        assert [model.id for model in manager.get_models()] == [
+            "p1",
+            "o2",
+            "o3",
+            "g1",
+            "o1",
+            "a1",
+        ]
+
+    def test_build_global_ordered_ids_for_group_returns_empty_for_empty_models(
+        self,
+    ) -> None:
+        # 为什么：上层传入空列表时，保持返回空，避免 UI 侧出现 None/异常分支。
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            [],
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1"],
+        )
+
+        assert ordered_ids == []
+
+    def test_build_global_ordered_ids_for_group_keeps_remaining_ids_when_reordered_list_is_short(
+        self,
+    ) -> None:
+        # 为什么：防御性处理，重排列表不完整时也不应丢失原分组尾部的 ID。
+        models = [
+            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("o2", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("o3", ModelType.CUSTOM_OPENAI.value),
+        ]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1"],
+        )
+
+        assert ordered_ids == ["o1", "o2", "o3"]
+
+    def test_build_global_ordered_ids_for_group_skips_empty_id_in_target_group_when_reordered_list_is_short(
+        self,
+    ) -> None:
+        # 为什么：目标分组里出现空 ID 时也要跳过，避免 ordered_ids 带入空项。
+        models = [
+            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
+            build_model_data("", ModelType.CUSTOM_OPENAI.value),
+        ]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1"],
+        )
+
+        assert ordered_ids == ["o1"]
+
+    def test_build_global_ordered_ids_for_group_ignores_empty_id_from_other_groups(
+        self,
+    ) -> None:
+        # 为什么：异常输入下（缺少/空 ID）不能污染 ordered_ids，否则后续 reorder 会出现空项。
+        models: list[dict] = [
+            build_model_data("", ModelType.CUSTOM_GOOGLE.value, api_format="Google"),
+            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
+        ]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1"],
+        )
+
+        assert ordered_ids == ["o1"]
+
+    def test_build_global_ordered_ids_for_group_appends_extra_reordered_ids(
+        self,
+    ) -> None:
+        # 为什么：异常输入下（重排列表更长）要补齐尾部 ID，保证 UI 不会“丢模型”。
+        models = [build_model_data("o1", ModelType.CUSTOM_OPENAI.value)]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1", "o2"],
+        )
+
+        assert ordered_ids == ["o1", "o2"]
+
+    def test_build_global_ordered_ids_for_group_does_not_duplicate_existing_ids_in_padding(
+        self,
+    ) -> None:
+        # 为什么：补齐逻辑遇到重复项时应跳过，避免 ordered_ids 里出现重复 ID。
+        models = [build_model_data("o1", ModelType.CUSTOM_OPENAI.value)]
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            ModelType.CUSTOM_OPENAI.value,
+            ["o1", "o1"],
+        )
+
+        assert ordered_ids == ["o1"]
+
     def test_initialize_models_does_not_duplicate_existing_preset(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

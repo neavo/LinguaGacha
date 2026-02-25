@@ -34,6 +34,11 @@ ICON_OPEN_ADVANCED_SETTINGS: BaseIcon = BaseIcon.CODE  # 模型操作：打开�
 ICON_TEST_MODEL: BaseIcon = BaseIcon.SEND  # 模型操作：测试连接
 ICON_RESET_MODEL: BaseIcon = BaseIcon.REFRESH_CW  # 预设模型操作：重置到初始状态
 ICON_DELETE_MODEL: BaseIcon = BaseIcon.TRASH_2  # 自定义模型操作：删除
+ICON_REORDER_MODEL: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 模型操作：排序
+ICON_MOVE_UP: BaseIcon = BaseIcon.CHEVRON_UP  # 模型操作：上移
+ICON_MOVE_DOWN: BaseIcon = BaseIcon.CHEVRON_DOWN  # 模型操作：下移
+ICON_MOVE_TOP: BaseIcon = BaseIcon.CHEVRON_FIRST  # 模型操作：置顶
+ICON_MOVE_BOTTOM: BaseIcon = BaseIcon.CHEVRON_LAST  # 模型操作：置底
 
 
 class ModelPage(Base, QWidget):
@@ -206,19 +211,25 @@ class ModelPage(Base, QWidget):
         # 更新各分类卡片
         for model_type, card in self.category_cards.items():
             self.update_category_card(
-                card, models_by_type[model_type], config.activate_model_id
+                card,
+                model_type,
+                models_by_type[model_type],
+                config.activate_model_id,
             )
 
     def update_category_card(
-        self, card: FlowCard, models: list[dict], active_model_id: str
+        self,
+        card: FlowCard,
+        model_type: str,
+        models: list[dict],
+        active_model_id: str,
     ) -> None:
         """更新单个分类卡片的模型列表"""
         card.take_all_widgets()
 
-        for model_data in models:
+        for row_index, model_data in enumerate(models):
             model_id = model_data.get("id", "")
             model_name = model_data.get("name", "")
-            model_type = model_data.get("type", "PRESET")
             is_active = model_id == active_model_id
 
             # 根据激活状态选择按钮类型
@@ -241,7 +252,6 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.activate_model, model_id),
                 )
             )
-            menu.addSeparator()
 
             # 基础设置
             menu.addAction(
@@ -251,7 +261,6 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.show_model_basic_setting_page, model_id),
                 )
             )
-            menu.addSeparator()
 
             # 任务设置
             menu.addAction(
@@ -261,7 +270,6 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.show_model_task_setting_page, model_id),
                 )
             )
-            menu.addSeparator()
 
             # 高级设置
             menu.addAction(
@@ -271,7 +279,6 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.show_advanced_edit_page, model_id),
                 )
             )
-            menu.addSeparator()
 
             # 测试模型
             menu.addAction(
@@ -301,13 +308,141 @@ class ModelPage(Base, QWidget):
                     )
                 )
 
+            menu.addSeparator()
+            self.add_reorder_actions_to_menu(
+                menu=menu,
+                model_type=model_type,
+                model_id=model_id,
+                row_index=row_index,
+                total_count=len(models),
+            )
+
             button.setMenu(menu)
             card.add_widget(button)
+
+    def add_reorder_actions_to_menu(
+        self,
+        menu: RoundMenu,
+        model_type: str,
+        model_id: str,
+        row_index: int,
+        total_count: int,
+    ) -> None:
+        """向模型菜单添加排序子菜单。"""
+        can_move_up = row_index > 0
+        can_move_down = row_index < total_count - 1
+
+        reorder_menu = RoundMenu(Localizer.get().model_page_adjust_order, menu)
+        reorder_menu.setIcon(ICON_REORDER_MODEL)
+
+        move_up_action = Action(
+            ICON_MOVE_UP,
+            Localizer.get().quality_move_up,
+            triggered=partial(
+                self.reorder_model_in_group,
+                model_type,
+                model_id,
+                ModelManager.ReorderOperation.MOVE_UP,
+            ),
+        )
+        move_up_action.setEnabled(can_move_up)
+        reorder_menu.addAction(move_up_action)
+
+        move_down_action = Action(
+            ICON_MOVE_DOWN,
+            Localizer.get().quality_move_down,
+            triggered=partial(
+                self.reorder_model_in_group,
+                model_type,
+                model_id,
+                ModelManager.ReorderOperation.MOVE_DOWN,
+            ),
+        )
+        move_down_action.setEnabled(can_move_down)
+        reorder_menu.addAction(move_down_action)
+        reorder_menu.addSeparator()
+
+        move_top_action = Action(
+            ICON_MOVE_TOP,
+            Localizer.get().quality_move_top,
+            triggered=partial(
+                self.reorder_model_in_group,
+                model_type,
+                model_id,
+                ModelManager.ReorderOperation.MOVE_TOP,
+            ),
+        )
+        move_top_action.setEnabled(can_move_up)
+        reorder_menu.addAction(move_top_action)
+
+        move_bottom_action = Action(
+            ICON_MOVE_BOTTOM,
+            Localizer.get().quality_move_bottom,
+            triggered=partial(
+                self.reorder_model_in_group,
+                model_type,
+                model_id,
+                ModelManager.ReorderOperation.MOVE_BOTTOM,
+            ),
+        )
+        move_bottom_action.setEnabled(can_move_down)
+        reorder_menu.addAction(move_bottom_action)
+
+        menu.addMenu(reorder_menu)
+
+    @staticmethod
+    def collect_group_model_ids(models: list[dict], model_type: str) -> list[str]:
+        """
+        提取指定分组的模型 ID 列表。
+        为什么要单独提取：后续重排只允许作用于单一分组。
+        """
+        result: list[str] = []
+        for model_data in models:
+            current_type = model_data.get("type", ModelType.PRESET.value)
+            if current_type == model_type:
+                model_id = model_data.get("id", "")
+                if model_id:
+                    result.append(model_id)
+        return result
 
     # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
     def model_test_start(self, model_id: str, checked: bool = False) -> None:
         """执行接口测试"""
+        del checked
         self.emit(Base.Event.APITEST_RUN, {"model_id": model_id})
+
+    # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
+    def reorder_model_in_group(
+        self,
+        model_type: str,
+        model_id: str,
+        operation: ModelManager.ReorderOperation,
+        checked: bool = False,
+    ) -> None:
+        """执行组内排序并持久化。"""
+        del checked
+        config = Config().load()
+        models = config.models or []
+        group_ids = self.collect_group_model_ids(models, model_type)
+        reordered_group_ids = ModelManager.build_group_reordered_ids(
+            group_ids,
+            model_id,
+            operation,
+        )
+        if reordered_group_ids == group_ids:
+            return
+
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
+            models,
+            model_type,
+            reordered_group_ids,
+        )
+        manager = ModelManager.get()
+        manager.set_models(models)
+        manager.reorder_models(ordered_ids)
+        config.models = manager.get_models_as_dict()
+        config.save()
+        self.refresh_all_categories()
 
     def model_test_done(self, event: Base.Event, data: dict) -> None:
         """接口测试完成"""
@@ -408,6 +543,7 @@ class ModelPage(Base, QWidget):
 
     def reset_preset_model(self, model_id: str, checked: bool = False) -> None:
         """重置预设模型"""
+        del checked
         config = Config().load()
         manager = ModelManager.get()
         manager.set_models(config.models or [])

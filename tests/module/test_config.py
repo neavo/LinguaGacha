@@ -106,6 +106,29 @@ class TestConfigBehavior:
             "UNKNOWN",
         ]
 
+    def test_save_and_load_preserve_relative_order_within_same_type(self, fs) -> None:
+        del fs
+        config = Config(
+            models=[
+                {"id": "openai-2", "type": "CUSTOM_OPENAI"},
+                {"id": "preset-1", "type": "PRESET"},
+                {"id": "openai-1", "type": "CUSTOM_OPENAI"},
+                {"id": "google-1", "type": "CUSTOM_GOOGLE"},
+            ]
+        )
+        path = Path("/workspace/config/config.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        config.save(str(path))
+        loaded = Config().load(str(path))
+
+        openai_ids = [
+            model["id"]
+            for model in (loaded.models or [])
+            if model.get("type") == "CUSTOM_OPENAI"
+        ]
+        assert openai_ids == ["openai-2", "openai-1"]
+
     def test_save_serializes_core_fields(self, fs) -> None:
         del fs
         config = Config(

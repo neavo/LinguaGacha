@@ -228,6 +228,7 @@ class LocalizerEN(LocalizerZH):
     model_page_task_setting: str = "Task Settings"
     model_page_advanced_setting: str = "Advanced Settings"
     model_page_test: str = "Test Model"
+    model_page_adjust_order: str = "Adjust Order"
     model_page_delete: str = "Delete Model"
     model_page_reset: str = "Reset Model"
     model_page_category_preset_title: str = "Preset Models"
