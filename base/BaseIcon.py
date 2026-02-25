@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from enum import Enum
+import os
 from pathlib import Path
+import sys
 
 from PySide6.QtCore import QFile
 from PySide6.QtCore import QIODevice
@@ -25,7 +27,23 @@ svg_colored_cache: dict[tuple[str, str], str] = {}
 qicon_cache: dict[tuple[str, str], QIcon] = {}
 
 MODULE_ROOT: Path = Path(__file__).resolve().parents[1]
-LUCIDE_RCC_FILE_PATH: Path = MODULE_ROOT / "resource" / "lucide_icons.rcc"
+
+
+def resolve_lucide_rcc_path() -> Path:
+    # 与 Config.get_config_path 保持同一基准：优先使用应用根目录下的资源
+    app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
+    if not app_dir:
+        # 适配 onefile：sys.argv[0] 指向 exe 所在目录
+        app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    rcc_path = Path(app_dir) / "resource" / "lucide_icons.rcc"
+    if rcc_path.exists():
+        return rcc_path
+
+    return MODULE_ROOT / "resource" / "lucide_icons.rcc"
+
+
+LUCIDE_RCC_FILE_PATH: Path = resolve_lucide_rcc_path()
 LUCIDE_RESOURCE_READY: bool = QResource.registerResource(str(LUCIDE_RCC_FILE_PATH))
 if not LUCIDE_RESOURCE_READY:
     raise RuntimeError(f"无法加载 Lucide 图标资源文件：{LUCIDE_RCC_FILE_PATH}")
