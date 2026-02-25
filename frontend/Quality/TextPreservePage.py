@@ -211,6 +211,7 @@ class TextPreservePage(QualityRulePageBase):
                 ),
             )
         )
+        self.add_reorder_actions_to_menu(menu, rows)
 
         viewport = self.table.viewport()
         if viewport is None:

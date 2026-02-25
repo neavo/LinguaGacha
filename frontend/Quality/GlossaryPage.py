@@ -263,6 +263,7 @@ class GlossaryPage(QualityRulePageBase):
                 ),
             )
         )
+        self.add_reorder_actions_to_menu(menu, rows)
         menu.addSeparator()
 
         case_menu = RoundMenu(Localizer.get().rule_case_sensitive, menu)

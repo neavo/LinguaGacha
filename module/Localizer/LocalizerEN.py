@@ -569,6 +569,11 @@ class LocalizerEN(LocalizerZH):
     quality_set_default_preset_success: str = "Default preset set …"
     quality_cancel_default_preset_success: str = "Default preset cancelled …"
     quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
+    quality_reorder: str = "Reorder"
+    quality_move_up: str = "Move Up"
+    quality_move_down: str = "Move Down"
+    quality_move_top: str = "Move To Top"
+    quality_move_bottom: str = "Move To Bottom"
 
     # 规则列
     enable: str = "Enable"
