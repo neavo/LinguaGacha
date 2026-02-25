@@ -69,6 +69,7 @@ class TestRuleFilterSuffix:
             "music.mp3",
             "sound.wav",
             "track.ogg",
+            "track.mid",
             "image.png",
             "photo.jpg",
             "pic.jpeg",
@@ -145,3 +146,6 @@ class TestRuleFilterEdgeCases:
     def test_text_with_prefix_in_middle_not_filtered(self) -> None:
         # 只要不以前缀开头即可
         assert RuleFilter.filter("go to MapData/map") is False
+
+    def test_text_with_mid_substring_not_filtered(self) -> None:
+        assert RuleFilter.filter("formidable") is False

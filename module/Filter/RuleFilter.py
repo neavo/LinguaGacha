@@ -17,7 +17,7 @@ class RuleFilter:
         ".mp3",
         ".wav",
         ".ogg",
-        "mid",
+        ".mid",
         ".png",
         ".jpg",
         ".jpeg",
