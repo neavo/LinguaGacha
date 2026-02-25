@@ -552,7 +552,7 @@ class CustomPromptPage(Base, QWidget):
         def delete_preset(item: dict, checked: bool = False) -> None:
             message_box = MessageBox(
                 Localizer.get().warning,
-                Localizer.get().alert_delete_preset.format(NAME=item["name"]),
+                Localizer.get().alert_confirm_delete_data,
                 window,
             )
             message_box.yesButton.setText(Localizer.get().confirm)

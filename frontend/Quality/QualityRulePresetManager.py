@@ -166,7 +166,7 @@ class QualityRulePresetManager:
     def delete_preset(self, item: dict[str, str], checked: bool = False) -> None:
         message_box = MessageBox(
             Localizer.get().warning,
-            Localizer.get().alert_delete_preset.format(NAME=item["name"]),
+            Localizer.get().alert_confirm_delete_data,
             self.window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)

@@ -1,20 +1,20 @@
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
-from qfluentwidgets import Action
 from qfluentwidgets import ComboBox
-from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PlainTextEdit
-from qfluentwidgets import RoundMenu
+from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from module.Config import Config
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.CustomTextEdit import CustomTextEdit
 from widget.EmptyCard import EmptyCard
@@ -22,12 +22,12 @@ from widget.GroupCard import GroupCard
 from widget.LineEditCard import LineEditCard
 from widget.LineEditMessageBox import LineEditMessageBox
 
-
 # ==================== 图标常量 ====================
 
-ICON_MODEL_ID_MENU: BaseIcon = BaseIcon.PENCIL  # 模型 ID：下拉菜单按钮
 ICON_MODEL_ID_EDIT: BaseIcon = BaseIcon.PENCIL_LINE  # 模型 ID：编辑/修改
 ICON_MODEL_ID_SYNC: BaseIcon = BaseIcon.REFRESH_CW  # 模型 ID：同步/更新
+ICON_MODEL_ID_TEST: BaseIcon = BaseIcon.SEND  # 模型 ID：测试
+MODEL_ID_ACTION_BUTTON_WIDTH: int = 80  # 模型标识：操作按钮宽度
 
 
 class ModelBasicSettingPage(Base, MessageBoxBase):
@@ -45,6 +45,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         # 获取模型配置
         self.model_id = model_id
         self.model = config.get_model(model_id)
+        self.model_id_test_button: PushButton | None = None
 
         # 设置主布局
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
@@ -107,6 +108,16 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
 
         # 填充
         self.vbox.addStretch(1)
+
+        # 注册事件
+        self.subscribe(Base.Event.APITEST_RUN, self.update_test_button_status)
+        self.subscribe(Base.Event.APITEST_DONE, self.update_test_button_status)
+        self.subscribe(Base.Event.TRANSLATION_RUN, self.update_test_button_status)
+        self.subscribe(Base.Event.TRANSLATION_DONE, self.update_test_button_status)
+        self.subscribe(
+            Base.Event.TRANSLATION_REQUIRE_STOP,
+            self.update_test_button_status,
+        )
 
     # 模型名称
     def add_widget_name(
@@ -208,7 +219,8 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
                 )
             )
 
-        def triggered_edit() -> None:
+        def triggered_edit(checked: bool = False) -> None:
+            del checked
             message_box = LineEditMessageBox(
                 window,
                 Localizer.get().model_basic_setting_page_model_id,
@@ -217,7 +229,8 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             message_box.get_line_edit().setText(self.model.get("model_id", ""))
             message_box.exec()
 
-        def triggered_sync() -> None:
+        def triggered_sync(checked: bool = False) -> None:
+            del checked
             # 弹出页面
             ModelSelectorPage(self.model_id, window).exec()
 
@@ -237,29 +250,42 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         )
         parent.addWidget(empty_card)
 
-        drop_down_push_button = DropDownPushButton(Localizer.get().edit)
-        drop_down_push_button.setIcon(ICON_MODEL_ID_MENU)
-        drop_down_push_button.setFixedWidth(128)
-        drop_down_push_button.setContentsMargins(4, 0, 4, 0)
-        empty_card.add_widget(drop_down_push_button)
+        def triggered_test(checked: bool = False) -> None:
+            del checked
+            self.emit(Base.Event.APITEST_RUN, {"model_id": self.model_id})
 
-        menu = RoundMenu("", drop_down_push_button)
-        menu.addAction(
-            Action(
-                ICON_MODEL_ID_EDIT,
-                Localizer.get().model_basic_setting_page_model_id_edit,
-                triggered=lambda _: triggered_edit(),
-            )
+        button_container = QWidget(empty_card)
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+
+        input_button = PushButton(
+            Localizer.get().model_basic_setting_page_model_id_input
         )
-        menu.addSeparator()
-        menu.addAction(
-            Action(
-                ICON_MODEL_ID_SYNC,
-                Localizer.get().model_basic_setting_page_model_id_sync,
-                triggered=lambda _: triggered_sync(),
-            )
+        input_button.setIcon(ICON_MODEL_ID_EDIT)
+        input_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
+        input_button.clicked.connect(triggered_edit)
+        button_layout.addWidget(input_button)
+
+        fetch_button = PushButton(
+            Localizer.get().model_basic_setting_page_model_id_fetch
         )
-        drop_down_push_button.setMenu(menu)
+        fetch_button.setIcon(ICON_MODEL_ID_SYNC)
+        fetch_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
+        fetch_button.clicked.connect(triggered_sync)
+        button_layout.addWidget(fetch_button)
+
+        test_button = PushButton(
+            Localizer.get().model_basic_setting_page_model_id_test
+        )
+        test_button.setIcon(ICON_MODEL_ID_TEST)
+        test_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
+        test_button.clicked.connect(triggered_test)
+        button_layout.addWidget(test_button)
+        self.model_id_test_button = test_button
+
+        empty_card.add_widget(button_container)
+        self.update_test_button_status(Base.Event.APITEST_DONE, {})
 
     # 思考挡位
     def add_widget_thinking_level(
@@ -300,3 +326,11 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
 
         combo_box.currentIndexChanged.connect(on_current_index_changed)
         empty_card.add_widget(combo_box)
+
+    def update_test_button_status(self, event: Base.Event, data: dict) -> None:
+        """同步测试按钮状态，避免任务运行时重复触发。"""
+        del event, data
+        if self.model_id_test_button is None:
+            return
+        status = Engine.get().get_status()
+        self.model_id_test_button.setEnabled(status == Base.TaskStatus.IDLE)

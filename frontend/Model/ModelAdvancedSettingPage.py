@@ -1,10 +1,8 @@
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import HyperlinkLabel
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import SwitchButton
@@ -66,9 +64,6 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
 
         # 自定义网络配置
         self.add_widget_request_config(scroll_area_vbox, config, window)
-
-        # URL
-        self.add_widget_url(scroll_area_vbox, config, window)
 
         # 填充
         scroll_area_vbox.addStretch(1)
@@ -478,24 +473,3 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         config.set_model(self.model)
         config.save()
 
-    # 添加链接
-    def add_widget_url(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        api_format = self.model.get("api_format", "")
-        if api_format == Base.APIFormat.GOOGLE:
-            url = "https://ai.google.dev/gemini-api/docs/thinking"
-        elif api_format == Base.APIFormat.ANTHROPIC:
-            url = "https://docs.anthropic.com/en/api/getting-started"
-        elif api_format == Base.APIFormat.SAKURALLM:
-            url = "https://github.com/SakuraLLM/SakuraLLM#%E6%8E%A8%E7%90%86"
-        else:
-            url = "https://platform.openai.com/docs/api-reference/chat/create"
-
-        hyper_link_label = HyperlinkLabel(
-            QUrl(url), Localizer.get().model_advanced_setting_page_document_link
-        )
-        hyper_link_label.setUnderlineVisible(True)
-
-        parent.addSpacing(16)
-        parent.addWidget(hyper_link_label, alignment=Qt.AlignmentFlag.AlignHCenter)
