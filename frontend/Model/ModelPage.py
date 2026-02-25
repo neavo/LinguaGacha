@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import DropDownPushButton
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import MessageBox
 from qfluentwidgets import PrimaryDropDownPushButton
 from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
@@ -31,7 +32,6 @@ ICON_ACTIVATE_MODEL: BaseIcon = BaseIcon.CHECK  # 模型操作：激活
 ICON_OPEN_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 模型操作：打开基础设置
 ICON_OPEN_TASK_SETTINGS: BaseIcon = BaseIcon.LIST_TODO  # 模型操作：打开任务设置
 ICON_OPEN_ADVANCED_SETTINGS: BaseIcon = BaseIcon.CODE  # 模型操作：打开高级设置
-ICON_TEST_MODEL: BaseIcon = BaseIcon.SEND  # 模型操作：测试连接
 ICON_RESET_MODEL: BaseIcon = BaseIcon.REFRESH_CW  # 预设模型操作：重置到初始状态
 ICON_DELETE_MODEL: BaseIcon = BaseIcon.TRASH_2  # 自定义模型操作：删除
 ICON_REORDER_MODEL: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 模型操作：排序
@@ -252,6 +252,7 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.activate_model, model_id),
                 )
             )
+            menu.addSeparator()
 
             # 基础设置
             menu.addAction(
@@ -261,6 +262,7 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.show_model_basic_setting_page, model_id),
                 )
             )
+            menu.addSeparator()
 
             # 任务设置
             menu.addAction(
@@ -270,6 +272,7 @@ class ModelPage(Base, QWidget):
                     triggered=partial(self.show_model_task_setting_page, model_id),
                 )
             )
+            menu.addSeparator()
 
             # 高级设置
             menu.addAction(
@@ -277,15 +280,6 @@ class ModelPage(Base, QWidget):
                     ICON_OPEN_ADVANCED_SETTINGS,
                     Localizer.get().model_page_advanced_setting,
                     triggered=partial(self.show_advanced_edit_page, model_id),
-                )
-            )
-
-            # 测试模型
-            menu.addAction(
-                Action(
-                    ICON_TEST_MODEL,
-                    Localizer.get().model_page_test,
-                    triggered=partial(self.model_test_start, model_id),
                 )
             )
             menu.addSeparator()
@@ -337,7 +331,7 @@ class ModelPage(Base, QWidget):
 
         move_up_action = Action(
             ICON_MOVE_UP,
-            Localizer.get().quality_move_up,
+            Localizer.get().move_up,
             triggered=partial(
                 self.reorder_model_in_group,
                 model_type,
@@ -350,7 +344,7 @@ class ModelPage(Base, QWidget):
 
         move_down_action = Action(
             ICON_MOVE_DOWN,
-            Localizer.get().quality_move_down,
+            Localizer.get().move_down,
             triggered=partial(
                 self.reorder_model_in_group,
                 model_type,
@@ -364,7 +358,7 @@ class ModelPage(Base, QWidget):
 
         move_top_action = Action(
             ICON_MOVE_TOP,
-            Localizer.get().quality_move_top,
+            Localizer.get().move_top,
             triggered=partial(
                 self.reorder_model_in_group,
                 model_type,
@@ -377,7 +371,7 @@ class ModelPage(Base, QWidget):
 
         move_bottom_action = Action(
             ICON_MOVE_BOTTOM,
-            Localizer.get().quality_move_bottom,
+            Localizer.get().move_bottom,
             triggered=partial(
                 self.reorder_model_in_group,
                 model_type,
@@ -481,6 +475,7 @@ class ModelPage(Base, QWidget):
         # 检查是否为最后一个该类型的模型
         target_model_data = config.get_model(model_id)
         if target_model_data:
+            model_name = str(target_model_data.get("name", "")).strip() or model_id
             model_type = target_model_data.get("type", "")
             # 统计同类型模型数量
             same_type_count = sum(
@@ -495,6 +490,18 @@ class ModelPage(Base, QWidget):
                     },
                 )
                 return
+        else:
+            model_name = model_id
+
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().alert_confirm_delete_data,
+            self.window,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        if not message_box.exec():
+            return
 
         # 删除模型
         if manager.delete_model(model_id):
@@ -547,6 +554,16 @@ class ModelPage(Base, QWidget):
         config = Config().load()
         manager = ModelManager.get()
         manager.set_models(config.models or [])
+
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().alert_confirm_reset_data,
+            self.window,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        if not message_box.exec():
+            return
 
         # 重置模型
         if manager.reset_preset_model(model_id):
