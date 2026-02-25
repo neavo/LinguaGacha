@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
+from qfluentwidgets import RoundMenu
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets.components.widgets.command_bar import CommandButton
@@ -30,6 +31,7 @@ from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
+from module.QualityRule.QualityRuleReorder import QualityRuleReorder
 from widget.AppTable import AppTableModelBase
 from widget.AppTable import AppTableView
 from widget.AppTable import ColumnSpec
@@ -43,6 +45,11 @@ ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出规则
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
 ICON_ACTION_PRESET: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单
 ICON_ACTION_WIKI: BaseIcon = BaseIcon.CIRCLE_QUESTION_MARK  # 命令栏：打开 Wiki
+ICON_ACTION_REORDER: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 右键菜单：排序
+ICON_ACTION_MOVE_UP: BaseIcon = BaseIcon.CHEVRON_UP  # 右键菜单：上移
+ICON_ACTION_MOVE_DOWN: BaseIcon = BaseIcon.CHEVRON_DOWN  # 右键菜单：下移
+ICON_ACTION_MOVE_TOP: BaseIcon = BaseIcon.CHEVRON_FIRST  # 右键菜单：置顶
+ICON_ACTION_MOVE_BOTTOM: BaseIcon = BaseIcon.CHEVRON_LAST  # 右键菜单：置底
 
 
 class QualityRulePageBase(Base, QWidget):
@@ -421,6 +428,178 @@ class QualityRulePageBase(Base, QWidget):
             for r in self.table.get_selected_source_rows()
             if 0 <= r < len(self.entries)
         ]
+
+    def get_reorder_anchor_row(self, rows: list[int]) -> int:
+        if self.current_index in rows:
+            return self.current_index
+        if not rows:
+            return -1
+        return rows[0]
+
+    def apply_reorder_order(self, order: list[int], anchor_row: int) -> None:
+        if len(order) != len(self.entries):
+            return
+
+        base_order = QualityRuleReorder.identity_order(len(self.entries))
+        if order == base_order:
+            return
+
+        new_entries: list[dict[str, Any]] = []
+        for index in order:
+            if index < 0 or index >= len(self.entries):
+                return
+            new_entries.append(self.entries[index])
+
+        self.entries = new_entries
+
+        next_index = -1
+        if 0 <= anchor_row < len(order):
+            try:
+                next_index = order.index(anchor_row)
+            except ValueError:
+                next_index = -1
+        self.current_index = next_index
+
+        try:
+            self.cleanup_empty_entries()
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.refresh_table()
+        if self.entries:
+            if self.current_index < 0 or self.current_index >= len(self.entries):
+                self.current_index = 0
+            self.select_row(self.current_index)
+        else:
+            self.apply_selection(-1)
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().toast_save,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def reorder_selected_rows_by_operation(
+        self,
+        operation: QualityRuleReorder.Operation,
+        rows: list[int] | tuple[int, ...] | None = None,
+    ) -> None:
+        selected_rows = (
+            list(rows) if rows is not None else self.get_selected_entry_rows()
+        )
+        normalized_rows = QualityRuleReorder.normalize_rows(
+            selected_rows,
+            len(self.entries),
+        )
+        if not normalized_rows:
+            return
+
+        anchor_row = self.get_reorder_anchor_row(normalized_rows)
+        order = QualityRuleReorder.build_order_for_operation(
+            len(self.entries),
+            normalized_rows,
+            operation,
+        )
+        self.apply_reorder_order(order, anchor_row)
+
+    def move_selected_rows_up(self) -> None:
+        self.reorder_selected_rows_by_operation(QualityRuleReorder.Operation.MOVE_UP)
+
+    def move_selected_rows_down(self) -> None:
+        self.reorder_selected_rows_by_operation(QualityRuleReorder.Operation.MOVE_DOWN)
+
+    def move_selected_rows_to_top(self) -> None:
+        self.reorder_selected_rows_by_operation(QualityRuleReorder.Operation.MOVE_TOP)
+
+    def move_selected_rows_to_bottom(self) -> None:
+        self.reorder_selected_rows_by_operation(
+            QualityRuleReorder.Operation.MOVE_BOTTOM
+        )
+
+    def add_reorder_actions_to_menu(self, menu: RoundMenu, rows: list[int]) -> bool:
+        normalized_rows = QualityRuleReorder.normalize_rows(rows, len(self.entries))
+        if not normalized_rows:
+            return False
+        # 先冻结当前多选行，避免 unsaved guard 保存后选区变化导致只重排单行。
+        frozen_rows: tuple[int, ...] = tuple(normalized_rows)
+
+        can_move_up = normalized_rows[0] > 0
+        can_move_down = normalized_rows[-1] < len(self.entries) - 1
+
+        reorder_menu = RoundMenu(Localizer.get().quality_reorder, menu)
+        reorder_menu.setIcon(ICON_ACTION_REORDER)
+
+        move_up_action = Action(
+            ICON_ACTION_MOVE_UP,
+            Localizer.get().quality_move_up,
+            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
+                lambda: self.reorder_selected_rows_by_operation(
+                    QualityRuleReorder.Operation.MOVE_UP,
+                    rows,
+                )
+            ),
+        )
+        move_up_action.setEnabled(can_move_up)
+        reorder_menu.addAction(move_up_action)
+
+        move_down_action = Action(
+            ICON_ACTION_MOVE_DOWN,
+            Localizer.get().quality_move_down,
+            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
+                lambda: self.reorder_selected_rows_by_operation(
+                    QualityRuleReorder.Operation.MOVE_DOWN,
+                    rows,
+                )
+            ),
+        )
+        move_down_action.setEnabled(can_move_down)
+        reorder_menu.addAction(move_down_action)
+        reorder_menu.addSeparator()
+
+        move_top_action = Action(
+            ICON_ACTION_MOVE_TOP,
+            Localizer.get().quality_move_top,
+            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
+                lambda: self.reorder_selected_rows_by_operation(
+                    QualityRuleReorder.Operation.MOVE_TOP,
+                    rows,
+                )
+            ),
+        )
+        move_top_action.setEnabled(can_move_up)
+        reorder_menu.addAction(move_top_action)
+
+        move_bottom_action = Action(
+            ICON_ACTION_MOVE_BOTTOM,
+            Localizer.get().quality_move_bottom,
+            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
+                lambda: self.reorder_selected_rows_by_operation(
+                    QualityRuleReorder.Operation.MOVE_BOTTOM,
+                    rows,
+                )
+            ),
+        )
+        move_bottom_action.setEnabled(can_move_down)
+        reorder_menu.addAction(move_bottom_action)
+
+        menu.addMenu(reorder_menu)
+        return True
 
     def refresh_table(self) -> None:
         self.table_model.set_rows(self.entries)

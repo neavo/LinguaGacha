@@ -301,6 +301,7 @@ class TextReplacementPage(QualityRulePageBase):
                 ),
             )
         )
+        self.add_reorder_actions_to_menu(menu, rows)
         menu.addSeparator()
 
         regex_menu = RoundMenu(Localizer.get().rule_regex, menu)

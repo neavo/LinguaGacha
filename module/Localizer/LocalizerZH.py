@@ -569,6 +569,11 @@ class LocalizerZH:
     quality_set_default_preset_success: str = "已设置为默认预设 …"
     quality_cancel_default_preset_success: str = "已取消默认预设 …"
     quality_default_preset_loaded_toast: str = "已自动加载默认预设：{NAME} …"
+    quality_reorder: str = "排序"
+    quality_move_up: str = "上移"
+    quality_move_down: str = "下移"
+    quality_move_top: str = "置顶"
+    quality_move_bottom: str = "置底"
 
     # 规则列
     enable: str = "启用"
