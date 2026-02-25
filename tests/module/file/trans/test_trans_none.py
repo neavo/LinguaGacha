@@ -59,6 +59,7 @@ def test_filter_blocks_by_tag_or_blacklist_ext() -> None:
     processor = NONE(project={})
 
     assert processor.filter("a.mp3", "p", [], ["1", "2"]) == [True, True]
+    assert processor.filter("formidable", "p", [], ["1"]) == [False]
     assert processor.filter("hello", "p", ["red"], ["1"]) == [True]
     assert processor.filter("hello", "p", [], ["1", "2"]) == [False, False]
 
