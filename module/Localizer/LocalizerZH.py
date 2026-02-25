@@ -228,6 +228,7 @@ class LocalizerZH:
     model_page_task_setting: str = "任务设置"
     model_page_advanced_setting: str = "高级设置"
     model_page_test: str = "测试模型"
+    model_page_adjust_order: str = "调整排序"
     model_page_delete: str = "删除模型"
     model_page_reset: str = "重置模型"
     model_page_category_preset_title: str = "预设模型"
