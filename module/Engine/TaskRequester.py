@@ -85,6 +85,7 @@ class TaskRequester(Base):
     SDK_TIMEOUT_BUFFER_S: int = 5
     OUTPUT_TOKEN_LIMIT_AUTO: int = 0
     LEGACY_OUTPUT_TOKEN_LIMIT_AUTO: int = -1
+    ANTHROPIC_AUTO_MAX_TOKENS_MIN: int = 8192
 
     def __init__(self, config: Config, model: dict) -> None:
 
@@ -103,6 +104,9 @@ class TaskRequester(Base):
 
         self.output_token_limit = model.get("threshold", {}).get(
             "output_token_limit", 4096
+        )
+        self.input_token_threshold: int = int(
+            model.get("threshold", {}).get("input_token_limit", 512)
         )
 
         request_config = model.get("request", {})
@@ -142,6 +146,10 @@ class TaskRequester(Base):
         ):
             return
         args[token_key] = self.output_token_limit
+
+    def get_anthropic_auto_max_tokens(self) -> int:
+        # Anthropic 要求 max_tokens 必传；自动模式时用统一下限和输入阈值兜底。
+        return max(self.ANTHROPIC_AUTO_MAX_TOKENS_MIN, self.input_token_threshold)
 
     def get_sdk_timeout_seconds(self) -> int:
 
@@ -950,6 +958,8 @@ class TaskRequester(Base):
             }
         )
         self.apply_output_token_limit(result, "max_tokens")
+        if "max_tokens" not in result:
+            result["max_tokens"] = self.get_anthropic_auto_max_tokens()
 
         if system_texts:
             result["system"] = "\n\n".join(system_texts)
