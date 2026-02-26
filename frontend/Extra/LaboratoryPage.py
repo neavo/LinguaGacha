@@ -25,6 +25,7 @@ class LaboratoryPage(Base, QWidget):
 
         # 添加控件
         self.add_widget_mtool(self.root, config, window)
+        self.add_widget_force_thinking(self.root, config, window)
         self.add_widget_auto_glossary(self.root, config, window)
 
         # 填充
@@ -46,6 +47,11 @@ class LaboratoryPage(Base, QWidget):
         locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
         if hasattr(self, "mtool_card") and self.mtool_card is not None:
             self.mtool_card.get_switch_button().setEnabled(not locked)
+        if (
+            hasattr(self, "force_thinking_card")
+            and self.force_thinking_card is not None
+        ):
+            self.force_thinking_card.get_switch_button().setEnabled(not locked)
 
     # MTool 优化器
     def add_widget_mtool(
@@ -67,6 +73,26 @@ class LaboratoryPage(Base, QWidget):
             checked_changed=checked_changed,
         )
         parent.addWidget(self.mtool_card)
+
+    # 强制思考
+    def add_widget_force_thinking(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        def init(widget: SwitchButtonCard) -> None:
+            widget.get_switch_button().setChecked(config.force_thinking_enable)
+
+        def checked_changed(widget: SwitchButtonCard) -> None:
+            config = Config().load()
+            config.force_thinking_enable = widget.get_switch_button().isChecked()
+            config.save()
+
+        self.force_thinking_card = SwitchButtonCard(
+            title=Localizer.get().laboratory_page_force_thinking_enable,
+            description=Localizer.get().laboratory_page_force_thinking_enable_desc,
+            init=init,
+            checked_changed=checked_changed,
+        )
+        parent.addWidget(self.force_thinking_card)
 
     # 自动补全术语表
     def add_widget_auto_glossary(

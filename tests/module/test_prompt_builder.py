@@ -62,7 +62,7 @@ class TestPromptBuilder:
 
         expected = (
             "PREFIX\n"
-            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n"
+            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n\n"
             + "SUFFIX"
         )
         assert result == expected
@@ -134,8 +134,44 @@ class TestPromptBuilder:
 
         assert (
             result
-            == f"PREFIX\nRULE: {BaseLanguage.get_name_zh(BaseLanguage.Enum.ZH)}\nSUFFIX"
+            == f"PREFIX\nRULE: {BaseLanguage.get_name_zh(BaseLanguage.Enum.ZH)}\n\nSUFFIX"
         )
+
+    def test_build_main_appends_thinking_block_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder, "get_prefix", classmethod(lambda cls, language: "PREFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_base", classmethod(lambda cls, language: "BASE")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: "THINKING"),
+        )
+        monkeypatch.setattr(
+            PromptBuilder, "get_suffix", classmethod(lambda cls, language: "OUTPUT")
+        )
+
+        config = Config(
+            source_language=BaseLanguage.Enum.JA,
+            target_language=BaseLanguage.Enum.ZH,
+            auto_glossary_enable=False,
+            force_thinking_enable=True,
+        )
+        snapshot = FakeQualitySnapshot(
+            custom_prompt_zh_enable=False,
+            custom_prompt_en_enable=False,
+        )
+
+        result = PromptBuilder(
+            config=config,
+            quality_snapshot=cast(Any, snapshot),
+        ).build_main()
+
+        assert result == "PREFIX\nBASE\n\nTHINKING\n\nOUTPUT"
 
     def test_build_glossary_respects_case_sensitive_flag(self) -> None:
         config = Config(target_language=BaseLanguage.Enum.ZH)
@@ -294,6 +330,7 @@ class TestPromptBuilder:
         (zh_dir / "base.txt").write_text(" BASE ", encoding="utf-8-sig")
         (zh_dir / "prefix.txt").write_text("PREFIX", encoding="utf-8-sig")
         (zh_dir / "suffix.txt").write_text("SUFFIX", encoding="utf-8-sig")
+        (zh_dir / "thinking.txt").write_text("THINKING_SUFFIX", encoding="utf-8-sig")
         (zh_dir / "suffix_glossary.txt").write_text(
             "GLOSSARY_SUFFIX", encoding="utf-8-sig"
         )
@@ -301,6 +338,7 @@ class TestPromptBuilder:
         (en_dir / "base.txt").write_text("BASE_EN", encoding="utf-8-sig")
         (en_dir / "prefix.txt").write_text("PREFIX_EN", encoding="utf-8-sig")
         (en_dir / "suffix.txt").write_text("SUFFIX_EN", encoding="utf-8-sig")
+        (en_dir / "thinking.txt").write_text("THINKING_SUFFIX_EN", encoding="utf-8-sig")
         (en_dir / "suffix_glossary.txt").write_text(
             "GLOSSARY_SUFFIX_EN", encoding="utf-8-sig"
         )
@@ -311,15 +349,26 @@ class TestPromptBuilder:
         assert PromptBuilder.get_prefix(BaseLanguage.Enum.ZH) == "PREFIX"
         assert PromptBuilder.get_suffix(BaseLanguage.Enum.ZH) == "SUFFIX"
         assert (
+            PromptBuilder.get_suffix_thinking(BaseLanguage.Enum.ZH) == "THINKING_SUFFIX"
+        )
+        assert (
             PromptBuilder.get_suffix_glossary(BaseLanguage.Enum.ZH) == "GLOSSARY_SUFFIX"
         )
 
         # lru_cache: 未 reset 前应保持旧内容
         (zh_dir / "base.txt").write_text("BASE2", encoding="utf-8-sig")
+        (zh_dir / "thinking.txt").write_text("THINKING_SUFFIX_2", encoding="utf-8-sig")
         assert PromptBuilder.get_base(BaseLanguage.Enum.ZH) == "BASE"
+        assert (
+            PromptBuilder.get_suffix_thinking(BaseLanguage.Enum.ZH) == "THINKING_SUFFIX"
+        )
 
         PromptBuilder.reset()
         assert PromptBuilder.get_base(BaseLanguage.Enum.ZH) == "BASE2"
+        assert (
+            PromptBuilder.get_suffix_thinking(BaseLanguage.Enum.ZH)
+            == "THINKING_SUFFIX_2"
+        )
 
     def test_custom_prompt_data_and_enable_use_data_manager_when_no_snapshot(
         self, monkeypatch: pytest.MonkeyPatch
@@ -384,7 +433,7 @@ class TestPromptBuilder:
 
         expected = (
             "PREFIX\n"
-            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n"
+            + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n\n"
             + "GLOSSARY_SUFFIX"
         )
         assert result == expected
@@ -511,7 +560,7 @@ class TestPromptBuilder:
 
         assert (
             result
-            == f"PREFIX\nRULE: {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\nSUFFIX"
+            == f"PREFIX\nRULE: {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n\nSUFFIX"
         )
 
     def test_build_main_uses_source_placeholder_for_zh_when_source_is_all(

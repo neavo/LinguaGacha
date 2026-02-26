@@ -656,6 +656,16 @@ class LocalizerEN(LocalizerZH):
         ""
         ""
     )
+    laboratory_page_force_thinking_enable: str = "Force Thinking (Does not support SakuraLLM)"
+    laboratory_page_force_thinking_enable_desc: str = (
+            "When enabled, non-reasoning models will also think before translating, disabled by default"
+            "<br>"
+            "◈ Improves translation quality at the cost of slightly higher Token consumption"
+            "<br>"
+            "◈ Not recommended for reasoning models, as repeated thinking is largely unnecessary"
+            "<br>"
+            "◈ When working normally, you will observe the model's thinking content output in the translation logs"
+        )
     laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
     laboratory_page_auto_glossary_enable_desc: str = (
         "Attempts to automatically add missing proper noun entries to the glossary during translation"

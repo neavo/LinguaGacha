@@ -1,4 +1,4 @@
-Use JSONLINE output translation results and new character name terms, without extra explanation or clarification:
+Then use JSONLINE to output translation results and new character name terms, without extra explanation or clarification:
 ```jsonline
 {"<INDEX>":"<Translated Text>"}
 {"src":"<Original Term>","dst":"<Translated Term>","gender":"<Determine gender based on context: Male/Female>"}

@@ -1,8 +1,10 @@
 import itertools
+import re
 import threading
 import time
 from functools import lru_cache
 from typing import Callable
+from typing import ClassVar
 
 import rich
 from rich import box
@@ -27,6 +29,10 @@ from module.TextProcessor import TextProcessor
 
 
 class TranslatorTask(Base):
+    WHY_TAG_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
+        r"<why>(.*?)</why>", re.DOTALL
+    )
+
     def __init__(
         self,
         config: Config,
@@ -145,6 +151,14 @@ class TranslatorTask(Base):
         stream_degraded = bool(prepared.get("stream_degraded", False))
         request_timeout = bool(prepared.get("request_timeout", False))
 
+        # 先剥离 <why>，避免 JSONLINE 解码受到干扰
+        response_result, why_text = self.extract_why_from_response(response_result)
+        if why_text:
+            response_think = (
+                response_think + "\n" + why_text if response_think else why_text
+            )
+        response_think = self.normalize_blank_lines(response_think).strip()
+
         if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
             glossaries: list[dict[str, str]] = []
@@ -181,20 +195,22 @@ class TranslatorTask(Base):
                 self.items[0].set_retry_count(self.items[0].get_retry_count() + 1)
 
         file_log = console_log.copy()
-        if response_think != "":
+        response_think_log = response_think.strip("\n")
+        response_result_log = response_result.strip("\n")
+        if response_think_log != "":
             file_log.append(
-                Localizer.get().engine_response_think + "\n" + response_think
+                Localizer.get().engine_response_think + "\n" + response_think_log
             )
             console_log.append(
-                Localizer.get().engine_response_think + "\n" + response_think
+                Localizer.get().engine_response_think + "\n" + response_think_log
             )
-        if response_result != "":
+        if response_result_log != "":
             file_log.append(
-                Localizer.get().engine_response_result + "\n" + response_result
+                Localizer.get().engine_response_result + "\n" + response_result_log
             )
             if LogManager.get().is_expert_mode():
                 console_log.append(
-                    Localizer.get().engine_response_result + "\n" + response_result
+                    Localizer.get().engine_response_result + "\n" + response_result_log
                 )
 
         updated_count = 0
@@ -243,6 +259,38 @@ class TranslatorTask(Base):
             "output_tokens": 0,
             "glossaries": [],
         }
+
+    @classmethod
+    def extract_why_from_response(cls, response_result: str) -> tuple[str, str]:
+        if response_result == "":
+            return response_result, ""
+
+        matches = cls.WHY_TAG_PATTERN.findall(response_result)
+        if not matches:
+            return response_result, ""
+
+        cleaned = cls.WHY_TAG_PATTERN.sub("", response_result)
+        why_text = "\n".join(v.strip() for v in matches if v.strip())
+        return cleaned, why_text
+
+    @classmethod
+    def normalize_blank_lines(cls, text: str) -> str:
+        if text == "":
+            return text
+
+        lines = text.splitlines()
+        normalized: list[str] = []
+        prev_empty = False
+        for line in lines:
+            if line.strip() == "":
+                if not prev_empty:
+                    normalized.append("")
+                prev_empty = True
+                continue
+            normalized.append(line)
+            prev_empty = False
+
+        return "\n".join(normalized)
 
     def request(
         self,

@@ -32,6 +32,7 @@ class PromptBuilder(Base):
         cls.get_base.cache_clear()
         cls.get_prefix.cache_clear()
         cls.get_suffix.cache_clear()
+        cls.get_suffix_thinking.cache_clear()
         cls.get_suffix_glossary.cache_clear()
 
     @classmethod
@@ -59,6 +60,16 @@ class PromptBuilder(Base):
     def get_suffix(cls, language: BaseLanguage.Enum) -> str:
         with open(
             f"resource/preset/prompt/{language.lower()}/suffix.txt",
+            "r",
+            encoding="utf-8-sig",
+        ) as reader:
+            return reader.read().strip()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_suffix_thinking(cls, language: BaseLanguage.Enum) -> str:
+        with open(
+            f"resource/preset/prompt/{language.lower()}/thinking.txt",
             "r",
             encoding="utf-8-sig",
         ) as reader:
@@ -150,14 +161,24 @@ class PromptBuilder(Base):
             else:
                 base = __class__.get_base(prompt_language)
 
-            # 后缀
-            if not self.config.auto_glossary_enable:
-                suffix = __class__.get_suffix(prompt_language)
-            else:
-                suffix = __class__.get_suffix_glossary(prompt_language)
+            # 思考块：与输出块分离，避免自动术语表切换时互相覆盖
+            thinking = ""
+            if self.config.force_thinking_enable:
+                thinking = __class__.get_suffix_thinking(prompt_language)
 
-        # 组装提示词
-        full_prompt = prefix + "\n" + base + "\n" + suffix
+            # 输出块
+            if not self.config.auto_glossary_enable:
+                suffix_output = __class__.get_suffix(prompt_language)
+            else:
+                suffix_output = __class__.get_suffix_glossary(prompt_language)
+
+        # 组装提示词：输出块必须位于末尾，避免影响 JSONLINE 规则
+        base_block = "\n".join([prefix, base])
+        parts = [base_block]
+        if thinking:
+            parts.append(thinking)
+        parts.append(suffix_output)
+        full_prompt = "\n\n".join(parts)
         full_prompt = full_prompt.replace("{source_language}", source_language)
         full_prompt = full_prompt.replace("{target_language}", target_language)
 
@@ -370,7 +391,7 @@ class PromptBuilder(Base):
             user_parts.append(result)
 
         messages.append({"role": "system", "content": instruction_text})
-        messages.append({"role": "user", "content": "\n".join(user_parts)})
+        messages.append({"role": "user", "content": "\n\n".join(user_parts)})
 
         return messages, console_log
 
