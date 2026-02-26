@@ -13,35 +13,6 @@ from module.Data.SpreadsheetUtil import SpreadsheetUtil
 
 
 class WOLFXLSX(Base):
-    BLACKLIST_EXT: tuple[str, ...] = (
-        ".mp3",
-        ".wav",
-        ".ogg",
-        "mid",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".psd",
-        ".webp",
-        ".heif",
-        ".heic",
-        ".avi",
-        ".mp4",
-        ".webm",
-        ".txt",
-        ".7z",
-        ".gz",
-        ".rar",
-        ".zip",
-        ".json",
-        ".sav",
-        ".mps",
-        ".ttf",
-        ".otf",
-        ".woff",
-    )
-
     FILL_COLOR_WHITELIST: tuple = (9,)  # 白色
 
     FILL_COLOR_BLACKLIST: tuple = (
