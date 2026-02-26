@@ -1,10 +1,13 @@
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import Slider
+from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import SwitchButton
 
 from base.Base import Base
@@ -13,7 +16,7 @@ from module.Localizer.Localizer import Localizer
 from module.Utils.JSONTool import JSONTool
 from widget.CustomTextEdit import CustomTextEdit
 from widget.GroupCard import GroupCard
-from widget.SliderCard import SliderCard
+from widget.SettingCard import SettingCard
 
 
 class ModelAdvancedSettingPage(Base, MessageBoxBase):
@@ -77,9 +80,11 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         return self.generation.get(f"{key}_custom_enable", False)
 
     # 滑动条释放事件
-    def slider_released(self, widget: SliderCard, arg: str) -> None:
-        value = widget.get_slider().value()
-        widget.get_value_label().setText(f"{(value / 100):.2f}")
+    def slider_released(
+        self, slider: Slider, value_label: StrongBodyLabel, arg: str
+    ) -> None:
+        value = slider.value()
+        value_label.setText(f"{(value / 100):.2f}")
 
         # 更新配置文件
         config = Config().load()
@@ -91,16 +96,20 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         config.save()
 
     # 开关状态变化事件
-    def checked_changed(self, widget: SliderCard, checked: bool, arg: str) -> None:
-        if checked:
-            widget.set_slider_visible(True)
-        else:
-            widget.set_slider_visible(False)
+    def checked_changed(
+        self,
+        slider: Slider,
+        value_label: StrongBodyLabel,
+        checked: bool,
+        arg: str,
+    ) -> None:
+        slider.setVisible(checked)
+        value_label.setVisible(checked)
 
         # 重置为默认值
         default_value = getattr(__class__, f"{arg.upper()}_DEFAULT")
-        widget.get_value_label().setText(f"{default_value:.2f}")
-        widget.get_slider().setValue(int(default_value * 100))
+        value_label.setText(f"{default_value:.2f}")
+        slider.setValue(int(default_value * 100))
 
         # 更新配置文件
         config = Config().load()
@@ -116,147 +125,203 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
     def add_widget_top_p(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SliderCard) -> None:
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            widget.add_widget(switch_button)
-
-            value = self.get_generation_value("top_p", 0.95)
-            widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(value * 100))
-            widget.get_value_label().setText(f"{value:.2f}")
-
-            # 设置可见性
-            is_enabled = self.get_generation_enable("top_p")
-            widget.set_slider_visible(is_enabled)
-            switch_button.setChecked(is_enabled)
-
-            # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(
-                lambda checked: self.checked_changed(widget, checked, "top_p")
-            )
-
-        parent.addWidget(
-            SliderCard(
-                title=Localizer.get().model_advanced_setting_page_top_p_title,
-                description=Localizer.get().model_advanced_setting_page_param_caution,
-                init=init,
-                slider_released=lambda widget: self.slider_released(widget, "top_p"),
-            )
+        card = SettingCard(
+            title=Localizer.get().model_advanced_setting_page_top_p_title,
+            description=Localizer.get().model_advanced_setting_page_param_caution,
+            parent=self,
         )
+        slider = Slider(Qt.Orientation.Horizontal)
+        slider.setFixedWidth(256)
+        value_label = StrongBodyLabel("", card)
+        value_label.setFixedWidth(48)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        slider_container = QWidget(card)
+        slider_layout = QHBoxLayout(slider_container)
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.setSpacing(8)
+        slider_layout.addWidget(slider)
+        slider_layout.addWidget(value_label)
+
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+
+        value = self.get_generation_value("top_p", 0.95)
+        slider.setRange(0, 100)
+        slider.setValue(int(value * 100))
+        value_label.setText(f"{value:.2f}")
+
+        # 设置可见性
+        is_enabled = self.get_generation_enable("top_p")
+        slider.setVisible(is_enabled)
+        value_label.setVisible(is_enabled)
+        switch_button.setChecked(is_enabled)
+
+        # 最后注册事件，避免在页面初始化的过程中重置设置数据
+        switch_button.checkedChanged.connect(
+            lambda checked: self.checked_changed(slider, value_label, checked, "top_p")
+        )
+        slider.sliderReleased.connect(
+            lambda: self.slider_released(slider, value_label, "top_p")
+        )
+
+        card.add_right_widget(slider_container)
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # temperature
     def add_widget_temperature(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SliderCard) -> None:
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            widget.add_widget(switch_button)
+        card = SettingCard(
+            title=Localizer.get().model_advanced_setting_page_temperature_title,
+            description=Localizer.get().model_advanced_setting_page_param_caution,
+            parent=self,
+        )
+        slider = Slider(Qt.Orientation.Horizontal)
+        slider.setFixedWidth(256)
+        value_label = StrongBodyLabel("", card)
+        value_label.setFixedWidth(48)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            value = self.get_generation_value("temperature", 0.95)
-            widget.get_slider().setRange(0, 200)
-            widget.get_slider().setValue(int(value * 100))
-            widget.get_value_label().setText(f"{value:.2f}")
+        slider_container = QWidget(card)
+        slider_layout = QHBoxLayout(slider_container)
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.setSpacing(8)
+        slider_layout.addWidget(slider)
+        slider_layout.addWidget(value_label)
 
-            # 设置可见性
-            is_enabled = self.get_generation_enable("temperature")
-            widget.set_slider_visible(is_enabled)
-            switch_button.setChecked(is_enabled)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
 
-            # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(
-                lambda checked: self.checked_changed(widget, checked, "temperature")
-            )
+        value = self.get_generation_value("temperature", 0.95)
+        slider.setRange(0, 200)
+        slider.setValue(int(value * 100))
+        value_label.setText(f"{value:.2f}")
 
-        parent.addWidget(
-            SliderCard(
-                title=Localizer.get().model_advanced_setting_page_temperature_title,
-                description=Localizer.get().model_advanced_setting_page_param_caution,
-                init=init,
-                slider_released=lambda widget: self.slider_released(
-                    widget, "temperature"
-                ),
+        # 设置可见性
+        is_enabled = self.get_generation_enable("temperature")
+        slider.setVisible(is_enabled)
+        value_label.setVisible(is_enabled)
+        switch_button.setChecked(is_enabled)
+
+        # 最后注册事件，避免在页面初始化的过程中重置设置数据
+        switch_button.checkedChanged.connect(
+            lambda checked: self.checked_changed(
+                slider, value_label, checked, "temperature"
             )
         )
+        slider.sliderReleased.connect(
+            lambda: self.slider_released(slider, value_label, "temperature")
+        )
+
+        card.add_right_widget(slider_container)
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # presence_penalty
     def add_widget_presence_penalty(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SliderCard) -> None:
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            widget.add_widget(switch_button)
+        card = SettingCard(
+            title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
+            description=Localizer.get().model_advanced_setting_page_param_caution,
+            parent=self,
+        )
+        slider = Slider(Qt.Orientation.Horizontal)
+        slider.setFixedWidth(256)
+        value_label = StrongBodyLabel("", card)
+        value_label.setFixedWidth(48)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            value = self.get_generation_value("presence_penalty", 0.0)
-            widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(value * 100))
-            widget.get_value_label().setText(f"{value:.2f}")
+        slider_container = QWidget(card)
+        slider_layout = QHBoxLayout(slider_container)
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.setSpacing(8)
+        slider_layout.addWidget(slider)
+        slider_layout.addWidget(value_label)
 
-            # 设置可见性
-            is_enabled = self.get_generation_enable("presence_penalty")
-            widget.set_slider_visible(is_enabled)
-            switch_button.setChecked(is_enabled)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
 
-            # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(
-                lambda checked: self.checked_changed(
-                    widget, checked, "presence_penalty"
-                )
-            )
+        value = self.get_generation_value("presence_penalty", 0.0)
+        slider.setRange(0, 100)
+        slider.setValue(int(value * 100))
+        value_label.setText(f"{value:.2f}")
 
-        parent.addWidget(
-            SliderCard(
-                title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
-                description=Localizer.get().model_advanced_setting_page_param_caution,
-                init=init,
-                slider_released=lambda widget: self.slider_released(
-                    widget, "presence_penalty"
-                ),
+        # 设置可见性
+        is_enabled = self.get_generation_enable("presence_penalty")
+        slider.setVisible(is_enabled)
+        value_label.setVisible(is_enabled)
+        switch_button.setChecked(is_enabled)
+
+        # 最后注册事件，避免在页面初始化的过程中重置设置数据
+        switch_button.checkedChanged.connect(
+            lambda checked: self.checked_changed(
+                slider, value_label, checked, "presence_penalty"
             )
         )
+        slider.sliderReleased.connect(
+            lambda: self.slider_released(slider, value_label, "presence_penalty")
+        )
+
+        card.add_right_widget(slider_container)
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # frequency_penalty
     def add_widget_frequency_penalty(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SliderCard) -> None:
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            widget.add_widget(switch_button)
+        card = SettingCard(
+            title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
+            description=Localizer.get().model_advanced_setting_page_param_caution,
+            parent=self,
+        )
+        slider = Slider(Qt.Orientation.Horizontal)
+        slider.setFixedWidth(256)
+        value_label = StrongBodyLabel("", card)
+        value_label.setFixedWidth(48)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            value = self.get_generation_value("frequency_penalty", 0.0)
-            widget.get_slider().setRange(0, 100)
-            widget.get_slider().setValue(int(value * 100))
-            widget.get_value_label().setText(f"{value:.2f}")
+        slider_container = QWidget(card)
+        slider_layout = QHBoxLayout(slider_container)
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.setSpacing(8)
+        slider_layout.addWidget(slider)
+        slider_layout.addWidget(value_label)
 
-            # 设置可见性
-            is_enabled = self.get_generation_enable("frequency_penalty")
-            widget.set_slider_visible(is_enabled)
-            switch_button.setChecked(is_enabled)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
 
-            # 最后注册事件，避免在页面初始化的过程中重置设置数据
-            switch_button.checkedChanged.connect(
-                lambda checked: self.checked_changed(
-                    widget, checked, "frequency_penalty"
-                )
-            )
+        value = self.get_generation_value("frequency_penalty", 0.0)
+        slider.setRange(0, 100)
+        slider.setValue(int(value * 100))
+        value_label.setText(f"{value:.2f}")
 
-        parent.addWidget(
-            SliderCard(
-                title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
-                description=Localizer.get().model_advanced_setting_page_param_caution,
-                init=init,
-                slider_released=lambda widget: self.slider_released(
-                    widget, "frequency_penalty"
-                ),
+        # 设置可见性
+        is_enabled = self.get_generation_enable("frequency_penalty")
+        slider.setVisible(is_enabled)
+        value_label.setVisible(is_enabled)
+        switch_button.setChecked(is_enabled)
+
+        # 最后注册事件，避免在页面初始化的过程中重置设置数据
+        switch_button.checkedChanged.connect(
+            lambda checked: self.checked_changed(
+                slider, value_label, checked, "frequency_penalty"
             )
         )
+        slider.sliderReleased.connect(
+            lambda: self.slider_released(slider, value_label, "frequency_penalty")
+        )
+
+        card.add_right_widget(slider_container)
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # 自定义请求配置
     def add_widget_request_config(

@@ -1,19 +1,22 @@
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from typing import Callable
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
+from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SpinBox
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from widget.MenuButtonCard import MenuButtonCard
-from widget.SpinCard import SpinCard
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.SettingCard import SettingCard
 
 
 class ExpertSettingsPage(Base, QWidget):
@@ -118,23 +121,32 @@ class ExpertSettingsPage(Base, QWidget):
             config.save()
             sync_action_checked(config)
 
-        def before_show_menu(widget: MenuButtonCard) -> None:
+        def before_show_menu() -> None:
             config = Config().load()
             sync_action_checked(config)
 
-        action_check_kana.triggered.connect(lambda _: on_check_kana_triggered())
-        action_check_hangeul.triggered.connect(lambda _: on_check_hangeul_triggered())
+        action_check_kana.triggered.connect(lambda checked: on_check_kana_triggered())
+        action_check_hangeul.triggered.connect(
+            lambda checked: on_check_hangeul_triggered()
+        )
         action_check_similarity.triggered.connect(
-            lambda _: on_check_similarity_triggered()
+            lambda checked: on_check_similarity_triggered()
         )
 
-        card = MenuButtonCard(
+        card = SettingCard(
             title=Localizer.get().expert_settings_page_response_check_settings,
             description=Localizer.get().expert_settings_page_response_check_settings_desc,
-            button_text=Localizer.get().expert_settings_page_response_check_settings_button,
-            before_show_menu=before_show_menu,
+            parent=self,
         )
-        card.set_menu(menu)
+        menu_button = PushButton(
+            Localizer.get().expert_settings_page_response_check_settings_button
+        )
+        menu_button.clicked.connect(
+            lambda checked=False: self.show_menu_for_button(
+                menu_button, menu, before_show_menu
+            )
+        )
+        card.add_right_widget(menu_button)
         sync_action_checked(config)
 
         parent.addWidget(card)
@@ -143,133 +155,150 @@ class ExpertSettingsPage(Base, QWidget):
     def add_widget_preceding_lines_threshold(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(config.preceding_lines_threshold)
-
-        def value_changed(widget: SpinCard) -> None:
+        def value_changed(spin_box: SpinBox) -> None:
             config = Config().load()
-            config.preceding_lines_threshold = widget.get_spin_box().value()
+            config.preceding_lines_threshold = spin_box.value()
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().expert_settings_page_preceding_lines_threshold,
-                description=Localizer.get().expert_settings_page_preceding_lines_threshold_desc,
-                init=init,
-                value_changed=value_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_preceding_lines_threshold,
+            description=Localizer.get().expert_settings_page_preceding_lines_threshold_desc,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(config.preceding_lines_threshold)
+        spin_box.valueChanged.connect(lambda value: value_changed(spin_box))
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)
 
     # 清理原文中的注音文本
     def add_widget_clean_ruby(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.clean_ruby)
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
-            config.clean_ruby = widget.get_switch_button().isChecked()
+            config.clean_ruby = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().expert_settings_page_clean_ruby,
-                description=Localizer.get().expert_settings_page_clean_ruby_desc,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_clean_ruby,
+            description=Localizer.get().expert_settings_page_clean_ruby_desc,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.clean_ruby)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # T++ 项目文件中对重复文本去重
     def add_widget_deduplication_in_trans(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.deduplication_in_trans)
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
-            config.deduplication_in_trans = widget.get_switch_button().isChecked()
+            config.deduplication_in_trans = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().expert_settings_page_deduplication_in_trans,
-                description=Localizer.get().expert_settings_page_deduplication_in_trans_desc,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_deduplication_in_trans,
+            description=Localizer.get().expert_settings_page_deduplication_in_trans_desc,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.deduplication_in_trans)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # 双语输出文件中原文与译文一致的文本只输出一次
     def add_widget_deduplication_in_bilingual(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.deduplication_in_bilingual)
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
-            config.deduplication_in_bilingual = widget.get_switch_button().isChecked()
+            config.deduplication_in_bilingual = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().expert_settings_page_deduplication_in_bilingual,
-                description=Localizer.get().expert_settings_page_deduplication_in_bilingual_desc,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_deduplication_in_bilingual,
+            description=Localizer.get().expert_settings_page_deduplication_in_bilingual_desc,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.deduplication_in_bilingual)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # 将姓名字段译文写入译文文件
     def add_widget_write_translated_name_fields_to_file(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.write_translated_name_fields_to_file
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
-            config.write_translated_name_fields_to_file = (
-                widget.get_switch_button().isChecked()
-            )
+            config.write_translated_name_fields_to_file = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().expert_settings_page_write_translated_name_fields_to_file,
-                description=Localizer.get().expert_settings_page_write_translated_name_fields_to_file_desc,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_write_translated_name_fields_to_file,
+            description=Localizer.get().expert_settings_page_write_translated_name_fields_to_file_desc,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.write_translated_name_fields_to_file)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # 自动移除前后缀代码段
     def add_widget_auto_process_prefix_suffix_preserved_text(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                config.auto_process_prefix_suffix_preserved_text
-            )
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
-            config.auto_process_prefix_suffix_preserved_text = (
-                widget.get_switch_button().isChecked()
-            )
+            config.auto_process_prefix_suffix_preserved_text = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text,
-                description=Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text_desc,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text,
+            description=Localizer.get().expert_settings_page_auto_process_prefix_suffix_preserved_text_desc,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.auto_process_prefix_suffix_preserved_text)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
+
+    def show_menu_for_button(
+        self,
+        button: PushButton,
+        menu: RoundMenu,
+        before_show: Callable[[], None],
+    ) -> None:
+        # 把菜单触发逻辑集中到一个入口，避免每处重复实现坐标计算。
+        before_show()
+        global_pos = button.mapToGlobal(QPoint(0, button.height()))
+        menu.exec(global_pos)

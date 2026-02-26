@@ -16,11 +16,13 @@ from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.Localizer.LocalizerText import LocalizerText
+from widget.CustomLineEdit import CustomLineEdit
 from widget.CustomTextEdit import CustomTextEdit
-from widget.EmptyCard import EmptyCard
 from widget.GroupCard import GroupCard
-from widget.LineEditCard import LineEditCard
 from widget.LineEditMessageBox import LineEditMessageBox
+from widget.SettingCard import CardHelpSpec
+from widget.SettingCard import SettingCard
 
 # ==================== 图标常量 ====================
 
@@ -31,6 +33,12 @@ MODEL_ID_ACTION_BUTTON_WIDTH: int = 80  # 模型标识：操作按钮宽度
 
 
 class ModelBasicSettingPage(Base, MessageBoxBase):
+    THINKING_SUPPORT_URL_ZH: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport"
+    )
+    THINKING_SUPPORT_URL_EN: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN"
+    )
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
@@ -123,53 +131,49 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
     def add_widget_name(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: LineEditCard) -> None:
-            widget.get_line_edit().setText(self.model.get("name", ""))
-            widget.get_line_edit().setFixedWidth(256)
-            widget.get_line_edit().setPlaceholderText(
-                Localizer.get().model_basic_setting_page_name
-            )
-
-        def text_changed(widget: LineEditCard, text: str) -> None:
+        def text_changed(line_edit: CustomLineEdit, text: str) -> None:
             config = Config().load()
             self.model["name"] = text.strip()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            LineEditCard(
-                Localizer.get().model_basic_setting_page_name_title,
-                Localizer.get().model_basic_setting_page_name_content,
-                init=init,
-                text_changed=text_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().model_basic_setting_page_name_title,
+            description=Localizer.get().model_basic_setting_page_name_content,
+            parent=self,
         )
+        line_edit = CustomLineEdit(card)
+        line_edit.setText(self.model.get("name", ""))
+        line_edit.setFixedWidth(256)
+        line_edit.setClearButtonEnabled(True)
+        line_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_name)
+        line_edit.textChanged.connect(lambda text: text_changed(line_edit, text))
+        card.add_right_widget(line_edit)
+        parent.addWidget(card)
 
     # 模型地址
     def add_widget_api_url(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: LineEditCard) -> None:
-            widget.get_line_edit().setText(self.model.get("api_url", ""))
-            widget.get_line_edit().setFixedWidth(384)
-            widget.get_line_edit().setPlaceholderText(
-                Localizer.get().model_basic_setting_page_api_url
-            )
-
-        def text_changed(widget: LineEditCard, text: str) -> None:
+        def text_changed(line_edit: CustomLineEdit, text: str) -> None:
             config = Config().load()
             self.model["api_url"] = text.strip()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            LineEditCard(
-                Localizer.get().api_url,
-                Localizer.get().model_basic_setting_page_api_url_content,
-                init=init,
-                text_changed=text_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().api_url,
+            description=Localizer.get().model_basic_setting_page_api_url_content,
+            parent=self,
         )
+        line_edit = CustomLineEdit(card)
+        line_edit.setText(self.model.get("api_url", ""))
+        line_edit.setFixedWidth(384)
+        line_edit.setClearButtonEnabled(True)
+        line_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_url)
+        line_edit.textChanged.connect(lambda text: text_changed(line_edit, text))
+        card.add_right_widget(line_edit)
+        parent.addWidget(card)
 
     # 模型密钥
     def add_widget_api_key(
@@ -205,7 +209,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
     def add_widget_model_id(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        empty_card = None
+        card: SettingCard | None = None
 
         def message_box_close(widget: LineEditMessageBox, text: str) -> None:
             config = Config().load()
@@ -213,11 +217,12 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             config.set_model(self.model)
             config.save()
 
-            empty_card.get_description_label().setText(
-                Localizer.get().model_basic_setting_page_model_id_content.replace(
-                    "{MODEL}", self.model.get("model_id", "")
+            if card is not None:
+                card.set_description(
+                    Localizer.get().model_basic_setting_page_model_id_content.replace(
+                        "{MODEL}", self.model.get("model_id", "")
+                    )
                 )
-            )
 
         def triggered_edit(checked: bool = False) -> None:
             del checked
@@ -236,28 +241,25 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
 
             # 更新 UI 文本
             self.model = Config().load().get_model(self.model_id)
-            empty_card.get_description_label().setText(
-                Localizer.get().model_basic_setting_page_model_id_content.replace(
-                    "{MODEL}", self.model.get("model_id", "")
+            if card is not None:
+                card.set_description(
+                    Localizer.get().model_basic_setting_page_model_id_content.replace(
+                        "{MODEL}", self.model.get("model_id", "")
+                    )
                 )
-            )
 
-        empty_card = EmptyCard(
+        card = SettingCard(
             Localizer.get().model_basic_setting_page_model_id_title,
             Localizer.get().model_basic_setting_page_model_id_content.replace(
                 "{MODEL}", self.model.get("model_id", "")
             ),
+            parent=self,
         )
-        parent.addWidget(empty_card)
+        parent.addWidget(card)
 
         def triggered_test(checked: bool = False) -> None:
             del checked
             self.emit(Base.Event.APITEST_RUN, {"model_id": self.model_id})
-
-        button_container = QWidget(empty_card)
-        button_layout = QHBoxLayout(button_container)
-        button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.setSpacing(8)
 
         input_button = PushButton(
             Localizer.get().model_basic_setting_page_model_id_input
@@ -265,7 +267,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         input_button.setIcon(ICON_MODEL_ID_EDIT)
         input_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
         input_button.clicked.connect(triggered_edit)
-        button_layout.addWidget(input_button)
+        card.add_right_widget(input_button)
 
         fetch_button = PushButton(
             Localizer.get().model_basic_setting_page_model_id_fetch
@@ -273,7 +275,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         fetch_button.setIcon(ICON_MODEL_ID_SYNC)
         fetch_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
         fetch_button.clicked.connect(triggered_sync)
-        button_layout.addWidget(fetch_button)
+        card.add_right_widget(fetch_button)
 
         test_button = PushButton(
             Localizer.get().model_basic_setting_page_model_id_test
@@ -281,21 +283,28 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         test_button.setIcon(ICON_MODEL_ID_TEST)
         test_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
         test_button.clicked.connect(triggered_test)
-        button_layout.addWidget(test_button)
+        card.add_right_widget(test_button)
         self.model_id_test_button = test_button
 
-        empty_card.add_widget(button_container)
         self.update_test_button_status(Base.Event.APITEST_DONE, {})
 
     # 思考挡位
     def add_widget_thinking_level(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        empty_card = EmptyCard(
+        help_spec = CardHelpSpec(
+            url_localized=LocalizerText(
+                zh=self.THINKING_SUPPORT_URL_ZH,
+                en=self.THINKING_SUPPORT_URL_EN,
+            )
+        )
+        card = SettingCard(
             Localizer.get().model_basic_setting_page_thinking_title,
             Localizer.get().model_basic_setting_page_thinking_content,
+            help_spec=help_spec,
+            parent=self,
         )
-        parent.addWidget(empty_card)
+        parent.addWidget(card)
 
         # 下拉框选择
         combo_box = ComboBox()
@@ -325,7 +334,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             config.save()
 
         combo_box.currentIndexChanged.connect(on_current_index_changed)
-        empty_card.add_widget(combo_box)
+        card.add_right_widget(combo_box)
 
     def update_test_button_status(self, event: Base.Event, data: dict) -> None:
         """同步测试按钮状态，避免任务运行时重复触发。"""

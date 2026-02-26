@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QAbstractItemView
 from PySide6.QtWidgets import QHeaderView
 from qfluentwidgets import Action
+from qfluentwidgets import ComboBox
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
@@ -19,7 +20,7 @@ from frontend.Quality.TextPreserveEditPanel import TextPreserveEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from widget.ComboBoxCard import ComboBoxCard
+from widget.SettingCard import SettingCard
 
 
 # ==================== 图标常量 ====================
@@ -111,13 +112,13 @@ class TextPreservePage(QualityRulePageBase):
         return True, ""
 
     def on_entries_reloaded(self) -> None:
-        if hasattr(self, "mode_card"):
+        if hasattr(self, "mode_combo") and self.mode_combo is not None:
             self.update_mode_ui(self.get_mode())
         if hasattr(self, "search_card"):
             self.search_card.reset_state()
 
     def on_project_unloaded_ui(self) -> None:
-        if hasattr(self, "mode_card"):
+        if hasattr(self, "mode_combo") and self.mode_combo is not None:
             self.update_mode_ui(DataManager.TextPreserveMode.OFF)
 
     # ==================== UI：头部 ====================
@@ -133,14 +134,11 @@ class TextPreservePage(QualityRulePageBase):
             Localizer.get().text_preserve_mode_custom,
         ]
 
-        def init(widget: ComboBoxCard) -> None:
-            self.update_mode_ui(self.get_mode())
-
-        def current_changed(widget: ComboBoxCard) -> None:
+        def current_changed(combo_box: ComboBox) -> None:
             if self.mode_updating:
                 return
 
-            mode = self.mode_from_index(widget.get_combo_box().currentIndex())
+            mode = self.mode_from_index(combo_box.currentIndex())
 
             def action() -> None:
                 self.set_mode(mode)
@@ -148,14 +146,20 @@ class TextPreservePage(QualityRulePageBase):
 
             self.run_with_unsaved_guard(action)
 
-        self.mode_card = ComboBoxCard(
+        card = SettingCard(
             Localizer.get().app_text_preserve_page,
             Localizer.get().text_preserve_page_head_content,
-            items,
-            init=init,
-            current_changed=current_changed,
+            parent=self,
         )
-        parent.addWidget(self.mode_card)
+        combo_box = ComboBox(card)
+        combo_box.addItems(items)
+        combo_box.currentIndexChanged.connect(
+            lambda index: current_changed(combo_box)
+        )
+        card.add_right_widget(combo_box)
+        parent.addWidget(card)
+        self.mode_combo = combo_box
+        self.update_mode_ui(self.get_mode())
 
     def mode_from_index(self, index: int) -> DataManager.TextPreserveMode:
         if index == 2:
@@ -172,12 +176,12 @@ class TextPreservePage(QualityRulePageBase):
         return 0
 
     def update_mode_ui(self, mode: DataManager.TextPreserveMode) -> None:
-        if not hasattr(self, "mode_card"):
+        if not hasattr(self, "mode_combo") or self.mode_combo is None:
             return
 
         index = self.index_from_mode(mode)
         self.mode_updating = True
-        self.mode_card.get_combo_box().setCurrentIndex(index)
+        self.mode_combo.setCurrentIndex(index)
         self.mode_updating = False
 
     def setup_table_columns(self) -> None:

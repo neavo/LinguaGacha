@@ -46,6 +46,7 @@ class LocalizerEN(LocalizerZH):
     cancel: str = "Cancel"
     auto: str = "Auto"
     wiki: str = "Wiki"
+    view_more_info: str = "View more info"
     filter: str = "Filter"
     search: str = "Search"
     placeholder: str = "Please enter keywords …"
@@ -263,11 +264,7 @@ class LocalizerEN(LocalizerZH):
     model_basic_setting_page_model_id_fetch: str = "Fetch"
     model_basic_setting_page_model_id_test: str = "Test"
     model_basic_setting_page_thinking_title: str = "Thinking Level"
-    model_basic_setting_page_thinking_content: str = (
-        "Set the thinking behavior of the model, which will affect the thinking time and consumption."
-        "<br>"
-        "Only supported by some models  [→[Model List For Thinking Mode]←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriorityEN)"
-    )
+    model_basic_setting_page_thinking_content: str = "Configure thinking level which will affect time and cost, click question icon for supported models"
     model_basic_setting_page_thinking_off: str = "Off"
     model_basic_setting_page_thinking_low: str = "Low"
     model_basic_setting_page_thinking_medium: str = "Medium"

@@ -5,11 +5,12 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SpinBox
 
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from widget.SpinCard import SpinCard
+from widget.SettingCard import SettingCard
 
 
 class ModelTaskSettingPage(Base, MessageBoxBase):
@@ -60,91 +61,89 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         threshold = self.model.get("threshold", {})
 
         # 输入 Token 限制
-        def init_input_token(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(threshold.get("input_token_limit", 512))
-
-        def value_changed_input_token(widget: SpinCard) -> None:
+        def value_changed_input_token(spin_box: SpinBox) -> None:
             config = Config().load()
             if "threshold" not in self.model:
                 self.model["threshold"] = {}
-            self.model["threshold"]["input_token_limit"] = widget.get_spin_box().value()
+            self.model["threshold"]["input_token_limit"] = spin_box.value()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().model_basic_setting_page_input_token_title,
-                description=Localizer.get().model_basic_setting_page_input_token_content,
-                init=init_input_token,
-                value_changed=value_changed_input_token,
-            )
+        card = SettingCard(
+            title=Localizer.get().model_basic_setting_page_input_token_title,
+            description=Localizer.get().model_basic_setting_page_input_token_content,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(threshold.get("input_token_limit", 512))
+        spin_box.valueChanged.connect(lambda value: value_changed_input_token(spin_box))
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)
 
         # 输出 Token 限制
-        def init_output_token(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(threshold.get("output_token_limit", 4096))
-
-        def value_changed_output_token(widget: SpinCard) -> None:
+        def value_changed_output_token(spin_box: SpinBox) -> None:
             config = Config().load()
             if "threshold" not in self.model:
                 self.model["threshold"] = {}
-            self.model["threshold"]["output_token_limit"] = (
-                widget.get_spin_box().value()
-            )
+            self.model["threshold"]["output_token_limit"] = spin_box.value()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().model_basic_setting_page_output_token_title,
-                description=Localizer.get().model_basic_setting_page_output_token_content,
-                init=init_output_token,
-                value_changed=value_changed_output_token,
-            )
+        card = SettingCard(
+            title=Localizer.get().model_basic_setting_page_output_token_title,
+            description=Localizer.get().model_basic_setting_page_output_token_content,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(threshold.get("output_token_limit", 4096))
+        spin_box.valueChanged.connect(
+            lambda value: value_changed_output_token(spin_box)
+        )
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)
 
         # 并发数限制
-        def init_concurrency(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(threshold.get("concurrency_limit", 0))
-
-        def value_changed_concurrency(widget: SpinCard) -> None:
+        def value_changed_concurrency(spin_box: SpinBox) -> None:
             config = Config().load()
             if "threshold" not in self.model:
                 self.model["threshold"] = {}
-            self.model["threshold"]["concurrency_limit"] = widget.get_spin_box().value()
+            self.model["threshold"]["concurrency_limit"] = spin_box.value()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().model_basic_setting_page_concurrency_title,
-                description=Localizer.get().model_basic_setting_page_concurrency_content,
-                init=init_concurrency,
-                value_changed=value_changed_concurrency,
-            )
+        card = SettingCard(
+            title=Localizer.get().model_basic_setting_page_concurrency_title,
+            description=Localizer.get().model_basic_setting_page_concurrency_content,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(threshold.get("concurrency_limit", 0))
+        spin_box.valueChanged.connect(
+            lambda value: value_changed_concurrency(spin_box)
+        )
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)
 
         # RPM 限制
-        def init_rpm(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(threshold.get("rpm_limit", 0))
-
-        def value_changed_rpm(widget: SpinCard) -> None:
+        def value_changed_rpm(spin_box: SpinBox) -> None:
             config = Config().load()
             if "threshold" not in self.model:
                 self.model["threshold"] = {}
-            self.model["threshold"]["rpm_limit"] = widget.get_spin_box().value()
+            self.model["threshold"]["rpm_limit"] = spin_box.value()
             config.set_model(self.model)
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().model_basic_setting_page_rpm_title,
-                description=Localizer.get().model_basic_setting_page_rpm_content,
-                init=init_rpm,
-                value_changed=value_changed_rpm,
-            )
+        card = SettingCard(
+            title=Localizer.get().model_basic_setting_page_rpm_title,
+            description=Localizer.get().model_basic_setting_page_rpm_content,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(threshold.get("rpm_limit", 0))
+        spin_box.valueChanged.connect(lambda value: value_changed_rpm(spin_box))
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)

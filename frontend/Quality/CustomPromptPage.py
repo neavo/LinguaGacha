@@ -13,6 +13,7 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -24,9 +25,8 @@ from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
-from widget.EmptyCard import EmptyCard
 from widget.LineEditMessageBox import LineEditMessageBox
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.SettingCard import SettingCard
 
 # ==================== 图标常量 ====================
 
@@ -115,17 +115,15 @@ class CustomPromptPage(Base, QWidget):
 
         self.main_text.setPlainText(prompt_data)
         # 刷新开关状态
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(
-                self.get_custom_prompt_enable()
-            )
+        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
+            self.prompt_switch.setChecked(self.get_custom_prompt_enable())
 
     # 工程卸载后清空数据
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         self.main_text.clear()
         # 重置开关状态
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(True)
+        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
+            self.prompt_switch.setChecked(True)
 
     # 头部
     def add_widget_header(
@@ -137,38 +135,43 @@ class CustomPromptPage(Base, QWidget):
             else "custom_prompt_en"
         )
 
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(self.get_custom_prompt_enable())
+        def checked_changed(button: SwitchButton) -> None:
+            self.set_custom_prompt_enable(button.isChecked())
 
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            self.set_custom_prompt_enable(widget.get_switch_button().isChecked())
-
-        self.switch_card = SwitchButtonCard(
+        card = SettingCard(
             title=getattr(Localizer.get(), f"{base_key}_page_head"),
             description=getattr(Localizer.get(), f"{base_key}_page_head_desc"),
-            init=init,
-            checked_changed=checked_changed,
+            parent=self,
         )
-        parent.addWidget(self.switch_card)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(self.get_custom_prompt_enable())
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        self.prompt_switch = switch_button
+        parent.addWidget(card)
 
     # 主体
     def add_widget_body(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        self.prefix_body = EmptyCard(
-            "", PromptBuilder(config).get_prefix(self.language)
+        self.prefix_body = SettingCard(
+            "", PromptBuilder(config).get_prefix(self.language), parent=self
         )
-        self.prefix_body.remove_title()
         parent.addWidget(self.prefix_body)
 
         self.main_text = CustomTextEdit(self)
         self.main_text.setPlainText("")
         parent.addWidget(self.main_text)
 
-        self.suffix_body = EmptyCard(
-            "", PromptBuilder(config).get_suffix(self.language).replace("\n", "")
+        self.suffix_body = SettingCard(
+            "",
+            PromptBuilder(config).get_suffix(self.language).replace("\n", ""),
+            parent=self,
         )
-        self.suffix_body.remove_title()
         parent.addWidget(self.suffix_body)
 
     # 底部

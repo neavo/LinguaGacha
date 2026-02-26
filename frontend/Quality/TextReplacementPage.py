@@ -11,6 +11,7 @@ from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
+from qfluentwidgets import SwitchButton
 from qfluentwidgets import qconfig
 
 from base.Base import Base
@@ -25,7 +26,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from widget.AppTable import ColumnSpec
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.SettingCard import SettingCard
 
 
 # ==================== 图标常量 ====================
@@ -217,33 +218,38 @@ class TextReplacementPage(QualityRulePageBase):
         return True, ""
 
     def on_entries_reloaded(self) -> None:
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(self.get_enable())
+        if hasattr(self, "replacement_switch") and self.replacement_switch is not None:
+            self.replacement_switch.setChecked(self.get_enable())
         if hasattr(self, "search_card"):
             self.search_card.reset_state()
 
     def on_project_unloaded_ui(self) -> None:
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(True)
+        if hasattr(self, "replacement_switch") and self.replacement_switch is not None:
+            self.replacement_switch.setChecked(True)
 
     # ==================== UI：头部 ====================
 
     def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
         del window
 
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(self.get_enable())
+        def checked_changed(button: SwitchButton) -> None:
+            self.set_enable(button.isChecked())
 
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            self.set_enable(widget.get_switch_button().isChecked())
-
-        self.switch_card = SwitchButtonCard(
+        card = SettingCard(
             getattr(Localizer.get(), f"{self.base_key}_page_head_title"),
             getattr(Localizer.get(), f"{self.base_key}_page_head_content"),
-            init=init,
-            checked_changed=checked_changed,
+            parent=self,
         )
-        parent.addWidget(self.switch_card)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(self.get_enable())
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        self.replacement_switch = switch_button
+        parent.addWidget(card)
 
     def setup_table_columns(self) -> None:
         header = cast(QHeaderView, self.table.horizontalHeader())
