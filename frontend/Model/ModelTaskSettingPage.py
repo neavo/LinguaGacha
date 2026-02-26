@@ -77,7 +77,12 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         spin_box = SpinBox(card)
         spin_box.setRange(0, 9999999)
         spin_box.setValue(threshold.get("input_token_limit", 512))
-        spin_box.valueChanged.connect(lambda value: value_changed_input_token(spin_box))
+        # 必须在 lambda 默认参数中绑定当前控件，避免循环内复用变量导致回调串写。
+        spin_box.valueChanged.connect(
+            lambda value, target_spin_box=spin_box: value_changed_input_token(
+                target_spin_box
+            )
+        )
         card.add_right_widget(spin_box)
         parent.addWidget(card)
 
@@ -99,7 +104,9 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         spin_box.setRange(0, 9999999)
         spin_box.setValue(threshold.get("output_token_limit", 4096))
         spin_box.valueChanged.connect(
-            lambda value: value_changed_output_token(spin_box)
+            lambda value, target_spin_box=spin_box: value_changed_output_token(
+                target_spin_box
+            )
         )
         card.add_right_widget(spin_box)
         parent.addWidget(card)
@@ -122,7 +129,9 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         spin_box.setRange(0, 9999999)
         spin_box.setValue(threshold.get("concurrency_limit", 0))
         spin_box.valueChanged.connect(
-            lambda value: value_changed_concurrency(spin_box)
+            lambda value, target_spin_box=spin_box: value_changed_concurrency(
+                target_spin_box
+            )
         )
         card.add_right_widget(spin_box)
         parent.addWidget(card)
@@ -144,6 +153,8 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         spin_box = SpinBox(card)
         spin_box.setRange(0, 9999999)
         spin_box.setValue(threshold.get("rpm_limit", 0))
-        spin_box.valueChanged.connect(lambda value: value_changed_rpm(spin_box))
+        spin_box.valueChanged.connect(
+            lambda value, target_spin_box=spin_box: value_changed_rpm(target_spin_box)
+        )
         card.add_right_widget(spin_box)
         parent.addWidget(card)

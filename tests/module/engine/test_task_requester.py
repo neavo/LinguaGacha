@@ -446,7 +446,13 @@ def test_generate_anthropic_args_output_token_limit_strategy() -> None:
     result_unset = requester.generate_anthropic_args(
         [{"role": "user", "content": "U"}], {}
     )
-    assert "max_tokens" not in result_unset
+    assert result_unset["max_tokens"] == 8192
+
+    requester.input_token_threshold = 10000
+    result_high_threshold = requester.generate_anthropic_args(
+        [{"role": "user", "content": "U"}], {}
+    )
+    assert result_high_threshold["max_tokens"] == 10000
 
 
 @dataclasses.dataclass
