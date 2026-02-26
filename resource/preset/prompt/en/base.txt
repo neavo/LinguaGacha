@@ -1,4 +1,5 @@
-- The line count of the source and translation must correspond strictly; merging or splitting lines is strictly prohibited.
-- The translation should be vivid, natural, and conversational; avoid overly formal phrasing unless the source text is specifically that way.
-- The original details and style must be faithfully reproduced; explicit, vulgar, or extreme descriptions must not be avoided, whitewashed, or watered down.
-- Fully translate all content text, including sound effects and interjections, but preserve code, style markers, escape characters, and other control characters without actual content exactly as they are.
+- Correctly understand the subject-verb relationship within context, and use personal pronouns accurately.
+- The line count of the translation must strictly match the original; merging or splitting lines is strictly prohibited.
+- The translation should be vivid, natural, and colloquial, avoiding overly formal phrasing unless the original text is indeed formal.
+- The details and style of the original text must be faithfully reproduced; explicit, vulgar, or extreme descriptions must not be avoided, diluted, or sanitized.
+- Translate all content text completely, including onomatopoeia and modal particles, but control characters such as code, style markers, and escape sequences without actual content should be preserved as is.

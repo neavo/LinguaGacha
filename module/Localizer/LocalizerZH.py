@@ -656,6 +656,16 @@ class LocalizerZH:
         ""
         ""
     )
+    laboratory_page_force_thinking_enable: str = "强制思考（不支持 SakuraLLM 模型）"
+    laboratory_page_force_thinking_enable_desc: str = (
+        "启用后，非思考模型在翻译前也会进行思考，默认禁用"
+        "<br>"
+        "◈ 通过略微增加 Token 消耗换取翻译效果的提升"
+        "<br>"
+        "◈ 不建议在思考类模型上启用，重复思考意义不大"
+        "<br>"
+        "◈ 正常生效时，会在翻译日志中观察到模型思考内容的输出"
+    )
     laboratory_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
     laboratory_page_auto_glossary_enable_desc: str = (
         "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
