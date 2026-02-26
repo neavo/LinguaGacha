@@ -3,17 +3,18 @@ from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from qfluentwidgets import ComboBox
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import SingleDirectionScrollArea
+from qfluentwidgets import SpinBox
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from widget.ComboBoxCard import ComboBoxCard
-from widget.SpinCard import SpinCard
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.SettingCard import SettingCard
 
 
 class BasicSettingsPage(Base, QWidget):
@@ -82,35 +83,20 @@ class BasicSettingsPage(Base, QWidget):
         del data
         status = Engine.get().get_status()
         locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
-        if (
-            hasattr(self, "source_language_card")
-            and self.source_language_card is not None
-        ):
-            self.source_language_card.get_combo_box().setEnabled(not locked)
-        if (
-            hasattr(self, "target_language_card")
-            and self.target_language_card is not None
-        ):
-            self.target_language_card.get_combo_box().setEnabled(not locked)
+        if hasattr(self, "source_language_combo") and self.source_language_combo is not None:
+            self.source_language_combo.setEnabled(not locked)
+        if hasattr(self, "target_language_combo") and self.target_language_combo is not None:
+            self.target_language_combo.setEnabled(not locked)
 
     # 原文语言
     def add_widget_source_language(
         self, parent: QLayout, config: Config, windows: FluentWindow
     ) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            languages = BaseLanguage.get_languages()
-            if config.source_language == BaseLanguage.ALL:
-                widget.get_combo_box().setCurrentIndex(0)
-            elif config.source_language in languages:
-                widget.get_combo_box().setCurrentIndex(
-                    languages.index(config.source_language) + 1
-                )
-
-        def current_changed(widget: ComboBoxCard) -> None:
+        def current_changed(combo_box: ComboBox) -> None:
             config = Config().load()
 
             languages = BaseLanguage.get_languages()
-            index = widget.get_combo_box().currentIndex()
+            index = combo_box.currentIndex()
             if index == 0:
                 config.source_language = BaseLanguage.ALL
             else:
@@ -119,41 +105,57 @@ class BasicSettingsPage(Base, QWidget):
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
-        self.source_language_card = ComboBoxCard(
-            Localizer.get().basic_settings_page_source_language_title,
-            Localizer.get().basic_settings_page_source_language_content,
-            items=self.source_languages,
-            init=init,
-            current_changed=current_changed,
+        card = SettingCard(
+            title=Localizer.get().basic_settings_page_source_language_title,
+            description=Localizer.get().basic_settings_page_source_language_content,
+            parent=self,
         )
-        parent.addWidget(self.source_language_card)
+        combo_box = ComboBox(card)
+        combo_box.addItems(self.source_languages)
+
+        languages = BaseLanguage.get_languages()
+        if config.source_language == BaseLanguage.ALL:
+            combo_box.setCurrentIndex(0)
+        elif config.source_language in languages:
+            combo_box.setCurrentIndex(languages.index(config.source_language) + 1)
+
+        combo_box.currentIndexChanged.connect(
+            lambda index: current_changed(combo_box)
+        )
+        card.add_right_widget(combo_box)
+
+        self.source_language_combo = combo_box
+        parent.addWidget(card)
 
     # 译文语言
     def add_widget_target_language(
         self, parent: QLayout, config: Config, windows: FluentWindow
     ) -> None:
-        def init(widget: ComboBoxCard) -> None:
-            if config.target_language in BaseLanguage.get_languages():
-                widget.get_combo_box().setCurrentIndex(
-                    BaseLanguage.get_languages().index(config.target_language)
-                )
-
-        def current_changed(widget: ComboBoxCard) -> None:
+        def current_changed(combo_box: ComboBox) -> None:
             config = Config().load()
-            config.target_language = BaseLanguage.get_languages()[
-                widget.get_combo_box().currentIndex()
-            ]
+            config.target_language = BaseLanguage.get_languages()[combo_box.currentIndex()]
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["target_language"]})
 
-        self.target_language_card = ComboBoxCard(
-            Localizer.get().basic_settings_page_target_language_title,
-            Localizer.get().basic_settings_page_target_language_content,
-            items=self.languages,
-            init=init,
-            current_changed=current_changed,
+        card = SettingCard(
+            title=Localizer.get().basic_settings_page_target_language_title,
+            description=Localizer.get().basic_settings_page_target_language_content,
+            parent=self,
         )
-        parent.addWidget(self.target_language_card)
+        combo_box = ComboBox(card)
+        combo_box.addItems(self.languages)
+        if config.target_language in BaseLanguage.get_languages():
+            combo_box.setCurrentIndex(
+                BaseLanguage.get_languages().index(config.target_language)
+            )
+
+        combo_box.currentIndexChanged.connect(
+            lambda index: current_changed(combo_box)
+        )
+        card.add_right_widget(combo_box)
+
+        self.target_language_combo = combo_box
+        parent.addWidget(card)
 
     # 工程文件保存位置
     def add_widget_project_save_mode(
@@ -172,22 +174,9 @@ class BasicSettingsPage(Base, QWidget):
                 )
             return Localizer.get().basic_settings_page_project_save_mode_content
 
-        def init(widget: ComboBoxCard) -> None:
-            # 查找当前索引：0=MANUAL, 1=FIXED, 2=SOURCE
-            index = 0
-            if config.project_save_mode == Config.ProjectSaveMode.FIXED:
-                index = 1
-            elif config.project_save_mode == Config.ProjectSaveMode.SOURCE:
-                index = 2
-
-            widget.get_combo_box().setCurrentIndex(index)
-            widget.set_description(
-                get_description(config.project_save_mode, config.project_fixed_path)
-            )
-
-        def current_changed(widget: ComboBoxCard) -> None:
+        def current_changed(combo_box: ComboBox, card: SettingCard) -> None:
             config = Config().load()
-            index = widget.get_combo_box().currentIndex()
+            index = combo_box.currentIndex()
             old_mode = config.project_save_mode
 
             # 索引映射：0=MANUAL, 1=FIXED, 2=SOURCE
@@ -211,7 +200,7 @@ class BasicSettingsPage(Base, QWidget):
                         old_index = 1
                     elif old_mode == Config.ProjectSaveMode.SOURCE:
                         old_index = 2
-                    widget.get_combo_box().setCurrentIndex(old_index)
+                    combo_box.setCurrentIndex(old_index)
                     return
             elif index == 2:
                 new_mode = Config.ProjectSaveMode.SOURCE
@@ -220,58 +209,75 @@ class BasicSettingsPage(Base, QWidget):
             config.save()
 
             # 更新描述
-            widget.set_description(get_description(new_mode, config.project_fixed_path))
+            card.set_description(get_description(new_mode, config.project_fixed_path))
 
-        parent.addWidget(
-            ComboBoxCard(
-                title=Localizer.get().basic_settings_page_project_save_mode_title,
-                description=Localizer.get().basic_settings_page_project_save_mode_content,
-                items=items,
-                init=init,
-                current_changed=current_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().basic_settings_page_project_save_mode_title,
+            description=Localizer.get().basic_settings_page_project_save_mode_content,
+            parent=self,
         )
+        combo_box = ComboBox(card)
+        combo_box.addItems(items)
+
+        # 查找当前索引：0=MANUAL, 1=FIXED, 2=SOURCE
+        index = 0
+        if config.project_save_mode == Config.ProjectSaveMode.FIXED:
+            index = 1
+        elif config.project_save_mode == Config.ProjectSaveMode.SOURCE:
+            index = 2
+        combo_box.setCurrentIndex(index)
+        card.set_description(
+            get_description(config.project_save_mode, config.project_fixed_path)
+        )
+
+        combo_box.currentIndexChanged.connect(
+            lambda index: current_changed(combo_box, card)
+        )
+        card.add_right_widget(combo_box)
+        parent.addWidget(card)
 
     # 任务完成后自动打开输出文件夹
     def add_widget_output_folder_open_on_finish(
         self, parent: QLayout, config: Config, windows: FluentWindow
     ) -> None:
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(config.output_folder_open_on_finish)
-
-        def checked_changed(widget: SwitchButtonCard) -> None:
+        def checked_changed(button: SwitchButton) -> None:
             # 更新并保存配置
             config = Config().load()
-            config.output_folder_open_on_finish = widget.get_switch_button().isChecked()
+            config.output_folder_open_on_finish = button.isChecked()
             config.save()
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title=Localizer.get().basic_settings_page_output_folder_open_on_finish_title,
-                description=Localizer.get().basic_settings_page_output_folder_open_on_finish_content,
-                init=init,
-                checked_changed=checked_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().basic_settings_page_output_folder_open_on_finish_title,
+            description=Localizer.get().basic_settings_page_output_folder_open_on_finish_content,
+            parent=self,
         )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(config.output_folder_open_on_finish)
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
 
     # 请求超时时间
     def add_widget_request_timeout(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SpinCard) -> None:
-            widget.get_spin_box().setRange(0, 9999999)
-            widget.get_spin_box().setValue(config.request_timeout)
-
-        def value_changed(widget: SpinCard) -> None:
+        def value_changed(spin_box: SpinBox) -> None:
             config = Config().load()
-            config.request_timeout = widget.get_spin_box().value()
+            config.request_timeout = spin_box.value()
             config.save()
 
-        parent.addWidget(
-            SpinCard(
-                title=Localizer.get().basic_settings_page_request_timeout_title,
-                description=Localizer.get().basic_settings_page_request_timeout_content,
-                init=init,
-                value_changed=value_changed,
-            )
+        card = SettingCard(
+            title=Localizer.get().basic_settings_page_request_timeout_title,
+            description=Localizer.get().basic_settings_page_request_timeout_content,
+            parent=self,
         )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(config.request_timeout)
+        spin_box.valueChanged.connect(lambda value: value_changed(spin_box))
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)

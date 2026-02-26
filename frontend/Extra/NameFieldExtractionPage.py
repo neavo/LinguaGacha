@@ -28,8 +28,8 @@ from widget.AppTable import AppTableModelBase
 from widget.AppTable import AppTableView
 from widget.AppTable import ColumnSpec
 from widget.CommandBarCard import CommandBarCard
-from widget.EmptyCard import EmptyCard
 from widget.SearchCard import SearchCard
+from widget.SettingCard import SettingCard
 
 
 # ==================== 图标常量 ====================
@@ -113,9 +113,10 @@ class NameFieldExtractionPage(Base, QWidget):
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         parent.addWidget(
-            EmptyCard(
+            SettingCard(
                 title=Localizer.get().name_field_extraction_page,
                 description=Localizer.get().name_field_extraction_page_desc,
+                parent=self,
             )
         )
 

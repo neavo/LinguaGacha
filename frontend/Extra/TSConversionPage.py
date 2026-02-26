@@ -6,8 +6,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
+from qfluentwidgets import ComboBox
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -18,10 +20,8 @@ from module.Config import Config
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.TextProcessor import TextProcessor
-from widget.ComboBoxCard import ComboBoxCard
 from widget.CommandBarCard import CommandBarCard
-from widget.EmptyCard import EmptyCard
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.SettingCard import SettingCard
 
 
 # ==================== 图标常量 ====================
@@ -64,9 +64,10 @@ class TSConversionPage(Base, QWidget):
         self, parent: QVBoxLayout, config: Config, window: FluentWindow
     ) -> None:
         parent.addWidget(
-            EmptyCard(
+            SettingCard(
                 title=Localizer.get().ts_conversion_page,
                 description=Localizer.get().ts_conversion_page_desc,
+                parent=self,
             )
         )
 
@@ -75,32 +76,50 @@ class TSConversionPage(Base, QWidget):
         self, parent: QVBoxLayout, config: Config, window: FluentWindow
     ) -> None:
         # 转换方向设置
-        self.direction_card = ComboBoxCard(
+        direction_card = SettingCard(
             title=Localizer.get().ts_conversion_direction,
             description=Localizer.get().ts_conversion_direction_desc,
-            items=[
+            parent=self,
+        )
+        direction_combo = ComboBox(direction_card)
+        direction_combo.addItems(
+            [
                 Localizer.get().ts_conversion_to_simplified,
                 Localizer.get().ts_conversion_to_traditional,
-            ],
-            init=lambda w: w.get_combo_box().setCurrentIndex(1),
+            ]
         )
-        parent.addWidget(self.direction_card)
+        direction_combo.setCurrentIndex(1)
+        direction_card.add_right_widget(direction_combo)
+        parent.addWidget(direction_card)
+        self.direction_combo = direction_combo
 
         # 文本保护选项
-        self.preserve_text_card = SwitchButtonCard(
+        preserve_card = SettingCard(
             title=Localizer.get().ts_conversion_preserve_text,
             description=Localizer.get().ts_conversion_preserve_text_desc,
-            init=lambda w: w.get_switch_button().setChecked(True),
+            parent=self,
         )
-        parent.addWidget(self.preserve_text_card)
+        preserve_switch = SwitchButton(preserve_card)
+        preserve_switch.setOnText("")
+        preserve_switch.setOffText("")
+        preserve_switch.setChecked(True)
+        preserve_card.add_right_widget(preserve_switch)
+        parent.addWidget(preserve_card)
+        self.preserve_switch = preserve_switch
 
         # 角色名称选项
-        self.target_name_card = SwitchButtonCard(
+        target_name_card = SettingCard(
             title=Localizer.get().ts_conversion_target_name,
             description=Localizer.get().ts_conversion_target_name_desc,
-            init=lambda w: w.get_switch_button().setChecked(True),
+            parent=self,
         )
-        parent.addWidget(self.target_name_card)
+        target_name_switch = SwitchButton(target_name_card)
+        target_name_switch.setOnText("")
+        target_name_switch.setOffText("")
+        target_name_switch.setChecked(True)
+        target_name_card.add_right_widget(target_name_switch)
+        parent.addWidget(target_name_card)
+        self.target_name_switch = target_name_switch
 
         # 填充剩余空间
         parent.addStretch(1)
@@ -194,9 +213,9 @@ class TSConversionPage(Base, QWidget):
             return
 
         # 获取当前配置
-        is_to_traditional = self.direction_card.get_combo_box().currentIndex() == 1
-        convert_name = self.target_name_card.get_switch_button().isChecked()
-        preserve_text = self.preserve_text_card.get_switch_button().isChecked()
+        is_to_traditional = self.direction_combo.currentIndex() == 1
+        convert_name = self.target_name_switch.isChecked()
+        preserve_text = self.preserve_switch.isChecked()
 
         self.is_converting = True
         self.emit(

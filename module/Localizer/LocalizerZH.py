@@ -46,6 +46,7 @@ class LocalizerZH:
     cancel: str = "取消"
     auto: str = "自动"
     wiki: str = "功能说明"
+    view_more_info: str = "查看更多信息"
     filter: str = "过滤"
     search: str = "搜索"
     placeholder: str = "请输入关键词 …"
@@ -263,11 +264,7 @@ class LocalizerZH:
     model_basic_setting_page_model_id_fetch: str = "获取"
     model_basic_setting_page_model_id_test: str = "测试"
     model_basic_setting_page_thinking_title: str = "思考等级"
-    model_basic_setting_page_thinking_content: str = (
-        "设置模型的思考行为，会影响模型思考的时间和消耗，只支持部分模型  [→[支持思考的模型列表]←](https://github.com/neavo/LinguaGacha/wiki/ModelListForThinkingModePriority)"
-        ""
-        ""
-    )
+    model_basic_setting_page_thinking_content: str = "设置模型的思考行为，会影响思考的时间和消耗，点击问号图标查看支持的模型列表"
     model_basic_setting_page_thinking_off: str = "无"
     model_basic_setting_page_thinking_low: str = "低"
     model_basic_setting_page_thinking_medium: str = "中"

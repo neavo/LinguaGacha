@@ -26,7 +26,8 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from widget.AppTable import ColumnSpec
-from widget.SwitchButtonCard import SwitchButtonCard
+from qfluentwidgets import SwitchButton
+from widget.SettingCard import SettingCard
 
 
 # ==================== 图标常量 ====================
@@ -159,8 +160,8 @@ class GlossaryPage(QualityRulePageBase):
         return specs
 
     def on_entries_reloaded(self) -> None:
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(self.get_glossary_enable())
+        if hasattr(self, "glossary_switch") and self.glossary_switch is not None:
+            self.glossary_switch.setChecked(self.get_glossary_enable())
         if hasattr(self, "search_card"):
             self.search_card.reset_state()
 
@@ -172,27 +173,32 @@ class GlossaryPage(QualityRulePageBase):
         self.delete_entries_by_rows([self.current_index])
 
     def on_project_unloaded_ui(self) -> None:
-        if hasattr(self, "switch_card"):
-            self.switch_card.get_switch_button().setChecked(True)
+        if hasattr(self, "glossary_switch") and self.glossary_switch is not None:
+            self.glossary_switch.setChecked(True)
 
     # ==================== UI：头部 ====================
 
     def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
         del window
 
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(self.get_glossary_enable())
+        def checked_changed(button: SwitchButton) -> None:
+            self.set_glossary_enable(button.isChecked())
 
-        def checked_changed(widget: SwitchButtonCard) -> None:
-            self.set_glossary_enable(widget.get_switch_button().isChecked())
-
-        self.switch_card = SwitchButtonCard(
+        card = SettingCard(
             Localizer.get().app_glossary_page,
             Localizer.get().glossary_page_head_content,
-            init=init,
-            checked_changed=checked_changed,
+            parent=self,
         )
-        parent.addWidget(self.switch_card)
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(self.get_glossary_enable())
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        self.glossary_switch = switch_button
+        parent.addWidget(card)
 
     def setup_table_columns(self) -> None:
         self.table.setIconSize(QSize(self.CASE_ICON_SIZE, self.CASE_ICON_SIZE))
