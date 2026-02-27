@@ -138,6 +138,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.subscribe(
             Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update
         )
+        self.subscribe(Base.Event.APP_UPDATE_APPLY_ERROR, self.app_update_apply_error)
         self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
         self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
         self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide)
@@ -151,6 +152,9 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 检查更新
         QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
+        QTimer.singleShot(
+            0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists()
+        )
 
         # 监控运行任务，动态禁用关闭项目按钮
         self.task_monitor_timer = QTimer(self)
@@ -444,7 +448,8 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 打开主页
     def open_project_page(self) -> None:
-        if VersionManager.get().get_status() == VersionManager.Status.NEW_VERSION:
+        status = VersionManager.get().get_status()
+        if status == VersionManager.Status.NEW_VERSION:
             # 更新 UI
             self.home_page_widget.setName(
                 Localizer.get().app_new_version_update.replace("{PERCENT}", "")
@@ -452,10 +457,25 @@ class AppFluentWindow(Base, FluentWindow):
 
             # 触发下载事件
             self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
-        elif VersionManager.get().get_status() == VersionManager.Status.UPDATING:
+        elif status == VersionManager.Status.UPDATING:
             pass
-        elif VersionManager.get().get_status() == VersionManager.Status.DOWNLOADED:
+        elif status == VersionManager.Status.DOWNLOADED:
+            self.home_page_widget.setName(Localizer.get().app_new_version_applying)
+            self.emit(
+                Base.Event.PROGRESS_TOAST_SHOW,
+                {
+                    "message": Localizer.get().app_new_version_applying,
+                    "indeterminate": True,
+                },
+            )
             self.emit(Base.Event.APP_UPDATE_EXTRACT, {})
+        elif status == VersionManager.Status.APPLYING:
+            pass
+        elif status == VersionManager.Status.FAILED:
+            self.home_page_widget.setName(
+                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
+            )
+            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
         else:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
@@ -466,11 +486,24 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 更新 - 下载完成
     def app_update_download_done(self, event: Base.Event, data: dict) -> None:
-        self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
+        del event
+        if data.get("manual", False):
+            self.home_page_widget.setName(Localizer.get().app_new_version)
+        else:
+            self.home_page_widget.setName(Localizer.get().app_new_version_downloaded)
 
     # 更新 - 下载报错
     def app_update_download_error(self, event: Base.Event, data: dict) -> None:
-        self.home_page_widget.setName(__class__.HOMEPAGE)
+        del event
+        del data
+        self.home_page_widget.setName(Localizer.get().app_new_version)
+
+    # 更新 - 应用失败
+    def app_update_apply_error(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        self.home_page_widget.setName(Localizer.get().app_new_version_apply_failed)
 
     # 更新 - 下载更新
     def app_update_download_update(self, event: Base.Event, data: dict) -> None:
