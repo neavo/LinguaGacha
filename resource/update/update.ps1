@@ -21,6 +21,7 @@ $AppExePath = Join-Path $InstallDir "app.exe"
 $VersionPath = Join-Path $InstallDir "version.txt"
 $ResourcePath = Join-Path $InstallDir "resource"
 $RuntimeScriptPath = Join-Path $UpdateDir "update.runtime.ps1"
+$LockAcquiredByCurrentProcess = $false
 
 New-Item -ItemType Directory -Path $UpdateDir -Force | Out-Null
 
@@ -82,6 +83,32 @@ function Ensure-MutexLock {
         createdAt = (Get-Date).ToString("o")
     }
     $lockPayload | ConvertTo-Json -Compress | Out-File -FilePath $LockPath -Encoding UTF8
+    $script:LockAcquiredByCurrentProcess = $true
+}
+
+function Release-MutexLockIfOwned {
+    if (-not $LockAcquiredByCurrentProcess) {
+        return
+    }
+
+    if (!(Test-Path $LockPath)) {
+        return
+    }
+
+    try {
+        $lockInfo = Get-Content -Path $LockPath -Raw | ConvertFrom-Json
+        $lockPid = [int]$lockInfo.pid
+    } catch {
+        Write-Log "Skip releasing lock because lock file cannot be parsed."
+        return
+    }
+
+    if ($lockPid -eq $PID) {
+        Remove-IfExists $LockPath
+        $script:LockAcquiredByCurrentProcess = $false
+    } else {
+        Write-Log "Skip releasing lock because lock owner changed (owner=$lockPid current=$PID)."
+    }
 }
 
 function Write-Summary {
@@ -299,7 +326,7 @@ catch {
     Write-Result -Status "failed" -Message $errorMessage
 }
 finally {
-    Remove-IfExists $LockPath
+    Release-MutexLockIfOwned
 
     if ($exitCode -eq 0) {
         Remove-IfExists $StageDir

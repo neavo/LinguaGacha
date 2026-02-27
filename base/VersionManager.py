@@ -369,9 +369,7 @@ class VersionManager(Base):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.ERROR,
-                "message": Localizer.get().app_new_version_apply_failed_toast.replace(
-                    "{LOG_PATH}", log_path
-                ),
+                "message": f"{Localizer.get().app_new_version_apply_failed}\n{log_path}",
                 "duration": 60 * 1000,
             },
         )

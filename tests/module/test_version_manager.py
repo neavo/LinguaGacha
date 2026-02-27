@@ -15,7 +15,7 @@ class DummyLocalizer:
     app_new_version_success = "download success"
     app_new_version_failure = "download failure"
     app_new_version_waiting_restart = "waiting restart"
-    app_new_version_apply_failed_toast = "apply failed: {LOG_PATH}"
+    app_new_version_apply_failed = "apply failed"
 
 
 class DummyLogger:
