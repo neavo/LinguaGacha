@@ -103,6 +103,11 @@ class LocalizerEN(LocalizerZH):
     app_new_version_failure: str = "New version download failed …"
     app_new_version_success: str = "New version download successful …"
     app_new_version_downloaded: str = "Click to apply New Version!"
+    app_new_version_applying: str = "Applying update …"
+    app_new_version_apply_failed: str = "Update failed and rolled back …"
+    app_new_version_apply_failed_toast: str = (
+        "Updater script failed and rolled back. Check log: {LOG_PATH}"
+    )
     app_new_version_waiting_restart: str = "Update completed, application will close soon …"
     app_project_closed_toast: str = "Current project closed …"
     app_close_project_btn: str = "Close Project"

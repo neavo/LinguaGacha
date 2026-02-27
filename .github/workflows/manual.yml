@@ -53,16 +53,34 @@ jobs:
           xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
           xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
 
+      - name: Ensure updater.ps1 in package
+        shell: pwsh
+        run: |
+          $src = ".\resource\update\updater.ps1"
+          $dst = ".\dist\LinguaGacha\resource\update\updater.ps1"
+          if (!(Test-Path $src)) { throw "Missing $src" }
+          New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
+          Copy-Item $src $dst -Force
+
       - name: Compress Archive
         shell: pwsh
         run: |
           Compress-Archive -Path .\dist\* -DestinationPath "LinguaGacha_${{ steps.check_version.outputs.version }}.zip" -CompressionLevel Optimal -Force
 
+      - name: Generate Windows ZIP SHA256
+        shell: pwsh
+        run: |
+          $zip = "LinguaGacha_${{ steps.check_version.outputs.version }}.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+          "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: LinguaGacha_${{ steps.check_version.outputs.version }}_Windows
-          path: LinguaGacha_${{ steps.check_version.outputs.version }}.zip
+          path: |
+            LinguaGacha_${{ steps.check_version.outputs.version }}.zip
+            LinguaGacha_${{ steps.check_version.outputs.version }}.zip.sha256
 
   build-macos:
     strategy:
@@ -264,6 +282,7 @@ jobs:
           prerelease: false
           files: |
             ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip
+            ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Windows/LinguaGacha_${{ needs.build-windows.outputs.version }}.zip.sha256
             ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_x86_64.dmg
             ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64/LinguaGacha_${{ needs.build-windows.outputs.version }}_macOS_arm64.dmg
             ./artifacts/LinguaGacha_${{ needs.build-windows.outputs.version }}_Linux_x86_64/LinguaGacha_${{ needs.build-windows.outputs.version }}_Linux_x86_64.AppImage

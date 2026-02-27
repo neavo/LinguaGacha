@@ -169,6 +169,9 @@ if __name__ == "__main__":
     # 设置应用语言
     Localizer.set_app_language(config.app_language)
 
+    # 启动早期先做更新残留清理，确保脚本异常中断后仍可自愈
+    VersionManager.cleanup_update_temp_on_startup()
+
     # 打印日志
     LogManager.get().info(f"LinguaGacha {version}")
     if LogManager.get().is_expert_mode():
