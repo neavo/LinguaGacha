@@ -44,6 +44,55 @@ def build_epub_bytes() -> bytes:
     return buf.getvalue()
 
 
+def build_epub_bytes_for_title(
+    *,
+    opf_title: str | None,
+    xhtml_title: str = "XHTML 原题",
+) -> bytes:
+    metadata_part = ""
+    if opf_title is not None:
+        metadata_part = (
+            "<metadata xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+            f"<dc:title>{opf_title}</dc:title>"
+            "</metadata>"
+        )
+    opf = (
+        "<?xml version='1.0'?>"
+        "<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>"
+        f"{metadata_part}"
+        "<manifest>"
+        "<item id='chap1' href='text/ch1.xhtml' media-type='application/xhtml+xml'/>"
+        "</manifest>"
+        "<spine><itemref idref='chap1'/></spine>"
+        "</package>"
+    ).encode("utf-8")
+    chapter = (
+        "<?xml version='1.0'?>"
+        "<html xmlns='http://www.w3.org/1999/xhtml'>"
+        "<head>"
+        f"<title>{xhtml_title}</title>"
+        "</head>"
+        "<body/>"
+        "</html>"
+    ).encode("utf-8")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "META-INF/container.xml",
+            b"""<?xml version='1.0'?>
+<container xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>
+  <rootfiles>
+    <rootfile full-path='OEBPS/content.opf'/>
+  </rootfiles>
+</container>
+""",
+        )
+        zf.writestr("OEBPS/content.opf", opf)
+        zf.writestr("OEBPS/text/ch1.xhtml", chapter)
+    return buf.getvalue()
+
+
 def test_read_from_stream_skips_missing_spine_and_logs_nav_ncx_warnings(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
@@ -95,11 +144,71 @@ def test_read_from_stream_skips_missing_spine_and_logs_nav_ncx_warnings(
 
     items = ast.read_from_stream(build_epub_bytes(), "book.epub")
 
-    assert len(items) == 1
-    assert items[0].get_src().endswith("text/ch1.xhtml")
+    assert any(item.get_src().endswith("text/ch1.xhtml") for item in items)
     assert len(warnings) == 2
     assert "Failed to process nav document" in warnings[0]
     assert "Failed to process NCX document" in warnings[1]
+
+
+def test_read_from_stream_extracts_opf_dc_title_item(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ast = EPUBAst(config)
+
+    monkeypatch.setattr(ast, "extract_items_from_document", lambda *args, **kwargs: [])
+
+    items = ast.read_from_stream(
+        build_epub_bytes_for_title(opf_title="原始书名"),
+        "book.epub",
+    )
+
+    title_items: list[Item] = []
+    for item in items:
+        extra_field = item.get_extra_field()
+        if not isinstance(extra_field, dict):
+            continue
+        epub = extra_field.get("epub")
+        if not isinstance(epub, dict):
+            continue
+        if epub.get("is_opf_metadata") is not True:
+            continue
+        if epub.get("metadata_tag") != "dc:title":
+            continue
+        title_items.append(item)
+
+    assert len(title_items) == 1
+    title_item = title_items[0]
+    epub_extra = title_item.get_extra_field()["epub"]
+    assert title_item.get_src() == "原始书名"
+    assert epub_extra["doc_path"] == "OEBPS/content.opf"
+    assert epub_extra["parts"] != []
+    assert epub_extra["parts"][0]["slot"] == "text"
+    assert epub_extra["src_digest"] == ast.sha1_hex_with_null_separator(["原始书名"])
+
+
+def test_read_from_stream_does_not_fallback_to_xhtml_title_without_opf_title(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ast = EPUBAst(config)
+
+    monkeypatch.setattr(ast, "extract_items_from_document", lambda *args, **kwargs: [])
+
+    items = ast.read_from_stream(
+        build_epub_bytes_for_title(opf_title=None, xhtml_title="仅 XHTML 标题"),
+        "book.epub",
+    )
+
+    assert all(item.get_src() != "仅 XHTML 标题" for item in items)
+    assert all(
+        not (
+            isinstance(item.get_extra_field(), dict)
+            and isinstance(item.get_extra_field().get("epub"), dict)
+            and item.get_extra_field()["epub"].get("is_opf_metadata") is True
+        )
+        for item in items
+    )
 
 
 def test_read_from_path_reads_epub_files_and_rel_path(

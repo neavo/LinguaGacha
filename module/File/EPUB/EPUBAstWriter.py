@@ -57,9 +57,69 @@ class EPUBAstWriter(Base):
 
     def parse_doc(self, raw: bytes, doc_path: str) -> etree._Element:
         doc_lower = doc_path.lower()
+        if doc_lower.endswith(".opf"):
+            # OPF 只允许按 XML 解析，避免 HTML 回退导致路径漂移。
+            try:
+                parser = etree.XMLParser(
+                    recover=True, resolve_entities=True, no_network=True
+                )
+                return etree.fromstring(raw, parser=parser)
+            except Exception as e:
+                raise ValueError("Failed to parse OPF XML") from e
         if doc_lower.endswith(".ncx"):
             return self.ast.parse_ncx_xml(raw)
         return self.ast.parse_xhtml_or_html(raw)
+
+    def extract_opf_title_sync_pair(
+        self, by_doc: dict[str, list[Item]]
+    ) -> tuple[str, str] | None:
+        # XHTML 标题只能跟随 OPF 书名同步，不能独立作为翻译来源。
+        for doc_path, doc_items in by_doc.items():
+            if not doc_path.lower().endswith(".opf"):
+                continue
+            for item in doc_items:
+                extra = item.get_extra_field()
+                epub = extra.get("epub") if isinstance(extra, dict) else None
+                if not isinstance(epub, dict):
+                    continue
+                if epub.get("is_opf_metadata") is not True:
+                    continue
+                if epub.get("metadata_tag") != "dc:title":
+                    continue
+
+                src_text = item.get_src()
+                dst_text = item.get_dst()
+                # 只有标题译文真实变化时才需要同步 XHTML 标题，空译文或同文案都跳过。
+                if dst_text == "" or dst_text == src_text:
+                    continue
+
+                src_lines = src_text.split("\n")
+                dst_lines = dst_text.split("\n")
+                if len(src_lines) != 1 or len(dst_lines) != 1:
+                    continue
+                return src_lines[0], dst_lines[0]
+        return None
+
+    def sync_xhtml_title(
+        self, root: etree._Element, src_title: str, dst_title: str
+    ) -> bool:
+        # 只同步“当前值等于 OPF 原标题”的 title，避免误改章节标题。
+        changed = False
+        for title_elem in root.xpath(
+            ".//*[local-name()='head']/*[local-name()='title']"
+        ):
+            if not isinstance(title_elem, etree._Element):
+                continue
+
+            current_text = self.ast.normalize_slot_text(title_elem.text or "")
+            if current_text != src_title:
+                continue
+            if title_elem.text == dst_title:
+                continue
+
+            title_elem.text = dst_title
+            changed = True
+        return changed
 
     def serialize_doc(self, root: etree._Element) -> bytes:
         # XML 树保持 utf-8 + xml declaration；HTML 树用 HTML 序列化减少格式扰动。
@@ -83,6 +143,10 @@ class EPUBAstWriter(Base):
         is_ncx = (
             doc_lower.endswith(".ncx") or self.ast.local_name(str(root.tag)) == "ncx"
         )
+        is_opf = (
+            doc_lower.endswith(".opf")
+            or self.ast.local_name(str(root.tag)).lower() == "package"
+        )
 
         is_nav_flag = False
         for item in items:
@@ -93,7 +157,9 @@ class EPUBAstWriter(Base):
                 break
 
         is_nav = self.is_nav_page(root) or is_nav_flag
-        allow_bilingual_insert = bilingual and (not is_nav) and (not is_ncx)
+        allow_bilingual_insert = (
+            bilingual and (not is_nav) and (not is_ncx) and (not is_opf)
+        )
 
         elem_by_path = self.ast.build_elem_by_path(root)
 
@@ -237,12 +303,76 @@ class EPUBAstWriter(Base):
         src_zip = io.BytesIO(original_epub_bytes)
         with zipfile.ZipFile(out_path, "w") as zip_writer:
             with zipfile.ZipFile(src_zip, "r") as zip_reader:
+                # 先做一次 OPF 预应用检查，只有确认能命中写回时才触发 XHTML 标题同步。
+                opf_title_sync_pair: tuple[str, str] | None = None
+                candidate_sync_pair = self.extract_opf_title_sync_pair(by_doc)
+                if candidate_sync_pair is not None:
+                    for doc_path, doc_items in by_doc.items():
+                        if not doc_path.lower().endswith(".opf"):
+                            continue
+                        if not doc_items:
+                            continue
+                        try:
+                            raw = zip_reader.read(doc_path)
+                        except KeyError:
+                            continue
+                        try:
+                            root = self.parse_doc(raw, doc_path)
+                            applied, skipped_count = self.apply_items_to_tree(
+                                root, doc_path, doc_items, bilingual
+                            )
+                            del skipped_count
+                        except Exception:
+                            continue
+                        if applied > 0:
+                            opf_title_sync_pair = candidate_sync_pair
+                            break
+
                 for name in zip_reader.namelist():
                     lower = name.lower()
 
                     # OPF/CSS 清理（保持旧行为）
                     if lower.endswith(".opf"):
                         raw = zip_reader.read(name)
+                        doc_items = by_doc.get(name, [])
+                        if doc_items:
+                            has_real_translation = any(
+                                item.get_dst() != ""
+                                and item.get_dst() != item.get_src()
+                                for item in doc_items
+                            )
+                            if not has_real_translation:
+                                try:
+                                    text = raw.decode("utf-8-sig")
+                                    zip_writer.writestr(name, self.sanitize_opf(text))
+                                except Exception:
+                                    zip_writer.writestr(name, raw)
+                                continue
+                            try:
+                                root = self.parse_doc(raw, name)
+                                applied, skipped_count = self.apply_items_to_tree(
+                                    root, name, doc_items, bilingual
+                                )
+                                del skipped_count
+                                if applied > 0:
+                                    serialized = self.serialize_doc(root)
+                                    text = serialized.decode("utf-8-sig")
+                                else:
+                                    # 未命中任何翻译时，保持原始 OPF 文本结构，避免序列化扰动。
+                                    text = raw.decode("utf-8-sig")
+                                zip_writer.writestr(name, self.sanitize_opf(text))
+                            except Exception as e:
+                                # OPF 写回失败时，尽量保留旧 sanitize 行为，再兜底原样写回。
+                                LogManager.get().warning(
+                                    f"Failed to apply translations to {name}, keeping original",
+                                    e,
+                                )
+                                try:
+                                    text = raw.decode("utf-8-sig")
+                                    zip_writer.writestr(name, self.sanitize_opf(text))
+                                except Exception:
+                                    zip_writer.writestr(name, raw)
+                            continue
                         try:
                             text = raw.decode("utf-8-sig")
                             zip_writer.writestr(name, self.sanitize_opf(text))
@@ -259,17 +389,36 @@ class EPUBAstWriter(Base):
                         continue
 
                     # 内容文档回写
-                    if (
-                        lower.endswith((".xhtml", ".html", ".htm", ".ncx"))
-                        and name in by_doc
+                    if lower.endswith((".xhtml", ".html", ".htm", ".ncx")) and (
+                        name in by_doc
+                        or (
+                            opf_title_sync_pair is not None
+                            and lower.endswith((".xhtml", ".html", ".htm"))
+                        )
                     ):
                         raw = zip_reader.read(name)
+                        doc_items = by_doc.get(name, [])
                         try:
                             root = self.parse_doc(raw, name)
-                            self.apply_items_to_tree(
-                                root, name, by_doc.get(name, []), bilingual
-                            )
-                            zip_writer.writestr(name, self.serialize_doc(root))
+                            changed = False
+                            if doc_items:
+                                self.apply_items_to_tree(
+                                    root, name, doc_items, bilingual
+                                )
+                                changed = True
+
+                            if opf_title_sync_pair is not None and lower.endswith(
+                                (".xhtml", ".html", ".htm")
+                            ):
+                                src_title, dst_title = opf_title_sync_pair
+                                if self.sync_xhtml_title(root, src_title, dst_title):
+                                    changed = True
+
+                            if changed:
+                                zip_writer.writestr(name, self.serialize_doc(root))
+                            else:
+                                # 仅为同步尝试而解析时，若无变化则原样写回降低格式扰动。
+                                zip_writer.writestr(name, raw)
                         except Exception as e:
                             # 解析/回写失败时原样写回，避免破坏 epub
                             LogManager.get().warning(
