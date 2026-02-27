@@ -110,6 +110,59 @@ def test_parse_opf_handles_invalid_version_and_ncx_fallback(config: Config) -> N
     assert pkg.ncx_path == "OEBPS/toc.ncx"
 
 
+def test_parse_opf_title_skips_blank_and_uses_next_non_empty(config: Config) -> None:
+    handler = EPUBAst(config)
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'
+    xmlns:dc='http://purl.org/dc/elements/1.1/'>
+  <metadata>
+    <dc:title>
+    </dc:title>
+    <dc:title>  Book  Title  </dc:title>
+  </metadata>
+  <manifest />
+  <spine />
+</package>
+"""
+    content = build_zip_with_files({"OEBPS/content.opf": opf})
+
+    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+        pkg = handler.parse_opf(zf, "OEBPS/content.opf")
+
+    assert pkg.opf_title_text == " Book Title "
+    assert pkg.opf_title_path is not None
+    assert pkg.opf_title_path.endswith("/metadata[1]/title[2]")
+
+
+def test_parse_opf_title_defensive_skips_non_element_nodes(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    content = build_zip_with_files({"OEBPS/content.opf": b"<package />"})
+
+    class DummyRoot:
+        def get(self, name: str) -> str | None:
+            del name
+            return None
+
+        def xpath(self, expr: str):
+            if "metadata" in expr and "title" in expr:
+                return ["bad-node"]
+            return []
+
+    monkeypatch.setattr(
+        "module.File.EPUB.EPUBAst.etree.fromstring",
+        lambda data: DummyRoot(),
+    )
+
+    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+        pkg = handler.parse_opf(zf, "OEBPS/content.opf")
+
+    assert pkg.opf_title_path is None
+    assert pkg.opf_title_text is None
+
+
 def test_parse_xhtml_or_html_recovers_from_undefined_named_entity(
     config: Config,
 ) -> None:
@@ -275,8 +328,7 @@ def test_read_from_stream_processes_nav_and_ncx_and_skips_non_html_spine(
     assert ("OEBPS/text/ch1.xhtml", False) in called_docs
     assert ("OEBPS/nav.xhtml", True) in called_docs
     assert all("img/a.png" not in doc for doc, _ in called_docs)
-    assert len(items) == 1
-    assert items[0].get_src().endswith("toc.ncx")
+    assert any(item.get_src().endswith("toc.ncx") for item in items)
 
 
 def test_build_elem_path_records_sibling_index(config: Config) -> None:

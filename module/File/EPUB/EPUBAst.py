@@ -39,6 +39,8 @@ class EpubPackageInfo:
     spine_paths: list[str]
     nav_path: str | None
     ncx_path: str | None
+    opf_title_path: str | None
+    opf_title_text: str | None
 
 
 class EPUBAst(Base):
@@ -52,12 +54,16 @@ class EPUBAst(Base):
     Row 编号规则（用于保证不同文档类型间的有序性）：
     - 正文章节：spine_index * ROW_MULTIPLIER + unit_index，支持最多 8000 章
     - Nav 文档：ROW_BASE_NAV + unit_index（当 nav 不在 spine 时）
+    - OPF 书名：ROW_BASE_OPF_TITLE（位于 nav 与 ncx 之间）
     - NCX 文档：ROW_BASE_NCX + unit_index（始终排在最后）
     """
 
     # Row 编号常量：用于保证 item 在不同文档类型间的有序性
     ROW_MULTIPLIER = 1_000_000  # 每个 spine 文档最多 100 万个翻译单元
     ROW_BASE_NAV = 8_000_000_000  # nav.xhtml 的 row 基数（支持最多 8000 章正文）
+    ROW_BASE_OPF_TITLE = (
+        8_500_000_000  # OPF dc:title 的 row 基数（位于 nav 与 ncx 之间）
+    )
     ROW_BASE_NCX = 9_000_000_000  # NCX 的 row 基数（始终排在 nav 之后）
 
     BLOCK_TAGS: tuple[str, ...] = (
@@ -349,6 +355,23 @@ class EPUBAst(Base):
             spine_paths.append(m.get("path") or "")
         spine_paths = [p for p in spine_paths if p]
 
+        # 只取首个非空 dc:title，确保书名翻译语义只有一个来源。
+        opf_title_path: str | None = None
+        opf_title_text: str | None = None
+        for title_elem in opf_root.xpath(
+            ".//*[local-name()='metadata']/*[local-name()='title']"
+        ):
+            if not isinstance(title_elem, etree._Element):
+                continue
+
+            title_text = cls.normalize_slot_text(title_elem.text or "")
+            if title_text.strip() == "":
+                continue
+
+            opf_title_path = cls.build_elem_path(opf_root, title_elem)
+            opf_title_text = title_text
+            break
+
         return EpubPackageInfo(
             opf_path=opf_path,
             opf_dir=opf_dir,
@@ -356,6 +379,45 @@ class EPUBAst(Base):
             spine_paths=spine_paths,
             nav_path=nav_path,
             ncx_path=ncx_path,
+            opf_title_path=opf_title_path,
+            opf_title_text=opf_title_text,
+        )
+
+    def extract_item_from_opf_title(
+        self,
+        rel_path: str,
+        pkg: EpubPackageInfo,
+    ) -> Item | None:
+        # 书名按普通文本进入翻译链路，但定位信息仍使用统一 slot_per_line 协议。
+        if pkg.opf_title_path is None or pkg.opf_title_text is None:
+            return None
+
+        digest = self.sha1_hex_with_null_separator([pkg.opf_title_text])
+        return Item.from_dict(
+            {
+                "src": pkg.opf_title_text,
+                "dst": "",
+                "tag": pkg.opf_path,
+                "row": self.ROW_BASE_OPF_TITLE,
+                "file_type": Item.FileType.EPUB,
+                "file_path": rel_path,
+                "extra_field": {
+                    "epub": {
+                        "mode": "slot_per_line",
+                        "doc_path": pkg.opf_path,
+                        "block_path": pkg.opf_title_path,
+                        "parts": [
+                            {
+                                "slot": "text",
+                                "path": pkg.opf_title_path,
+                            }
+                        ],
+                        "src_digest": digest,
+                        "is_opf_metadata": True,
+                        "metadata_tag": "dc:title",
+                    }
+                },
+            }
         )
 
     @classmethod
@@ -685,6 +747,10 @@ class EPUBAst(Base):
         with zipfile.ZipFile(io.BytesIO(content), "r") as zip_reader:
             opf_path = self.parse_container_opf_path(zip_reader)
             pkg = self.parse_opf(zip_reader, opf_path)
+
+            opf_title_item = self.extract_item_from_opf_title(rel_path, pkg)
+            if opf_title_item is not None:
+                items.append(opf_title_item)
 
             processed_paths: set[str] = set()
 

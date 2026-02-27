@@ -279,6 +279,55 @@ def test_apply_items_to_tree_skips_bilingual_insertion_for_ncx_doc(
     assert root.xpath("string(.//*[local-name()='text'])") == "dst"
 
 
+def test_apply_items_to_tree_does_not_clone_opf_metadata_in_bilingual_mode(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    ast = EPUBAst(config)
+    root = etree.fromstring(
+        b"""<?xml version='1.0'?>
+<package xmlns='http://www.idpf.org/2007/opf'
+    xmlns:dc='http://purl.org/dc/elements/1.1/'>
+  <metadata><dc:title>old</dc:title></metadata>
+</package>
+"""
+    )
+    title_elem = root.xpath(".//*[local-name()='metadata']/*[local-name()='title']")[0]
+    title_path = ast.build_elem_path(root, title_elem)
+    digest = ast.sha1_hex_with_null_separator(["old"])
+    item = Item.from_dict(
+        {
+            "src": "old",
+            "dst": "new",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "mode": "slot_per_line",
+                    "doc_path": "content.opf",
+                    "parts": [{"slot": "text", "path": title_path}],
+                    "block_path": title_path,
+                    "src_digest": digest,
+                    "is_opf_metadata": True,
+                    "metadata_tag": "dc:title",
+                }
+            },
+        }
+    )
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="content.opf",
+        items=[item],
+        bilingual=True,
+    )
+
+    titles = root.xpath(".//*[local-name()='metadata']/*[local-name()='title']")
+    assert applied == 1
+    assert skipped == 0
+    assert len(titles) == 1
+    assert titles[0].text == "new"
+
+
 def test_build_epub_writes_raw_assets_when_opf_or_css_decode_fails(
     config: Config, fs
 ) -> None:
