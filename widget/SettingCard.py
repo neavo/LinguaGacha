@@ -87,9 +87,7 @@ class CardTextBlock(QWidget):
     HELP_BUTTON_SIZE: int = 20
     HELP_TOOLTIP_DELAY_MS: int = 300
     DEFAULT_TIP_DURATION_MS: int = 3000
-    DEFAULT_TIP_TAIL_POSITION: TeachingTipTailPosition = (
-        TeachingTipTailPosition.BOTTOM
-    )
+    DEFAULT_TIP_TAIL_POSITION: TeachingTipTailPosition = TeachingTipTailPosition.BOTTOM
 
     def __init__(
         self,
@@ -167,7 +165,14 @@ class CardTextBlock(QWidget):
         )
         self.description_layout.addWidget(self.description_label)
 
+        self.set_title(title)
         self.set_description(self.description)
+
+    def set_title(self, title: str) -> None:
+        # 标题为空时隐藏整行，避免描述文本上方出现无意义留白。
+        self.title = title
+        self.title_label.setText(title or "")
+        self.title_container.setVisible(bool((title or "").strip()))
 
     def set_description(self, description: str) -> None:
         # 直接更新描述文本，保持渲染逻辑简单一致。
