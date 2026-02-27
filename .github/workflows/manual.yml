@@ -53,11 +53,11 @@ jobs:
           xcopy ".\version.txt" ".\dist\LinguaGacha\" /Q /Y
           xcopy ".\resource\" ".\dist\LinguaGacha\resource\" /E /I /Q /H /Y
 
-      - name: Ensure updater.ps1 in package
+      - name: Ensure update.ps1 in package
         shell: pwsh
         run: |
-          $src = ".\resource\update\updater.ps1"
-          $dst = ".\dist\LinguaGacha\resource\update\updater.ps1"
+          $src = ".\resource\update\update.ps1"
+          $dst = ".\dist\LinguaGacha\resource\update\update.ps1"
           if (!(Test-Path $src)) { throw "Missing $src" }
           New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
           Copy-Item $src $dst -Force
