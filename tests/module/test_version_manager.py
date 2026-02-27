@@ -165,6 +165,7 @@ def test_windows_apply_starts_updater_with_required_arguments(
     emitted: list[tuple[Base.Event, dict]] = []
     popen_args: list[list[str]] = []
     killed: list[tuple[int, int]] = []
+    sleep_calls: list[float] = []
 
     expected_sha256 = "b" * 64
     Path(VersionManager.TEMP_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -178,7 +179,9 @@ def test_windows_apply_starts_updater_with_required_arguments(
 
     monkeypatch.setattr("base.VersionManager.sys.platform", "win32", raising=False)
     monkeypatch.setattr("base.VersionManager.subprocess.Popen", FakePopen)
-    monkeypatch.setattr("base.VersionManager.time.sleep", lambda sec: sec)
+    monkeypatch.setattr(
+        "base.VersionManager.time.sleep", lambda sec: sleep_calls.append(sec)
+    )
     monkeypatch.setattr(
         "base.VersionManager.os.kill", lambda pid, sig: killed.append((pid, sig))
     )
@@ -200,6 +203,8 @@ def test_windows_apply_starts_updater_with_required_arguments(
     assert "-ZipPath" in command
     assert "-ExpectedSha256" in command
     assert expected_sha256 in command
+    assert sleep_calls[0] == 3
+    assert 0.2 in sleep_calls
     assert killed and killed[0][0] == os.getpid()
     assert killed[0][1] != 0
     assert any(event == Base.Event.PROGRESS_TOAST_UPDATE for event, _ in emitted)

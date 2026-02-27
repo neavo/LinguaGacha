@@ -54,12 +54,6 @@ function Remove-IfExists {
     }
 }
 
-function Start-App {
-    if (Test-Path $AppExePath) {
-        Start-Process -FilePath $AppExePath -WorkingDirectory $InstallDir | Out-Null
-    }
-}
-
 function Ensure-MutexLock {
     if (Test-Path $LockPath) {
         $lockPid = 0
@@ -94,40 +88,54 @@ function Write-Summary {
     param (
         [int]$Code,
         [string]$Status,
-        [string]$Message
+        [string]$MessageZh,
+        [string]$MessageEn
     )
 
     $isSuccess = $Status -eq "success"
     $statusZh = if ($isSuccess) { "成功" } else { "失败" }
     $statusEn = if ($isSuccess) { "SUCCESS" } else { "FAILED" }
     $nextStepZh = if ($isSuccess) {
-        "请确认应用已正常启动；若没有自动启动，请手动运行 app.exe。"
+        "请手动启动 app.exe，并确认更新后的功能正常。"
     } else {
-        "请先查看日志定位问题，确认后手动重启应用。"
+        "请先查看日志定位问题，修复后手动启动 app.exe。"
     }
     $nextStepEn = if ($isSuccess) {
-        "Confirm the app starts correctly; if not, launch app.exe manually."
+        "Launch app.exe manually and verify the updated app works as expected."
     } else {
-        "Check the log first, then restart the app manually after fixing the issue."
+        "Check the log first, fix the issue, then launch app.exe manually."
     }
 
     Write-Host ""
-    Write-Host "========== 更新简报 / Update Summary =========="
-    Write-Host "状态 / Status : $statusZh / $statusEn"
-    Write-Host "退出码 / Exit Code : $Code"
-    Write-Host "信息 / Message : $Message"
-    Write-Host "日志 / Log : $LogPath"
-    Write-Host "下一步 / Next Step:"
-    Write-Host "  - $nextStepZh"
-    Write-Host "  - $nextStepEn"
-    Write-Host "==============================================="
+    Write-Host "========== 更新简报 =========="
+    Write-Host "状态: $statusZh"
+    Write-Host "退出码: $Code"
+    Write-Host "信息: $MessageZh"
+    Write-Host "日志: $LogPath"
+    Write-Host "=============================="
+
+    Write-Host ""
+    Write-Host "========== Update Summary =========="
+    Write-Host "Status: $statusEn"
+    Write-Host "Exit Code: $Code"
+    Write-Host "Message: $MessageEn"
+    Write-Host "Log: $LogPath"
+    Write-Host "===================================="
+
+    Write-Host ""
+    Write-Host "下一步：$nextStepZh"
+    Write-Host "Next Step: $nextStepEn"
 }
 
 function Wait-ForUserConfirm {
     try {
-        [void](Read-Host "按回车关闭窗口 / Press Enter to close")
+        Write-Host ""
+        Write-Host "按任意键关闭窗口。"
+        Write-Host "Press any key to close."
+        [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     } catch {
-        Write-Host "无法等待用户输入，脚本结束。 / Unable to wait for input, script finished."
+        Write-Host "无法等待按键输入，脚本结束。"
+        Write-Host "Unable to wait for key input, script finished."
     }
 }
 
@@ -223,7 +231,8 @@ function Restore-Targets {
 $exitCode = 0
 $needRollback = $false
 $summaryStatus = "success"
-$summaryMessage = "Update applied."
+$summaryMessageZh = "更新已完成。"
+$summaryMessageEn = "Update applied."
 
 try {
     Remove-IfExists $LogPath
@@ -260,13 +269,13 @@ try {
 
     Write-Log "Update applied successfully."
     Write-Result -Status "success" -Message "Update applied."
-    Start-App
 }
 catch {
     $exitCode = 30
     $errorMessage = $_.Exception.Message
     $summaryStatus = "failed"
-    $summaryMessage = $errorMessage
+    $summaryMessageZh = "更新失败：$errorMessage"
+    $summaryMessageEn = "Update failed: $errorMessage"
     Write-Log "ERROR: $errorMessage"
 
     if ($errorMessage -like "*SHA-256 mismatch*") {
@@ -288,7 +297,6 @@ catch {
     }
 
     Write-Result -Status "failed" -Message $errorMessage
-    Start-App
 }
 finally {
     Remove-IfExists $LockPath
@@ -302,6 +310,6 @@ finally {
     }
 
     Write-Log "Updater exit code: $exitCode"
-    Write-Summary -Code $exitCode -Status $summaryStatus -Message $summaryMessage
+    Write-Summary -Code $exitCode -Status $summaryStatus -MessageZh $summaryMessageZh -MessageEn $summaryMessageEn
     Wait-ForUserConfirm
 }

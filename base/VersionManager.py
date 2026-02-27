@@ -249,15 +249,17 @@ class VersionManager(Base):
                 return
 
             self.set_status(__class__.Status.APPLYING)
-            runtime_script_path = self.generate_runtime_updater_script()
-            self.start_updater_process(runtime_script_path)
-
             self.emit(
                 Base.Event.PROGRESS_TOAST_UPDATE,
                 {
                     "message": Localizer.get().app_new_version_waiting_restart,
                 },
             )
+            # 预留短暂缓冲，让用户明确感知“即将关闭并应用更新”。
+            time.sleep(3)
+            runtime_script_path = self.generate_runtime_updater_script()
+            self.start_updater_process(runtime_script_path)
+
             time.sleep(0.2)
             os.kill(os.getpid(), signal.SIGTERM)
         except Exception as e:
