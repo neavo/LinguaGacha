@@ -28,15 +28,15 @@ class VersionManager(Base):
         FAILED = "FAILED"
 
     # 更新时的临时文件
-    TEMP_PATH: str = "./resource/update.temp"
+    TEMP_PATH: str = "./resource/update/app.zip.temp"
     UPDATE_DIR: str = "./resource/update"
-    UPDATE_LOG_PATH: str = "./resource/update/updater.log"
+    UPDATE_LOG_PATH: str = "./resource/update/update.log"
     UPDATE_LOCK_PATH: str = "./resource/update/.lock"
     UPDATE_RESULT_PATH: str = "./resource/update/result.json"
     UPDATE_STAGE_PATH: str = "./resource/update/stage"
     UPDATE_BACKUP_PATH: str = "./resource/update/backup"
-    UPDATER_TEMPLATE_PATH: str = "./resource/update/updater.ps1"
-    UPDATER_RUNTIME_PATH: str = "./resource/update/updater.runtime.ps1"
+    UPDATER_TEMPLATE_PATH: str = "./resource/update/update.ps1"
+    UPDATER_RUNTIME_PATH: str = "./resource/update/update.runtime.ps1"
     TEMP_PACKAGE_EXPIRE_SECONDS: int = 24 * 60 * 60
     STARTUP_PENDING_APPLY_FAILURE_LOG_PATH: str | None = None
 
@@ -165,7 +165,7 @@ class VersionManager(Base):
     # 只清理运行时脚本，保留模板脚本供下一次更新使用
     @classmethod
     def cleanup_runtime_scripts(cls) -> None:
-        runtime_scripts = glob.glob(f"{cls.UPDATE_DIR}/updater.runtime*.ps1")
+        runtime_scripts = glob.glob(f"{cls.UPDATE_DIR}/update.runtime*.ps1")
         for script_path in runtime_scripts:
             cls.cleanup_update_path(script_path)
 
@@ -253,11 +253,9 @@ class VersionManager(Base):
             self.start_updater_process(runtime_script_path)
 
             self.emit(
-                Base.Event.TOAST,
+                Base.Event.PROGRESS_TOAST_UPDATE,
                 {
-                    "type": Base.ToastType.INFO,
                     "message": Localizer.get().app_new_version_waiting_restart,
-                    "duration": 60 * 1000,
                 },
             )
             time.sleep(0.2)
@@ -336,7 +334,6 @@ class VersionManager(Base):
         command = [
             "powershell.exe",
             "-NoProfile",
-            "-NonInteractive",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
@@ -351,7 +348,8 @@ class VersionManager(Base):
             expected_sha256,
         ]
 
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        # 需要给用户展示双语简报并等待下一步操作，更新脚本必须可见运行。
+        creation_flags = 0
         subprocess.Popen(
             command,
             cwd=os.path.abspath("."),
@@ -364,6 +362,7 @@ class VersionManager(Base):
             LogManager.get().error(Localizer.get().task_failed, e)
 
         self.set_status(__class__.Status.FAILED)
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
         self.emit(
             Base.Event.TOAST,
             {

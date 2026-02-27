@@ -461,6 +461,13 @@ class AppFluentWindow(Base, FluentWindow):
             pass
         elif status == VersionManager.Status.DOWNLOADED:
             self.home_page_widget.setName(Localizer.get().app_new_version_applying)
+            self.emit(
+                Base.Event.PROGRESS_TOAST_SHOW,
+                {
+                    "message": Localizer.get().app_new_version_applying,
+                    "indeterminate": True,
+                },
+            )
             self.emit(Base.Event.APP_UPDATE_EXTRACT, {})
         elif status == VersionManager.Status.APPLYING:
             pass
@@ -495,6 +502,7 @@ class AppFluentWindow(Base, FluentWindow):
     def app_update_apply_error(self, event: Base.Event, data: dict) -> None:
         del event
         del data
+        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
         self.home_page_widget.setName(Localizer.get().app_new_version_apply_failed)
 
     # 更新 - 下载更新

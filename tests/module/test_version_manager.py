@@ -40,7 +40,7 @@ class DummyLogger:
 def version_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> VersionManager:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "resource" / "update").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "resource" / "update" / "updater.ps1").write_text(
+    (tmp_path / "resource" / "update" / "update.ps1").write_text(
         "Write-Host 'test updater'\n", encoding="utf-8"
     )
 
@@ -202,7 +202,7 @@ def test_windows_apply_starts_updater_with_required_arguments(
     assert expected_sha256 in command
     assert killed and killed[0][0] == os.getpid()
     assert killed[0][1] != 0
-    assert any(event == Base.Event.TOAST for event, _ in emitted)
+    assert any(event == Base.Event.PROGRESS_TOAST_UPDATE for event, _ in emitted)
 
 
 def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
@@ -213,11 +213,11 @@ def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
     update_dir = tmp_path / "resource" / "update"
     stage_dir = update_dir / "stage"
     backup_dir = update_dir / "backup"
-    runtime_script = update_dir / "updater.runtime.ps1"
+    runtime_script = update_dir / "update.runtime.ps1"
     lock_path = update_dir / ".lock"
-    log_path = update_dir / "updater.log"
+    log_path = update_dir / "update.log"
     result_path = update_dir / "result.json"
-    temp_zip = tmp_path / "resource" / "update.temp"
+    temp_zip = tmp_path / "resource" / "update" / "app.zip.temp"
 
     stage_dir.mkdir(parents=True, exist_ok=True)
     backup_dir.mkdir(parents=True, exist_ok=True)

@@ -15,12 +15,12 @@ $UpdateDir = Join-Path $InstallDir "resource\update"
 $StageDir = Join-Path $UpdateDir "stage"
 $BackupDir = Join-Path $UpdateDir "backup"
 $LockPath = Join-Path $UpdateDir ".lock"
-$LogPath = Join-Path $UpdateDir "updater.log"
+$LogPath = Join-Path $UpdateDir "update.log"
 $ResultPath = Join-Path $UpdateDir "result.json"
 $AppExePath = Join-Path $InstallDir "app.exe"
 $VersionPath = Join-Path $InstallDir "version.txt"
 $ResourcePath = Join-Path $InstallDir "resource"
-$RuntimeScriptPath = Join-Path $UpdateDir "updater.runtime.ps1"
+$RuntimeScriptPath = Join-Path $UpdateDir "update.runtime.ps1"
 
 New-Item -ItemType Directory -Path $UpdateDir -Force | Out-Null
 
@@ -74,8 +74,7 @@ function Ensure-MutexLock {
             $runningProcess = Get-Process -Id $lockPid -ErrorAction SilentlyContinue
             if ($null -ne $runningProcess) {
                 Write-Log "Another updater is running (pid=$lockPid)."
-                Write-Result -Status "failed" -Message "Updater lock already held."
-                exit 21
+                throw "Updater lock already held."
             }
         }
 
@@ -89,6 +88,47 @@ function Ensure-MutexLock {
         createdAt = (Get-Date).ToString("o")
     }
     $lockPayload | ConvertTo-Json -Compress | Out-File -FilePath $LockPath -Encoding UTF8
+}
+
+function Write-Summary {
+    param (
+        [int]$Code,
+        [string]$Status,
+        [string]$Message
+    )
+
+    $isSuccess = $Status -eq "success"
+    $statusZh = if ($isSuccess) { "成功" } else { "失败" }
+    $statusEn = if ($isSuccess) { "SUCCESS" } else { "FAILED" }
+    $nextStepZh = if ($isSuccess) {
+        "请确认应用已正常启动；若没有自动启动，请手动运行 app.exe。"
+    } else {
+        "请先查看日志定位问题，确认后手动重启应用。"
+    }
+    $nextStepEn = if ($isSuccess) {
+        "Confirm the app starts correctly; if not, launch app.exe manually."
+    } else {
+        "Check the log first, then restart the app manually after fixing the issue."
+    }
+
+    Write-Host ""
+    Write-Host "========== 更新简报 / Update Summary =========="
+    Write-Host "状态 / Status : $statusZh / $statusEn"
+    Write-Host "退出码 / Exit Code : $Code"
+    Write-Host "信息 / Message : $Message"
+    Write-Host "日志 / Log : $LogPath"
+    Write-Host "下一步 / Next Step:"
+    Write-Host "  - $nextStepZh"
+    Write-Host "  - $nextStepEn"
+    Write-Host "==============================================="
+}
+
+function Wait-ForUserConfirm {
+    try {
+        [void](Read-Host "按回车关闭窗口 / Press Enter to close")
+    } catch {
+        Write-Host "无法等待用户输入，脚本结束。 / Unable to wait for input, script finished."
+    }
 }
 
 function Wait-AppExit {
@@ -182,8 +222,11 @@ function Restore-Targets {
 
 $exitCode = 0
 $needRollback = $false
+$summaryStatus = "success"
+$summaryMessage = "Update applied."
 
 try {
+    Remove-IfExists $LogPath
     Remove-IfExists $ResultPath
     Write-Log "Updater start. pid=$PID appPid=$AppPid"
 
@@ -222,10 +265,14 @@ try {
 catch {
     $exitCode = 30
     $errorMessage = $_.Exception.Message
+    $summaryStatus = "failed"
+    $summaryMessage = $errorMessage
     Write-Log "ERROR: $errorMessage"
 
     if ($errorMessage -like "*SHA-256 mismatch*") {
         $exitCode = 10
+    } elseif ($errorMessage -like "*lock already held*") {
+        $exitCode = 21
     }
 
     if ($needRollback) {
@@ -255,6 +302,6 @@ finally {
     }
 
     Write-Log "Updater exit code: $exitCode"
+    Write-Summary -Code $exitCode -Status $summaryStatus -Message $summaryMessage
+    Wait-ForUserConfirm
 }
-
-exit $exitCode
