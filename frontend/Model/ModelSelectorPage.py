@@ -35,6 +35,13 @@ class ModelSelectorPage(Base, MessageBoxBase):
     # 列表区域固定高度
     LIST_HEIGHT = 392
 
+    # 使用浏览器 UA，避免部分接入点拦截 SDK 默认 UA 的模型列表请求
+    BROWSER_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/133.0.0.0 Safari/537.36"
+    )
+
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
@@ -147,6 +154,11 @@ class ModelSelectorPage(Base, MessageBoxBase):
         # 刷新列表显示
         self.refresh_list()
 
+    @classmethod
+    def get_browser_headers(cls) -> dict[str, str]:
+        """返回浏览器风格请求头，降低网关误判 SDK 请求的概率。"""
+        return {"User-Agent": cls.BROWSER_USER_AGENT}
+
     def get_models(self, api_url: str, api_key: str, api_format: str) -> list[str]:
         """从 API 获取可用模型列表"""
         result = []
@@ -164,33 +176,30 @@ class ModelSelectorPage(Base, MessageBoxBase):
                     api_version = "v1"
                     normalized_url = normalized_url.removesuffix("/v1")
 
-                http_options_kwargs: dict[str, str] = {}
-                if normalized_url:
-                    http_options_kwargs["base_url"] = normalized_url
-                if api_version:
-                    http_options_kwargs["api_version"] = api_version
+                headers: dict[str, str] = self.get_browser_headers()
+                if normalized_url or api_version:
+                    http_options = types.HttpOptions(
+                        base_url=normalized_url if normalized_url else None,
+                        api_version=api_version,
+                        headers=headers,
+                    )
+                else:
+                    http_options = types.HttpOptions(headers=headers)
 
-                http_options = (
-                    types.HttpOptions(**http_options_kwargs)
-                    if http_options_kwargs
-                    else None
-                )
-                client = (
-                    genai.Client(api_key=api_key, http_options=http_options)
-                    if http_options
-                    else genai.Client(api_key=api_key)
-                )
+                client = genai.Client(api_key=api_key, http_options=http_options)
                 return [model.name for model in client.models.list()]
             elif api_format == Base.APIFormat.ANTHROPIC:
                 client = anthropic.Anthropic(
                     api_key=api_key,
                     base_url=api_url,
+                    default_headers=self.get_browser_headers(),
                 )
                 return [model.id for model in client.models.list()]
             else:
                 client = openai.OpenAI(
                     base_url=api_url,
                     api_key=api_key,
+                    default_headers=self.get_browser_headers(),
                 )
                 return [model.id for model in client.models.list()]
         except Exception as e:
