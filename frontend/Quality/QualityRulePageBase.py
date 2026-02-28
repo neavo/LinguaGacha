@@ -669,8 +669,10 @@ class QualityRulePageBase(Base, QWidget):
             return
 
         def action() -> None:
-            # 选中行切换后，列表与编辑区必须同步，避免“列表还是旧行”。
-            self.select_row(row)
+            # 这里只同步右侧编辑区，不再主动 select_row。
+            # 原因：Ctrl/Shift 多选时，Qt 已经完成选区变更，二次 selectRow 会把多选收缩成单选，
+            # 导致“需要点两次才能选中”的交互回归。
+            self.apply_selection(row)
 
         self.run_with_unsaved_guard(action, revert)
 
