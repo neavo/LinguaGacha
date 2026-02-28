@@ -669,8 +669,6 @@ class LocalizerEN(LocalizerZH):
     laboratory_page_auto_glossary_enable_desc: str = (
         "Automatically supplement the glossary while translating, disabled by default, and does not support SakuraLLM"
         "<br>"
-        "◈ Only effective when the <font color='darkgoldenrod'><b>Glossary Feature</b></font> is enabled"
-        "<br>"
         "◈ Intended only for filling gaps; it may generate <font color='darkgoldenrod'><b>incorrect or inappropriate</b></font> data"
         "<br>"
         "◈ Recommended to enable this feature on top of a complete, filtered glossary obtained using <font color='darkgoldenrod'><b>KeywordGacha</b></font>"

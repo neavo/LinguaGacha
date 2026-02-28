@@ -74,7 +74,7 @@ def test_merge_glossary_entries_filters_invalid_and_deduplicates() -> None:
     assert len(snapshot.glossary_entries) == 2
 
 
-def test_merge_glossary_entries_returns_empty_when_disabled() -> None:
+def test_merge_glossary_entries_merges_when_glossary_disabled() -> None:
     snapshot = QualityRuleSnapshot(
         glossary_enable=False,
         text_preserve_mode=DataManager.TextPreserveMode.SMART,
@@ -90,7 +90,17 @@ def test_merge_glossary_entries_returns_empty_when_disabled() -> None:
         glossary_entries=[],
     )
 
-    assert snapshot.merge_glossary_entries([{"src": "HP", "dst": "生命值"}]) == []
+    assert snapshot.merge_glossary_entries([{"src": "HP", "dst": "生命值"}]) == [
+        {
+            "src": "HP",
+            "dst": "生命值",
+            "info": "",
+            "case_sensitive": False,
+        }
+    ]
+    assert snapshot.glossary_entries == [
+        {"src": "HP", "dst": "生命值", "info": "", "case_sensitive": False}
+    ]
 
 
 def test_get_glossary_entries_returns_tuple_snapshot() -> None:

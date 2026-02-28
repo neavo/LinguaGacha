@@ -635,8 +635,6 @@ class Translator(Base):
         snapshot = self.quality_snapshot
         if snapshot is None:
             return None
-        if not snapshot.glossary_enable:
-            return None
 
         incoming: list[dict[str, Any]] = []
         for item in glossary_list:
@@ -824,18 +822,8 @@ class Translator(Base):
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
-        # 启用自动术语表的时，更新配置文件
-        snapshot = self.quality_snapshot
-        glossary_enable = (
-            snapshot.glossary_enable
-            if snapshot is not None
-            else DataManager.get().get_glossary_enable()
-        )
-        if (
-            glossary_enable
-            and self.config.auto_glossary_enable
-            and self.persist_quality_rules
-        ):
+        # 自动术语表更新事件仅受自动术语表开关控制。
+        if self.config.auto_glossary_enable and self.persist_quality_rules:
             # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
             # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可

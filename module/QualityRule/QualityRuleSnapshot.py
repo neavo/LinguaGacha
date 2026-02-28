@@ -84,10 +84,11 @@ class QualityRuleSnapshot:
     def merge_glossary_entries(
         self, incoming: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """将新术语合并进快照术语表，返回本次实际新增的条目列表。"""
+        """将新术语合并进快照术语表，返回本次实际新增的条目列表。
+
+        自动术语表增量捕获只受 auto_glossary_enable 控制，此处不再受 glossary_enable 影响。
+        """
         if not incoming:
-            return []
-        if not self.glossary_enable:
             return []
 
         added: list[dict[str, Any]] = []

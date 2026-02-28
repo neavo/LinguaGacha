@@ -669,8 +669,6 @@ class LocalizerZH:
     laboratory_page_auto_glossary_enable_desc: str = (
         "边翻译边补全术语表，默认禁用，请注意：此功能不支持 SakuraLLM 模型"
         "<br>"
-        "◈ 只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
-        "<br>"
         "◈ 仅供查漏补缺，可能会产生 <font color='darkgoldenrod'><b>不正确或不恰当</b></font> 的数据"
         "<br>"
         "◈ 建议在使用 <font color='darkgoldenrod'><b>KeywordGacha</b></font> 获得完整的、经过筛选的术语表的基础上启用此功能"
