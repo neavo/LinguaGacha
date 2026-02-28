@@ -44,6 +44,7 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         Base.ProjectStatus.PROCESSED: BaseIcon.CIRCLE_CHECK,
         Base.ProjectStatus.PROCESSED_IN_PAST: BaseIcon.HISTORY,
         Base.ProjectStatus.ERROR: BaseIcon.CIRCLE_ALERT,
+        Base.ProjectStatus.EXCLUDED: BaseIcon.BAN,
         Base.ProjectStatus.LANGUAGE_SKIPPED: BaseIcon.CIRCLE_MINUS,
     }
 

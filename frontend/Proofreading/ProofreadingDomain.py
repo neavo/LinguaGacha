@@ -137,8 +137,8 @@ class ProofreadingDomain:
             # 结构行需要保留用于导出，但不应进入校对列表。
             if not item.get_src().strip():
                 continue
+            # EXCLUDED 交由状态筛选控制默认可见性，便于用户按需恢复。
             if item.get_status() in (
-                Base.ProjectStatus.EXCLUDED,
                 Base.ProjectStatus.DUPLICATED,
                 Base.ProjectStatus.RULE_SKIPPED,
             ):
@@ -210,9 +210,8 @@ class ProofreadingDomain:
 
         filtered: list[Item] = []
         for item in items:
-            # 规则跳过条目不需要校对，仅保留给用户可选查看的语言跳过。
+            # 规则跳过与重复条目不需要校对；EXCLUDED 由状态筛选决定是否可见。
             if item.get_status() in (
-                Base.ProjectStatus.EXCLUDED,
                 Base.ProjectStatus.DUPLICATED,
                 Base.ProjectStatus.RULE_SKIPPED,
             ):

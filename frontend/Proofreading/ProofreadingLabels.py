@@ -18,6 +18,7 @@ class ProofreadingLabels:
             Base.ProjectStatus.PROCESSED: Localizer.get().proofreading_page_status_processed,
             Base.ProjectStatus.PROCESSED_IN_PAST: Localizer.get().proofreading_page_status_processed_in_past,
             Base.ProjectStatus.ERROR: Localizer.get().proofreading_page_status_error,
+            Base.ProjectStatus.EXCLUDED: Localizer.get().proofreading_page_status_excluded,
             Base.ProjectStatus.LANGUAGE_SKIPPED: Localizer.get().proofreading_page_status_non_target_source_language,
         }
         return mapping.get(status, str(status))
@@ -52,6 +53,10 @@ class ProofreadingLabels:
             Base.ProjectStatus.ERROR: (
                 Localizer.get().proofreading_page_status_error,
                 StatusTagType.ERROR,
+            ),
+            Base.ProjectStatus.EXCLUDED: (
+                Localizer.get().proofreading_page_status_excluded,
+                StatusTagType.WARNING,
             ),
             Base.ProjectStatus.LANGUAGE_SKIPPED: (
                 Localizer.get().proofreading_page_status_non_target_source_language,
