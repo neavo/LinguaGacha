@@ -22,18 +22,17 @@ from qfluentwidgets import TransparentToolButton
 
 from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
-from module.Localizer.LocalizerText import LocalizerText
 
 
 @dataclass(frozen=True)
 class CardHelpSpec:
     # 统一问号帮助的配置载体，避免页面各自拼装导致行为不一致。
     url: str | None = None
-    url_localized: LocalizerText | None = None
+    url_localized: Localizer.UnionText | None = None
     tip_title: str | None = None
-    tip_title_localized: LocalizerText | None = None
+    tip_title_localized: Localizer.UnionText | None = None
     tip_content: str | None = None
-    tip_content_localized: LocalizerText | None = None
+    tip_content_localized: Localizer.UnionText | None = None
     tip_target: QWidget | None = None
     tip_parent: QWidget | None = None
     tip_duration_ms: int | None = None

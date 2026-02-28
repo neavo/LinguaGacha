@@ -1,5 +1,4 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -16,7 +15,6 @@ from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Localizer.LocalizerText import LocalizerText
 from widget.CustomLineEdit import CustomLineEdit
 from widget.CustomTextEdit import CustomTextEdit
 from widget.GroupCard import GroupCard
@@ -39,6 +37,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
     THINKING_SUPPORT_URL_EN: str = (
         "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN"
     )
+
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
 
@@ -277,9 +276,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         fetch_button.clicked.connect(triggered_sync)
         card.add_right_widget(fetch_button)
 
-        test_button = PushButton(
-            Localizer.get().model_basic_setting_page_model_id_test
-        )
+        test_button = PushButton(Localizer.get().model_basic_setting_page_model_id_test)
         test_button.setIcon(ICON_MODEL_ID_TEST)
         test_button.setFixedWidth(MODEL_ID_ACTION_BUTTON_WIDTH)
         test_button.clicked.connect(triggered_test)
@@ -293,7 +290,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         help_spec = CardHelpSpec(
-            url_localized=LocalizerText(
+            url_localized=Localizer.UnionText(
                 zh=self.THINKING_SUPPORT_URL_ZH,
                 en=self.THINKING_SUPPORT_URL_EN,
             )

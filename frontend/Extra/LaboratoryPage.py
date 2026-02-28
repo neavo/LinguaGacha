@@ -8,7 +8,6 @@ from base.Base import Base
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.Localizer.LocalizerText import LocalizerText
 from widget.SettingCard import CardHelpSpec
 from widget.SettingCard import SettingCard
 
@@ -26,9 +25,7 @@ class LaboratoryPage(Base, QWidget):
     FORCE_THINKING_URL_EN: str = (
         "https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN"
     )
-    AUTO_GLOSSARY_URL_ZH: str = (
-        "https://github.com/neavo/LinguaGacha/wiki/AutoGlossary"
-    )
+    AUTO_GLOSSARY_URL_ZH: str = "https://github.com/neavo/LinguaGacha/wiki/AutoGlossary"
     AUTO_GLOSSARY_URL_EN: str = (
         "https://github.com/neavo/LinguaGacha/wiki/AutoGlossaryEN"
     )
@@ -87,7 +84,7 @@ class LaboratoryPage(Base, QWidget):
 
         # 问号链接走 UI 语言适配，保持中英文说明一致。
         help_spec = CardHelpSpec(
-            url_localized=LocalizerText(
+            url_localized=Localizer.UnionText(
                 zh=self.MTOOL_OPTIMIZER_URL_ZH,
                 en=self.MTOOL_OPTIMIZER_URL_EN,
             )
@@ -119,7 +116,7 @@ class LaboratoryPage(Base, QWidget):
             config.save()
 
         help_spec = CardHelpSpec(
-            url_localized=LocalizerText(
+            url_localized=Localizer.UnionText(
                 zh=self.FORCE_THINKING_URL_ZH,
                 en=self.FORCE_THINKING_URL_EN,
             )
@@ -151,7 +148,7 @@ class LaboratoryPage(Base, QWidget):
             config.save()
 
         help_spec = CardHelpSpec(
-            url_localized=LocalizerText(
+            url_localized=Localizer.UnionText(
                 zh=self.AUTO_GLOSSARY_URL_ZH,
                 en=self.AUTO_GLOSSARY_URL_EN,
             )

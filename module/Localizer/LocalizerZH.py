@@ -655,9 +655,9 @@ class LocalizerZH:
         ""
         ""
     )
-    laboratory_page_force_thinking_enable: str = "强制思考（不支持 SakuraLLM 模型）"
+    laboratory_page_force_thinking_enable: str = "强制思考"
     laboratory_page_force_thinking_enable_desc: str = (
-        "启用后，非思考模型在翻译前也会进行思考，默认禁用"
+        "启用后，非思考模型在翻译前也会进行思考，默认禁用，请注意：此功能不支持 SakuraLLM 模型"
         "<br>"
         "◈ 通过略微增加 Token 消耗换取翻译效果的提升"
         "<br>"
@@ -665,17 +665,15 @@ class LocalizerZH:
         "<br>"
         "◈ 正常生效时，会在翻译日志中观察到模型思考内容的输出"
     )
-    laboratory_page_auto_glossary_enable: str = "自动补全术语表（不支持 SakuraLLM 模型）"
+    laboratory_page_auto_glossary_enable: str = "自动补全术语表"
     laboratory_page_auto_glossary_enable_desc: str = (
-        "翻译的同时尝试自动补全术语表中缺失的专有名词条目，只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
+        "边翻译边补全术语表，默认禁用，请注意：此功能不支持 SakuraLLM 模型"
         "<br>"
-        "此功能设计目的仅为查漏补缺，并不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font>，获取到的补充术语将直接 <font color='darkgoldenrod'><b>写入术语表</b></font>"
+        "◈ 只有在 <font color='darkgoldenrod'><b>启用术语表功能</b></font> 时才生效"
         "<br>"
-        "可能会产生 <font color='darkgoldenrod'><b>不正确或不合适的术语条目</b></font>，请 <font color='darkgoldenrod'><b>自行判断</b></font> 是否启用，建议仅在 DeepSeek V3/R1 级别的强力模型使用此功能"
-        ""
-        ""
-        ""
-        ""
+        "◈ 仅供查漏补缺，可能会产生 <font color='darkgoldenrod'><b>不正确或不恰当</b></font> 的数据"
+        "<br>"
+        "◈ 建议在使用 <font color='darkgoldenrod'><b>KeywordGacha</b></font> 获得完整的、经过筛选的术语表的基础上启用此功能"
     )
 
     # 百宝箱
