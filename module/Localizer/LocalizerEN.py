@@ -655,27 +655,25 @@ class LocalizerEN(LocalizerZH):
         ""
         ""
     )
-    laboratory_page_force_thinking_enable: str = "Force Thinking (Does not support SakuraLLM)"
+    laboratory_page_force_thinking_enable: str = "Force Thinking"
     laboratory_page_force_thinking_enable_desc: str = (
-            "When enabled, non-reasoning models will also think before translating, disabled by default"
-            "<br>"
-            "◈ Improves translation quality at the cost of slightly higher Token consumption"
-            "<br>"
-            "◈ Not recommended for reasoning models, as repeated thinking is largely unnecessary"
-            "<br>"
-            "◈ When working normally, you will observe the model's thinking content output in the translation logs"
-        )
-    laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary (Does not support SakuraLLM)"
+        "When enabled, non-thinking models will also perform thinking before translation, disabled by default, and does not support SakuraLLM"
+        "<br>"
+        "◈ Trade a slight increase in Token consumption for improved translation quality"
+        "<br>"
+        "◈ Not recommended for reasoning models, as redundant reasoning provides little benefit"
+        "<br>"
+        "◈ When functioning normally, model reasoning output will be visible in the translation logs"
+    )
+    laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary"
     laboratory_page_auto_glossary_enable_desc: str = (
-        "Attempts to automatically add missing proper noun entries to the glossary during translation"
+        "Automatically supplement the glossary while translating, disabled by default, and does not support SakuraLLM"
         "<br>"
-        "This is effective only when the <font color='darkgoldenrod'><b>Glossary feature is enabled</b></font>"
+        "◈ Only effective when the <font color='darkgoldenrod'><b>Glossary Feature</b></font> is enabled"
         "<br>"
-        "Designed to supplement, not replace, <font color='darkgoldenrod'><b>KeywordGacha</b></font>, acquired terms are <font color='darkgoldenrod'><b>written directly to the glossary</b></font>"
+        "◈ Intended only for filling gaps; it may generate <font color='darkgoldenrod'><b>incorrect or inappropriate</b></font> data"
         "<br>"
-        "May generate <font color='darkgoldenrod'><b>incorrect or inappropriate terminology entries</b></font>, please <font color='darkgoldenrod'><b>use your own judgment</b></font> on whether to enable it"
-        "<br>"
-        "It is recommended to use this feature only with powerful models like DeepSeek V3/R1"
+        "◈ Recommended to enable this feature on top of a complete, filtered glossary obtained using <font color='darkgoldenrod'><b>KeywordGacha</b></font>"
     )
 
     # 百宝箱
