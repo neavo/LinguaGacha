@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from base.Base import Base
@@ -7,6 +9,8 @@ from module.Config import Config
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from module.Response.ResponseChecker import ResponseChecker
+
+PRESERVED_SEGMENT_PATTERN = re.compile(r"<[^>]+>")
 
 
 class FakeDataManager:
@@ -36,27 +40,50 @@ class FakeDataManager:
         return self.post_replacement
 
 
-class FakeTextProcessor:
-    def __init__(self, config: Config, item: Item) -> None:
-        del config, item
+def install_fake_text_processor(
+    monkeypatch: pytest.MonkeyPatch,
+    pattern: re.Pattern[str] | None,
+    *,
+    check_result: bool = True,
+) -> None:
+    class FakeTextProcessor:
+        def __init__(self, config: Config, item: Item) -> None:
+            del config, item
 
-    def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
-        del src, dst, text_type
-        return True
+        def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
+            del src, dst, text_type
+            return check_result
 
+        def get_re_sample(
+            self, custom: bool, text_type: Item.TextType
+        ) -> re.Pattern[str] | None:
+            del custom, text_type
+            return pattern
 
-class FakeTextProcessorAlwaysFalse(FakeTextProcessor):
-    def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
-        del src, dst, text_type
-        return False
+        def get_text_preserve_custom_enabled(self) -> bool:
+            return False
+
+    monkeypatch.setattr("module.ResultChecker.TextProcessor", FakeTextProcessor)
 
 
 @pytest.fixture
 def install_fakes(monkeypatch: pytest.MonkeyPatch) -> FakeDataManager:
     fake_dm = FakeDataManager()
     monkeypatch.setattr("module.ResultChecker.DataManager.get", lambda: fake_dm)
-    monkeypatch.setattr("module.ResultChecker.TextProcessor", FakeTextProcessor)
+    install_fake_text_processor(monkeypatch, None)
     return fake_dm
+
+
+def create_checker(
+    source_language: BaseLanguage.Enum = BaseLanguage.Enum.JA,
+    target_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH,
+) -> ResultChecker:
+    return ResultChecker(
+        Config(
+            source_language=source_language,
+            target_language=target_language,
+        )
+    )
 
 
 class TestResultChecker:
@@ -64,12 +91,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(
             src="猫",
             dst="かな",
@@ -89,12 +111,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(src="猫", dst="cat", status=Base.ProjectStatus.NONE)
 
         assert checker.check_item(item) == []
@@ -103,12 +120,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         warning_item = Item(
             src="猫",
             dst="かな",
@@ -130,12 +142,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(src="A/B", dst="甲-Y", status=Base.ProjectStatus.PROCESSED)
 
         src, dst = checker.get_replaced_text(
@@ -147,37 +154,133 @@ class TestResultChecker:
         assert src == "X/B"
         assert dst == "甲-乙"
 
+    def test_get_replaced_text_uses_data_manager_rules_when_no_passed_rules(
+        self, install_fakes: FakeDataManager
+    ) -> None:
+        install_fakes.pre_replacement_enable = True
+        install_fakes.pre_replacement = [{"src": "A", "dst": "X"}]
+        install_fakes.post_replacement_enable = True
+        install_fakes.post_replacement = [{"src": "乙", "dst": "Y"}]
+        checker = create_checker()
+        item = Item(src="A/B", dst="甲-Y", status=Base.ProjectStatus.PROCESSED)
+
+        src, dst = checker.get_replaced_text(item)
+
+        assert src == "X/B"
+        assert dst == "甲-乙"
+
     def test_has_hangeul_error_only_for_korean_source(
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        ko_checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.KO,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
-        ja_checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        ko_checker = create_checker(BaseLanguage.Enum.KO)
+        ja_checker = create_checker(BaseLanguage.Enum.JA)
         item = Item(src="src", dst="한글", status=Base.ProjectStatus.PROCESSED)
 
         assert ko_checker.has_hangeul_error(item) is True
         assert ja_checker.has_hangeul_error(item) is False
 
+    def test_has_kana_error_ignores_preserved_segment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.JA)
+        item = Item(src="src", dst="中文<かな>", status=Base.ProjectStatus.PROCESSED)
+
+        assert checker.has_kana_error(item) is False
+
+    def test_has_hangeul_error_ignores_preserved_segment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.KO)
+        item = Item(src="src", dst="中文<한글>", status=Base.ProjectStatus.PROCESSED)
+
+        assert checker.has_hangeul_error(item) is False
+
+    def test_check_item_keeps_kana_warning_for_residue_outside_preserved_segment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.JA)
+        item = Item(
+            src="hello",
+            dst="中文<かな>かな",
+            status=Base.ProjectStatus.PROCESSED,
+        )
+
+        warnings = checker.check_item(item)
+
+        assert warnings == [WarningType.KANA]
+
+    def test_check_item_keeps_hangeul_warning_for_residue_outside_preserved_segment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.KO)
+        item = Item(
+            src="hello",
+            dst="中文<한글>한",
+            status=Base.ProjectStatus.PROCESSED,
+        )
+
+        warnings = checker.check_item(item)
+
+        assert warnings == [WarningType.HANGEUL]
+
+    def test_check_item_similarity_ignores_preserved_only_source_part(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.EN)
+        item = Item(
+            src="<tag>",
+            dst="<tag>翻译",
+            status=Base.ProjectStatus.PROCESSED,
+        )
+
+        warnings = checker.check_item(item)
+
+        assert warnings == []
+
+    def test_check_item_similarity_still_detects_after_preserved_segment_removed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        install_fakes: FakeDataManager,
+    ) -> None:
+        del install_fakes
+        install_fake_text_processor(monkeypatch, PRESERVED_SEGMENT_PATTERN)
+        checker = create_checker(BaseLanguage.Enum.EN)
+        item = Item(
+            src="hello<tag>",
+            dst="hello<tag>!",
+            status=Base.ProjectStatus.PROCESSED,
+        )
+
+        warnings = checker.check_item(item)
+
+        assert warnings == [WarningType.SIMILARITY]
+
     def test_get_failed_glossary_terms_returns_missing_terms(
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(
             src="猫がいる", dst="有一只动物", status=Base.ProjectStatus.PROCESSED
         )
@@ -188,12 +291,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(src="猫", dst="", status=Base.ProjectStatus.PROCESSED)
 
         assert checker.check_item(item) == []
@@ -202,12 +300,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         install_fakes.glossary_enable = False
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
 
         assert checker.prepare_glossary_data() == []
 
@@ -215,12 +308,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         install_fakes.glossary_enable = False
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         item = Item(src="猫", dst="cat", status=Base.ProjectStatus.PROCESSED)
 
         assert checker.get_failed_glossary_terms(item) == []
@@ -229,12 +317,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         checker.prepared_glossary_data = []
 
         assert checker.has_glossary_error("猫がいる", "有一只猫") is False
@@ -243,12 +326,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         install_fakes.pre_replacement_enable = False
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.JA,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker()
         checker.prepared_glossary_data = [
             {"src": "猫", "dst": "cat"},
             {"src": "犬", "dst": "dog"},
@@ -265,12 +343,7 @@ class TestResultChecker:
         self, install_fakes: FakeDataManager
     ) -> None:
         del install_fakes
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.EN,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        checker = create_checker(BaseLanguage.Enum.EN)
         item = Item(src="src", dst="かな", status=Base.ProjectStatus.PROCESSED)
 
         assert checker.has_kana_error(item) is False
@@ -295,16 +368,8 @@ class TestResultChecker:
         install_fakes: FakeDataManager,
     ) -> None:
         del install_fakes
-        monkeypatch.setattr(
-            "module.ResultChecker.TextProcessor",
-            FakeTextProcessorAlwaysFalse,
-        )
-        checker = ResultChecker(
-            Config(
-                source_language=BaseLanguage.Enum.KO,
-                target_language=BaseLanguage.Enum.ZH,
-            )
-        )
+        install_fake_text_processor(monkeypatch, None, check_result=False)
+        checker = create_checker(BaseLanguage.Enum.KO)
         item = Item(
             src="hello",
             dst="hello한",
