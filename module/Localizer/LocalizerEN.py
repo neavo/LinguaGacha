@@ -409,6 +409,8 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_status_processed: str = "Translation Completed"
     proofreading_page_status_error: str = "Translation Failed"
     proofreading_page_status_processed_in_past: str = "Previously Completed"
+    proofreading_page_status_excluded: str = "Excluded"
+    proofreading_page_filter_excluded_risk_confirm: str = "Mostly shouldn't be translated, identify carefully before modifying"
     proofreading_page_status_non_target_source_language: str = "Non-target source language"
     proofreading_page_warning_text_preserve: str = "Text Preserve Failed"
     proofreading_page_warning_similarity: str = "High Similarity"

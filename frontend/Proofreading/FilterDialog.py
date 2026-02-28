@@ -1,8 +1,8 @@
+import threading
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import threading
 from typing import Any
 from typing import cast
 
@@ -10,14 +10,14 @@ from PySide6.QtCore import QModelIndex
 from PySide6.QtCore import QPointF
 from PySide6.QtCore import QRect
 from PySide6.QtCore import QSize
-from PySide6.QtCore import QTimer
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QHideEvent
 from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPolygonF
 from PySide6.QtGui import QPen
+from PySide6.QtGui import QPolygonF
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QAbstractItemView
 from PySide6.QtWidgets import QHBoxLayout
@@ -33,6 +33,7 @@ from qfluentwidgets import InfoBar
 from qfluentwidgets import InfoBarPosition
 from qfluentwidgets import ListItemDelegate
 from qfluentwidgets import ListWidget
+from qfluentwidgets import MessageBox
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import PillPushButton
 from qfluentwidgets import PushButton
@@ -259,13 +260,12 @@ class FilterDialog(MessageBoxBase):
     ) -> None:
         super().__init__(parent)
 
-        # 规则跳过条目无需校对；非目标原文语言可由用户选择显示
+        # 规则跳过与重复条目无需校对；EXCLUDED 由状态筛选控制显示。
         self.items = [
             i
             for i in items
             if i.get_status()
             not in (
-                Base.ProjectStatus.EXCLUDED,
                 Base.ProjectStatus.DUPLICATED,
                 Base.ProjectStatus.RULE_SKIPPED,
             )
@@ -604,12 +604,16 @@ class FilterDialog(MessageBoxBase):
                     Base.ProjectStatus.LANGUAGE_SKIPPED
                 ),
             ),
+            (
+                Base.ProjectStatus.EXCLUDED,
+                ProofreadingLabels.get_status_label(Base.ProjectStatus.EXCLUDED),
+            ),
         ]
 
         for status, label in status_types:
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
-            btn.setChecked(status != Base.ProjectStatus.LANGUAGE_SKIPPED)
+            btn.setChecked(status in ProofreadingDomain.DEFAULT_STATUSES)
             self.setup_small_button(btn)
             btn.clicked.connect(self.on_filter_changed)
             self.status_buttons[status] = btn
@@ -798,8 +802,35 @@ class FilterDialog(MessageBoxBase):
         if isinstance(widget, FilterListItemWidget):
             widget.set_checked(not widget.is_checked())
 
+    def get_excluded_status_button(self) -> PillPushButton | None:
+        """获取 EXCLUDED 状态按钮。"""
+        return self.status_buttons.get(Base.ProjectStatus.EXCLUDED)
+
+    def should_confirm_excluded_enable(self, button: PillPushButton | None) -> bool:
+        """判断本次筛选变更是否需要弹出 EXCLUDED 风险确认。"""
+        if button is None:
+            return False
+        return self.sender() is button and button.isChecked()
+
+    def confirm_excluded_enable(self) -> bool:
+        """弹出 EXCLUDED 风险确认，返回用户是否继续。"""
+        message_box = MessageBox(
+            Localizer.get().confirm,
+            Localizer.get().proofreading_page_filter_excluded_risk_confirm,
+            self,
+        )
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        return bool(message_box.exec())
+
     def on_filter_changed(self) -> None:
         """任意筛选条件变化时触发全局联动刷新"""
+        excluded_button = self.get_excluded_status_button()
+        if self.should_confirm_excluded_enable(excluded_button):
+            if not self.confirm_excluded_enable():
+                excluded_button.setChecked(False)
+                return
+
         self.refresh_all()
 
     def filter_file_list(self, keyword: str) -> None:
@@ -1162,7 +1193,6 @@ class FilterDialog(MessageBoxBase):
             for i in items
             if i.get_status()
             not in (
-                Base.ProjectStatus.EXCLUDED,
                 Base.ProjectStatus.DUPLICATED,
                 Base.ProjectStatus.RULE_SKIPPED,
             )
@@ -1280,7 +1310,11 @@ class FilterDialog(MessageBoxBase):
             statuses = {
                 status
                 for status in self.status_buttons
-                if status != Base.ProjectStatus.LANGUAGE_SKIPPED
+                if status
+                not in (
+                    Base.ProjectStatus.LANGUAGE_SKIPPED,
+                    Base.ProjectStatus.EXCLUDED,
+                )
             }
         for status, btn in self.status_buttons.items():
             btn.setChecked(status in statuses)
