@@ -135,21 +135,43 @@ def test_open_db_and_close_db_delegate_to_database() -> None:
 
 
 @pytest.mark.parametrize(
-    ("event", "expect_emit"),
+    ("event", "payload", "expect_emit"),
     [
-        (Base.Event.TRANSLATION_RUN, False),
-        (Base.Event.TRANSLATION_DONE, True),
-        (Base.Event.TRANSLATION_RESET, True),
-        (Base.Event.TRANSLATION_RESET_FAILED, True),
+        (Base.Event.TRANSLATION_RUN, {}, False),
+        (Base.Event.TRANSLATION_DONE, {}, True),
+        (
+            Base.Event.TRANSLATION_RESET,
+            {
+                "sub_event": Base.TranslationResetSubEvent.REQUEST,
+                "scope": Base.TranslationResetScope.ALL,
+            },
+            False,
+        ),
+        (
+            Base.Event.TRANSLATION_RESET,
+            {
+                "sub_event": Base.TranslationResetSubEvent.DONE,
+                "scope": Base.TranslationResetScope.ALL,
+            },
+            True,
+        ),
+        (
+            Base.Event.TRANSLATION_RESET,
+            {
+                "sub_event": Base.TranslationResetSubEvent.ERROR,
+                "scope": Base.TranslationResetScope.ALL,
+            },
+            True,
+        ),
     ],
 )
 def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
-    event: Base.Event, expect_emit: bool
+    event: Base.Event, payload: dict[str, object], expect_emit: bool
 ) -> None:
     dm = build_manager()
     dm.item_service.clear_item_cache = MagicMock()
 
-    dm.on_translation_activity(event, {})
+    dm.on_translation_activity(event, payload)
 
     dm.item_service.clear_item_cache.assert_called_once()
     if expect_emit:

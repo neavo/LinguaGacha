@@ -60,8 +60,14 @@ class LaboratoryPage(Base, QWidget):
         self.on_translation_status_changed(Base.Event.TRANSLATION_DONE, {})
 
     def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
-        del event
-        del data
+        if event == Base.Event.TRANSLATION_RESET:
+            sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+            if sub_event not in (
+                Base.TranslationResetSubEvent.DONE,
+                Base.TranslationResetSubEvent.ERROR,
+            ):
+                return
+
         status = Engine.get().get_status()
         locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
         if hasattr(self, "mtool_switch") and self.mtool_switch is not None:

@@ -79,13 +79,25 @@ class BasicSettingsPage(Base, QWidget):
         self.on_translation_status_changed(Base.Event.TRANSLATION_DONE, {})
 
     def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
-        del event
-        del data
+        if event == Base.Event.TRANSLATION_RESET:
+            sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+            if sub_event not in (
+                Base.TranslationResetSubEvent.DONE,
+                Base.TranslationResetSubEvent.ERROR,
+            ):
+                return
+
         status = Engine.get().get_status()
         locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
-        if hasattr(self, "source_language_combo") and self.source_language_combo is not None:
+        if (
+            hasattr(self, "source_language_combo")
+            and self.source_language_combo is not None
+        ):
             self.source_language_combo.setEnabled(not locked)
-        if hasattr(self, "target_language_combo") and self.target_language_combo is not None:
+        if (
+            hasattr(self, "target_language_combo")
+            and self.target_language_combo is not None
+        ):
             self.target_language_combo.setEnabled(not locked)
 
     # 原文语言
@@ -119,9 +131,7 @@ class BasicSettingsPage(Base, QWidget):
         elif config.source_language in languages:
             combo_box.setCurrentIndex(languages.index(config.source_language) + 1)
 
-        combo_box.currentIndexChanged.connect(
-            lambda index: current_changed(combo_box)
-        )
+        combo_box.currentIndexChanged.connect(lambda index: current_changed(combo_box))
         card.add_right_widget(combo_box)
 
         self.source_language_combo = combo_box
@@ -133,7 +143,9 @@ class BasicSettingsPage(Base, QWidget):
     ) -> None:
         def current_changed(combo_box: ComboBox) -> None:
             config = Config().load()
-            config.target_language = BaseLanguage.get_languages()[combo_box.currentIndex()]
+            config.target_language = BaseLanguage.get_languages()[
+                combo_box.currentIndex()
+            ]
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["target_language"]})
 
@@ -149,9 +161,7 @@ class BasicSettingsPage(Base, QWidget):
                 BaseLanguage.get_languages().index(config.target_language)
             )
 
-        combo_box.currentIndexChanged.connect(
-            lambda index: current_changed(combo_box)
-        )
+        combo_box.currentIndexChanged.connect(lambda index: current_changed(combo_box))
         card.add_right_widget(combo_box)
 
         self.target_language_combo = combo_box
