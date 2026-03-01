@@ -1268,3 +1268,96 @@ class TestTextProcessor:
         assert processor.srcs == ["[a]"]
         assert processor.vaild_index == {1}
         assert processor.samples == ["[a]"]
+
+    def test_pre_process_skips_fully_preserved_line_when_auto_process_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        item = Item(src="<b></b>", text_type=Item.TextType.NONE)
+        snapshot = create_snapshot(
+            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
+            text_preserve_entries=({"src": "<[^>]+>"},),
+        )
+        processor = TextProcessor(
+            Config(auto_process_prefix_suffix_preserved_text=False),
+            item,
+            snapshot,
+        )
+
+        monkeypatch.setattr(
+            processor,
+            "get_re_check",
+            lambda custom, text_type: re.compile(r"(?:<[^>]+>)+"),
+        )
+
+        processor.pre_process()
+
+        assert processor.srcs == []
+        assert processor.vaild_index == set()
+
+    def test_pre_process_keeps_partially_preserved_line_when_auto_process_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        item = Item(src="<b>hello</b>", text_type=Item.TextType.NONE)
+        snapshot = create_snapshot(
+            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
+            text_preserve_entries=({"src": "<[^>]+>"},),
+        )
+        processor = TextProcessor(
+            Config(auto_process_prefix_suffix_preserved_text=False),
+            item,
+            snapshot,
+        )
+
+        monkeypatch.setattr(
+            processor,
+            "get_re_check",
+            lambda custom, text_type: re.compile(r"(?:<[^>]+>)+"),
+        )
+
+        processor.pre_process()
+
+        assert processor.srcs == ["<b>hello</b>"]
+        assert processor.vaild_index == {0}
+        assert processor.prefix_codes == {}
+        assert processor.suffix_codes == {}
+
+    def test_pre_process_skips_only_fully_preserved_lines_in_mixed_lines(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        item = Item(src="<b></b>\nhello\n<i></i>", text_type=Item.TextType.NONE)
+        snapshot = create_snapshot(
+            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
+            text_preserve_entries=({"src": "<[^>]+>"},),
+        )
+        processor = TextProcessor(
+            Config(auto_process_prefix_suffix_preserved_text=False),
+            item,
+            snapshot,
+        )
+
+        monkeypatch.setattr(
+            processor,
+            "get_re_check",
+            lambda custom, text_type: re.compile(r"(?:<[^>]+>)+"),
+        )
+
+        processor.pre_process()
+
+        assert processor.srcs == ["hello"]
+        assert processor.vaild_index == {1}
+
+    def test_pre_process_does_not_skip_when_preserve_mode_off_and_auto_process_disabled(
+        self,
+    ) -> None:
+        item = Item(src="<b></b>", text_type=Item.TextType.NONE)
+        snapshot = create_snapshot(text_preserve_mode=DataManager.TextPreserveMode.OFF)
+        processor = TextProcessor(
+            Config(auto_process_prefix_suffix_preserved_text=False),
+            item,
+            snapshot,
+        )
+
+        processor.pre_process()
+
+        assert processor.srcs == ["<b></b>"]
+        assert processor.vaild_index == {0}
