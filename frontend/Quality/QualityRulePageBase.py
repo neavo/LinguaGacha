@@ -548,10 +548,12 @@ class QualityRulePageBase(Base, QWidget):
         move_up_action = Action(
             ICON_ACTION_MOVE_UP,
             Localizer.get().move_up,
-            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
-                lambda: self.reorder_selected_rows_by_operation(
-                    QualityRuleReorder.Operation.MOVE_UP,
-                    rows,
+            triggered=lambda _checked=False, rows=frozen_rows: (
+                self.run_with_unsaved_guard(
+                    lambda: self.reorder_selected_rows_by_operation(
+                        QualityRuleReorder.Operation.MOVE_UP,
+                        rows,
+                    )
                 )
             ),
         )
@@ -561,10 +563,12 @@ class QualityRulePageBase(Base, QWidget):
         move_down_action = Action(
             ICON_ACTION_MOVE_DOWN,
             Localizer.get().move_down,
-            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
-                lambda: self.reorder_selected_rows_by_operation(
-                    QualityRuleReorder.Operation.MOVE_DOWN,
-                    rows,
+            triggered=lambda _checked=False, rows=frozen_rows: (
+                self.run_with_unsaved_guard(
+                    lambda: self.reorder_selected_rows_by_operation(
+                        QualityRuleReorder.Operation.MOVE_DOWN,
+                        rows,
+                    )
                 )
             ),
         )
@@ -575,10 +579,12 @@ class QualityRulePageBase(Base, QWidget):
         move_top_action = Action(
             ICON_ACTION_MOVE_TOP,
             Localizer.get().move_top,
-            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
-                lambda: self.reorder_selected_rows_by_operation(
-                    QualityRuleReorder.Operation.MOVE_TOP,
-                    rows,
+            triggered=lambda _checked=False, rows=frozen_rows: (
+                self.run_with_unsaved_guard(
+                    lambda: self.reorder_selected_rows_by_operation(
+                        QualityRuleReorder.Operation.MOVE_TOP,
+                        rows,
+                    )
                 )
             ),
         )
@@ -588,10 +594,12 @@ class QualityRulePageBase(Base, QWidget):
         move_bottom_action = Action(
             ICON_ACTION_MOVE_BOTTOM,
             Localizer.get().move_bottom,
-            triggered=lambda rows=frozen_rows: self.run_with_unsaved_guard(
-                lambda: self.reorder_selected_rows_by_operation(
-                    QualityRuleReorder.Operation.MOVE_BOTTOM,
-                    rows,
+            triggered=lambda _checked=False, rows=frozen_rows: (
+                self.run_with_unsaved_guard(
+                    lambda: self.reorder_selected_rows_by_operation(
+                        QualityRuleReorder.Operation.MOVE_BOTTOM,
+                        rows,
+                    )
                 )
             ),
         )
