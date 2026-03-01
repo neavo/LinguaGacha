@@ -1289,12 +1289,12 @@ class ProofreadingPage(Base, QWidget):
 
                         item_dict = item.to_dict()
                         if isinstance(item_dict.get("id"), int):
-                            new_status = old_status
-                            if new_dst and old_status not in (
-                                Base.ProjectStatus.PROCESSED,
-                                Base.ProjectStatus.PROCESSED_IN_PAST,
-                            ):
-                                new_status = Base.ProjectStatus.PROCESSED
+                            # 状态流转统一走 Domain，避免单条保存/批量替换规则漂移。
+                            new_status = (
+                                ProofreadingDomain.resolve_status_after_manual_edit(
+                                    old_status=old_status, new_dst=new_dst
+                                )
+                            )
 
                             item_dict["dst"] = new_dst
                             item_dict["status"] = new_status
@@ -1520,11 +1520,11 @@ class ProofreadingPage(Base, QWidget):
 
         old_dst = item.get_dst()
         old_status = item.get_status()
-        if new_dst and old_status not in (
-            Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.PROCESSED_IN_PAST,
-        ):
-            item.set_status(Base.ProjectStatus.PROCESSED)
+        new_status = ProofreadingDomain.resolve_status_after_manual_edit(
+            old_status=old_status, new_dst=new_dst
+        )
+        if new_status != old_status:
+            item.set_status(new_status)
 
         item.set_dst(new_dst)
 
