@@ -659,7 +659,7 @@ class LocalizerEN(LocalizerZH):
     )
     laboratory_page_force_thinking_enable: str = "Force Thinking"
     laboratory_page_force_thinking_enable_desc: str = (
-        "When enabled, non-thinking models will also perform thinking before translation, disabled by default, and does not support SakuraLLM"
+        "When enabled, non-thinking models will also perform thinking before translation, enabled by default, and does not support SakuraLLM"
         "<br>"
         "◈ Trade a slight increase in Token consumption for improved translation quality"
         "<br>"

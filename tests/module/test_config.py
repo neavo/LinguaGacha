@@ -33,6 +33,7 @@ class TestConfigBehavior:
         config = Config().load("/workspace/config/missing.json")
 
         assert config.theme == Config.Theme.LIGHT
+        assert config.force_thinking_enable is True
         assert config.recent_projects == []
 
     def test_load_applies_known_fields_only(self, fs) -> None:
@@ -80,6 +81,7 @@ class TestConfigBehavior:
 
         assert config.expert_mode is False
         assert config.theme == Config.Theme.LIGHT
+        assert config.force_thinking_enable is True
 
     def test_save_sorts_models_before_dumping(self, fs) -> None:
         del fs
