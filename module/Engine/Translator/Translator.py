@@ -2,6 +2,7 @@ import os
 import threading
 import time
 import webbrowser
+from enum import StrEnum
 from itertools import zip_longest
 from typing import Any
 from typing import Optional
@@ -30,6 +31,10 @@ from module.TextProcessor import TextProcessor
 
 # 翻译器
 class Translator(Base):
+    class ExportSource(StrEnum):
+        MANUAL = "MANUAL"
+        AUTO_ON_FINISH = "AUTO_ON_FINISH"
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -299,64 +304,91 @@ class Translator(Base):
 
     # 翻译结果手动导出事件
 
-    def translation_export(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-            return None
+    def should_emit_export_result_toast(self, source: ExportSource) -> bool:
+        """根据导出来源决定是否展示导出结果提示。"""
+        if source == self.ExportSource.MANUAL:
+            return True
+        else:
+            return False
 
-        # 复制一份以避免影响原始数据
-        def start_export(event_name: str, task_data: dict) -> None:
-            toast_active = False
-            try:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST_SHOW,
-                    {
-                        "message": Localizer.get().export_translation_progress,
-                        "indeterminate": True,
-                    },
-                )
-                toast_active = True
+    def resolve_export_items(self) -> list[Item]:
+        """统一导出数据来源，确保手动/自动导出读取口径一致。"""
+        if self.items_cache is not None:
+            # 手动导出可能发生在翻译过程中，使用内存快照保证实时性。
+            return self.copy_items()
 
-                # 如果正在翻译，从内存快照获取数据以保证实时性；否则从数据库加载
-                if self.items_cache is not None:
-                    items = self.copy_items()
-                else:
-                    dm = DataManager.get()
-                    if not dm.is_loaded():
-                        return
-                    items = dm.get_all_items()
+        dm = DataManager.get()
+        if not dm.is_loaded():
+            return []
+        return dm.get_all_items()
 
-                if not items:
-                    return
+    def run_translation_export(
+        self,
+        *,
+        source: ExportSource,
+        apply_mtool_postprocess: bool = True,
+    ) -> None:
+        """统一执行译文导出流程，避免手动/自动链路的交互与日志分叉。"""
+        emit_result_toast = self.should_emit_export_result_toast(source)
+        progress_toast_active = False
+        try:
+            LogManager.get().info(Localizer.get().export_translation_start)
+            self.emit(
+                Base.Event.PROGRESS_TOAST_SHOW,
+                {
+                    "message": Localizer.get().export_translation_start,
+                    "indeterminate": True,
+                },
+            )
+            progress_toast_active = True
 
+            items = self.resolve_export_items()
+            if not items:
+                return
+
+            # 自动导出在翻译收尾阶段已对 items_cache 执行过后处理，此处避免重复追加拆分行。
+            if apply_mtool_postprocess:
                 self.mtool_optimizer_postprocess(items)
-                self.check_and_wirte_result(items)
+            self.check_and_wirte_result(items)
 
+            if emit_result_toast:
                 self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-                toast_active = False
+                progress_toast_active = False
                 self.emit(
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().task_success,
+                        "message": Localizer.get().export_translation_success,
                     },
                 )
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                if toast_active:
-                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-                    toast_active = False
+        except Exception as e:
+            LogManager.get().error(Localizer.get().export_translation_failed, e)
+            if emit_result_toast and progress_toast_active:
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                progress_toast_active = False
+            if emit_result_toast:
                 self.emit(
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().task_failed,
+                        "message": Localizer.get().export_translation_failed,
                     },
                 )
-            finally:
-                if toast_active:
-                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        finally:
+            if progress_toast_active:
+                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
 
-        threading.Thread(target=start_export, args=(event, data)).start()
+    def translation_export(self, event: Base.Event, data: dict) -> None:
+        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+            return
+
+        del event
+        del data
+
+        def start_export() -> None:
+            self.run_translation_export(source=self.ExportSource.MANUAL)
+
+        threading.Thread(target=start_export).start()
 
     # 实际的翻译流程
     def start(self, event: Base.Event, data: dict) -> None:
@@ -527,7 +559,6 @@ class Translator(Base):
                 # 日志
                 LogManager.get().print("")
                 LogManager.get().info(Localizer.get().engine_task_done)
-                LogManager.get().info(Localizer.get().engine_task_save)
                 LogManager.get().print("")
 
                 # 通知
@@ -545,7 +576,6 @@ class Translator(Base):
                     LogManager.get().info(Localizer.get().engine_task_stop)
                 else:
                     LogManager.get().warning(Localizer.get().engine_task_fail)
-                LogManager.get().info(Localizer.get().engine_task_save)
                 LogManager.get().print("")
 
                 # 通知
@@ -597,7 +627,10 @@ class Translator(Base):
                 and not self.stop_requested
                 and Engine.get().get_status() != Base.TaskStatus.STOPPING
             ):
-                self.check_and_wirte_result(self.items_cache)
+                self.run_translation_export(
+                    source=self.ExportSource.AUTO_ON_FINISH,
+                    apply_mtool_postprocess=False,
+                )
 
             # 重置内部状态（正常完成翻译）
             Engine.get().set_status(Base.TaskStatus.IDLE)
@@ -837,7 +870,7 @@ class Translator(Base):
         LogManager.get().print("")
 
         LogManager.get().info(
-            Localizer.get().engine_task_save_done.replace("{PATH}", output_path)
+            Localizer.get().export_translation_done.replace("{PATH}", output_path)
         )
         LogManager.get().print("")
 
