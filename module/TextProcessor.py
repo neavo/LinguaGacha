@@ -458,6 +458,18 @@ class TextProcessor(Base):
 
         return src
 
+    # 判断整行是否完全命中保护规则
+    def is_fully_preserved_line(self, src: str, text_type: Item.TextType) -> bool:
+        # 这里必须使用整行匹配，避免把“部分命中”的可翻译正文误判为可跳过行。
+        rule: re.Pattern | None = self.get_re_check(
+            custom=self.get_text_preserve_custom_enabled(),
+            text_type=text_type,
+        )
+        if rule is None:
+            return False
+
+        return rule.fullmatch(src) is not None
+
     # 预处理
     def pre_process(self) -> None:
         item = self.item
@@ -487,6 +499,11 @@ class TextProcessor(Base):
 
                 # 如果处理后的文本为空
                 if src == "":
+                    pass
+                elif (
+                    not self.config.auto_process_prefix_suffix_preserved_text
+                    and self.is_fully_preserved_line(src, text_type)
+                ):
                     pass
                 else:
                     # 译前替换
