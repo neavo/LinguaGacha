@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import os
 import time
 from pathlib import Path
@@ -19,21 +20,35 @@ class DummyLocalizer:
 
 
 class DummyLogger:
-    def debug(self, msg: str, e: Exception | None = None) -> None:
+    def noop(self, msg: str, e: Exception | None = None) -> None:
         del msg
         del e
 
-    def info(self, msg: str, e: Exception | None = None) -> None:
-        del msg
-        del e
+    debug = noop
+    info = noop
+    warning = noop
+    error = noop
 
-    def warning(self, msg: str, e: Exception | None = None) -> None:
-        del msg
-        del e
 
-    def error(self, msg: str, e: Exception | None = None) -> None:
-        del msg
-        del e
+# 统一收集事件，减少每个用例重复声明 emit mock 的样板。
+def attach_emit_collector(
+    version_manager: VersionManager, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[Base.Event, dict]]:
+    emitted: list[tuple[Base.Event, dict]] = []
+    monkeypatch.setattr(
+        version_manager,
+        "emit",
+        lambda event, data: emitted.append((event, data)),
+    )
+    return emitted
+
+
+# 用映射模拟 shutil.which，集中维护命令探测分支输入。
+def build_which_stub(which_mapping: dict[str, str]) -> Callable[[str], str | None]:
+    def fake_which(name: str) -> str | None:
+        return which_mapping.get(name)
+
+    return fake_which
 
 
 @pytest.fixture()
@@ -108,17 +123,12 @@ def test_windows_download_moves_status_to_downloaded(
             return FakeResponse({"assets": release_assets})
         return FakeResponse(text=f"{expected_sha256}  LinguaGacha_v2.0.0.zip")
 
-    emitted: list[tuple[Base.Event, dict]] = []
+    emitted = attach_emit_collector(version_manager, monkeypatch)
 
     monkeypatch.setattr("base.VersionManager.sys.platform", "win32", raising=False)
     monkeypatch.setattr("base.VersionManager.httpx.get", fake_get)
     monkeypatch.setattr(
         "base.VersionManager.httpx.stream", lambda *args, **kwargs: FakeStreamResponse()
-    )
-    monkeypatch.setattr(
-        version_manager,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
     )
 
     version_manager.app_update_download_start_task(
@@ -136,16 +146,11 @@ def test_non_windows_branch_keeps_manual_update_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     opened_urls: list[str] = []
-    emitted: list[tuple[Base.Event, dict]] = []
+    emitted = attach_emit_collector(version_manager, monkeypatch)
 
     monkeypatch.setattr("base.VersionManager.sys.platform", "darwin", raising=False)
     monkeypatch.setattr(
         "base.VersionManager.webbrowser.open", lambda url: opened_urls.append(url)
-    )
-    monkeypatch.setattr(
-        version_manager,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
     )
 
     version_manager.set_status(VersionManager.Status.NEW_VERSION)
@@ -158,11 +163,31 @@ def test_non_windows_branch_keeps_manual_update_mode(
     assert (Base.Event.APP_UPDATE_DOWNLOAD_DONE, {"manual": True}) in emitted
 
 
+def test_find_windows_update_assets_is_case_insensitive(
+    version_manager: VersionManager,
+) -> None:
+    assets = [
+        {
+            "name": "LinguaGacha_v2.0.0.ZIP",
+            "browser_download_url": "https://example.com/LinguaGacha_v2.0.0.ZIP",
+        },
+        {
+            "name": "LinguaGacha_v2.0.0.ZIP.SHA256",
+            "browser_download_url": "https://example.com/LinguaGacha_v2.0.0.ZIP.SHA256",
+        },
+    ]
+
+    zip_url, hash_url = version_manager.find_windows_update_assets(assets)
+
+    assert zip_url.endswith(".ZIP")
+    assert hash_url.endswith(".SHA256")
+
+
 def test_windows_apply_starts_updater_with_required_arguments(
     version_manager: VersionManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    emitted: list[tuple[Base.Event, dict]] = []
+    emitted = attach_emit_collector(version_manager, monkeypatch)
     popen_args: list[list[str]] = []
     killed: list[tuple[int, int]] = []
     sleep_calls: list[float] = []
@@ -180,17 +205,22 @@ def test_windows_apply_starts_updater_with_required_arguments(
     monkeypatch.setattr("base.VersionManager.sys.platform", "win32", raising=False)
     monkeypatch.setattr("base.VersionManager.subprocess.Popen", FakePopen)
     monkeypatch.setattr(
+        "base.VersionManager.shutil.which",
+        build_which_stub(
+            {
+                "pwsh": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                "pwsh.exe": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                "powershell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "powershell.exe": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            }
+        ),
+    )
+    monkeypatch.setattr(
         "base.VersionManager.time.sleep", lambda sec: sleep_calls.append(sec)
     )
     monkeypatch.setattr(
         "base.VersionManager.os.kill", lambda pid, sig: killed.append((pid, sig))
     )
-    monkeypatch.setattr(
-        version_manager,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
-
     version_manager.set_expected_sha256(expected_sha256)
     version_manager.set_status(VersionManager.Status.DOWNLOADED)
     version_manager.app_update_extract_task(Base.Event.APP_UPDATE_EXTRACT, {})
@@ -198,6 +228,7 @@ def test_windows_apply_starts_updater_with_required_arguments(
     assert version_manager.get_status() == VersionManager.Status.APPLYING
     assert len(popen_args) == 1
     command = popen_args[0]
+    assert command[0].lower().endswith("pwsh.exe")
     assert "-AppPid" in command
     assert "-InstallDir" in command
     assert "-ZipPath" in command
@@ -208,6 +239,44 @@ def test_windows_apply_starts_updater_with_required_arguments(
     assert killed and killed[0][0] == os.getpid()
     assert killed[0][1] != 0
     assert any(event == Base.Event.PROGRESS_TOAST_UPDATE for event, _ in emitted)
+
+
+@pytest.mark.parametrize(
+    ("which_mapping", "expected_executable"),
+    [
+        (
+            {
+                "pwsh": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                "pwsh.exe": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                "powershell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "powershell.exe": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            },
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+        ),
+        (
+            {
+                "powershell": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "powershell.exe": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            },
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        ),
+        ({}, "powershell.exe"),
+    ],
+)
+def test_find_powershell_executable_selects_expected_command(
+    version_manager: VersionManager,
+    monkeypatch: pytest.MonkeyPatch,
+    which_mapping: dict[str, str],
+    expected_executable: str,
+) -> None:
+    monkeypatch.setattr(
+        "base.VersionManager.shutil.which",
+        build_which_stub(which_mapping),
+    )
+
+    executable = version_manager.find_powershell_executable()
+
+    assert executable == expected_executable
 
 
 def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
@@ -252,3 +321,14 @@ def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
     assert not lock_path.exists()
     assert not result_path.exists()
     assert not temp_zip.exists()
+
+
+def test_updater_script_supports_temp_package_extension() -> None:
+    # 防回归：更新包下载后是 .zip.temp，脚本必须按 ZIP 内容解压而不是依赖扩展名。
+    project_root = Path(__file__).resolve().parents[2]
+    updater_script_path = project_root / "resource" / "update" / "update.ps1"
+    script_content = updater_script_path.read_text(encoding="utf-8")
+
+    assert "function Expand-PackageToStage" in script_content
+    assert "[System.IO.Compression.ZipFile]::ExtractToDirectory" in script_content
+    assert "Expand-Archive -Path $ZipPath" not in script_content

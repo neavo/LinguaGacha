@@ -2,6 +2,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -43,6 +44,9 @@ class VersionManager(Base):
     # URL 地址
     API_URL: str = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest"
     RELEASE_URL: str = "https://github.com/neavo/LinguaGacha/releases/latest"
+    # 命令名按优先级排列，保证优先使用 PowerShell 7。
+    POWERSHELL_7_COMMAND_NAMES: tuple[str, str] = ("pwsh", "pwsh.exe")
+    POWERSHELL_5_COMMAND_NAMES: tuple[str, str] = ("powershell", "powershell.exe")
 
     def __init__(self) -> None:
         super().__init__()
@@ -272,13 +276,21 @@ class VersionManager(Base):
     def find_windows_update_assets(
         self, assets: list[dict[str, object]]
     ) -> tuple[str, str]:
-        zip_asset_name = ""
-        zip_asset_url = ""
+        asset_records: list[tuple[str, str, str]] = []
         for asset in assets:
             name = str(asset.get("name", ""))
-            if name.endswith(".zip"):
+            asset_records.append(
+                (name, name.lower(), str(asset.get("browser_download_url", "")))
+            )
+
+        zip_asset_name = ""
+        zip_asset_name_lower = ""
+        zip_asset_url = ""
+        for name, name_lower, url in asset_records:
+            if name_lower.endswith(".zip"):
                 zip_asset_name = name
-                zip_asset_url = str(asset.get("browser_download_url", ""))
+                zip_asset_name_lower = name_lower
+                zip_asset_url = url
                 if zip_asset_url != "":
                     break
 
@@ -287,17 +299,19 @@ class VersionManager(Base):
 
         hash_asset_url = ""
         preferred_hash_name = f"{zip_asset_name}.sha256"
-        for asset in assets:
-            name = str(asset.get("name", ""))
-            if name == preferred_hash_name:
-                hash_asset_url = str(asset.get("browser_download_url", ""))
+        preferred_hash_name_lower = preferred_hash_name.lower()
+        for _, name_lower, url in asset_records:
+            if name_lower == preferred_hash_name_lower:
+                hash_asset_url = url
                 break
 
         if hash_asset_url == "":
-            for asset in assets:
-                name = str(asset.get("name", ""))
-                if name.endswith(".sha256") and zip_asset_name in name:
-                    hash_asset_url = str(asset.get("browser_download_url", ""))
+            for _, name_lower, url in asset_records:
+                if (
+                    name_lower.endswith(".sha256")
+                    and zip_asset_name_lower in name_lower
+                ):
+                    hash_asset_url = url
                     break
 
         if hash_asset_url == "":
@@ -333,8 +347,9 @@ class VersionManager(Base):
         if expected_sha256 == "":
             raise Exception("expected sha256 is empty")
 
+        powershell_executable = self.find_powershell_executable()
         command = [
-            "powershell.exe",
+            powershell_executable,
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -357,6 +372,22 @@ class VersionManager(Base):
             cwd=os.path.abspath("."),
             creationflags=creation_flags,
         )
+
+    # 优先使用 PowerShell 7（pwsh）；若不存在则回退到 Windows PowerShell 5。
+    @staticmethod
+    def find_powershell_executable() -> str:
+        for command_name in __class__.POWERSHELL_7_COMMAND_NAMES:
+            executable_path = shutil.which(command_name)
+            if executable_path is not None:
+                return executable_path
+
+        for command_name in __class__.POWERSHELL_5_COMMAND_NAMES:
+            executable_path = shutil.which(command_name)
+            if executable_path is not None:
+                return executable_path
+
+        # 兜底返回系统默认命令名，兼容 PATH 在运行时晚注入的场景。
+        return "powershell.exe"
 
     # 统一处理应用阶段失败文案，避免失败路径复用成功提示
     def emit_apply_failure(self, e: Exception | None, log_path: str) -> None:

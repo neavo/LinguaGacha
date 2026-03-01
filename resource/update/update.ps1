@@ -196,6 +196,23 @@ function Validate-PackageSha256 {
     }
 }
 
+function Expand-PackageToStage {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PackagePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    if (!(Test-Path $PackagePath)) {
+        throw "Update package not found: $PackagePath"
+    }
+
+    # 使用 ZipFile 直接按内容解压，避免 Expand-Archive 只接受 .zip 扩展名导致 .temp 失败。
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($PackagePath, $DestinationPath)
+}
+
 function Backup-Targets {
     Remove-IfExists $BackupDir
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
@@ -279,7 +296,7 @@ try {
 
     Remove-IfExists $StageDir
     New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
-    Expand-Archive -Path $ZipPath -DestinationPath $StageDir -Force
+    Expand-PackageToStage -PackagePath $ZipPath -DestinationPath $StageDir
     Write-Log "Archive extracted to stage."
 
     $sourceRoot = Join-Path $StageDir "LinguaGacha"
