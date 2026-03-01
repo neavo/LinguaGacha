@@ -71,6 +71,28 @@ class ProofreadingDomain:
         }
     )
 
+    @staticmethod
+    def resolve_status_after_manual_edit(
+        old_status: Base.ProjectStatus, new_dst: str
+    ) -> Base.ProjectStatus:
+        """计算校对人工改动后的目标状态。
+
+        为什么需要这个规则：
+        - 历史完成条目（PROCESSED_IN_PAST）在校对中被人工修改后，若状态不提升为 PROCESSED，
+          TRANS 导出补丁写回阶段会跳过该行，导致“改了但导出没生效”。
+        - 其余状态沿用现有语义：仅当存在非空译文时自动标记为 PROCESSED。
+        """
+        if old_status == Base.ProjectStatus.PROCESSED_IN_PAST:
+            return Base.ProjectStatus.PROCESSED
+
+        if not new_dst:
+            return old_status
+
+        if old_status == Base.ProjectStatus.PROCESSED:
+            return old_status
+
+        return Base.ProjectStatus.PROCESSED
+
     @classmethod
     def normalize_filter_options(
         cls,
