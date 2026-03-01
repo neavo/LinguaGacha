@@ -110,6 +110,7 @@ class ProofreadingPage(Base, QWidget):
         self.result_checker: ResultChecker | None = None  # 结果检查器
         self.failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
         self.is_readonly: bool = False  # 只读模式标志
+        self.is_resetting: bool = False  # 重置执行中标志（RUN 到终态）
         self.config: Config | None = None  # 配置
         self.filter_options: ProofreadingFilterOptions = ProofreadingFilterOptions()
         self.filter_dialog: FilterDialog | None = None
@@ -172,7 +173,6 @@ class ProofreadingPage(Base, QWidget):
             Base.Event.TRANSLATION_REQUIRE_STOP, self.on_engine_status_changed
         )
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
-        self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
@@ -2022,10 +2022,12 @@ class ProofreadingPage(Base, QWidget):
         """检查并更新只读模式"""
         # 获取全局引擎状态，确保 UI 状态与后台任务一致
         engine_status = Engine.get().get_status()
-        is_busy = engine_status in (
+        is_engine_busy = engine_status in (
             Base.TaskStatus.TRANSLATING,
             Base.TaskStatus.STOPPING,
         )
+        # 重置虽然不占用 Engine 状态，但后台会重写条目，需与翻译运行态一样锁定编辑。
+        is_busy = is_engine_busy or self.is_resetting
 
         was_busy = self.is_readonly
 
@@ -2120,9 +2122,26 @@ class ProofreadingPage(Base, QWidget):
 
     def on_translation_reset(self, event: Base.Event, data: dict) -> None:
         """响应翻译重置事件"""
+        del event
+        sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        terminal_sub_events = (
+            Base.TranslationResetSubEvent.DONE,
+            Base.TranslationResetSubEvent.ERROR,
+        )
+
+        if sub_event == Base.TranslationResetSubEvent.RUN:
+            self.is_resetting = True
+        elif sub_event in terminal_sub_events:
+            self.is_resetting = False
+        else:
+            return
+
+        # 重置执行中后台会改写条目；开始态先锁定，终态再解锁并重载。
         self.clear_all_data()
         self.mark_data_stale()
-        self.schedule_reload("translation_reset")
+        self.check_engine_status()
+        if sub_event in terminal_sub_events:
+            self.schedule_reload("translation_reset")
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         """工程加载后自动同步数据"""

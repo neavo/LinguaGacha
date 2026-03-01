@@ -96,7 +96,7 @@ class NameFieldExtractionPage(Base, QWidget):
         self.add_widget_foot(self.root, config, window)
 
         # 注册事件
-        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
         # 连接信号
@@ -692,6 +692,19 @@ class NameFieldExtractionPage(Base, QWidget):
                 "message": message,
             },
         )
+
+    def on_translation_reset(self, event: Base.Event, data: dict) -> None:
+        """仅在全量重置终态清理页面，避免请求态触发无效抖动。"""
+        sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        scope: Base.TranslationResetScope = data["scope"]
+        if sub_event not in (
+            Base.TranslationResetSubEvent.DONE,
+            Base.TranslationResetSubEvent.ERROR,
+        ):
+            return
+        if scope != Base.TranslationResetScope.ALL:
+            return
+        self.on_project_unloaded(event, data)
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""

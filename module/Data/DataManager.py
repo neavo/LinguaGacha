@@ -105,9 +105,6 @@ class DataManager(Base):
         self.subscribe(Base.Event.TRANSLATION_RUN, self.on_translation_activity)
         self.subscribe(Base.Event.TRANSLATION_DONE, self.on_translation_activity)
         self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_activity)
-        self.subscribe(
-            Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_activity
-        )
 
         # 配置变更触发预过滤重算（确保校对/翻译读取同一份稳定状态）
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
@@ -230,18 +227,22 @@ class DataManager(Base):
             db.close()
 
     def on_translation_activity(self, event: Base.Event, data: dict) -> None:
-        del data
         # 翻译过程中 items 会频繁写入 DB；items 缓存不追实时，统一失效更安全。
         self.item_service.clear_item_cache()
 
-        # 复用 PROJECT_FILE_UPDATE 作为“工作台快照失效/需要重算”的信号：
-        # 翻译结束/重置会批量改写 items 状态，但不对应单一 rel_path 的文件变更。
-        refresh_events = {
-            Base.Event.TRANSLATION_DONE,
-            Base.Event.TRANSLATION_RESET,
-            Base.Event.TRANSLATION_RESET_FAILED,
-        }
-        if event not in refresh_events:
+        # 复用 PROJECT_FILE_UPDATE 作为“工作台快照失效/需要重算”的信号。
+        # 对 TRANSLATION_RESET 仅在终态发刷新，避免 REQUEST 阶段提前触发订阅方重载。
+        should_emit_refresh = False
+        if event == Base.Event.TRANSLATION_DONE:
+            should_emit_refresh = True
+        elif event == Base.Event.TRANSLATION_RESET:
+            sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+            should_emit_refresh = sub_event in (
+                Base.TranslationResetSubEvent.DONE,
+                Base.TranslationResetSubEvent.ERROR,
+            )
+
+        if not should_emit_refresh:
             return
         if not self.is_loaded():
             return

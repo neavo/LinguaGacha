@@ -16,7 +16,6 @@ class Base:
         TRANSLATION_RUN = "TRANSLATION_RUN"  # 翻译 - 开始
         TRANSLATION_DONE = "TRANSLATION_DONE"  # 翻译 - 完成
         TRANSLATION_RESET = "TRANSLATION_RESET"  # 翻译 - 重置
-        TRANSLATION_RESET_FAILED = "TRANSLATION_RESET_FAILED"  # 翻译 - 重置失败条目
         TRANSLATION_UPDATE = "TRANSLATION_UPDATE"  # 翻译 - 更新
         TRANSLATION_EXPORT = "TRANSLATION_EXPORT"  # 翻译 - 导出
         TRANSLATION_REQUIRE_STOP = "TRANSLATION_REQUIRE_STOP"  # 翻译 - 请求停止
@@ -45,6 +44,18 @@ class Base:
         )
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
         QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
+
+    # 翻译重置子事件（生命周期阶段）
+    class TranslationResetSubEvent(StrEnum):
+        REQUEST = "REQUEST"  # 请求阶段：仅表示“想重置”，不等同于已完成
+        RUN = "RUN"  # 执行开始：后端已接收并开始执行
+        DONE = "DONE"  # 执行完成：重置已落库并可被订阅方消费
+        ERROR = "ERROR"  # 执行失败：重置流程异常或被执行闸门拒绝
+
+    # 翻译重置范围
+    class TranslationResetScope(StrEnum):
+        ALL = "ALL"  # 重置全部条目
+        FAILED = "FAILED"  # 仅重置失败条目
 
     # 接口格式
     class APIFormat(StrEnum):

@@ -65,9 +65,6 @@ class Translator(Base):
         self.subscribe(Base.Event.TRANSLATION_EXPORT, self.translation_export)
         self.subscribe(Base.Event.TRANSLATION_RESET, self.translation_reset)
         self.subscribe(
-            Base.Event.TRANSLATION_RESET_FAILED, self.translation_reset_failed
-        )
-        self.subscribe(
             Base.Event.TRANSLATION_REQUIRE_STOP, self.translation_require_stop
         )
 
@@ -202,9 +199,40 @@ class Translator(Base):
 
     # 翻译重置事件
     def translation_reset(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        scope: Base.TranslationResetScope = data["scope"]
+        if sub_event != Base.TranslationResetSubEvent.REQUEST:
+            return
+
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
+                },
+            )
+            self.emit(
+                Base.Event.TRANSLATION_RESET,
+                {
+                    "sub_event": Base.TranslationResetSubEvent.ERROR,
+                    "scope": scope,
+                },
+            )
+            return
+
         dm = DataManager.get()
         if not dm.is_loaded():
             return
+
+        self.emit(
+            Base.Event.TRANSLATION_RESET,
+            {
+                "sub_event": Base.TranslationResetSubEvent.RUN,
+                "scope": scope,
+            },
+        )
 
         # 先给用户即时反馈：重置可能非常耗时（尤其是强制重解析资产时）
         self.emit(
@@ -216,31 +244,42 @@ class Translator(Base):
         )
 
         def task() -> None:
-            resetting_toast_active = True
             try:
-                # 1. 重新解析 assets 以获取初始状态的条目
-                # 这里必须使用 RESET 模式强制重解析 assets（避免沿用工程数据库里的既有条目/进度）
-                items = dm.get_items_for_translation(
-                    self.config, Base.TranslationMode.RESET
-                )
+                if scope == Base.TranslationResetScope.ALL:
+                    # 1. 重新解析 assets 以获取初始状态的条目
+                    # 这里必须使用 RESET 模式强制重解析 assets（避免沿用工程数据库里的既有条目/进度）
+                    items = dm.get_items_for_translation(
+                        self.config, Base.TranslationMode.RESET
+                    )
 
-                # 2. 清空并重新写入条目到数据库
-                dm.replace_all_items(items)
+                    # 2. 清空并重新写入条目到数据库
+                    dm.replace_all_items(items)
 
-                # 3. 清除元数据中的进度信息
-                dm.set_translation_extras({})
+                    # 3. 清除元数据中的进度信息
+                    dm.set_translation_extras({})
 
-                # 4. 设置项目状态为 NONE
-                dm.set_project_status(Base.ProjectStatus.NONE)
+                    # 4. 设置项目状态为 NONE
+                    dm.set_project_status(Base.ProjectStatus.NONE)
 
-                # 5. 更新本地进度快照
-                self.extras = dm.get_translation_extras()
+                    # 5. 更新本地进度快照
+                    self.extras = dm.get_translation_extras()
 
-                # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
-                dm.run_project_prefilter(self.config, reason="translation_reset")
+                    # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
+                    dm.run_project_prefilter(self.config, reason="translation_reset")
+                else:
+                    extras = dm.reset_failed_items_sync()
+                    if extras is not None:
+                        self.extras = extras
 
                 # 触发状态检查以同步 UI
                 self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+                self.emit(
+                    Base.Event.TRANSLATION_RESET,
+                    {
+                        "sub_event": Base.TranslationResetSubEvent.DONE,
+                        "scope": scope,
+                    },
+                )
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
                 self.emit(
@@ -250,51 +289,11 @@ class Translator(Base):
                         "message": Localizer.get().task_failed,
                     },
                 )
-            finally:
-                if resetting_toast_active:
-                    self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
-
-        threading.Thread(target=task).start()
-
-    def translation_reset_failed(self, event: Base.Event, data: dict) -> None:
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
-
-        dm = DataManager.get()
-        if not dm.is_loaded():
-            return
-
-        self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
-            {
-                "message": Localizer.get().translation_page_toast_resetting,
-                "indeterminate": True,
-            },
-        )
-
-        def task() -> None:
-            try:
-                extras = dm.reset_failed_items_sync()
-                if extras is None:
-                    return
-
-                self.extras = extras
-
-                self.emit(Base.Event.PROJECT_CHECK_RUN, {})
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
                 self.emit(
-                    Base.Event.TOAST,
+                    Base.Event.TRANSLATION_RESET,
                     {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().task_failed,
+                        "sub_event": Base.TranslationResetSubEvent.ERROR,
+                        "scope": scope,
                     },
                 )
             finally:

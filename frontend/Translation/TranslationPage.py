@@ -84,7 +84,7 @@ class TranslationPage(Base, QWidget):
         self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
         self.subscribe(Base.Event.TRANSLATION_UPDATE, self.translation_update)
         self.subscribe(Base.Event.TRANSLATION_REQUIRE_STOP, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_project_unloaded)
+        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(
             Base.Event.PROJECT_PREFILTER_RUN, self.on_project_prefilter_changed
@@ -136,11 +136,18 @@ class TranslationPage(Base, QWidget):
             self.action_start.setIcon(ICON_ACTION_START)
 
         if status == Base.TaskStatus.IDLE:
-            if self.is_stopping_toast_active and event in (
+            should_hide_stopping_toast = event in (
                 Base.Event.TRANSLATION_DONE,
-                Base.Event.TRANSLATION_RESET,
                 Base.Event.PROJECT_UNLOADED,
-            ):
+            )
+            if event == Base.Event.TRANSLATION_RESET:
+                sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+                should_hide_stopping_toast = sub_event in (
+                    Base.TranslationResetSubEvent.DONE,
+                    Base.TranslationResetSubEvent.ERROR,
+                )
+
+            if self.is_stopping_toast_active and should_hide_stopping_toast:
                 self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
                 self.is_stopping_toast_active = False
             self.action_start.setEnabled(True)
@@ -178,6 +185,26 @@ class TranslationPage(Base, QWidget):
 
     def translation_update(self, event: Base.Event, data: dict) -> None:
         self.data = data
+
+    def on_translation_reset(self, event: Base.Event, data: dict) -> None:
+        """按重置阶段刷新 UI，避免把请求态误判为完成态。"""
+        sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        scope: Base.TranslationResetScope = data["scope"]
+        if (
+            sub_event == Base.TranslationResetSubEvent.DONE
+            and scope == Base.TranslationResetScope.ALL
+        ):
+            self.clear_ui_cards()
+
+        # 无论是否清空卡片，都要同步按钮状态与运行态。
+        self.update_button_status(event, data)
+
+        # 重置终态后主动拉取一次进度，确保失败项重置也能更新统计卡片。
+        if sub_event in (
+            Base.TranslationResetSubEvent.DONE,
+            Base.TranslationResetSubEvent.ERROR,
+        ):
+            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
 
     # 更新时间
     def update_time(self, data: dict) -> None:
@@ -671,13 +698,21 @@ class TranslationPage(Base, QWidget):
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         def triggered() -> None:
-            def confirm_and_emit(message: str, event: Base.Event) -> None:
+            def confirm_and_emit(
+                message: str, scope: Base.TranslationResetScope
+            ) -> None:
                 message_box = MessageBox(Localizer.get().alert, message, window)
                 message_box.yesButton.setText(Localizer.get().confirm)
                 message_box.cancelButton.setText(Localizer.get().cancel)
 
                 if message_box.exec():
-                    self.emit(event, {})
+                    self.emit(
+                        Base.Event.TRANSLATION_RESET,
+                        {
+                            "sub_event": Base.TranslationResetSubEvent.REQUEST,
+                            "scope": scope,
+                        },
+                    )
 
             menu = RoundMenu("", self.action_reset)
             menu.addAction(
@@ -686,7 +721,7 @@ class TranslationPage(Base, QWidget):
                     Localizer.get().translation_page_reset_failed,
                     triggered=lambda: confirm_and_emit(
                         Localizer.get().translation_page_alert_reset_failed,
-                        Base.Event.TRANSLATION_RESET_FAILED,
+                        Base.TranslationResetScope.FAILED,
                     ),
                 )
             )
@@ -697,7 +732,7 @@ class TranslationPage(Base, QWidget):
                     Localizer.get().translation_page_reset_all,
                     triggered=lambda: confirm_and_emit(
                         Localizer.get().translation_page_alert_reset_all,
-                        Base.Event.TRANSLATION_RESET,
+                        Base.TranslationResetScope.ALL,
                     ),
                 )
             )
