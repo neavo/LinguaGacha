@@ -659,7 +659,7 @@ class LocalizerZH:
     )
     laboratory_page_force_thinking_enable: str = "强制思考"
     laboratory_page_force_thinking_enable_desc: str = (
-        "启用后，非思考模型在翻译前也会进行思考，默认禁用，请注意：此功能不支持 SakuraLLM 模型"
+        "启用后，非思考模型在翻译前也会进行思考，默认启用，请注意：此功能不支持 SakuraLLM 模型"
         "<br>"
         "◈ 通过略微增加 Token 消耗换取翻译效果的提升"
         "<br>"

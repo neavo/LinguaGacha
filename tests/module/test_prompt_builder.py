@@ -50,6 +50,7 @@ class TestPromptBuilder:
             source_language=BaseLanguage.ALL,
             target_language=BaseLanguage.Enum.EN,
             auto_glossary_enable=False,
+            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_en_enable=False,
@@ -121,6 +122,7 @@ class TestPromptBuilder:
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
             auto_glossary_enable=False,
+            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_zh_enable=True,
@@ -421,6 +423,7 @@ class TestPromptBuilder:
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
             auto_glossary_enable=True,
+            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_en_enable=False,
@@ -548,6 +551,7 @@ class TestPromptBuilder:
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
             auto_glossary_enable=False,
+            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             custom_prompt_en_enable=True,

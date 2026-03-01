@@ -61,7 +61,7 @@ class Config:
 
     # LaboratoryPage
     auto_glossary_enable: bool = False
-    force_thinking_enable: bool = False
+    force_thinking_enable: bool = True
     mtool_optimizer_enable: bool = False
 
     # GlossaryPage
