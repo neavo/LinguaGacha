@@ -1,6 +1,6 @@
 ---
 name: pytest-ruler
-description: 基于 pytest 的 TDD 测试工作流，触发词：TDD、补测试、写测试、测试脚本、单元测试、测试覆盖率、测试驱动开发
+description: Pytest-based TDD testing workflow, triggers - TDD, add tests, write tests, test scripts, unit tests, test coverage, test-driven development
 ---
 
 # Pytest Ruler
