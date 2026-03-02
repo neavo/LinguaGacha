@@ -102,9 +102,12 @@ class DataManager(Base):
         self.export_path_service = ExportPathService()
 
         # 监听翻译活动以失效 items 缓存，避免读到中间态
-        self.subscribe(Base.Event.TRANSLATION_RUN, self.on_translation_activity)
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.on_translation_activity)
-        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_activity)
+        self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
+        self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_activity)
+        self.subscribe(
+            Base.Event.TRANSLATION_RESET_FAILED,
+            self.on_translation_activity,
+        )
 
         # 配置变更触发预过滤重算（确保校对/翻译读取同一份稳定状态）
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
@@ -167,14 +170,8 @@ class DataManager(Base):
                     mode_valid = False
 
             if not mode_valid:
-                legacy_enable = bool(
-                    self.session.meta_cache.get("text_preserve_enable", False)
-                )
-                migrated = (
-                    __class__.TextPreserveMode.CUSTOM.value
-                    if legacy_enable
-                    else __class__.TextPreserveMode.SMART.value
-                )
+                legacy_enable = bool(self.session.meta_cache.get("text_preserve_enable", False))
+                migrated = __class__.TextPreserveMode.CUSTOM.value if legacy_enable else __class__.TextPreserveMode.SMART.value
                 self.session.db.set_meta("text_preserve_mode", migrated)
                 self.session.meta_cache["text_preserve_mode"] = migrated
 
@@ -230,23 +227,27 @@ class DataManager(Base):
         # 翻译过程中 items 会频繁写入 DB；items 缓存不追实时，统一失效更安全。
         self.item_service.clear_item_cache()
 
-        # 复用 PROJECT_FILE_UPDATE 作为“工作台快照失效/需要重算”的信号。
-        # 对 TRANSLATION_RESET 仅在终态发刷新，避免 REQUEST 阶段提前触发订阅方重载。
+        # 翻译运行/重置会改变条目状态：工作台需要在终态触发一次聚合刷新。
+        # 这里发 WORKBENCH_REFRESH，而不是 PROJECT_FILE_UPDATE，避免语义混叠。
         should_emit_refresh = False
-        if event == Base.Event.TRANSLATION_DONE:
-            should_emit_refresh = True
-        elif event == Base.Event.TRANSLATION_RESET:
-            sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        if event == Base.Event.TRANSLATION_TASK:
+            sub_event = data.get("sub_event")
+            should_emit_refresh = sub_event == Base.SubEvent.DONE
+        elif event in (
+            Base.Event.TRANSLATION_RESET_ALL,
+            Base.Event.TRANSLATION_RESET_FAILED,
+        ):
+            sub_event: Base.SubEvent = data["sub_event"]
             should_emit_refresh = sub_event in (
-                Base.TranslationResetSubEvent.DONE,
-                Base.TranslationResetSubEvent.ERROR,
+                Base.SubEvent.DONE,
+                Base.SubEvent.ERROR,
             )
 
         if not should_emit_refresh:
             return
         if not self.is_loaded():
             return
-        self.emit(Base.Event.PROJECT_FILE_UPDATE, {"reason": event.value})
+        self.emit(Base.Event.WORKBENCH_REFRESH, {"reason": event.value})
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event
@@ -332,16 +333,15 @@ class DataManager(Base):
 
         # 先发事件锁 UI，避免“加载旧工程后立刻点击开始翻译”的竞态。
         self.emit(
-            Base.Event.PROJECT_PREFILTER_RUN,
+            Base.Event.PROJECT_PREFILTER,
             {
+                "sub_event": Base.ProjectPrefilterSubEvent.RUN,
                 "reason": reason,
                 "token": token,
                 "lg_path": lg_path,
             },
         )
-        threading.Thread(
-            target=self.project_prefilter_worker, args=(token,), daemon=True
-        ).start()
+        threading.Thread(target=self.project_prefilter_worker, args=(token,), daemon=True).start()
 
     def run_project_prefilter(self, config: Config, *, reason: str) -> None:
         """执行预过滤并落库（同步）。
@@ -403,8 +403,9 @@ class DataManager(Base):
             self.prefilter_cond.notify_all()
 
         self.emit(
-            Base.Event.PROJECT_PREFILTER_RUN,
+            Base.Event.PROJECT_PREFILTER,
             {
+                "sub_event": Base.ProjectPrefilterSubEvent.RUN,
                 "reason": reason,
                 "token": token,
                 "lg_path": lg_path,
@@ -424,8 +425,9 @@ class DataManager(Base):
         updated = False
 
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": Localizer.get().toast_processing,
                 # 先显示不定进度：加载 items 前无法给出可信 total，避免进度条长时间停在 0%。
                 "indeterminate": True,
@@ -437,49 +439,38 @@ class DataManager(Base):
                 with self.prefilter_cond:
                     if not self.prefilter_pending:
                         # 收尾事件放在锁内发出：避免新任务 show 被旧任务 hide 打断。
-                        if (
-                            updated
-                            and last_result is not None
-                            and last_request is not None
-                        ):
-                            LogManager.get().info(
-                                Localizer.get().engine_task_rule_filter.replace(
-                                    "{COUNT}", str(last_result.stats.rule_skipped)
-                                )
-                            )
-                            LogManager.get().info(
-                                Localizer.get().engine_task_language_filter.replace(
-                                    "{COUNT}", str(last_result.stats.language_skipped)
-                                )
-                            )
+                        if updated and last_result is not None and last_request is not None:
+                            LogManager.get().info(Localizer.get().engine_task_rule_filter.replace("{COUNT}", str(last_result.stats.rule_skipped)))
+                            LogManager.get().info(Localizer.get().engine_task_language_filter.replace("{COUNT}", str(last_result.stats.language_skipped)))
                             # 仅在开关开启时输出 MTool 预处理日志，避免“未启用但仍提示已完成”的误导。
                             if last_request.mtool_optimizer_enable:
-                                LogManager.get().info(
-                                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
-                                        "{COUNT}", str(last_result.stats.mtool_skipped)
-                                    )
-                                )
+                                LogManager.get().info(Localizer.get().translator_mtool_optimizer_pre_log.replace("{COUNT}", str(last_result.stats.mtool_skipped)))
 
                             # 仅在控制台输出统计信息，避免 UI Toast 产生噪音。
                             LogManager.get().print("")
                             self.emit(
-                                Base.Event.PROJECT_PREFILTER_UPDATED,
+                                Base.Event.PROJECT_PREFILTER,
                                 {
+                                    "sub_event": Base.ProjectPrefilterSubEvent.UPDATED,
                                     "reason": last_request.reason,
                                     "token": token,
                                     "lg_path": last_request.lg_path,
                                 },
                             )
 
-                        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
                         self.emit(
-                            Base.Event.PROJECT_PREFILTER_DONE,
+                            Base.Event.PROGRESS_TOAST,
+                            {"sub_event": Base.SubEvent.DONE},
+                        )
+                        self.emit(
+                            Base.Event.PROJECT_PREFILTER,
                             {
-                                "reason": last_request.reason
-                                if last_request
-                                else "unknown",
+                                "sub_event": Base.ProjectPrefilterSubEvent.DONE,
+                                "reason": last_request.reason if last_request else "unknown",
                                 "token": token,
                                 "lg_path": last_request.lg_path if last_request else "",
+                                "updated": updated,
+                                "error": False,
                             },
                         )
 
@@ -518,15 +509,31 @@ class DataManager(Base):
                     "message": Localizer.get().task_failed,
                 },
             )
+            self.emit(
+                Base.Event.PROJECT_PREFILTER,
+                {
+                    "sub_event": Base.ProjectPrefilterSubEvent.ERROR,
+                    "reason": reason,
+                    "token": token,
+                    "lg_path": lg_path,
+                    "message": Localizer.get().task_failed,
+                },
+            )
 
             with self.prefilter_cond:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
                 self.emit(
-                    Base.Event.PROJECT_PREFILTER_DONE,
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
+                self.emit(
+                    Base.Event.PROJECT_PREFILTER,
                     {
+                        "sub_event": Base.ProjectPrefilterSubEvent.DONE,
                         "reason": last_request.reason if last_request else "unknown",
                         "token": token,
                         "lg_path": last_request.lg_path if last_request else "",
+                        "updated": updated,
+                        "error": True,
                     },
                 )
 
@@ -534,9 +541,7 @@ class DataManager(Base):
                 self.prefilter_active_token = 0
                 self.prefilter_cond.notify_all()
 
-    def apply_project_prefilter_once(
-        self, request: ProjectPrefilterRequest
-    ) -> ProjectPrefilterResult | None:
+    def apply_project_prefilter_once(self, request: ProjectPrefilterRequest) -> ProjectPrefilterResult | None:
         """执行一次预过滤并写入 DB。
 
         返回 None 表示：工程已切换/卸载，本次结果被丢弃。
@@ -555,8 +560,9 @@ class DataManager(Base):
         progress_total = total * (3 if request.mtool_optimizer_enable else 2)
         # 加载完成后切换为确定进度模式。
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": Localizer.get().toast_processing,
                 "indeterminate": False,
                 "current": 0,
@@ -566,8 +572,9 @@ class DataManager(Base):
 
         def progress_cb(current: int, total: int) -> None:
             self.emit(
-                Base.Event.PROGRESS_TOAST_UPDATE,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.UPDATE,
                     "message": Localizer.get().toast_processing,
                     "current": current,
                     "total": total,
@@ -661,12 +668,8 @@ class DataManager(Base):
             if isinstance(item_dict.get("id"), int):
                 changed_items.append(item_dict)
 
-        processed_line = sum(
-            1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
-        )
-        error_line = sum(
-            1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
-        )
+        processed_line = sum(1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED)
+        error_line = sum(1 for item in items if item.get_status() == Base.ProjectStatus.ERROR)
         total_line = sum(
             1
             for item in items
@@ -684,11 +687,7 @@ class DataManager(Base):
         extras["line"] = processed_line + error_line
         extras["total_line"] = total_line
 
-        project_status = (
-            Base.ProjectStatus.PROCESSING
-            if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
-            else Base.ProjectStatus.PROCESSED
-        )
+        project_status = Base.ProjectStatus.PROCESSING if any(item.get_status() == Base.ProjectStatus.NONE for item in items) else Base.ProjectStatus.PROCESSED
 
         # 单次事务写入：确保 items/meta 一致。
         self.update_batch(
@@ -717,9 +716,7 @@ class DataManager(Base):
         if save:
             self.emit_quality_rule_update(rule_types=[rule_type])
 
-    def normalize_quality_rules_for_write(
-        self, rule_type: LGDatabase.RuleType, data: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def normalize_quality_rules_for_write(self, rule_type: LGDatabase.RuleType, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """写入口兜底：落库前统一收敛重复与空 src。
 
         为什么放在 DataManager：这里是规则写入的权威入口，能覆盖 UI 手动保存/导入、
@@ -815,9 +812,7 @@ class DataManager(Base):
         self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
 
     def get_text_preserve_mode(self) -> TextPreserveMode:
-        raw = self.get_meta(
-            "text_preserve_mode", __class__.TextPreserveMode.SMART.value
-        )
+        raw = self.get_meta("text_preserve_mode", __class__.TextPreserveMode.SMART.value)
         if isinstance(raw, str):
             try:
                 return __class__.TextPreserveMode(raw)
@@ -828,11 +823,7 @@ class DataManager(Base):
 
     def set_text_preserve_mode(self, mode: TextPreserveMode | str) -> None:
         try:
-            normalized = (
-                mode
-                if isinstance(mode, __class__.TextPreserveMode)
-                else __class__.TextPreserveMode(str(mode))
-            )
+            normalized = mode if isinstance(mode, __class__.TextPreserveMode) else __class__.TextPreserveMode(str(mode))
         except ValueError:
             normalized = __class__.TextPreserveMode.OFF
 
@@ -984,11 +975,7 @@ class DataManager(Base):
 
             if rel_path not in file_type_by_path:
                 raw_type = item.get("file_type")
-                if (
-                    isinstance(raw_type, str)
-                    and raw_type
-                    and raw_type != Item.FileType.NONE
-                ):
+                if isinstance(raw_type, str) and raw_type and raw_type != Item.FileType.NONE:
                     try:
                         file_type_by_path[rel_path] = Item.FileType(raw_type)
                     except ValueError:
@@ -1036,8 +1023,9 @@ class DataManager(Base):
 
         def worker() -> None:
             self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.RUN,
                     "message": Localizer.get().workbench_progress_adding_file,
                     "indeterminate": True,
                 },
@@ -1058,7 +1046,10 @@ class DataManager(Base):
                     {"type": Base.ToastType.ERROR, "message": str(e)},
                 )
             finally:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.emit(
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
                 self.finish_file_operation()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1076,8 +1067,9 @@ class DataManager(Base):
 
         def worker() -> None:
             self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.RUN,
                     "message": Localizer.get().workbench_progress_updating_file,
                     "indeterminate": True,
                 },
@@ -1100,7 +1092,10 @@ class DataManager(Base):
                     {"type": Base.ToastType.ERROR, "message": str(e)},
                 )
             finally:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.emit(
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
                 self.finish_file_operation()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1118,8 +1113,9 @@ class DataManager(Base):
 
         def worker() -> None:
             self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.RUN,
                     "message": Localizer.get().workbench_progress_resetting_file,
                     "indeterminate": True,
                 },
@@ -1139,7 +1135,10 @@ class DataManager(Base):
                     {"type": Base.ToastType.ERROR, "message": str(e)},
                 )
             finally:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.emit(
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
                 self.finish_file_operation()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1157,8 +1156,9 @@ class DataManager(Base):
 
         def worker() -> None:
             self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.RUN,
                     "message": Localizer.get().workbench_progress_deleting_file,
                     "indeterminate": True,
                 },
@@ -1178,7 +1178,10 @@ class DataManager(Base):
                     {"type": Base.ToastType.ERROR, "message": str(e)},
                 )
             finally:
-                self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+                self.emit(
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
                 self.finish_file_operation()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1273,11 +1276,7 @@ class DataManager(Base):
                 if existing.casefold() == rel_path.casefold():
                     continue
                 if existing.casefold() == target_rel_path.casefold():
-                    raise ValueError(
-                        Localizer.get().workbench_msg_update_name_conflict.replace(
-                            "{NAME}", existing
-                        )
-                    )
+                    raise ValueError(Localizer.get().workbench_msg_update_name_conflict.replace("{NAME}", existing))
 
         # 同一 src 可能对应多种译法：优先选择出现次数最多的 dst；若并列则取最早出现的。
         src_best: dict[str, dict[str, Any]] = {}
@@ -1347,9 +1346,7 @@ class DataManager(Base):
                 item["name_dst"] = old.get("name_dst")
                 item["retry_count"] = old.get("retry_count", 0)
 
-                new_status = normalize_status(
-                    item.get("status", Base.ProjectStatus.NONE)
-                )
+                new_status = normalize_status(item.get("status", Base.ProjectStatus.NONE))
                 if new_status not in structural_statuses:
                     item["status"] = old_status
 
@@ -1467,9 +1464,7 @@ class DataManager(Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_default_preset_loaded_toast.format(
-                        NAME=" | ".join(loaded_presets)
-                    ),
+                    "message": Localizer.get().quality_default_preset_loaded_toast.format(NAME=" | ".join(loaded_presets)),
                 },
             )
 

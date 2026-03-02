@@ -48,18 +48,14 @@ class TranslatorTaskPipeline:
         self.max_workers = max_workers
 
         self.buffer_size = self.translator.get_task_buffer_size(max_workers)
-        self.normal_queue: queue.Queue[TaskContext] = queue.Queue(
-            maxsize=self.buffer_size
-        )
+        self.normal_queue: queue.Queue[TaskContext] = queue.Queue(maxsize=self.buffer_size)
 
         high_queue_size = min(
             __class__.HIGH_QUEUE_MAX,
             self.buffer_size * __class__.HIGH_QUEUE_MULTIPLIER,
         )
         self.high_queue: queue.Queue[TaskContext] = queue.Queue(maxsize=high_queue_size)
-        self.commit_queue: queue.Queue[tuple[TaskContext, TranslatorTask, dict]] = (
-            queue.Queue(maxsize=self.buffer_size)
-        )
+        self.commit_queue: queue.Queue[tuple[TaskContext, TranslatorTask, dict]] = queue.Queue(maxsize=self.buffer_size)
 
         self.producer_done = threading.Event()
 
@@ -142,12 +138,7 @@ class TranslatorTaskPipeline:
             except queue.Empty:
                 pass
 
-            if (
-                self.producer_done.is_set()
-                and self.normal_queue.empty()
-                and self.high_queue.empty()
-                and self.get_pending_commit_count() == 0
-            ):
+            if self.producer_done.is_set() and self.normal_queue.empty() and self.high_queue.empty() and self.get_pending_commit_count() == 0:
                 return None
 
             try:
@@ -216,34 +207,20 @@ class TranslatorTaskPipeline:
             except queue.Empty:
                 # 任务未完成时，commit_queue 可能在一段时间内为空（尤其是高并发+长请求）。
                 # 此时必须保持 commit_loop 存活，等待 worker 产出结果。
-                if (
-                    self.producer_done.is_set()
-                    and self.normal_queue.empty()
-                    and self.high_queue.empty()
-                    and self.get_pending_commit_count() == 0
-                    and self.get_active_context_count() == 0
-                ):
+                if self.producer_done.is_set() and self.normal_queue.empty() and self.high_queue.empty() and self.get_pending_commit_count() == 0 and self.get_active_context_count() == 0:
                     return
 
                 if self.should_stop():
                     # 同步流式下 stop 可能需要等待 SDK 超时/收尾；这里仅等待已产出的结果落库。
-                    if (
-                        self.commit_queue.empty()
-                        and self.get_pending_commit_count() == 0
-                        and self.get_active_context_count() == 0
-                    ):
+                    if self.commit_queue.empty() and self.get_pending_commit_count() == 0 and self.get_active_context_count() == 0:
                         return
                     continue
                 continue
 
             context, task, result = payload
             try:
-                if not self.should_stop() and any(
-                    i.get_status() == Base.ProjectStatus.NONE for i in task.items
-                ):
-                    for new_context in self.translator.scheduler.handle_failed_context(
-                        context, result
-                    ):
+                if not self.should_stop() and any(i.get_status() == Base.ProjectStatus.NONE for i in task.items):
+                    for new_context in self.translator.scheduler.handle_failed_context(context, result):
                         while True:
                             if self.should_stop():
                                 break
@@ -253,21 +230,10 @@ class TranslatorTaskPipeline:
                             except queue.Full:
                                 continue
 
-                finalized_items = [
-                    item.to_dict()
-                    for item in task.items
-                    if item.get_status()
-                    in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-                ]
+                finalized_items = [item.to_dict() for item in task.items if item.get_status() in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)]
 
-                processed_count = sum(
-                    1
-                    for i in task.items
-                    if i.get_status() == Base.ProjectStatus.PROCESSED
-                )
-                error_count = sum(
-                    1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
-                )
+                processed_count = sum(1 for i in task.items if i.get_status() == Base.ProjectStatus.PROCESSED)
+                error_count = sum(1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR)
 
                 glossaries = result.get("glossaries")
                 if not isinstance(glossaries, list):
@@ -293,7 +259,7 @@ class TranslatorTaskPipeline:
                     completed=extras_snapshot.get("line", 0),
                     total=extras_snapshot.get("total_line", 0),
                 )
-                self.translator.emit(Base.Event.TRANSLATION_UPDATE, extras_snapshot)
+                self.translator.emit(Base.Event.TRANSLATION_PROGRESS, extras_snapshot)
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
                 Engine.get().set_status(Base.TaskStatus.STOPPING)

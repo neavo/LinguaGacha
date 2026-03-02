@@ -31,9 +31,7 @@ class DummyLogger:
 
 
 # 统一收集事件，减少每个用例重复声明 emit mock 的样板。
-def attach_emit_collector(
-    version_manager: VersionManager, monkeypatch: pytest.MonkeyPatch
-) -> list[tuple[Base.Event, dict]]:
+def attach_emit_collector(version_manager: VersionManager, monkeypatch: pytest.MonkeyPatch) -> list[tuple[Base.Event, dict]]:
     emitted: list[tuple[Base.Event, dict]] = []
     monkeypatch.setattr(
         version_manager,
@@ -55,9 +53,7 @@ def build_which_stub(which_mapping: dict[str, str]) -> Callable[[str], str | Non
 def version_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> VersionManager:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "resource" / "update").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "resource" / "update" / "update.ps1").write_text(
-        "Write-Host 'test updater'\n", encoding="utf-8"
-    )
+    (tmp_path / "resource" / "update" / "update.ps1").write_text("Write-Host 'test updater'\n", encoding="utf-8")
 
     # 通过屏蔽 subscribe 避免测试中的实例污染全局事件中心。
     monkeypatch.setattr(VersionManager, "subscribe", lambda self, event, fn: None)
@@ -127,18 +123,17 @@ def test_windows_download_moves_status_to_downloaded(
 
     monkeypatch.setattr("base.VersionManager.sys.platform", "win32", raising=False)
     monkeypatch.setattr("base.VersionManager.httpx.get", fake_get)
-    monkeypatch.setattr(
-        "base.VersionManager.httpx.stream", lambda *args, **kwargs: FakeStreamResponse()
-    )
+    monkeypatch.setattr("base.VersionManager.httpx.stream", lambda *args, **kwargs: FakeStreamResponse())
 
-    version_manager.app_update_download_start_task(
-        Base.Event.APP_UPDATE_DOWNLOAD_RUN, {}
-    )
+    version_manager.app_update_download_start_task(Base.Event.APP_UPDATE_DOWNLOAD, {})
 
     assert version_manager.get_status() == VersionManager.Status.DOWNLOADED
     assert version_manager.get_expected_sha256() == expected_sha256
     assert Path(VersionManager.TEMP_PATH).read_bytes() == b"helloworld"
-    assert (Base.Event.APP_UPDATE_DOWNLOAD_DONE, {"manual": False}) in emitted
+    assert (
+        Base.Event.APP_UPDATE_DOWNLOAD,
+        {"sub_event": Base.SubEvent.DONE, "manual": False},
+    ) in emitted
 
 
 def test_non_windows_branch_keeps_manual_update_mode(
@@ -149,18 +144,49 @@ def test_non_windows_branch_keeps_manual_update_mode(
     emitted = attach_emit_collector(version_manager, monkeypatch)
 
     monkeypatch.setattr("base.VersionManager.sys.platform", "darwin", raising=False)
-    monkeypatch.setattr(
-        "base.VersionManager.webbrowser.open", lambda url: opened_urls.append(url)
-    )
+    monkeypatch.setattr("base.VersionManager.webbrowser.open", lambda url: opened_urls.append(url))
 
     version_manager.set_status(VersionManager.Status.NEW_VERSION)
-    version_manager.app_update_download_start_task(
-        Base.Event.APP_UPDATE_DOWNLOAD_RUN, {}
-    )
+    version_manager.app_update_download_start_task(Base.Event.APP_UPDATE_DOWNLOAD, {})
 
     assert version_manager.get_status() == VersionManager.Status.NEW_VERSION
     assert opened_urls == [VersionManager.RELEASE_URL]
-    assert (Base.Event.APP_UPDATE_DOWNLOAD_DONE, {"manual": True}) in emitted
+    assert (
+        Base.Event.APP_UPDATE_DOWNLOAD,
+        {"sub_event": Base.SubEvent.DONE, "manual": True},
+    ) in emitted
+
+
+def test_check_start_task_emits_done_with_no_new_version(version_manager: VersionManager, monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"tag_name": "v1.0.0"}
+
+    emitted = attach_emit_collector(version_manager, monkeypatch)
+    monkeypatch.setattr("base.VersionManager.httpx.get", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(VersionManager, "get", staticmethod(lambda: version_manager))
+
+    version_manager.app_update_check_start_task(Base.Event.APP_UPDATE_CHECK, {})
+
+    assert (
+        Base.Event.APP_UPDATE_CHECK,
+        {"sub_event": Base.SubEvent.DONE, "new_version": False},
+    ) in emitted
+
+
+def test_emit_apply_failure_emits_apply_error_event(version_manager: VersionManager, monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted = attach_emit_collector(version_manager, monkeypatch)
+    log_path = "C:/tmp/update.log"
+
+    version_manager.emit_apply_failure(None, log_path)
+
+    assert (
+        Base.Event.APP_UPDATE_APPLY,
+        {"sub_event": Base.SubEvent.ERROR, "log_path": log_path},
+    ) in emitted
 
 
 def test_find_windows_update_assets_is_case_insensitive(
@@ -215,15 +241,11 @@ def test_windows_apply_starts_updater_with_required_arguments(
             }
         ),
     )
-    monkeypatch.setattr(
-        "base.VersionManager.time.sleep", lambda sec: sleep_calls.append(sec)
-    )
-    monkeypatch.setattr(
-        "base.VersionManager.os.kill", lambda pid, sig: killed.append((pid, sig))
-    )
+    monkeypatch.setattr("base.VersionManager.time.sleep", lambda sec: sleep_calls.append(sec))
+    monkeypatch.setattr("base.VersionManager.os.kill", lambda pid, sig: killed.append((pid, sig)))
     version_manager.set_expected_sha256(expected_sha256)
     version_manager.set_status(VersionManager.Status.DOWNLOADED)
-    version_manager.app_update_extract_task(Base.Event.APP_UPDATE_EXTRACT, {})
+    version_manager.app_update_extract_task(Base.Event.APP_UPDATE_APPLY, {})
 
     assert version_manager.get_status() == VersionManager.Status.APPLYING
     assert len(popen_args) == 1
@@ -238,7 +260,7 @@ def test_windows_apply_starts_updater_with_required_arguments(
     assert 0.2 in sleep_calls
     assert killed and killed[0][0] == os.getpid()
     assert killed[0][1] != 0
-    assert any(event == Base.Event.PROGRESS_TOAST_UPDATE for event, _ in emitted)
+    assert any(event == Base.Event.PROGRESS_TOAST and payload.get("sub_event") == Base.SubEvent.UPDATE for event, payload in emitted)
 
 
 @pytest.mark.parametrize(
@@ -312,9 +334,7 @@ def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
 
     VersionManager.cleanup_update_temp_on_startup()
 
-    assert VersionManager.STARTUP_PENDING_APPLY_FAILURE_LOG_PATH == str(
-        log_path.resolve()
-    )
+    assert VersionManager.STARTUP_PENDING_APPLY_FAILURE_LOG_PATH == str(log_path.resolve())
     assert not stage_dir.exists()
     assert not backup_dir.exists()
     assert not runtime_script.exists()

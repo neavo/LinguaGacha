@@ -20,7 +20,7 @@ class APITester(Base):
         super().__init__()
 
         # 注册事件
-        self.subscribe(Base.Event.APITEST_RUN, self.api_test_start)
+        self.subscribe(Base.Event.APITEST, self.api_test_start)
 
     def mask_api_key(self, key: str) -> str:
         """脱敏 API Key：保留前 8 + 后 8，中间用等长 * 替代。"""
@@ -32,6 +32,10 @@ class APITester(Base):
 
     # 接口测试开始事件
     def api_test_start(self, event: Base.Event, data: dict) -> None:
+        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
+
         engine = Engine.get()
         with engine.lock:
             if engine.status != Base.TaskStatus.IDLE:
@@ -47,6 +51,14 @@ class APITester(Base):
             # 原子化占用状态，避免短时间重复触发导致多线程并发启动。
             engine.status = Base.TaskStatus.TESTING
 
+        self.emit(
+            Base.Event.APITEST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "model_id": data.get("model_id"),
+            },
+        )
+
         try:
             threading.Thread(
                 target=self.api_test_start_target,
@@ -60,6 +72,14 @@ class APITester(Base):
                 {
                     "type": Base.ToastType.ERROR,
                     "message": Localizer.get().task_failed,
+                },
+            )
+            self.emit(
+                Base.Event.APITEST,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "result": False,
+                    "result_msg": Localizer.get().task_failed,
                 },
             )
 
@@ -78,8 +98,9 @@ class APITester(Base):
         model_id = data.get("model_id")
         if not model_id:
             self.emit(
-                Base.Event.APITEST_DONE,
+                Base.Event.APITEST,
                 {
+                    "sub_event": Base.SubEvent.DONE,
                     "result": False,
                     "result_msg": "Missing model_id",
                 },
@@ -89,8 +110,9 @@ class APITester(Base):
         model = config.get_model(model_id)
         if model is None:
             self.emit(
-                Base.Event.APITEST_DONE,
+                Base.Event.APITEST,
                 {
+                    "sub_event": Base.SubEvent.DONE,
                     "result": False,
                     "result_msg": "Model not found",
                 },
@@ -142,12 +164,8 @@ class APITester(Base):
             requester = TaskRequester(config, model_test)
 
             LogManager.get().print("")
-            LogManager.get().info(
-                Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]"
-            )
-            LogManager.get().info(
-                Localizer.get().api_tester_messages + "\n" + f"{messages}"
-            )
+            LogManager.get().info(Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]")
+            LogManager.get().info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
 
             # 记录开始时间
             start_time_ns = time.perf_counter_ns()
@@ -166,16 +184,10 @@ class APITester(Base):
             if exception:
                 # 确定失败原因
                 if isinstance(exception, RequestHardTimeoutError):
-                    reason = Localizer.get().api_tester_timeout.replace(
-                        "{SECONDS}", str(config.request_timeout)
-                    )
+                    reason = Localizer.get().api_tester_timeout.replace("{SECONDS}", str(config.request_timeout))
                 else:
                     exception_text = str(exception).strip()
-                    reason = (
-                        f"{exception.__class__.__name__}: {exception_text}"
-                        if exception_text
-                        else exception.__class__.__name__
-                    )
+                    reason = f"{exception.__class__.__name__}: {exception_text}" if exception_text else exception.__class__.__name__
 
                 key_results.append(
                     KeyTestResult(
@@ -188,9 +200,7 @@ class APITester(Base):
                     )
                 )
 
-                LogManager.get().warning(
-                    Localizer.get().log_api_test_fail.replace("{REASON}", reason)
-                )
+                LogManager.get().warning(Localizer.get().log_api_test_fail.replace("{REASON}", reason))
             else:
                 key_results.append(
                     KeyTestResult(
@@ -204,24 +214,13 @@ class APITester(Base):
                 )
 
                 if response_think == "":
-                    LogManager.get().info(
-                        Localizer.get().engine_response_result + "\n" + response_result
-                    )
+                    LogManager.get().info(Localizer.get().engine_response_result + "\n" + response_result)
                 else:
-                    LogManager.get().info(
-                        Localizer.get().engine_response_think + "\n" + response_think
-                    )
-                    LogManager.get().info(
-                        Localizer.get().engine_response_result + "\n" + response_result
-                    )
+                    LogManager.get().info(Localizer.get().engine_response_think + "\n" + response_think)
+                    LogManager.get().info(Localizer.get().engine_response_result + "\n" + response_result)
 
                 # Token 信息放在回复之后，便于阅读。
-                token_info = (
-                    Localizer.get()
-                    .api_tester_token_info.replace("{INPUT}", str(input_tokens))
-                    .replace("{OUTPUT}", str(output_tokens))
-                    .replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
-                )
+                token_info = Localizer.get().api_tester_token_info.replace("{INPUT}", str(input_tokens)).replace("{OUTPUT}", str(output_tokens)).replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
                 LogManager.get().info(token_info)
 
         # 统计结果
@@ -230,23 +229,14 @@ class APITester(Base):
         total_response_time_ms = sum(r.response_time_ms for r in key_results)
 
         # 测试结果消息
-        result_msg = (
-            Localizer.get()
-            .api_tester_result.replace("{COUNT}", str(len(api_keys)))
-            .replace("{SUCCESS}", str(len(success_results)))
-            .replace("{FAILURE}", str(len(failure_results)))
-        )
+        result_msg = Localizer.get().api_tester_result.replace("{COUNT}", str(len(api_keys))).replace("{SUCCESS}", str(len(success_results))).replace("{FAILURE}", str(len(failure_results)))
         LogManager.get().print("")
         LogManager.get().info(result_msg)
 
         # 失败密钥
         if failure_results:
             failed_masked_keys = [r.masked_key for r in failure_results]
-            LogManager.get().warning(
-                Localizer.get().api_tester_result_failure
-                + "\n"
-                + "\n".join(failed_masked_keys)
-            )
+            LogManager.get().warning(Localizer.get().api_tester_result_failure + "\n" + "\n".join(failed_masked_keys))
 
         # 构建结果对象
         test_result = APITestResult(
@@ -260,4 +250,6 @@ class APITester(Base):
         )
 
         # 发送完成事件
-        self.emit(Base.Event.APITEST_DONE, test_result.to_event_dict())
+        payload = test_result.to_event_dict()
+        payload["sub_event"] = Base.SubEvent.DONE
+        self.emit(Base.Event.APITEST, payload)

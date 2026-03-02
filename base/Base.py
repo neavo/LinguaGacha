@@ -5,57 +5,58 @@ from base.EventManager import EventManager
 
 
 class Base:
+    # 翻译事件速查表（优先看这里）：
+    # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
+    # | 事件名                        | sub_event                     | 语义                                           | 常见字段                                                  |
+    # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
+    # | TRANSLATION_TASK              | REQUEST / RUN / DONE / ERROR | 发起或继续翻译任务，并回传任务终态            | mode, final_status(SUCCESS/STOPPED/FAILED), message      |
+    # | TRANSLATION_REQUEST_STOP      | REQUEST / RUN                | 请求停止当前正在执行的翻译任务（不单独发 DONE）| 无                                                        |
+    # | TRANSLATION_PROGRESS          | （按快照事件处理）           | 上报翻译进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
+    # | TRANSLATION_RESET_ALL         | REQUEST / RUN / DONE / ERROR | 重置全部条目                                   | 无                                                        |
+    # | TRANSLATION_RESET_FAILED      | REQUEST / RUN / DONE / ERROR | 仅重置失败条目                                 | 无                                                        |
+    # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
+
     # 事件
     class Event(StrEnum):
         TOAST = "TOAST"  # Toast
-        PROGRESS_TOAST_SHOW = "PROGRESS_TOAST_SHOW"  # 显示进度 Toast
-        PROGRESS_TOAST_UPDATE = "PROGRESS_TOAST_UPDATE"  # 更新进度 Toast
-        PROGRESS_TOAST_HIDE = "PROGRESS_TOAST_HIDE"  # 隐藏进度 Toast
-        APITEST_RUN = "APITEST_RUN"  # 测试 - 开始
-        APITEST_DONE = "APITEST_DONE"  # 测试 - 完成
-        TRANSLATION_RUN = "TRANSLATION_RUN"  # 翻译 - 开始
-        TRANSLATION_DONE = "TRANSLATION_DONE"  # 翻译 - 完成
-        TRANSLATION_RESET = "TRANSLATION_RESET"  # 翻译 - 重置
-        TRANSLATION_UPDATE = "TRANSLATION_UPDATE"  # 翻译 - 更新
+        PROGRESS_TOAST = "PROGRESS_TOAST"  # 进度 Toast 生命周期事件
+        APITEST = "APITEST"  # 测试 - 生命周期事件
+        TRANSLATION_TASK = "TRANSLATION_TASK"  # 翻译 - 任务生命周期事件（发起/运行/结束）
+        TRANSLATION_REQUEST_STOP = "TRANSLATION_REQUEST_STOP"  # 翻译 - 停止当前任务请求链路（REQUEST/RUN）
+        TRANSLATION_PROGRESS = "TRANSLATION_PROGRESS"  # 翻译 - 进度快照更新
         TRANSLATION_EXPORT = "TRANSLATION_EXPORT"  # 翻译 - 导出
-        TRANSLATION_REQUIRE_STOP = "TRANSLATION_REQUIRE_STOP"  # 翻译 - 请求停止
-        NER_ANALYZER_RUN = "NER_ANALYZER_RUN"  # 分析 - 开始
-        NER_ANALYZER_DONE = "NER_ANALYZER_DONE"  # 分析 - 完成
-        NER_ANALYZER_UPDATE = "NER_ANALYZER_UPDATE"  # 分析 - 更新
-        NER_ANALYZER_EXPORT = "NER_ANALYZER_EXPORT"  # 分析 - 导出
-        NER_ANALYZER_REQUIRE_STOP = "NER_ANALYZER_REQUIRE_STOP"  # 分析 - 请求停止
-        APP_UPDATE_CHECK_RUN = "APP_UPDATE_CHECK_RUN"  # 更新 - 检查
-        APP_UPDATE_CHECK_DONE = "APP_UPDATE_CHECK_DONE"  # 更新 - 检查完成
-        APP_UPDATE_DOWNLOAD_RUN = "APP_UPDATE_DOWNLOAD_RUN"  # 更新 - 下载
-        APP_UPDATE_DOWNLOAD_DONE = "APP_UPDATE_DOWNLOAD_DONE"  # 更新 - 下载完成
-        APP_UPDATE_DOWNLOAD_ERROR = "APP_UPDATE_DOWNLOAD_ERROR"  # 更新 - 下载报错
-        APP_UPDATE_DOWNLOAD_UPDATE = "APP_UPDATE_DOWNLOAD_UPDATE"  # 更新 - 下载更新
-        APP_UPDATE_EXTRACT = "APP_UPDATE_EXTRACT"  # 更新 - 解压
-        APP_UPDATE_APPLY_ERROR = "APP_UPDATE_APPLY_ERROR"  # 更新 - 应用失败
+        TRANSLATION_RESET_ALL = "TRANSLATION_RESET_ALL"  # 翻译 - 重置全部
+        TRANSLATION_RESET_FAILED = "TRANSLATION_RESET_FAILED"  # 翻译 - 仅重置失败项
+        APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
+        APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
+        APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
-        PROJECT_FILE_UPDATE = "PROJECT_FILE_UPDATE"  # 工程 - 文件变更
-        PROJECT_CHECK_RUN = "PROJECT_CHECK_RUN"  # 项目 - 检查
-        PROJECT_CHECK_DONE = "PROJECT_CHECK_DONE"  # 项目 - 检查完成
-        PROJECT_PREFILTER_RUN = "PROJECT_PREFILTER_RUN"  # 工程 - 预过滤开始
-        PROJECT_PREFILTER_DONE = "PROJECT_PREFILTER_DONE"  # 工程 - 预过滤完成
-        PROJECT_PREFILTER_UPDATED = (
-            "PROJECT_PREFILTER_UPDATED"  # 工程 - 预过滤结果已更新
-        )
+        PROJECT_FILE_UPDATE = "PROJECT_FILE_UPDATE"  # 工程 - 文件变更（增删改/重命名）
+        PROJECT_CHECK = "PROJECT_CHECK"  # 工程 - 检查生命周期事件
+        PROJECT_PREFILTER = "PROJECT_PREFILTER"  # 工程 - 预过滤生命周期事件
+        WORKBENCH_REFRESH = "WORKBENCH_REFRESH"  # 工作台 - 刷新请求（无需携带快照）
+        WORKBENCH_SNAPSHOT = "WORKBENCH_SNAPSHOT"  # 工作台 - 快照更新（跨线程回到 UI）
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
         QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
 
-    # 翻译重置子事件（生命周期阶段）
-    class TranslationResetSubEvent(StrEnum):
-        REQUEST = "REQUEST"  # 请求阶段：仅表示“想重置”，不等同于已完成
-        RUN = "RUN"  # 执行开始：后端已接收并开始执行
-        DONE = "DONE"  # 执行完成：重置已落库并可被订阅方消费
-        ERROR = "ERROR"  # 执行失败：重置流程异常或被执行闸门拒绝
+    # 通用生命周期子事件
+    # 为什么需要它：多数事件都遵循“请求 -> 运行 -> 更新 -> 完成/失败”的同构流程，
+    # 统一枚举能减少 if-else 分叉并保持 payload 结构稳定。
+    class SubEvent(StrEnum):
+        REQUEST = "REQUEST"  # 请求阶段
+        RUN = "RUN"  # 执行阶段
+        UPDATE = "UPDATE"  # 中间进度更新阶段
+        DONE = "DONE"  # 成功完成阶段
+        ERROR = "ERROR"  # 失败终态阶段
 
-    # 翻译重置范围
-    class TranslationResetScope(StrEnum):
-        ALL = "ALL"  # 重置全部条目
-        FAILED = "FAILED"  # 仅重置失败条目
+    # 工程预过滤子事件
+    # 为什么单独枚举：预过滤存在 UPDATED 这一业务特有阶段，通用生命周期无法完整表达。
+    class ProjectPrefilterSubEvent(StrEnum):
+        RUN = "RUN"  # worker 已启动
+        UPDATED = "UPDATED"  # 预过滤结果已写入并可消费
+        DONE = "DONE"  # 一次 prefilter 生命周期结束
+        ERROR = "ERROR"  # 执行失败
 
     # 接口格式
     class APIFormat(StrEnum):

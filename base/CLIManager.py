@@ -31,6 +31,11 @@ class CLIManager(Base):
         return cls.__instance__
 
     def translation_done(self, event: Base.Event, data: dict) -> None:
+        if event != Base.Event.TRANSLATION_TASK:
+            return
+        sub_event = data.get("sub_event")
+        if sub_event != Base.SubEvent.DONE:
+            return
         self.exit()
 
     def exit(self) -> None:
@@ -52,21 +57,13 @@ class CLIManager(Base):
 
     def verify_quality_rule_file(self, arg_name: str, path: str) -> bool:
         if not os.path.isfile(path):
-            message = (
-                Localizer.get()
-                .log_cli_quality_rule_file_not_found.replace("{ARG}", arg_name)
-                .replace("{PATH}", path)
-            )
+            message = Localizer.get().log_cli_quality_rule_file_not_found.replace("{ARG}", arg_name).replace("{PATH}", path)
             LogManager.get().error(message)
             return False
 
         lower = path.lower()
         if not lower.endswith(self.SUPPORTED_QUALITY_RULE_EXTENSIONS):
-            message = (
-                Localizer.get()
-                .log_cli_quality_rule_file_unsupported.replace("{ARG}", arg_name)
-                .replace("{PATH}", path)
-            )
+            message = Localizer.get().log_cli_quality_rule_file_unsupported.replace("{ARG}", arg_name).replace("{PATH}", path)
             LogManager.get().error(message)
             return False
 
@@ -91,12 +88,7 @@ class CLIManager(Base):
             try:
                 return QualityRuleIO.load_rules_from_file(path)
             except Exception as e:
-                message = (
-                    Localizer.get()
-                    .log_cli_quality_rule_import_failed.replace("{ARG}", arg_name)
-                    .replace("{PATH}", path)
-                    .replace("{REASON}", str(e))
-                )
+                message = Localizer.get().log_cli_quality_rule_import_failed.replace("{ARG}", arg_name).replace("{PATH}", path).replace("{REASON}", str(e))
                 LogManager.get().error(message, e)
                 return None
 
@@ -119,17 +111,11 @@ class CLIManager(Base):
             if data is None:
                 return None
             glossary_enable = True
-            glossary_entries = [
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            ]
+            glossary_entries = [dict(v) for v in data if isinstance(v, dict) and str(v.get("src", "")).strip() != ""]
 
         effective_text_preserve_mode: DataManager.TextPreserveMode
         if isinstance(text_preserve_mode_arg, str) and text_preserve_mode_arg:
-            effective_text_preserve_mode = DataManager.TextPreserveMode(
-                text_preserve_mode_arg
-            )
+            effective_text_preserve_mode = DataManager.TextPreserveMode(text_preserve_mode_arg)
         elif isinstance(text_preserve_path, str) and text_preserve_path:
             # 兼容：仅提供 --text_preserve 时，默认视为 custom。
             effective_text_preserve_mode = DataManager.TextPreserveMode.CUSTOM
@@ -138,11 +124,7 @@ class CLIManager(Base):
 
         if effective_text_preserve_mode == DataManager.TextPreserveMode.CUSTOM:
             if not (isinstance(text_preserve_path, str) and text_preserve_path):
-                message = (
-                    Localizer.get()
-                    .log_cli_text_preserve_mode_invalid.replace("{MODE}", "custom")
-                    .replace("{PATH}", "")
-                )
+                message = Localizer.get().log_cli_text_preserve_mode_invalid.replace("{MODE}", "custom").replace("{PATH}", "")
                 LogManager.get().error(message)
                 return None
 
@@ -150,28 +132,16 @@ class CLIManager(Base):
             if data is None:
                 return None
             text_preserve_mode = DataManager.TextPreserveMode.CUSTOM
-            text_preserve_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            text_preserve_entries = tuple(dict(v) for v in data if isinstance(v, dict) and str(v.get("src", "")).strip() != "")
         elif effective_text_preserve_mode == DataManager.TextPreserveMode.SMART:
             if isinstance(text_preserve_path, str) and text_preserve_path:
-                message = (
-                    Localizer.get()
-                    .log_cli_text_preserve_mode_invalid.replace("{MODE}", "smart")
-                    .replace("{PATH}", text_preserve_path)
-                )
+                message = Localizer.get().log_cli_text_preserve_mode_invalid.replace("{MODE}", "smart").replace("{PATH}", text_preserve_path)
                 LogManager.get().error(message)
                 return None
             text_preserve_mode = DataManager.TextPreserveMode.SMART
         else:
             if isinstance(text_preserve_path, str) and text_preserve_path:
-                message = (
-                    Localizer.get()
-                    .log_cli_text_preserve_mode_invalid.replace("{MODE}", "off")
-                    .replace("{PATH}", text_preserve_path)
-                )
+                message = Localizer.get().log_cli_text_preserve_mode_invalid.replace("{MODE}", "off").replace("{PATH}", text_preserve_path)
                 LogManager.get().error(message)
                 return None
             text_preserve_mode = DataManager.TextPreserveMode.OFF
@@ -181,32 +151,18 @@ class CLIManager(Base):
             if data is None:
                 return None
             pre_replacement_enable = True
-            pre_replacement_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            pre_replacement_entries = tuple(dict(v) for v in data if isinstance(v, dict) and str(v.get("src", "")).strip() != "")
 
         if isinstance(post_replacement_path, str) and post_replacement_path:
             data = load_rule_list("--post_replacement", post_replacement_path)
             if data is None:
                 return None
             post_replacement_enable = True
-            post_replacement_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            post_replacement_entries = tuple(dict(v) for v in data if isinstance(v, dict) and str(v.get("src", "")).strip() != "")
 
         if isinstance(custom_prompt_zh_path, str) and custom_prompt_zh_path:
             if not os.path.isfile(custom_prompt_zh_path):
-                message = (
-                    Localizer.get()
-                    .log_cli_quality_rule_file_not_found.replace(
-                        "{ARG}", "--custom_prompt_zh"
-                    )
-                    .replace("{PATH}", custom_prompt_zh_path)
-                )
+                message = Localizer.get().log_cli_quality_rule_file_not_found.replace("{ARG}", "--custom_prompt_zh").replace("{PATH}", custom_prompt_zh_path)
                 LogManager.get().error(message)
                 return None
             try:
@@ -214,26 +170,13 @@ class CLIManager(Base):
                     custom_prompt_zh = reader.read().strip()
                 custom_prompt_zh_enable = True
             except Exception as e:
-                message = (
-                    Localizer.get()
-                    .log_cli_quality_rule_import_failed.replace(
-                        "{ARG}", "--custom_prompt_zh"
-                    )
-                    .replace("{PATH}", custom_prompt_zh_path)
-                    .replace("{REASON}", str(e))
-                )
+                message = Localizer.get().log_cli_quality_rule_import_failed.replace("{ARG}", "--custom_prompt_zh").replace("{PATH}", custom_prompt_zh_path).replace("{REASON}", str(e))
                 LogManager.get().error(message, e)
                 return None
 
         if isinstance(custom_prompt_en_path, str) and custom_prompt_en_path:
             if not os.path.isfile(custom_prompt_en_path):
-                message = (
-                    Localizer.get()
-                    .log_cli_quality_rule_file_not_found.replace(
-                        "{ARG}", "--custom_prompt_en"
-                    )
-                    .replace("{PATH}", custom_prompt_en_path)
-                )
+                message = Localizer.get().log_cli_quality_rule_file_not_found.replace("{ARG}", "--custom_prompt_en").replace("{PATH}", custom_prompt_en_path)
                 LogManager.get().error(message)
                 return None
             try:
@@ -241,14 +184,7 @@ class CLIManager(Base):
                     custom_prompt_en = reader.read().strip()
                 custom_prompt_en_enable = True
             except Exception as e:
-                message = (
-                    Localizer.get()
-                    .log_cli_quality_rule_import_failed.replace(
-                        "{ARG}", "--custom_prompt_en"
-                    )
-                    .replace("{PATH}", custom_prompt_en_path)
-                    .replace("{REASON}", str(e))
-                )
+                message = Localizer.get().log_cli_quality_rule_import_failed.replace("{ARG}", "--custom_prompt_en").replace("{PATH}", custom_prompt_en_path).replace("{REASON}", str(e))
                 LogManager.get().error(message, e)
                 return None
 
@@ -279,9 +215,7 @@ class CLIManager(Base):
 
         # Project management arguments
         parser.add_argument("--project", type=str, help="Path to the .lg project file")
-        parser.add_argument(
-            "--create", action="store_true", help="Create a new project"
-        )
+        parser.add_argument("--create", action="store_true", help="Create a new project")
         parser.add_argument(
             "--input",
             type=str,
@@ -295,9 +229,7 @@ class CLIManager(Base):
         )
 
         reset_group = parser.add_mutually_exclusive_group()
-        reset_group.add_argument(
-            "--reset", action="store_true", help="Reset and restart translation"
-        )
+        reset_group.add_argument("--reset", action="store_true", help="Reset and restart translation")
         reset_group.add_argument(
             "--reset_failed",
             action="store_true",
@@ -305,18 +237,10 @@ class CLIManager(Base):
         )
 
         # Quality rule imports (applied before translation starts)
-        parser.add_argument(
-            "--glossary", type=str, help="Import glossary (.json/.xlsx)"
-        )
-        parser.add_argument(
-            "--pre_replacement", type=str, help="Import pre replacement (.json/.xlsx)"
-        )
-        parser.add_argument(
-            "--post_replacement", type=str, help="Import post replacement (.json/.xlsx)"
-        )
-        parser.add_argument(
-            "--text_preserve", type=str, help="Import text preserve (.json/.xlsx)"
-        )
+        parser.add_argument("--glossary", type=str, help="Import glossary (.json/.xlsx)")
+        parser.add_argument("--pre_replacement", type=str, help="Import pre replacement (.json/.xlsx)")
+        parser.add_argument("--post_replacement", type=str, help="Import post replacement (.json/.xlsx)")
+        parser.add_argument("--text_preserve", type=str, help="Import text preserve (.json/.xlsx)")
         parser.add_argument(
             "--text_preserve_mode",
             type=str,
@@ -344,9 +268,7 @@ class CLIManager(Base):
         project_path = args.project
         if args.create:
             if not args.input or not project_path:
-                LogManager.get().error(
-                    "Creating a project requires --input and --project arguments."
-                )
+                LogManager.get().error("Creating a project requires --input and --project arguments.")
                 self.exit()
                 return True
 
@@ -396,24 +318,18 @@ class CLIManager(Base):
             elif self.verify_language(source_language):
                 config.source_language = BaseLanguage.Enum(source_language)
             else:
-                LogManager.get().error(
-                    f"--source_language {Localizer.get().log_cli_verify_language}"
-                )
+                LogManager.get().error(f"--source_language {Localizer.get().log_cli_verify_language}")
                 self.exit()
 
         if isinstance(args.target_language, str):
             target_language = args.target_language.strip().upper()
             if target_language == BaseLanguage.ALL:
-                LogManager.get().error(
-                    f"--target_language {Localizer.get().log_cli_target_language_all_unsupported}"
-                )
+                LogManager.get().error(f"--target_language {Localizer.get().log_cli_target_language_all_unsupported}")
                 self.exit()
             elif self.verify_language(target_language):
                 config.target_language = BaseLanguage.Enum(target_language)
             else:
-                LogManager.get().error(
-                    f"--target_language {Localizer.get().log_cli_verify_language}"
-                )
+                LogManager.get().error(f"--target_language {Localizer.get().log_cli_verify_language}")
                 self.exit()
 
         quality_snapshot = self.build_quality_snapshot_for_cli(
@@ -456,8 +372,9 @@ class CLIManager(Base):
                 dm.run_project_prefilter(config, reason="cli")
 
         self.emit(
-            Base.Event.TRANSLATION_RUN,
+            Base.Event.TRANSLATION_TASK,
             {
+                "sub_event": Base.SubEvent.REQUEST,
                 "config": config,
                 "mode": mode,
                 # CLI 语义：默认不使用工程内规则；若指定外部规则则仅本次生效且不写入工程。
@@ -466,7 +383,7 @@ class CLIManager(Base):
             },
         )
 
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.translation_done)
+        self.subscribe(Base.Event.TRANSLATION_TASK, self.translation_done)
 
         return True
 

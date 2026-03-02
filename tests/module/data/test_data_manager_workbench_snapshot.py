@@ -15,16 +15,10 @@ from module.Data.DataManager import DataManager
 data_manager_module = importlib.import_module("module.Data.DataManager")
 
 
-def build_manager_for_snapshot(
-    asset_paths: list[str], item_dicts: list[dict[str, Any]]
-) -> Any:
+def build_manager_for_snapshot(asset_paths: list[str], item_dicts: list[dict[str, Any]]) -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
-    dm.asset_service = SimpleNamespace(
-        get_all_asset_paths=MagicMock(return_value=asset_paths)
-    )
-    dm.item_service = SimpleNamespace(
-        get_all_item_dicts=MagicMock(return_value=item_dicts)
-    )
+    dm.asset_service = SimpleNamespace(get_all_asset_paths=MagicMock(return_value=asset_paths))
+    dm.item_service = SimpleNamespace(get_all_item_dicts=MagicMock(return_value=item_dicts))
     return dm
 
 
@@ -78,9 +72,7 @@ def test_build_workbench_snapshot_handles_large_dataset() -> None:
     assert len(snapshot.entries) == 1000
 
 
-def test_build_workbench_snapshot_handles_invalid_file_type_and_skips_uncounted_statuses() -> (
-    None
-):
+def test_build_workbench_snapshot_handles_invalid_file_type_and_skips_uncounted_statuses() -> None:
     dm = build_manager_for_snapshot(
         ["a.txt", "b.txt"],
         [
@@ -132,6 +124,10 @@ def build_manager_for_schedule() -> Any:
     return dm
 
 
+def collect_progress_toast_sub_events(data_manager: Any) -> list[Base.SubEvent]:
+    return [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROGRESS_TOAST]
+
+
 def test_schedule_add_file_unlocks_and_hides_toast_on_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -144,8 +140,9 @@ def test_schedule_add_file_unlocks_and_hides_toast_on_exception(
 
     assert dm.file_op_running is False
     events = [call.args[0] for call in dm.emit.call_args_list]
-    assert Base.Event.PROGRESS_TOAST_SHOW in events
-    assert Base.Event.PROGRESS_TOAST_HIDE in events
+    progress_sub_events = collect_progress_toast_sub_events(dm)
+    assert Base.SubEvent.RUN in progress_sub_events
+    assert Base.SubEvent.DONE in progress_sub_events
     assert Base.Event.TOAST in events
 
 
@@ -198,9 +195,7 @@ def test_schedule_add_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_add_file("/tmp/a.txt")
@@ -208,9 +203,9 @@ def test_schedule_add_file_success_runs_prefilter(
     dm.add_file.assert_called_once_with("/tmp/a.txt")
     dm.run_project_prefilter.assert_called_once_with(config, reason="file_op")
     assert dm.file_op_running is False
-    events = [call.args[0] for call in dm.emit.call_args_list]
-    assert Base.Event.PROGRESS_TOAST_SHOW in events
-    assert Base.Event.PROGRESS_TOAST_HIDE in events
+    progress_sub_events = collect_progress_toast_sub_events(dm)
+    assert Base.SubEvent.RUN in progress_sub_events
+    assert Base.SubEvent.DONE in progress_sub_events
 
 
 def test_schedule_update_file_runs_and_finishes(
@@ -220,9 +215,7 @@ def test_schedule_update_file_runs_and_finishes(
     dm.update_file = MagicMock(return_value={"ok": True})
     dm.run_project_prefilter = MagicMock()
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_update_file("a.txt", "/tmp/new.txt")
@@ -230,9 +223,9 @@ def test_schedule_update_file_runs_and_finishes(
     dm.update_file.assert_called_once_with("a.txt", "/tmp/new.txt")
     dm.run_project_prefilter.assert_called_once_with(config, reason="file_op")
     assert dm.file_op_running is False
-    events = [call.args[0] for call in dm.emit.call_args_list]
-    assert Base.Event.PROGRESS_TOAST_SHOW in events
-    assert Base.Event.PROGRESS_TOAST_HIDE in events
+    progress_sub_events = collect_progress_toast_sub_events(dm)
+    assert Base.SubEvent.RUN in progress_sub_events
+    assert Base.SubEvent.DONE in progress_sub_events
 
 
 def test_schedule_reset_file_emits_warning_toast_on_value_error(
@@ -333,9 +326,7 @@ def test_schedule_reset_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_reset_file("a.txt")
@@ -371,9 +362,7 @@ def test_schedule_delete_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_delete_file("a.txt")

@@ -103,9 +103,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
-        screen = (
-            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-        )
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if screen is not None:
             desktop = screen.availableGeometry()
             self.move(
@@ -128,20 +126,10 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 注册事件
         self.subscribe(Base.Event.TOAST, self.toast)
-        self.subscribe(Base.Event.APP_UPDATE_CHECK_DONE, self.app_update_check_done)
-        self.subscribe(
-            Base.Event.APP_UPDATE_DOWNLOAD_DONE, self.app_update_download_done
-        )
-        self.subscribe(
-            Base.Event.APP_UPDATE_DOWNLOAD_ERROR, self.app_update_download_error
-        )
-        self.subscribe(
-            Base.Event.APP_UPDATE_DOWNLOAD_UPDATE, self.app_update_download_update
-        )
-        self.subscribe(Base.Event.APP_UPDATE_APPLY_ERROR, self.app_update_apply_error)
-        self.subscribe(Base.Event.PROGRESS_TOAST_SHOW, self.progress_toast_show)
-        self.subscribe(Base.Event.PROGRESS_TOAST_UPDATE, self.progress_toast_update)
-        self.subscribe(Base.Event.PROGRESS_TOAST_HIDE, self.progress_toast_hide)
+        self.subscribe(Base.Event.APP_UPDATE_CHECK, self.app_update_check_done)
+        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD, self.app_update_download_event)
+        self.subscribe(Base.Event.APP_UPDATE_APPLY, self.app_update_apply_error)
+        self.subscribe(Base.Event.PROGRESS_TOAST, self.progress_toast_event)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
@@ -151,10 +139,14 @@ class AppFluentWindow(Base, FluentWindow):
         self.progress_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
 
         # 检查更新
-        QTimer.singleShot(3000, lambda: self.emit(Base.Event.APP_UPDATE_CHECK_RUN, {}))
         QTimer.singleShot(
-            0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists()
+            3000,
+            lambda: self.emit(
+                Base.Event.APP_UPDATE_CHECK,
+                {"sub_event": Base.SubEvent.REQUEST},
+            ),
         )
+        QTimer.singleShot(0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists())
 
         # 监控运行任务，动态禁用关闭项目按钮
         self.task_monitor_timer = QTimer(self)
@@ -175,10 +167,7 @@ class AppFluentWindow(Base, FluentWindow):
             return
 
         # 检查是否繁忙：Engine 状态非 IDLE 或 有后台任务线程
-        is_busy = (
-            Engine.get().get_status() != Base.TaskStatus.IDLE
-            or Engine.get().get_running_task_count() > 0
-        )
+        is_busy = Engine.get().get_status() != Base.TaskStatus.IDLE or Engine.get().get_running_task_count() > 0
 
         # 状态变更时更新
         if btn_widget.isEnabled() == is_busy:
@@ -232,9 +221,7 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 设置关闭项目按钮的可见性
         if self.navigationInterface.widget("close_project_button"):
-            self.navigationInterface.widget("close_project_button").setVisible(
-                is_loaded
-            )
+            self.navigationInterface.widget("close_project_button").setVisible(is_loaded)
 
     def is_project_dependent(self, interface: QWidget) -> bool:
         """判断页面是否依赖工程"""
@@ -264,9 +251,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 重写窗口关闭函数
     def closeEvent(self, e: QEvent) -> None:
-        message_box = MessageBox(
-            Localizer.get().warning, Localizer.get().app_close_message_box, self
-        )
+        message_box = MessageBox(Localizer.get().warning, Localizer.get().app_close_message_box, self)
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -303,6 +288,17 @@ class AppFluentWindow(Base, FluentWindow):
             position=InfoBarPosition.TOP,
             isClosable=True,
         )
+
+    # 响应进度 Toast 生命周期事件
+    def progress_toast_event(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event == Base.SubEvent.RUN:
+            self.progress_toast_show(Base.Event.PROGRESS_TOAST, data)
+        elif sub_event == Base.SubEvent.UPDATE:
+            self.progress_toast_update(Base.Event.PROGRESS_TOAST, data)
+        elif sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
+            self.progress_toast_hide(Base.Event.PROGRESS_TOAST, data)
 
     # 响应显示进度 Toast 事件
     def progress_toast_show(self, event: Base.Event, data: dict) -> None:
@@ -401,9 +397,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 切换语言
     def switch_language(self) -> None:
-        message_box = MessageBox(
-            Localizer.get().alert, Localizer.get().switch_language, self
-        )
+        message_box = MessageBox(Localizer.get().alert, Localizer.get().switch_language, self)
         message_box.yesButton.setText("中文")
         message_box.cancelButton.setText("English")
 
@@ -451,38 +445,59 @@ class AppFluentWindow(Base, FluentWindow):
         status = VersionManager.get().get_status()
         if status == VersionManager.Status.NEW_VERSION:
             # 更新 UI
-            self.home_page_widget.setName(
-                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
-            )
+            self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", ""))
 
             # 触发下载事件
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
+            self.emit(
+                Base.Event.APP_UPDATE_DOWNLOAD,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
         elif status == VersionManager.Status.UPDATING:
             pass
         elif status == VersionManager.Status.DOWNLOADED:
             self.home_page_widget.setName(Localizer.get().app_new_version_applying)
             self.emit(
-                Base.Event.PROGRESS_TOAST_SHOW,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.RUN,
                     "message": Localizer.get().app_new_version_applying,
                     "indeterminate": True,
                 },
             )
-            self.emit(Base.Event.APP_UPDATE_EXTRACT, {})
+            self.emit(
+                Base.Event.APP_UPDATE_APPLY,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
         elif status == VersionManager.Status.APPLYING:
             pass
         elif status == VersionManager.Status.FAILED:
-            self.home_page_widget.setName(
-                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
+            self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", ""))
+            self.emit(
+                Base.Event.APP_UPDATE_DOWNLOAD,
+                {"sub_event": Base.SubEvent.REQUEST},
             )
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_RUN, {})
         else:
             QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
 
     # 更新 - 检查完成
     def app_update_check_done(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event != Base.SubEvent.DONE:
+            return
         if data.get("new_version", False):
             self.home_page_widget.setName(Localizer.get().app_new_version)
+
+    def app_update_download_event(self, event: Base.Event, data: dict) -> None:
+        """统一分发下载链路子事件，避免 UI 同时订阅多个事件常量。"""
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event == Base.SubEvent.DONE:
+            self.app_update_download_done(Base.Event.APP_UPDATE_DOWNLOAD, data)
+        elif sub_event == Base.SubEvent.ERROR:
+            self.app_update_download_error(Base.Event.APP_UPDATE_DOWNLOAD, data)
+        elif sub_event == Base.SubEvent.UPDATE:
+            self.app_update_download_update(Base.Event.APP_UPDATE_DOWNLOAD, data)
 
     # 更新 - 下载完成
     def app_update_download_done(self, event: Base.Event, data: dict) -> None:
@@ -501,19 +516,20 @@ class AppFluentWindow(Base, FluentWindow):
     # 更新 - 应用失败
     def app_update_apply_error(self, event: Base.Event, data: dict) -> None:
         del event
-        del data
-        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        sub_event = data.get("sub_event")
+        if sub_event != Base.SubEvent.ERROR:
+            return
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.DONE},
+        )
         self.home_page_widget.setName(Localizer.get().app_new_version_apply_failed)
 
     # 更新 - 下载更新
     def app_update_download_update(self, event: Base.Event, data: dict) -> None:
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
-        self.home_page_widget.setName(
-            Localizer.get().app_new_version_update.replace(
-                "{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%"
-            )
-        )
+        self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%"))
 
     # 开始添加页面
     def add_pages(self) -> None:
@@ -539,9 +555,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.stackedWidget.addWidget(self.project_page)
 
         # 主题切换按钮
-        theme_navigation_button = NavigationPushButton(
-            ICON_NAV_THEME.qicon(), Localizer.get().app_theme_btn, False
-        )
+        theme_navigation_button = NavigationPushButton(ICON_NAV_THEME.qicon(), Localizer.get().app_theme_btn, False)
         self.navigationInterface.addWidget(
             routeKey="theme_navigation_button",
             widget=theme_navigation_button,
@@ -550,9 +564,7 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 语言切换按钮
-        language_navigation_button = NavigationPushButton(
-            ICON_NAV_LANGUAGE.qicon(), Localizer.get().app_language_btn, False
-        )
+        language_navigation_button = NavigationPushButton(ICON_NAV_LANGUAGE.qicon(), Localizer.get().app_language_btn, False)
         self.navigationInterface.addWidget(
             routeKey="language_navigation_button",
             widget=language_navigation_button,
@@ -765,9 +777,7 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 百宝箱 - 姓名字段注入
-        self.name_field_extraction_page = NameFieldExtractionPage(
-            "name_field_extraction_page", self
-        )
+        self.name_field_extraction_page = NameFieldExtractionPage("name_field_extraction_page", self)
         self.stackedWidget.addWidget(self.name_field_extraction_page)
 
         # 百宝箱 - 繁简转换

@@ -61,9 +61,9 @@ class VersionManager(Base):
         self.lock: threading.Lock = threading.Lock()
 
         # 注册事件
-        self.subscribe(Base.Event.APP_UPDATE_EXTRACT, self.app_update_extract)
-        self.subscribe(Base.Event.APP_UPDATE_CHECK_RUN, self.app_update_check_run)
-        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD_RUN, self.app_update_download_run)
+        self.subscribe(Base.Event.APP_UPDATE_APPLY, self.app_update_extract)
+        self.subscribe(Base.Event.APP_UPDATE_CHECK, self.app_update_check_run)
+        self.subscribe(Base.Event.APP_UPDATE_DOWNLOAD, self.app_update_download_run)
 
     @classmethod
     def get(cls) -> Self:
@@ -135,9 +135,7 @@ class VersionManager(Base):
             LogManager.get().warning("Failed to parse updater lock file", e)
 
         if pid > 0 and cls.is_process_running(pid):
-            LogManager.get().info(
-                f"Updater is still running, skip startup cleanup (pid={pid})"
-            )
+            LogManager.get().info(f"Updater is still running, skip startup cleanup (pid={pid})")
             return True
 
         try:
@@ -213,7 +211,9 @@ class VersionManager(Base):
     # 应用更新（仅 Windows）
     def app_update_extract(self, event: Base.Event, data: dict) -> None:
         del event
-        del data
+        sub_event = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
 
         # 非 Windows 平台无需解压，直接返回
         if sys.platform != "win32":
@@ -224,23 +224,45 @@ class VersionManager(Base):
                 return
             self.extracting = True
 
+        self.emit(
+            Base.Event.APP_UPDATE_APPLY,
+            {"sub_event": Base.SubEvent.RUN},
+        )
         threading.Thread(
             target=self.app_update_extract_task,
-            args=(Base.Event.APP_UPDATE_EXTRACT, {}),
+            args=(Base.Event.APP_UPDATE_APPLY, {}),
         ).start()
 
     # 检查
     def app_update_check_run(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
+
+        self.emit(
+            Base.Event.APP_UPDATE_CHECK,
+            {"sub_event": Base.SubEvent.RUN},
+        )
         threading.Thread(
             target=self.app_update_check_start_task,
-            args=(event, data),
+            args=(Base.Event.APP_UPDATE_CHECK, data),
         ).start()
 
     # 下载
     def app_update_download_run(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
+
+        self.emit(
+            Base.Event.APP_UPDATE_DOWNLOAD,
+            {"sub_event": Base.SubEvent.RUN},
+        )
         threading.Thread(
             target=self.app_update_download_start_task,
-            args=(event, data),
+            args=(Base.Event.APP_UPDATE_DOWNLOAD, data),
         ).start()
 
     # 由主进程启动独立脚本执行更新，主进程不再直接覆盖自身文件
@@ -254,8 +276,9 @@ class VersionManager(Base):
 
             self.set_status(__class__.Status.APPLYING)
             self.emit(
-                Base.Event.PROGRESS_TOAST_UPDATE,
+                Base.Event.PROGRESS_TOAST,
                 {
+                    "sub_event": Base.SubEvent.UPDATE,
                     "message": Localizer.get().app_new_version_waiting_restart,
                 },
             )
@@ -273,15 +296,11 @@ class VersionManager(Base):
                 self.extracting = False
 
     # 按约定从 release 资产中提取 Windows 更新包和哈希文件
-    def find_windows_update_assets(
-        self, assets: list[dict[str, object]]
-    ) -> tuple[str, str]:
+    def find_windows_update_assets(self, assets: list[dict[str, object]]) -> tuple[str, str]:
         asset_records: list[tuple[str, str, str]] = []
         for asset in assets:
             name = str(asset.get("name", ""))
-            asset_records.append(
-                (name, name.lower(), str(asset.get("browser_download_url", "")))
-            )
+            asset_records.append((name, name.lower(), str(asset.get("browser_download_url", ""))))
 
         zip_asset_name = ""
         zip_asset_name_lower = ""
@@ -307,10 +326,7 @@ class VersionManager(Base):
 
         if hash_asset_url == "":
             for _, name_lower, url in asset_records:
-                if (
-                    name_lower.endswith(".sha256")
-                    and zip_asset_name_lower in name_lower
-                ):
+                if name_lower.endswith(".sha256") and zip_asset_name_lower in name_lower:
                     hash_asset_url = url
                     break
 
@@ -395,7 +411,10 @@ class VersionManager(Base):
             LogManager.get().error(Localizer.get().task_failed, e)
 
         self.set_status(__class__.Status.FAILED)
-        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.DONE},
+        )
         self.emit(
             Base.Event.TOAST,
             {
@@ -405,8 +424,9 @@ class VersionManager(Base):
             },
         )
         self.emit(
-            Base.Event.APP_UPDATE_APPLY_ERROR,
+            Base.Event.APP_UPDATE_APPLY,
             {
+                "sub_event": Base.SubEvent.ERROR,
                 "log_path": log_path,
             },
         )
@@ -422,12 +442,8 @@ class VersionManager(Base):
             response.raise_for_status()
 
             result: dict = response.json()
-            a, b, c = re.findall(
-                r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version()
-            )[-1]
-            x, y, z = re.findall(
-                r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0")
-            )[-1]
+            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version())[-1]
+            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0"))[-1]
 
             # 使用元组比较简化版本号判断
             if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
@@ -436,20 +452,34 @@ class VersionManager(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_toast.replace(
-                            "{VERSION}", f"v{x}.{y}.{z}"
-                        ),
+                        "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
                         "duration": 60 * 1000,
                     },
                 )
                 self.emit(
-                    Base.Event.APP_UPDATE_CHECK_DONE,
+                    Base.Event.APP_UPDATE_CHECK,
                     {
+                        "sub_event": Base.SubEvent.DONE,
                         "new_version": True,
+                    },
+                )
+            else:
+                self.emit(
+                    Base.Event.APP_UPDATE_CHECK,
+                    {
+                        "sub_event": Base.SubEvent.DONE,
+                        "new_version": False,
                     },
                 )
         except Exception as e:
             LogManager.get().warning(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.APP_UPDATE_CHECK,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
 
     # 下载
     def app_update_download_start_task(self, event: Base.Event, data: dict) -> None:
@@ -461,8 +491,9 @@ class VersionManager(Base):
             if sys.platform != "win32":
                 webbrowser.open(__class__.RELEASE_URL)
                 self.emit(
-                    Base.Event.APP_UPDATE_DOWNLOAD_DONE,
+                    Base.Event.APP_UPDATE_DOWNLOAD,
                     {
+                        "sub_event": Base.SubEvent.DONE,
                         "manual": True,
                     },
                 )
@@ -477,14 +508,10 @@ class VersionManager(Base):
 
             # 根据平台选择正确的资源文件
             assets = response.json().get("assets", [])
-            browser_download_url, hash_asset_url = self.find_windows_update_assets(
-                assets
-            )
+            browser_download_url, hash_asset_url = self.find_windows_update_assets(assets)
             self.set_expected_sha256(self.fetch_expected_sha256(hash_asset_url))
 
-            with httpx.stream(
-                "GET", browser_download_url, timeout=60, follow_redirects=True
-            ) as response:
+            with httpx.stream("GET", browser_download_url, timeout=60, follow_redirects=True) as response:
                 response.raise_for_status()
 
                 # 获取文件总大小
@@ -511,8 +538,9 @@ class VersionManager(Base):
                         writer.write(chunk)
                         downloaded_size = downloaded_size + len(chunk)
                         self.emit(
-                            Base.Event.APP_UPDATE_DOWNLOAD_UPDATE,
+                            Base.Event.APP_UPDATE_DOWNLOAD,
                             {
+                                "sub_event": Base.SubEvent.UPDATE,
                                 "total_size": total_size,
                                 "downloaded_size": min(downloaded_size, total_size),
                             },
@@ -531,8 +559,9 @@ class VersionManager(Base):
                     },
                 )
                 self.emit(
-                    Base.Event.APP_UPDATE_DOWNLOAD_DONE,
+                    Base.Event.APP_UPDATE_DOWNLOAD,
                     {
+                        "sub_event": Base.SubEvent.DONE,
                         "manual": False,
                     },
                 )
@@ -547,7 +576,10 @@ class VersionManager(Base):
                     "duration": 60 * 1000,
                 },
             )
-            self.emit(Base.Event.APP_UPDATE_DOWNLOAD_ERROR, {})
+            self.emit(
+                Base.Event.APP_UPDATE_DOWNLOAD,
+                {"sub_event": Base.SubEvent.ERROR},
+            )
 
     def get_status(self) -> Status:
         with self.lock:

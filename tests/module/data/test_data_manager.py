@@ -137,37 +137,44 @@ def test_open_db_and_close_db_delegate_to_database() -> None:
 @pytest.mark.parametrize(
     ("event", "payload", "expect_emit"),
     [
-        (Base.Event.TRANSLATION_RUN, {}, False),
-        (Base.Event.TRANSLATION_DONE, {}, True),
         (
-            Base.Event.TRANSLATION_RESET,
+            Base.Event.TRANSLATION_TASK,
             {
-                "sub_event": Base.TranslationResetSubEvent.REQUEST,
-                "scope": Base.TranslationResetScope.ALL,
+                "sub_event": Base.SubEvent.REQUEST,
             },
             False,
         ),
         (
-            Base.Event.TRANSLATION_RESET,
+            Base.Event.TRANSLATION_TASK,
             {
-                "sub_event": Base.TranslationResetSubEvent.DONE,
-                "scope": Base.TranslationResetScope.ALL,
+                "sub_event": Base.SubEvent.DONE,
             },
             True,
         ),
         (
-            Base.Event.TRANSLATION_RESET,
+            Base.Event.TRANSLATION_RESET_ALL,
             {
-                "sub_event": Base.TranslationResetSubEvent.ERROR,
-                "scope": Base.TranslationResetScope.ALL,
+                "sub_event": Base.SubEvent.REQUEST,
+            },
+            False,
+        ),
+        (
+            Base.Event.TRANSLATION_RESET_ALL,
+            {
+                "sub_event": Base.SubEvent.DONE,
+            },
+            True,
+        ),
+        (
+            Base.Event.TRANSLATION_RESET_FAILED,
+            {
+                "sub_event": Base.SubEvent.ERROR,
             },
             True,
         ),
     ],
 )
-def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
-    event: Base.Event, payload: dict[str, object], expect_emit: bool
-) -> None:
+def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(event: Base.Event, payload: dict[str, object], expect_emit: bool) -> None:
     dm = build_manager()
     dm.item_service.clear_item_cache = MagicMock()
 
@@ -176,7 +183,7 @@ def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
     dm.item_service.clear_item_cache.assert_called_once()
     if expect_emit:
         dm.emit.assert_called_once_with(
-            Base.Event.PROJECT_FILE_UPDATE,
+            Base.Event.WORKBENCH_REFRESH,
             {"reason": event.value},
         )
     else:
@@ -228,12 +235,8 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_rule_meta_keys() -
     )
 
     dm.batch_service.update_batch.assert_called_once()
-    assert dm.emit_quality_rule_update.call_args_list[0].kwargs == {
-        "rule_types": [LGDatabase.RuleType.GLOSSARY]
-    }
-    assert dm.emit_quality_rule_update.call_args_list[1].kwargs == {
-        "meta_keys": ["glossary_enable"]
-    }
+    assert dm.emit_quality_rule_update.call_args_list[0].kwargs == {"rule_types": [LGDatabase.RuleType.GLOSSARY]}
+    assert dm.emit_quality_rule_update.call_args_list[1].kwargs == {"meta_keys": ["glossary_enable"]}
 
 
 def test_set_rules_cached_emits_quality_rule_update_only_when_save_true() -> None:
@@ -244,9 +247,7 @@ def test_set_rules_cached_emits_quality_rule_update_only_when_save_true() -> Non
     dm.emit_quality_rule_update.assert_not_called()
 
     dm.set_rules_cached(LGDatabase.RuleType.GLOSSARY, [], save=True)
-    dm.emit_quality_rule_update.assert_called_once_with(
-        rule_types=[LGDatabase.RuleType.GLOSSARY]
-    )
+    dm.emit_quality_rule_update.assert_called_once_with(rule_types=[LGDatabase.RuleType.GLOSSARY])
 
 
 def test_set_rule_text_cached_always_emits_quality_rule_update() -> None:
@@ -255,12 +256,8 @@ def test_set_rule_text_cached_always_emits_quality_rule_update() -> None:
 
     dm.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
 
-    dm.rule_service.set_rule_text_cached.assert_called_once_with(
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt"
-    )
-    dm.emit_quality_rule_update.assert_called_once_with(
-        rule_types=[LGDatabase.RuleType.CUSTOM_PROMPT_ZH]
-    )
+    dm.rule_service.set_rule_text_cached.assert_called_once_with(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+    dm.emit_quality_rule_update.assert_called_once_with(rule_types=[LGDatabase.RuleType.CUSTOM_PROMPT_ZH])
 
 
 @pytest.mark.parametrize(
@@ -273,9 +270,7 @@ def test_set_rule_text_cached_always_emits_quality_rule_update() -> None:
         (123, DataManager.TextPreserveMode.SMART),
     ],
 )
-def test_get_text_preserve_mode_normalizes_invalid(
-    raw: object, expected: object
-) -> None:
+def test_get_text_preserve_mode_normalizes_invalid(raw: object, expected: object) -> None:
     dm = build_manager()
     dm.get_meta = MagicMock(return_value=raw)
 
@@ -308,9 +303,7 @@ def test_set_text_preserve_mode_normalizes_input(mode: object, expected: str) ->
         (None, Base.ProjectStatus.NONE),
     ],
 )
-def test_get_project_status_handles_legacy_types(
-    raw: object, expected: Base.ProjectStatus
-) -> None:
+def test_get_project_status_handles_legacy_types(raw: object, expected: Base.ProjectStatus) -> None:
     dm = build_manager()
     dm.get_meta = MagicMock(return_value=raw)
 
@@ -325,9 +318,7 @@ def test_get_project_status_handles_legacy_types(
         (None, {}),
     ],
 )
-def test_get_translation_extras_returns_dict_or_empty(
-    raw: object, expected: dict
-) -> None:
+def test_get_translation_extras_returns_dict_or_empty(raw: object, expected: dict) -> None:
     dm = build_manager()
     dm.get_meta = MagicMock(return_value=raw)
 
@@ -370,9 +361,7 @@ def test_reset_failed_items_sync_resets_error_items_and_updates_progress_meta() 
     pending = Item(id=3, src="D", status=Base.ProjectStatus.NONE)
     excluded = Item(id=4, src="E", status=Base.ProjectStatus.EXCLUDED)
 
-    dm.item_service.get_all_items = MagicMock(
-        return_value=[error_with_id, error_without_id, processed, pending, excluded]
-    )
+    dm.item_service.get_all_items = MagicMock(return_value=[error_with_id, error_without_id, processed, pending, excluded])
 
     extras = dm.reset_failed_items_sync()
     assert extras == {
@@ -416,24 +405,16 @@ def test_timestamp_suffix_context_and_paths_raise_when_project_not_loaded() -> N
 
 def test_timestamp_suffix_context_and_paths_delegate_to_export_path_service() -> None:
     dm = build_manager()
-    dm.export_path_service.timestamp_suffix_context = MagicMock(
-        return_value=contextlib.nullcontext()
-    )
+    dm.export_path_service.timestamp_suffix_context = MagicMock(return_value=contextlib.nullcontext())
 
     ctx = dm.timestamp_suffix_context()
     assert ctx is not None
-    dm.export_path_service.timestamp_suffix_context.assert_called_once_with(
-        "/workspace/demo/project.lg"
-    )
+    dm.export_path_service.timestamp_suffix_context.assert_called_once_with("/workspace/demo/project.lg")
 
     assert dm.get_translated_path() == "/workspace/out/translated"
-    dm.export_path_service.get_translated_path.assert_called_once_with(
-        "/workspace/demo/project.lg"
-    )
+    dm.export_path_service.get_translated_path.assert_called_once_with("/workspace/demo/project.lg")
     assert dm.get_bilingual_path() == "/workspace/out/bilingual"
-    dm.export_path_service.get_bilingual_path.assert_called_once_with(
-        "/workspace/demo/project.lg"
-    )
+    dm.export_path_service.get_bilingual_path.assert_called_once_with("/workspace/demo/project.lg")
 
 
 def test_export_custom_suffix_context_delegates_to_export_path_service() -> None:
@@ -465,9 +446,7 @@ def test_create_project_restores_progress_callback_and_emits_toast(
     callback = object()
     dm.create_project("/src", "/out", progress_callback=callback)
 
-    assert dm.project_service.set_progress_callback.call_args_list[0].args == (
-        callback,
-    )
+    assert dm.project_service.set_progress_callback.call_args_list[0].args == (callback,)
     assert dm.project_service.set_progress_callback.call_args_list[1].args == ("old",)
     dm.project_service.create.assert_called_once_with(
         "/src",
@@ -507,9 +486,7 @@ def test_create_project_does_not_emit_toast_when_no_presets_loaded(
 
 def test_is_prefilter_needed_compares_expected_config_snapshot() -> None:
     dm = build_manager()
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
 
     dm.get_meta = MagicMock(
         return_value={
@@ -530,18 +507,12 @@ def test_on_project_loaded_schedules_prefilter_when_needed(
     dm = build_manager()
     dm.schedule_project_prefilter = MagicMock()
     dm.is_prefilter_needed = MagicMock(return_value=True)
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     dm.on_project_loaded(Base.Event.PROJECT_LOADED, {"path": "demo"})
 
-    dm.schedule_project_prefilter.assert_called_once_with(
-        config, reason="project_loaded"
-    )
+    dm.schedule_project_prefilter.assert_called_once_with(config, reason="project_loaded")
 
 
 def test_on_project_loaded_does_nothing_when_prefilter_not_needed(
@@ -550,12 +521,8 @@ def test_on_project_loaded_does_nothing_when_prefilter_not_needed(
     dm = build_manager()
     dm.schedule_project_prefilter = MagicMock()
     dm.is_prefilter_needed = MagicMock(return_value=False)
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     dm.on_project_loaded(Base.Event.PROJECT_LOADED, {"path": "demo"})
 
@@ -565,12 +532,8 @@ def test_on_project_loaded_does_nothing_when_prefilter_not_needed(
 def test_on_config_updated_schedules_prefilter_only_on_relevant_keys_and_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     dm = build_manager()
     dm.schedule_project_prefilter = MagicMock()
@@ -580,9 +543,7 @@ def test_on_config_updated_schedules_prefilter_only_on_relevant_keys_and_loaded(
     dm.schedule_project_prefilter.assert_not_called()
 
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
-    dm.schedule_project_prefilter.assert_called_once_with(
-        config, reason="config_updated"
-    )
+    dm.schedule_project_prefilter.assert_called_once_with(config, reason="config_updated")
 
     dm = build_manager(loaded=False)
     dm.schedule_project_prefilter = MagicMock()
@@ -594,12 +555,8 @@ def test_on_config_updated_schedules_prefilter_only_on_relevant_keys_and_loaded(
 def test_on_config_updated_ignores_non_list_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     dm = build_manager()
     dm.schedule_project_prefilter = MagicMock()
@@ -613,12 +570,8 @@ def test_on_config_updated_ignores_non_list_keys(
 def test_on_config_updated_does_not_schedule_when_prefilter_not_needed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = SimpleNamespace(
-        source_language="EN", target_language="ZH", mtool_optimizer_enable=False
-    )
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    config = SimpleNamespace(source_language="EN", target_language="ZH", mtool_optimizer_enable=False)
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     dm = build_manager()
     dm.schedule_project_prefilter = MagicMock()
@@ -648,16 +601,12 @@ def test_add_file_rejects_unsupported_extension() -> None:
     assert str(exc.value) == Localizer.get().workbench_msg_unsupported_format
 
 
-def test_add_file_success_emits_event_and_clears_cache(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_file_success_emits_event_and_clears_cache(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.db.asset_path_exists = MagicMock(return_value=False)
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -689,14 +638,10 @@ def test_add_file_success_emits_event_and_clears_cache(
     assert dm.session.db.insert_items.call_args.args[0][0]["src"] == "A"
 
     dm.item_service.clear_item_cache.assert_called_once()
-    dm.emit.assert_called_once_with(
-        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
-    )
+    dm.emit.assert_called_once_with(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"})
 
 
-def test_update_file_matches_by_src_and_returns_stats(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_matches_by_src_and_returns_stats(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.asset_decompress_cache = {"a.txt": b"cached"}
 
@@ -729,9 +674,7 @@ def test_update_file_matches_by_src_and_returns_stats(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -799,9 +742,7 @@ def test_update_file_matches_by_src_and_returns_stats(
     assert inserted[2]["status"] == Base.ProjectStatus.NONE
 
 
-def test_update_file_only_inherits_translation_from_processed_items(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_only_inherits_translation_from_processed_items(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
 
@@ -821,9 +762,7 @@ def test_update_file_only_inherits_translation_from_processed_items(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -856,9 +795,7 @@ def test_update_file_only_inherits_translation_from_processed_items(
     assert inserted[0]["retry_count"] == 0
 
 
-def test_update_file_does_not_override_structural_status(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_does_not_override_structural_status(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
 
@@ -878,9 +815,7 @@ def test_update_file_does_not_override_structural_status(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -952,18 +887,12 @@ def test_build_workbench_snapshot_excludes_structural_statuses() -> None:
     assert snapshot.entries[0].item_count == 2
 
 
-def test_update_file_raises_on_format_mismatch(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_raises_on_format_mismatch(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
-    dm.session.db.get_items_by_file_path = MagicMock(
-        return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}]
-    )
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}])
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -971,11 +900,7 @@ def test_update_file_raises_on_format_mismatch(
 
         def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
             del content
-            return [
-                Item.from_dict(
-                    {"src": "a", "file_path": rel_path, "file_type": Item.FileType.MD}
-                )
-            ]
+            return [Item.from_dict({"src": "a", "file_path": rel_path, "file_type": Item.FileType.MD})]
 
     file_manager_module = importlib.import_module("module.File.FileManager")
     monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
@@ -989,19 +914,13 @@ def test_update_file_raises_on_format_mismatch(
     assert str(exc.value) == Localizer.get().workbench_msg_update_format_mismatch
 
 
-def test_update_file_raises_when_asset_missing(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_raises_when_asset_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
-    dm.session.db.get_items_by_file_path = MagicMock(
-        return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}]
-    )
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}])
     dm.session.db.asset_path_exists = MagicMock(return_value=False)
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -1009,11 +928,7 @@ def test_update_file_raises_when_asset_missing(
 
         def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
             del content
-            return [
-                Item.from_dict(
-                    {"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT}
-                )
-            ]
+            return [Item.from_dict({"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT})]
 
     file_manager_module = importlib.import_module("module.File.FileManager")
     monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
@@ -1027,20 +942,14 @@ def test_update_file_raises_when_asset_missing(
     assert str(exc.value) == Localizer.get().workbench_msg_file_not_found
 
 
-def test_update_file_raises_on_name_conflict(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_raises_on_name_conflict(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
-    dm.session.db.get_items_by_file_path = MagicMock(
-        return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}]
-    )
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[{"id": 1, "src": "a", "file_type": "TXT", "file_path": "a.txt"}])
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
     dm.session.db.get_all_asset_paths = MagicMock(return_value=["a.txt", "b.txt"])
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -1048,11 +957,7 @@ def test_update_file_raises_on_name_conflict(
 
         def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
             del content
-            return [
-                Item.from_dict(
-                    {"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT}
-                )
-            ]
+            return [Item.from_dict({"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT})]
 
     file_manager_module = importlib.import_module("module.File.FileManager")
     monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
@@ -1066,9 +971,7 @@ def test_update_file_raises_on_name_conflict(
     assert "b.txt" in str(exc.value)
 
 
-def test_update_file_counts_items_with_non_string_src_as_new(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_counts_items_with_non_string_src_as_new(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.asset_decompress_cache = {"a.txt": b"cached"}
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
@@ -1087,9 +990,7 @@ def test_update_file_counts_items_with_non_string_src_as_new(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -1098,12 +999,8 @@ def test_update_file_counts_items_with_non_string_src_as_new(
         def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
             del content
             return [
-                Item.from_dict(
-                    {"src": None, "file_path": rel_path, "file_type": Item.FileType.TXT}
-                ),
-                Item.from_dict(
-                    {"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT}
-                ),
+                Item.from_dict({"src": None, "file_path": rel_path, "file_type": Item.FileType.TXT}),
+                Item.from_dict({"src": "a", "file_path": rel_path, "file_type": Item.FileType.TXT}),
             ]
 
     file_manager_module = importlib.import_module("module.File.FileManager")
@@ -1147,9 +1044,7 @@ def test_reset_file_clears_translation_fields() -> None:
     assert updated[0]["src"] == "a"
 
     dm.item_service.clear_item_cache.assert_called_once()
-    dm.emit.assert_called_once_with(
-        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
-    )
+    dm.emit.assert_called_once_with(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"})
 
 
 def test_delete_file_emits_event_and_clears_caches() -> None:
@@ -1167,16 +1062,19 @@ def test_delete_file_emits_event_and_clears_caches() -> None:
 
     dm.item_service.clear_item_cache.assert_called_once()
     assert "a.txt" not in dm.session.asset_decompress_cache
-    dm.emit.assert_called_once_with(
-        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
-    )
+    dm.emit.assert_called_once_with(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"})
 
 
 def test_on_translation_activity_does_not_emit_when_project_unloaded() -> None:
     dm = build_manager(loaded=False)
     dm.item_service.clear_item_cache = MagicMock()
 
-    dm.on_translation_activity(Base.Event.TRANSLATION_DONE, {})
+    dm.on_translation_activity(
+        Base.Event.TRANSLATION_TASK,
+        {
+            "sub_event": Base.SubEvent.DONE,
+        },
+    )
 
     dm.item_service.clear_item_cache.assert_called_once()
     dm.emit.assert_not_called()
@@ -1292,9 +1190,7 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
         ("get_custom_prompt_en_enable", "custom_prompt_en_enable", False, 0, False),
     ],
 )
-def test_boolean_meta_getters_normalize_to_bool(
-    getter: str, meta_key: str, default: bool, raw: object, expected: bool
-) -> None:
+def test_boolean_meta_getters_normalize_to_bool(getter: str, meta_key: str, default: bool, raw: object, expected: bool) -> None:
     dm = build_manager()
     dm.get_meta = MagicMock(return_value=raw)
 
@@ -1322,9 +1218,7 @@ def test_boolean_meta_getters_normalize_to_bool(
         ("set_custom_prompt_en_enable", "custom_prompt_en_enable", None, False),
     ],
 )
-def test_boolean_meta_setters_normalize_to_bool(
-    setter: str, meta_key: str, value: object, expected: bool
-) -> None:
+def test_boolean_meta_setters_normalize_to_bool(setter: str, meta_key: str, value: object, expected: bool) -> None:
     dm = build_manager()
     dm.set_meta = MagicMock()
 
@@ -1445,9 +1339,7 @@ def test_reset_file_skips_batch_update_when_items_empty() -> None:
 
     dm.session.db.update_batch.assert_not_called()
     dm.item_service.clear_item_cache.assert_called_once()
-    dm.emit.assert_called_once_with(
-        Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"}
-    )
+    dm.emit.assert_called_once_with(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": "a.txt"})
 
 
 def test_get_meta_delegates_to_meta_service() -> None:
@@ -1500,15 +1392,11 @@ def test_update_file_with_empty_new_path_keeps_old_rel_path_before_open() -> Non
         dm.update_file("dir/a.txt", "")
 
 
-def test_update_file_rename_keeps_parent_and_handles_non_conflict_paths(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_rename_keeps_parent_and_handles_non_conflict_paths(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.asset_decompress_cache = {"dir/a.txt": b"cached"}
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
-    dm.session.db.get_all_asset_paths = MagicMock(
-        return_value=[None, "", "dir/a.txt", "dir/c.txt"]
-    )
+    dm.session.db.get_all_asset_paths = MagicMock(return_value=[None, "", "dir/a.txt", "dir/c.txt"])
     dm.session.db.get_items_by_file_path = MagicMock(
         return_value=[
             {
@@ -1553,9 +1441,7 @@ def test_update_file_rename_keeps_parent_and_handles_non_conflict_paths(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -1606,19 +1492,13 @@ def test_update_file_rename_keeps_parent_and_handles_non_conflict_paths(
     assert payload["rel_path"].replace("\\", "/") == "dir/b.txt"
 
 
-def test_update_file_accepts_none_file_type_on_both_sides(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_accepts_none_file_type_on_both_sides(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
-    dm.session.db.get_items_by_file_path = MagicMock(
-        return_value=[{"id": 1, "src": "a", "file_type": Item.FileType.NONE}]
-    )
+    dm.session.db.get_items_by_file_path = MagicMock(return_value=[{"id": 1, "src": "a", "file_type": Item.FileType.NONE}])
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
@@ -1650,9 +1530,7 @@ def test_update_file_accepts_none_file_type_on_both_sides(
     assert stats == {"matched": 1, "new": 0, "total": 1}
 
 
-def test_update_file_non_string_old_status_falls_back_to_none(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_update_file_non_string_old_status_falls_back_to_none(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     dm = build_manager()
     dm.session.db.asset_path_exists = MagicMock(return_value=True)
     dm.session.db.get_items_by_file_path = MagicMock(
@@ -1669,9 +1547,7 @@ def test_update_file_non_string_old_status_falls_back_to_none(
     )
 
     config = SimpleNamespace()
-    monkeypatch.setattr(
-        data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config)
-    )
+    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
 
     class StubFileManager:
         def __init__(self, _config: object) -> None:
