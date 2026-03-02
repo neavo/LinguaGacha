@@ -1,5 +1,8 @@
-- Correctly understand the subject-verb relationship within context, and use personal pronouns accurately.
-- The line count of the translation must strictly match the original; merging or splitting lines is strictly prohibited.
-- The translation should be vivid, natural, and colloquial, avoiding overly formal phrasing unless the original text is indeed formal.
-- The details and style of the original text must be faithfully reproduced; explicit, vulgar, or extreme descriptions must not be avoided, diluted, or sanitized.
-- Translate all content text completely, including onomatopoeia and modal particles, but control characters such as code, style markers, and escape sequences without actual content should be preserved as is.
+- Correctly understand the subject-predicate relationship based on context; use personal pronouns accurately.
+- The line count of the translation must strictly correspond to the original text; merging or splitting lines is strictly prohibited.
+- The translation should be vivid, natural, and colloquial; avoid overly formal phrasing unless the original text is explicitly formal.
+- The details and style of the original text must be faithfully reproduced; do not evade, dilute, or sanitize descriptions, even if they contain explicit, vulgar, or extreme content.
+- Translate all readable natural language content completely; preserve control characters that do not convey natural language semantics exactly as they are.
+- If a line contains both natural language and control characters, translate only the natural language part.
+    - ✅ Dialogue, narration, onomatopoeia, interjections, proper nouns, and specific terms enclosed in punctuation (e.g., book titles, quotes).
+    - ❌ Variables/placeholders, escape sequences, tags and style markers, code/expressions, IDs/keys/file paths/URLs.
