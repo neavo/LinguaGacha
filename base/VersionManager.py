@@ -350,9 +350,11 @@ class VersionManager(Base):
             raise FileNotFoundError(__class__.UPDATER_TEMPLATE_PATH)
 
         os.makedirs(__class__.UPDATE_DIR, exist_ok=True)
-        with open(__class__.UPDATER_TEMPLATE_PATH, "r", encoding="utf-8") as reader:
+        # 统一用 utf-8-sig 兼容模板可能带 BOM，避免把 BOM 字符写入脚本内容。
+        with open(__class__.UPDATER_TEMPLATE_PATH, "r", encoding="utf-8-sig") as reader:
             content = reader.read()
-        with open(__class__.UPDATER_RUNTIME_PATH, "w", encoding="utf-8") as writer:
+        # Windows PowerShell 5.1 对“无 BOM 的 UTF-8 + 中文”兼容性不稳定，带 BOM 可避免解析错乱。
+        with open(__class__.UPDATER_RUNTIME_PATH, "w", encoding="utf-8-sig") as writer:
             writer.write(content)
 
         return os.path.abspath(__class__.UPDATER_RUNTIME_PATH)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import os
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -299,6 +301,56 @@ def test_find_powershell_executable_selects_expected_command(
     executable = version_manager.find_powershell_executable()
 
     assert executable == expected_executable
+
+
+def test_generate_runtime_updater_script_writes_utf8_bom(
+    version_manager: VersionManager,
+) -> None:
+    runtime_script_path = Path(version_manager.generate_runtime_updater_script())
+    runtime_script_bytes = runtime_script_path.read_bytes()
+
+    assert runtime_script_bytes.startswith(b"\xef\xbb\xbf")
+
+
+def test_generate_runtime_updater_script_preserves_template_content(
+    version_manager: VersionManager,
+) -> None:
+    template_script_path = Path(VersionManager.UPDATER_TEMPLATE_PATH)
+    template_script_content = 'Write-Host "更新已完成。"\nWrite-Host "Update applied."\n'
+    template_script_path.write_text(template_script_content, encoding="utf-8-sig")
+
+    runtime_script_path = Path(version_manager.generate_runtime_updater_script())
+    runtime_script_content = runtime_script_path.read_text(encoding="utf-8-sig")
+
+    assert runtime_script_content == template_script_content
+
+
+def test_runtime_script_parse_smoke_on_windows_powershell_if_available(
+    version_manager: VersionManager,
+) -> None:
+    powershell_executable = shutil.which("powershell") or shutil.which("powershell.exe")
+    if powershell_executable is None:
+        pytest.skip("powershell executable is unavailable")
+
+    runtime_script_path = Path(version_manager.generate_runtime_updater_script()).resolve()
+    escaped_runtime_script_path = str(runtime_script_path).replace("'", "''")
+    parse_command = (
+        "$tokens = $null; "
+        "$errors = $null; "
+        f"[System.Management.Automation.Language.Parser]::ParseFile('{escaped_runtime_script_path}', [ref]$tokens, [ref]$errors) | Out-Null; "
+        "if ($errors.Count -gt 0) { "
+        "$errors | ForEach-Object { Write-Output $_.Message }; "
+        "exit 1 "
+        "}"
+    )
+    completed = subprocess.run(
+        [powershell_executable, "-NoProfile", "-Command", parse_command],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
 
 
 def test_cleanup_update_temp_on_startup_cleans_stale_lock_and_temp(
