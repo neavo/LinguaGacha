@@ -22,12 +22,12 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import TableItemDelegate
 from qfluentwidgets import ToolTip
 from qfluentwidgets import ToolTipPosition
-from qfluentwidgets import isDarkTheme
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from frontend.Proofreading.ProofreadingTableModel import ProofreadingTableModel
+from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import WarningType
 
@@ -55,7 +55,7 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         # qfluentwidgets 的 TableItemDelegate 在类型标注上更偏向 QObject；这里保留强类型引用。
         self.table = parent
 
-        self.pixmap_cache: dict[tuple[bool, int, str], QPixmap] = {}
+        self.pixmap_cache: dict[tuple[bool, int, int, str], QPixmap] = {}
 
         self.tooltip = ToolTip("", parent.window())
         self.tooltip.hide()
@@ -136,25 +136,12 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         painter.restore()
 
     def get_icon_pixmap(self, icon: BaseIcon) -> QPixmap:
-        table = self.table
-        is_dark = isDarkTheme()
-
-        try:
-            dpr = float(table.devicePixelRatioF())
-        except AttributeError, TypeError, RuntimeError:
-            dpr = 1.0
-
-        key = (is_dark, int(round(dpr * 100)), icon.name)
-        cached = self.pixmap_cache.get(key)
-        if cached is not None:
-            return cached
-
-        # Qt6 下 QIcon.pixmap() 会返回带 DPR 的 pixmap；这里传逻辑尺寸即可。
-        # 若手动 setDevicePixelRatio()，在部分平台会把 DPR 覆盖成错误值，导致图标被放大。
-        pixmap = icon.icon().pixmap(self.ICON_SIZE, self.ICON_SIZE)
-
-        self.pixmap_cache[key] = pixmap
-        return pixmap
+        return StatusColumnIconStrip.get_icon_pixmap(
+            self.table,
+            icon,
+            icon_size=self.ICON_SIZE,
+            cache=self.pixmap_cache,
+        )
 
     def get_icon_rects(
         self,
@@ -162,26 +149,28 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         status_pixmap: QPixmap | None,
         warning_pixmap: QPixmap | None,
     ) -> tuple[QRect | None, QRect | None]:
-        rect = option_rect.adjusted(0, self.margin, 0, -self.margin)
-
         has_status = status_pixmap is not None
         has_warning = warning_pixmap is not None
         icon_count = int(has_status) + int(has_warning)
         if icon_count <= 0:
             return None, None
 
-        total_width = self.ICON_SIZE * icon_count + self.ICON_SPACING * (icon_count - 1)
-        x = rect.x() + (rect.width() - total_width) // 2
-        y = rect.y() + (rect.height() - self.ICON_SIZE) // 2
+        icon_rects = StatusColumnIconStrip.build_centered_icon_rects(
+            option_rect,
+            icon_count=icon_count,
+            icon_size=self.ICON_SIZE,
+            icon_spacing=self.ICON_SPACING,
+            margin=self.margin,
+        )
 
-        status_rect = None
-        warning_rect = None
-
+        rect_index = 0
+        status_rect: QRect | None = None
+        warning_rect: QRect | None = None
         if has_status:
-            status_rect = QRect(x, y, self.ICON_SIZE, self.ICON_SIZE)
-            x += self.ICON_SIZE + (self.ICON_SPACING if has_warning else 0)
+            status_rect = icon_rects[rect_index]
+            rect_index += 1
         if has_warning:
-            warning_rect = QRect(x, y, self.ICON_SIZE, self.ICON_SIZE)
+            warning_rect = icon_rects[rect_index]
 
         return status_rect, warning_rect
 
@@ -237,11 +226,23 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         status_rect, warning_rect = self.get_icon_rects(
             option.rect, status_pixmap, warning_pixmap
         )
-        if status_rect is not None and status_rect.contains(pos):
-            self.set_tooltip_anchor_rect(status_rect)
+
+        icon_rects: tuple[QRect, ...] = tuple(
+            rect for rect in (status_rect, warning_rect) if rect is not None
+        )
+        hit_index = StatusColumnIconStrip.hit_test_icon_rects(pos, icon_rects)
+        if hit_index < 0:
+            return ""
+
+        has_status = status_rect is not None
+        has_warning = warning_rect is not None
+        if has_status and hit_index == 0:
+            self.set_tooltip_anchor_rect(icon_rects[hit_index])
             return self.build_status_tooltip(status)
-        if warning_rect is not None and warning_rect.contains(pos):
-            self.set_tooltip_anchor_rect(warning_rect)
+        if has_warning and (
+            (has_status and hit_index == 1) or (not has_status and hit_index == 0)
+        ):
+            self.set_tooltip_anchor_rect(icon_rects[hit_index])
             return self.build_warning_tooltip(warnings_tuple)
         return ""
 
@@ -265,19 +266,19 @@ class ProofreadingStatusDelegate(TableItemDelegate):
             return ""
 
         warning_texts: list[str] = []
-        for e in warnings:
-            if isinstance(e, WarningType):
-                warning_texts.append(ProofreadingLabels.get_warning_label(e))
+        for warning_item in warnings:
+            if isinstance(warning_item, WarningType):
+                warning_texts.append(ProofreadingLabels.get_warning_label(warning_item))
                 continue
-            if isinstance(e, str):
+            if isinstance(warning_item, str):
                 try:
                     warning_texts.append(
-                        ProofreadingLabels.get_warning_label(WarningType(e))
+                        ProofreadingLabels.get_warning_label(WarningType(warning_item))
                     )
                 except ValueError:
-                    warning_texts.append(e)
+                    warning_texts.append(warning_item)
                 continue
-            warning_texts.append(str(e))
+            warning_texts.append(str(warning_item))
         return (
             f"{Localizer.get().proofreading_page_result_check}\n"
             f"{Localizer.get().status}{' | '.join(warning_texts)}"
@@ -300,16 +301,16 @@ class ProofreadingStatusDelegate(TableItemDelegate):
         self.tooltip_timer.stop()
         self.tooltip.hide()
 
-    def eventFilter(self, object: QObject | None, event: QEvent | None) -> bool:
+    def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:
         table = self.table
 
-        if object is None or event is None:
+        if watched is None or event is None:
             return False
 
-        if object is table:
+        if watched is table:
             if event.type() in (QEvent.Type.Hide, QEvent.Type.Leave):
                 self.hide_tooltip()
-        elif object is table.viewport():
+        elif watched is table.viewport():
             if event.type() == QEvent.Type.MouseButtonPress:
                 self.hide_tooltip()
             elif event.type() == QEvent.Type.MouseMove and (

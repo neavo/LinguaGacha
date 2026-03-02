@@ -59,6 +59,7 @@ def build_manager(*, loaded: bool = True) -> Any:
     dm.item_service = SimpleNamespace(
         clear_item_cache=MagicMock(),
         get_all_items=MagicMock(return_value=[]),
+        get_all_item_dicts=MagicMock(return_value=[]),
     )
     dm.asset_service = SimpleNamespace(
         clear_decompress_cache=MagicMock(),
@@ -132,6 +133,19 @@ def test_open_db_and_close_db_delegate_to_database() -> None:
 
     db.open.assert_called_once()
     db.close.assert_called_once()
+
+
+def test_get_all_item_dicts_delegates_to_item_service() -> None:
+    dm = build_manager()
+    source_items = [{"id": 1, "src": "A"}]
+    dm.item_service.get_all_item_dicts = MagicMock(return_value=source_items)
+
+    result = dm.get_all_item_dicts()
+
+    assert result == [{"id": 1, "src": "A"}]
+    assert result is not source_items
+    assert result[0] is not source_items[0]
+    dm.item_service.get_all_item_dicts.assert_called_once()
 
 
 @pytest.mark.parametrize(

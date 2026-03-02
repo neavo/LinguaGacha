@@ -579,6 +579,12 @@ class LocalizerZH:
     quality_cancel_default_preset_success: str = "已取消默认预设 …"
     quality_default_preset_loaded_toast: str = "已自动加载默认预设：{NAME} …"
     quality_reorder: str = "排序"
+    quality_statistics_action: str = "统计"
+    quality_statistics_col_status: str = "状态"
+    quality_statistics_tooltip_count: str = "命中条目数：{COUNT}"
+    quality_statistics_tooltip_relation_header: str = "存在包含关系："
+    quality_statistics_tooltip_relation_line: str = "{CHILD} -> {PARENT}"
+    quality_statistics_progress: str = "正在统计规则，第 {CURRENT} 项，共 {TOTAL} 项 …"
 
     # 规则列
     enable: str = "启用"

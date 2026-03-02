@@ -176,6 +176,8 @@ class ProgressToast:
 
         info_bar = self.create_info_bar(content, True)
         self.info_bar = info_bar
+        # 先同步定位再显示，避免在主线程繁忙时长时间停留在默认左上角。
+        self.update_position()
         info_bar.show()
         QTimer.singleShot(0, self.update_position)
 
@@ -186,6 +188,8 @@ class ProgressToast:
         if self.info_bar is None:
             info_bar = self.create_info_bar(content, False)
             self.info_bar = info_bar
+            # 先同步定位再显示，避免出现“先闪左上角再跳位”的视觉抖动。
+            self.update_position()
             info_bar.show()
             QTimer.singleShot(0, self.update_position)
         elif self.is_indeterminate:

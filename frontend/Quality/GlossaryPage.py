@@ -7,6 +7,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QAbstractItemView
 from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
@@ -16,15 +17,17 @@ from qfluentwidgets import qconfig
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
-from base.LogManager import LogManager
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
+from frontend.Quality.QualityRuleIconHelper import IconColumnConfig
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
 from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
+from module.QualityRule.QualityRuleStatistics import RuleStatInput
+from module.QualityRule.QualityRuleStatistics import RuleStatMode
 from widget.AppTable import ColumnSpec
 from qfluentwidgets import SwitchButton
 from widget.SettingCard import SettingCard
@@ -98,7 +101,7 @@ class GlossaryPage(QualityRulePageBase):
 
     # ==================== SplitPageBase hooks ====================
 
-    def create_edit_panel(self, parent) -> GlossaryEditPanel:
+    def create_edit_panel(self, parent: QWidget) -> GlossaryEditPanel:
         panel = GlossaryEditPanel(parent)
         panel.add_requested.connect(
             lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
@@ -134,6 +137,30 @@ class GlossaryPage(QualityRulePageBase):
 
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1, 2)
+
+    def build_statistics_entry_key(self, entry: dict[str, Any]) -> str:
+        src = str(entry.get("src", "")).strip()
+        case_sensitive = bool(entry.get("case_sensitive", False))
+        return f"{src}|{int(case_sensitive)}"
+
+    def build_statistics_inputs(
+        self, entries: list[dict[str, Any]] | None = None
+    ) -> list[RuleStatInput]:
+        rules: list[RuleStatInput] = []
+        entries_source = self.entries if entries is None else entries
+        for entry in entries_source:
+            src = str(entry.get("src", "")).strip()
+            if src == "":
+                continue
+            rules.append(
+                RuleStatInput(
+                    key=self.build_statistics_entry_key(entry),
+                    pattern=src,
+                    mode=RuleStatMode.GLOSSARY,
+                    case_sensitive=bool(entry.get("case_sensitive", False)),
+                )
+            )
+        return rules
 
     def get_column_specs(self) -> list[ColumnSpec[dict[str, Any]]]:
         specs = super().get_column_specs()
@@ -207,8 +234,18 @@ class GlossaryPage(QualityRulePageBase):
                 self.table,
                 icon_column_index=self.CASE_COLUMN_INDEX,
                 icon_size=self.CASE_ICON_SIZE,
-                icon_count=1,
-                on_icon_clicked=self.on_rule_icon_clicked,
+                icon_column_configs=[
+                    IconColumnConfig(
+                        column_index=self.CASE_COLUMN_INDEX,
+                        icon_count=1,
+                        on_icon_clicked=self.on_rule_icon_clicked,
+                    ),
+                    IconColumnConfig(
+                        column_index=self.statistics_column_index,
+                        icon_count=2,
+                        icon_tooltip_getter=self.get_statistics_icon_tooltip_by_source_row,
+                    ),
+                ],
             )
         )
         header = self.table.horizontalHeader()
@@ -219,7 +256,14 @@ class GlossaryPage(QualityRulePageBase):
             header.setSectionResizeMode(
                 self.CASE_COLUMN_INDEX, QHeaderView.ResizeMode.Fixed
             )
+            header.setSectionResizeMode(
+                self.statistics_column_index, QHeaderView.ResizeMode.Fixed
+            )
         self.table.setColumnWidth(self.CASE_COLUMN_INDEX, self.CASE_COLUMN_WIDTH)
+        self.table.setColumnWidth(
+            self.statistics_column_index,
+            self.STATISTICS_COLUMN_WIDTH,
+        )
 
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -310,121 +354,18 @@ class GlossaryPage(QualityRulePageBase):
         return bool(message_box.exec())
 
     def delete_entries_by_rows(self, rows: list[int]) -> None:
-        if not rows:
-            return
-
-        unique_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
-        if not unique_rows:
-            return
-
-        if not self.confirm_delete_entries(len(unique_rows)):
-            return
-
-        deleted_set = set(unique_rows)
-        current_index = self.current_index
-
-        for row in sorted(unique_rows, reverse=True):
-            del self.entries[row]
-
-        self.current_index = -1
-
-        try:
-            self.cleanup_empty_entries()
-            self.save_entries(self.entries)
-            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
-            self.ignore_next_quality_rule_update = True
-        except Exception as e:
-            LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
-            return
-
-        self.refresh_table()
-
-        if self.entries:
-            if current_index >= 0 and current_index not in deleted_set:
-                shift = sum(1 for row in deleted_set if row < current_index)
-                next_index = current_index - shift
-            else:
-                next_index = min(deleted_set)
-            if next_index >= len(self.entries):
-                next_index = len(self.entries) - 1
-            self.select_row(next_index)
-        else:
-            self.apply_selection(-1)
-
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().toast_save,
-                },
-            )
-
-        if self.reload_pending:
-            self.reload_entries()
-
-    def set_case_sensitive_for_rows(self, rows: list[int], enabled: bool) -> None:
-        if not rows:
-            return
-
-        changed_rows: list[int] = []
-        for row in rows:
-            if row < 0 or row >= len(self.entries):
-                continue
-            current_value = bool(self.entries[row].get("case_sensitive", False))
-            if current_value == enabled:
-                continue
-            self.entries[row]["case_sensitive"] = enabled
-            changed_rows.append(row)
-
-        if not changed_rows:
-            return
-
-        try:
-            self.save_entries(self.entries)
-            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
-            self.ignore_next_quality_rule_update = True
-        except Exception as e:
-            LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
-            return
-
-        self.table.blockSignals(True)
-        self.table.setUpdatesEnabled(False)
-        for row in sorted(set(changed_rows)):
-            self.refresh_table_row(row)
-        self.table.setUpdatesEnabled(True)
-        self.table.blockSignals(False)
-
-        if self.current_index in changed_rows and 0 <= self.current_index < len(
-            self.entries
-        ):
-            self.edit_panel.bind_entry(
-                self.entries[self.current_index], self.current_index + 1
-            )
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().toast_save,
-            },
+        self.delete_entries_by_rows_common(
+            rows,
+            emit_success_toast_when_empty=True,
         )
 
-        if self.reload_pending:
-            self.reload_entries()
+    def set_case_sensitive_for_rows(self, rows: list[int], enabled: bool) -> None:
+        self.set_boolean_field_for_rows(
+            rows,
+            field_name="case_sensitive",
+            enabled=enabled,
+            default_value=False,
+        )
 
     def set_case_sensitive_for_selection(self, enabled: bool) -> None:
         self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
@@ -438,6 +379,7 @@ class GlossaryPage(QualityRulePageBase):
         self.add_command_bar_action_export(window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_search()
+        self.add_command_bar_action_statistics()
         self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(config, window)
         self.command_bar_card.add_stretch(1)

@@ -579,6 +579,12 @@ class LocalizerEN(LocalizerZH):
     quality_cancel_default_preset_success: str = "Default preset cancelled …"
     quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
     quality_reorder: str = "Reorder"
+    quality_statistics_action: str = "Statistics"
+    quality_statistics_col_status: str = "Status"
+    quality_statistics_tooltip_count: str = "Matched item count: {COUNT}"
+    quality_statistics_tooltip_relation_header: str = "Contains relations:"
+    quality_statistics_tooltip_relation_line: str = "{CHILD} -> {PARENT}"
+    quality_statistics_progress: str = "Counting rules, item {CURRENT} of {TOTAL} …"
 
     # 规则列
     enable: str = "Enable"

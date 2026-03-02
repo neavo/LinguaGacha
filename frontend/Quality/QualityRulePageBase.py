@@ -1,3 +1,5 @@
+import dataclasses
+import threading
 from pathlib import Path
 from typing import Any
 from typing import Callable
@@ -7,8 +9,12 @@ from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QBoxLayout
 from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QHBoxLayout
@@ -27,11 +33,17 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
+from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleReorder import QualityRuleReorder
+from module.QualityRule.QualityRuleStatistics import RuleStatInput
+from module.QualityRule.QualityRuleStatistics import RuleStatResult
+from module.QualityRule.QualityRuleStatistics import count_rule_occurrences
+from module.Utils.GapTool import GapTool
 from widget.AppTable import AppTableModelBase
 from widget.AppTable import AppTableView
 from widget.AppTable import ColumnSpec
@@ -45,11 +57,26 @@ ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出规则
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
 ICON_ACTION_PRESET: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单
 ICON_ACTION_WIKI: BaseIcon = BaseIcon.CIRCLE_QUESTION_MARK  # 命令栏：打开 Wiki
+ICON_ACTION_STATISTICS: BaseIcon = BaseIcon.CHART_BAR  # 命令栏：规则统计
 ICON_ACTION_REORDER: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 右键菜单：排序
 ICON_ACTION_MOVE_UP: BaseIcon = BaseIcon.CHEVRON_UP  # 右键菜单：上移
 ICON_ACTION_MOVE_DOWN: BaseIcon = BaseIcon.CHEVRON_DOWN  # 右键菜单：下移
 ICON_ACTION_MOVE_TOP: BaseIcon = BaseIcon.CHEVRON_FIRST  # 右键菜单：置顶
 ICON_ACTION_MOVE_BOTTOM: BaseIcon = BaseIcon.CHEVRON_LAST  # 右键菜单：置底
+ICON_STAT_HIT: BaseIcon = BaseIcon.CIRCLE_CHECK  # 统计列：命中
+ICON_STAT_ALERT: BaseIcon = BaseIcon.TRIANGLE_ALERT  # 统计列：告警（包含关系）
+
+
+@dataclasses.dataclass(frozen=True)
+class StatisticsColumnDisplayState:
+    """状态列展示快照。
+
+    把图标与 tooltip 依赖的数据一次性聚合，避免重复读取/重复判定导致的逻辑分叉。
+    """
+
+    matched_item_count: int
+    child_text: str
+    subset_parents: tuple[str, ...]
 
 
 class QualityRulePageBase(Base, QWidget):
@@ -67,6 +94,21 @@ class QualityRulePageBase(Base, QWidget):
     # 子类可覆盖：预设目录名、默认预设配置键
     PRESET_DIR_NAME: str = ""
     DEFAULT_PRESET_CONFIG_KEY: str = ""
+    STATISTICS_COLUMN_WIDTH: int = 70
+    STATISTICS_ICON_SIZE: int = 16
+    STATISTICS_ICON_SPACING: int = 4
+    # “仅可翻译条目”口径：排除结构跳过状态，保留翻译主流程状态。
+    STATISTICS_COUNTED_STATUSES: set[Base.ProjectStatus] = {
+        Base.ProjectStatus.NONE,
+        Base.ProjectStatus.PROCESSING,
+        Base.ProjectStatus.PROCESSED,
+        Base.ProjectStatus.PROCESSED_IN_PAST,
+        Base.ProjectStatus.ERROR,
+    }
+
+    statistics_done = Signal(
+        int, object
+    )  # (token, {"results": dict[key, RuleStatResult], "subset_parents": dict[key, tuple[str, ...]]})
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -89,11 +131,25 @@ class QualityRulePageBase(Base, QWidget):
         self.auto_resizing_columns: bool = False
         self.user_resized_columns: bool = False
         self.initial_column_sync_done: bool = False
+        self.statistics_running: bool = False
+        self.statistics_token: int = 0
+        self.statistics_column_index: int = -1
+        self.statistics_results: dict[str, RuleStatResult] = {}
+        self.statistics_subset_parents: dict[str, tuple[str, ...]] = {}
+        self.statistics_icon_cache: StatusColumnIconStrip.IconStripPixmapCache = {}
+        self.statistics_button: CommandButton | None = None
+        self.statistics_done.connect(self.on_statistics_done)
 
         # 主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
         self.root.setContentsMargins(24, 24, 24, 24)
+
+        # 统计受工程内容变化影响，必须在相关事件后失效，避免展示旧结果。
+        self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
+        self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_task)
+        self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
+        self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
 
     # ==================== 子类需要实现的最小接口 ====================
 
@@ -156,6 +212,19 @@ class QualityRulePageBase(Base, QWidget):
 
     def on_entries_reloaded(self) -> None:
         """子类可覆盖：用于同步头部开关/模式等 UI。"""
+
+    def build_statistics_inputs(
+        self, entries: list[dict[str, Any]] | None = None
+    ) -> list[RuleStatInput]:
+        """子类可覆盖：构建当前页面的规则统计输入。"""
+        del entries
+
+        return []
+
+    def build_statistics_entry_key(self, entry: dict[str, Any]) -> str:
+        """子类可覆盖：为统计结果映射提供稳定 key。"""
+
+        return self.get_entry_key(entry)
 
     # ==================== UI 组装（供子类调用） ====================
 
@@ -298,8 +367,8 @@ class QualityRulePageBase(Base, QWidget):
         self.auto_resizing_columns = False
         self.initial_column_sync_done = True
 
-    def resizeEvent(self, a0) -> None:
-        super().resizeEvent(a0)
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
         self.apply_equal_column_widths()
 
     # ==================== 事件处理 ====================
@@ -314,6 +383,7 @@ class QualityRulePageBase(Base, QWidget):
         return any(meta_key in self.QUALITY_META_KEYS for meta_key in meta_keys)
 
     def request_reload(self) -> None:
+        self.invalidate_statistics()
         if self.edit_panel.has_unsaved_changes():
             self.reload_pending = True
             return
@@ -323,6 +393,8 @@ class QualityRulePageBase(Base, QWidget):
         del event
         if not self.is_quality_rule_update_relevant(data):
             return
+        # 即使这次更新被 ignore（避免重载），统计值也已过期，必须先失效。
+        self.invalidate_statistics()
         if self.ignore_next_quality_rule_update:
             self.ignore_next_quality_rule_update = False
             return
@@ -331,11 +403,13 @@ class QualityRulePageBase(Base, QWidget):
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event
         del data
+        self.invalidate_statistics()
         self.reload_entries()
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         del event
         del data
+        self.invalidate_statistics()
         self.entries = []
         self.current_index = -1
         self.refresh_table()
@@ -347,6 +421,23 @@ class QualityRulePageBase(Base, QWidget):
         if hasattr(self, "command_bar_card"):
             self.command_bar_card.setVisible(True)
         self.on_project_unloaded_ui()
+
+    def on_project_file_update(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+        self.invalidate_statistics()
+
+    def on_translation_task(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
+            self.invalidate_statistics()
+
+    def on_translation_reset(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
+            self.invalidate_statistics()
 
     def on_project_unloaded_ui(self) -> None:
         """子类可覆盖：卸载工程时刷新头部 UI。"""
@@ -411,6 +502,20 @@ class QualityRulePageBase(Base, QWidget):
                     display_getter=make_display_getter(col),
                 )
             )
+
+        self.statistics_column_index = len(specs)
+        specs.append(
+            ColumnSpec(
+                header=Localizer.get().quality_statistics_col_status,
+                width_mode=ColumnSpec.WidthMode.FIXED,
+                width=self.STATISTICS_COLUMN_WIDTH,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+                display_getter=lambda row: "",
+                decoration_getter=lambda row: self.get_statistics_icon_pixmap_for_row(
+                    row
+                ),
+            )
+        )
         return specs
 
     def map_source_row_to_view_row(self, source_row: int) -> int:
@@ -633,6 +738,546 @@ class QualityRulePageBase(Base, QWidget):
             ],
         )
 
+    def refresh_table_rows(self, rows: list[int] | tuple[int, ...]) -> None:
+        """批量刷新行，并确保 UI 开关一定能恢复。
+
+        为什么放在基类：
+        多个页面都会在“批量改规则开关”后局部刷新表格，
+        统一用 try/finally 可以避免中途异常时界面残留在禁更新状态。
+        """
+
+        valid_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
+        if not valid_rows:
+            return
+
+        self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row in valid_rows:
+                self.refresh_table_row(row)
+        finally:
+            self.table.setUpdatesEnabled(True)
+            self.table.blockSignals(False)
+
+    def set_boolean_field_for_rows(
+        self,
+        rows: list[int],
+        *,
+        field_name: str,
+        enabled: bool,
+        default_value: bool = False,
+    ) -> None:
+        """批量更新布尔字段并处理保存/局部刷新。
+
+        为什么抽到基类：
+        规则页里“regex/case_sensitive”等切换流程完全一致，
+        聚合后可以减少重复逻辑，避免后续修一处漏一处。
+        """
+
+        if not rows:
+            return
+
+        target_value = bool(enabled)
+        changed_rows: list[int] = []
+        for row in rows:
+            if row < 0 or row >= len(self.entries):
+                continue
+            current_value = bool(self.entries[row].get(field_name, default_value))
+            if current_value == target_value:
+                continue
+            self.entries[row][field_name] = target_value
+            changed_rows.append(row)
+
+        if not changed_rows:
+            return
+
+        try:
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.refresh_table_rows(changed_rows)
+
+        if self.current_index in changed_rows and 0 <= self.current_index < len(
+            self.entries
+        ):
+            self.edit_panel.bind_entry(
+                self.entries[self.current_index], self.current_index + 1
+            )
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().toast_save,
+            },
+        )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+    def delete_entries_by_rows_common(
+        self,
+        rows: list[int],
+        *,
+        emit_success_toast_when_empty: bool,
+    ) -> bool:
+        """按行删除规则条目并处理保存、刷新与选中恢复。"""
+
+        if not rows:
+            return False
+
+        unique_rows = sorted({row for row in rows if 0 <= row < len(self.entries)})
+        if not unique_rows:
+            return False
+
+        confirm_handler = getattr(self, "confirm_delete_entries", None)
+        if callable(confirm_handler) and not bool(confirm_handler(len(unique_rows))):
+            return False
+
+        deleted_set = set(unique_rows)
+        current_index = self.current_index
+
+        for row in sorted(unique_rows, reverse=True):
+            del self.entries[row]
+
+        self.current_index = -1
+
+        try:
+            self.cleanup_empty_entries()
+            self.save_entries(self.entries)
+            # 避免自身保存触发的 QUALITY_RULE_UPDATE 重载。
+            self.ignore_next_quality_rule_update = True
+        except Exception as e:
+            LogManager.get().error(Localizer.get().task_failed, e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return False
+
+        self.refresh_table()
+
+        if self.entries:
+            if current_index >= 0 and current_index not in deleted_set:
+                shift = sum(1 for row in deleted_set if row < current_index)
+                next_index = current_index - shift
+            else:
+                next_index = min(deleted_set)
+            if next_index >= len(self.entries):
+                next_index = len(self.entries) - 1
+            self.select_row(next_index)
+        else:
+            self.apply_selection(-1)
+
+            if emit_success_toast_when_empty:
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().toast_save,
+                    },
+                )
+
+        if self.reload_pending:
+            self.reload_entries()
+
+        return True
+
+    def refresh_statistics_column(self) -> None:
+        if not hasattr(self, "table_model"):
+            return
+        if self.statistics_column_index < 0:
+            return
+        if self.statistics_column_index >= self.table_model.columnCount():
+            return
+
+        row_count = self.table_model.rowCount()
+        if row_count <= 0:
+            return
+
+        top_left = self.table_model.index(0, self.statistics_column_index)
+        bottom_right = self.table_model.index(
+            row_count - 1, self.statistics_column_index
+        )
+        self.table_model.dataChanged.emit(
+            top_left,
+            bottom_right,
+            [
+                int(Qt.ItemDataRole.DisplayRole),
+                int(Qt.ItemDataRole.ToolTipRole),
+                int(Qt.ItemDataRole.DecorationRole),
+            ],
+        )
+
+    def normalize_item_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        return str(value)
+
+    def normalize_project_status(self, value: Any) -> Base.ProjectStatus:
+        if isinstance(value, Base.ProjectStatus):
+            return value
+        if isinstance(value, str):
+            try:
+                return Base.ProjectStatus(value)
+            except ValueError:
+                return Base.ProjectStatus.NONE
+        return Base.ProjectStatus.NONE
+
+    def collect_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """提取统计使用的 src/dst 文本快照。
+
+        口径固定为“仅可翻译条目”，这样统计结果与翻译主流程一致。
+        """
+
+        item_dicts = DataManager.get().get_all_item_dicts()
+        src_texts: list[str] = []
+        dst_texts: list[str] = []
+        for item in item_dicts:
+            if not isinstance(item, dict):
+                continue
+            status = self.normalize_project_status(item.get("status"))
+            if status not in self.STATISTICS_COUNTED_STATUSES:
+                continue
+            src_texts.append(self.normalize_item_text(item.get("src", "")))
+            dst_texts.append(self.normalize_item_text(item.get("dst", "")))
+        return tuple(src_texts), tuple(dst_texts)
+
+    def get_statistics_entry_key(self, entry: dict[str, Any]) -> str:
+        return self.build_statistics_entry_key(entry)
+
+    def get_statistics_result_for_row(
+        self, entry: dict[str, Any]
+    ) -> RuleStatResult | None:
+        key = self.get_statistics_entry_key(entry)
+        if key == "":
+            return None
+        return self.statistics_results.get(key)
+
+    def get_statistics_subset_parents_for_row(
+        self, entry: dict[str, Any]
+    ) -> tuple[str, ...]:
+        key = self.get_statistics_entry_key(entry)
+        if key == "":
+            return tuple()
+        return self.statistics_subset_parents.get(key, tuple())
+
+    def get_statistics_child_text_for_row(self, entry: dict[str, Any]) -> str:
+        src = str(entry.get("src", "")).strip()
+        if src != "":
+            return src
+        return self.get_statistics_entry_key(entry)
+
+    def build_statistics_display_state_for_row(
+        self, entry: dict[str, Any]
+    ) -> StatisticsColumnDisplayState:
+        result = self.get_statistics_result_for_row(entry)
+        matched_item_count = 0
+        if result is not None:
+            matched_item_count = max(0, int(result.matched_item_count))
+
+        return StatisticsColumnDisplayState(
+            matched_item_count=matched_item_count,
+            child_text=self.get_statistics_child_text_for_row(entry),
+            subset_parents=self.get_statistics_subset_parents_for_row(entry),
+        )
+
+    def get_statistics_icon_pixmap(
+        self, *, show_hit: bool, show_alert: bool
+    ) -> QPixmap | None:
+        if (not show_hit) and (not show_alert):
+            return None
+
+        return StatusColumnIconStrip.build_icon_strip_pixmap(
+            table=self.table,
+            icons=(
+                ICON_STAT_HIT if show_hit else None,
+                ICON_STAT_ALERT if show_alert else None,
+            ),
+            icon_size=self.STATISTICS_ICON_SIZE,
+            icon_spacing=self.STATISTICS_ICON_SPACING,
+            compact=False,
+            cache=self.statistics_icon_cache,
+        )
+
+    def get_statistics_icon_pixmap_for_row(
+        self, entry: dict[str, Any]
+    ) -> QPixmap | None:
+        state = self.build_statistics_display_state_for_row(entry)
+        return self.get_statistics_icon_pixmap(
+            show_hit=state.matched_item_count > 0,
+            show_alert=len(state.subset_parents) > 0,
+        )
+
+    def get_statistics_hit_tooltip_for_row(self, entry: dict[str, Any]) -> str:
+        state = self.build_statistics_display_state_for_row(entry)
+        if state.matched_item_count <= 0:
+            return ""
+        return Localizer.get().quality_statistics_tooltip_count.replace(
+            "{COUNT}",
+            str(state.matched_item_count),
+        )
+
+    def get_statistics_alert_tooltip_for_row(self, entry: dict[str, Any]) -> str:
+        state = self.build_statistics_display_state_for_row(entry)
+        lines: list[str] = []
+
+        if state.subset_parents:
+            lines.append(Localizer.get().quality_statistics_tooltip_relation_header)
+            relation_line = Localizer.get().quality_statistics_tooltip_relation_line
+            for parent in state.subset_parents:
+                lines.append(
+                    relation_line.replace("{CHILD}", state.child_text).replace(
+                        "{PARENT}", parent
+                    )
+                )
+
+        return "\n".join(lines)
+
+    def get_statistics_icon_tooltip_by_source_row(
+        self, source_row: int, icon_index: int
+    ) -> str:
+        if source_row < 0 or source_row >= len(self.entries):
+            return ""
+        entry = self.entries[source_row]
+        if not isinstance(entry, dict):
+            return ""
+
+        if icon_index == 0:
+            return self.get_statistics_hit_tooltip_for_row(entry)
+        if icon_index == 1:
+            return self.get_statistics_alert_tooltip_for_row(entry)
+        return ""
+
+    def set_statistics_running(self, running: bool) -> None:
+        self.statistics_running = bool(running)
+        if self.statistics_button is not None:
+            self.statistics_button.setEnabled(not self.statistics_running)
+
+    def invalidate_statistics(self) -> None:
+        was_running = self.statistics_running
+        self.statistics_token += 1
+        self.statistics_results = {}
+        self.statistics_subset_parents = {}
+        self.set_statistics_running(False)
+        if was_running:
+            self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
+        self.refresh_statistics_column()
+
+    def is_statistics_token_valid(self, token: int) -> bool:
+        return token == self.statistics_token
+
+    def build_statistics_relation_candidates(
+        self, entries: tuple[dict[str, Any], ...]
+    ) -> tuple[tuple[str, str], ...]:
+        candidates: list[tuple[str, str]] = []
+        for entry in GapTool.iter(entries):
+            key = self.get_statistics_entry_key(entry)
+            src = str(entry.get("src", "")).strip()
+            if key == "" or src == "":
+                continue
+            candidates.append((key, src))
+        return tuple(candidates)
+
+    def build_statistics_subset_relation_map(
+        self,
+        candidates: tuple[tuple[str, str], ...],
+        token: int,
+    ) -> dict[str, tuple[str, ...]]:
+        subset_map: dict[str, tuple[str, ...]] = {}
+        # 包含关系是 O(n^2) 扫描，这里用 GapTool 定期让出 GIL，避免后台统计挤占 UI 调度。
+        for key, src in GapTool.iter(candidates):
+            if not self.is_statistics_token_valid(token):
+                return {}
+
+            src_fold = src.casefold()
+            if src_fold == "":
+                continue
+
+            parents: list[str] = []
+            seen_parent: set[str] = set()
+            for other_key, other_src in GapTool.iter(candidates):
+                if key == other_key:
+                    continue
+                other_fold = other_src.casefold()
+                if src_fold == other_fold:
+                    continue
+                if src_fold not in other_fold:
+                    continue
+                dedup_key = other_src.casefold()
+                if dedup_key in seen_parent:
+                    continue
+                seen_parent.add(dedup_key)
+                parents.append(other_src)
+
+            if parents:
+                subset_map[key] = tuple(parents)
+
+        return subset_map
+
+    def on_statistics_done(self, token: int, payload: object) -> None:
+        if token != self.statistics_token:
+            return
+
+        self.set_statistics_running(False)
+        self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
+        if not isinstance(payload, dict):
+            self.statistics_results = {}
+            self.statistics_subset_parents = {}
+            self.refresh_statistics_column()
+            return
+
+        normalized_results: dict[str, RuleStatResult] = {}
+        raw_results = payload.get("results", {})
+        if isinstance(raw_results, dict):
+            for key, value in raw_results.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, RuleStatResult):
+                    normalized_results[key] = value
+                    continue
+                if isinstance(value, dict):
+                    count = int(value.get("matched_item_count", 0))
+                    normalized_results[key] = RuleStatResult(
+                        matched_item_count=count,
+                    )
+
+        normalized_subset_parents: dict[str, tuple[str, ...]] = {}
+        raw_subset = payload.get("subset_parents", {})
+        if isinstance(raw_subset, dict):
+            for key, value in raw_subset.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, (tuple, list)):
+                    parents = [str(v) for v in value if str(v).strip() != ""]
+                    if parents:
+                        normalized_subset_parents[key] = tuple(parents)
+
+        self.statistics_results = normalized_results
+        self.statistics_subset_parents = normalized_subset_parents
+        self.refresh_statistics_column()
+
+    def run_statistics_worker(
+        self,
+        token: int,
+        entries_snapshot: tuple[dict[str, Any], ...],
+    ) -> None:
+        try:
+            rules = tuple(self.build_statistics_inputs(list(entries_snapshot)))
+            relation_candidates = self.build_statistics_relation_candidates(
+                entries_snapshot
+            )
+            src_texts, dst_texts = self.collect_statistics_texts()
+            if not self.is_statistics_token_valid(token):
+                return
+
+            results: dict[str, RuleStatResult] = {}
+            if rules:
+                # 一次性批量统计，避免“每条规则单独扫描文本”的调度开销。
+                results = count_rule_occurrences(rules, src_texts, dst_texts)
+                if not self.is_statistics_token_valid(token):
+                    return
+
+            subset_map = self.build_statistics_subset_relation_map(
+                relation_candidates,
+                token,
+            )
+            if not self.is_statistics_token_valid(token):
+                return
+
+            payload = {
+                "results": results,
+                "subset_parents": subset_map,
+            }
+        except Exception as e:
+            LogManager.get().error("规则统计失败", e)
+            payload = {
+                "results": {},
+                "subset_parents": {},
+            }
+        self.statistics_done.emit(token, payload)
+
+    def show_statistics_preparing_progress(self) -> None:
+        """先显示“准备中”进度，避免同步保存阶段给用户造成“点击无响应”的错觉。"""
+
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "message": Localizer.get().toast_processing,
+                "indeterminate": True,
+            },
+        )
+        # PROGRESS_TOAST 走 queued 事件分发；这里先处理一次事件循环，确保提示能立刻出现。
+        QApplication.processEvents()
+
+    def hide_statistics_preparing_progress(self) -> None:
+        """当统计没有真正启动时，收起预备态进度提示。"""
+
+        self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
+
+    def start_statistics_from_ui(self) -> None:
+        """统计按钮入口：先显示预备进度，再进入未保存保护链路。"""
+
+        if self.statistics_running:
+            return
+
+        if not DataManager.get().is_loaded():
+            self.start_statistics()
+            return
+
+        self.show_statistics_preparing_progress()
+        self.run_with_unsaved_guard(
+            self.start_statistics,
+            on_cancel=self.hide_statistics_preparing_progress,
+        )
+
+    def start_statistics(self) -> None:
+        if self.statistics_running:
+            return
+        if not DataManager.get().is_loaded():
+            self.hide_statistics_preparing_progress()
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            return
+
+        entries_snapshot = tuple(
+            dict(entry) for entry in self.entries if isinstance(entry, dict)
+        )
+        self.statistics_token += 1
+        token = self.statistics_token
+        self.statistics_results = {}
+        self.statistics_subset_parents = {}
+        self.set_statistics_running(True)
+        self.refresh_statistics_column()
+
+        threading.Thread(
+            target=self.run_statistics_worker,
+            args=(token, entries_snapshot),
+            daemon=True,
+        ).start()
+
     def select_row(self, row: int) -> None:
         if row < 0 or row >= len(self.entries):
             self.table.clearSelection()
@@ -831,11 +1476,7 @@ class QualityRulePageBase(Base, QWidget):
                 self.apply_selection(-1)
         else:
             # 常见路径：只更新当前行内容，避免整表重绘。
-            self.table.blockSignals(True)
-            self.table.setUpdatesEnabled(False)
-            self.refresh_table_row(self.current_index)
-            self.table.setUpdatesEnabled(True)
-            self.table.blockSignals(False)
+            self.refresh_table_rows([self.current_index])
 
             if self.current_index >= 0 and self.current_index < len(self.entries):
                 self.block_selection_change = True
@@ -1168,6 +1809,16 @@ class QualityRulePageBase(Base, QWidget):
                 triggered=self.show_search_bar,
             )
         )
+
+    def add_command_bar_action_statistics(self) -> CommandButton:
+        self.statistics_button = self.command_bar_card.add_action(
+            Action(
+                ICON_ACTION_STATISTICS,
+                Localizer.get().quality_statistics_action,
+                triggered=self.start_statistics_from_ui,
+            )
+        )
+        return self.statistics_button
 
     def add_command_bar_action_preset(
         self, config: Config, window: FluentWindow

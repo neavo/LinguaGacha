@@ -170,8 +170,14 @@ class DataManager(Base):
                     mode_valid = False
 
             if not mode_valid:
-                legacy_enable = bool(self.session.meta_cache.get("text_preserve_enable", False))
-                migrated = __class__.TextPreserveMode.CUSTOM.value if legacy_enable else __class__.TextPreserveMode.SMART.value
+                legacy_enable = bool(
+                    self.session.meta_cache.get("text_preserve_enable", False)
+                )
+                migrated = (
+                    __class__.TextPreserveMode.CUSTOM.value
+                    if legacy_enable
+                    else __class__.TextPreserveMode.SMART.value
+                )
                 self.session.db.set_meta("text_preserve_mode", migrated)
                 self.session.meta_cache["text_preserve_mode"] = migrated
 
@@ -341,7 +347,9 @@ class DataManager(Base):
                 "lg_path": lg_path,
             },
         )
-        threading.Thread(target=self.project_prefilter_worker, args=(token,), daemon=True).start()
+        threading.Thread(
+            target=self.project_prefilter_worker, args=(token,), daemon=True
+        ).start()
 
     def run_project_prefilter(self, config: Config, *, reason: str) -> None:
         """执行预过滤并落库（同步）。
@@ -439,12 +447,28 @@ class DataManager(Base):
                 with self.prefilter_cond:
                     if not self.prefilter_pending:
                         # 收尾事件放在锁内发出：避免新任务 show 被旧任务 hide 打断。
-                        if updated and last_result is not None and last_request is not None:
-                            LogManager.get().info(Localizer.get().engine_task_rule_filter.replace("{COUNT}", str(last_result.stats.rule_skipped)))
-                            LogManager.get().info(Localizer.get().engine_task_language_filter.replace("{COUNT}", str(last_result.stats.language_skipped)))
+                        if (
+                            updated
+                            and last_result is not None
+                            and last_request is not None
+                        ):
+                            LogManager.get().info(
+                                Localizer.get().engine_task_rule_filter.replace(
+                                    "{COUNT}", str(last_result.stats.rule_skipped)
+                                )
+                            )
+                            LogManager.get().info(
+                                Localizer.get().engine_task_language_filter.replace(
+                                    "{COUNT}", str(last_result.stats.language_skipped)
+                                )
+                            )
                             # 仅在开关开启时输出 MTool 预处理日志，避免“未启用但仍提示已完成”的误导。
                             if last_request.mtool_optimizer_enable:
-                                LogManager.get().info(Localizer.get().translator_mtool_optimizer_pre_log.replace("{COUNT}", str(last_result.stats.mtool_skipped)))
+                                LogManager.get().info(
+                                    Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                                        "{COUNT}", str(last_result.stats.mtool_skipped)
+                                    )
+                                )
 
                             # 仅在控制台输出统计信息，避免 UI Toast 产生噪音。
                             LogManager.get().print("")
@@ -466,7 +490,9 @@ class DataManager(Base):
                             Base.Event.PROJECT_PREFILTER,
                             {
                                 "sub_event": Base.ProjectPrefilterSubEvent.DONE,
-                                "reason": last_request.reason if last_request else "unknown",
+                                "reason": last_request.reason
+                                if last_request
+                                else "unknown",
                                 "token": token,
                                 "lg_path": last_request.lg_path if last_request else "",
                                 "updated": updated,
@@ -541,7 +567,9 @@ class DataManager(Base):
                 self.prefilter_active_token = 0
                 self.prefilter_cond.notify_all()
 
-    def apply_project_prefilter_once(self, request: ProjectPrefilterRequest) -> ProjectPrefilterResult | None:
+    def apply_project_prefilter_once(
+        self, request: ProjectPrefilterRequest
+    ) -> ProjectPrefilterResult | None:
         """执行一次预过滤并写入 DB。
 
         返回 None 表示：工程已切换/卸载，本次结果被丢弃。
@@ -668,8 +696,12 @@ class DataManager(Base):
             if isinstance(item_dict.get("id"), int):
                 changed_items.append(item_dict)
 
-        processed_line = sum(1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED)
-        error_line = sum(1 for item in items if item.get_status() == Base.ProjectStatus.ERROR)
+        processed_line = sum(
+            1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
+        )
+        error_line = sum(
+            1 for item in items if item.get_status() == Base.ProjectStatus.ERROR
+        )
         total_line = sum(
             1
             for item in items
@@ -687,7 +719,11 @@ class DataManager(Base):
         extras["line"] = processed_line + error_line
         extras["total_line"] = total_line
 
-        project_status = Base.ProjectStatus.PROCESSING if any(item.get_status() == Base.ProjectStatus.NONE for item in items) else Base.ProjectStatus.PROCESSED
+        project_status = (
+            Base.ProjectStatus.PROCESSING
+            if any(item.get_status() == Base.ProjectStatus.NONE for item in items)
+            else Base.ProjectStatus.PROCESSED
+        )
 
         # 单次事务写入：确保 items/meta 一致。
         self.update_batch(
@@ -716,7 +752,9 @@ class DataManager(Base):
         if save:
             self.emit_quality_rule_update(rule_types=[rule_type])
 
-    def normalize_quality_rules_for_write(self, rule_type: LGDatabase.RuleType, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def normalize_quality_rules_for_write(
+        self, rule_type: LGDatabase.RuleType, data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """写入口兜底：落库前统一收敛重复与空 src。
 
         为什么放在 DataManager：这里是规则写入的权威入口，能覆盖 UI 手动保存/导入、
@@ -812,7 +850,9 @@ class DataManager(Base):
         self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
 
     def get_text_preserve_mode(self) -> TextPreserveMode:
-        raw = self.get_meta("text_preserve_mode", __class__.TextPreserveMode.SMART.value)
+        raw = self.get_meta(
+            "text_preserve_mode", __class__.TextPreserveMode.SMART.value
+        )
         if isinstance(raw, str):
             try:
                 return __class__.TextPreserveMode(raw)
@@ -823,7 +863,11 @@ class DataManager(Base):
 
     def set_text_preserve_mode(self, mode: TextPreserveMode | str) -> None:
         try:
-            normalized = mode if isinstance(mode, __class__.TextPreserveMode) else __class__.TextPreserveMode(str(mode))
+            normalized = (
+                mode
+                if isinstance(mode, __class__.TextPreserveMode)
+                else __class__.TextPreserveMode(str(mode))
+            )
         except ValueError:
             normalized = __class__.TextPreserveMode.OFF
 
@@ -885,6 +929,16 @@ class DataManager(Base):
 
     def get_all_items(self) -> list[Item]:
         return self.item_service.get_all_items()
+
+    def get_all_item_dicts(self) -> list[dict[str, Any]]:
+        """获取 items 的原始 dict 快照。
+
+        统计类后台任务只需要只读文本数据；直接复用 ItemService 的快照接口，
+        可以避免在 UI 线程构造大量 Item 对象。
+        """
+
+        # 返回浅拷贝快照，防止后台统计流程意外修改 ItemService 缓存中的原始 dict。
+        return [dict(item) for item in self.item_service.get_all_item_dicts()]
 
     def save_item(self, item: Item) -> int:
         return self.item_service.save_item(item)
@@ -949,7 +1003,7 @@ class DataManager(Base):
         """
 
         asset_paths = self.get_all_asset_paths()
-        item_dicts = self.item_service.get_all_item_dicts()
+        item_dicts = self.get_all_item_dicts()
 
         # 工作台的条目统计口径对齐“可翻译条目”，避免把预过滤跳过项也算作未翻译。
         counted_statuses = {
@@ -975,7 +1029,11 @@ class DataManager(Base):
 
             if rel_path not in file_type_by_path:
                 raw_type = item.get("file_type")
-                if isinstance(raw_type, str) and raw_type and raw_type != Item.FileType.NONE:
+                if (
+                    isinstance(raw_type, str)
+                    and raw_type
+                    and raw_type != Item.FileType.NONE
+                ):
                     try:
                         file_type_by_path[rel_path] = Item.FileType(raw_type)
                     except ValueError:
@@ -1276,7 +1334,11 @@ class DataManager(Base):
                 if existing.casefold() == rel_path.casefold():
                     continue
                 if existing.casefold() == target_rel_path.casefold():
-                    raise ValueError(Localizer.get().workbench_msg_update_name_conflict.replace("{NAME}", existing))
+                    raise ValueError(
+                        Localizer.get().workbench_msg_update_name_conflict.replace(
+                            "{NAME}", existing
+                        )
+                    )
 
         # 同一 src 可能对应多种译法：优先选择出现次数最多的 dst；若并列则取最早出现的。
         src_best: dict[str, dict[str, Any]] = {}
@@ -1346,7 +1408,9 @@ class DataManager(Base):
                 item["name_dst"] = old.get("name_dst")
                 item["retry_count"] = old.get("retry_count", 0)
 
-                new_status = normalize_status(item.get("status", Base.ProjectStatus.NONE))
+                new_status = normalize_status(
+                    item.get("status", Base.ProjectStatus.NONE)
+                )
                 if new_status not in structural_statuses:
                     item["status"] = old_status
 
@@ -1464,7 +1528,9 @@ class DataManager(Base):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().quality_default_preset_loaded_toast.format(NAME=" | ".join(loaded_presets)),
+                    "message": Localizer.get().quality_default_preset_loaded_toast.format(
+                        NAME=" | ".join(loaded_presets)
+                    ),
                 },
             )
 
