@@ -70,16 +70,12 @@ class ModelPage(Base, QWidget):
                 Base.Event.TOAST,
                 {
                     "type": Base.ToastType.INFO,
-                    "message": Localizer.get().model_page_migrated_toast.replace(
-                        "{COUNT}", str(migrated_count)
-                    ),
+                    "message": Localizer.get().model_page_migrated_toast.replace("{COUNT}", str(migrated_count)),
                 },
             )
 
         # 设置滚动区域
-        self.scroll_area = SingleDirectionScrollArea(
-            self, orient=Qt.Orientation.Vertical
-        )
+        self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.enableTransparentBackground()
         # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
@@ -104,11 +100,9 @@ class ModelPage(Base, QWidget):
         self.vbox.addStretch(1)
 
         # 完成事件
-        self.subscribe(Base.Event.APITEST_DONE, self.model_test_done)
+        self.subscribe(Base.Event.APITEST, self.model_test_done)
 
-    def add_category_cards(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_category_cards(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         """添加4个分类卡片"""
 
         # 预设模型卡片
@@ -145,16 +139,14 @@ class ModelPage(Base, QWidget):
         )
 
         # 自定义 Anthropic 模型卡片
-        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = (
-            self.create_category_card(
-                parent=parent,
-                model_type=ModelType.CUSTOM_ANTHROPIC,
-                title=Localizer.get().model_page_category_anthropic_title,
-                description=Localizer.get().model_page_category_anthropic_desc,
-                accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
-                window=window,
-                show_add_button=True,
-            )
+        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = self.create_category_card(
+            parent=parent,
+            model_type=ModelType.CUSTOM_ANTHROPIC,
+            title=Localizer.get().model_page_category_anthropic_title,
+            description=Localizer.get().model_page_category_anthropic_desc,
+            accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
+            window=window,
+            show_add_button=True,
         )
 
         # 刷新所有分类的模型列表
@@ -403,7 +395,13 @@ class ModelPage(Base, QWidget):
     def model_test_start(self, model_id: str, checked: bool = False) -> None:
         """执行接口测试"""
         del checked
-        self.emit(Base.Event.APITEST_RUN, {"model_id": model_id})
+        self.emit(
+            Base.Event.APITEST,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "model_id": model_id,
+            },
+        )
 
     # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
     def reorder_model_in_group(
@@ -440,12 +438,16 @@ class ModelPage(Base, QWidget):
 
     def model_test_done(self, event: Base.Event, data: dict) -> None:
         """接口测试完成"""
+        sub_event = data.get("sub_event")
+        if sub_event not in (
+            Base.SubEvent.DONE,
+            Base.SubEvent.ERROR,
+        ):
+            return
         self.emit(
             Base.Event.TOAST,
             {
-                "type": Base.ToastType.SUCCESS
-                if data.get("result", True)
-                else Base.ToastType.ERROR,
+                "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
                 "message": data.get("result_msg", ""),
             },
         )
@@ -475,12 +477,9 @@ class ModelPage(Base, QWidget):
         # 检查是否为最后一个该类型的模型
         target_model_data = config.get_model(model_id)
         if target_model_data:
-            model_name = str(target_model_data.get("name", "")).strip() or model_id
             model_type = target_model_data.get("type", "")
             # 统计同类型模型数量
-            same_type_count = sum(
-                1 for m in (config.models or []) if m.get("type") == model_type
-            )
+            same_type_count = sum(1 for m in (config.models or []) if m.get("type") == model_type)
             if same_type_count <= 1:
                 self.emit(
                     Base.Event.TOAST,
@@ -490,9 +489,6 @@ class ModelPage(Base, QWidget):
                     },
                 )
                 return
-        else:
-            model_name = model_id
-
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().alert_confirm_delete_data,
@@ -526,18 +522,14 @@ class ModelPage(Base, QWidget):
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_model_basic_setting_page(
-        self, model_id: str, checked: bool = False
-    ) -> None:
+    def show_model_basic_setting_page(self, model_id: str, checked: bool = False) -> None:
         """显示基础设置对话框"""
         ModelBasicSettingPage(model_id, self.window).exec()
 
         # 刷新显示
         self.refresh_all_categories()
 
-    def show_model_task_setting_page(
-        self, model_id: str, checked: bool = False
-    ) -> None:
+    def show_model_task_setting_page(self, model_id: str, checked: bool = False) -> None:
         """显示任务设置对话框"""
         ModelTaskSettingPage(model_id, self.window).exec()
 

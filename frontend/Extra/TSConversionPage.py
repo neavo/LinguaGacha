@@ -60,9 +60,7 @@ class TSConversionPage(Base, QWidget):
         self.is_converting = False
 
     # 头部
-    def add_widget_head(
-        self, parent: QVBoxLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_head(self, parent: QVBoxLayout, config: Config, window: FluentWindow) -> None:
         parent.addWidget(
             SettingCard(
                 title=Localizer.get().ts_conversion_page,
@@ -72,9 +70,7 @@ class TSConversionPage(Base, QWidget):
         )
 
     # 主体
-    def add_widget_body(
-        self, parent: QVBoxLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_body(self, parent: QVBoxLayout, config: Config, window: FluentWindow) -> None:
         # 转换方向设置
         direction_card = SettingCard(
             title=Localizer.get().ts_conversion_direction,
@@ -125,9 +121,7 @@ class TSConversionPage(Base, QWidget):
         parent.addStretch(1)
 
     # 底部
-    def add_widget_foot(
-        self, parent: QVBoxLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_foot(self, parent: QVBoxLayout, config: Config, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
@@ -147,14 +141,20 @@ class TSConversionPage(Base, QWidget):
 
     def on_progress_updated(self, message: str, current: int, total: int) -> None:
         self.emit(
-            Base.Event.PROGRESS_TOAST_UPDATE,
-            {"message": message, "current": current, "total": total},
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.UPDATE,
+                "message": message,
+                "current": current,
+                "total": total,
+            },
         )
 
     def on_progress_show(self, message: str, current: int, total: int) -> None:
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": message,
                 "indeterminate": False,
                 "current": current,
@@ -163,7 +163,10 @@ class TSConversionPage(Base, QWidget):
         )
 
     def on_progress_finished(self, output_path: str) -> None:
-        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.DONE},
+        )
         if output_path:
             self.emit(
                 Base.Event.TOAST,
@@ -219,8 +222,9 @@ class TSConversionPage(Base, QWidget):
 
         self.is_converting = True
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": Localizer.get().ts_conversion_action_preparing,
                 "indeterminate": True,
             },
@@ -245,9 +249,7 @@ class TSConversionPage(Base, QWidget):
                     return
 
                 self.progress_show.emit(
-                    Localizer.get()
-                    .ts_conversion_action_progress.replace("{CURRENT}", "1")
-                    .replace("{TOTAL}", str(total)),
+                    Localizer.get().ts_conversion_action_progress.replace("{CURRENT}", "1").replace("{TOTAL}", str(total)),
                     1,
                     total,
                 )
@@ -305,11 +307,7 @@ class TSConversionPage(Base, QWidget):
                     # 每 100 条更新一次进度，或者到最后一条
                     if (index + 1) % 100 == 0 or (index + 1) == total:
                         self.progress_updated.emit(
-                            Localizer.get()
-                            .ts_conversion_action_progress.replace(
-                                "{CURRENT}", str(index + 1)
-                            )
-                            .replace("{TOTAL}", str(total)),
+                            Localizer.get().ts_conversion_action_progress.replace("{CURRENT}", str(index + 1)).replace("{TOTAL}", str(total)),
                             index + 1,
                             total,
                         )

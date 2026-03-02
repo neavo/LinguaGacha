@@ -129,14 +129,14 @@ class WorkbenchPage(Base, ScrollArea):
         # 翻译进度更新可能很高频：用节流合并刷新请求，避免后台线程高频重算快照。
         self.translation_refresh_timer = QTimer(self)
         self.translation_refresh_timer.setSingleShot(True)
-        self.translation_refresh_timer.timeout.connect(
-            self.on_translation_refresh_timeout
-        )
+        self.translation_refresh_timer.timeout.connect(self.on_translation_refresh_timeout)
 
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
-        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.on_translation_update)
+        self.subscribe(Base.Event.WORKBENCH_REFRESH, self.on_workbench_refresh)
+        self.subscribe(Base.Event.WORKBENCH_SNAPSHOT, self.on_workbench_snapshot)
+        self.subscribe(Base.Event.TRANSLATION_PROGRESS, self.on_translation_update)
 
         self.refresh_all()
 
@@ -216,9 +216,7 @@ class WorkbenchPage(Base, ScrollArea):
         base_font = QFont(self.command_bar_card.command_bar.font())
         base_font.setPixelSize(self.FONT_SIZE)
         self.command_bar_card.command_bar.setFont(base_font)
-        self.command_bar_card.command_bar.setIconSize(
-            QSize(self.ICON_SIZE, self.ICON_SIZE)
-        )
+        self.command_bar_card.command_bar.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         self.command_bar_card.set_minimum_width(640)
 
         self.btn_add_file = self.command_bar_card.add_action(
@@ -239,10 +237,7 @@ class WorkbenchPage(Base, ScrollArea):
         )
 
     def is_engine_busy(self) -> bool:
-        return (
-            Engine.get().get_status() != Base.TaskStatus.IDLE
-            or Engine.get().get_running_task_count() > 0
-        )
+        return Engine.get().get_status() != Base.TaskStatus.IDLE or Engine.get().get_running_task_count() > 0
 
     def update_controls_enabled(self) -> None:
         loaded = DataManager.get().is_loaded()
@@ -272,16 +267,23 @@ class WorkbenchPage(Base, ScrollArea):
 
     def on_project_file_update(self, event: Base.Event, data: dict) -> None:
         del event
-        snapshot = data.get("snapshot")
-        if isinstance(snapshot, WorkbenchSnapshot):
-            self.apply_snapshot(snapshot)
-            return
-
         rel_path = data.get("rel_path")
         if isinstance(rel_path, str) and rel_path:
             # 后台更新完成后刷新列表，并尽量将焦点保持在更新后的文件上。
             self.pending_focus_rel_path = rel_path
         self.refresh_all()
+
+    def on_workbench_refresh(self, event: Base.Event, data: dict) -> None:
+        del event
+        del data
+        self.refresh_all()
+
+    def on_workbench_snapshot(self, event: Base.Event, data: dict) -> None:
+        del event
+        snapshot = data.get("snapshot")
+        if not isinstance(snapshot, WorkbenchSnapshot):
+            return
+        self.apply_snapshot(snapshot)
 
     def refresh_all(self) -> None:
         self.request_refresh()
@@ -311,12 +313,10 @@ class WorkbenchPage(Base, ScrollArea):
                 self.refresh_pending = False
 
             snapshot = DataManager.get().build_workbench_snapshot()
-            self.emit(Base.Event.PROJECT_FILE_UPDATE, {"snapshot": snapshot})
+            self.emit(Base.Event.WORKBENCH_SNAPSHOT, {"snapshot": snapshot})
 
     def apply_snapshot(self, snapshot: WorkbenchSnapshot) -> None:
-        selected_rel_path = (
-            self.table_widget.get_selected_rel_path() if self.table_widget else ""
-        )
+        selected_rel_path = self.table_widget.get_selected_rel_path() if self.table_widget else ""
 
         self.card_file_count.set_value(snapshot.file_count)
         self.card_total_items.set_value(snapshot.total_items)
@@ -380,11 +380,7 @@ class WorkbenchPage(Base, ScrollArea):
         if self.is_engine_busy():
             return
 
-        exts = [
-            f"*{ext}"
-            for ext in sorted(DataManager.get().get_supported_extensions())
-            if isinstance(ext, str)
-        ]
+        exts = [f"*{ext}" for ext in sorted(DataManager.get().get_supported_extensions()) if isinstance(ext, str)]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(exts)})"
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -424,11 +420,7 @@ class WorkbenchPage(Base, ScrollArea):
         if self.is_engine_busy():
             return
 
-        exts = [
-            f"*{ext}"
-            for ext in sorted(DataManager.get().get_supported_extensions())
-            if isinstance(ext, str)
-        ]
+        exts = [f"*{ext}" for ext in sorted(DataManager.get().get_supported_extensions()) if isinstance(ext, str)]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(exts)})"
         file_path, _ = QFileDialog.getOpenFileName(
             self,

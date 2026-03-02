@@ -93,9 +93,7 @@ class ProofreadingPage(Base, QWidget):
     # 这里必须用 object：warning_map 的 key 来自 id(item)（int），
     # 若声明为 dict，PySide6 会尝试把 dict 转为 C++ QVariantMap（要求 key 可转为 QString），
     # 从而触发 Shiboken::Conversions::_pythonToCppCopy 的转换失败日志。
-    quality_rules_refreshed = Signal(
-        object, object, object
-    )  # (checker, warning_map, failed_terms_by_item_key)
+    quality_rules_refreshed = Signal(object, object, object)  # (checker, warning_map, failed_terms_by_item_key)
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -118,9 +116,7 @@ class ProofreadingPage(Base, QWidget):
         self.search_is_regex: bool = False  # 是否正则搜索
         self.search_replace_mode: bool = False  # True 表示仅在 dst 上查找/替换
         self.search_match_indices: list[int] = []  # 匹配项在 filtered_items 中的索引
-        self.search_current_match: int = (
-            -1
-        )  # 当前匹配项索引（在 search_match_indices 中的位置）
+        self.search_current_match: int = -1  # 当前匹配项索引（在 search_match_indices 中的位置）
         self.search_next_anchor_index: int | None = None
         self.search_next_anchor_strict: bool = True
         self.replace_once_last_item_index: int | None = None
@@ -166,20 +162,19 @@ class ProofreadingPage(Base, QWidget):
         self.add_widget_foot(self.root, window)
 
         # 注册事件
-        self.subscribe(Base.Event.TRANSLATION_RUN, self.on_engine_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_UPDATE, self.on_engine_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_TASK, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_PROGRESS, self.on_engine_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
         self.subscribe(
-            Base.Event.TRANSLATION_REQUIRE_STOP, self.on_engine_status_changed
+            Base.Event.TRANSLATION_RESET_FAILED,
+            self.on_translation_reset,
         )
-        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_reset)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
         self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_file_update)
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
-        self.subscribe(
-            Base.Event.PROJECT_PREFILTER_UPDATED, self.on_project_prefilter_updated
-        )
+        self.subscribe(Base.Event.PROJECT_PREFILTER, self.on_project_prefilter_updated)
 
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
@@ -208,17 +203,15 @@ class ProofreadingPage(Base, QWidget):
 
     def on_project_prefilter_updated(self, event: Base.Event, event_data: dict) -> None:
         del event
-        del event_data
+        sub_event = event_data.get("sub_event")
+        if sub_event != Base.ProjectPrefilterSubEvent.UPDATED:
+            return
         self.mark_data_stale()
         self.schedule_reload("prefilter_updated")
 
     def on_project_file_update(self, event: Base.Event, event_data: dict) -> None:
         """工程文件变更（工作台增删改重命名）后同步校对页数据。"""
         del event
-        # WorkbenchPage 会复用该事件推送 snapshot 刷新，这类事件不代表真实文件变更；
-        # 校对页只在增/删/改/重命名时标记 stale。
-        if isinstance(event_data, dict) and "snapshot" in event_data:
-            return
 
         rel_path = event_data.get("rel_path") if isinstance(event_data, dict) else None
         if not isinstance(rel_path, str) or not rel_path:
@@ -253,14 +246,8 @@ class ProofreadingPage(Base, QWidget):
                 warning_map = checker.check_items(items_snapshot)
                 if current_token != self.quality_rule_refresh_token:
                     return
-                failed_terms_by_item_key = (
-                    ProofreadingDomain.build_failed_glossary_terms_cache(
-                        items_snapshot, warning_map, checker
-                    )
-                )
-                self.quality_rules_refreshed.emit(
-                    checker, warning_map, failed_terms_by_item_key
-                )
+                failed_terms_by_item_key = ProofreadingDomain.build_failed_glossary_terms_cache(items_snapshot, warning_map, checker)
+                self.quality_rules_refreshed.emit(checker, warning_map, failed_terms_by_item_key)
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
 
@@ -301,9 +288,7 @@ class ProofreadingPage(Base, QWidget):
             self.table_widget.update_row_status(row, warnings)
 
         if self.current_item is not None:
-            warnings = ProofreadingDomain.get_item_warnings(
-                self.current_item, self.warning_map
-            )
+            warnings = ProofreadingDomain.get_item_warnings(self.current_item, self.warning_map)
             self.edit_panel.refresh_status_tags(self.current_item, warnings)
 
     # ========== 主体：表格 ==========
@@ -317,12 +302,8 @@ class ProofreadingPage(Base, QWidget):
         # qfluentwidgets 的样式管理依赖 widget 的父子关系；首次进入页面时若表格无父对象，
         # 可能回退为 Qt 原生风格，直到主题切换触发全局刷新才恢复。
         self.table_widget = ProofreadingTableWidget(body_widget)
-        self.table_widget.batch_retranslate_clicked.connect(
-            self.on_batch_retranslate_clicked
-        )
-        self.table_widget.batch_reset_translation_clicked.connect(
-            self.on_batch_reset_translation_clicked
-        )
+        self.table_widget.batch_retranslate_clicked.connect(self.on_batch_retranslate_clicked)
+        self.table_widget.batch_reset_translation_clicked.connect(self.on_batch_reset_translation_clicked)
         self.table_widget.itemSelectionChanged.connect(self.on_table_selection_changed)
         self.table_widget.set_items([], {})
 
@@ -331,9 +312,7 @@ class ProofreadingPage(Base, QWidget):
         self.edit_panel.copy_src_requested.connect(self.on_copy_src_clicked)
         self.edit_panel.copy_dst_requested.connect(self.on_copy_dst_clicked)
         self.edit_panel.retranslate_requested.connect(self.on_retranslate_clicked)
-        self.edit_panel.reset_translation_requested.connect(
-            self.on_reset_translation_clicked
-        )
+        self.edit_panel.reset_translation_requested.connect(self.on_reset_translation_clicked)
 
         body_layout.addWidget(self.table_widget, 7)
         body_layout.addWidget(self.edit_panel, 3)
@@ -352,9 +331,7 @@ class ProofreadingPage(Base, QWidget):
         self.search_card.on_prev_clicked(lambda w: self.on_search_prev_clicked())
         self.search_card.on_next_clicked(lambda w: self.on_search_next_clicked())
         self.search_card.on_search_triggered(lambda w: self.do_search())
-        self.search_card.on_search_options_changed(
-            lambda w: self.on_search_options_changed()
-        )
+        self.search_card.on_search_options_changed(lambda w: self.on_search_options_changed())
         self.search_card.on_replace_clicked(lambda w: self.on_replace_once_clicked())
         self.search_card.on_replace_all_clicked(lambda w: self.on_replace_all_clicked())
 
@@ -366,9 +343,7 @@ class ProofreadingPage(Base, QWidget):
         base_font = QFont(self.command_bar_card.command_bar.font())
         base_font.setPixelSize(self.ui_font_px)
         self.command_bar_card.command_bar.setFont(base_font)
-        self.command_bar_card.command_bar.setIconSize(
-            QSize(self.ui_icon_px, self.ui_icon_px)
-        )
+        self.command_bar_card.command_bar.setIconSize(QSize(self.ui_icon_px, self.ui_icon_px))
 
         self.search_card.set_base_font(self.command_bar_card.command_bar.font())
 
@@ -576,9 +551,7 @@ class ProofreadingPage(Base, QWidget):
         # 这里拷贝 dict 快照，避免后台线程读到并发修改（兼容 No-GIL）。
         warning_map_ref = dict(self.warning_map) if self.warning_map else {}
         checker_ref = self.result_checker
-        failed_terms_by_item_key_ref = (
-            dict(self.failed_terms_by_item_key) if self.failed_terms_by_item_key else {}
-        )
+        failed_terms_by_item_key_ref = dict(self.failed_terms_by_item_key) if self.failed_terms_by_item_key else {}
         keyword = self.search_keyword
         use_regex = self.search_is_regex
         search_dst_only = self.search_replace_mode
@@ -803,16 +776,12 @@ class ProofreadingPage(Base, QWidget):
                 return
 
         row = self.table_widget.get_selected_row()
-        self.pending_selected_item = (
-            self.table_widget.get_item_at_row(row) if row >= 0 else None
-        )
+        self.pending_selected_item = self.table_widget.get_item_at_row(row) if row >= 0 else None
 
         self.run_with_unsaved_guard(lambda: self.apply_filter(False))
 
     @staticmethod
-    def compute_match_indices(
-        items: list[Item], *, keyword: str, is_regex: bool, match_dst_only: bool = False
-    ) -> list[int]:
+    def compute_match_indices(items: list[Item], *, keyword: str, is_regex: bool, match_dst_only: bool = False) -> list[int]:
         if not keyword:
             return []
 
@@ -866,9 +835,7 @@ class ProofreadingPage(Base, QWidget):
     def restore_selected_item(self) -> None:
         if self.pending_selected_item is None:
             if self.search_match_indices:
-                if self.search_current_match < 0 or self.search_current_match >= len(
-                    self.search_match_indices
-                ):
+                if self.search_current_match < 0 or self.search_current_match >= len(self.search_match_indices):
                     self.search_current_match = 0
                 self.jump_to_match()
 
@@ -921,9 +888,7 @@ class ProofreadingPage(Base, QWidget):
         if selection_index >= 0:
             prev_matches = [m for m in self.search_match_indices if m < selection_index]
             if prev_matches:
-                self.search_current_match = self.search_match_indices.index(
-                    prev_matches[-1]
-                )
+                self.search_current_match = self.search_match_indices.index(prev_matches[-1])
             else:
                 self.search_current_match = len(self.search_match_indices) - 1
             self.jump_to_match()
@@ -946,9 +911,7 @@ class ProofreadingPage(Base, QWidget):
         if selection_index >= 0:
             next_matches = [m for m in self.search_match_indices if m > selection_index]
             if next_matches:
-                self.search_current_match = self.search_match_indices.index(
-                    next_matches[0]
-                )
+                self.search_current_match = self.search_match_indices.index(next_matches[0])
             else:
                 self.search_current_match = 0
             self.jump_to_match()
@@ -1004,17 +967,11 @@ class ProofreadingPage(Base, QWidget):
 
         selected_item_index = self.get_selected_item_index()
         if selected_item_index in self.search_match_indices:
-            self.search_current_match = self.search_match_indices.index(
-                selected_item_index
-            )
-        elif self.search_current_match < 0 or self.search_current_match >= len(
-            self.search_match_indices
-        ):
+            self.search_current_match = self.search_match_indices.index(selected_item_index)
+        elif self.search_current_match < 0 or self.search_current_match >= len(self.search_match_indices):
             self.search_current_match = 0
 
-        self.search_card.set_match_info(
-            self.search_current_match + 1, len(self.search_match_indices)
-        )
+        self.search_card.set_match_info(self.search_current_match + 1, len(self.search_match_indices))
         return True
 
     @staticmethod
@@ -1068,9 +1025,7 @@ class ProofreadingPage(Base, QWidget):
                 self.replace_once_pending_jump = False
                 if not self.prepare_replace_context():
                     return
-                if self.search_current_match < 0 or self.search_current_match >= len(
-                    self.search_match_indices
-                ):
+                if self.search_current_match < 0 or self.search_current_match >= len(self.search_match_indices):
                     self.search_current_match = 0
                 self.jump_to_match()
                 return
@@ -1106,9 +1061,7 @@ class ProofreadingPage(Base, QWidget):
             if not self.prepare_replace_context():
                 return
 
-            if self.search_current_match < 0 or self.search_current_match >= len(
-                self.search_match_indices
-            ):
+            if self.search_current_match < 0 or self.search_current_match >= len(self.search_match_indices):
                 self.search_current_match = 0
 
             item_index = self.search_match_indices[self.search_current_match]
@@ -1171,9 +1124,7 @@ class ProofreadingPage(Base, QWidget):
             pos = self.search_current_match
 
         if keep_match:
-            self.search_current_match = (max(pos, 0) + 1) % len(
-                self.search_match_indices
-            )
+            self.search_current_match = (max(pos, 0) + 1) % len(self.search_match_indices)
         else:
             if 0 <= pos < len(self.search_match_indices):
                 self.search_match_indices.pop(pos)
@@ -1188,9 +1139,7 @@ class ProofreadingPage(Base, QWidget):
                 pos = 0
             self.search_current_match = max(pos, 0)
 
-        self.search_card.set_match_info(
-            self.search_current_match + 1, len(self.search_match_indices)
-        )
+        self.search_card.set_match_info(self.search_current_match + 1, len(self.search_match_indices))
         # 单步替换后先停留在当前条目；下一次点击再显式跳到下一个目标。
         self.replace_once_pending_jump = True
 
@@ -1228,11 +1177,7 @@ class ProofreadingPage(Base, QWidget):
                 )
                 return
 
-            target_items = [
-                self.filtered_items[index]
-                for index in target_indices
-                if 0 <= index < len(self.filtered_items)
-            ]
+            target_items = [self.filtered_items[index] for index in target_indices if 0 <= index < len(self.filtered_items)]
             if not target_items:
                 self.emit(
                     Base.Event.TOAST,
@@ -1246,9 +1191,7 @@ class ProofreadingPage(Base, QWidget):
             keyword = self.search_keyword
             replacement = self.search_card.get_replace_text()
             is_regex = self.search_is_regex
-            self.indeterminate_show(
-                Localizer.get().proofreading_page_indeterminate_saving
-            )
+            self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
 
             def task() -> None:
                 changed_payload: list[dict[str, Any]] = []
@@ -1280,9 +1223,7 @@ class ProofreadingPage(Base, QWidget):
                             new_dst, replaced_count = pattern.subn(replacement, old_dst)
                         else:
                             # 非正则替换：字面量、不区分大小写；replacement 按纯文本处理。
-                            new_dst, replaced_count = pattern.subn(
-                                lambda m: replacement, old_dst
-                            )
+                            new_dst, replaced_count = pattern.subn(lambda m: replacement, old_dst)
 
                         if replaced_count <= 0 or new_dst == old_dst:
                             continue
@@ -1290,11 +1231,7 @@ class ProofreadingPage(Base, QWidget):
                         item_dict = item.to_dict()
                         if isinstance(item_dict.get("id"), int):
                             # 状态流转统一走 Domain，避免单条保存/批量替换规则漂移。
-                            new_status = (
-                                ProofreadingDomain.resolve_status_after_manual_edit(
-                                    old_status=old_status, new_dst=new_dst
-                                )
-                            )
+                            new_status = ProofreadingDomain.resolve_status_after_manual_edit(old_status=old_status, new_dst=new_dst)
 
                             item_dict["dst"] = new_dst
                             item_dict["status"] = new_status
@@ -1384,9 +1321,7 @@ class ProofreadingPage(Base, QWidget):
         if self.current_item is not None:
             row = self.table_widget.find_row_by_item(self.current_item)
             if row >= 0:
-                warnings = ProofreadingDomain.get_item_warnings(
-                    self.current_item, self.warning_map
-                )
+                warnings = ProofreadingDomain.get_item_warnings(self.current_item, self.warning_map)
                 self.edit_panel.bind_item(self.current_item, row + 1, warnings)
                 self.edit_panel.set_readonly(self.is_readonly)
 
@@ -1399,9 +1334,7 @@ class ProofreadingPage(Base, QWidget):
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().proofreading_page_replace_done.replace(
-                    "{N}", str(result.changed_count)
-                ),
+                "message": Localizer.get().proofreading_page_replace_done.replace("{N}", str(result.changed_count)),
             },
         )
 
@@ -1486,9 +1419,7 @@ class ProofreadingPage(Base, QWidget):
         self.edit_panel.bind_item(item, index, warnings)
         self.edit_panel.set_readonly(self.is_readonly)
 
-    def run_with_unsaved_guard(
-        self, action: Callable[[], None], on_cancel: Callable[[], None] | None = None
-    ) -> None:
+    def run_with_unsaved_guard(self, action: Callable[[], None], on_cancel: Callable[[], None] | None = None) -> None:
         if not self.edit_panel.has_unsaved_changes():
             action()
             return
@@ -1501,9 +1432,7 @@ class ProofreadingPage(Base, QWidget):
     def save_current_item(self) -> None:
         if self.is_readonly or not self.current_item:
             return
-        self.on_edit_save_requested(
-            self.current_item, self.edit_panel.get_current_text()
-        )
+        self.on_edit_save_requested(self.current_item, self.edit_panel.get_current_text())
 
     def on_edit_save_requested(self, item: Item, new_dst: str) -> None:
         if self.is_readonly:
@@ -1520,9 +1449,7 @@ class ProofreadingPage(Base, QWidget):
 
         old_dst = item.get_dst()
         old_status = item.get_status()
-        new_status = ProofreadingDomain.resolve_status_after_manual_edit(
-            old_status=old_status, new_dst=new_dst
-        )
+        new_status = ProofreadingDomain.resolve_status_after_manual_edit(old_status=old_status, new_dst=new_dst)
         if new_status != old_status:
             item.set_status(new_status)
 
@@ -1660,9 +1587,7 @@ class ProofreadingPage(Base, QWidget):
 
         # 同步更新术语失败明细缓存，避免筛选对话框/术语筛选使用过期数据。
         if WarningType.GLOSSARY in warnings:
-            self.failed_terms_by_item_key[key] = tuple(
-                checker.get_failed_glossary_terms(item)
-            )
+            self.failed_terms_by_item_key[key] = tuple(checker.get_failed_glossary_terms(item))
         else:
             self.failed_terms_by_item_key.pop(key, None)
 
@@ -1731,9 +1656,7 @@ class ProofreadingPage(Base, QWidget):
         count = len(items)
         message_box = MessageBox(
             Localizer.get().confirm,
-            Localizer.get().proofreading_page_batch_reset_translation_confirm.replace(
-                "{COUNT}", str(count)
-            ),
+            Localizer.get().proofreading_page_batch_reset_translation_confirm.replace("{COUNT}", str(count)),
             self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
@@ -1797,9 +1720,7 @@ class ProofreadingPage(Base, QWidget):
         count = len(items)
         message_box = MessageBox(
             Localizer.get().confirm,
-            Localizer.get().proofreading_page_batch_retranslate_confirm.replace(
-                "{COUNT}", str(count)
-            ),
+            Localizer.get().proofreading_page_batch_retranslate_confirm.replace("{COUNT}", str(count)),
             self.main_window,
         )
         message_box.yesButton.setText(Localizer.get().confirm)
@@ -1818,9 +1739,7 @@ class ProofreadingPage(Base, QWidget):
 
         # 显示进度 Toast（初始显示"正在处理第 1 个"）
         self.progress_show(
-            Localizer.get()
-            .task_batch_translation_progress.replace("{CURRENT}", "1")
-            .replace("{TOTAL}", str(count)),
+            Localizer.get().task_batch_translation_progress.replace("{CURRENT}", "1").replace("{TOTAL}", str(count)),
             1,
             count,
         )
@@ -1834,9 +1753,7 @@ class ProofreadingPage(Base, QWidget):
                 # 更新进度（在任务开始前显示"正在处理第 N 个"）
                 current = idx + 1
                 self.progress_updated.emit(
-                    Localizer.get()
-                    .task_batch_translation_progress.replace("{CURRENT}", str(current))
-                    .replace("{TOTAL}", str(total)),
+                    Localizer.get().task_batch_translation_progress.replace("{CURRENT}", str(current)).replace("{TOTAL}", str(total)),
                     current,
                     total,
                 )
@@ -1855,9 +1772,7 @@ class ProofreadingPage(Base, QWidget):
                     self.translate_done.emit(i, s)
                     complete_event.set()
 
-                Engine.get().translate_single_item(
-                    item=item, config=config, callback=callback
-                )
+                Engine.get().translate_single_item(item=item, config=config, callback=callback)
 
                 # 阻塞等待翻译完成，避免忙轮询
                 complete_event.wait()
@@ -1875,14 +1790,8 @@ class ProofreadingPage(Base, QWidget):
             self.emit(
                 Base.Event.TOAST,
                 {
-                    "type": Base.ToastType.SUCCESS
-                    if fail_count == 0
-                    else Base.ToastType.WARNING,
-                    "message": Localizer.get()
-                    .task_batch_translation_success.replace(
-                        "{SUCCESS}", str(success_count)
-                    )
-                    .replace("{FAILED}", str(fail_count)),
+                    "type": Base.ToastType.SUCCESS if fail_count == 0 else Base.ToastType.WARNING,
+                    "message": Localizer.get().task_batch_translation_success.replace("{SUCCESS}", str(success_count)).replace("{FAILED}", str(fail_count)),
                 },
             )
 
@@ -1964,14 +1873,8 @@ class ProofreadingPage(Base, QWidget):
             return
 
         review_items = self.items
-        untranslated_count = sum(
-            1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
-        )
-        project_status = (
-            Base.ProjectStatus.PROCESSING
-            if untranslated_count > 0
-            else Base.ProjectStatus.PROCESSED
-        )
+        untranslated_count = sum(1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE)
+        project_status = Base.ProjectStatus.PROCESSING if untranslated_count > 0 else Base.ProjectStatus.PROCESSED
         dm.set_project_status(project_status)
 
         extras = dm.get_translation_extras()
@@ -1993,7 +1896,10 @@ class ProofreadingPage(Base, QWidget):
         self.indeterminate_hide()
         if success:
             # 通知翻译页更新按钮状态
-            self.emit(Base.Event.PROJECT_CHECK_RUN, {})
+            self.emit(
+                Base.Event.PROJECT_CHECK,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
             return
 
         self.emit(
@@ -2007,13 +1913,22 @@ class ProofreadingPage(Base, QWidget):
     # ========== 只读模式控制 ==========
     def on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
         """Engine 状态变更事件"""
-        del data
-        if event == Base.Event.TRANSLATION_RUN:
+        sub_event = data.get("sub_event")
+        if event in (
+            Base.Event.TRANSLATION_TASK,
+            Base.Event.TRANSLATION_REQUEST_STOP,
+        ) and sub_event in (
+            Base.SubEvent.REQUEST,
+            Base.SubEvent.RUN,
+        ):
             # 翻译过程中数据会变化；翻译结束后需要自动同步。
             self.data_stale = True
             self.reload_pending = True
-        if event == Base.Event.TRANSLATION_DONE:
-            # 翻译完成视为一次新的数据周期。
+        if event == Base.Event.TRANSLATION_TASK and sub_event in (
+            Base.SubEvent.DONE,
+            Base.SubEvent.ERROR,
+        ):
+            # 翻译完成或失败都视为一次新的数据周期。
             self.mark_data_stale()
 
         self.check_engine_status()
@@ -2086,8 +2001,9 @@ class ProofreadingPage(Base, QWidget):
     def indeterminate_show(self, msg: str) -> None:
         """显示 loading 指示器（不定进度）"""
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": msg,
                 "indeterminate": True,
             },
@@ -2096,8 +2012,9 @@ class ProofreadingPage(Base, QWidget):
     def progress_show(self, msg: str, current: int = 0, total: int = 0) -> None:
         """显示确定进度指示器"""
         self.emit(
-            Base.Event.PROGRESS_TOAST_SHOW,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.RUN,
                 "message": msg,
                 "indeterminate": False,
                 "current": current,
@@ -2108,8 +2025,9 @@ class ProofreadingPage(Base, QWidget):
     def progress_update(self, msg: str, current: int, total: int) -> None:
         """更新进度"""
         self.emit(
-            Base.Event.PROGRESS_TOAST_UPDATE,
+            Base.Event.PROGRESS_TOAST,
             {
+                "sub_event": Base.SubEvent.UPDATE,
                 "message": msg,
                 "current": current,
                 "total": total,
@@ -2118,18 +2036,21 @@ class ProofreadingPage(Base, QWidget):
 
     def indeterminate_hide(self) -> None:
         """隐藏 loading 指示器"""
-        self.emit(Base.Event.PROGRESS_TOAST_HIDE, {})
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.DONE},
+        )
 
     def on_translation_reset(self, event: Base.Event, data: dict) -> None:
         """响应翻译重置事件"""
         del event
-        sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        sub_event: Base.SubEvent = data["sub_event"]
         terminal_sub_events = (
-            Base.TranslationResetSubEvent.DONE,
-            Base.TranslationResetSubEvent.ERROR,
+            Base.SubEvent.DONE,
+            Base.SubEvent.ERROR,
         )
 
-        if sub_event == Base.TranslationResetSubEvent.RUN:
+        if sub_event == Base.SubEvent.RUN:
             self.is_resetting = True
         elif sub_event in terminal_sub_events:
             self.is_resetting = False

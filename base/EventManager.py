@@ -40,8 +40,7 @@ class EventManager(QObject):
 
     COALESCE_EVENT_VALUES: frozenset[str] = frozenset(
         {
-            "TRANSLATION_UPDATE",
-            "PROGRESS_TOAST_UPDATE",
+            "TRANSLATION_PROGRESS",
         }
     )
 
@@ -131,8 +130,19 @@ class EventManager(QObject):
             return value
         return str(event)
 
-    def should_coalesce(self, event: StrEnum) -> bool:
-        return self.get_event_value(event) in self.COALESCE_EVENT_VALUES
+    def should_coalesce(self, event: StrEnum, data: object) -> bool:
+        event_key = self.get_event_value(event)
+        if event_key in self.COALESCE_EVENT_VALUES:
+            return True
+
+        if event_key != "PROGRESS_TOAST":
+            return False
+        if not isinstance(data, dict):
+            return False
+
+        sub_event = data.get("sub_event")
+        sub_event_value = getattr(sub_event, "value", sub_event)
+        return isinstance(sub_event_value, str) and sub_event_value == "UPDATE"
 
     def flush_pending_events(self) -> None:
         with self.lock:
@@ -150,7 +160,7 @@ class EventManager(QObject):
     # 触发事件
     def emit_event(self, event: StrEnum, data: object) -> None:
         event_key = self.get_event_value(event)
-        if self.should_coalesce(event):
+        if self.should_coalesce(event, data):
             with self.lock:
                 self.pending_latest[event_key] = (event, data)
                 if self.flush_scheduled:
@@ -188,11 +198,7 @@ class EventManager(QObject):
                     need_connect_destroyed = True
 
             if need_connect_destroyed:
-                owner.destroyed.connect(
-                    lambda obj=None, owner_id=owner_id: (
-                        self.cleanup_owner_subscriptions(owner_id)
-                    )
-                )
+                owner.destroyed.connect(lambda obj=None, owner_id=owner_id: (self.cleanup_owner_subscriptions(owner_id)))
             return
 
         with self.lock:
@@ -202,9 +208,7 @@ class EventManager(QObject):
         with self.lock:
             self.owner_cleanup_connected.discard(owner_id)
             for event, handlers in list(self.event_callbacks.items()):
-                cleaned: list[
-                    Callable[[StrEnum, Any], None] | EventManager.WeakHandler
-                ] = []
+                cleaned: list[Callable[[StrEnum, Any], None] | EventManager.WeakHandler] = []
 
                 for entry in handlers:
                     if isinstance(entry, EventManager.WeakHandler):

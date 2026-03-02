@@ -27,18 +27,12 @@ class BasicSettingsPage(Base, QWidget):
 
         # 根据应用语言构建语言列表
         if Localizer.get_app_language() == BaseLanguage.Enum.ZH:
-            self.languages = [
-                BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()
-            ]
+            self.languages = [BaseLanguage.get_name_zh(v) for v in BaseLanguage.get_languages()]
         else:
-            self.languages = [
-                BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()
-            ]
+            self.languages = [BaseLanguage.get_name_en(v) for v in BaseLanguage.get_languages()]
 
         # 仅原文语言支持“全部”，译文语言保持原列表不变。
-        self.source_languages = [
-            Localizer.get().basic_settings_page_source_language_all
-        ] + self.languages
+        self.source_languages = [Localizer.get().basic_settings_page_source_language_all] + self.languages
 
         # 设置容器
         self.root = QVBoxLayout(self)
@@ -70,40 +64,44 @@ class BasicSettingsPage(Base, QWidget):
         scroll_area_vbox.addStretch(1)
 
         # 翻译过程中禁用会影响过滤/翻译语义的选项，避免与翻译写库产生竞态。
-        self.subscribe(Base.Event.TRANSLATION_RUN, self.on_translation_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_DONE, self.on_translation_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_status_changed)
+        self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.on_translation_status_changed)
         self.subscribe(
-            Base.Event.TRANSLATION_REQUIRE_STOP, self.on_translation_status_changed
+            Base.Event.TRANSLATION_RESET_ALL,
+            self.on_translation_status_changed,
         )
-        self.subscribe(Base.Event.TRANSLATION_RESET, self.on_translation_status_changed)
-        self.on_translation_status_changed(Base.Event.TRANSLATION_DONE, {})
+        self.subscribe(
+            Base.Event.TRANSLATION_RESET_FAILED,
+            self.on_translation_status_changed,
+        )
+        self.on_translation_status_changed(
+            Base.Event.TRANSLATION_TASK,
+            {
+                "sub_event": Base.SubEvent.DONE,
+            },
+        )
 
     def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
-        if event == Base.Event.TRANSLATION_RESET:
-            sub_event: Base.TranslationResetSubEvent = data["sub_event"]
+        if event in (
+            Base.Event.TRANSLATION_RESET_ALL,
+            Base.Event.TRANSLATION_RESET_FAILED,
+        ):
+            sub_event: Base.SubEvent = data["sub_event"]
             if sub_event not in (
-                Base.TranslationResetSubEvent.DONE,
-                Base.TranslationResetSubEvent.ERROR,
+                Base.SubEvent.DONE,
+                Base.SubEvent.ERROR,
             ):
                 return
 
         status = Engine.get().get_status()
         locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
-        if (
-            hasattr(self, "source_language_combo")
-            and self.source_language_combo is not None
-        ):
+        if hasattr(self, "source_language_combo") and self.source_language_combo is not None:
             self.source_language_combo.setEnabled(not locked)
-        if (
-            hasattr(self, "target_language_combo")
-            and self.target_language_combo is not None
-        ):
+        if hasattr(self, "target_language_combo") and self.target_language_combo is not None:
             self.target_language_combo.setEnabled(not locked)
 
     # 原文语言
-    def add_widget_source_language(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
+    def add_widget_source_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def current_changed(combo_box: ComboBox) -> None:
             config = Config().load()
 
@@ -138,14 +136,10 @@ class BasicSettingsPage(Base, QWidget):
         parent.addWidget(card)
 
     # 译文语言
-    def add_widget_target_language(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
+    def add_widget_target_language(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def current_changed(combo_box: ComboBox) -> None:
             config = Config().load()
-            config.target_language = BaseLanguage.get_languages()[
-                combo_box.currentIndex()
-            ]
+            config.target_language = BaseLanguage.get_languages()[combo_box.currentIndex()]
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["target_language"]})
 
@@ -157,9 +151,7 @@ class BasicSettingsPage(Base, QWidget):
         combo_box = ComboBox(card)
         combo_box.addItems(self.languages)
         if config.target_language in BaseLanguage.get_languages():
-            combo_box.setCurrentIndex(
-                BaseLanguage.get_languages().index(config.target_language)
-            )
+            combo_box.setCurrentIndex(BaseLanguage.get_languages().index(config.target_language))
 
         combo_box.currentIndexChanged.connect(lambda index: current_changed(combo_box))
         card.add_right_widget(combo_box)
@@ -168,9 +160,7 @@ class BasicSettingsPage(Base, QWidget):
         parent.addWidget(card)
 
     # 工程文件保存位置
-    def add_widget_project_save_mode(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_project_save_mode(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         items = [
             Localizer.get().basic_settings_page_project_save_mode_manual,
             Localizer.get().basic_settings_page_project_save_mode_fixed,
@@ -179,9 +169,7 @@ class BasicSettingsPage(Base, QWidget):
 
         def get_description(mode: str, path: str) -> str:
             if mode == Config.ProjectSaveMode.FIXED and path:
-                return Localizer.get().basic_settings_page_project_save_mode_content_fixed.replace(
-                    "{PATH}", path
-                )
+                return Localizer.get().basic_settings_page_project_save_mode_content_fixed.replace("{PATH}", path)
             return Localizer.get().basic_settings_page_project_save_mode_content
 
         def current_changed(combo_box: ComboBox, card: SettingCard) -> None:
@@ -236,20 +224,14 @@ class BasicSettingsPage(Base, QWidget):
         elif config.project_save_mode == Config.ProjectSaveMode.SOURCE:
             index = 2
         combo_box.setCurrentIndex(index)
-        card.set_description(
-            get_description(config.project_save_mode, config.project_fixed_path)
-        )
+        card.set_description(get_description(config.project_save_mode, config.project_fixed_path))
 
-        combo_box.currentIndexChanged.connect(
-            lambda index: current_changed(combo_box, card)
-        )
+        combo_box.currentIndexChanged.connect(lambda index: current_changed(combo_box, card))
         card.add_right_widget(combo_box)
         parent.addWidget(card)
 
     # 任务完成后自动打开输出文件夹
-    def add_widget_output_folder_open_on_finish(
-        self, parent: QLayout, config: Config, windows: FluentWindow
-    ) -> None:
+    def add_widget_output_folder_open_on_finish(self, parent: QLayout, config: Config, windows: FluentWindow) -> None:
         def checked_changed(button: SwitchButton) -> None:
             # 更新并保存配置
             config = Config().load()
@@ -265,16 +247,12 @@ class BasicSettingsPage(Base, QWidget):
         switch_button.setOnText("")
         switch_button.setOffText("")
         switch_button.setChecked(config.output_folder_open_on_finish)
-        switch_button.checkedChanged.connect(
-            lambda checked: checked_changed(switch_button)
-        )
+        switch_button.checkedChanged.connect(lambda checked: checked_changed(switch_button))
         card.add_right_widget(switch_button)
         parent.addWidget(card)
 
     # 请求超时时间
-    def add_widget_request_timeout(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_request_timeout(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
         def value_changed(spin_box: SpinBox) -> None:
             config = Config().load()
             config.request_timeout = spin_box.value()
