@@ -133,6 +133,14 @@ class TestTextProcessor:
 
         assert processor.check("[a b] text", "[ab] text", Item.TextType.NONE) is True
 
+    def test_collect_non_blank_preserved_segments_skips_blank_matches(self) -> None:
+        processor = TextProcessor(Config(), None)
+        rule = re.compile(r"\s+|\[[^\]]+\]")
+
+        segments = processor.collect_non_blank_preserved_segments(" \t[A]\n ", rule)
+
+        assert segments == ["[A]"]
+
     def test_build_custom_preserve_data_filters_invalid_entries(self) -> None:
         snapshot = create_snapshot(
             text_preserve_entries=(
