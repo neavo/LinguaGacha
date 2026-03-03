@@ -166,7 +166,8 @@ class EPUBAstWriter(Base):
         # 先应用翻译（不改变结构），并记录 block 元素引用供后续双语插入。
         # items 在抽取阶段按文档顺序生成，row 越大越靠后。双语插入会改变 sibling index，
         # 因此必须在所有 path 查找完成后再做插入。
-        block_refs: list[tuple[Item, etree._Element, etree._Element]] = []
+        block_refs: list[tuple[etree._Element, etree._Element]] = []
+        inserted_block_paths: set[str] = set()
 
         for item in items:
             extra = item.get_extra_field()
@@ -236,11 +237,14 @@ class EPUBAstWriter(Base):
             ):
                 block_path = epub.get("block_path")
                 if isinstance(block_path, str) and block_path != "":
-                    block_elem = elem_by_path.get(block_path)
-                    if block_elem is None:
-                        block_elem = self.ast.find_by_path(root, block_path)
-                    if block_elem is not None:
-                        block_refs.append((item, block_elem, copy.deepcopy(block_elem)))
+                    # 同一 block_path 只插一次原文块，避免重复插入与内容混合。
+                    if block_path not in inserted_block_paths:
+                        block_elem = elem_by_path.get(block_path)
+                        if block_elem is None:
+                            block_elem = self.ast.find_by_path(root, block_path)
+                        if block_elem is not None:
+                            block_refs.append((block_elem, copy.deepcopy(block_elem)))
+                            inserted_block_paths.add(block_path)
 
             # 翻译写回
             for (slot, elem), text in zip(resolved, dst_lines, strict=True):
@@ -254,7 +258,7 @@ class EPUBAstWriter(Base):
         # 双语插入：在每个 block 前插入原文 block（目录页/NCX 除外）
         if allow_bilingual_insert:
             # 为避免插入影响顺序，这里按文档顺序的逆序插入
-            for item, block, clone in reversed(block_refs):
+            for block, clone in reversed(block_refs):
                 parent = block.getparent()
                 if parent is None:
                     continue

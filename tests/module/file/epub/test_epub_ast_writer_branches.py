@@ -223,6 +223,78 @@ def test_apply_items_to_tree_does_not_insert_bilingual_when_src_equals_dst(
     assert len(ps) == 1
 
 
+def test_apply_items_to_tree_bilingual_deduplicates_same_block_path(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    ast = EPUBAst(config)
+    root = etree.fromstring(
+        b"<html><body><div><p>head</p>tail-a<span/>tail-b</div></body></html>"
+    )
+
+    div = root.xpath(".//*[local-name()='div']")[0]
+    p = root.xpath(".//*[local-name()='p']")[0]
+    span = root.xpath(".//*[local-name()='span']")[0]
+    div_path = ast.build_elem_path(root, div)
+    p_path = ast.build_elem_path(root, p)
+    span_path = ast.build_elem_path(root, span)
+
+    item_a = Item.from_dict(
+        {
+            "src": "tail-a",
+            "dst": "A",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": [{"slot": "tail", "path": p_path}],
+                    "block_path": div_path,
+                    "src_digest": ast.sha1_hex_with_null_separator(["tail-a"]),
+                }
+            },
+        }
+    )
+    item_b = Item.from_dict(
+        {
+            "src": "tail-b",
+            "dst": "B",
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": [{"slot": "tail", "path": span_path}],
+                    "block_path": div_path,
+                    "src_digest": ast.sha1_hex_with_null_separator(["tail-b"]),
+                }
+            },
+        }
+    )
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="text/ch1.xhtml",
+        items=[item_a, item_b],
+        bilingual=True,
+    )
+
+    divs = root.xpath(".//*[local-name()='body']/*[local-name()='div']")
+    clones = [d for d in divs if "opacity:0.50" in (d.get("style") or "")]
+    originals = [d for d in divs if "opacity:0.50" not in (d.get("style") or "")]
+
+    assert applied == 2
+    assert skipped == 0
+    assert len(clones) == 1
+    assert len(originals) == 1
+
+    clone_p = clones[0].xpath("./*[local-name()='p']")[0]
+    clone_span = clones[0].xpath("./*[local-name()='span']")[0]
+    original_p = originals[0].xpath("./*[local-name()='p']")[0]
+    original_span = originals[0].xpath("./*[local-name()='span']")[0]
+
+    assert clone_p.tail == "tail-a"
+    assert clone_span.tail == "tail-b"
+    assert original_p.tail == "A"
+    assert original_span.tail == "B"
+
+
 def test_apply_items_to_tree_treats_is_nav_flag_as_nav_and_skips_insertion(
     config: Config,
 ) -> None:

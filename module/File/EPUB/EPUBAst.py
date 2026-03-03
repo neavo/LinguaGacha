@@ -604,6 +604,133 @@ class EPUBAst(Base):
             cur = cur.getparent()
         return False
 
+    def create_item_from_slots(
+        self,
+        doc_path: str,
+        rel_path: str,
+        spine_index: int,
+        unit_index: int,
+        block_path: str,
+        slots: list[tuple[EpubPartRef, str]],
+        is_nav: bool,
+    ) -> Item | None:
+        part_defs: list[dict[str, str]] = []
+        part_texts: list[str] = []
+        has_non_empty_text = False
+        for ref, text in slots:
+            part_defs.append({"slot": ref.slot, "path": ref.path})
+            part_texts.append(self.normalize_slot_text(text))
+            if text.strip() != "":
+                has_non_empty_text = True
+
+        # 只在当前单元至少包含一个非空文本时才入库，避免空 item 干扰后续流程。
+        if not has_non_empty_text:
+            return None
+
+        src = "\n".join(part_texts)
+        digest = self.sha1_hex_with_null_separator(part_texts)
+        return Item.from_dict(
+            {
+                "src": src,
+                "dst": "",
+                "tag": doc_path,
+                "row": spine_index * self.ROW_MULTIPLIER + unit_index,
+                "file_type": Item.FileType.EPUB,
+                "file_path": rel_path,
+                "extra_field": {
+                    "epub": {
+                        "mode": "slot_per_line",
+                        "doc_path": doc_path,
+                        "block_path": block_path,
+                        "parts": part_defs,
+                        "src_digest": digest,
+                        "is_nav": is_nav,
+                    }
+                },
+            }
+        )
+
+    def get_path_from_map(
+        self,
+        root: etree._Element,
+        elem: etree._Element,
+        path_map: dict[int, str],
+    ) -> str:
+        # 命中缓存时直接返回，避免在大文档里重复构建路径。
+        path = path_map.get(id(elem))
+        if path is not None:
+            return path
+        return self.build_elem_path(root, elem)
+
+    def collect_document_units(
+        self,
+        root: etree._Element,
+        elem: etree._Element,
+        path_map: dict[int, str],
+        in_skipped_map: dict[int, bool],
+        has_block_descendant_map: dict[int, bool],
+    ) -> list[tuple[str, list[tuple[EpubPartRef, str]]]]:
+        if in_skipped_map.get(id(elem), False):
+            return []
+
+        units: list[tuple[str, list[tuple[EpubPartRef, str]]]] = []
+        is_block = self.is_block_candidate(elem)
+        has_block_descendant = has_block_descendant_map.get(id(elem), False)
+        elem_path = self.get_path_from_map(root, elem, path_map)
+
+        if is_block and not has_block_descendant:
+            # 叶子 block 保持历史行为：整块抽取，避免既有 EPUB 回写定位回归。
+            units.append(
+                (
+                    elem_path,
+                    self.iter_translatable_text_slots(root, elem, path_map=path_map),
+                )
+            )
+            return units
+
+        collect_direct_slots = is_block and has_block_descendant
+        if collect_direct_slots and elem.text is not None and elem.text != "":
+            # 非叶子 block 仅抽直属 text，避免把子 block 文本重复打包。
+            units.append(
+                (
+                    elem_path,
+                    [
+                        (
+                            EpubPartRef(slot="text", path=elem_path),
+                            elem.text,
+                        )
+                    ],
+                )
+            )
+
+        for child in self.iter_children_elements(elem):
+            units.extend(
+                self.collect_document_units(
+                    root=root,
+                    elem=child,
+                    path_map=path_map,
+                    in_skipped_map=in_skipped_map,
+                    has_block_descendant_map=has_block_descendant_map,
+                )
+            )
+
+            # child.tail 在 child 子树之外，必须在 child 处理后再写入，才能保持文档顺序。
+            if collect_direct_slots and child.tail is not None and child.tail != "":
+                child_path = self.get_path_from_map(root, child, path_map)
+                units.append(
+                    (
+                        elem_path,
+                        [
+                            (
+                                EpubPartRef(slot="tail", path=child_path),
+                                child.tail,
+                            )
+                        ],
+                    )
+                )
+
+        return units
+
     def extract_items_from_document(
         self,
         doc_path: str,
@@ -641,54 +768,26 @@ class EPUBAst(Base):
                 self.is_block_candidate(elem) or has_child_block_in_subtree
             )
 
-        # 选择 block：只取“叶子 block”，避免 div/li 嵌套导致重复。
-        blocks: list[etree._Element] = []
-        for elem in elem_list:
-            if not self.is_block_candidate(elem):
-                continue
-            if in_skipped_map[id(elem)]:
-                continue
-            if has_block_descendant_map[id(elem)]:
-                continue
-            blocks.append(elem)
-
+        units = self.collect_document_units(
+            root=root,
+            elem=root,
+            path_map=path_map,
+            in_skipped_map=in_skipped_map,
+            has_block_descendant_map=has_block_descendant_map,
+        )
         unit_index = 0
-        for block in blocks:
-            slots = self.iter_translatable_text_slots(root, block, path_map=path_map)
-            # 过滤空白槽位
-            slot_texts = [t for _ref, t in slots if t.strip() != ""]
-            if not slot_texts:
-                continue
-
-            part_defs: list[dict[str, str]] = []
-            part_texts: list[str] = []
-            for ref, text in slots:
-                part_defs.append({"slot": ref.slot, "path": ref.path})
-                part_texts.append(self.normalize_slot_text(text))
-
-            src = "\n".join(part_texts)
-            digest = self.sha1_hex_with_null_separator(part_texts)
-
-            item = Item.from_dict(
-                {
-                    "src": src,
-                    "dst": "",
-                    "tag": doc_path,
-                    "row": spine_index * self.ROW_MULTIPLIER + unit_index,
-                    "file_type": Item.FileType.EPUB,
-                    "file_path": rel_path,
-                    "extra_field": {
-                        "epub": {
-                            "mode": "slot_per_line",
-                            "doc_path": doc_path,
-                            "block_path": path_map[id(block)],
-                            "parts": part_defs,
-                            "src_digest": digest,
-                            "is_nav": is_nav,
-                        }
-                    },
-                }
+        for block_path, slots in units:
+            item = self.create_item_from_slots(
+                doc_path=doc_path,
+                rel_path=rel_path,
+                spine_index=spine_index,
+                unit_index=unit_index,
+                block_path=block_path,
+                slots=slots,
+                is_nav=is_nav,
             )
+            if item is None:
+                continue
             items.append(item)
             unit_index += 1
 

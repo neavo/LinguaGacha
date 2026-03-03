@@ -518,6 +518,86 @@ def test_extract_items_from_document_skips_whitespace_only_blocks(
     assert [it.get_src() for it in items] == ["A"]
 
 
+def test_extract_items_from_document_skips_whitespace_only_non_leaf_slots(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    raw = b"<html><body><div><p>A</p>   <br/> \n </div></body></html>"
+
+    items = handler.extract_items_from_document(
+        doc_path="text/ch1.xhtml",
+        raw=raw,
+        spine_index=0,
+        rel_path="book.epub",
+        is_nav=False,
+    )
+
+    assert [it.get_src() for it in items] == ["A"]
+
+
+def test_extract_items_from_document_uses_path_map_without_rebuilding_paths(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+
+    def fail_build_path(root, elem):
+        del root
+        del elem
+        raise AssertionError("build_elem_path should not be called when path_map hits")
+
+    monkeypatch.setattr(handler, "build_elem_path", fail_build_path)
+
+    items = handler.extract_items_from_document(
+        doc_path="text/ch1.xhtml",
+        raw=b"<html><body><div><p>A</p>x<br/>y</div></body></html>",
+        spine_index=0,
+        rel_path="book.epub",
+        is_nav=False,
+    )
+
+    assert [it.get_src() for it in items] == ["A", "x", "y"]
+
+
+def test_get_path_from_map_falls_back_to_build_elem_path_on_miss(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = EPUBAst(config)
+    root = etree.fromstring(b"<html><body><p>A</p></body></html>")
+    p = root.xpath(".//*[local-name()='p']")[0]
+
+    called: list[tuple[etree._Element, etree._Element]] = []
+
+    def fake_build_path(node_root, elem):
+        called.append((node_root, elem))
+        return "/fallback[1]"
+
+    monkeypatch.setattr(handler, "build_elem_path", fake_build_path)
+
+    path = handler.get_path_from_map(root, p, {})
+
+    assert path == "/fallback[1]"
+    assert called == [(root, p)]
+
+
+def test_extract_items_from_document_collects_non_leaf_direct_text(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    raw = b"<html><body><div>lead<p>A</p></div></body></html>"
+
+    items = handler.extract_items_from_document(
+        doc_path="text/ch1.xhtml",
+        raw=raw,
+        spine_index=0,
+        rel_path="book.epub",
+        is_nav=False,
+    )
+
+    assert [it.get_src() for it in items] == ["lead", "A"]
+
+
 def test_read_from_stream_does_not_process_nav_twice_when_nav_in_spine(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
