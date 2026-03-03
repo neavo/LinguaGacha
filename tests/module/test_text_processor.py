@@ -45,6 +45,14 @@ def reset_text_processor_rule_cache() -> Generator[None, None, None]:
 
 
 class TestTextProcessor:
+    # 统一构造自定义文本保护处理器，减少测试样例中的重复初始化。
+    def create_custom_preserve_processor(self, pattern: str) -> TextProcessor:
+        snapshot = create_snapshot(
+            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
+            text_preserve_entries=({"src": pattern},),
+        )
+        return TextProcessor(Config(), None, snapshot)
+
     def test_extract_line_edge_whitespace_stores_and_strips(self) -> None:
         processor = TextProcessor(Config(), None)
 
@@ -119,7 +127,7 @@ class TestTextProcessor:
         )
         monkeypatch.setattr(
             processor,
-            "get_re_check",
+            "get_re_sample",
             lambda custom, text_type: re.compile(r"\[[^\]]+\]"),
         )
 
@@ -591,11 +599,37 @@ class TestTextProcessor:
         processor = TextProcessor(Config(), None, create_snapshot())
         monkeypatch.setattr(
             processor,
-            "get_re_check",
+            "get_re_sample",
             lambda custom, text_type: re.compile(r"\[[^\]]+\]"),
         )
 
         assert processor.check("[A] body", "[B] body", Item.TextType.NONE) is False
+
+    @pytest.mark.parametrize(
+        ("src", "dst", "expected"),
+        [
+            pytest.param("<a><b>", "<a>正文<b>", True, id="boundary_shift_to_middle"),
+            pytest.param("<a>正文<b>", "<a><b>", True, id="boundary_shift_to_edges"),
+            pytest.param("<a>正文<b>", "<a>正文", False, id="missing_segment"),
+            pytest.param("<a>正文<b>", "<b>正文<a>", False, id="reordered_segment"),
+        ],
+    )
+    def test_check_tag_preserve_segments_by_sequence(
+        self, src: str, dst: str, expected: bool
+    ) -> None:
+        processor = self.create_custom_preserve_processor("<[^>]+>")
+        assert processor.check(src, dst, Item.TextType.NONE) is expected
+
+    def test_check_accepts_issue_453_like_preserve_segments_when_positions_shift(
+        self,
+    ) -> None:
+        processor = self.create_custom_preserve_processor(r"\\N\[\d+\]|\\\[\d+\]")
+
+        assert processor.check(
+            r"\N[70]\[193]",
+            r"前缀\N[70]中间\[193]后缀",
+            Item.TextType.NONE,
+        )
 
     def test_get_rule_returns_none_when_preset_file_missing(
         self, monkeypatch: pytest.MonkeyPatch

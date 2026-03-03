@@ -579,28 +579,34 @@ class TextProcessor(Base):
 
         return name, "\n".join(results)
 
+    # 统一提取并归一化保护段，避免在检查逻辑里重复实现相同流程。
+    def collect_non_blank_preserved_segments(
+        self, text: str, rule: re.Pattern[str]
+    ) -> list[str]:
+        segments: list[str] = []
+        for match in rule.finditer(text):
+            segment = __class__.RE_BLANK.sub("", match.group(0))
+            if segment == "":
+                continue
+            else:
+                segments.append(segment)
+
+        return segments
+
     # 检查代码段
     def check(self, src: str, dst: str, text_type: Item.TextType) -> bool:
-        x: list[str] = []
-        y: list[str] = []
-        rule: re.Pattern | None = self.get_re_check(
+        # 这里必须按“逐个保护段”比较，而不是按“连续块”比较，
+        # 否则当保护段从头尾移动到段中（或反过来）时会出现分块差异误判。
+        rule: re.Pattern[str] | None = self.get_re_sample(
             custom=self.get_text_preserve_custom_enabled(),
             text_type=text_type,
         )
 
-        if rule is not None:
-            x = [v.group(0) for v in rule.finditer(src)]
-            y = [v.group(0) for v in rule.finditer(dst)]
+        if rule is None:
+            # 没有可用规则时，不应触发文本保护失效。
+            return True
 
-        x = [
-            __class__.RE_BLANK.sub("", v)
-            for v in x
-            if __class__.RE_BLANK.sub("", v) != ""
-        ]
-        y = [
-            __class__.RE_BLANK.sub("", v)
-            for v in y
-            if __class__.RE_BLANK.sub("", v) != ""
-        ]
+        src_segments = self.collect_non_blank_preserved_segments(src, rule)
+        dst_segments = self.collect_non_blank_preserved_segments(dst, rule)
 
-        return x == y
+        return src_segments == dst_segments
