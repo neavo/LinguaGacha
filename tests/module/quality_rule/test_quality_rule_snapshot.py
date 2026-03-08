@@ -148,3 +148,32 @@ def test_merge_glossary_entries_returns_empty_when_incoming_is_empty() -> None:
 
     assert added == []
     assert snapshot.glossary_entries == [{"src": "HP", "dst": "生命值"}]
+
+
+def test_merge_glossary_entries_fills_empty_existing_fields() -> None:
+    snapshot = QualityRuleSnapshot(
+        glossary_enable=True,
+        text_preserve_mode=DataManager.TextPreserveMode.SMART,
+        text_preserve_entries=(),
+        pre_replacement_enable=False,
+        pre_replacement_entries=(),
+        post_replacement_enable=False,
+        post_replacement_entries=(),
+        custom_prompt_zh_enable=False,
+        custom_prompt_zh="",
+        custom_prompt_en_enable=False,
+        custom_prompt_en="",
+        glossary_entries=[{"src": "HP", "dst": "", "info": ""}],
+        glossary_src_set={"HP"},
+    )
+
+    changed = snapshot.merge_glossary_entries(
+        [{"src": "HP", "dst": "生命值", "info": "stat", "case_sensitive": True}]
+    )
+
+    assert changed == [
+        {"src": "HP", "dst": "生命值", "info": "stat"},
+    ]
+    assert snapshot.glossary_entries == [
+        {"src": "HP", "dst": "生命值", "info": "stat"},
+    ]

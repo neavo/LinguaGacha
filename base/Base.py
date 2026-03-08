@@ -5,7 +5,7 @@ from base.EventManager import EventManager
 
 
 class Base:
-    # 翻译事件速查表（优先看这里）：
+    # 翻译/分析事件速查表（优先看这里）：
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
     # | 事件名                        | sub_event                     | 语义                                           | 常见字段                                                  |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
@@ -14,6 +14,11 @@ class Base:
     # | TRANSLATION_PROGRESS          | （按快照事件处理）           | 上报翻译进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
     # | TRANSLATION_RESET_ALL         | REQUEST / RUN / DONE / ERROR | 重置全部条目                                   | 无                                                        |
     # | TRANSLATION_RESET_FAILED      | REQUEST / RUN / DONE / ERROR | 仅重置失败条目                                 | 无                                                        |
+    # | ANALYSIS_TASK                 | REQUEST / RUN / DONE / ERROR | 发起或继续术语分析任务，并回传任务终态         | mode, final_status(SUCCESS/STOPPED/FAILED), message      |
+    # | ANALYSIS_REQUEST_STOP         | REQUEST / RUN                | 请求停止当前正在执行的分析任务（不单独发 DONE）| 无                                                        |
+    # | ANALYSIS_PROGRESS             | （按快照事件处理）           | 上报分析进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
+    # | ANALYSIS_RESET_ALL            | REQUEST / RUN / DONE / ERROR | 重置全部分析进度                               | 无                                                        |
+    # | ANALYSIS_RESET_FAILED         | REQUEST / RUN / DONE / ERROR | 仅重置失败的分析进度                           | 无                                                        |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
 
     # 事件
@@ -21,12 +26,23 @@ class Base:
         TOAST = "TOAST"  # Toast
         PROGRESS_TOAST = "PROGRESS_TOAST"  # 进度 Toast 生命周期事件
         APITEST = "APITEST"  # 测试 - 生命周期事件
-        TRANSLATION_TASK = "TRANSLATION_TASK"  # 翻译 - 任务生命周期事件（发起/运行/结束）
-        TRANSLATION_REQUEST_STOP = "TRANSLATION_REQUEST_STOP"  # 翻译 - 停止当前任务请求链路（REQUEST/RUN）
+        TRANSLATION_TASK = (
+            "TRANSLATION_TASK"  # 翻译 - 任务生命周期事件（发起/运行/结束）
+        )
+        TRANSLATION_REQUEST_STOP = (
+            "TRANSLATION_REQUEST_STOP"  # 翻译 - 停止当前任务请求链路（REQUEST/RUN）
+        )
         TRANSLATION_PROGRESS = "TRANSLATION_PROGRESS"  # 翻译 - 进度快照更新
         TRANSLATION_EXPORT = "TRANSLATION_EXPORT"  # 翻译 - 导出
         TRANSLATION_RESET_ALL = "TRANSLATION_RESET_ALL"  # 翻译 - 重置全部
         TRANSLATION_RESET_FAILED = "TRANSLATION_RESET_FAILED"  # 翻译 - 仅重置失败项
+        ANALYSIS_TASK = "ANALYSIS_TASK"  # 分析 - 任务生命周期事件（发起/运行/结束）
+        ANALYSIS_REQUEST_STOP = (
+            "ANALYSIS_REQUEST_STOP"  # 分析 - 停止当前任务请求链路（REQUEST/RUN）
+        )
+        ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
+        ANALYSIS_RESET_ALL = "ANALYSIS_RESET_ALL"  # 分析 - 重置全部
+        ANALYSIS_RESET_FAILED = "ANALYSIS_RESET_FAILED"  # 分析 - 仅重置失败项
         APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
         APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
         APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
@@ -77,12 +93,14 @@ class Base:
         NER = "NER"
         APITEST = "APITEST"
         TRANSLATION = "TRANSLATION"
+        ANALYSIS = "ANALYSIS"
 
     # 任务状态
     class TaskStatus(StrEnum):
         IDLE = "IDLE"  # 无任务
         NERING = "NERING"  # 测试中
         TESTING = "TESTING"  # 测试中
+        ANALYZING = "ANALYZING"  # 分析中
         TRANSLATING = "TRANSLATING"  # 翻译中
         STOPPING = "STOPPING"  # 停止中
 
@@ -103,6 +121,12 @@ class Base:
         NEW = "NEW"  # 新任务：从工程数据库加载条目，并初始化全新进度
         CONTINUE = "CONTINUE"  # 继续翻译：从工程数据库加载条目，并恢复既有进度
         RESET = "RESET"  # 重置任务 (强制重解析 Assets)
+
+    # 分析模式 (用户意图)
+    class AnalysisMode(StrEnum):
+        NEW = "NEW"  # 新任务：清空既有分析进度并重新扫描全部文件
+        CONTINUE = "CONTINUE"  # 继续分析：跳过已完成文件，仅继续剩余文件
+        RESET = "RESET"  # 重置任务：用于外部显式声明“重新构建分析语料”
 
     # 构造函数
     # Base 作为 mixin 使用：需要支持 Qt 组件的协作式多继承初始化。

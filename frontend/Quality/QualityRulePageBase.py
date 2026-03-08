@@ -36,6 +36,7 @@ from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
@@ -150,6 +151,11 @@ class QualityRulePageBase(Base, QWidget):
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_task)
         self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
         self.subscribe(Base.Event.TRANSLATION_RESET_FAILED, self.on_translation_reset)
+        self.subscribe(Base.Event.ANALYSIS_TASK, self.on_analysis_task)
+        self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.on_analysis_task)
+        self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.on_analysis_reset)
+        self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.on_analysis_reset)
+        self.sync_busy_state()
 
     # ==================== 子类需要实现的最小接口 ====================
 
@@ -438,6 +444,34 @@ class QualityRulePageBase(Base, QWidget):
         sub_event = data.get("sub_event")
         if sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
             self.invalidate_statistics()
+
+    def on_analysis_task(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event in (
+            Base.SubEvent.REQUEST,
+            Base.SubEvent.RUN,
+            Base.SubEvent.DONE,
+            Base.SubEvent.ERROR,
+        ):
+            self.invalidate_statistics()
+        self.sync_busy_state()
+
+    def on_analysis_reset(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
+            self.invalidate_statistics()
+        self.sync_busy_state()
+
+    def sync_busy_state(self) -> None:
+        """分析过程中锁定规则编辑，避免与后台增量落库产生写冲突。"""
+        status = Engine.get().get_status()
+        locked = status in (
+            Base.TaskStatus.ANALYZING,
+            Base.TaskStatus.STOPPING,
+        )
+        self.setEnabled(not locked)
 
     def on_project_unloaded_ui(self) -> None:
         """子类可覆盖：卸载工程时刷新头部 UI。"""

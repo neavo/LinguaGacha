@@ -35,6 +35,10 @@ class Engine:
 
         self.api_test = APITester()
 
+        from module.Engine.Analyzer.Analyzer import Analyzer
+
+        self.analyzer = Analyzer()
+
         from module.Engine.Translator.Translator import Translator
 
         self.translator = Translator()
@@ -65,9 +69,10 @@ class Engine:
         # UI 需要“实时请求数”时使用 get_request_in_flight_count()。
         count = 0
 
-        translator = getattr(self, "translator", None)
-        if translator is not None:
-            count += translator.get_concurrency_in_use()
+        for worker_name in ("translator", "analyzer"):
+            worker = getattr(self, worker_name, None)
+            if worker is not None:
+                count += worker.get_concurrency_in_use()
 
         single_task_name = f"{self.TASK_PREFIX}SINGLE"
         count += sum(1 for t in threading.enumerate() if t.name == single_task_name)

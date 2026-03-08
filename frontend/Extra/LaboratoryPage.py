@@ -13,12 +13,22 @@ from widget.SettingCard import SettingCard
 
 
 class LaboratoryPage(Base, QWidget):
-    MTOOL_OPTIMIZER_URL_ZH: str = "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer"
-    MTOOL_OPTIMIZER_URL_EN: str = "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN"
-    FORCE_THINKING_URL_ZH: str = "https://github.com/neavo/LinguaGacha/wiki/ForceThinking"
-    FORCE_THINKING_URL_EN: str = "https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN"
+    MTOOL_OPTIMIZER_URL_ZH: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer"
+    )
+    MTOOL_OPTIMIZER_URL_EN: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN"
+    )
+    FORCE_THINKING_URL_ZH: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ForceThinking"
+    )
+    FORCE_THINKING_URL_EN: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN"
+    )
     AUTO_GLOSSARY_URL_ZH: str = "https://github.com/neavo/LinguaGacha/wiki/AutoGlossary"
-    AUTO_GLOSSARY_URL_EN: str = "https://github.com/neavo/LinguaGacha/wiki/AutoGlossaryEN"
+    AUTO_GLOSSARY_URL_EN: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/AutoGlossaryEN"
+    )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -42,13 +52,28 @@ class LaboratoryPage(Base, QWidget):
 
         # 翻译过程中禁用影响过滤/翻译语义的选项，避免与翻译写库产生竞态。
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_status_changed)
-        self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.on_translation_status_changed)
+        self.subscribe(
+            Base.Event.TRANSLATION_REQUEST_STOP, self.on_translation_status_changed
+        )
         self.subscribe(
             Base.Event.TRANSLATION_RESET_ALL,
             self.on_translation_status_changed,
         )
         self.subscribe(
             Base.Event.TRANSLATION_RESET_FAILED,
+            self.on_translation_status_changed,
+        )
+        self.subscribe(Base.Event.ANALYSIS_TASK, self.on_translation_status_changed)
+        self.subscribe(
+            Base.Event.ANALYSIS_REQUEST_STOP,
+            self.on_translation_status_changed,
+        )
+        self.subscribe(
+            Base.Event.ANALYSIS_RESET_ALL,
+            self.on_translation_status_changed,
+        )
+        self.subscribe(
+            Base.Event.ANALYSIS_RESET_FAILED,
             self.on_translation_status_changed,
         )
         self.on_translation_status_changed(
@@ -62,6 +87,8 @@ class LaboratoryPage(Base, QWidget):
         if event in (
             Base.Event.TRANSLATION_RESET_ALL,
             Base.Event.TRANSLATION_RESET_FAILED,
+            Base.Event.ANALYSIS_RESET_ALL,
+            Base.Event.ANALYSIS_RESET_FAILED,
         ):
             sub_event: Base.SubEvent = data["sub_event"]
             if sub_event not in (
@@ -71,14 +98,23 @@ class LaboratoryPage(Base, QWidget):
                 return
 
         status = Engine.get().get_status()
-        locked = status in (Base.TaskStatus.TRANSLATING, Base.TaskStatus.STOPPING)
+        locked = status in (
+            Base.TaskStatus.TRANSLATING,
+            Base.TaskStatus.ANALYZING,
+            Base.TaskStatus.STOPPING,
+        )
         if hasattr(self, "mtool_switch") and self.mtool_switch is not None:
             self.mtool_switch.setEnabled(not locked)
-        if hasattr(self, "force_thinking_switch") and self.force_thinking_switch is not None:
+        if (
+            hasattr(self, "force_thinking_switch")
+            and self.force_thinking_switch is not None
+        ):
             self.force_thinking_switch.setEnabled(not locked)
 
     # MTool 优化器
-    def add_widget_mtool(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_mtool(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
             config.mtool_optimizer_enable = button.isChecked()
@@ -102,13 +138,17 @@ class LaboratoryPage(Base, QWidget):
         switch_button.setOnText("")
         switch_button.setOffText("")
         switch_button.setChecked(config.mtool_optimizer_enable)
-        switch_button.checkedChanged.connect(lambda checked: checked_changed(switch_button))
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
         card.add_right_widget(switch_button)
         self.mtool_switch = switch_button
         parent.addWidget(card)
 
     # 强制思考
-    def add_widget_force_thinking(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_force_thinking(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
             config.force_thinking_enable = button.isChecked()
@@ -130,13 +170,17 @@ class LaboratoryPage(Base, QWidget):
         switch_button.setOnText("")
         switch_button.setOffText("")
         switch_button.setChecked(config.force_thinking_enable)
-        switch_button.checkedChanged.connect(lambda checked: checked_changed(switch_button))
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
         card.add_right_widget(switch_button)
         self.force_thinking_switch = switch_button
         parent.addWidget(card)
 
     # 自动补全术语表
-    def add_widget_auto_glossary(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_auto_glossary(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         def checked_changed(button: SwitchButton) -> None:
             config = Config().load()
             config.auto_glossary_enable = button.isChecked()
@@ -158,6 +202,8 @@ class LaboratoryPage(Base, QWidget):
         switch_button.setOnText("")
         switch_button.setOffText("")
         switch_button.setChecked(config.auto_glossary_enable)
-        switch_button.checkedChanged.connect(lambda checked: checked_changed(switch_button))
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
         card.add_right_widget(switch_button)
         parent.addWidget(card)

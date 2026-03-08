@@ -30,6 +30,17 @@ class TestResponseDecoderLineBased:
         assert dsts == ["你好"]
         assert glossary == []
 
+    def test_decode_parses_analysis_glossary_entries_with_type(self) -> None:
+        response = """
+{"src":"魔导具","dst":"魔导器","type":"特殊物品"}
+{"0":"忽略这条翻译"}
+""".strip()
+
+        dsts, glossary = ResponseDecoder().decode(response)
+
+        assert dsts == ["忽略这条翻译"]
+        assert glossary == [{"src": "魔导具", "dst": "魔导器", "info": "特殊物品"}]
+
 
 class TestResponseDecoderFallback:
     def test_decode_uses_whole_json_when_line_parse_has_no_translation(self) -> None:

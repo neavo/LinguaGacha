@@ -114,6 +114,11 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         self.subscribe(Base.Event.APITEST, self.update_test_button_status)
         self.subscribe(Base.Event.TRANSLATION_TASK, self.update_test_button_status)
         self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.update_test_button_status)
+        self.subscribe(Base.Event.ANALYSIS_TASK, self.update_test_button_status)
+        self.subscribe(
+            Base.Event.ANALYSIS_REQUEST_STOP,
+            self.update_test_button_status,
+        )
 
     # 模型名称
     def add_widget_name(self, parent: QLayout, config: Config, window: FluentWindow) -> None:

@@ -625,6 +625,8 @@ class DataManager(Base):
             "prefilter_config": result.prefilter_config,
             "source_language": request.source_language,
             "target_language": request.target_language,
+            "analysis_extras": {},
+            "analysis_state": {},
         }
 
         # 落库前二次确认工程未切换，避免把旧工程结果写入新工程。
@@ -665,6 +667,54 @@ class DataManager(Base):
 
     def set_translation_extras(self, extras: dict) -> None:
         self.set_meta("translation_extras", extras)
+
+    def get_analysis_extras(self) -> dict[str, Any]:
+        extras = self.get_meta("analysis_extras", {})
+        return extras if isinstance(extras, dict) else {}
+
+    def set_analysis_extras(self, extras: dict[str, Any]) -> None:
+        self.set_meta("analysis_extras", extras)
+
+    def normalize_analysis_state_value(
+        self, raw_status: Base.ProjectStatus | str | object
+    ) -> Base.ProjectStatus | None:
+        if isinstance(raw_status, Base.ProjectStatus):
+            return raw_status
+        if isinstance(raw_status, str):
+            try:
+                return Base.ProjectStatus(raw_status)
+            except ValueError:
+                return None
+        return None
+
+    def get_analysis_state(self) -> dict[str, Base.ProjectStatus]:
+        raw_state = self.get_meta("analysis_state", {})
+        if not isinstance(raw_state, dict):
+            return {}
+
+        normalized: dict[str, Base.ProjectStatus] = {}
+        for rel_path, raw_status in raw_state.items():
+            if not isinstance(rel_path, str) or rel_path.strip() == "":
+                continue
+            status = self.normalize_analysis_state_value(raw_status)
+            if status is not None:
+                normalized[rel_path] = status
+        return normalized
+
+    def set_analysis_state(self, state: dict[str, Base.ProjectStatus | str]) -> None:
+        normalized: dict[str, str] = {}
+        for rel_path, raw_status in state.items():
+            if not isinstance(rel_path, str) or rel_path.strip() == "":
+                continue
+            status = self.normalize_analysis_state_value(raw_status)
+            if status is not None:
+                normalized[rel_path] = status.value
+        self.set_meta("analysis_state", normalized)
+
+    def clear_analysis_progress(self) -> None:
+        """在语料来源变化后清空分析续跑状态，避免继续使用旧快照。"""
+        self.set_analysis_extras({})
+        self.set_analysis_state({})
 
     def reset_failed_items_sync(self) -> dict[str, Any] | None:
         """重置失败条目并同步进度元数据。
@@ -1276,6 +1326,7 @@ class DataManager(Base):
         db.insert_items(items_dicts)
 
         self.item_service.clear_item_cache()
+        self.clear_analysis_progress()
         self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
 
     def update_file(self, rel_path: str, new_file_path: str) -> dict:
@@ -1432,6 +1483,7 @@ class DataManager(Base):
             if target_rel_path != rel_path:
                 self.session.asset_decompress_cache.pop(target_rel_path, None)
 
+        self.clear_analysis_progress()
         payload: dict[str, Any] = {"rel_path": target_rel_path}
         if target_rel_path.casefold() != rel_path.casefold():
             payload["old_rel_path"] = rel_path
@@ -1457,6 +1509,7 @@ class DataManager(Base):
             db.update_batch(items=items)
 
         self.item_service.clear_item_cache()
+        self.clear_analysis_progress()
         self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
 
     def delete_file(self, rel_path: str) -> None:
@@ -1473,6 +1526,7 @@ class DataManager(Base):
         self.item_service.clear_item_cache()
         with self.state_lock:
             self.session.asset_decompress_cache.pop(rel_path, None)
+        self.clear_analysis_progress()
         self.emit(Base.Event.PROJECT_FILE_UPDATE, {"rel_path": rel_path})
 
     # ===================== export path =====================

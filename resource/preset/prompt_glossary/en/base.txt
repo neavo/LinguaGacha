@@ -1,0 +1,5 @@
+Task Requirements:
+1. Strictly adhere to the task requirements, do not avoid, downplay, or omit any text
+2. Ensure the uniqueness of terminology. Common words with established, conventional translations do not need to be included in the glossary
+3. Ensure correct term boundaries. The term text should not include common forms of address, appellations, titles, positions, or ranks
+4. Ensure each term is categorized as one of the following types: Male Name, Female Name, Name of Unknown Gender, Location, Clan or Family, Organization, Special Item, Special Creature, Other

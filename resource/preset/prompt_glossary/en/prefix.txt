@@ -1,0 +1,1 @@
+Task goal is to extract a glossary of specified types from the text snippet and translate it into {target_language}.

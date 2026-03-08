@@ -222,6 +222,17 @@ class TestPromptBuilder:
         assert '"0"' in result
         assert '"line-1"' in result
 
+    def test_build_analysis_inputs_returns_plain_text_block(self) -> None:
+        config = Config(target_language=BaseLanguage.Enum.ZH)
+        builder = PromptBuilder(
+            config=config,
+            quality_snapshot=cast(Any, FakeQualitySnapshot()),
+        )
+
+        result = builder.build_analysis_inputs(["line-1", "line-2"])
+
+        assert result == "输入：\nline-1\nline-2"
+
     def test_build_preceding_formats_by_language(self) -> None:
         zh_builder = PromptBuilder(
             config=Config(target_language=BaseLanguage.Enum.ZH),
@@ -371,6 +382,82 @@ class TestPromptBuilder:
             PromptBuilder.get_suffix_thinking(BaseLanguage.Enum.ZH)
             == "THINKING_SUFFIX_2"
         )
+
+    def test_build_glossary_analysis_main_reads_prompt_glossary_dir(
+        self, fs, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = Path("/workspace")
+        prompt_dir = root / "resource" / "preset" / "prompt" / "zh"
+        analysis_dir = root / "resource" / "preset" / "prompt_glossary" / "zh"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+
+        (prompt_dir / "prefix.txt").write_text(
+            "TRANSLATION_PREFIX", encoding="utf-8-sig"
+        )
+        (prompt_dir / "base.txt").write_text("TRANSLATION_BASE", encoding="utf-8-sig")
+        (prompt_dir / "suffix.txt").write_text(
+            "TRANSLATION_SUFFIX", encoding="utf-8-sig"
+        )
+
+        (analysis_dir / "prefix.txt").write_text(
+            "ANALYSIS_PREFIX", encoding="utf-8-sig"
+        )
+        (analysis_dir / "base.txt").write_text("ANALYSIS_BASE", encoding="utf-8-sig")
+        (analysis_dir / "suffix.txt").write_text(
+            "ANALYSIS_SUFFIX {target_language}",
+            encoding="utf-8-sig",
+        )
+
+        monkeypatch.chdir(str(root))
+
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(Any, FakeQualitySnapshot()),
+        )
+
+        result = builder.build_glossary_analysis_main()
+
+        assert result == "ANALYSIS_PREFIX\n\nANALYSIS_BASE\n\nANALYSIS_SUFFIX 中文"
+        assert "TRANSLATION_PREFIX" not in result
+
+    def test_generate_glossary_prompt_only_contains_plain_text_inputs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            PromptBuilder,
+            "build_glossary_analysis_main",
+            lambda self: "ANALYSIS_MAIN",
+        )
+        builder = PromptBuilder(
+            config=Config(target_language=BaseLanguage.Enum.ZH),
+            quality_snapshot=cast(
+                Any,
+                FakeQualitySnapshot(
+                    glossary_enable=False,
+                    glossary_entries=(
+                        {
+                            "src": "魔导具",
+                            "dst": "魔导器",
+                            "case_sensitive": False,
+                            "info": "特殊物品",
+                        },
+                    ),
+                ),
+            ),
+        )
+
+        messages, console_log = builder.generate_glossary_prompt(
+            srcs=["魔导具正在发光"],
+        )
+
+        assert messages[0] == {"role": "system", "content": "ANALYSIS_MAIN"}
+        assert "输入：" in messages[1]["content"]
+        assert "魔导具正在发光" in messages[1]["content"]
+        assert "参考上文：" not in messages[1]["content"]
+        assert "术语表" not in messages[1]["content"]
+        assert "```jsonline" not in messages[1]["content"]
+        assert console_log == []
 
     def test_custom_prompt_data_and_enable_use_data_manager_when_no_snapshot(
         self, monkeypatch: pytest.MonkeyPatch

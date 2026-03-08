@@ -6,6 +6,12 @@ class ResponseDecoder(Base):
     def __init__(self) -> None:
         super().__init__()
 
+    def get_glossary_info_key(self, json_data: dict) -> str:
+        for info_key in ("gender", "type"):
+            if all(v in json_data for v in ("src", "dst", info_key)):
+                return info_key
+        return ""
+
     # 解析文本
     def decode(self, response: str) -> tuple[list[str], list[dict[str, str]]]:
         dsts: list[str] = []
@@ -26,15 +32,16 @@ class ResponseDecoder(Base):
                         dsts.append(v)
                 # 术语表条目
                 elif len(json_data) == 3:
-                    if all(v in json_data for v in ("src", "dst", "gender")):
+                    glossary_info_key = self.get_glossary_info_key(json_data)
+                    if glossary_info_key:
                         src = json_data.get("src")
                         dst = json_data.get("dst")
-                        gender = json_data.get("gender")
+                        info = json_data.get(glossary_info_key)
                         glossary.append(
                             {
                                 "src": src if isinstance(src, str) else "",
                                 "dst": dst if isinstance(dst, str) else "",
-                                "info": gender if isinstance(gender, str) else "",
+                                "info": info if isinstance(info, str) else "",
                             }
                         )
 
