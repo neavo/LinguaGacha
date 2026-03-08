@@ -22,4 +22,8 @@ command = "uv run pytest"
 [[actions]]
 name = "更新环境"
 icon = "tool"
-command = "uv sync -U --extra test"
+command = '''
+uv self update
+uv tool upgrade ruff
+uv sync -U --extra test
+'''
