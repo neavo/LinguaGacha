@@ -265,11 +265,29 @@ def test_short_connection_context_creates_schema_and_closes(tmp_path: Path) -> N
 
 
 def test_get_and_set_rule_text_roundtrip(database: LGDatabase) -> None:
-    assert database.get_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == ""
+    assert database.get_rule_text(LGDatabase.RuleType.TRANSLATION_PROMPT) == ""
 
-    database.set_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+    database.set_rule_text(LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt")
 
-    assert database.get_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+    assert database.get_rule_text(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
+
+
+def test_get_rule_text_by_name_supports_legacy_string_payload(
+    database: LGDatabase,
+) -> None:
+    with database.connection() as conn:
+        conn.execute(
+            "INSERT INTO rules (type, data) VALUES (?, ?)",
+            (LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, '"Old English prompt"'),
+        )
+        conn.commit()
+
+    assert (
+        database.get_rule_text_by_name(
+            LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE
+        )
+        == "Old English prompt"
+    )
 
 
 def test_get_items_by_file_path_filters_by_json_extract(database: LGDatabase) -> None:

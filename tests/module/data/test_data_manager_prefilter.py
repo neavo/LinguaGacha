@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.DataManager import ProjectPrefilterRequest
@@ -608,6 +609,33 @@ def build_manager_for_lifecycle() -> Any:
     return dm
 
 
+def build_fake_lifecycle_db(
+    *,
+    current_translation_prompt: str = "",
+    legacy_prompt_zh: str = "",
+    legacy_prompt_en: str = "",
+) -> Any:
+    legacy_prompt_zh_rule_type = "CUSTOM_PROMPT_ZH"
+    legacy_prompt_en_rule_type = "CUSTOM_PROMPT_EN"
+
+    fake_db = SimpleNamespace(
+        set_meta=MagicMock(),
+        close=MagicMock(),
+        get_rule_text=MagicMock(return_value=current_translation_prompt),
+        get_rule_text_by_name=MagicMock(
+            side_effect=lambda rule_type: (
+                legacy_prompt_zh
+                if rule_type == legacy_prompt_zh_rule_type
+                else legacy_prompt_en
+                if rule_type == legacy_prompt_en_rule_type
+                else ""
+            )
+        ),
+        set_rule_text=MagicMock(),
+    )
+    return fake_db
+
+
 def test_load_project_sets_session_and_clears_caches(
     fs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -617,7 +645,7 @@ def test_load_project_sets_session_and_clears_caches(
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -631,6 +659,7 @@ def test_load_project_sets_session_and_clears_caches(
     assert dm.session.lg_path == str(lg_path)
     fake_db.set_meta.assert_any_call("updated_at", ANY)
     fake_db.set_meta.assert_any_call("text_preserve_mode", "smart")
+    fake_db.set_meta.assert_any_call("translation_prompt_legacy_migrated", True)
     dm.item_service.clear_item_cache.assert_called_once()
     dm.asset_service.clear_decompress_cache.assert_called_once()
     dm.emit.assert_called_once()
@@ -649,7 +678,7 @@ def test_load_project_unloads_existing_project_first(
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
     dm.meta_service.refresh_cache_from_db = lambda: setattr(
         dm.session, "meta_cache", {}
@@ -683,7 +712,7 @@ def test_load_project_migrates_text_preserve_mode_to_custom_when_legacy_enable_t
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -706,7 +735,7 @@ def test_load_project_migrates_text_preserve_mode_when_mode_string_invalid(
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -729,7 +758,7 @@ def test_load_project_does_not_migrate_text_preserve_mode_when_mode_is_valid(
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -743,6 +772,120 @@ def test_load_project_does_not_migrate_text_preserve_mode_when_mode_is_valid(
         call.args[0] != "text_preserve_mode" for call in fake_db.set_meta.call_args_list
     )
     assert dm.session.meta_cache.get("text_preserve_mode") == "off"
+
+
+def test_load_project_migrates_legacy_translation_prompt_by_app_language(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.EN,
+    )
+
+    def refresh_meta() -> None:
+        dm.session.meta_cache = {}
+
+    dm.meta_service.refresh_cache_from_db = refresh_meta
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "Old English prompt",
+    )
+    assert dm.session.meta_cache.get("translation_prompt_legacy_migrated") is True
+
+
+def test_load_project_migrates_legacy_translation_prompt_to_zh_when_ui_is_zh(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt_zh/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.ZH,
+    )
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "旧中文提示词",
+    )
+
+
+def test_load_project_marks_legacy_translation_prompt_migrated_without_overwrite(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/current_prompt/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        current_translation_prompt="新提示词",
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_not_called()
+    fake_db.set_meta.assert_any_call("translation_prompt_legacy_migrated", True)
+
+
+def test_load_project_skips_legacy_translation_prompt_when_already_migrated(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/already_migrated/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(legacy_prompt_zh="旧中文提示词")
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+
+    def refresh_meta() -> None:
+        dm.session.meta_cache = {"translation_prompt_legacy_migrated": True}
+
+    dm.meta_service.refresh_cache_from_db = refresh_meta
+
+    dm.load_project(str(lg_path))
+
+    fake_db.get_rule_text.assert_not_called()
+    fake_db.get_rule_text_by_name.assert_not_called()
+    fake_db.set_rule_text.assert_not_called()
 
 
 def test_unload_project_closes_db_and_emits_event() -> None:

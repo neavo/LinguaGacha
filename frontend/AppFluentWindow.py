@@ -50,6 +50,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.PromptResourceResolver import PromptResourceResolver
 from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
@@ -76,8 +77,10 @@ ICON_NAV_PRE_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_START  # 侧边�
 ICON_NAV_POST_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_END  # 侧边栏：译后替换
 
 ICON_NAV_CUSTOM_PROMPT: BaseIcon = BaseIcon.BOOK_OPEN_CHECK  # 侧边栏：自定义提示词入口
-ICON_NAV_CUSTOM_PROMPT_EN: BaseIcon = BaseIcon.PEN_TOOL  # 自定义提示词：英文页
-ICON_NAV_CUSTOM_PROMPT_ZH: BaseIcon = BaseIcon.PENCIL  # 自定义提示词：中文页
+ICON_NAV_ANALYSIS_PROMPT: BaseIcon = BaseIcon.RADAR  # 自定义提示词：分析页
+ICON_NAV_TRANSLATION_PROMPT: BaseIcon = (
+    ICON_NAV_TRANSLATION  # 自定义提示词：翻译页，与主翻译页保持一致
+)
 
 ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
 ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
@@ -209,8 +212,8 @@ class AppFluentWindow(Base, FluentWindow):
             "pre_translation_replacement_page",
             "post_translation_replacement_page",
             "custom_prompt_page",
-            "custom_prompt_zh_page",
-            "custom_prompt_en_page",
+            "analysis_prompt_page",
+            "translation_prompt_page",
             "laboratory_page",
             "tool_box_page",
         ]
@@ -254,8 +257,8 @@ class AppFluentWindow(Base, FluentWindow):
             "pre_translation_replacement_page",
             "post_translation_replacement_page",
             "custom_prompt_page",
-            "custom_prompt_zh_page",
-            "custom_prompt_en_page",
+            "analysis_prompt_page",
+            "translation_prompt_page",
             "laboratory_page",
             "tool_box_page",
             "ts_conversion_page",
@@ -768,32 +771,26 @@ class AppFluentWindow(Base, FluentWindow):
             Localizer.get().app_custom_prompt_navigation_item,
             NavigationItemPosition.SCROLL,
         )
-        if Localizer.get_app_language() == BaseLanguage.Enum.EN:
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
-                Localizer.get().app_custom_prompt_en_page,
-                parent=self.custom_prompt_page,
-            )
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
-                Localizer.get().app_custom_prompt_zh_page,
-                parent=self.custom_prompt_page,
-            )
-        else:
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
-                Localizer.get().app_custom_prompt_zh_page,
-                parent=self.custom_prompt_page,
-            )
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
-                Localizer.get().app_custom_prompt_en_page,
-                parent=self.custom_prompt_page,
-            )
+        self.addSubInterface(
+            CustomPromptPage(
+                "translation_prompt_page",
+                self,
+                PromptResourceResolver.TaskType.TRANSLATION,
+            ),
+            ICON_NAV_TRANSLATION_PROMPT.qicon(),
+            Localizer.get().app_translation_prompt_page,
+            parent=self.custom_prompt_page,
+        )
+        self.addSubInterface(
+            CustomPromptPage(
+                "analysis_prompt_page",
+                self,
+                PromptResourceResolver.TaskType.ANALYSIS,
+            ),
+            ICON_NAV_ANALYSIS_PROMPT.qicon(),
+            Localizer.get().app_analysis_prompt_page,
+            parent=self.custom_prompt_page,
+        )
 
     # 添加额外页面
     def add_extra_pages(self) -> None:

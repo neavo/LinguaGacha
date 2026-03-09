@@ -24,10 +24,10 @@ class QualityRuleSnapshot:
     pre_replacement_entries: tuple[dict[str, Any], ...]
     post_replacement_enable: bool
     post_replacement_entries: tuple[dict[str, Any], ...]
-    custom_prompt_zh_enable: bool
-    custom_prompt_zh: str
-    custom_prompt_en_enable: bool
-    custom_prompt_en: str
+    translation_prompt_enable: bool
+    translation_prompt: str
+    analysis_prompt_enable: bool
+    analysis_prompt: str
 
     glossary_entries: list[dict[str, Any]]
 
@@ -69,10 +69,10 @@ class QualityRuleSnapshot:
             pre_replacement_entries=pre_replacement_entries,
             post_replacement_enable=dm.get_post_replacement_enable(),
             post_replacement_entries=post_replacement_entries,
-            custom_prompt_zh_enable=dm.get_custom_prompt_zh_enable(),
-            custom_prompt_zh=dm.get_custom_prompt_zh(),
-            custom_prompt_en_enable=dm.get_custom_prompt_en_enable(),
-            custom_prompt_en=dm.get_custom_prompt_en(),
+            translation_prompt_enable=dm.get_translation_prompt_enable(),
+            translation_prompt=dm.get_translation_prompt(),
+            analysis_prompt_enable=dm.get_analysis_prompt_enable(),
+            analysis_prompt=dm.get_analysis_prompt(),
             glossary_entries=glossary_entries,
             glossary_src_set=glossary_src_set,
         )

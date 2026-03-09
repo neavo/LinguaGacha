@@ -126,8 +126,8 @@ class LocalizerZH:
     app_pre_translation_replacement_page: str = "译前替换"
     app_post_translation_replacement_page: str = "译后替换"
     app_custom_prompt_navigation_item: str = "自定义提示词"
-    app_custom_prompt_zh_page: str = "中文提示词"
-    app_custom_prompt_en_page: str = "英文提示词"
+    app_analysis_prompt_page: str = "分析提示词"
+    app_translation_prompt_page: str = "翻译提示词"
     app_laboratory_page: str = "实验室"
     app_treasure_chest_page: str = "百宝箱"
 
@@ -658,22 +658,22 @@ class LocalizerZH:
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
 
-    # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "自定义中文提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_zh_page_head_desc: str = (
+    # 自定义提示词 - 翻译
+    translation_prompt_page_head: str = "自定义翻译提示词（不支持 SakuraLLM 模型）"
+    translation_prompt_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
-        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有打开本页开关后，才会在翻译任务中使用这里的正文"
         ""
         ""
     )
 
-    # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "自定义英文提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_en_page_head_desc: str = (
-        "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
+    # 自定义提示词 - 分析
+    analysis_prompt_page_head: str = "自定义分析提示词"
+    analysis_prompt_page_head_desc: str = (
+        "通过自定义提示词调整术语分析时的抽取口径和输出要求"
         "<br>"
-        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有打开本页开关后，才会在分析任务中使用这里的正文"
         ""
         ""
     )

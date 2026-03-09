@@ -11,6 +11,7 @@ from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
 from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
+from module.PromptResourceResolver import PromptResourceResolver
 
 
 def build_service(db: object | None) -> tuple[RuleService, SimpleNamespace]:
@@ -52,7 +53,7 @@ def test_get_rule_text_cached_returns_empty_when_db_missing() -> None:
     service, session = build_service(None)
     assert session.rule_text_cache == {}
 
-    assert service.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == ""
+    assert service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == ""
 
 
 def test_set_rules_cached_updates_cache_even_when_db_missing() -> None:
@@ -93,29 +94,29 @@ def test_get_and_set_rule_text_cache_behavior() -> None:
     service, session = build_service(db)
 
     assert (
-        service.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+        service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
     )
     assert (
-        service.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+        service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
     )
     assert db.get_rule_text.call_count == 1
 
-    session.rule_cache[LGDatabase.RuleType.CUSTOM_PROMPT_ZH] = [{"src": "A"}]
-    service.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "new")
+    session.rule_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
+    service.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "new")
     db.set_rule_text.assert_called_once_with(
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "new"
+        LGDatabase.RuleType.TRANSLATION_PROMPT, "new"
     )
-    assert LGDatabase.RuleType.CUSTOM_PROMPT_ZH not in session.rule_cache
+    assert LGDatabase.RuleType.TRANSLATION_PROMPT not in session.rule_cache
 
 
 def test_set_rule_text_cached_updates_cache_even_when_db_missing() -> None:
     service, session = build_service(None)
-    session.rule_cache[LGDatabase.RuleType.CUSTOM_PROMPT_ZH] = [{"src": "A"}]
+    session.rule_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
 
-    service.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+    service.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt")
 
-    assert session.rule_text_cache[LGDatabase.RuleType.CUSTOM_PROMPT_ZH] == "prompt"
-    assert LGDatabase.RuleType.CUSTOM_PROMPT_ZH not in session.rule_cache
+    assert session.rule_text_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] == "prompt"
+    assert LGDatabase.RuleType.TRANSLATION_PROMPT not in session.rule_cache
 
 
 def test_initialize_project_rules_loads_all_available_presets(
@@ -128,25 +129,20 @@ def test_initialize_project_rules_loads_all_available_presets(
     text_preserve = root_path / "preserve.json"
     pre_replace = root_path / "pre.json"
     post_replace = root_path / "post.json"
-    custom_zh = root_path / "zh.txt"
-    custom_en = root_path / "en.txt"
-
     glossary.write_text(json.dumps([{"src": "A", "dst": "甲"}]), encoding="utf-8")
     text_preserve.write_text(
         json.dumps([{"src": "<i>", "dst": "<i>"}]), encoding="utf-8"
     )
     pre_replace.write_text(json.dumps([{"src": "A", "dst": "B"}]), encoding="utf-8")
     post_replace.write_text(json.dumps([{"src": "B", "dst": "A"}]), encoding="utf-8")
-    custom_zh.write_text("中文提示词", encoding="utf-8")
-    custom_en.write_text("English prompt", encoding="utf-8")
 
     config = Config(
         glossary_default_preset=str(glossary),
         text_preserve_default_preset=str(text_preserve),
         pre_translation_replacement_default_preset=str(pre_replace),
         post_translation_replacement_default_preset=str(post_replace),
-        custom_prompt_zh_default_preset=str(custom_zh),
-        custom_prompt_en_default_preset=str(custom_en),
+        translation_custom_prompt_default_preset="builtin:translation.txt",
+        analysis_custom_prompt_default_preset="user:analysis.txt",
     )
     monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
@@ -156,8 +152,16 @@ def test_initialize_project_rules_loads_all_available_presets(
             app_text_preserve_page="文本保护",
             app_pre_translation_replacement_page="译前替换",
             app_post_translation_replacement_page="译后替换",
-            app_custom_prompt_zh_page="自定义提示词-中文",
-            app_custom_prompt_en_page="自定义提示词-英文",
+            app_translation_prompt_page="翻译提示词",
+            app_analysis_prompt_page="分析提示词",
+        ),
+    )
+    monkeypatch.setattr(
+        "module.Data.RuleService.PromptResourceResolver.get_default_preset_text",
+        lambda task_type, virtual_id: (
+            "翻译提示词正文"
+            if task_type == PromptResourceResolver.TaskType.TRANSLATION
+            else "分析提示词正文"
         ),
     )
 
@@ -171,12 +175,19 @@ def test_initialize_project_rules_loads_all_available_presets(
         "文本保护",
         "译前替换",
         "译后替换",
-        "自定义提示词-中文",
-        "自定义提示词-英文",
+        "翻译提示词",
+        "分析提示词",
     ]
     db.set_meta.assert_any_call("text_preserve_mode", "smart")
     db.set_meta.assert_any_call("text_preserve_mode", "custom")
-    db.set_rule_text.assert_any_call(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "中文提示词")
+    db.set_rule_text.assert_any_call(
+        LGDatabase.RuleType.TRANSLATION_PROMPT, "翻译提示词正文"
+    )
+    db.set_rule_text.assert_any_call(
+        LGDatabase.RuleType.ANALYSIS_PROMPT, "分析提示词正文"
+    )
+    db.set_meta.assert_any_call("translation_prompt_enable", True)
+    db.set_meta.assert_any_call("analysis_prompt_enable", True)
 
 
 def test_initialize_project_rules_skips_invalid_preset_and_continues(
@@ -202,8 +213,8 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
             app_text_preserve_page="文本保护",
             app_pre_translation_replacement_page="译前替换",
             app_post_translation_replacement_page="译后替换",
-            app_custom_prompt_zh_page="自定义提示词-中文",
-            app_custom_prompt_en_page="自定义提示词-英文",
+            app_translation_prompt_page="翻译提示词",
+            app_analysis_prompt_page="分析提示词",
         ),
     )
 
@@ -253,23 +264,15 @@ def test_initialize_project_rules_logs_and_skips_custom_prompts_when_open_fails(
     fs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     del fs
-    root_path = Path("/workspace/rule_service_open_fail")
-    root_path.mkdir(parents=True, exist_ok=True)
-    custom_zh = root_path / "zh.txt"
-    custom_en = root_path / "en.txt"
-    custom_zh.write_text("中文提示词", encoding="utf-8")
-    custom_en.write_text("English prompt", encoding="utf-8")
-
     config = Config(
-        custom_prompt_zh_default_preset=str(custom_zh),
-        custom_prompt_en_default_preset=str(custom_en),
+        translation_custom_prompt_default_preset="builtin:translation.txt",
+        analysis_custom_prompt_default_preset="user:analysis.txt",
     )
     monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
-
-    def fake_open(*args: object, **kwargs: object) -> object:
-        raise OSError("boom")
-
-    monkeypatch.setattr("builtins.open", fake_open)
+    monkeypatch.setattr(
+        "module.Data.RuleService.PromptResourceResolver.get_default_preset_text",
+        lambda task_type, virtual_id: (_ for _ in ()).throw(OSError("boom")),
+    )
 
     logger = MagicMock()
     monkeypatch.setattr("module.Data.RuleService.LogManager.get", lambda: logger)

@@ -75,8 +75,8 @@ class Config:
     post_translation_replacement_default_preset: str = ""
 
     # CustomPromptPage
-    custom_prompt_zh_default_preset: str = ""
-    custom_prompt_en_default_preset: str = ""
+    translation_custom_prompt_default_preset: str = ""
+    analysis_custom_prompt_default_preset: str = ""
 
     # 最近打开的工程列表 [{"path": "...", "name": "...", "updated_at": "..."}]
     recent_projects: list[dict[str, str]] = dataclasses.field(default_factory=list)

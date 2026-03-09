@@ -18,7 +18,7 @@ def test_progress_callback_can_be_called_with_expected_signature() -> None:
 def test_rule_meta_keys_contains_expected_entries() -> None:
     assert "glossary_enable" in RULE_META_KEYS
     assert "text_preserve_mode" in RULE_META_KEYS
-    assert "custom_prompt_en_enable" in RULE_META_KEYS
+    assert "analysis_prompt_enable" in RULE_META_KEYS
     assert len(RULE_META_KEYS) == 6
 
 

@@ -126,8 +126,8 @@ class LocalizerEN(LocalizerZH):
     app_pre_translation_replacement_page: str = "Pre-Translation"
     app_post_translation_replacement_page: str = "Post-Translation"
     app_custom_prompt_navigation_item: str = "Custom Prompts"
-    app_custom_prompt_zh_page: str = "Chinese Prompts"
-    app_custom_prompt_en_page: str = "English Prompts"
+    app_analysis_prompt_page: str = "Analysis Prompts"
+    app_translation_prompt_page: str = "Translation Prompts"
     app_laboratory_page: str = "Laboratory"
     app_treasure_chest_page: str = "Treasure Chest"
 
@@ -658,24 +658,24 @@ class LocalizerEN(LocalizerZH):
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
 
-    # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"
-    custom_prompt_zh_page_head_desc: str = (
+    # 自定义提示词 - 翻译
+    translation_prompt_page_head: str = "Custom Translation Prompts (SakuraLLM model not supported)"
+    translation_prompt_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
         "Note: The prefix and suffix are fixed and cannot be modified"
         "<br>"
-        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to Chinese</b></font>"
+        "The content on this page is only used in translation tasks after this page is enabled"
     )
 
-    # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "Custom English Prompts (SakuraLLM model not supported)"
-    custom_prompt_en_page_head_desc: str = (
-        "Add extra translation requirements such as story settings and writing styles via custom prompts"
+    # 自定义提示词 - 分析
+    analysis_prompt_page_head: str = "Custom Analysis Prompts"
+    analysis_prompt_page_head_desc: str = (
+        "Adjust glossary analysis scope and output requirements through custom prompts"
         "<br>"
         "Note: The prefix and suffix are fixed and cannot be modified"
         "<br>"
-        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>"
+        "The content on this page is only used in analysis tasks after this page is enabled"
     )
 
     # 自定义提示词 - 导入导出

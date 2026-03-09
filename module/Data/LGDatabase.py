@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from typing import ClassVar
 from typing import Generator
 
 from base.Base import Base
@@ -16,6 +17,9 @@ from module.Utils.JSONTool import JSONTool
 class LGDatabase(Base):
     """统一的 .lg 文件访问类（SQLite）。"""
 
+    LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE: ClassVar[str] = "CUSTOM_PROMPT_ZH"
+    LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE: ClassVar[str] = "CUSTOM_PROMPT_EN"
+
     class RuleType(StrEnum):
         """规则类型枚举"""
 
@@ -23,8 +27,8 @@ class LGDatabase(Base):
         PRE_REPLACEMENT = "PRE_REPLACEMENT"  # 翻译前替换
         POST_REPLACEMENT = "POST_REPLACEMENT"  # 翻译后替换
         TEXT_PRESERVE = "TEXT_PRESERVE"  # 文本保护
-        CUSTOM_PROMPT_ZH = "CUSTOM_PROMPT_ZH"  # 自定义提示词（中文）
-        CUSTOM_PROMPT_EN = "CUSTOM_PROMPT_EN"  # 自定义提示词（英文）
+        TRANSLATION_PROMPT = "TRANSLATION_PROMPT"  # 翻译提示词
+        ANALYSIS_PROMPT = "ANALYSIS_PROMPT"  # 分析提示词
 
     # 数据库版本号，用于未来的 schema 迁移
     SCHEMA_VERSION = 1
@@ -563,7 +567,19 @@ class LGDatabase(Base):
             row = cursor.fetchone()
             if row is None:
                 return ""
-            return JSONTool.loads(row["data"]).get("text", "")
+            return self.deserialize_rule_text_payload(row["data"], rule_type.value)
+
+    def get_rule_text_by_name(self, rule_type_name: str) -> str:
+        """按原始 type 名称读取文本规则，专供旧数据兼容迁移使用。"""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT data FROM rules WHERE type = ? LIMIT 1",
+                (rule_type_name,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return ""
+            return self.deserialize_rule_text_payload(row["data"], rule_type_name)
 
     def set_rule_text(self, rule_type: RuleType, text: str) -> None:
         """设置文本类型的规则（如自定义提示词）"""
@@ -574,6 +590,30 @@ class LGDatabase(Base):
                 (rule_type, JSONTool.dumps({"text": text})),
             )
             conn.commit()
+
+    def deserialize_rule_text_payload(self, raw_data: str, rule_type_name: str) -> str:
+        """兼容解析文本规则载荷，旧工程迁移时允许读到纯字符串旧格式。"""
+        try:
+            data = JSONTool.loads(raw_data)
+        except Exception as e:
+            LogManager.get().warning(
+                f"Failed to decode text rule JSON: type={rule_type_name}",
+                e,
+            )
+            return ""
+
+        if isinstance(data, dict):
+            text = data.get("text", "")
+            if isinstance(text, str):
+                return text
+            if text is None:
+                return ""
+            return str(text)
+
+        if isinstance(data, str):
+            return data
+
+        return ""
 
     # ========== 工厂方法 ==========
 

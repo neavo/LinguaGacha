@@ -9,8 +9,8 @@ RULE_META_KEYS: set[str] = {
     "text_preserve_mode",
     "pre_translation_replacement_enable",
     "post_translation_replacement_enable",
-    "custom_prompt_zh_enable",
-    "custom_prompt_en_enable",
+    "translation_prompt_enable",
+    "analysis_prompt_enable",
 }
 
 

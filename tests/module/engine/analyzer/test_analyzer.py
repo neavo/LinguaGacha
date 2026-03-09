@@ -60,7 +60,12 @@ def test_start_continue_skips_processed_and_error_files(
     monkeypatch.setattr(
         analyzer_module.QualityRuleSnapshot,
         "capture",
-        lambda: SimpleNamespace(),
+        lambda: SimpleNamespace(
+            translation_prompt_enable=False,
+            translation_prompt="",
+            analysis_prompt_enable=False,
+            analysis_prompt="",
+        ),
     )
 
     analyzer = Analyzer()

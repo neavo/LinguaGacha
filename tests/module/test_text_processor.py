@@ -29,10 +29,10 @@ def create_snapshot(
         pre_replacement_entries=pre_replacement_entries,
         post_replacement_enable=post_replacement_enable,
         post_replacement_entries=post_replacement_entries,
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[],
     )
 

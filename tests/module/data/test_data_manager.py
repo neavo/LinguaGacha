@@ -289,13 +289,13 @@ def test_set_rule_text_cached_always_emits_quality_rule_update() -> None:
     dm = build_manager()
     dm.emit_quality_rule_update = MagicMock()
 
-    dm.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+    dm.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt")
 
     dm.rule_service.set_rule_text_cached.assert_called_once_with(
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt"
+        LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt"
     )
     dm.emit_quality_rule_update.assert_called_once_with(
-        rule_types=[LGDatabase.RuleType.CUSTOM_PROMPT_ZH]
+        rule_types=[LGDatabase.RuleType.TRANSLATION_PROMPT]
     )
 
 
@@ -1262,19 +1262,19 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
     dm.item_service.replace_all_items = MagicMock(return_value=[10, 11])
 
     assert dm.get_rules_cached(LGDatabase.RuleType.GLOSSARY) == [{"src": "A"}]
-    assert dm.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+    assert dm.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
     assert dm.get_glossary() == [{"src": "A"}]
     assert dm.get_text_preserve() == [{"src": "A"}]
     assert dm.get_pre_replacement() == [{"src": "A"}]
     assert dm.get_post_replacement() == [{"src": "A"}]
-    assert dm.get_custom_prompt_zh() == "prompt"
-    assert dm.get_custom_prompt_en() == "prompt"
+    assert dm.get_translation_prompt() == "prompt"
+    assert dm.get_analysis_prompt() == "prompt"
 
     dm.set_text_preserve([{"src": "tp"}])
     dm.set_pre_replacement([{"src": "pre"}])
     dm.set_post_replacement([{"src": "post"}])
-    dm.set_custom_prompt_zh("zh")
-    dm.set_custom_prompt_en("en")
+    dm.set_translation_prompt("translation")
+    dm.set_analysis_prompt("analysis")
 
     assert dm.set_rules_cached.call_args_list[0].args == (
         LGDatabase.RuleType.TEXT_PRESERVE,
@@ -1292,12 +1292,12 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
         True,
     )
     assert dm.set_rule_text_cached.call_args_list[0].args == (
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH,
-        "zh",
+        LGDatabase.RuleType.TRANSLATION_PROMPT,
+        "translation",
     )
     assert dm.set_rule_text_cached.call_args_list[1].args == (
-        LGDatabase.RuleType.CUSTOM_PROMPT_EN,
-        "en",
+        LGDatabase.RuleType.ANALYSIS_PROMPT,
+        "analysis",
     )
 
     sample_item = Item(src="hello")
@@ -1329,8 +1329,8 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
             "",
             False,
         ),
-        ("get_custom_prompt_zh_enable", "custom_prompt_zh_enable", False, 1, True),
-        ("get_custom_prompt_en_enable", "custom_prompt_en_enable", False, 0, False),
+        ("get_translation_prompt_enable", "translation_prompt_enable", False, 1, True),
+        ("get_analysis_prompt_enable", "analysis_prompt_enable", False, 0, False),
     ],
 )
 def test_boolean_meta_getters_normalize_to_bool(
@@ -1359,8 +1359,8 @@ def test_boolean_meta_getters_normalize_to_bool(
             "",
             False,
         ),
-        ("set_custom_prompt_zh_enable", "custom_prompt_zh_enable", 1, True),
-        ("set_custom_prompt_en_enable", "custom_prompt_en_enable", None, False),
+        ("set_translation_prompt_enable", "translation_prompt_enable", 1, True),
+        ("set_analysis_prompt_enable", "analysis_prompt_enable", None, False),
     ],
 )
 def test_boolean_meta_setters_normalize_to_bool(

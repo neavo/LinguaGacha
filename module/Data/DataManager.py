@@ -10,6 +10,7 @@ from typing import Any
 from typing import ClassVar
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
@@ -76,6 +77,9 @@ class DataManager(Base):
 
     # 对外提供统一的规则枚举入口，避免业务侧直接依赖数据库实现
     RuleType = LGDatabase.RuleType
+    LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY: ClassVar[str] = (
+        "translation_prompt_legacy_migrated"
+    )
 
     class TextPreserveMode(StrEnum):
         OFF = "off"  # 完全关闭：不使用内置或自定义规则
@@ -181,6 +185,10 @@ class DataManager(Base):
                 self.session.db.set_meta("text_preserve_mode", migrated)
                 self.session.meta_cache["text_preserve_mode"] = migrated
 
+            # 兼容旧工程：旧版翻译提示词正文按 ZH/EN 分槽存储；
+            # 新语义收敛成单一 TRANSLATION_PROMPT，这里只迁移正文且仅执行一次。
+            self.migrate_legacy_translation_prompt_text_once()
+
             # 清理其它缓存（避免跨工程串数据）
             self.session.rule_cache.clear()
             self.session.rule_text_cache.clear()
@@ -204,6 +212,72 @@ class DataManager(Base):
 
         if old_path:
             self.emit(Base.Event.PROJECT_UNLOADED, {"path": old_path})
+
+    def migrate_legacy_translation_prompt_text_once(self) -> None:
+        """把旧工程里的翻译提示词正文一次性迁移到新字段。"""
+        db = self.session.db
+        if db is None:
+            return
+
+        if bool(
+            self.session.meta_cache.get(
+                __class__.LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
+                False,
+            )
+        ):
+            return
+
+        current_prompt = db.get_rule_text(__class__.RuleType.TRANSLATION_PROMPT).strip()
+        if current_prompt:
+            self.mark_legacy_translation_prompt_migrated(db)
+            return
+
+        preferred_legacy_rule_types = (
+            self.get_preferred_legacy_translation_prompt_types()
+        )
+        migrated_prompt = ""
+
+        for legacy_rule_type in preferred_legacy_rule_types:
+            candidate = db.get_rule_text_by_name(legacy_rule_type).strip()
+            if candidate:
+                migrated_prompt = candidate
+                break
+
+        if migrated_prompt:
+            db.set_rule_text(__class__.RuleType.TRANSLATION_PROMPT, migrated_prompt)
+
+        self.mark_legacy_translation_prompt_migrated(db)
+
+    def get_preferred_legacy_translation_prompt_types(self) -> tuple[str, str]:
+        """按当前 UI 语言决定旧 ZH/EN 提示词正文的优先级。"""
+        legacy_prompt_zh_rule_type = getattr(
+            LGDatabase,
+            "LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE",
+            "CUSTOM_PROMPT_ZH",
+        )
+        legacy_prompt_en_rule_type = getattr(
+            LGDatabase,
+            "LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE",
+            "CUSTOM_PROMPT_EN",
+        )
+        app_language = Localizer.get_app_language()
+        if app_language == BaseLanguage.Enum.EN:
+            return (
+                legacy_prompt_en_rule_type,
+                legacy_prompt_zh_rule_type,
+            )
+
+        return (
+            legacy_prompt_zh_rule_type,
+            legacy_prompt_en_rule_type,
+        )
+
+    def mark_legacy_translation_prompt_migrated(self, db: LGDatabase) -> None:
+        """记录旧翻译提示词正文迁移已经完成，避免重复探测与覆盖。"""
+        db.set_meta(__class__.LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY, True)
+        self.session.meta_cache[
+            __class__.LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY
+        ] = True
 
     def is_loaded(self) -> bool:
         with self.state_lock:
@@ -948,29 +1022,29 @@ class DataManager(Base):
     def set_post_replacement_enable(self, enable: bool) -> None:
         self.set_meta("post_translation_replacement_enable", bool(enable))
 
-    def get_custom_prompt_zh(self) -> str:
-        return self.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH)
+    def get_translation_prompt(self) -> str:
+        return self.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT)
 
-    def set_custom_prompt_zh(self, text: str) -> None:
-        self.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, text)
+    def set_translation_prompt(self, text: str) -> None:
+        self.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, text)
 
-    def get_custom_prompt_zh_enable(self) -> bool:
-        return bool(self.get_meta("custom_prompt_zh_enable", False))
+    def get_translation_prompt_enable(self) -> bool:
+        return bool(self.get_meta("translation_prompt_enable", False))
 
-    def set_custom_prompt_zh_enable(self, enable: bool) -> None:
-        self.set_meta("custom_prompt_zh_enable", bool(enable))
+    def set_translation_prompt_enable(self, enable: bool) -> None:
+        self.set_meta("translation_prompt_enable", bool(enable))
 
-    def get_custom_prompt_en(self) -> str:
-        return self.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_EN)
+    def get_analysis_prompt(self) -> str:
+        return self.get_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT)
 
-    def set_custom_prompt_en(self, text: str) -> None:
-        self.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_EN, text)
+    def set_analysis_prompt(self, text: str) -> None:
+        self.set_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT, text)
 
-    def get_custom_prompt_en_enable(self) -> bool:
-        return bool(self.get_meta("custom_prompt_en_enable", False))
+    def get_analysis_prompt_enable(self) -> bool:
+        return bool(self.get_meta("analysis_prompt_enable", False))
 
-    def set_custom_prompt_en_enable(self, enable: bool) -> None:
-        self.set_meta("custom_prompt_en_enable", bool(enable))
+    def set_analysis_prompt_enable(self, enable: bool) -> None:
+        self.set_meta("analysis_prompt_enable", bool(enable))
 
     # ===================== items =====================
 

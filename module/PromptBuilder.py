@@ -6,6 +6,8 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Localizer.Localizer import Localizer
+from module.PromptResourceResolver import PromptResourceResolver
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Utils.JSONTool import JSONTool
 
@@ -36,72 +38,103 @@ class PromptBuilder(Base):
         cls.get_suffix_glossary.cache_clear()
         cls.get_analysis_base.cache_clear()
         cls.get_analysis_prefix.cache_clear()
+        cls.get_analysis_thinking.cache_clear()
         cls.get_analysis_suffix.cache_clear()
 
     @classmethod
     def read_prompt_text(
-        cls, prompt_group: str, language: BaseLanguage.Enum, file_name: str
+        cls,
+        task_type: PromptResourceResolver.TaskType,
+        language: BaseLanguage.Enum,
+        file_name: str,
     ) -> str:
-        with open(
-            f"resource/preset/{prompt_group}/{language.lower()}/{file_name}",
-            "r",
-            encoding="utf-8-sig",
-        ) as reader:
-            return reader.read().strip()
+        return PromptResourceResolver.read_template(task_type, file_name, language)
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_base(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt", language, "base.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.TRANSLATION, language, "base.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_prefix(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt", language, "prefix.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.TRANSLATION, language, "prefix.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_suffix(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt", language, "suffix.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.TRANSLATION, language, "suffix.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_suffix_thinking(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt", language, "thinking.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.TRANSLATION, language, "thinking.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_suffix_glossary(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt", language, "suffix_glossary.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.TRANSLATION,
+            language,
+            "suffix_glossary.txt",
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_base(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt_glossary", language, "base.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.ANALYSIS, language, "base.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_prefix(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt_glossary", language, "prefix.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.ANALYSIS, language, "prefix.txt"
+        )
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_analysis_thinking(cls, language: BaseLanguage.Enum) -> str:
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.ANALYSIS, language, "thinking.txt"
+        )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_suffix(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text("prompt_glossary", language, "suffix.txt")
+        return cls.read_prompt_text(
+            PromptResourceResolver.TaskType.ANALYSIS, language, "suffix.txt"
+        )
 
-    def resolve_prompt_languages(
+    def get_prompt_ui_language(self) -> BaseLanguage.Enum:
+        """提示词模板和说明文字始终跟随当前 UI 语言。"""
+        return Localizer.get_app_language()
+
+    def is_prompt_ui_zh(self) -> bool:
+        return self.get_prompt_ui_language() == BaseLanguage.Enum.ZH
+
+    def resolve_prompt_context(
         self,
     ) -> tuple[BaseLanguage.Enum, str, str, str]:
-        """统一推导提示词语言与占位文本，避免翻译/分析两条链重复分叉。"""
+        """统一推导提示词 UI 语言与占位文本，避免运行时继续绑死 target_language。"""
         languages = BaseLanguage.get_languages()
+        prompt_language = self.get_prompt_ui_language()
 
         if self.config.target_language == BaseLanguage.ALL:
             raise ValueError("target_language does not support ALL")
         if self.config.target_language not in languages:
             raise ValueError(f"invalid target_language: {self.config.target_language}")
 
-        if self.config.target_language == BaseLanguage.Enum.ZH:
-            prompt_language = BaseLanguage.Enum.ZH
+        if prompt_language == BaseLanguage.Enum.ZH:
             source_placeholder = __class__.SOURCE_PLACEHOLDER_ZH
             if self.config.source_language in languages:
                 source_language = BaseLanguage.get_name_zh(self.config.source_language)
@@ -109,7 +142,6 @@ class PromptBuilder(Base):
                 source_language = source_placeholder
             target_language = BaseLanguage.get_name_zh(self.config.target_language)
         else:
-            prompt_language = BaseLanguage.Enum.EN
             source_placeholder = __class__.SOURCE_PLACEHOLDER_EN
             if self.config.source_language in languages:
                 source_language = BaseLanguage.get_name_en(self.config.source_language)
@@ -125,39 +157,51 @@ class PromptBuilder(Base):
         return prompt_language, source_placeholder, source_language, target_language
 
     # 获取自定义提示词数据
-    def get_custom_prompt_data(self, language: BaseLanguage.Enum) -> str:
+    def get_custom_prompt_data(self, task_type: PromptResourceResolver.TaskType) -> str:
         snapshot = self.quality_snapshot
         if snapshot is not None:
-            if language == BaseLanguage.Enum.ZH:
-                return snapshot.custom_prompt_zh
-            return snapshot.custom_prompt_en
+            if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+                return snapshot.translation_prompt
+            return snapshot.analysis_prompt
 
-        if language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh()
-        return DataManager.get().get_custom_prompt_en()
+        if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+            return DataManager.get().get_translation_prompt()
+        return DataManager.get().get_analysis_prompt()
 
     # 获取自定义提示词启用状态
-    def get_custom_prompt_enable(self, language: BaseLanguage.Enum) -> bool:
+    def get_custom_prompt_enable(
+        self, task_type: PromptResourceResolver.TaskType
+    ) -> bool:
         snapshot = self.quality_snapshot
         if snapshot is not None:
-            if language == BaseLanguage.Enum.ZH:
-                return snapshot.custom_prompt_zh_enable
-            return snapshot.custom_prompt_en_enable
+            if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+                return snapshot.translation_prompt_enable
+            return snapshot.analysis_prompt_enable
 
-        if language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh_enable()
-        return DataManager.get().get_custom_prompt_en_enable()
+        if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+            return DataManager.get().get_translation_prompt_enable()
+        return DataManager.get().get_analysis_prompt_enable()
 
-    def resolve_main_prompt_base(self, prompt_language: BaseLanguage.Enum) -> str:
-        """统一决定主提示词正文来源，避免中英文分支重复判断。"""
-        if self.get_custom_prompt_enable(prompt_language):
-            return self.get_custom_prompt_data(prompt_language)
+    def resolve_translation_prompt_base(
+        self, prompt_language: BaseLanguage.Enum
+    ) -> str:
+        """翻译任务只看翻译提示词开关与正文。"""
+        if self.get_custom_prompt_enable(PromptResourceResolver.TaskType.TRANSLATION):
+            return self.get_custom_prompt_data(
+                PromptResourceResolver.TaskType.TRANSLATION
+            )
         return __class__.get_base(prompt_language)
+
+    def resolve_analysis_prompt_base(self, prompt_language: BaseLanguage.Enum) -> str:
+        """分析任务只看分析提示词开关与正文。"""
+        if self.get_custom_prompt_enable(PromptResourceResolver.TaskType.ANALYSIS):
+            return self.get_custom_prompt_data(PromptResourceResolver.TaskType.ANALYSIS)
+        return __class__.get_analysis_base(prompt_language)
 
     # 获取主提示词
     def build_main(self) -> str:
         prompt_language, _source_placeholder, source_language, target_language = (
-            self.resolve_prompt_languages()
+            self.resolve_prompt_context()
         )
 
         with __class__.LOCK:
@@ -165,7 +209,7 @@ class PromptBuilder(Base):
             prefix = __class__.get_prefix(prompt_language)
 
             # 主体
-            base = self.resolve_main_prompt_base(prompt_language)
+            base = self.resolve_translation_prompt_base(prompt_language)
 
             # 思考块：与输出块分离，避免自动术语表切换时互相覆盖
             thinking = ""
@@ -193,22 +237,31 @@ class PromptBuilder(Base):
     def build_glossary_analysis_main(self) -> str:
         """构建术语分析任务的主提示词。"""
         prompt_language, _source_placeholder, _source_language, target_language = (
-            self.resolve_prompt_languages()
+            self.resolve_prompt_context()
         )
 
         with __class__.LOCK:
             prefix = __class__.get_analysis_prefix(prompt_language)
-            base = __class__.get_analysis_base(prompt_language)
+            base = self.resolve_analysis_prompt_base(prompt_language)
+            thinking = ""
+            if self.config.force_thinking_enable:
+                thinking = __class__.get_analysis_thinking(prompt_language)
             suffix = __class__.get_analysis_suffix(prompt_language)
 
-        full_prompt = "\n\n".join([prefix, base, suffix])
+        # 分析任务与翻译任务保持同样的三段式结构，避免 thinking 规则重新混回 base。
+        base_block = "\n".join([prefix, base])
+        parts = [base_block]
+        if thinking:
+            parts.append(thinking)
+        parts.append(suffix)
+        full_prompt = "\n\n".join(parts)
         return full_prompt.replace("{target_language}", target_language)
 
     # 构造参考上文
     def build_preceding(self, precedings: list[Item]) -> str:
         if not precedings:
             return ""
-        elif self.config.target_language == BaseLanguage.Enum.ZH:
+        elif self.is_prompt_ui_zh():
             return (
                 "参考上文："
                 + "\n"
@@ -268,7 +321,7 @@ class PromptBuilder(Base):
         if not result:
             return ""
 
-        if self.config.target_language == BaseLanguage.Enum.ZH:
+        if self.is_prompt_ui_zh():
             return (
                 "术语表 <术语原文> -> <术语译文> #<术语信息>:"
                 + "\n"
@@ -346,7 +399,7 @@ class PromptBuilder(Base):
             return ""
 
         # 判断提示词语言
-        if self.config.target_language == BaseLanguage.Enum.ZH:
+        if self.is_prompt_ui_zh():
             prefix: str = "控制字符示例："
         else:
             prefix: str = "Control Characters Samples:"
@@ -359,7 +412,7 @@ class PromptBuilder(Base):
             JSONTool.dumps({str(i): line}) for i, line in enumerate(srcs)
         )
 
-        if self.config.target_language == BaseLanguage.Enum.ZH:
+        if self.is_prompt_ui_zh():
             return "输入：\n" + "```jsonline\n" + f"{inputs}\n" + "```"
         else:
             return "Input:\n" + "```jsonline\n" + f"{inputs}\n" + "```"
@@ -370,7 +423,7 @@ class PromptBuilder(Base):
             return ""
 
         inputs = "\n".join(srcs)
-        if self.config.target_language == BaseLanguage.Enum.ZH:
+        if self.is_prompt_ui_zh():
             return "输入：\n" + inputs
         else:
             return "Input:\n" + inputs
