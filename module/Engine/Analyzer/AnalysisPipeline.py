@@ -30,6 +30,7 @@ from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseDecoder import ResponseDecoder
+from module.Text.TextHelper import TextHelper
 
 from module.Engine.Analyzer.AnalysisModels import AnalysisChunkResult
 from module.Engine.Analyzer.AnalysisModels import AnalysisFilePlan
@@ -419,6 +420,16 @@ class AnalysisPipeline:
         )
 
     # 这里把模型输出归一成统一术语结构，后面的合并器和日志才能只处理一种数据形状。
+    def split_glossary_entry_pairs(self, src: str, dst: str) -> list[tuple[str, str]]:
+        # 这里沿用旧分析器的切分规则，保证复合术语在新旧链路里的入库口径一致。
+        src_parts = TextHelper.split_by_punctuation(src, split_by_space=True)
+        dst_parts = TextHelper.split_by_punctuation(dst, split_by_space=True)
+        if len(src_parts) != len(dst_parts):
+            return [(src, dst)]
+
+        return list(zip(src_parts, dst_parts))
+
+    # 这里把模型输出归一成统一术语结构，后面的合并器和日志才能只处理一种数据形状。
     def normalize_glossary_entries(
         self, glossary_entries: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -430,17 +441,20 @@ class AnalysisPipeline:
             src = str(raw.get("src", "")).strip()
             dst = str(raw.get("dst", "")).strip()
             info = str(raw.get("info", "")).strip()
-            if src == "" or dst == "" or src == dst:
-                continue
+            for src_part, dst_part in self.split_glossary_entry_pairs(src, dst):
+                src_part = src_part.strip()
+                dst_part = dst_part.strip()
+                if src_part == "" or dst_part == "" or src_part == dst_part:
+                    continue
 
-            normalized.append(
-                {
-                    "src": src,
-                    "dst": dst,
-                    "info": info,
-                    "case_sensitive": False,
-                }
-            )
+                normalized.append(
+                    {
+                        "src": src_part,
+                        "dst": dst_part,
+                        "info": info,
+                        "case_sensitive": False,
+                    }
+                )
 
         return normalized
 

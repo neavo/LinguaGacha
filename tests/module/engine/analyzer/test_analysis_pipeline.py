@@ -95,6 +95,133 @@ def test_merge_glossary_entries_updates_snapshot_and_db(
     ]
 
 
+def test_normalize_glossary_entries_splits_matched_parts_and_keeps_plain_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        analysis_pipeline_module.TextHelper,
+        "split_by_punctuation",
+        staticmethod(
+            lambda text, split_by_space=True: [v.strip() for v in text.split(",")]
+        ),
+    )
+
+    pipeline = AnalysisPipeline(Analyzer())
+
+    normalized = pipeline.normalize_glossary_entries(
+        [
+            {"src": "Alice, Bob", "dst": "爱丽丝, 鲍勃", "info": "女性人名"},
+            {"src": "HP", "dst": "生命值", "info": "stat"},
+        ]
+    )
+
+    assert normalized == [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+        },
+        {
+            "src": "Bob",
+            "dst": "鲍勃",
+            "info": "女性人名",
+            "case_sensitive": False,
+        },
+        {
+            "src": "HP",
+            "dst": "生命值",
+            "info": "stat",
+            "case_sensitive": False,
+        },
+    ]
+
+
+def test_normalize_glossary_entries_falls_back_to_full_entry_on_split_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_split(text: str, split_by_space: bool = True) -> list[str]:
+        del split_by_space
+        if text == "Alice, Bob":
+            return ["Alice", "Bob"]
+        if text == "爱丽丝":
+            return ["爱丽丝"]
+        return [text]
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.TextHelper,
+        "split_by_punctuation",
+        staticmethod(fake_split),
+    )
+
+    pipeline = AnalysisPipeline(Analyzer())
+
+    normalized = pipeline.normalize_glossary_entries(
+        [{"src": "Alice, Bob", "dst": "爱丽丝", "info": "女性人名"}]
+    )
+
+    assert normalized == [
+        {
+            "src": "Alice, Bob",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+        }
+    ]
+
+
+def test_normalize_glossary_entries_filters_empty_and_same_parts_after_split(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_split(text: str, split_by_space: bool = True) -> list[str]:
+        del split_by_space
+        if text == "empty-case":
+            return ["Alpha", "", "Gamma"]
+        if text == "empty-result":
+            return ["阿尔法", "", "伽马"]
+        if text == "same-case":
+            return ["left", "same"]
+        if text == "same-result":
+            return ["左边", "same"]
+        return [text]
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.TextHelper,
+        "split_by_punctuation",
+        staticmethod(fake_split),
+    )
+
+    pipeline = AnalysisPipeline(Analyzer())
+
+    normalized = pipeline.normalize_glossary_entries(
+        [
+            {"src": "empty-case", "dst": "empty-result", "info": "空段测试"},
+            {"src": "same-case", "dst": "same-result", "info": "同文过滤"},
+        ]
+    )
+
+    assert normalized == [
+        {
+            "src": "Alpha",
+            "dst": "阿尔法",
+            "info": "空段测试",
+            "case_sensitive": False,
+        },
+        {
+            "src": "Gamma",
+            "dst": "伽马",
+            "info": "空段测试",
+            "case_sensitive": False,
+        },
+        {
+            "src": "left",
+            "dst": "左边",
+            "info": "同文过滤",
+            "case_sensitive": False,
+        },
+    ]
+
+
 def test_run_file_plan_marks_full_file_as_error_when_any_chunk_fails(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
