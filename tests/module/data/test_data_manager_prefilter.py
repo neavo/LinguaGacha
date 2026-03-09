@@ -43,7 +43,14 @@ def patch_engine_status(
 @pytest.fixture
 def data_manager() -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
-    dm.session = SimpleNamespace(db=object(), lg_path="demo/project.lg")
+    dm.session = SimpleNamespace(
+        db=SimpleNamespace(
+            delete_analysis_item_checkpoints=MagicMock(),
+            clear_analysis_task_observations=MagicMock(),
+            clear_analysis_candidate_aggregates=MagicMock(),
+        ),
+        lg_path="demo/project.lg",
+    )
     dm.state_lock = threading.RLock()
 
     dm.prefilter_lock = threading.Lock()
@@ -373,8 +380,12 @@ def test_apply_project_prefilter_once_updates_batch_and_meta(
         "target_language": "ZH",
         "analysis_extras": {},
         "analysis_state": {},
+        "analysis_term_pool": {},
     }
     assert [item_dict["id"] for item_dict in call_kwargs["items"]] == [1, 2]
+    data_manager.session.db.delete_analysis_item_checkpoints.assert_called_once()
+    data_manager.session.db.clear_analysis_task_observations.assert_called_once()
+    data_manager.session.db.clear_analysis_candidate_aggregates.assert_called_once()
 
     show_event, show_payload = data_manager.emit.call_args_list[0].args
     assert show_event == Base.Event.PROGRESS_TOAST

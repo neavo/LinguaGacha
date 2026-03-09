@@ -19,6 +19,7 @@ class Base:
     # | ANALYSIS_PROGRESS             | （按快照事件处理）           | 上报分析进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
     # | ANALYSIS_RESET_ALL            | REQUEST / RUN / DONE / ERROR | 重置全部分析进度                               | 无                                                        |
     # | ANALYSIS_RESET_FAILED         | REQUEST / RUN / DONE / ERROR | 仅重置失败的分析进度                           | 无                                                        |
+    # | ANALYSIS_IMPORT_GLOSSARY      | REQUEST / RUN / DONE / ERROR | 把候选术语池导入正式术语表                     | imported_count, message                                   |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
 
     # 事件
@@ -43,6 +44,9 @@ class Base:
         ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
         ANALYSIS_RESET_ALL = "ANALYSIS_RESET_ALL"  # 分析 - 重置全部
         ANALYSIS_RESET_FAILED = "ANALYSIS_RESET_FAILED"  # 分析 - 仅重置失败项
+        ANALYSIS_IMPORT_GLOSSARY = (
+            "ANALYSIS_IMPORT_GLOSSARY"  # 分析 - 导入候选术语池到正式术语表
+        )
         APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
         APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
         APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
@@ -128,6 +132,29 @@ class Base:
         CONTINUE = "CONTINUE"  # 继续分析：跳过已完成文件，仅继续剩余文件
         RESET = "RESET"  # 重置任务：用于外部显式声明“重新构建分析语料”
 
+    # 会影响页面锁定状态的事件统一收口在这里，避免每个页面都维护一份重复列表。
+    BUSY_STATE_EVENTS: tuple[Event, ...] = (
+        Event.TRANSLATION_TASK,
+        Event.TRANSLATION_REQUEST_STOP,
+        Event.TRANSLATION_RESET_ALL,
+        Event.TRANSLATION_RESET_FAILED,
+        Event.ANALYSIS_TASK,
+        Event.ANALYSIS_REQUEST_STOP,
+        Event.ANALYSIS_RESET_ALL,
+        Event.ANALYSIS_RESET_FAILED,
+    )
+    RESET_PROGRESS_EVENTS: tuple[Event, ...] = (
+        Event.TRANSLATION_RESET_ALL,
+        Event.TRANSLATION_RESET_FAILED,
+        Event.ANALYSIS_RESET_ALL,
+        Event.ANALYSIS_RESET_FAILED,
+    )
+    ENGINE_BUSY_STATUSES: tuple[TaskStatus, ...] = (
+        TaskStatus.TRANSLATING,
+        TaskStatus.ANALYZING,
+        TaskStatus.STOPPING,
+    )
+
     # 构造函数
     # Base 作为 mixin 使用：需要支持 Qt 组件的协作式多继承初始化。
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -162,3 +189,23 @@ class Base:
     # 取消订阅事件
     def unsubscribe(self, event: Event, hanlder: Callable) -> None:
         EventManager.get().unsubscribe(event, hanlder)
+
+    def subscribe_busy_state_events(self, handler: Callable) -> None:
+        """订阅所有会影响页面可操作状态的任务事件。"""
+
+        for event in self.BUSY_STATE_EVENTS:
+            self.subscribe(event, handler)
+
+    @classmethod
+    def is_terminal_reset_event(cls, event: Event, data: dict) -> bool:
+        """仅在重置事件进入终态时返回 True，避免请求态误刷新 UI。"""
+
+        if event not in cls.RESET_PROGRESS_EVENTS:
+            return False
+        return data.get("sub_event") in (cls.SubEvent.DONE, cls.SubEvent.ERROR)
+
+    @classmethod
+    def is_engine_busy(cls, status: TaskStatus) -> bool:
+        """统一定义哪些引擎状态需要锁住会影响任务语义的控件。"""
+
+        return status in cls.ENGINE_BUSY_STATUSES

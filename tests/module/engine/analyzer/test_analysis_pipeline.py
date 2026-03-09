@@ -7,39 +7,70 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
-from module.Engine.Analyzer.AnalysisModels import AnalysisChunkResult
-from module.Engine.Analyzer.AnalysisModels import AnalysisFilePlan
+from module.Engine.Analyzer.AnalysisModels import AnalysisItemContext
+from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
 from module.Engine.Analyzer.Analyzer import Analyzer
 
 analysis_pipeline_module = import_module("module.Engine.Analyzer.AnalysisPipeline")
 
 
-def make_line_plan(file_path: str, chunk_sizes: list[int]) -> AnalysisFilePlan:
-    chunks: list[tuple[Item, ...]] = []
-    for chunk_index, chunk_size in enumerate(chunk_sizes):
-        chunk = tuple(
-            Item(src=f"{file_path}-{chunk_index}-{item_index}")
-            for item_index in range(chunk_size)
+def build_item(item_id: int, src: str, file_path: str = "story.txt") -> Item:
+    return Item(id=item_id, src=src, file_path=file_path)
+
+
+def build_context(
+    fingerprint: str,
+    *,
+    item_ids: tuple[int, ...] = (1,),
+    file_path: str = "story.txt",
+) -> AnalysisTaskContext:
+    items = tuple(
+        AnalysisItemContext(
+            item_id=item_id,
+            file_path=file_path,
+            source_text=f"src-{item_id}",
+            source_hash=f"hash-{item_id}",
         )
-        chunks.append(chunk)
-    return AnalysisFilePlan(file_path=file_path, chunks=tuple(chunks))
+        for item_id in item_ids
+    )
+    return AnalysisTaskContext(
+        task_fingerprint=fingerprint,
+        file_path=file_path,
+        items=items,
+    )
 
 
-def test_build_extras_from_state_counts_chunk_statistics_and_reuses_progress() -> None:
+def test_build_progress_snapshot_counts_current_hash_status_and_reuses_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
     analyzer = Analyzer()
     pipeline = AnalysisPipeline(analyzer)
+    fake_data_manager.items = [
+        build_item(1, "A"),
+        build_item(2, "B"),
+        build_item(3, "C"),
+    ]
+    checkpoint_map = {}
+    for item in fake_data_manager.items[:2]:
+        source_text = pipeline.build_analysis_source_text(item)
+        checkpoint_map[item.get_id()] = {
+            "source_hash": pipeline.build_source_hash(source_text),
+            "status": Base.ProjectStatus.PROCESSED
+            if item.get_id() == 1
+            else Base.ProjectStatus.ERROR,
+        }
+    fake_data_manager.analysis_item_checkpoints = checkpoint_map
 
-    extras = pipeline.build_extras_from_state(
-        file_plans=[
-            make_line_plan("done.txt", [2, 1]),
-            make_line_plan("failed.txt", [3]),
-            make_line_plan("todo.txt", [1, 2]),
-        ],
-        state={
-            "done.txt": Base.ProjectStatus.PROCESSED,
-            "failed.txt": Base.ProjectStatus.ERROR,
-        },
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    snapshot = pipeline.build_progress_snapshot(
         previous_extras={
             "time": 12.0,
             "total_tokens": 13,
@@ -50,19 +81,57 @@ def test_build_extras_from_state_counts_chunk_statistics_and_reuses_progress() -
         continue_mode=True,
     )
 
-    assert extras["total_line"] == 9
-    assert extras["line"] == 6
-    assert extras["processed_line"] == 3
-    assert extras["error_line"] == 3
-    assert extras["time"] == 12.0
-    assert extras["total_tokens"] == 13
-    assert extras["total_input_tokens"] == 5
-    assert extras["total_output_tokens"] == 8
-    assert extras["added_glossary"] == 2
-    assert float(extras["start_time"]) <= time.time()
+    assert snapshot.total_line == 3
+    assert snapshot.line == 2
+    assert snapshot.processed_line == 1
+    assert snapshot.error_line == 1
+    assert snapshot.time == 12.0
+    assert snapshot.total_tokens == 13
+    assert snapshot.total_input_tokens == 5
+    assert snapshot.total_output_tokens == 8
+    assert snapshot.added_glossary == 2
+    assert float(snapshot.start_time) <= time.time()
 
 
-def test_merge_glossary_entries_updates_snapshot_and_db(
+def test_build_analysis_task_contexts_skips_processed_same_hash_and_keeps_changed_text(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analyzer = Analyzer()
+    pipeline = AnalysisPipeline(analyzer)
+    done_item = build_item(1, "done")
+    changed_item = build_item(2, "changed")
+    error_item = build_item(3, "error", file_path="scene.txt")
+    fake_data_manager.items = [done_item, changed_item, error_item]
+
+    done_hash = pipeline.build_source_hash(
+        pipeline.build_analysis_source_text(done_item)
+    )
+    fake_data_manager.analysis_item_checkpoints = {
+        1: {"source_hash": done_hash, "status": Base.ProjectStatus.PROCESSED},
+        2: {"source_hash": "old-hash", "status": Base.ProjectStatus.PROCESSED},
+        3: {
+            "source_hash": pipeline.build_source_hash(
+                pipeline.build_analysis_source_text(error_item)
+            ),
+            "status": Base.ProjectStatus.ERROR,
+        },
+    }
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    contexts = pipeline.build_analysis_task_contexts(analyzer.config)
+
+    assert [context.file_path for context in contexts] == ["story.txt", "scene.txt"]
+    assert [item.item_id for item in contexts[0].items] == [2]
+    assert [item.item_id for item in contexts[1].items] == [3]
+
+
+def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
@@ -74,48 +143,115 @@ def test_merge_glossary_entries_updates_snapshot_and_db(
 
     analyzer = Analyzer()
     pipeline = AnalysisPipeline(analyzer)
-    analyzer.quality_snapshot = SimpleNamespace(
-        merge_glossary_entries=lambda incoming: incoming
+    analyzer.extras = {
+        "start_time": time.time(),
+        "processed_line": 0,
+        "error_line": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_tokens": 0,
+        "added_glossary": 0,
+    }
+    analyzer.task_limiter = None
+
+    success_context = build_context("success", item_ids=(1, 2))
+    fail_context = build_context("failed", item_ids=(3,))
+    results = {
+        "success": AnalysisTaskResult(
+            context=success_context,
+            success=True,
+            stopped=False,
+            input_tokens=2,
+            output_tokens=3,
+            glossary_entries=(
+                {
+                    "src": "艾琳",
+                    "dst": "Eileen",
+                    "info": "女性人名",
+                    "case_sensitive": False,
+                },
+            ),
+        ),
+        "failed": AnalysisTaskResult(
+            context=fail_context,
+            success=False,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=0,
+        ),
+    }
+
+    monkeypatch.setattr(
+        analyzer,
+        "run_task_context",
+        lambda context: results[context.task_fingerprint],
     )
 
-    count = pipeline.merge_glossary_entries(
-        [{"src": "HP", "dst": "生命值", "info": "stat", "case_sensitive": False}]
+    status = pipeline.execute_task_contexts(
+        [success_context, fail_context],
+        max_workers=1,
     )
 
-    assert count == 1
-    assert len(fake_data_manager.updated_rules) == 1
-    stored_rules = next(iter(fake_data_manager.updated_rules[0].values()))
-    assert stored_rules == [
-        {
-            "src": "HP",
-            "dst": "生命值",
-            "info": "stat",
-            "case_sensitive": False,
-        }
-    ]
+    assert status == "FAILED"
+    assert fake_data_manager.analysis_candidate_count == 1
+    assert analyzer.extras["processed_line"] == 2
+    assert analyzer.extras["error_line"] == 1
+    assert analyzer.extras["added_glossary"] == 1
+    assert (
+        fake_data_manager.analysis_item_checkpoints[1]["status"]
+        == Base.ProjectStatus.PROCESSED
+    )
+    assert (
+        fake_data_manager.analysis_item_checkpoints[3]["status"]
+        == Base.ProjectStatus.ERROR
+    )
 
 
-def test_normalize_glossary_entries_splits_matched_parts_and_keeps_plain_entries(
+def test_execute_task_request_uses_analysis_response_decoder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.TextHelper,
-        "split_by_punctuation",
-        staticmethod(
-            lambda text, split_by_space=True: [v.strip() for v in text.split(",")]
+    analyzer = Analyzer()
+    pipeline = AnalysisPipeline(analyzer)
+    analyzer.model = {"name": "demo-model"}
+    analyzer.quality_snapshot = SimpleNamespace()
+
+    context = AnalysisTaskContext(
+        task_fingerprint="fp",
+        file_path="story.txt",
+        items=(
+            AnalysisItemContext(
+                item_id=1,
+                file_path="story.txt",
+                source_text="Alice, Bob",
+                source_hash="h1",
+            ),
         ),
     )
 
-    pipeline = AnalysisPipeline(Analyzer())
-
-    normalized = pipeline.normalize_glossary_entries(
-        [
-            {"src": "Alice, Bob", "dst": "爱丽丝, 鲍勃", "info": "女性人名"},
-            {"src": "HP", "dst": "生命值", "info": "stat"},
-        ]
+    monkeypatch.setattr(
+        analysis_pipeline_module.PromptBuilder,
+        "generate_glossary_prompt",
+        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_module.TaskRequester,
+        "request",
+        lambda self, messages, stop_checker: (
+            None,
+            "",
+            '{"src":"Alice, Bob","dst":"爱丽丝, 鲍勃","type":"女性人名"}',
+            3,
+            4,
+        ),
     )
 
-    assert normalized == [
+    result = pipeline.execute_task_request(context)
+
+    assert result.success is True
+    assert result.stopped is False
+    assert result.input_tokens == 3
+    assert result.output_tokens == 4
+    assert list(result.glossary_entries) == [
         {
             "src": "Alice",
             "dst": "爱丽丝",
@@ -128,246 +264,40 @@ def test_normalize_glossary_entries_splits_matched_parts_and_keeps_plain_entries
             "info": "女性人名",
             "case_sensitive": False,
         },
-        {
-            "src": "HP",
-            "dst": "生命值",
-            "info": "stat",
-            "case_sensitive": False,
-        },
     ]
 
 
-def test_normalize_glossary_entries_falls_back_to_full_entry_on_split_mismatch(
+def test_execute_task_request_returns_failure_when_response_shape_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_split(text: str, split_by_space: bool = True) -> list[str]:
-        del split_by_space
-        if text == "Alice, Bob":
-            return ["Alice", "Bob"]
-        if text == "爱丽丝":
-            return ["爱丽丝"]
-        return [text]
-
-    monkeypatch.setattr(
-        analysis_pipeline_module.TextHelper,
-        "split_by_punctuation",
-        staticmethod(fake_split),
-    )
-
-    pipeline = AnalysisPipeline(Analyzer())
-
-    normalized = pipeline.normalize_glossary_entries(
-        [{"src": "Alice, Bob", "dst": "爱丽丝", "info": "女性人名"}]
-    )
-
-    assert normalized == [
-        {
-            "src": "Alice, Bob",
-            "dst": "爱丽丝",
-            "info": "女性人名",
-            "case_sensitive": False,
-        }
-    ]
-
-
-def test_normalize_glossary_entries_filters_empty_and_same_parts_after_split(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_split(text: str, split_by_space: bool = True) -> list[str]:
-        del split_by_space
-        if text == "empty-case":
-            return ["Alpha", "", "Gamma"]
-        if text == "empty-result":
-            return ["阿尔法", "", "伽马"]
-        if text == "same-case":
-            return ["left", "same"]
-        if text == "same-result":
-            return ["左边", "same"]
-        return [text]
-
-    monkeypatch.setattr(
-        analysis_pipeline_module.TextHelper,
-        "split_by_punctuation",
-        staticmethod(fake_split),
-    )
-
-    pipeline = AnalysisPipeline(Analyzer())
-
-    normalized = pipeline.normalize_glossary_entries(
-        [
-            {"src": "empty-case", "dst": "empty-result", "info": "空段测试"},
-            {"src": "same-case", "dst": "same-result", "info": "同文过滤"},
-        ]
-    )
-
-    assert normalized == [
-        {
-            "src": "Alpha",
-            "dst": "阿尔法",
-            "info": "空段测试",
-            "case_sensitive": False,
-        },
-        {
-            "src": "Gamma",
-            "dst": "伽马",
-            "info": "空段测试",
-            "case_sensitive": False,
-        },
-        {
-            "src": "left",
-            "dst": "左边",
-            "info": "同文过滤",
-            "case_sensitive": False,
-        },
-    ]
-
-
-def test_run_file_plan_marks_full_file_as_error_when_any_chunk_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
     analyzer = Analyzer()
     pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = {
-        "start_time": time.time(),
-        "processed_line": 0,
-        "error_line": 0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "total_tokens": 0,
-        "added_glossary": 0,
-    }
-    analyzer.task_limiter = None
-
-    results = iter(
-        [
-            AnalysisChunkResult(
-                success=True,
-                stopped=False,
-                input_tokens=3,
-                output_tokens=7,
-                glossary_entries=(
-                    {
-                        "src": "魔导具",
-                        "dst": "魔导器",
-                        "info": "特殊物品",
-                        "case_sensitive": False,
-                    },
-                ),
-            ),
-            AnalysisChunkResult(
-                success=False, stopped=False, input_tokens=1, output_tokens=0
-            ),
-        ]
-    )
-    monkeypatch.setattr(analyzer, "run_chunk", lambda items: next(results))
-    monkeypatch.setattr(
-        analyzer, "merge_glossary_entries", lambda entries: len(entries)
-    )
-
-    status = pipeline.run_file_plan(make_line_plan("story.txt", [2, 3]), max_workers=1)
-
-    assert status == Base.ProjectStatus.ERROR
-    assert analyzer.extras["processed_line"] == 0
-    assert analyzer.extras["error_line"] == 5
-    assert analyzer.extras["added_glossary"] == 1
-    assert analyzer.extras["total_input_tokens"] == 4
-    assert analyzer.extras["total_output_tokens"] == 7
-
-
-def test_run_file_plan_rolls_back_partial_progress_when_stopped(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = {
-        "start_time": time.time(),
-        "processed_line": 0,
-        "error_line": 0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "total_tokens": 0,
-        "added_glossary": 0,
-    }
-    analyzer.task_limiter = None
-
-    def fake_run_chunk(items) -> AnalysisChunkResult:
-        del items
-        if analyzer.extras["processed_line"] == 0:
-            return AnalysisChunkResult(
-                success=True, stopped=False, input_tokens=2, output_tokens=3
-            )
-        analyzer.stop_requested = True
-        return AnalysisChunkResult(
-            success=False, stopped=True, input_tokens=0, output_tokens=0
-        )
-
-    monkeypatch.setattr(analyzer, "run_chunk", fake_run_chunk)
-    monkeypatch.setattr(analyzer, "merge_glossary_entries", lambda entries: 0)
-
-    status = pipeline.run_file_plan(make_line_plan("scene.txt", [2, 3]), max_workers=1)
-
-    assert status is None
-    assert analyzer.extras["processed_line"] == 0
-    assert analyzer.extras["error_line"] == 0
-    assert analyzer.extras["total_input_tokens"] == 2
-    assert analyzer.extras["total_output_tokens"] == 3
-
-
-def test_log_analysis_start_outputs_model_and_prompt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    messages: list[str] = []
-
-    class FakeLogger:
-        def print(self, msg: str, *args, **kwargs) -> None:
-            del args, kwargs
-            messages.append(msg)
-
-        def info(self, msg: str, *args, **kwargs) -> None:
-            del args, kwargs
-            messages.append(msg)
-
-    monkeypatch.setattr(
-        analysis_pipeline_module.LogManager,
-        "get",
-        lambda: FakeLogger(),
-    )
-    monkeypatch.setattr(
-        analysis_pipeline_module.PromptBuilder,
-        "build_glossary_analysis_main",
-        lambda self: "ANALYSIS_PROMPT",
-    )
-
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.model = {
-        "name": "demo-model",
-        "api_url": "https://example.test/v1",
-        "model_id": "demo-id",
-        "api_format": Base.APIFormat.OPENAI,
-    }
+    analyzer.model = {"name": "demo-model"}
     analyzer.quality_snapshot = SimpleNamespace()
 
-    pipeline.log_analysis_start()
+    context = build_context("fp")
 
-    assert any("demo-model" in message for message in messages)
-    assert any("https://example.test/v1" in message for message in messages)
-    assert any("demo-id" in message for message in messages)
-    assert "ANALYSIS_PROMPT" in messages
+    monkeypatch.setattr(
+        analysis_pipeline_module.PromptBuilder,
+        "generate_glossary_prompt",
+        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_module.TaskRequester,
+        "request",
+        lambda self, messages, stop_checker: (
+            None,
+            "",
+            '{"bad":[]}',
+            1,
+            1,
+        ),
+    )
+
+    result = pipeline.execute_task_request(context)
+
+    assert result.success is False
+    assert result.stopped is False
 
 
 def test_print_chunk_log_writes_source_and_extracted_terms(
@@ -410,7 +340,7 @@ def test_print_chunk_log_writes_source_and_extracted_terms(
             {"src": "圣女艾琳", "dst": "Saint Eileen", "info": "女性人名"}
         ],
         response_think="",
-        response_result='{"src":"圣女艾琳","dst":"Saint Eileen","type":"女性人名"}',
+        response_result='{"terms":[{"src":"圣女艾琳","dst":"Saint Eileen","info":"女性人名"}]}',
         status_text="",
         log_func=logger.info,
         style="green",

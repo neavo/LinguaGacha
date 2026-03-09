@@ -163,15 +163,8 @@ class TranslationPage(Base, QWidget):
                     Base.SubEvent.DONE,
                     Base.SubEvent.ERROR,
                 )
-            if event in (
-                Base.Event.TRANSLATION_RESET_ALL,
-                Base.Event.TRANSLATION_RESET_FAILED,
-            ):
-                sub_event: Base.SubEvent = data["sub_event"]
-                should_hide_stopping_toast = sub_event in (
-                    Base.SubEvent.DONE,
-                    Base.SubEvent.ERROR,
-                )
+            if Base.is_terminal_reset_event(event, data):
+                should_hide_stopping_toast = True
 
             if self.is_stopping_toast_active and should_hide_stopping_toast:
                 self.emit(

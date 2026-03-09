@@ -143,18 +143,31 @@ class Translator(Base):
                 "status": Base.ProjectStatus.NONE,
                 "extras": {},
                 "analysis_extras": {},
-                "analysis_state": {},
+                "analysis_candidate_count": 0,
             }
 
-        return {
+        analysis_candidate_count = int(dm.get_analysis_candidate_count())
+        analysis_extras = dm.get_analysis_progress_snapshot()
+
+        payload = {
             "status": dm.get_project_status(),
             "extras": dm.get_translation_extras(),
-            "analysis_extras": dm.get_analysis_extras(),
-            "analysis_state": {
-                rel_path: status.value
-                for rel_path, status in dm.get_analysis_state().items()
-            },
+            "analysis_extras": analysis_extras,
+            "analysis_candidate_count": analysis_candidate_count,
         }
+
+        status_summary = dm.get_analysis_status_summary()
+        payload["analysis_can_continue"] = bool(
+            status_summary.get("can_continue", False)
+        )
+        payload["analysis_has_pending_items"] = bool(
+            status_summary.get("has_pending_items", False)
+        )
+        payload["analysis_has_error_items"] = bool(
+            status_summary.get("has_error_items", False)
+        )
+
+        return payload
 
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:

@@ -136,11 +136,61 @@ class LGDatabase(Base):
         """
         )
 
+        # 分析检查点表：以 item_id 为主键，只记录当前最近一次分析到的文本哈希和状态。
+        target_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_item_checkpoint (
+                item_id INTEGER PRIMARY KEY,
+                source_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                error_count INTEGER NOT NULL
+            )
+        """
+        )
+
+        # 分析观察表：记录某个任务块真实提交过哪些候选术语，用 task_fingerprint 做幂等。
+        target_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_task_observation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_fingerprint TEXT NOT NULL,
+                src TEXT NOT NULL,
+                dst TEXT NOT NULL,
+                info TEXT NOT NULL,
+                case_sensitive INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(task_fingerprint, src, dst, info, case_sensitive)
+            )
+        """
+        )
+
+        # 候选池汇总表：项目级长期资产，按 src 聚合投票信息。
+        target_conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_candidate_aggregate (
+                src TEXT PRIMARY KEY,
+                dst_votes TEXT NOT NULL,
+                info_votes TEXT NOT NULL,
+                observation_count INTEGER NOT NULL,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                case_sensitive INTEGER NOT NULL
+            )
+        """
+        )
+
         # 创建索引以加速查询
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path)"
         )
         target_conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type)")
+        target_conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status)"
+        )
+        target_conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_task_observation_fingerprint ON analysis_task_observation(task_fingerprint)"
+        )
 
         target_conn.commit()
 
@@ -171,6 +221,289 @@ class LGDatabase(Base):
             return {
                 row["key"]: JSONTool.loads(row["value"]) for row in cursor.fetchall()
             }
+
+    # ========== 分析状态操作 ==========
+
+    def get_analysis_item_checkpoints(
+        self, conn: sqlite3.Connection | None = None
+    ) -> list[dict[str, Any]]:
+        """读取所有分析检查点。"""
+        target_conn = conn
+        if target_conn is not None:
+            cursor = target_conn.execute(
+                """
+                SELECT item_id, source_hash, status, updated_at, error_count
+                FROM analysis_item_checkpoint
+                ORDER BY item_id
+                """
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+        with self.connection() as local_conn:
+            return self.get_analysis_item_checkpoints(conn=local_conn)
+
+    def upsert_analysis_item_checkpoints(
+        self,
+        checkpoints: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """批量写入分析检查点。"""
+        if not checkpoints:
+            return
+
+        params = [
+            (
+                int(checkpoint["item_id"]),
+                str(checkpoint["source_hash"]),
+                str(checkpoint["status"]),
+                str(checkpoint["updated_at"]),
+                int(checkpoint["error_count"]),
+            )
+            for checkpoint in checkpoints
+        ]
+
+        if conn is not None:
+            conn.executemany(
+                """
+                INSERT INTO analysis_item_checkpoint (
+                    item_id, source_hash, status, updated_at, error_count
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(item_id) DO UPDATE SET
+                    source_hash = excluded.source_hash,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    error_count = excluded.error_count
+                """,
+                params,
+            )
+            return
+
+        with self.connection() as local_conn:
+            self.upsert_analysis_item_checkpoints(checkpoints, conn=local_conn)
+            local_conn.commit()
+
+    def delete_analysis_item_checkpoints(
+        self,
+        *,
+        status: str | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
+        """删除分析检查点；可按状态过滤。"""
+        if conn is not None:
+            if status is None:
+                cursor = conn.execute("DELETE FROM analysis_item_checkpoint")
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM analysis_item_checkpoint WHERE status = ?",
+                    (status,),
+                )
+            return int(cursor.rowcount)
+
+        with self.connection() as local_conn:
+            deleted = self.delete_analysis_item_checkpoints(
+                status=status,
+                conn=local_conn,
+            )
+            local_conn.commit()
+            return deleted
+
+    def get_analysis_task_observations(
+        self,
+        *,
+        task_fingerprint: str | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> list[dict[str, Any]]:
+        """读取分析任务观察记录。"""
+        if conn is not None:
+            if task_fingerprint is None:
+                cursor = conn.execute(
+                    """
+                    SELECT task_fingerprint, src, dst, info, case_sensitive, created_at
+                    FROM analysis_task_observation
+                    ORDER BY id
+                    """
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    SELECT task_fingerprint, src, dst, info, case_sensitive, created_at
+                    FROM analysis_task_observation
+                    WHERE task_fingerprint = ?
+                    ORDER BY id
+                    """,
+                    (task_fingerprint,),
+                )
+            return [
+                {
+                    "task_fingerprint": str(row["task_fingerprint"]),
+                    "src": str(row["src"]),
+                    "dst": str(row["dst"]),
+                    "info": str(row["info"]),
+                    "case_sensitive": bool(row["case_sensitive"]),
+                    "created_at": str(row["created_at"]),
+                }
+                for row in cursor.fetchall()
+            ]
+
+        with self.connection() as local_conn:
+            return self.get_analysis_task_observations(
+                task_fingerprint=task_fingerprint,
+                conn=local_conn,
+            )
+
+    def insert_analysis_task_observations(
+        self,
+        observations: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
+        """批量插入任务观察记录，重复项会被忽略。"""
+        if not observations:
+            return 0
+
+        params = [
+            (
+                str(observation["task_fingerprint"]),
+                str(observation["src"]),
+                str(observation["dst"]),
+                str(observation["info"]),
+                int(bool(observation["case_sensitive"])),
+                str(observation["created_at"]),
+            )
+            for observation in observations
+        ]
+
+        if conn is not None:
+            inserted_count = 0
+            for param in params:
+                cursor = conn.execute(
+                    """
+                    INSERT OR IGNORE INTO analysis_task_observation (
+                        task_fingerprint, src, dst, info, case_sensitive, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    param,
+                )
+                inserted_count += int(cursor.rowcount)
+            return inserted_count
+
+        with self.connection() as local_conn:
+            inserted = self.insert_analysis_task_observations(
+                observations,
+                conn=local_conn,
+            )
+            local_conn.commit()
+            return inserted
+
+    def clear_analysis_task_observations(
+        self, conn: sqlite3.Connection | None = None
+    ) -> None:
+        """清空任务观察记录。"""
+        if conn is not None:
+            conn.execute("DELETE FROM analysis_task_observation")
+            return
+
+        with self.connection() as local_conn:
+            self.clear_analysis_task_observations(conn=local_conn)
+            local_conn.commit()
+
+    def get_analysis_candidate_aggregates(
+        self, conn: sqlite3.Connection | None = None
+    ) -> list[dict[str, Any]]:
+        """读取项目级候选池汇总。"""
+        if conn is not None:
+            cursor = conn.execute(
+                """
+                SELECT
+                    src,
+                    dst_votes,
+                    info_votes,
+                    observation_count,
+                    first_seen_at,
+                    last_seen_at,
+                    case_sensitive
+                FROM analysis_candidate_aggregate
+                ORDER BY src
+                """
+            )
+            result: list[dict[str, Any]] = []
+            for row in cursor.fetchall():
+                result.append(
+                    {
+                        "src": str(row["src"]),
+                        "dst_votes": JSONTool.loads(row["dst_votes"]),
+                        "info_votes": JSONTool.loads(row["info_votes"]),
+                        "observation_count": int(row["observation_count"]),
+                        "first_seen_at": str(row["first_seen_at"]),
+                        "last_seen_at": str(row["last_seen_at"]),
+                        "case_sensitive": bool(row["case_sensitive"]),
+                    }
+                )
+            return result
+
+        with self.connection() as local_conn:
+            return self.get_analysis_candidate_aggregates(conn=local_conn)
+
+    def upsert_analysis_candidate_aggregates(
+        self,
+        aggregates: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """批量写入项目级候选池汇总。"""
+        if not aggregates:
+            return
+
+        params = [
+            (
+                str(aggregate["src"]),
+                JSONTool.dumps(aggregate["dst_votes"]),
+                JSONTool.dumps(aggregate["info_votes"]),
+                int(aggregate["observation_count"]),
+                str(aggregate["first_seen_at"]),
+                str(aggregate["last_seen_at"]),
+                int(bool(aggregate["case_sensitive"])),
+            )
+            for aggregate in aggregates
+        ]
+
+        if conn is not None:
+            conn.executemany(
+                """
+                INSERT INTO analysis_candidate_aggregate (
+                    src,
+                    dst_votes,
+                    info_votes,
+                    observation_count,
+                    first_seen_at,
+                    last_seen_at,
+                    case_sensitive
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(src) DO UPDATE SET
+                    dst_votes = excluded.dst_votes,
+                    info_votes = excluded.info_votes,
+                    observation_count = excluded.observation_count,
+                    first_seen_at = excluded.first_seen_at,
+                    last_seen_at = excluded.last_seen_at,
+                    case_sensitive = excluded.case_sensitive
+                """,
+                params,
+            )
+            return
+
+        with self.connection() as local_conn:
+            self.upsert_analysis_candidate_aggregates(aggregates, conn=local_conn)
+            local_conn.commit()
+
+    def clear_analysis_candidate_aggregates(
+        self, conn: sqlite3.Connection | None = None
+    ) -> None:
+        """清空项目级候选池汇总。"""
+        if conn is not None:
+            conn.execute("DELETE FROM analysis_candidate_aggregate")
+            return
+
+        with self.connection() as local_conn:
+            self.clear_analysis_candidate_aggregates(conn=local_conn)
+            local_conn.commit()
 
     # ========== 资产操作 ==========
 

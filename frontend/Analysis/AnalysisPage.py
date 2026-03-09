@@ -34,6 +34,7 @@ ICON_ACTION_STOP: BaseIcon = BaseIcon.CIRCLE_STOP
 ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER
 ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.PAINTBRUSH
 ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING
+ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN
 
 
 class AnalysisPage(Base, QWidget):
@@ -51,6 +52,8 @@ class AnalysisPage(Base, QWidget):
 
         self.data: dict = {}
         self.is_stopping_toast_active: bool = False
+        self.is_importing_glossary: bool = False
+        self.analysis_candidate_count: int = 0
 
         self.container = QVBoxLayout(self)
         self.container.setSpacing(8)
@@ -71,6 +74,10 @@ class AnalysisPage(Base, QWidget):
         self.subscribe(Base.Event.ANALYSIS_PROGRESS, self.analysis_update)
         self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.on_analysis_reset)
         self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.on_analysis_reset)
+        self.subscribe(
+            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+            self.on_analysis_import_glossary,
+        )
         self.subscribe(Base.Event.PROJECT_FILE_UPDATE, self.on_project_source_changed)
         self.subscribe(Base.Event.PROJECT_PREFILTER, self.on_project_prefilter_changed)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
@@ -84,13 +91,39 @@ class AnalysisPage(Base, QWidget):
         super().showEvent(a0)
         self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
 
-    def has_progress(self) -> bool:
-        return self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+    def should_use_continue_mode(self) -> bool:
+        """只有存在可恢复的分析进度时，主按钮才保持“继续”语义。"""
+        if not isinstance(self.data, dict):
+            return False
 
-    def set_action_enabled(self, *, start: bool, stop: bool, reset: bool) -> None:
+        handled_line = int(self.data.get("line", 0) or 0)
+        total_line = int(self.data.get("total_line", 0) or 0)
+        error_line = int(self.data.get("error_line", 0) or 0)
+
+        if error_line > 0 or bool(self.data.get("has_error_items", False)):
+            return True
+
+        # 新项目虽然也会有待分析条目，但 line == 0 说明还没有形成可恢复进度，
+        # 此时按钮应该显示“开始”，避免把首次执行误导成“继续”。
+        if handled_line <= 0:
+            return False
+
+        if bool(self.data.get("has_pending_items", False)):
+            return True
+        if "can_continue" in self.data:
+            return bool(self.data.get("can_continue", False))
+
+        if total_line > handled_line:
+            return True
+        return False
+
+    def set_action_enabled(
+        self, *, start: bool, stop: bool, reset: bool, import_glossary: bool
+    ) -> None:
         self.action_start.setEnabled(start)
         self.action_stop.setEnabled(stop)
         self.action_reset.setEnabled(reset)
+        self.action_import.setEnabled(import_glossary)
 
     def should_hide_stopping_toast(self, event: Base.Event, data: dict) -> bool:
         if event == Base.Event.PROJECT_UNLOADED:
@@ -137,13 +170,26 @@ class AnalysisPage(Base, QWidget):
         if event == Base.Event.PROJECT_CHECK:
             if data.get("sub_event") != Base.SubEvent.DONE:
                 return
-            self.data = data.get("analysis_extras", {})
+            self.data = dict(data.get("analysis_extras", {}))
+            if "analysis_can_continue" in data:
+                self.data["can_continue"] = bool(data.get("analysis_can_continue"))
+            if "analysis_has_pending_items" in data:
+                self.data["has_pending_items"] = bool(
+                    data.get("analysis_has_pending_items")
+                )
+            if "analysis_has_error_items" in data:
+                self.data["has_error_items"] = bool(
+                    data.get("analysis_has_error_items")
+                )
+            self.analysis_candidate_count = int(
+                data.get("analysis_candidate_count") or 0
+            )
             if not self.data:
                 self.clear_ui_cards()
             else:
                 self.update_ui_tick()
 
-        if self.has_progress():
+        if self.should_use_continue_mode():
             self.action_start.setText(Localizer.get().analysis_page_continue)
             self.action_start.setIcon(ICON_ACTION_CONTINUE)
         else:
@@ -157,15 +203,32 @@ class AnalysisPage(Base, QWidget):
                 self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
                 self.is_stopping_toast_active = False
 
-            self.set_action_enabled(start=True, stop=False, reset=True)
+            self.set_action_enabled(
+                start=not self.is_importing_glossary,
+                stop=False,
+                reset=not self.is_importing_glossary,
+                import_glossary=(
+                    not self.is_importing_glossary and self.analysis_candidate_count > 0
+                ),
+            )
         elif status == Base.TaskStatus.ANALYZING:
-            self.set_action_enabled(start=False, stop=True, reset=False)
+            self.set_action_enabled(
+                start=False,
+                stop=True,
+                reset=False,
+                import_glossary=False,
+            )
         elif status in (
             Base.TaskStatus.TESTING,
             Base.TaskStatus.TRANSLATING,
             Base.TaskStatus.STOPPING,
         ):
-            self.set_action_enabled(start=False, stop=False, reset=False)
+            self.set_action_enabled(
+                start=False,
+                stop=False,
+                reset=False,
+                import_glossary=False,
+            )
 
     def analysis_done(self, event: Base.Event, data: dict) -> None:
         if event != Base.Event.ANALYSIS_TASK:
@@ -183,6 +246,7 @@ class AnalysisPage(Base, QWidget):
     def on_analysis_reset(self, event: Base.Event, data: dict) -> None:
         sub_event = data.get("sub_event")
         if sub_event == Base.SubEvent.DONE and event == Base.Event.ANALYSIS_RESET_ALL:
+            self.analysis_candidate_count = 0
             self.clear_ui_cards()
 
         self.update_button_status(event, data)
@@ -197,6 +261,16 @@ class AnalysisPage(Base, QWidget):
         del event
         if data.get("sub_event") == Base.ProjectPrefilterSubEvent.UPDATED:
             self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+
+    def on_analysis_import_glossary(self, event: Base.Event, data: dict) -> None:
+        del event
+        sub_event = data.get("sub_event")
+        if sub_event == Base.SubEvent.RUN:
+            self.is_importing_glossary = True
+        elif sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
+            self.is_importing_glossary = False
+
+        self.update_button_status(Base.Event.ANALYSIS_IMPORT_GLOSSARY, data)
 
     def update_ui_tick(self) -> None:
         self.update_time()
@@ -276,6 +350,7 @@ class AnalysisPage(Base, QWidget):
         self.add_command_bar_action_stop(self.command_bar_card, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_reset(self.command_bar_card, window)
+        self.add_command_bar_action_import(self.command_bar_card)
         self.command_bar_card.add_stretch(1)
 
     def add_time_card(self, parent: QLayout) -> None:
@@ -396,7 +471,7 @@ class AnalysisPage(Base, QWidget):
                 {
                     "sub_event": Base.SubEvent.REQUEST,
                     "mode": Base.AnalysisMode.CONTINUE
-                    if self.has_progress()
+                    if self.should_use_continue_mode()
                     else Base.AnalysisMode.NEW,
                 },
             )
@@ -489,6 +564,23 @@ class AnalysisPage(Base, QWidget):
         )
         self.action_reset.setToolTip(Localizer.get().analysis_page_reset_tooltip)
         self.action_reset.setEnabled(False)
+
+    def add_command_bar_action_import(self, parent: CommandBarCard) -> None:
+        def triggered() -> None:
+            self.emit(
+                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
+
+        self.action_import = parent.add_action(
+            Action(
+                ICON_ACTION_IMPORT,
+                Localizer.get().analysis_page_action_import,
+                parent,
+                triggered=triggered,
+            )
+        )
+        self.action_import.setEnabled(False)
 
     def update_time(self) -> None:
         total_time = self.get_total_time()
@@ -584,5 +676,7 @@ class AnalysisPage(Base, QWidget):
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         del event, data
+        self.analysis_candidate_count = 0
+        self.is_importing_glossary = False
         self.clear_ui_cards()
         self.update_button_status(Base.Event.PROJECT_UNLOADED, {})

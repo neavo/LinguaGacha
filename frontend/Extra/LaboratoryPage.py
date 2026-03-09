@@ -51,31 +51,7 @@ class LaboratoryPage(Base, QWidget):
         self.root.addStretch(1)
 
         # 翻译过程中禁用影响过滤/翻译语义的选项，避免与翻译写库产生竞态。
-        self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_status_changed)
-        self.subscribe(
-            Base.Event.TRANSLATION_REQUEST_STOP, self.on_translation_status_changed
-        )
-        self.subscribe(
-            Base.Event.TRANSLATION_RESET_ALL,
-            self.on_translation_status_changed,
-        )
-        self.subscribe(
-            Base.Event.TRANSLATION_RESET_FAILED,
-            self.on_translation_status_changed,
-        )
-        self.subscribe(Base.Event.ANALYSIS_TASK, self.on_translation_status_changed)
-        self.subscribe(
-            Base.Event.ANALYSIS_REQUEST_STOP,
-            self.on_translation_status_changed,
-        )
-        self.subscribe(
-            Base.Event.ANALYSIS_RESET_ALL,
-            self.on_translation_status_changed,
-        )
-        self.subscribe(
-            Base.Event.ANALYSIS_RESET_FAILED,
-            self.on_translation_status_changed,
-        )
+        self.subscribe_busy_state_events(self.on_translation_status_changed)
         self.on_translation_status_changed(
             Base.Event.TRANSLATION_TASK,
             {
@@ -84,25 +60,13 @@ class LaboratoryPage(Base, QWidget):
         )
 
     def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
-        if event in (
-            Base.Event.TRANSLATION_RESET_ALL,
-            Base.Event.TRANSLATION_RESET_FAILED,
-            Base.Event.ANALYSIS_RESET_ALL,
-            Base.Event.ANALYSIS_RESET_FAILED,
+        if event in Base.RESET_PROGRESS_EVENTS and not Base.is_terminal_reset_event(
+            event, data
         ):
-            sub_event: Base.SubEvent = data["sub_event"]
-            if sub_event not in (
-                Base.SubEvent.DONE,
-                Base.SubEvent.ERROR,
-            ):
-                return
+            return
 
         status = Engine.get().get_status()
-        locked = status in (
-            Base.TaskStatus.TRANSLATING,
-            Base.TaskStatus.ANALYZING,
-            Base.TaskStatus.STOPPING,
-        )
+        locked = Base.is_engine_busy(status)
         if hasattr(self, "mtool_switch") and self.mtool_switch is not None:
             self.mtool_switch.setEnabled(not locked)
         if (

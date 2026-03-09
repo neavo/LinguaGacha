@@ -3,8 +3,6 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from rich.table import Table
-
 from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
@@ -17,8 +15,9 @@ from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
-from module.Engine.Analyzer.AnalysisModels import AnalysisChunkResult
-from module.Engine.Analyzer.AnalysisModels import AnalysisFilePlan
+from module.Engine.Analyzer.AnalysisModels import AnalysisProgressSnapshot
+from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
 
 
@@ -32,7 +31,6 @@ class Analyzer(Base):
         self.task_limiter: TaskLimiter | None = None
         self.stop_requested: bool = False
         self.extras: dict[str, Any] = {}
-        self.analysis_state: dict[str, Base.ProjectStatus] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
         self.pipeline = AnalysisPipeline(self)
 
@@ -40,6 +38,10 @@ class Analyzer(Base):
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.analysis_stop_event)
         self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.analysis_reset)
         self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.analysis_reset)
+        self.subscribe(
+            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+            self.analysis_import_glossary_event,
+        )
 
     # UI 只关心当前实际占用并发，这里保持薄包装方便以后替换限流器实现。
     def get_concurrency_in_use(self) -> int:
@@ -70,6 +72,16 @@ class Analyzer(Base):
         if sub_event != Base.SubEvent.REQUEST:
             return
         self.analysis_require_stop()
+
+    # 手动导入候选术语池也统一走事件链，避免页面直接跨线程碰数据层。
+    def analysis_import_glossary_event(
+        self, event: Base.Event, data: dict[str, Any]
+    ) -> None:
+        del event
+        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
+        self.analysis_import_glossary()
 
     # 这里先原子占用引擎状态，再把真正任务扔到后台线程，避免重复点击并发启动。
     def analysis_run(self, data: dict[str, Any]) -> None:
@@ -134,7 +146,144 @@ class Analyzer(Base):
             },
         )
 
-    # 重置入口只管任务边界和事件发射，具体进度重建仍复用流水线能力。
+    def import_analysis_term_pool_sync(
+        self,
+        dm: DataManager,
+        *,
+        expected_lg_path: str,
+    ) -> int | None:
+        """手动导入候选池时固定当前工程，避免后台线程串写到新工程。"""
+        imported_count = dm.import_analysis_term_pool(expected_lg_path=expected_lg_path)
+        if imported_count is None:
+            return None
+
+        if dm.is_loaded() and dm.get_lg_path() == expected_lg_path:
+            self.emit(
+                Base.Event.PROJECT_CHECK,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
+        return imported_count
+
+    def analysis_import_glossary(self) -> None:
+        """把候选池导入单独放后台线程，避免 UI 点击后卡住主线程。"""
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
+                },
+            )
+            self.emit(
+                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().task_running,
+                },
+            )
+            return
+
+        dm = DataManager.get()
+        if not dm.is_loaded():
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            self.emit(
+                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            return
+
+        expected_lg_path = dm.get_lg_path()
+        if not isinstance(expected_lg_path, str) or expected_lg_path == "":
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            self.emit(
+                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
+            return
+
+        self.emit(
+            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+            {"sub_event": Base.SubEvent.RUN},
+        )
+
+        def task() -> None:
+            try:
+                imported_count = self.import_analysis_term_pool_sync(
+                    dm,
+                    expected_lg_path=expected_lg_path,
+                )
+                if imported_count is None:
+                    return
+                if imported_count > 0:
+                    message = Localizer.get().analysis_page_import_success.replace(
+                        "{COUNT}", str(imported_count)
+                    )
+                    toast_type = Base.ToastType.SUCCESS
+                else:
+                    message = Localizer.get().analysis_page_import_empty
+                    toast_type = Base.ToastType.INFO
+
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": toast_type,
+                        "message": message,
+                    },
+                )
+                self.emit(
+                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                    {
+                        "sub_event": Base.SubEvent.DONE,
+                        "imported_count": imported_count,
+                    },
+                )
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+                self.emit(
+                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                    {
+                        "sub_event": Base.SubEvent.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def should_auto_import_glossary(self, dm: DataManager, final_status: str) -> bool:
+        """只在分析成功且候选池非空时，才自动桥接到导入术语表事件。"""
+        if final_status != "SUCCESS":
+            return False
+        if not dm.is_loaded():
+            return False
+
+        return int(dm.get_analysis_candidate_count() or 0) > 0
+
+    # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
         sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
         if sub_event != Base.SubEvent.REQUEST:
@@ -155,58 +304,37 @@ class Analyzer(Base):
                     "message": Localizer.get().task_running,
                 },
             )
-            self.emit(
-                reset_event,
-                {"sub_event": Base.SubEvent.ERROR},
-            )
+            self.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
             return
 
         dm = DataManager.get()
         if not dm.is_loaded():
             return
 
-        self.emit(
-            reset_event,
-            {"sub_event": Base.SubEvent.RUN},
-        )
+        self.emit(reset_event, {"sub_event": Base.SubEvent.RUN})
 
         def task() -> None:
             try:
                 if is_reset_all:
-                    dm.clear_analysis_progress()
-                    self.analysis_state = {}
+                    dm.clear_analysis_candidates_and_progress()
                     self.extras = {}
                     snapshot: dict[str, Any] = {}
-                else:
-                    self.config = Config().load()
-                    self.model = self.config.get_active_model()
-                    state = {
-                        rel_path: status
-                        for rel_path, status in dm.get_analysis_state().items()
-                        if status != Base.ProjectStatus.ERROR
-                    }
-                    dm.set_analysis_state(state)
-                    file_plans = self.build_analysis_file_plans(self.config)
-                    previous_extras = dm.get_analysis_extras()
-                    self.analysis_state = state
-                    self.extras = self.build_extras_from_state(
-                        file_plans=file_plans,
-                        state=state,
-                        previous_extras=previous_extras,
-                        continue_mode=True,
-                    )
-                    snapshot = self.persist_progress_snapshot(save_state=True)
-
-                if is_reset_all:
                     self.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
+                else:
+                    dm.reset_failed_analysis_checkpoints()
+                    previous_snapshot = dm.get_analysis_progress_snapshot()
+                    snapshot = self.build_progress_snapshot(
+                        previous_extras=previous_snapshot,
+                        continue_mode=True,
+                    ).to_dict()
+                    self.extras = snapshot
+                    self.persist_progress_snapshot(save_state=True)
+
                 self.emit(
                     Base.Event.PROJECT_CHECK,
                     {"sub_event": Base.SubEvent.REQUEST},
                 )
-                self.emit(
-                    reset_event,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
+                self.emit(reset_event, {"sub_event": Base.SubEvent.DONE})
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
                 self.emit(
@@ -216,10 +344,7 @@ class Analyzer(Base):
                         "message": Localizer.get().task_failed,
                     },
                 )
-                self.emit(
-                    reset_event,
-                    {"sub_event": Base.SubEvent.ERROR},
-                )
+                self.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -269,15 +394,18 @@ class Analyzer(Base):
             self.quality_snapshot = QualityRuleSnapshot.capture()
 
             if mode in (Base.AnalysisMode.NEW, Base.AnalysisMode.RESET):
-                self.analysis_state = {}
                 self.extras = {}
-                dm.clear_analysis_progress()
+                dm.clear_analysis_candidates_and_progress()
             else:
-                self.analysis_state = dm.get_analysis_state()
-                self.extras = dm.get_analysis_extras()
+                self.extras = dm.get_analysis_progress_snapshot()
 
-            file_plans = self.build_analysis_file_plans(self.config)
-            if not file_plans:
+            progress_snapshot = self.build_progress_snapshot(
+                previous_extras=self.extras,
+                continue_mode=mode == Base.AnalysisMode.CONTINUE,
+            )
+            task_contexts = self.build_analysis_task_contexts(self.config)
+
+            if progress_snapshot.total_line == 0:
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -287,14 +415,34 @@ class Analyzer(Base):
                 )
                 return
 
-            self.extras = self.build_extras_from_state(
-                file_plans=file_plans,
-                state=self.analysis_state,
-                previous_extras=self.extras,
-                continue_mode=mode == Base.AnalysisMode.CONTINUE,
-            )
+            progress_snapshot_dict = progress_snapshot.to_dict()
+            self.extras = progress_snapshot_dict
             has_active_snapshot = True
             self.persist_progress_snapshot(save_state=True)
+
+            if not task_contexts:
+                if int(progress_snapshot_dict.get("error_line", 0) or 0) > 0:
+                    flow_final_status = "FAILED"
+                else:
+                    flow_final_status = "SUCCESS"
+                self.log_analysis_finish(flow_final_status)
+                if flow_final_status == "SUCCESS":
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().engine_task_done,
+                        },
+                    )
+                else:
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().engine_task_fail,
+                        },
+                    )
+                return
 
             max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
             self.task_limiter = TaskLimiter(
@@ -304,51 +452,22 @@ class Analyzer(Base):
             )
             self.log_analysis_start()
 
-            remaining_plans = [
-                plan
-                for plan in file_plans
-                if self.analysis_state.get(plan.file_path)
-                not in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
-            ]
-            if not remaining_plans:
-                has_error_file = any(
-                    status == Base.ProjectStatus.ERROR
-                    for status in self.analysis_state.values()
-                )
-                if has_error_file:
-                    flow_final_status = "FAILED"
-                    toast_type = Base.ToastType.WARNING
-                    toast_message = Localizer.get().engine_task_fail
-                else:
-                    flow_final_status = "SUCCESS"
-                    toast_type = Base.ToastType.SUCCESS
-                    toast_message = Localizer.get().engine_task_done
+            flow_final_status = self.execute_task_contexts(
+                task_contexts,
+                max_workers=max_workers,
+            )
+            self.log_analysis_finish(flow_final_status)
 
-                self.log_analysis_finish(flow_final_status)
+            if flow_final_status == "SUCCESS":
                 self.emit(
                     Base.Event.TOAST,
                     {
-                        "type": toast_type,
-                        "message": toast_message,
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().engine_task_done,
                     },
                 )
                 return
-
-            for plan in remaining_plans:
-                if self.should_stop():
-                    flow_final_status = "STOPPED"
-                    break
-
-                file_status = self.run_file_plan(plan, max_workers=max_workers)
-                if file_status is None:
-                    flow_final_status = "STOPPED"
-                    break
-
-                self.analysis_state[plan.file_path] = file_status
-                self.persist_progress_snapshot(save_state=True)
-
             if flow_final_status == "STOPPED":
-                self.log_analysis_finish(flow_final_status)
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -358,33 +477,13 @@ class Analyzer(Base):
                 )
                 return
 
-            has_error_file = any(
-                status == Base.ProjectStatus.ERROR
-                for status in self.analysis_state.values()
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().engine_task_fail,
+                },
             )
-            remaining_chunk_count = self.get_remaining_chunk_count(
-                file_plans, self.analysis_state
-            )
-            if remaining_chunk_count == 0 and not has_error_file:
-                flow_final_status = "SUCCESS"
-                self.log_analysis_finish(flow_final_status)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_done,
-                    },
-                )
-            else:
-                flow_final_status = "FAILED"
-                self.log_analysis_finish(flow_final_status)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().engine_task_fail,
-                    },
-                )
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
@@ -407,6 +506,11 @@ class Analyzer(Base):
                     "final_status": flow_final_status,
                 },
             )
+            if self.should_auto_import_glossary(dm, flow_final_status):
+                self.emit(
+                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                    {"sub_event": Base.SubEvent.REQUEST},
+                )
 
     # 并发和速率推导维持原有策略，只保留一个公开入口方便两边共用。
     def initialize_task_limits(self) -> tuple[int, int, int]:
@@ -437,9 +541,6 @@ class Analyzer(Base):
         )
 
     # 公开方法统一委托给流水线，避免总控类再次堆积实现细节。
-    def build_analysis_file_plans(self, config: Config) -> list[AnalysisFilePlan]:
-        return self.pipeline.build_analysis_file_plans(config)
-
     def should_include_item(self, item: Item) -> bool:
         return self.pipeline.should_include_item(item)
 
@@ -449,46 +550,30 @@ class Analyzer(Base):
     def get_input_token_threshold(self) -> int:
         return self.pipeline.get_input_token_threshold()
 
-    def build_extras_from_state(
+    def build_analysis_task_contexts(self, config: Config) -> list[AnalysisTaskContext]:
+        return self.pipeline.build_analysis_task_contexts(config)
+
+    def build_progress_snapshot(
         self,
         *,
-        file_plans: list[AnalysisFilePlan],
-        state: dict[str, Base.ProjectStatus],
         previous_extras: dict[str, Any],
         continue_mode: bool,
-    ) -> dict[str, Any]:
-        return self.pipeline.build_extras_from_state(
-            file_plans=file_plans,
-            state=state,
+    ) -> AnalysisProgressSnapshot:
+        return self.pipeline.build_progress_snapshot(
             previous_extras=previous_extras,
             continue_mode=continue_mode,
         )
 
-    def run_file_plan(
-        self, plan: AnalysisFilePlan, *, max_workers: int
-    ) -> Base.ProjectStatus | None:
-        return self.pipeline.run_file_plan(plan, max_workers=max_workers)
+    def execute_task_contexts(
+        self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
+    ) -> str:
+        return self.pipeline.execute_task_contexts(
+            task_contexts,
+            max_workers=max_workers,
+        )
 
-    def run_chunk(self, items: list[Item]) -> AnalysisChunkResult:
-        return self.pipeline.run_chunk(items)
-
-    def execute_chunk_request(self, items: list[Item]) -> AnalysisChunkResult:
-        return self.pipeline.execute_chunk_request(items)
-
-    def normalize_glossary_entries(
-        self, glossary_entries: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        return self.pipeline.normalize_glossary_entries(glossary_entries)
-
-    def merge_glossary_entries(self, glossary_entries: list[dict[str, Any]]) -> int:
-        return self.pipeline.merge_glossary_entries(glossary_entries)
-
-    def get_remaining_chunk_count(
-        self,
-        file_plans: list[AnalysisFilePlan],
-        state: dict[str, Base.ProjectStatus],
-    ) -> int:
-        return self.pipeline.get_remaining_chunk_count(file_plans, state)
+    def run_task_context(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
+        return self.pipeline.run_task_context(context)
 
     def persist_progress_snapshot(self, *, save_state: bool) -> dict[str, Any]:
         return self.pipeline.persist_progress_snapshot(save_state=save_state)
@@ -498,59 +583,3 @@ class Analyzer(Base):
 
     def log_analysis_finish(self, final_status: str) -> None:
         self.pipeline.log_analysis_finish(final_status)
-
-    def print_chunk_log(
-        self,
-        *,
-        start: float,
-        pt: int,
-        ct: int,
-        srcs: list[str],
-        glossary_entries: list[dict[str, Any]],
-        response_think: str,
-        response_result: str,
-        status_text: str,
-        log_func: Any,
-        style: str,
-    ) -> None:
-        self.pipeline.print_chunk_log(
-            start=start,
-            pt=pt,
-            ct=ct,
-            srcs=srcs,
-            glossary_entries=glossary_entries,
-            response_think=response_think,
-            response_result=response_result,
-            status_text=status_text,
-            log_func=log_func,
-            style=style,
-        )
-
-    def generate_log_rows(
-        self,
-        srcs: list[str],
-        glossary_entries: list[dict[str, Any]],
-        extra: list[str],
-        *,
-        console: bool,
-    ) -> list[str]:
-        return self.pipeline.generate_log_rows(
-            srcs,
-            glossary_entries,
-            extra,
-            console=console,
-        )
-
-    def build_glossary_log_lines(
-        self,
-        glossary_entries: list[dict[str, Any]],
-        *,
-        console: bool,
-    ) -> list[str]:
-        return self.pipeline.build_glossary_log_lines(
-            glossary_entries,
-            console=console,
-        )
-
-    def generate_log_table(self, rows: list[str], style: str) -> Table:
-        return self.pipeline.generate_log_table(rows, style)
