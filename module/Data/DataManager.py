@@ -1570,11 +1570,7 @@ class DataManager(Base):
         glossary_entries: list[dict[str, Any]] = []
         aggregate = self.get_analysis_candidate_aggregate()
 
-        for src in sorted(aggregate.keys()):
-            entry = aggregate.get(src)
-            if entry is None:
-                continue
-
+        for src, entry in sorted(aggregate.items()):
             glossary_entry = self.build_analysis_glossary_entry_from_candidate(
                 src, entry
             )
@@ -1587,7 +1583,13 @@ class DataManager(Base):
     def import_analysis_candidates(
         self, expected_lg_path: str | None = None
     ) -> int | None:
-        """把候选池按“新增 + 补空”导入正式术语表，并固定当前工程会话。"""
+        """把候选池按“新增 + 补空”导入正式术语表。
+
+        返回值约定：
+        - `None`：当前工程会话无效，或后台线程已经切换到别的工程
+        - `0`：导入流程成功结束，但没有新增或补空条目
+        - `> 0`：实际写入正式术语表的条目数量
+        """
         with self.state_lock:
             if self.session.db is None or self.session.lg_path is None:
                 return None
@@ -1599,6 +1601,7 @@ class DataManager(Base):
 
             glossary_entries = self.build_analysis_glossary_from_candidates()
             if not glossary_entries:
+                # 没有可导入候选不算失败；上层会统一提示“完成但新增 0 条”。
                 return 0
 
             merged, report = self.merge_glossary_incoming(
@@ -1607,6 +1610,7 @@ class DataManager(Base):
                 save=False,
             )
             if merged is None:
+                # 与现有术语表完全一致时也按成功收口，避免把“无变化”误报成错误。
                 return 0
 
             self.batch_service.update_batch(

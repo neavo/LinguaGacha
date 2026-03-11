@@ -164,112 +164,123 @@ class Analyzer(Base):
             )
         return imported_count
 
-    def analysis_import_glossary(self) -> None:
-        """把候选池导入单独放后台线程，避免 UI 点击后卡住主线程。"""
+    def emit_analysis_import_progress_start(self) -> None:
+        """导入开始时统一显示处理中提示，并同步写入控制台日志。"""
+        message = Localizer.get().toast_processing
+        LogManager.get().info(message)
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "message": message,
+                "indeterminate": True,
+            },
+        )
+
+    def emit_analysis_import_progress_end(self, *, failed: bool) -> None:
+        """统一结束导入中的进度提示，复用窗口层既有的延迟隐藏规则。"""
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.ERROR if failed else Base.SubEvent.DONE,
+            },
+        )
+
+    def finish_analysis_import_progress(self, *, failed: bool) -> None:
+        """导入结束时统一收掉进度提示和日志分隔，避免不同分支各自收尾。"""
+        self.emit_analysis_import_progress_end(failed=failed)
+        LogManager.get().print("")
+
+    def emit_analysis_import_rejected(self, message: str) -> None:
+        """前置条件不满足时统一发警告，避免入口分支重复堆同样的事件。"""
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.WARNING,
+                "message": message,
+            },
+        )
+        self.emit(
+            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+            {
+                "sub_event": Base.SubEvent.ERROR,
+                "message": message,
+            },
+        )
+
+    def build_analysis_import_context(self) -> tuple[DataManager, str] | None:
+        """在主线程统一校验导入前提，避免无效请求也启动后台线程。"""
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            self.emit(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
+            self.emit_analysis_import_rejected(Localizer.get().task_running)
+            return None
 
         dm = DataManager.get()
         if not dm.is_loaded():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().alert_project_not_loaded,
-                },
-            )
-            self.emit(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().alert_project_not_loaded,
-                },
-            )
-            return
+            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
+            return None
 
         expected_lg_path = dm.get_lg_path()
         if not isinstance(expected_lg_path, str) or expected_lg_path == "":
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().alert_project_not_loaded,
-                },
-            )
-            self.emit(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().alert_project_not_loaded,
-                },
-            )
+            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
+            return None
+        return dm, expected_lg_path
+
+    def analysis_import_glossary(self) -> None:
+        """把候选池导入单独放后台线程，避免 UI 点击后卡住主线程。"""
+        import_context = self.build_analysis_import_context()
+        if import_context is None:
             return
+        dm, expected_lg_path = import_context
 
         self.emit(
             Base.Event.ANALYSIS_IMPORT_GLOSSARY,
             {"sub_event": Base.SubEvent.RUN},
         )
+        self.emit_analysis_import_progress_start()
 
         def task() -> None:
+            progress_failed = False
+            toast_payload: dict[str, Any] | None = None
+            # 工程已切换时保持静默收口，只通知页面当前导入流程结束即可。
+            completion_event: dict[str, Any] = {"sub_event": Base.SubEvent.ERROR}
             try:
                 imported_count = self.import_analysis_term_pool_sync(
                     dm,
                     expected_lg_path=expected_lg_path,
                 )
-                if imported_count is None:
-                    return
-                if imported_count > 0:
+                if imported_count is not None:
+                    # 0 也视为成功：这里表示导入流程已完成，只是没有新增或补空条目。
                     message = Localizer.get().analysis_page_import_success.replace(
                         "{COUNT}", str(imported_count)
                     )
-                    toast_type = Base.ToastType.SUCCESS
-                else:
-                    message = Localizer.get().analysis_page_import_empty
-                    toast_type = Base.ToastType.INFO
-
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": toast_type,
+                    LogManager.get().info(message)
+                    toast_payload = {
+                        "type": Base.ToastType.SUCCESS,
                         "message": message,
-                    },
-                )
-                self.emit(
-                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                    {
+                    }
+                    completion_event = {
                         "sub_event": Base.SubEvent.DONE,
                         "imported_count": imported_count,
-                    },
-                )
+                    }
             except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().task_failed,
-                    },
-                )
+                progress_failed = True
+                message = Localizer.get().task_failed
+                LogManager.get().error(message, e)
+                toast_payload = {
+                    "type": Base.ToastType.ERROR,
+                    "message": message,
+                }
+                completion_event = {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": message,
+                }
+            finally:
+                if toast_payload is not None:
+                    self.emit(Base.Event.TOAST, toast_payload)
+                self.finish_analysis_import_progress(failed=progress_failed)
                 self.emit(
                     Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                        "message": Localizer.get().task_failed,
-                    },
+                    completion_event,
                 )
 
         threading.Thread(target=task, daemon=True).start()
