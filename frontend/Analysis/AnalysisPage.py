@@ -91,31 +91,11 @@ class AnalysisPage(Base, QWidget):
         super().showEvent(a0)
         self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
 
-    def should_use_continue_mode(self) -> bool:
-        """只有存在可恢复的分析进度时，主按钮才保持“继续”语义。"""
+    def has_progress(self) -> bool:
+        """分析页和翻译页统一口径：只要存在历史进度，就保留“继续”语义。"""
         if not isinstance(self.data, dict):
             return False
-
-        handled_line = int(self.data.get("line", 0) or 0)
-        total_line = int(self.data.get("total_line", 0) or 0)
-        error_line = int(self.data.get("error_line", 0) or 0)
-
-        if error_line > 0 or bool(self.data.get("has_error_items", False)):
-            return True
-
-        # 新项目虽然也会有待分析条目，但 line == 0 说明还没有形成可恢复进度，
-        # 此时按钮应该显示“开始”，避免把首次执行误导成“继续”。
-        if handled_line <= 0:
-            return False
-
-        if bool(self.data.get("has_pending_items", False)):
-            return True
-        if "can_continue" in self.data:
-            return bool(self.data.get("can_continue", False))
-
-        if total_line > handled_line:
-            return True
-        return False
+        return int(self.data.get("line", 0) or 0) > 0
 
     def set_action_enabled(
         self, *, start: bool, stop: bool, reset: bool, import_glossary: bool
@@ -171,16 +151,6 @@ class AnalysisPage(Base, QWidget):
             if data.get("sub_event") != Base.SubEvent.DONE:
                 return
             self.data = dict(data.get("analysis_extras", {}))
-            if "analysis_can_continue" in data:
-                self.data["can_continue"] = bool(data.get("analysis_can_continue"))
-            if "analysis_has_pending_items" in data:
-                self.data["has_pending_items"] = bool(
-                    data.get("analysis_has_pending_items")
-                )
-            if "analysis_has_error_items" in data:
-                self.data["has_error_items"] = bool(
-                    data.get("analysis_has_error_items")
-                )
             self.analysis_candidate_count = int(
                 data.get("analysis_candidate_count") or 0
             )
@@ -189,7 +159,7 @@ class AnalysisPage(Base, QWidget):
             else:
                 self.update_ui_tick()
 
-        if self.should_use_continue_mode():
+        if self.has_progress():
             self.action_start.setText(Localizer.get().analysis_page_continue)
             self.action_start.setIcon(ICON_ACTION_CONTINUE)
         else:
@@ -471,9 +441,11 @@ class AnalysisPage(Base, QWidget):
                 Base.Event.ANALYSIS_TASK,
                 {
                     "sub_event": Base.SubEvent.REQUEST,
-                    "mode": Base.AnalysisMode.CONTINUE
-                    if self.should_use_continue_mode()
-                    else Base.AnalysisMode.NEW,
+                    "mode": (
+                        Base.AnalysisMode.CONTINUE
+                        if self.has_progress()
+                        else Base.AnalysisMode.NEW
+                    ),
                 },
             )
 

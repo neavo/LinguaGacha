@@ -23,6 +23,37 @@ def build_context(task_fingerprint: str) -> AnalysisTaskContext:
     )
 
 
+def build_analysis_progress_snapshot(
+    *,
+    total_line: int,
+    line: int,
+    processed_line: int,
+    error_line: int,
+    time_value: float = 0.0,
+    total_tokens: int = 0,
+    total_input_tokens: int = 0,
+    total_output_tokens: int = 0,
+    added_glossary: int = 0,
+    start_time: float = 1.0,
+) -> SimpleNamespace:
+    snapshot = {
+        "start_time": start_time,
+        "time": time_value,
+        "total_line": total_line,
+        "line": line,
+        "processed_line": processed_line,
+        "error_line": error_line,
+        "total_tokens": total_tokens,
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "added_glossary": added_glossary,
+    }
+    return SimpleNamespace(
+        to_dict=lambda: dict(snapshot),
+        total_line=total_line,
+    )
+
+
 class FakeLogManager:
     def __init__(self) -> None:
         self.info_messages: list[str] = []
@@ -130,6 +161,50 @@ def build_import_glossary_test_context(
     return analyzer, emitted, logger
 
 
+def install_analyzer_start_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager: object,
+    quality_snapshot: object,
+) -> None:
+    # 启动类测试都依赖同一套 DataManager 和质量快照补丁，这里集中收口。
+    monkeypatch.setattr(
+        analyzer_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    monkeypatch.setattr(
+        analyzer_module.QualityRuleSnapshot,
+        "capture",
+        lambda: quality_snapshot,
+    )
+
+
+def build_start_config() -> Config:
+    config = Config()
+    config.get_active_model = lambda: {"threshold": {"input_token_limit": 64}}
+    return config
+
+
+def patch_start_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    analyzer: Analyzer,
+    *,
+    task_contexts: list[AnalysisTaskContext],
+    progress_snapshot: SimpleNamespace,
+) -> None:
+    # 启动路径只关心任务列表和进度快照，统一在这里替身，减少测试样板。
+    monkeypatch.setattr(
+        analyzer,
+        "build_analysis_task_contexts",
+        lambda config: task_contexts,
+    )
+    monkeypatch.setattr(
+        analyzer,
+        "build_progress_snapshot",
+        lambda previous_extras, continue_mode: progress_snapshot,
+    )
+
+
 def test_analysis_require_stop_marks_engine_as_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -167,42 +242,30 @@ def test_start_continue_only_executes_pending_tasks(
         Item(id=2, src="B", file_path="story.txt"),
         Item(id=3, src="C", file_path="story.txt"),
     ]
-    monkeypatch.setattr(
-        analyzer_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analyzer_module.QualityRuleSnapshot,
-        "capture",
-        lambda: quality_snapshot,
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
     )
 
     analyzer = Analyzer()
-    config = Config()
-    config.get_active_model = lambda: {"threshold": {"input_token_limit": 64}}
+    config = build_start_config()
 
     contexts = [build_context("todo")]
-    monkeypatch.setattr(
-        analyzer, "build_analysis_task_contexts", lambda config: contexts
-    )
-    monkeypatch.setattr(
+    patch_start_runtime(
+        monkeypatch,
         analyzer,
-        "build_progress_snapshot",
-        lambda previous_extras, continue_mode: SimpleNamespace(
-            to_dict=lambda: {
-                "start_time": 1.0,
-                "time": 12.0,
-                "total_line": 3,
-                "line": 2,
-                "processed_line": 1,
-                "error_line": 1,
-                "total_tokens": 13,
-                "total_input_tokens": 5,
-                "total_output_tokens": 8,
-                "added_glossary": 2,
-            },
+        task_contexts=contexts,
+        progress_snapshot=build_analysis_progress_snapshot(
             total_line=3,
+            line=2,
+            processed_line=1,
+            error_line=1,
+            time_value=12.0,
+            total_tokens=13,
+            total_input_tokens=5,
+            total_output_tokens=8,
+            added_glossary=2,
         ),
     )
 
@@ -221,6 +284,85 @@ def test_start_continue_only_executes_pending_tasks(
     assert called == ["todo"]
     assert fake_data_manager.import_count == 0
     assert fake_data_manager.analysis_extras["total_line"] == 3
+
+
+def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_exist(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+    quality_snapshot,
+) -> None:
+    fake_data_manager.analysis_candidate_count = 2
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
+    )
+
+    analyzer = Analyzer()
+    emitted = capture_emitted_events(monkeypatch, analyzer)
+    config = build_start_config()
+    patch_start_runtime(
+        monkeypatch,
+        analyzer,
+        task_contexts=[],
+        progress_snapshot=build_analysis_progress_snapshot(
+            total_line=3,
+            line=3,
+            processed_line=3,
+            error_line=0,
+            time_value=12.0,
+            total_tokens=13,
+            total_input_tokens=5,
+            total_output_tokens=8,
+            added_glossary=2,
+        ),
+    )
+
+    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+
+    assert (
+        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+        {"sub_event": Base.SubEvent.REQUEST},
+    ) in emitted
+
+
+def test_start_continue_without_pending_tasks_skips_auto_import_when_no_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+    quality_snapshot,
+) -> None:
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
+    )
+
+    analyzer = Analyzer()
+    emitted = capture_emitted_events(monkeypatch, analyzer)
+    config = build_start_config()
+    patch_start_runtime(
+        monkeypatch,
+        analyzer,
+        task_contexts=[],
+        progress_snapshot=build_analysis_progress_snapshot(
+            total_line=3,
+            line=3,
+            processed_line=3,
+            error_line=0,
+            time_value=12.0,
+            total_tokens=13,
+            total_input_tokens=5,
+            total_output_tokens=8,
+            added_glossary=0,
+        ),
+    )
+
+    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+
+    assert (
+        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+        {"sub_event": Base.SubEvent.REQUEST},
+    ) not in emitted
 
 
 def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
@@ -251,19 +393,16 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
     monkeypatch.setattr(
         analyzer,
         "build_progress_snapshot",
-        lambda previous_extras, continue_mode: SimpleNamespace(
-            to_dict=lambda: {
-                "start_time": 1.0,
-                "time": 9.0,
-                "total_line": 2,
-                "line": 1,
-                "processed_line": 1,
-                "error_line": 0,
-                "total_tokens": 10,
-                "total_input_tokens": 4,
-                "total_output_tokens": 6,
-                "added_glossary": 3,
-            }
+        lambda previous_extras, continue_mode: build_analysis_progress_snapshot(
+            total_line=2,
+            line=1,
+            processed_line=1,
+            error_line=0,
+            time_value=9.0,
+            total_tokens=10,
+            total_input_tokens=4,
+            total_output_tokens=6,
+            added_glossary=3,
         ),
     )
 
@@ -283,42 +422,23 @@ def test_start_stopped_does_not_import_term_pool(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    monkeypatch.setattr(
-        analyzer_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analyzer_module.QualityRuleSnapshot,
-        "capture",
-        lambda: quality_snapshot,
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
     )
 
     analyzer = Analyzer()
-    config = Config()
-    config.get_active_model = lambda: {"threshold": {"input_token_limit": 64}}
-    monkeypatch.setattr(
+    config = build_start_config()
+    patch_start_runtime(
+        monkeypatch,
         analyzer,
-        "build_analysis_task_contexts",
-        lambda config: [build_context("todo")],
-    )
-    monkeypatch.setattr(
-        analyzer,
-        "build_progress_snapshot",
-        lambda previous_extras, continue_mode: SimpleNamespace(
-            to_dict=lambda: {
-                "start_time": 1.0,
-                "time": 0.0,
-                "total_line": 2,
-                "line": 0,
-                "processed_line": 0,
-                "error_line": 0,
-                "total_tokens": 0,
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
-                "added_glossary": 0,
-            },
+        task_contexts=[build_context("todo")],
+        progress_snapshot=build_analysis_progress_snapshot(
             total_line=2,
+            line=0,
+            processed_line=0,
+            error_line=0,
         ),
     )
     monkeypatch.setattr(
@@ -484,42 +604,23 @@ def test_start_success_emits_auto_import_glossary_request(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    monkeypatch.setattr(
-        analyzer_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analyzer_module.QualityRuleSnapshot,
-        "capture",
-        lambda: quality_snapshot,
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
     )
 
     analyzer = Analyzer()
-    config = Config()
-    config.get_active_model = lambda: {"threshold": {"input_token_limit": 64}}
-    monkeypatch.setattr(
+    config = build_start_config()
+    patch_start_runtime(
+        monkeypatch,
         analyzer,
-        "build_analysis_task_contexts",
-        lambda config: [build_context("todo")],
-    )
-    monkeypatch.setattr(
-        analyzer,
-        "build_progress_snapshot",
-        lambda previous_extras, continue_mode: SimpleNamespace(
-            to_dict=lambda: {
-                "start_time": 1.0,
-                "time": 0.0,
-                "total_line": 2,
-                "line": 0,
-                "processed_line": 0,
-                "error_line": 0,
-                "total_tokens": 0,
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
-                "added_glossary": 0,
-            },
+        task_contexts=[build_context("todo")],
+        progress_snapshot=build_analysis_progress_snapshot(
             total_line=2,
+            line=0,
+            processed_line=0,
+            error_line=0,
         ),
     )
     monkeypatch.setattr(

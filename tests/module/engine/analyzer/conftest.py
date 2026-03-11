@@ -111,9 +111,6 @@ class FakeDataManager:
             "error_line": error_line,
             "line": line,
             "pending_line": pending_line,
-            "has_pending_items": pending_line > 0,
-            "has_error_items": error_line > 0,
-            "can_continue": total_line > processed_line,
         }
 
     def get_pending_analysis_items(self):

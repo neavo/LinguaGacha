@@ -285,8 +285,12 @@ class Analyzer(Base):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def should_auto_import_glossary(self, dm: DataManager, final_status: str) -> bool:
-        """只在分析成功且候选池非空时，才自动桥接到导入术语表事件。"""
+    def should_auto_import_glossary(
+        self,
+        dm: DataManager,
+        final_status: str,
+    ) -> bool:
+        """只要本轮分析成功且候选池非空，就自动桥接到导入术语表。"""
         if final_status != "SUCCESS":
             return False
         if not dm.is_loaded():
@@ -517,7 +521,10 @@ class Analyzer(Base):
                     "final_status": flow_final_status,
                 },
             )
-            if self.should_auto_import_glossary(dm, flow_final_status):
+            if self.should_auto_import_glossary(
+                dm,
+                flow_final_status,
+            ):
                 self.emit(
                     Base.Event.ANALYSIS_IMPORT_GLOSSARY,
                     {"sub_event": Base.SubEvent.REQUEST},

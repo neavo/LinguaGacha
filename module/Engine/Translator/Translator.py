@@ -155,18 +155,6 @@ class Translator(Base):
             "analysis_extras": analysis_extras,
             "analysis_candidate_count": analysis_candidate_count,
         }
-
-        status_summary = dm.get_analysis_status_summary()
-        payload["analysis_can_continue"] = bool(
-            status_summary.get("can_continue", False)
-        )
-        payload["analysis_has_pending_items"] = bool(
-            status_summary.get("has_pending_items", False)
-        )
-        payload["analysis_has_error_items"] = bool(
-            status_summary.get("has_error_items", False)
-        )
-
         return payload
 
     # 翻译状态检查事件
