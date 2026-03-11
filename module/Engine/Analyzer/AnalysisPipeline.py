@@ -325,6 +325,42 @@ class AnalysisPipeline:
             self.analyzer.extras.get("total_input_tokens", 0)
         ) + int(self.analyzer.extras.get("total_output_tokens", 0))
 
+    def sync_runtime_line_stats(self) -> None:
+        """运行中只维护轻量计数，避免每个结果都回库全量重算覆盖率。"""
+        self.analyzer.extras["line"] = int(
+            self.analyzer.extras.get("processed_line", 0)
+        ) + int(self.analyzer.extras.get("error_line", 0))
+
+    def build_runtime_progress_snapshot(self) -> dict[str, Any]:
+        """运行态快照直接取内存累计值，对齐翻译链路的热路径做法。"""
+        start_time = float(self.analyzer.extras.get("start_time", time.time()) or 0.0)
+        snapshot = dict(self.analyzer.extras)
+        snapshot["start_time"] = start_time
+        snapshot["time"] = max(0.0, time.time() - start_time)
+        snapshot["line"] = int(snapshot.get("processed_line", 0)) + int(
+            snapshot.get("error_line", 0)
+        )
+        return DataManager.get().normalize_analysis_progress_snapshot(snapshot)
+
+    def reconcile_progress_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        """只在边界阶段回库校准一次，保证最终快照和 checkpoint 口径一致。"""
+        dm = DataManager.get()
+        if not dm.is_loaded():
+            return dict(snapshot)
+
+        reconciled = dict(snapshot)
+        status_summary = dm.get_analysis_status_summary()
+        reconciled["total_line"] = int(status_summary.get("total_line", 0) or 0)
+        reconciled["processed_line"] = int(
+            status_summary.get("processed_line", reconciled.get("processed_line", 0))
+            or 0
+        )
+        reconciled["error_line"] = int(
+            status_summary.get("error_line", reconciled.get("error_line", 0)) or 0
+        )
+        reconciled["line"] = int(status_summary.get("line", 0) or 0)
+        return dm.normalize_analysis_progress_snapshot(reconciled)
+
     def build_processed_checkpoints(
         self, context: AnalysisTaskContext
     ) -> list[dict[str, Any]]:
@@ -355,19 +391,8 @@ class AnalysisPipeline:
             for item in context.items
         ]
 
-    def apply_success_result(self, result: AnalysisTaskResult) -> int:
-        """成功立即原子提交，并把失败重跑成功的条目从 error 统计里扣掉。"""
-        dm = DataManager.get()
-        checkpoints = self.build_processed_checkpoints(result.context)
-        changed_count = int(
-            dm.commit_analysis_task_result(
-                task_fingerprint=result.context.task_fingerprint,
-                checkpoints=checkpoints,
-                glossary_entries=list(result.glossary_entries),
-            )
-            or 0
-        )
-
+    def update_runtime_counts_after_success(self, result: AnalysisTaskResult) -> None:
+        """成功后先更新内存计数，再把一致快照交给数据层提交。"""
         recovered_error_count = sum(
             1
             for item in result.context.items
@@ -383,17 +408,12 @@ class AnalysisPipeline:
             int(self.analyzer.extras.get("processed_line", 0))
             + result.context.item_count
         )
-        self.analyzer.extras["added_glossary"] = (
-            int(self.analyzer.extras.get("added_glossary", 0)) + changed_count
-        )
-        return changed_count
+        self.sync_runtime_line_stats()
 
-    def apply_error_result(self, task_context: AnalysisTaskContext) -> None:
-        """失败只记录 checkpoint，并避免重复累加已经失败过的条目数。"""
-        dm = DataManager.get()
-        checkpoints = self.build_error_checkpoints(task_context)
-        dm.update_analysis_task_error(checkpoints)
-
+    def update_runtime_counts_after_error(
+        self, task_context: AnalysisTaskContext
+    ) -> None:
+        """失败后只补首次失败计数，避免重试路径把 error_line 越加越大。"""
         new_error_count = sum(
             1
             for item in task_context.items
@@ -403,6 +423,37 @@ class AnalysisPipeline:
             self.analyzer.extras["error_line"] = (
                 int(self.analyzer.extras.get("error_line", 0)) + new_error_count
             )
+        self.sync_runtime_line_stats()
+
+    def apply_success_result(self, result: AnalysisTaskResult) -> int:
+        """成功立即原子提交，并把失败重跑成功的条目从 error 统计里扣掉。"""
+        dm = DataManager.get()
+        self.update_runtime_counts_after_success(result)
+        checkpoints = self.build_processed_checkpoints(result.context)
+        progress_snapshot = self.build_runtime_progress_snapshot()
+        changed_count = int(
+            dm.commit_analysis_task_result(
+                task_fingerprint=result.context.task_fingerprint,
+                checkpoints=checkpoints,
+                glossary_entries=list(result.glossary_entries),
+                progress_snapshot=progress_snapshot,
+            )
+            or 0
+        )
+        self.analyzer.extras["added_glossary"] = (
+            int(self.analyzer.extras.get("added_glossary", 0)) + changed_count
+        )
+        return changed_count
+
+    def apply_error_result(self, task_context: AnalysisTaskContext) -> None:
+        """失败只记录 checkpoint，并避免重复累加已经失败过的条目数。"""
+        dm = DataManager.get()
+        checkpoints = self.build_error_checkpoints(task_context)
+        self.update_runtime_counts_after_error(task_context)
+        dm.update_analysis_task_error(
+            checkpoints,
+            progress_snapshot=self.build_runtime_progress_snapshot(),
+        )
 
     def execute_task_contexts(
         self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
@@ -465,7 +516,7 @@ class AnalysisPipeline:
                             self.apply_error_result(context)
                             has_error = True
 
-                    self.persist_progress_snapshot(save_state=True)
+                    self.persist_progress_snapshot(save_state=False)
 
                     while (
                         pending_queue
@@ -662,31 +713,14 @@ class AnalysisPipeline:
         return normalized
 
     def persist_progress_snapshot(self, *, save_state: bool) -> dict[str, Any]:
-        """进度只通过一个入口写库和发事件，避免 UI 和存储看到两套数据。"""
-        del save_state
-        start_time = float(self.analyzer.extras.get("start_time", time.time()) or 0.0)
-        snapshot = dict(self.analyzer.extras)
-        snapshot["time"] = max(0.0, time.time() - start_time)
-        snapshot["line"] = int(snapshot.get("processed_line", 0)) + int(
-            snapshot.get("error_line", 0)
-        )
+        """进度统一经由这个入口发事件；只有终态或边界阶段才回库校准并持久化。"""
+        snapshot = self.build_runtime_progress_snapshot()
 
-        dm = DataManager.get()
-        if dm.is_loaded():
-            status_summary = dm.get_analysis_status_summary()
-            snapshot["total_line"] = int(status_summary.get("total_line", 0) or 0)
-            snapshot["processed_line"] = int(
-                status_summary.get(
-                    "processed_line",
-                    snapshot.get("processed_line", 0),
-                )
-                or 0
-            )
-            snapshot["error_line"] = int(
-                status_summary.get("error_line", snapshot.get("error_line", 0)) or 0
-            )
-            snapshot["line"] = int(status_summary.get("line", 0) or 0)
-            snapshot = dict(dm.update_analysis_progress_snapshot(snapshot))
+        if save_state:
+            dm = DataManager.get()
+            snapshot = self.reconcile_progress_snapshot(snapshot)
+            if dm.is_loaded():
+                snapshot = dict(dm.update_analysis_progress_snapshot(snapshot))
 
         self.analyzer.extras = dict(snapshot)
         self.analyzer.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)

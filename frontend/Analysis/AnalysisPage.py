@@ -240,7 +240,8 @@ class AnalysisPage(Base, QWidget):
 
     def analysis_update(self, event: Base.Event, data: dict) -> None:
         del event
-        # 进度事件只更新最新快照，实际 UI 刷新统一交给定时器节流。
+        # 高频进度只覆盖最新快照，避免每个事件都直接重绘整页；
+        # 真正的卡片刷新统一交给定时器节流入口处理。
         self.data = dict(data) if isinstance(data, dict) else {}
 
     def on_analysis_reset(self, event: Base.Event, data: dict) -> None:

@@ -166,6 +166,7 @@ class ProofreadingPage(Base, QWidget):
         self.add_widget_foot(self.root, window)
 
         # 注册事件
+        # 这里只关心任务生命周期节点；高频进度不会改变只读状态，订阅它们只会放大无效刷新。
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_engine_status_changed)
         self.subscribe(
             Base.Event.TRANSLATION_REQUEST_STOP, self.on_engine_status_changed

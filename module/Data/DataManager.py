@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import threading
 from collections import defaultdict
 from contextlib import AbstractContextManager
@@ -240,17 +241,7 @@ class DataManager(Base):
             self.mark_legacy_translation_prompt_migrated(db)
             return
 
-        preferred_legacy_rule_types = (
-            self.get_preferred_legacy_translation_prompt_types()
-        )
-        migrated_prompt = ""
-
-        for legacy_rule_type in preferred_legacy_rule_types:
-            candidate = db.get_rule_text_by_name(legacy_rule_type).strip()
-            if candidate:
-                migrated_prompt = candidate
-                break
-
+        migrated_prompt = self.get_first_available_legacy_translation_prompt(db)
         if migrated_prompt:
             db.set_rule_text(__class__.RuleType.TRANSLATION_PROMPT, migrated_prompt)
 
@@ -269,6 +260,14 @@ class DataManager(Base):
             __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
             __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
         )
+
+    def get_first_available_legacy_translation_prompt(self, db: LGDatabase) -> str:
+        """按当前 UI 语言优先级读取旧提示词正文，避免迁移主流程混入回退细节。"""
+        for legacy_rule_type in self.get_preferred_legacy_translation_prompt_types():
+            candidate = db.get_rule_text_by_name(legacy_rule_type).strip()
+            if candidate != "":
+                return candidate
+        return ""
 
     def mark_legacy_translation_prompt_migrated(self, db: LGDatabase) -> None:
         """记录旧翻译提示词正文迁移已经完成，避免重复探测与覆盖。"""
@@ -1031,15 +1030,10 @@ class DataManager(Base):
             "first_seen_index": max(0, first_seen_index),
         }
 
-    def get_analysis_item_checkpoints(self) -> dict[int, dict[str, Any]]:
-        """返回条目级检查点快照，以 item_id 为键。"""
-        with self.state_lock:
-            db = self.session.db
-            if db is None:
-                return {}
-
-            raw_rows = db.get_analysis_item_checkpoints()
-
+    def normalize_analysis_item_checkpoint_rows(
+        self, raw_rows: list[dict[str, Any]]
+    ) -> dict[int, dict[str, Any]]:
+        """把批量 checkpoint 行规整成以 item_id 为键的快照映射。"""
         normalized: dict[int, dict[str, Any]] = {}
         for raw_row in raw_rows:
             checkpoint = self.normalize_analysis_item_checkpoint(raw_row)
@@ -1048,16 +1042,45 @@ class DataManager(Base):
             normalized[checkpoint["item_id"]] = checkpoint
         return normalized
 
-    def upsert_analysis_item_checkpoints(
+    def normalize_analysis_candidate_aggregate_rows(
+        self, raw_rows: list[dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """把候选池批量行规整成以 src 为键的映射，统一热路径和读接口口径。"""
+        normalized: dict[str, dict[str, Any]] = {}
+        for raw_row in raw_rows:
+            src = str(raw_row.get("src", "")).strip()
+            entry = self.normalize_analysis_candidate_aggregate_entry(src, raw_row)
+            if entry is None:
+                continue
+            normalized[entry["src"]] = entry
+        return normalized
+
+    def normalize_analysis_progress_snapshot(
+        self, snapshot: dict[str, Any]
+    ) -> dict[str, Any]:
+        """把分析快照规整成固定字段，避免热路径和边界路径各自拼值。"""
+        return {
+            "start_time": float(snapshot.get("start_time", 0.0) or 0.0),
+            "time": float(snapshot.get("time", 0.0) or 0.0),
+            "total_line": int(snapshot.get("total_line", 0) or 0),
+            "line": int(snapshot.get("line", 0) or 0),
+            "processed_line": int(snapshot.get("processed_line", 0) or 0),
+            "error_line": int(snapshot.get("error_line", 0) or 0),
+            "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
+            "total_input_tokens": int(snapshot.get("total_input_tokens", 0) or 0),
+            "total_output_tokens": int(snapshot.get("total_output_tokens", 0) or 0),
+            "added_glossary": int(snapshot.get("added_glossary", 0) or 0),
+        }
+
+    def normalize_analysis_item_checkpoint_upsert_rows(
         self, checkpoints: list[dict[str, Any]]
-    ) -> dict[int, dict[str, Any]]:
-        """批量写入条目级检查点，并返回最新快照。"""
+    ) -> list[dict[str, Any]]:
+        """把 checkpoint 输入规整成可直接写库的行，避免多个入口各自拼字段。"""
         normalized_rows: list[dict[str, Any]] = []
         for raw_checkpoint in checkpoints:
             checkpoint = self.normalize_analysis_item_checkpoint(raw_checkpoint)
             if checkpoint is None:
                 continue
-
             normalized_rows.append(
                 {
                     "item_id": checkpoint["item_id"],
@@ -1067,6 +1090,233 @@ class DataManager(Base):
                     "error_count": checkpoint["error_count"],
                 }
             )
+        return normalized_rows
+
+    def build_analysis_task_observations_for_commit(
+        self,
+        task_fingerprint: str,
+        glossary_entries: list[dict[str, Any]],
+        *,
+        created_at: str,
+    ) -> list[dict[str, Any]]:
+        """把模型抽出的术语规整成 observation 行，避免提交入口重复拼值。"""
+        normalized_observations: list[dict[str, Any]] = []
+        for raw_entry in glossary_entries:
+            observation = self.normalize_analysis_task_observation(
+                {
+                    "task_fingerprint": task_fingerprint,
+                    "src": raw_entry.get("src", ""),
+                    "dst": raw_entry.get("dst", ""),
+                    "info": raw_entry.get("info", ""),
+                    "case_sensitive": bool(raw_entry.get("case_sensitive", False)),
+                    "created_at": created_at,
+                }
+            )
+            if observation is None:
+                continue
+            normalized_observations.append(observation)
+        return normalized_observations
+
+    def collect_new_analysis_task_observations(
+        self,
+        existing_rows: list[dict[str, Any]],
+        observations: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """只保留当前任务真正新增的 observation，避免重复写库和重复累票。"""
+        existing_keys = {
+            (
+                str(row.get("src", "")),
+                str(row.get("dst", "")),
+                str(row.get("info", "")),
+                bool(row.get("case_sensitive", False)),
+            )
+            for row in existing_rows
+        }
+
+        new_observations: list[dict[str, Any]] = []
+        pending_keys = set(existing_keys)
+        for observation in observations:
+            observation_key = (
+                observation["src"],
+                observation["dst"],
+                observation["info"],
+                observation["case_sensitive"],
+            )
+            if observation_key in pending_keys:
+                continue
+            pending_keys.add(observation_key)
+            new_observations.append(observation)
+        return new_observations
+
+    def build_analysis_task_observation_insert_rows(
+        self, observations: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """把 observation 快照转换成写库行，避免事务入口重复展开字段。"""
+        return [
+            {
+                "task_fingerprint": observation["task_fingerprint"],
+                "src": observation["src"],
+                "dst": observation["dst"],
+                "info": observation["info"],
+                "case_sensitive": observation["case_sensitive"],
+                "created_at": observation["created_at"],
+            }
+            for observation in observations
+        ]
+
+    def merge_analysis_observations_into_candidate_aggregates(
+        self,
+        observations: list[dict[str, Any]],
+        aggregate_map: dict[str, dict[str, Any]],
+    ) -> None:
+        """把新增 observation 合并进候选池快照，避免提交入口把增量规则铺开。"""
+        for observation in observations:
+            src = observation["src"]
+            existing_entry = aggregate_map.get(src)
+            if existing_entry is None:
+                aggregate_map[src] = {
+                    "src": src,
+                    "dst_votes": {observation["dst"]: 1},
+                    "info_votes": {observation["info"]: 1},
+                    "observation_count": 1,
+                    "first_seen_at": observation["created_at"],
+                    "last_seen_at": observation["created_at"],
+                    "case_sensitive": observation["case_sensitive"],
+                    # 兼容旧内存格式：增量路径不维护真实序号，只保留稳定占位值。
+                    "first_seen_index": 0,
+                }
+                continue
+
+            dst_votes = existing_entry["dst_votes"]
+            dst = observation["dst"]
+            dst_votes[dst] = int(dst_votes.get(dst, 0)) + 1
+
+            info_votes = existing_entry["info_votes"]
+            info = observation["info"]
+            info_votes[info] = int(info_votes.get(info, 0)) + 1
+
+            existing_entry["observation_count"] = (
+                int(existing_entry.get("observation_count", 0)) + 1
+            )
+            existing_entry["last_seen_at"] = observation["created_at"]
+            existing_entry["case_sensitive"] = bool(
+                existing_entry.get("case_sensitive", False)
+                or observation["case_sensitive"]
+            )
+
+    def build_analysis_candidate_aggregate_upsert_rows(
+        self,
+        aggregate_map: dict[str, dict[str, Any]],
+        srcs: list[str],
+    ) -> list[dict[str, Any]]:
+        """把指定 src 的候选池快照转换成写库行，避免事务入口重复展开字段。"""
+        rows: list[dict[str, Any]] = []
+        for src in srcs:
+            entry = aggregate_map.get(src)
+            if entry is None:
+                continue
+            rows.append(
+                {
+                    "src": entry["src"],
+                    "dst_votes": dict(entry["dst_votes"]),
+                    "info_votes": dict(entry["info_votes"]),
+                    "observation_count": entry["observation_count"],
+                    "first_seen_at": entry["first_seen_at"],
+                    "last_seen_at": entry["last_seen_at"],
+                    "case_sensitive": entry["case_sensitive"],
+                }
+            )
+        return rows
+
+    def persist_analysis_progress_snapshot_with_db(
+        self,
+        db: LGDatabase,
+        conn: sqlite3.Connection,
+        snapshot: dict[str, Any] | None,
+        *,
+        added_glossary_delta: int = 0,
+    ) -> dict[str, Any] | None:
+        """在现有事务内持久化分析快照，并同步会话缓存，避免成功失败路径各写一遍。"""
+        if snapshot is None:
+            return None
+
+        persisted_snapshot = dict(snapshot)
+        persisted_snapshot["added_glossary"] = (
+            int(persisted_snapshot.get("added_glossary", 0) or 0) + added_glossary_delta
+        )
+        db.upsert_meta_entries({"analysis_extras": persisted_snapshot}, conn=conn)
+        self.session.meta_cache["analysis_extras"] = dict(persisted_snapshot)
+        return persisted_snapshot
+
+    def build_analysis_error_checkpoint_rows(
+        self,
+        checkpoints: list[dict[str, Any]],
+        existing: dict[int, dict[str, Any]],
+        *,
+        updated_at: str,
+    ) -> tuple[list[dict[str, Any]], dict[int, dict[str, Any]]]:
+        """把失败任务规整成写库行和最新快照，避免错误计数规则散在事务入口。"""
+        error_rows: list[dict[str, Any]] = []
+        updated_checkpoints = dict(existing)
+
+        for raw_checkpoint in checkpoints:
+            checkpoint = self.normalize_analysis_item_checkpoint(
+                {
+                    "item_id": raw_checkpoint.get("item_id"),
+                    "source_hash": raw_checkpoint.get("source_hash"),
+                    "status": Base.ProjectStatus.ERROR.value,
+                    "updated_at": updated_at,
+                    "error_count": raw_checkpoint.get("error_count", 0),
+                }
+            )
+            if checkpoint is None:
+                continue
+
+            previous = existing.get(checkpoint["item_id"])
+            error_count = 1
+            if (
+                previous is not None
+                and previous["status"] == Base.ProjectStatus.ERROR
+                and previous["source_hash"] == checkpoint["source_hash"]
+            ):
+                error_count = int(previous.get("error_count", 0)) + 1
+
+            row = {
+                "item_id": checkpoint["item_id"],
+                "source_hash": checkpoint["source_hash"],
+                "status": Base.ProjectStatus.ERROR.value,
+                "updated_at": checkpoint["updated_at"],
+                "error_count": error_count,
+            }
+            error_rows.append(row)
+            updated_checkpoints[checkpoint["item_id"]] = {
+                "item_id": checkpoint["item_id"],
+                "source_hash": checkpoint["source_hash"],
+                "status": Base.ProjectStatus.ERROR,
+                "updated_at": checkpoint["updated_at"],
+                "error_count": error_count,
+            }
+
+        return error_rows, updated_checkpoints
+
+    def get_analysis_item_checkpoints(self) -> dict[int, dict[str, Any]]:
+        """返回条目级检查点快照，以 item_id 为键。"""
+        with self.state_lock:
+            db = self.session.db
+            if db is None:
+                return {}
+
+            raw_rows = db.get_analysis_item_checkpoints()
+
+        return self.normalize_analysis_item_checkpoint_rows(raw_rows)
+
+    def upsert_analysis_item_checkpoints(
+        self, checkpoints: list[dict[str, Any]]
+    ) -> dict[int, dict[str, Any]]:
+        """批量写入条目级检查点，并返回最新快照。"""
+        normalized_rows = self.normalize_analysis_item_checkpoint_upsert_rows(
+            checkpoints
+        )
 
         if not normalized_rows:
             return self.get_analysis_item_checkpoints()
@@ -1109,14 +1359,7 @@ class DataManager(Base):
 
             raw_rows = db.get_analysis_candidate_aggregates()
 
-        normalized: dict[str, dict[str, Any]] = {}
-        for raw_row in raw_rows:
-            src = str(raw_row.get("src", "")).strip()
-            entry = self.normalize_analysis_candidate_aggregate_entry(src, raw_row)
-            if entry is None:
-                continue
-            normalized[entry["src"]] = entry
-        return normalized
+        return self.normalize_analysis_candidate_aggregate_rows(raw_rows)
 
     def get_analysis_candidate_count(self) -> int:
         """候选数量只统计真正能导入正式术语表的条目。"""
@@ -1211,8 +1454,9 @@ class DataManager(Base):
         task_fingerprint: str = "",
         checkpoints: list[dict[str, Any]] | None = None,
         glossary_entries: list[dict[str, Any]] | None = None,
+        progress_snapshot: dict[str, Any] | None = None,
     ) -> int:
-        """原子提交单个分析任务的结果。"""
+        """原子提交单个分析任务的结果，并把进度快照和候选池保持同事务。"""
         task_key = task_fingerprint.strip()
         if task_key == "":
             return 0
@@ -1221,37 +1465,21 @@ class DataManager(Base):
         if glossary_entries is None:
             glossary_entries = []
 
-        normalized_checkpoints: list[dict[str, Any]] = []
-        for raw_checkpoint in checkpoints:
-            checkpoint = self.normalize_analysis_item_checkpoint(raw_checkpoint)
-            if checkpoint is None:
-                continue
-            normalized_checkpoints.append(
-                {
-                    "item_id": checkpoint["item_id"],
-                    "source_hash": checkpoint["source_hash"],
-                    "status": checkpoint["status"].value,
-                    "updated_at": checkpoint["updated_at"],
-                    "error_count": checkpoint["error_count"],
-                }
+        normalized_checkpoints = self.normalize_analysis_item_checkpoint_upsert_rows(
+            checkpoints
+        )
+        normalized_progress_snapshot = None
+        if progress_snapshot is not None:
+            normalized_progress_snapshot = self.normalize_analysis_progress_snapshot(
+                progress_snapshot
             )
 
         now = datetime.now().isoformat()
-        normalized_observations: list[dict[str, Any]] = []
-        for raw_entry in glossary_entries:
-            observation = self.normalize_analysis_task_observation(
-                {
-                    "task_fingerprint": task_key,
-                    "src": raw_entry.get("src", ""),
-                    "dst": raw_entry.get("dst", ""),
-                    "info": raw_entry.get("info", ""),
-                    "case_sensitive": bool(raw_entry.get("case_sensitive", False)),
-                    "created_at": now,
-                }
-            )
-            if observation is None:
-                continue
-            normalized_observations.append(observation)
+        normalized_observations = self.build_analysis_task_observations_for_commit(
+            task_key,
+            glossary_entries,
+            created_at=now,
+        )
 
         with self.state_lock:
             db = self.session.db
@@ -1263,93 +1491,36 @@ class DataManager(Base):
                     task_fingerprint=task_key,
                     conn=conn,
                 )
-                existing_keys = {
-                    (
-                        str(row.get("src", "")),
-                        str(row.get("dst", "")),
-                        str(row.get("info", "")),
-                        bool(row.get("case_sensitive", False)),
-                    )
-                    for row in existing_rows
-                }
-
-                new_observations: list[dict[str, Any]] = []
-                pending_keys = set(existing_keys)
-                for observation in normalized_observations:
-                    observation_key = (
-                        observation["src"],
-                        observation["dst"],
-                        observation["info"],
-                        observation["case_sensitive"],
-                    )
-                    if observation_key in pending_keys:
-                        continue
-                    pending_keys.add(observation_key)
-                    new_observations.append(observation)
+                new_observations = self.collect_new_analysis_task_observations(
+                    existing_rows,
+                    normalized_observations,
+                )
 
                 inserted_count = db.insert_analysis_task_observations(
-                    [
-                        {
-                            "task_fingerprint": observation["task_fingerprint"],
-                            "src": observation["src"],
-                            "dst": observation["dst"],
-                            "info": observation["info"],
-                            "case_sensitive": observation["case_sensitive"],
-                            "created_at": observation["created_at"],
-                        }
-                        for observation in new_observations
-                    ],
+                    self.build_analysis_task_observation_insert_rows(new_observations),
                     conn=conn,
                 )
 
-                aggregate_map = self.get_analysis_candidate_aggregate()
-                for observation in new_observations:
-                    src = observation["src"]
-                    existing_entry = aggregate_map.get(src)
-                    if existing_entry is None:
-                        aggregate_map[src] = {
-                            "src": src,
-                            "dst_votes": {observation["dst"]: 1},
-                            "info_votes": {observation["info"]: 1},
-                            "observation_count": 1,
-                            "first_seen_at": observation["created_at"],
-                            "last_seen_at": observation["created_at"],
-                            "case_sensitive": observation["case_sensitive"],
-                            "first_seen_index": len(aggregate_map),
-                        }
-                        continue
-
-                    dst_votes = existing_entry["dst_votes"]
-                    dst = observation["dst"]
-                    dst_votes[dst] = int(dst_votes.get(dst, 0)) + 1
-
-                    info_votes = existing_entry["info_votes"]
-                    info = observation["info"]
-                    info_votes[info] = int(info_votes.get(info, 0)) + 1
-
-                    existing_entry["observation_count"] = (
-                        int(existing_entry.get("observation_count", 0)) + 1
+                touched_srcs = sorted(
+                    {observation["src"] for observation in new_observations}
+                )
+                if touched_srcs:
+                    aggregate_map = self.normalize_analysis_candidate_aggregate_rows(
+                        db.get_analysis_candidate_aggregates_by_srcs(
+                            touched_srcs,
+                            conn=conn,
+                        )
                     )
-                    existing_entry["last_seen_at"] = observation["created_at"]
-                    existing_entry["case_sensitive"] = bool(
-                        existing_entry.get("case_sensitive", False)
-                        or observation["case_sensitive"]
+                    self.merge_analysis_observations_into_candidate_aggregates(
+                        new_observations,
+                        aggregate_map,
                     )
 
-                if aggregate_map:
                     db.upsert_analysis_candidate_aggregates(
-                        [
-                            {
-                                "src": entry["src"],
-                                "dst_votes": dict(entry["dst_votes"]),
-                                "info_votes": dict(entry["info_votes"]),
-                                "observation_count": entry["observation_count"],
-                                "first_seen_at": entry["first_seen_at"],
-                                "last_seen_at": entry["last_seen_at"],
-                                "case_sensitive": entry["case_sensitive"],
-                            }
-                            for entry in aggregate_map.values()
-                        ],
+                        self.build_analysis_candidate_aggregate_upsert_rows(
+                            aggregate_map,
+                            touched_srcs,
+                        ),
                         conn=conn,
                     )
 
@@ -1357,6 +1528,13 @@ class DataManager(Base):
                     db.upsert_analysis_item_checkpoints(
                         normalized_checkpoints, conn=conn
                     )
+
+                self.persist_analysis_progress_snapshot_with_db(
+                    db,
+                    conn,
+                    normalized_progress_snapshot,
+                    added_glossary_delta=inserted_count,
+                )
 
                 conn.commit()
 
@@ -1540,18 +1718,7 @@ class DataManager(Base):
         self, snapshot: dict[str, Any]
     ) -> dict[str, Any]:
         """统一写入分析进度快照，避免多个入口各自拼字段。"""
-        normalized_snapshot = {
-            "start_time": float(snapshot.get("start_time", 0.0) or 0.0),
-            "time": float(snapshot.get("time", 0.0) or 0.0),
-            "total_line": int(snapshot.get("total_line", 0) or 0),
-            "line": int(snapshot.get("line", 0) or 0),
-            "processed_line": int(snapshot.get("processed_line", 0) or 0),
-            "error_line": int(snapshot.get("error_line", 0) or 0),
-            "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
-            "total_input_tokens": int(snapshot.get("total_input_tokens", 0) or 0),
-            "total_output_tokens": int(snapshot.get("total_output_tokens", 0) or 0),
-            "added_glossary": int(snapshot.get("added_glossary", 0) or 0),
-        }
+        normalized_snapshot = self.normalize_analysis_progress_snapshot(snapshot)
         self.set_analysis_extras(normalized_snapshot)
         return normalized_snapshot
 
@@ -1586,48 +1753,46 @@ class DataManager(Base):
         return pending_items
 
     def update_analysis_task_error(
-        self, checkpoints: list[dict[str, Any]]
+        self,
+        checkpoints: list[dict[str, Any]],
+        progress_snapshot: dict[str, Any] | None = None,
     ) -> dict[int, dict[str, Any]]:
-        """任务失败后只记录当前 hash 的失败检查点，不写候选池。"""
-        existing = self.get_analysis_item_checkpoints()
+        """任务失败后只记录当前 hash 的失败检查点，并与进度快照同事务落库。"""
+        normalized_progress_snapshot = None
+        if progress_snapshot is not None:
+            normalized_progress_snapshot = self.normalize_analysis_progress_snapshot(
+                progress_snapshot
+            )
+
         now_text = datetime.now().isoformat()
+        with self.state_lock:
+            db = self.session.db
+            if db is None:
+                return {}
 
-        error_rows: list[dict[str, Any]] = []
-        for raw_checkpoint in checkpoints:
-            checkpoint = self.normalize_analysis_item_checkpoint(
-                {
-                    "item_id": raw_checkpoint.get("item_id"),
-                    "source_hash": raw_checkpoint.get("source_hash"),
-                    "status": Base.ProjectStatus.ERROR.value,
-                    "updated_at": now_text,
-                    "error_count": raw_checkpoint.get("error_count", 0),
-                }
-            )
-            if checkpoint is None:
-                continue
+            with db.connection() as conn:
+                existing = self.normalize_analysis_item_checkpoint_rows(
+                    db.get_analysis_item_checkpoints(conn=conn)
+                )
+                error_rows, updated_checkpoints = (
+                    self.build_analysis_error_checkpoint_rows(
+                        checkpoints,
+                        existing,
+                        updated_at=now_text,
+                    )
+                )
 
-            previous = existing.get(checkpoint["item_id"])
-            error_count = 1
-            if (
-                previous is not None
-                and previous["status"] == Base.ProjectStatus.ERROR
-                and previous["source_hash"] == checkpoint["source_hash"]
-            ):
-                error_count = int(previous.get("error_count", 0)) + 1
+                if error_rows:
+                    db.upsert_analysis_item_checkpoints(error_rows, conn=conn)
 
-            error_rows.append(
-                {
-                    "item_id": checkpoint["item_id"],
-                    "source_hash": checkpoint["source_hash"],
-                    "status": Base.ProjectStatus.ERROR.value,
-                    "updated_at": checkpoint["updated_at"],
-                    "error_count": error_count,
-                }
-            )
+                self.persist_analysis_progress_snapshot_with_db(
+                    db,
+                    conn,
+                    normalized_progress_snapshot,
+                )
 
-        if not error_rows:
-            return existing
-        return self.upsert_analysis_item_checkpoints(error_rows)
+                conn.commit()
+                return updated_checkpoints
 
     def get_analysis_term_pool(self) -> dict[str, dict[str, Any]]:
         """兼容旧接口：直接返回 aggregate 映射。"""

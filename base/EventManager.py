@@ -41,6 +41,7 @@ class EventManager(QObject):
     COALESCE_EVENT_VALUES: frozenset[str] = frozenset(
         {
             "TRANSLATION_PROGRESS",
+            "ANALYSIS_PROGRESS",
         }
     )
 
@@ -162,6 +163,7 @@ class EventManager(QObject):
         event_key = self.get_event_value(event)
         if self.should_coalesce(event, data):
             with self.lock:
+                # 高频快照事件只保留最后一帧，避免 UI 线程排队处理过期状态。
                 self.pending_latest[event_key] = (event, data)
                 if self.flush_scheduled:
                     return
@@ -171,6 +173,14 @@ class EventManager(QObject):
             return
 
         self.signal.emit(event, data)
+
+    def connect_owner_destroyed_cleanup(self, owner: QObject, owner_id: int) -> None:
+        """把 QObject 销毁后的订阅清理集中到一处，避免弱引用分支把细节写散。"""
+        owner.destroyed.connect(
+            lambda obj=None, owner_id=owner_id: (
+                self.cleanup_owner_subscriptions(owner_id)
+            )
+        )
 
     # 订阅事件
     def subscribe(self, event: StrEnum, handler: Callable[[Any, Any], None]) -> None:
@@ -198,7 +208,7 @@ class EventManager(QObject):
                     need_connect_destroyed = True
 
             if need_connect_destroyed:
-                owner.destroyed.connect(lambda obj=None, owner_id=owner_id: (self.cleanup_owner_subscriptions(owner_id)))
+                self.connect_owner_destroyed_cleanup(owner, owner_id)
             return
 
         with self.lock:
@@ -208,7 +218,9 @@ class EventManager(QObject):
         with self.lock:
             self.owner_cleanup_connected.discard(owner_id)
             for event, handlers in list(self.event_callbacks.items()):
-                cleaned: list[Callable[[StrEnum, Any], None] | EventManager.WeakHandler] = []
+                cleaned: list[
+                    Callable[[StrEnum, Any], None] | EventManager.WeakHandler
+                ] = []
 
                 for entry in handlers:
                     if isinstance(entry, EventManager.WeakHandler):

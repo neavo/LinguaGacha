@@ -19,6 +19,23 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 data_manager_module = importlib.import_module("module.Data.DataManager")
 
 
+def build_analysis_progress_snapshot(**overrides: Any) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "start_time": 0.0,
+        "time": 0.0,
+        "total_line": 0,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "added_glossary": 0,
+    }
+    snapshot.update(overrides)
+    return snapshot
+
+
 def build_manager(*, loaded: bool = True) -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
     db = None
@@ -35,7 +52,9 @@ def build_manager(*, loaded: bool = True) -> Any:
             insert_analysis_task_observations=MagicMock(return_value=0),
             clear_analysis_task_observations=MagicMock(),
             get_analysis_candidate_aggregates=MagicMock(return_value=[]),
+            get_analysis_candidate_aggregates_by_srcs=MagicMock(return_value=[]),
             upsert_analysis_candidate_aggregates=MagicMock(),
+            upsert_meta_entries=MagicMock(),
             clear_analysis_candidate_aggregates=MagicMock(),
             add_asset=MagicMock(return_value=1),
             get_items_by_file_path=MagicMock(return_value=[]),
@@ -52,6 +71,7 @@ def build_manager(*, loaded: bool = True) -> Any:
         db=db,
         lg_path="/workspace/demo/project.lg" if loaded else None,
         state_lock=threading.RLock(),
+        meta_cache={},
         asset_decompress_cache={},
     )
     dm.state_lock = dm.session.state_lock
@@ -356,7 +376,7 @@ def test_get_analysis_candidate_aggregate_normalizes_invalid_entries() -> None:
 def test_commit_analysis_task_result_writes_checkpoints_and_updates_aggregate() -> None:
     dm = build_manager()
     dm.session.db.get_analysis_task_observations.return_value = []
-    dm.session.db.get_analysis_candidate_aggregates.return_value = []
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.return_value = []
     dm.session.db.insert_analysis_task_observations = MagicMock(return_value=1)
 
     inserted = dm.commit_analysis_task_result(
@@ -384,12 +404,26 @@ def test_commit_analysis_task_result_writes_checkpoints_and_updates_aggregate() 
                 "case_sensitive": False,
             },
         ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            start_time=1.0,
+            time=2.0,
+            total_line=3,
+            line=1,
+            processed_line=1,
+            total_tokens=9,
+            total_input_tokens=4,
+            total_output_tokens=5,
+            added_glossary=2,
+        ),
     )
 
     assert inserted == 1
     dm.session.db.insert_analysis_task_observations.assert_called_once()
+    dm.session.db.get_analysis_candidate_aggregates.assert_not_called()
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.assert_called_once()
     dm.session.db.upsert_analysis_item_checkpoints.assert_called_once()
     dm.session.db.upsert_analysis_candidate_aggregates.assert_called_once()
+    dm.session.db.upsert_meta_entries.assert_called_once()
     aggregate_rows = dm.session.db.upsert_analysis_candidate_aggregates.call_args.args[
         0
     ]
@@ -404,6 +438,94 @@ def test_commit_analysis_task_result_writes_checkpoints_and_updates_aggregate() 
             "case_sensitive": False,
         }
     ]
+    progress_meta = dm.session.db.upsert_meta_entries.call_args.args[0]
+    assert progress_meta["analysis_extras"]["added_glossary"] == 3
+    assert dm.session.meta_cache["analysis_extras"]["added_glossary"] == 3
+
+
+def test_commit_analysis_task_result_skips_aggregate_io_when_no_new_observation() -> (
+    None
+):
+    dm = build_manager()
+    dm.session.db.get_analysis_task_observations.return_value = [
+        {
+            "task_fingerprint": "task-1",
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+            "created_at": "2026-03-10T10:00:00",
+        }
+    ]
+
+    inserted = dm.commit_analysis_task_result(
+        task_fingerprint="task-1",
+        checkpoints=[
+            {
+                "item_id": 1,
+                "source_hash": "hash-1",
+                "status": Base.ProjectStatus.PROCESSED,
+                "updated_at": "2026-03-10T10:00:00",
+                "error_count": 0,
+            }
+        ],
+        glossary_entries=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            }
+        ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            processed_line=1,
+            line=1,
+        ),
+    )
+
+    assert inserted == 0
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.assert_not_called()
+    dm.session.db.upsert_analysis_candidate_aggregates.assert_not_called()
+    dm.session.db.upsert_analysis_item_checkpoints.assert_called_once()
+    dm.session.db.upsert_meta_entries.assert_called_once()
+
+
+def test_update_analysis_task_error_persists_progress_snapshot_in_same_transaction() -> (
+    None
+):
+    dm = build_manager()
+    dm.session.db.get_analysis_item_checkpoints.return_value = [
+        {
+            "item_id": 1,
+            "source_hash": "hash-1",
+            "status": Base.ProjectStatus.ERROR.value,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 2,
+        }
+    ]
+
+    updated = dm.update_analysis_task_error(
+        [
+            {
+                "item_id": 1,
+                "source_hash": "hash-1",
+                "status": Base.ProjectStatus.ERROR,
+                "error_count": 0,
+            }
+        ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            processed_line=4,
+            error_line=2,
+            line=6,
+            total_tokens=11,
+        ),
+    )
+
+    error_rows = dm.session.db.upsert_analysis_item_checkpoints.call_args.args[0]
+    assert error_rows[0]["error_count"] == 3
+    dm.session.db.upsert_meta_entries.assert_called_once()
+    assert updated[1]["error_count"] == 3
+    assert updated[1]["status"] == Base.ProjectStatus.ERROR
 
 
 def test_merge_analysis_term_votes_merges_counts_into_project_pool() -> None:

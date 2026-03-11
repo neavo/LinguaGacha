@@ -70,10 +70,26 @@ class FakeDataManager:
     def get_analysis_progress_snapshot(self) -> dict[str, object]:
         return dict(self.analysis_extras)
 
+    def normalize_analysis_progress_snapshot(
+        self, snapshot: dict[str, object]
+    ) -> dict[str, object]:
+        return {
+            "start_time": float(snapshot.get("start_time", 0.0) or 0.0),
+            "time": float(snapshot.get("time", 0.0) or 0.0),
+            "total_line": int(snapshot.get("total_line", 0) or 0),
+            "line": int(snapshot.get("line", 0) or 0),
+            "processed_line": int(snapshot.get("processed_line", 0) or 0),
+            "error_line": int(snapshot.get("error_line", 0) or 0),
+            "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
+            "total_input_tokens": int(snapshot.get("total_input_tokens", 0) or 0),
+            "total_output_tokens": int(snapshot.get("total_output_tokens", 0) or 0),
+            "added_glossary": int(snapshot.get("added_glossary", 0) or 0),
+        }
+
     def update_analysis_progress_snapshot(
         self, snapshot: dict[str, object]
     ) -> dict[str, object]:
-        self.analysis_extras = dict(snapshot)
+        self.analysis_extras = self.normalize_analysis_progress_snapshot(snapshot)
         return dict(self.analysis_extras)
 
     def get_analysis_status_summary(self) -> dict[str, object]:
@@ -130,14 +146,22 @@ class FakeDataManager:
         task_fingerprint: str = "",
         checkpoints: list[dict[str, object]] | None = None,
         glossary_entries: list[dict[str, object]] | None = None,
+        progress_snapshot: dict[str, object] | None = None,
     ) -> int:
         del task_fingerprint
         if checkpoints is None:
             checkpoints = []
         if glossary_entries is None:
             glossary_entries = []
+        if progress_snapshot is not None:
+            self.analysis_extras = self.normalize_analysis_progress_snapshot(
+                progress_snapshot
+            )
 
         changed_count = len(glossary_entries)
+        self.analysis_extras["added_glossary"] = (
+            int(self.analysis_extras.get("added_glossary", 0)) + changed_count
+        )
         self.analysis_candidate_count += changed_count
         for checkpoint in checkpoints:
             item_id = int(checkpoint.get("item_id", 0) or 0)
@@ -151,8 +175,14 @@ class FakeDataManager:
         return changed_count
 
     def update_analysis_task_error(
-        self, checkpoints: list[dict[str, object]]
+        self,
+        checkpoints: list[dict[str, object]],
+        progress_snapshot: dict[str, object] | None = None,
     ) -> dict[int, dict[str, object]]:
+        if progress_snapshot is not None:
+            self.analysis_extras = self.normalize_analysis_progress_snapshot(
+                progress_snapshot
+            )
         for raw_checkpoint in checkpoints:
             item_id = int(raw_checkpoint.get("item_id", 0) or 0)
             if item_id <= 0:

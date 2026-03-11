@@ -214,6 +214,28 @@ class LGDatabase(Base):
             )
             conn.commit()
 
+    def upsert_meta_entries(
+        self,
+        meta: dict[str, Any],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """批量写入元数据，并允许调用方复用现有事务。"""
+        if not meta:
+            return
+
+        params = [(str(key), JSONTool.dumps(value)) for key, value in meta.items()]
+
+        if conn is not None:
+            conn.executemany(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                params,
+            )
+            return
+
+        with self.connection() as local_conn:
+            self.upsert_meta_entries(meta, conn=local_conn)
+            local_conn.commit()
+
     def get_all_meta(self) -> dict[str, Any]:
         """获取所有元数据"""
         with self.connection() as conn:
@@ -406,6 +428,25 @@ class LGDatabase(Base):
             self.clear_analysis_task_observations(conn=local_conn)
             local_conn.commit()
 
+    def normalize_analysis_candidate_aggregate_db_rows(
+        self, rows: list[sqlite3.Row]
+    ) -> list[dict[str, Any]]:
+        """把候选池查询结果统一反序列化，避免多个读取入口各自维护 JSON 解码。"""
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            result.append(
+                {
+                    "src": str(row["src"]),
+                    "dst_votes": JSONTool.loads(row["dst_votes"]),
+                    "info_votes": JSONTool.loads(row["info_votes"]),
+                    "observation_count": int(row["observation_count"]),
+                    "first_seen_at": str(row["first_seen_at"]),
+                    "last_seen_at": str(row["last_seen_at"]),
+                    "case_sensitive": bool(row["case_sensitive"]),
+                }
+            )
+        return result
+
     def get_analysis_candidate_aggregates(
         self, conn: sqlite3.Connection | None = None
     ) -> list[dict[str, Any]]:
@@ -425,23 +466,49 @@ class LGDatabase(Base):
                 ORDER BY src
                 """
             )
-            result: list[dict[str, Any]] = []
-            for row in cursor.fetchall():
-                result.append(
-                    {
-                        "src": str(row["src"]),
-                        "dst_votes": JSONTool.loads(row["dst_votes"]),
-                        "info_votes": JSONTool.loads(row["info_votes"]),
-                        "observation_count": int(row["observation_count"]),
-                        "first_seen_at": str(row["first_seen_at"]),
-                        "last_seen_at": str(row["last_seen_at"]),
-                        "case_sensitive": bool(row["case_sensitive"]),
-                    }
-                )
-            return result
+            return self.normalize_analysis_candidate_aggregate_db_rows(
+                cursor.fetchall()
+            )
 
         with self.connection() as local_conn:
             return self.get_analysis_candidate_aggregates(conn=local_conn)
+
+    def get_analysis_candidate_aggregates_by_srcs(
+        self,
+        srcs: list[str],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[dict[str, Any]]:
+        """按 src 批量读取候选池汇总，避免热路径每次全量扫描。"""
+        normalized_srcs = [str(src).strip() for src in srcs if str(src).strip() != ""]
+        if not normalized_srcs:
+            return []
+
+        placeholders = ",".join("?" for _ in normalized_srcs)
+        sql = f"""
+            SELECT
+                src,
+                dst_votes,
+                info_votes,
+                observation_count,
+                first_seen_at,
+                last_seen_at,
+                case_sensitive
+            FROM analysis_candidate_aggregate
+            WHERE src IN ({placeholders})
+            ORDER BY src
+        """
+
+        if conn is not None:
+            cursor = conn.execute(sql, normalized_srcs)
+            return self.normalize_analysis_candidate_aggregate_db_rows(
+                cursor.fetchall()
+            )
+
+        with self.connection() as local_conn:
+            return self.get_analysis_candidate_aggregates_by_srcs(
+                normalized_srcs,
+                conn=local_conn,
+            )
 
     def upsert_analysis_candidate_aggregates(
         self,
