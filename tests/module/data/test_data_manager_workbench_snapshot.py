@@ -15,10 +15,16 @@ from module.Data.DataManager import DataManager
 data_manager_module = importlib.import_module("module.Data.DataManager")
 
 
-def build_manager_for_snapshot(asset_paths: list[str], item_dicts: list[dict[str, Any]]) -> Any:
+def build_manager_for_snapshot(
+    asset_paths: list[str], item_dicts: list[dict[str, Any]]
+) -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
-    dm.asset_service = SimpleNamespace(get_all_asset_paths=MagicMock(return_value=asset_paths))
-    dm.item_service = SimpleNamespace(get_all_item_dicts=MagicMock(return_value=item_dicts))
+    dm.asset_service = SimpleNamespace(
+        get_all_asset_paths=MagicMock(return_value=asset_paths)
+    )
+    dm.item_service = SimpleNamespace(
+        get_all_item_dicts=MagicMock(return_value=item_dicts)
+    )
     return dm
 
 
@@ -44,6 +50,7 @@ def test_build_workbench_snapshot_counts_and_types() -> None:
     assert snapshot.file_count == 2
     assert snapshot.total_items == 2
     assert snapshot.translated == 1
+    assert snapshot.translated_in_past == 0
     assert snapshot.untranslated == 1
     assert [e.rel_path for e in snapshot.entries] == ["a.txt", "b.txt"]
     assert snapshot.entries[0].item_count == 2
@@ -68,11 +75,14 @@ def test_build_workbench_snapshot_handles_large_dataset() -> None:
     assert snapshot.file_count == 1000
     assert snapshot.total_items == 1000
     assert snapshot.translated == 1000
+    assert snapshot.translated_in_past == 0
     assert snapshot.untranslated == 0
     assert len(snapshot.entries) == 1000
 
 
-def test_build_workbench_snapshot_handles_invalid_file_type_and_skips_uncounted_statuses() -> None:
+def test_build_workbench_snapshot_handles_invalid_file_type_and_skips_uncounted_statuses() -> (
+    None
+):
     dm = build_manager_for_snapshot(
         ["a.txt", "b.txt"],
         [
@@ -103,8 +113,40 @@ def test_build_workbench_snapshot_handles_invalid_file_type_and_skips_uncounted_
 
     assert snapshot.total_items == 1
     assert snapshot.translated == 1
+    assert snapshot.translated_in_past == 0
     assert snapshot.entries[0].file_type == Item.FileType.NONE
     assert snapshot.entries[1].item_count == 0
+
+
+def test_build_workbench_snapshot_tracks_translated_in_past_separately() -> None:
+    dm = build_manager_for_snapshot(
+        ["a.txt"],
+        [
+            {
+                "file_path": "a.txt",
+                "status": Base.ProjectStatus.PROCESSED,
+                "file_type": "TXT",
+            },
+            {
+                "file_path": "a.txt",
+                "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+                "file_type": "TXT",
+            },
+            {
+                "file_path": "a.txt",
+                "status": Base.ProjectStatus.NONE,
+                "file_type": "TXT",
+            },
+        ],
+    )
+
+    snapshot = dm.build_workbench_snapshot()
+
+    assert snapshot.file_count == 1
+    assert snapshot.total_items == 3
+    assert snapshot.translated == 2
+    assert snapshot.translated_in_past == 1
+    assert snapshot.untranslated == 1
 
 
 class ImmediateThread:
@@ -116,6 +158,21 @@ class ImmediateThread:
         self.target()
 
 
+class FakeThreadRecorder:
+    instances: list["FakeThreadRecorder"] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        del kwargs
+        self.__class__.instances.append(self)
+
+    def start(self) -> None:
+        pass
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.instances = []
+
+
 def build_manager_for_schedule() -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
     dm.file_op_lock = threading.Lock()
@@ -125,7 +182,40 @@ def build_manager_for_schedule() -> Any:
 
 
 def collect_progress_toast_sub_events(data_manager: Any) -> list[Base.SubEvent]:
-    return [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROGRESS_TOAST]
+    return [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROGRESS_TOAST
+    ]
+
+
+def patch_engine_status(
+    monkeypatch: pytest.MonkeyPatch,
+    status: Base.TaskStatus,
+) -> None:
+    monkeypatch.setattr(
+        "module.Engine.Engine.Engine.get",
+        lambda: SimpleNamespace(get_status=lambda: status),
+    )
+
+
+def patch_loaded_config(
+    monkeypatch: pytest.MonkeyPatch,
+    config: Any,
+) -> None:
+    monkeypatch.setattr(
+        data_manager_module,
+        "Config",
+        lambda: SimpleNamespace(load=lambda: config),
+    )
+
+
+def assert_warning_toast_calls(data_manager: Any, expected_count: int) -> None:
+    assert data_manager.emit.call_count == expected_count
+    for call in data_manager.emit.call_args_list:
+        event, payload = call.args
+        assert event == Base.Event.TOAST
+        assert payload["type"] == Base.ToastType.WARNING
 
 
 def test_schedule_add_file_unlocks_and_hides_toast_on_exception(
@@ -152,25 +242,33 @@ def test_schedule_add_file_rejects_when_operation_running(
     dm = build_manager_for_schedule()
     dm.file_op_running = True
 
-    class FakeThread:
-        instances: list["FakeThread"] = []
-
-        def __init__(self, **kwargs: Any) -> None:
-            del kwargs
-            self.__class__.instances.append(self)
-
-        def start(self) -> None:
-            pass
-
-    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThread)
+    FakeThreadRecorder.reset()
+    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThreadRecorder)
 
     dm.schedule_add_file("/tmp/a.txt")
 
-    assert FakeThread.instances == []
-    dm.emit.assert_called_once()
-    event, payload = dm.emit.call_args.args
-    assert event == Base.Event.TOAST
-    assert payload["type"] == Base.ToastType.WARNING
+    assert FakeThreadRecorder.instances == []
+    assert_warning_toast_calls(dm, expected_count=1)
+
+
+def test_schedule_add_file_rejects_when_engine_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.add_file = MagicMock()
+    dm.run_project_prefilter = MagicMock()
+
+    FakeThreadRecorder.reset()
+    patch_engine_status(monkeypatch, Base.TaskStatus.TRANSLATING)
+    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThreadRecorder)
+
+    dm.schedule_add_file("/tmp/a.txt")
+
+    assert FakeThreadRecorder.instances == []
+    dm.add_file.assert_not_called()
+    dm.run_project_prefilter.assert_not_called()
+    assert dm.file_op_running is False
+    assert_warning_toast_calls(dm, expected_count=1)
 
 
 def test_schedule_add_file_emits_warning_toast_on_value_error(
@@ -195,7 +293,7 @@ def test_schedule_add_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
+    patch_loaded_config(monkeypatch, config)
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_add_file("/tmp/a.txt")
@@ -215,7 +313,7 @@ def test_schedule_update_file_runs_and_finishes(
     dm.update_file = MagicMock(return_value={"ok": True})
     dm.run_project_prefilter = MagicMock()
     config = SimpleNamespace()
-    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
+    patch_loaded_config(monkeypatch, config)
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_update_file("a.txt", "/tmp/new.txt")
@@ -266,24 +364,41 @@ def test_schedule_update_reset_delete_reject_when_operation_running(
     dm = build_manager_for_schedule()
     dm.file_op_running = True
 
-    class FakeThread:
-        instances: list["FakeThread"] = []
-
-        def __init__(self, **kwargs: Any) -> None:
-            del kwargs
-            self.__class__.instances.append(self)
-
-        def start(self) -> None:
-            pass
-
-    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThread)
+    FakeThreadRecorder.reset()
+    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThreadRecorder)
 
     dm.schedule_update_file("a.txt", "/tmp/new.txt")
     dm.schedule_reset_file("a.txt")
     dm.schedule_delete_file("a.txt")
 
-    assert FakeThread.instances == []
-    assert dm.emit.call_count == 3
+    assert FakeThreadRecorder.instances == []
+    assert_warning_toast_calls(dm, expected_count=3)
+
+
+def test_schedule_update_reset_delete_reject_when_engine_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm = build_manager_for_schedule()
+    dm.update_file = MagicMock()
+    dm.reset_file = MagicMock()
+    dm.delete_file = MagicMock()
+    dm.run_project_prefilter = MagicMock()
+
+    FakeThreadRecorder.reset()
+    patch_engine_status(monkeypatch, Base.TaskStatus.TRANSLATING)
+    monkeypatch.setattr(data_manager_module.threading, "Thread", FakeThreadRecorder)
+
+    dm.schedule_update_file("a.txt", "/tmp/new.txt")
+    dm.schedule_reset_file("a.txt")
+    dm.schedule_delete_file("a.txt")
+
+    assert FakeThreadRecorder.instances == []
+    dm.update_file.assert_not_called()
+    dm.reset_file.assert_not_called()
+    dm.delete_file.assert_not_called()
+    dm.run_project_prefilter.assert_not_called()
+    assert dm.file_op_running is False
+    assert_warning_toast_calls(dm, expected_count=3)
 
 
 def test_schedule_update_file_emits_warning_toast_on_value_error(
@@ -326,7 +441,7 @@ def test_schedule_reset_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
+    patch_loaded_config(monkeypatch, config)
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_reset_file("a.txt")
@@ -362,7 +477,7 @@ def test_schedule_delete_file_success_runs_prefilter(
     dm.run_project_prefilter = MagicMock()
 
     config = SimpleNamespace()
-    monkeypatch.setattr(data_manager_module, "Config", lambda: SimpleNamespace(load=lambda: config))
+    patch_loaded_config(monkeypatch, config)
     monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
 
     dm.schedule_delete_file("a.txt")

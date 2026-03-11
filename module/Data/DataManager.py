@@ -2,6 +2,7 @@ import os
 import sqlite3
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -63,6 +64,7 @@ class WorkbenchSnapshot:
     file_count: int
     total_items: int
     translated: int
+    translated_in_past: int
     untranslated: int
     entries: tuple[WorkbenchFileEntrySnapshot, ...]
 
@@ -2180,6 +2182,77 @@ class DataManager(Base):
         with self.file_op_lock:
             self.file_op_running = False
 
+    def emit_task_running_warning(self) -> None:
+        """统一忙碌态提示，避免不同文件操作入口把同一句话写散。"""
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().task_running,
+            },
+        )
+
+    def try_begin_guarded_file_operation(self) -> bool:
+        """在数据层兜底拦住忙碌态文件操作，避免非 UI 入口把刷新链卡住。"""
+
+        # 文件操作会依赖后续 prefilter 收尾来刷新工作台，因此这里必须和 UI 一样拦住忙碌态。
+        from module.Engine.Engine import Engine
+
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            self.emit_task_running_warning()
+            return False
+
+        if not self.try_begin_file_operation():
+            self.emit_task_running_warning()
+            return False
+
+        return True
+
+    def schedule_guarded_file_operation(
+        self,
+        progress_message: str,
+        action: Callable[[], None],
+        error_message: str,
+    ) -> None:
+        """统一封装文件操作线程，保证四个入口的提示、预过滤与收尾一致。"""
+
+        if not self.try_begin_guarded_file_operation():
+            return
+
+        def worker() -> None:
+            self.emit(
+                Base.Event.PROGRESS_TOAST,
+                {
+                    "sub_event": Base.SubEvent.RUN,
+                    "message": progress_message,
+                    "indeterminate": True,
+                },
+            )
+            try:
+                action()
+                # 文件变更会引入/移除条目：需要重新跑预过滤，确保跳过/重复等状态一致。
+                self.run_project_prefilter(Config().load(), reason="file_op")
+            except ValueError as e:
+                self.emit(
+                    Base.Event.TOAST,
+                    {"type": Base.ToastType.WARNING, "message": str(e)},
+                )
+            except Exception as e:
+                LogManager.get().error(error_message, e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {"type": Base.ToastType.ERROR, "message": str(e)},
+                )
+            finally:
+                self.emit(
+                    Base.Event.PROGRESS_TOAST,
+                    {"sub_event": Base.SubEvent.DONE},
+                )
+                self.finish_file_operation()
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def build_workbench_snapshot(self) -> WorkbenchSnapshot:
         """构建工作台文件列表快照。
 
@@ -2204,6 +2277,7 @@ class DataManager(Base):
 
         total_items = 0
         translated = 0
+        translated_in_past = 0
         count_by_path: dict[str, int] = defaultdict(int)
         file_type_by_path: dict[str, Item.FileType] = {}
         for item in GapTool.iter(item_dicts):
@@ -2232,6 +2306,8 @@ class DataManager(Base):
             count_by_path[rel_path] += 1
             if status in translated_statuses:
                 translated += 1
+            if status == Base.ProjectStatus.PROCESSED_IN_PAST:
+                translated_in_past += 1
 
         untranslated = max(0, total_items - translated)
         entries: list[WorkbenchFileEntrySnapshot] = []
@@ -2248,185 +2324,50 @@ class DataManager(Base):
             file_count=len(asset_paths),
             total_items=total_items,
             translated=translated,
+            translated_in_past=translated_in_past,
             untranslated=untranslated,
             entries=tuple(entries),
         )
 
     def schedule_add_file(self, file_path: str) -> None:
-        if not self.try_begin_file_operation():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
+        def run_action() -> None:
+            self.add_file(file_path)
 
-        def worker() -> None:
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": Localizer.get().workbench_progress_adding_file,
-                    "indeterminate": True,
-                },
-            )
-            try:
-                self.add_file(file_path)
-                # 文件变更会引入/移除条目：需要重新跑预过滤，确保跳过/重复等状态一致。
-                self.run_project_prefilter(Config().load(), reason="file_op")
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to add file: {file_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-            finally:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                self.finish_file_operation()
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_adding_file,
+            run_action,
+            f"Failed to add file: {file_path}",
+        )
 
     def schedule_update_file(self, rel_path: str, new_file_path: str) -> None:
-        if not self.try_begin_file_operation():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
+        def run_action() -> None:
+            self.update_file(rel_path, new_file_path)
 
-        def worker() -> None:
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": Localizer.get().workbench_progress_updating_file,
-                    "indeterminate": True,
-                },
-            )
-            try:
-                self.update_file(rel_path, new_file_path)
-                self.run_project_prefilter(Config().load(), reason="file_op")
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(
-                    f"Failed to update file: {rel_path} -> {new_file_path}",
-                    e,
-                )
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-            finally:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                self.finish_file_operation()
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_updating_file,
+            run_action,
+            f"Failed to update file: {rel_path} -> {new_file_path}",
+        )
 
     def schedule_reset_file(self, rel_path: str) -> None:
-        if not self.try_begin_file_operation():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
+        def run_action() -> None:
+            self.reset_file(rel_path)
 
-        def worker() -> None:
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": Localizer.get().workbench_progress_resetting_file,
-                    "indeterminate": True,
-                },
-            )
-            try:
-                self.reset_file(rel_path)
-                self.run_project_prefilter(Config().load(), reason="file_op")
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to reset file: {rel_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-            finally:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                self.finish_file_operation()
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_resetting_file,
+            run_action,
+            f"Failed to reset file: {rel_path}",
+        )
 
     def schedule_delete_file(self, rel_path: str) -> None:
-        if not self.try_begin_file_operation():
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
+        def run_action() -> None:
+            self.delete_file(rel_path)
 
-        def worker() -> None:
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": Localizer.get().workbench_progress_deleting_file,
-                    "indeterminate": True,
-                },
-            )
-            try:
-                self.delete_file(rel_path)
-                self.run_project_prefilter(Config().load(), reason="file_op")
-            except ValueError as e:
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.WARNING, "message": str(e)},
-                )
-            except Exception as e:
-                LogManager.get().error(f"Failed to delete file: {rel_path}", e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {"type": Base.ToastType.ERROR, "message": str(e)},
-                )
-            finally:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                self.finish_file_operation()
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_deleting_file,
+            run_action,
+            f"Failed to delete file: {rel_path}",
+        )
 
     def add_file(self, file_path: str) -> None:
         ext = Path(file_path).suffix.lower()

@@ -1,15 +1,15 @@
 # 用法：
-# uv run --no-sync python buildtools/compare_json_overlap.py
+# uv run --no-sync python buildtools/glossary_overlap.py
 #
 # 示例：
 # 1. 对比默认的 1.json 和 2.json
-# uv run --no-sync python buildtools/compare_json_overlap.py
+# uv run --no-sync python buildtools/glossary_overlap.py
 #
 # 2. 只展示前 10 条结果
-# uv run --no-sync python buildtools/compare_json_overlap.py --limit 10
+# uv run --no-sync python buildtools/glossary_overlap.py --limit 10
 #
 # 3. 对比自定义文件
-# uv run --no-sync python buildtools/compare_json_overlap.py a.json b.json --limit 30
+# uv run --no-sync python buildtools/glossary_overlap.py a.json b.json --limit 30
 #
 # 输出内容：
 # - 仅在 A：在 A 里有、在 B 里没有
