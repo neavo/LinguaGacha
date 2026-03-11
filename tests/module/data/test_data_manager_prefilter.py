@@ -6,6 +6,7 @@ from typing import Any
 from typing import cast
 from unittest.mock import ANY
 from unittest.mock import MagicMock
+from unittest.mock import call
 
 import pytest
 
@@ -844,6 +845,41 @@ def test_load_project_migrates_legacy_translation_prompt_to_zh_when_ui_is_zh(
 
     dm.load_project(str(lg_path))
 
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "旧中文提示词",
+    )
+
+
+def test_load_project_falls_back_to_second_legacy_translation_prompt_slot(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt_fallback/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.EN,
+    )
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    assert fake_db.get_rule_text_by_name.call_args_list == [
+        call(data_manager_module.DataManager.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE),
+        call(data_manager_module.DataManager.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE),
+    ]
     fake_db.set_rule_text.assert_called_once_with(
         data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
         "旧中文提示词",

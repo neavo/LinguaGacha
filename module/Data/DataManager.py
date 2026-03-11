@@ -79,6 +79,12 @@ class DataManager(Base):
 
     # 对外提供统一的规则枚举入口，避免业务侧直接依赖数据库实现
     RuleType = LGDatabase.RuleType
+    LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE: ClassVar[str] = (
+        LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE
+    )
+    LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE: ClassVar[str] = (
+        LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE
+    )
     LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY: ClassVar[str] = (
         "translation_prompt_legacy_migrated"
     )
@@ -255,13 +261,13 @@ class DataManager(Base):
         app_language = Localizer.get_app_language()
         if app_language == BaseLanguage.Enum.EN:
             return (
-                LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
-                LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
+                __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
+                __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
             )
 
         return (
-            LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
-            LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
+            __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
+            __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
         )
 
     def mark_legacy_translation_prompt_migrated(self, db: LGDatabase) -> None:

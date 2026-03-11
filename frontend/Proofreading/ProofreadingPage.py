@@ -170,10 +170,8 @@ class ProofreadingPage(Base, QWidget):
         self.subscribe(
             Base.Event.TRANSLATION_REQUEST_STOP, self.on_engine_status_changed
         )
-        self.subscribe(Base.Event.TRANSLATION_PROGRESS, self.on_engine_status_changed)
         self.subscribe(Base.Event.ANALYSIS_TASK, self.on_engine_status_changed)
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.on_engine_status_changed)
-        self.subscribe(Base.Event.ANALYSIS_PROGRESS, self.on_engine_status_changed)
         self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
         self.subscribe(
             Base.Event.TRANSLATION_RESET_FAILED,

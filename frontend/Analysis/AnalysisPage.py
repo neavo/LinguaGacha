@@ -240,8 +240,8 @@ class AnalysisPage(Base, QWidget):
 
     def analysis_update(self, event: Base.Event, data: dict) -> None:
         del event
+        # 进度事件只更新最新快照，实际 UI 刷新统一交给定时器节流。
         self.data = dict(data) if isinstance(data, dict) else {}
-        self.update_ui_tick()
 
     def on_analysis_reset(self, event: Base.Event, data: dict) -> None:
         sub_event = data.get("sub_event")
