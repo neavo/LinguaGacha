@@ -1550,7 +1550,8 @@ class DataManager(Base):
         info = self.pick_analysis_term_pool_winner(entry.get("info_votes", {}))
         normalized_info = info.strip().lower()
 
-        if src == "" or dst == "":
+        # 分析导入要求术语类型完整，避免把缺少标签的候选直接写进正式术语表。
+        if src == "" or dst == "" or normalized_info == "":
             return None
         if dst == src:
             return None
