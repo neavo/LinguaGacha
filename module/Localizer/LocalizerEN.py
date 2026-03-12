@@ -184,7 +184,9 @@ class LocalizerEN(LocalizerZH):
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"
+    engine_task_completed: str = "Task completed …"
     engine_task_done: str = "All data has been processed, task finished …"
+    engine_task_done_with_terms: str = "All data has been processed, {COUNT} terms added …"
     engine_task_fail: str = "Task failed to complete, some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
@@ -417,7 +419,6 @@ class LocalizerEN(LocalizerZH):
     analysis_page_alert_reset_failed: str = "Confirm to reset failed items? You can continue analyzing after reset …?"
     analysis_page_alert_reset_all: str = "Confirm to reset all analysis progress? The whole project text will be analyzed again after reset …?"
     analysis_page_reset_tooltip: str = "Click to choose resetting failed items or all analysis progress"
-    analysis_task_terms_added: str = "Candidate Terms {COUNT}"
     analysis_task_source_texts: str = "Analysis Input:"
     analysis_task_extracted_terms: str = "Extracted Terms:"
     analysis_task_no_terms: str = "No terms extracted"

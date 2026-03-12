@@ -755,26 +755,13 @@ class AnalysisPipeline:
 
     def log_analysis_finish(self, final_status: str) -> None:
         """收尾日志只维护一处，成功失败停止三种终态共用。"""
-        elapsed = float(self.analyzer.extras.get("time", 0) or 0.0)
-        lines = int(self.analyzer.extras.get("line", 0) or 0)
-        input_tokens = int(self.analyzer.extras.get("total_input_tokens", 0) or 0)
-        output_tokens = int(self.analyzer.extras.get("total_output_tokens", 0) or 0)
-        stats_info = (
-            Localizer.get()
-            .engine_task_success.replace("{TIME}", f"{elapsed:.2f}")
-            .replace("{LINES}", str(lines))
-            .replace("{PT}", str(input_tokens))
-            .replace("{CT}", str(output_tokens))
-        )
-        terms_info = Localizer.get().analysis_task_terms_added.replace(
-            "{COUNT}", str(int(self.analyzer.extras.get("added_glossary", 0) or 0))
-        )
-
         LogManager.get().print("")
-        LogManager.get().info(stats_info)
-        LogManager.get().info(terms_info)
         if final_status == "SUCCESS":
-            LogManager.get().info(Localizer.get().engine_task_done)
+            added_terms = Localizer.get().engine_task_done_with_terms.replace(
+                "{COUNT}", str(int(self.analyzer.extras.get("added_glossary", 0) or 0))
+            )
+            LogManager.get().info(Localizer.get().engine_task_completed)
+            LogManager.get().info(added_terms)
         elif final_status == "STOPPED":
             LogManager.get().info(Localizer.get().engine_task_stop)
         else:
@@ -803,12 +790,9 @@ class AnalysisPipeline:
             .replace("{PT}", f"{pt}")
             .replace("{CT}", f"{ct}")
         )
-        terms_info = Localizer.get().analysis_task_terms_added.replace(
-            "{COUNT}", str(len(glossary_entries))
-        )
 
-        file_logs = [stats_info, terms_info]
-        console_logs = [stats_info, terms_info]
+        file_logs = [stats_info]
+        console_logs = [stats_info]
         if status_text != "":
             file_logs.append(status_text)
             console_logs.append(status_text)
@@ -840,9 +824,7 @@ class AnalysisPipeline:
             prefix = (
                 f"[{style}][{Localizer.get().translator_simple_log_prefix}][/{style}]"
             )
-            display_msg = "\n".join(
-                [prefix + " " + summary_text, stats_info, terms_info]
-            )
+            display_msg = "\n".join([prefix + " " + summary_text, stats_info])
             rich.get_console().print("\n" + display_msg + "\n")
             return
 

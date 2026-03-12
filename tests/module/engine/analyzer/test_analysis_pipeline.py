@@ -57,6 +57,59 @@ def build_context(
     )
 
 
+class FakePipelineLogger:
+    def __init__(self, *, expert_mode: bool = False) -> None:
+        self.expert_mode = expert_mode
+        self.info_messages: list[str] = []
+        self.warning_messages: list[str] = []
+        self.print_messages: list[str] = []
+
+    def is_expert_mode(self) -> bool:
+        return self.expert_mode
+
+    def info(self, msg: str, *args, **kwargs) -> None:
+        del args, kwargs
+        self.info_messages.append(msg)
+
+    def warning(self, msg: str, *args, **kwargs) -> None:
+        del args, kwargs
+        self.warning_messages.append(msg)
+
+    def print(self, msg: str, *args, **kwargs) -> None:
+        del args, kwargs
+        self.print_messages.append(msg)
+
+
+def build_analysis_pipeline() -> AnalysisPipeline:
+    analyzer = Analyzer()
+    return AnalysisPipeline(analyzer)
+
+
+def install_print_chunk_log_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    running_task_count: int = 0,
+) -> tuple[FakePipelineLogger, list[object]]:
+    logger = FakePipelineLogger()
+    console_outputs: list[object] = []
+    monkeypatch.setattr(
+        analysis_pipeline_module.LogManager,
+        "get",
+        lambda: logger,
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_module.rich,
+        "get_console",
+        lambda: SimpleNamespace(print=lambda obj: console_outputs.append(obj)),
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_module.Engine,
+        "get",
+        lambda: SimpleNamespace(get_running_task_count=lambda: running_task_count),
+    )
+    return logger, console_outputs
+
+
 def test_build_progress_snapshot_counts_current_hash_status_and_reuses_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
@@ -318,34 +371,8 @@ def test_execute_task_request_returns_failure_when_response_shape_is_invalid(
 def test_print_chunk_log_writes_source_and_extracted_terms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    file_logs: list[str] = []
-    console_objects: list[object] = []
-
-    class FakeLogger:
-        def __init__(self) -> None:
-            self.expert_mode = False
-
-        def info(self, msg: str, *args, **kwargs) -> None:
-            del args, kwargs
-            file_logs.append(msg)
-
-        def is_expert_mode(self) -> bool:
-            return self.expert_mode
-
-    logger = FakeLogger()
-    monkeypatch.setattr(
-        analysis_pipeline_module.LogManager,
-        "get",
-        lambda: logger,
-    )
-    monkeypatch.setattr(
-        analysis_pipeline_module.rich,
-        "get_console",
-        lambda: SimpleNamespace(print=lambda obj: console_objects.append(obj)),
-    )
-
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
+    logger, console_objects = install_print_chunk_log_runtime(monkeypatch)
+    pipeline = build_analysis_pipeline()
     pipeline.print_chunk_log(
         start=time.time() - 1.0,
         pt=12,
@@ -361,11 +388,113 @@ def test_print_chunk_log_writes_source_and_extracted_terms(
         style="green",
     )
 
-    combined = "\n".join(file_logs)
+    combined = "\n".join(logger.info_messages)
     assert Localizer.get().analysis_task_source_texts in combined
     assert Localizer.get().analysis_task_extracted_terms in combined
     assert "圣女艾琳 -> Saint Eileen #女性人名" in combined
+    assert "候选术语" not in combined
     assert console_objects != []
+
+
+def test_print_chunk_log_summary_mode_omits_candidate_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger, console_outputs = install_print_chunk_log_runtime(
+        monkeypatch,
+        running_task_count=33,
+    )
+    pipeline = build_analysis_pipeline()
+    pipeline.print_chunk_log(
+        start=time.time() - 1.0,
+        pt=12,
+        ct=34,
+        srcs=["圣女艾琳在教堂祈祷。"],
+        glossary_entries=[
+            {"src": "圣女艾琳", "dst": "Saint Eileen", "info": "女性人名"}
+        ],
+        response_think="",
+        response_result='{"terms":[{"src":"圣女艾琳","dst":"Saint Eileen","info":"女性人名"}]}',
+        status_text="",
+        log_func=logger.info,
+        style="green",
+    )
+
+    combined = "\n".join(str(output) for output in console_outputs)
+    assert Localizer.get().translator_simple_log_prefix in combined
+    assert "候选术语" not in combined
+
+
+def test_log_analysis_finish_success_logs_completion_and_added_terms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = FakePipelineLogger()
+    monkeypatch.setattr(
+        analysis_pipeline_module.LogManager,
+        "get",
+        lambda: logger,
+    )
+
+    pipeline = build_analysis_pipeline()
+    pipeline.analyzer.extras = build_analysis_runtime_extras(
+        line=3,
+        time=12.0,
+        total_input_tokens=5,
+        total_output_tokens=8,
+        added_glossary=2,
+    )
+
+    pipeline.log_analysis_finish("SUCCESS")
+
+    assert logger.info_messages == [
+        Localizer.get().engine_task_completed,
+        Localizer.get().engine_task_done_with_terms.replace("{COUNT}", "2"),
+    ]
+    assert logger.warning_messages == []
+    assert logger.print_messages == ["", ""]
+
+
+@pytest.mark.parametrize(
+    ("final_status", "expected_info", "expected_warning"),
+    [
+        ("STOPPED", "engine_task_stop", None),
+        ("FAILED", None, "engine_task_fail"),
+    ],
+)
+def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
+    monkeypatch: pytest.MonkeyPatch,
+    final_status: str,
+    expected_info: str | None,
+    expected_warning: str | None,
+) -> None:
+    logger = FakePipelineLogger()
+    monkeypatch.setattr(
+        analysis_pipeline_module.LogManager,
+        "get",
+        lambda: logger,
+    )
+
+    pipeline = build_analysis_pipeline()
+    pipeline.analyzer.extras = build_analysis_runtime_extras(
+        line=3,
+        time=12.0,
+        total_input_tokens=5,
+        total_output_tokens=8,
+        added_glossary=2,
+    )
+
+    pipeline.log_analysis_finish(final_status)
+
+    if expected_info is None:
+        assert logger.info_messages == []
+    else:
+        assert logger.info_messages == [getattr(Localizer.get(), expected_info)]
+
+    if expected_warning is None:
+        assert logger.warning_messages == []
+    else:
+        assert logger.warning_messages == [getattr(Localizer.get(), expected_warning)]
+
+    assert logger.print_messages == ["", ""]
 
 
 def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(

@@ -184,7 +184,9 @@ class LocalizerZH:
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"
+    engine_task_completed: str = "任务已完成 …"
     engine_task_done: str = "所有数据均已处理，任务已结束 …"
+    engine_task_done_with_terms: str = "所有数据均已处理，新增术语 {COUNT} 条 …"
     engine_task_fail: str = "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
@@ -417,7 +419,6 @@ class LocalizerZH:
     analysis_page_alert_reset_failed: str = "确定要重置失败条目吗，重置后可以继续分析 …?"
     analysis_page_alert_reset_all: str = "确定要重置全部分析进度吗，重置后将重新分析全部文本 …?"
     analysis_page_reset_tooltip: str = "点击可选择重置失败条目或全部分析进度"
-    analysis_task_terms_added: str = "候选术语 {COUNT} 条"
     analysis_task_source_texts: str = "分析输入："
     analysis_task_extracted_terms: str = "提取术语："
     analysis_task_no_terms: str = "未提取到术语"

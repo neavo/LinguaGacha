@@ -10,6 +10,7 @@ from module.Config import Config
 from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analyzer.Analyzer import Analyzer
 from module.Engine.Engine import Engine
+from module.Localizer.Localizer import Localizer
 
 analyzer_module = import_module("module.Engine.Analyzer.Analyzer")
 EmittedEvent = tuple[Base.Event, dict[str, object]]
@@ -221,6 +222,36 @@ def test_analysis_require_stop_marks_engine_as_stopping(
         (
             Base.Event.ANALYSIS_REQUEST_STOP,
             {"sub_event": Base.SubEvent.RUN},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("final_status", "toast_type", "message_attr"),
+    [
+        ("SUCCESS", Base.ToastType.SUCCESS, "engine_task_done"),
+        ("STOPPED", Base.ToastType.SUCCESS, "engine_task_stop"),
+        ("FAILED", Base.ToastType.WARNING, "engine_task_fail"),
+    ],
+)
+def test_emit_analysis_terminal_toast_matches_final_status(
+    monkeypatch: pytest.MonkeyPatch,
+    final_status: str,
+    toast_type: Base.ToastType,
+    message_attr: str,
+) -> None:
+    analyzer = Analyzer()
+    emitted = capture_emitted_events(monkeypatch, analyzer)
+
+    analyzer.emit_analysis_terminal_toast(final_status)
+
+    assert emitted == [
+        (
+            Base.Event.TOAST,
+            {
+                "type": toast_type,
+                "message": getattr(Localizer.get(), message_attr),
+            },
         )
     ]
 

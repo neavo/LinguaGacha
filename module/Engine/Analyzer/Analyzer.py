@@ -298,6 +298,26 @@ class Analyzer(Base):
 
         return int(dm.get_analysis_candidate_count() or 0) > 0
 
+    def emit_analysis_terminal_toast(self, final_status: str) -> None:
+        """分析终态提示只维护一处，避免空跑和正常执行两条路径各改一遍。"""
+        if final_status == "SUCCESS":
+            toast_type = Base.ToastType.SUCCESS
+            message = Localizer.get().engine_task_done
+        elif final_status == "STOPPED":
+            toast_type = Base.ToastType.SUCCESS
+            message = Localizer.get().engine_task_stop
+        else:
+            toast_type = Base.ToastType.WARNING
+            message = Localizer.get().engine_task_fail
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": toast_type,
+                "message": message,
+            },
+        )
+
     # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
         sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
@@ -441,22 +461,7 @@ class Analyzer(Base):
                 else:
                     flow_final_status = "SUCCESS"
                 self.log_analysis_finish(flow_final_status)
-                if flow_final_status == "SUCCESS":
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.SUCCESS,
-                            "message": Localizer.get().engine_task_done,
-                        },
-                    )
-                else:
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().engine_task_fail,
-                        },
-                    )
+                self.emit_analysis_terminal_toast(flow_final_status)
                 return
 
             max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
@@ -472,33 +477,7 @@ class Analyzer(Base):
                 max_workers=max_workers,
             )
             self.log_analysis_finish(flow_final_status)
-
-            if flow_final_status == "SUCCESS":
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_done,
-                    },
-                )
-                return
-            if flow_final_status == "STOPPED":
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_stop,
-                    },
-                )
-                return
-
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().engine_task_fail,
-                },
-            )
+            self.emit_analysis_terminal_toast(flow_final_status)
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
             self.emit(
