@@ -252,3 +252,35 @@ def test_merge_overwrite_updates_in_same_src_norm_group() -> None:
     assert merged[0]["dst"] == "新值"
     assert report.updated == 1
     assert report.deduped == 1
+
+
+def test_preview_merge_collects_incoming_indexes_for_collapsed_new_entries() -> None:
+    preview = QualityRuleMerger.preview_merge(
+        rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+        existing=[],
+        incoming=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "",
+                "case_sensitive": False,
+            },
+            {
+                "src": " alice ",
+                "dst": "",
+                "info": "女性人名",
+                "case_sensitive": False,
+            },
+        ],
+        merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+    )
+
+    assert len(preview.merged) == 1
+    assert preview.merged[0]["src"] == "Alice"
+    assert preview.merged[0]["dst"] == "爱丽丝"
+    assert preview.merged[0]["info"] == "女性人名"
+    assert preview.report.deduped == 1
+    assert preview.report.filled == 1
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is True
+    assert preview.entries[0].incoming_indexes == (0, 1)

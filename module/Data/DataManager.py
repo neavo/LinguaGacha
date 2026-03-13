@@ -31,6 +31,7 @@ from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from module.Utils.GapTool import GapTool
 from module.Utils.JSONTool import JSONTool
 
@@ -69,6 +70,32 @@ class WorkbenchSnapshot:
     entries: tuple[WorkbenchFileEntrySnapshot, ...]
 
 
+@dataclass(frozen=True)
+class AnalysisGlossaryImportPreviewEntry:
+    """分析候选导入预演中的单条结果快照。"""
+
+    entry: dict[str, Any]
+    statistics_key: str
+    is_new: bool
+    incoming_indexes: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class AnalysisGlossaryImportPreview:
+    """分析候选导入预演结果。
+
+    为什么要显式建模：
+    导入过滤需要同时拿到“预合并结果、哪些是新增、命中数、包含关系”，
+    单靠一个 merged 列表已经不够表达这些决策信息。
+    """
+
+    merged_entries: tuple[dict[str, Any], ...]
+    report: QualityRuleMerger.Report
+    entries: tuple[AnalysisGlossaryImportPreviewEntry, ...]
+    statistics_results: dict[str, QualityRuleStatistics.RuleStatResult]
+    subset_parents: dict[str, tuple[str, ...]]
+
+
 class DataManager(Base):
     """全局数据中间件（单入口）。
 
@@ -90,6 +117,17 @@ class DataManager(Base):
     )
     LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY: ClassVar[str] = (
         "translation_prompt_legacy_migrated"
+    )
+    RULE_STATISTICS_COUNTED_STATUSES: ClassVar[frozenset[Base.ProjectStatus]] = (
+        frozenset(
+            {
+                Base.ProjectStatus.NONE,
+                Base.ProjectStatus.PROCESSING,
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+                Base.ProjectStatus.ERROR,
+            }
+        )
     )
 
     class TextPreserveMode(StrEnum):
@@ -1580,6 +1618,138 @@ class DataManager(Base):
 
         return glossary_entries
 
+    def build_analysis_glossary_import_preview(
+        self, glossary_entries: list[dict[str, Any]]
+    ) -> AnalysisGlossaryImportPreview:
+        """在内存中预演候选导入，并附带命中统计与包含关系。
+
+        为什么需要预演：
+        新规则要求“先和现有术语表合并，再看命中效果，再决定要不要导入”，
+        如果直接走写入口，缓存会先被改脏，后面的过滤就没法保持只读决策。
+        """
+
+        current_glossary = self.get_glossary()
+        preview = QualityRuleMerger.preview_merge(
+            rule_type=QualityRuleMerger.RuleType.GLOSSARY,
+            existing=current_glossary,
+            incoming=glossary_entries,
+            merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+        )
+
+        merged_entries = tuple(dict(entry) for entry in preview.merged)
+        preview_entries: list[AnalysisGlossaryImportPreviewEntry] = []
+        relation_target_candidates: list[tuple[str, str]] = []
+        for preview_entry in preview.entries:
+            statistics_key = QualityRuleStatistics.build_glossary_rule_stat_key(
+                preview_entry.entry
+            )
+            if statistics_key == "":
+                continue
+            preview_entries.append(
+                AnalysisGlossaryImportPreviewEntry(
+                    entry=dict(preview_entry.entry),
+                    statistics_key=statistics_key,
+                    is_new=preview_entry.is_new,
+                    incoming_indexes=preview_entry.incoming_indexes,
+                )
+            )
+            if not preview_entry.is_new:
+                continue
+            src = str(preview_entry.entry.get("src", "")).strip()
+            if src == "":
+                continue
+            relation_target_candidates.append((statistics_key, src))
+
+        src_texts, dst_texts = self.collect_rule_statistics_texts()
+        statistics_snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
+            rules=tuple(
+                QualityRuleStatistics.build_glossary_rule_stat_inputs(merged_entries)
+            ),
+            src_texts=src_texts,
+            dst_texts=dst_texts,
+            relation_candidates=QualityRuleStatistics.build_subset_relation_candidates(
+                merged_entries,
+                key_builder=QualityRuleStatistics.build_glossary_rule_stat_key,
+            ),
+            relation_target_candidates=tuple(relation_target_candidates),
+        )
+
+        return AnalysisGlossaryImportPreview(
+            merged_entries=merged_entries,
+            report=preview.report,
+            entries=tuple(preview_entries),
+            statistics_results=statistics_snapshot.results,
+            subset_parents=statistics_snapshot.subset_parents,
+        )
+
+    def filter_analysis_glossary_import_candidates(
+        self,
+        glossary_entries: list[dict[str, Any]],
+        preview: AnalysisGlossaryImportPreview,
+    ) -> list[dict[str, Any]]:
+        """按预演统计结果过滤低价值新增候选。
+
+        约束：
+        - 只过滤新增条目，不动现有正式术语的补空机会
+        - 命中数 <= 1 的新增条目直接过滤
+        - 和更长条目互相包含、且命中数相同的新增短条目过滤
+        """
+
+        filtered_indexes: set[int] = set()
+        key_by_src: dict[str, str] = {}
+
+        def get_matched_item_count(statistics_key: str) -> int:
+            result = preview.statistics_results.get(statistics_key)
+            if result is None:
+                return 0
+            return int(result.matched_item_count)
+
+        for preview_entry in preview.entries:
+            src = str(preview_entry.entry.get("src", "")).strip()
+            if src == "":
+                continue
+            key_by_src[src] = preview_entry.statistics_key
+
+        for preview_entry in preview.entries:
+            if not preview_entry.is_new:
+                continue
+
+            matched_item_count = get_matched_item_count(preview_entry.statistics_key)
+            if matched_item_count <= 1:
+                filtered_indexes.update(preview_entry.incoming_indexes)
+                continue
+
+            child_src = str(preview_entry.entry.get("src", "")).strip()
+            if child_src == "":
+                continue
+
+            for parent_src in preview.subset_parents.get(
+                preview_entry.statistics_key,
+                tuple(),
+            ):
+                parent_key = key_by_src.get(parent_src, "")
+                if parent_key == "":
+                    continue
+
+                parent_count = get_matched_item_count(parent_key)
+                if parent_count != matched_item_count:
+                    continue
+                if len(parent_src) < len(child_src):
+                    continue
+
+                filtered_indexes.update(preview_entry.incoming_indexes)
+                break
+
+        if not filtered_indexes:
+            return [dict(entry) for entry in glossary_entries]
+
+        filtered_entries: list[dict[str, Any]] = []
+        for index, entry in enumerate(glossary_entries):
+            if index in filtered_indexes:
+                continue
+            filtered_entries.append(dict(entry))
+        return filtered_entries
+
     def import_analysis_candidates(
         self, expected_lg_path: str | None = None
     ) -> int | None:
@@ -1604,8 +1774,16 @@ class DataManager(Base):
                 # 没有可导入候选不算失败；上层会统一提示“完成但新增 0 条”。
                 return 0
 
-            merged, report = self.merge_glossary_incoming(
+            preview = self.build_analysis_glossary_import_preview(glossary_entries)
+            filtered_glossary_entries = self.filter_analysis_glossary_import_candidates(
                 glossary_entries,
+                preview,
+            )
+            if not filtered_glossary_entries:
+                return 0
+
+            merged, report = self.merge_glossary_incoming(
+                filtered_glossary_entries,
                 merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
                 save=False,
             )
@@ -2117,6 +2295,53 @@ class DataManager(Base):
 
     def get_all_items(self) -> list[Item]:
         return self.item_service.get_all_items()
+
+    @staticmethod
+    def normalize_rule_statistics_text(value: Any) -> str:
+        """把统计输入统一转成字符串，避免页面与导入过滤各自兜底。"""
+
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        return str(value)
+
+    @staticmethod
+    def normalize_rule_statistics_status(value: Any) -> Base.ProjectStatus:
+        """把条目状态规整成枚举，避免统计口径被脏数据带偏。"""
+
+        if isinstance(value, Base.ProjectStatus):
+            return value
+        if isinstance(value, str):
+            try:
+                return Base.ProjectStatus(value)
+            except ValueError:
+                return Base.ProjectStatus.NONE
+        return Base.ProjectStatus.NONE
+
+    def collect_rule_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """提取规则统计使用的 src/dst 文本快照。
+
+        为什么放在 DataManager：
+        术语页统计和分析导入过滤都依赖同一份工程条目口径，
+        由数据层集中维护，能避免两边状态筛选慢慢漂移。
+        """
+
+        item_dicts = self.get_all_item_dicts()
+        src_texts: list[str] = []
+        dst_texts: list[str] = []
+        for item in item_dicts:
+            if not isinstance(item, dict):
+                continue
+
+            status = self.normalize_rule_statistics_status(item.get("status"))
+            if status not in self.RULE_STATISTICS_COUNTED_STATUSES:
+                continue
+
+            src_texts.append(self.normalize_rule_statistics_text(item.get("src", "")))
+            dst_texts.append(self.normalize_rule_statistics_text(item.get("dst", "")))
+
+        return tuple(src_texts), tuple(dst_texts)
 
     def get_all_item_dicts(self) -> list[dict[str, Any]]:
         """获取 items 的原始 dict 快照。

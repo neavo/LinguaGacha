@@ -40,10 +40,7 @@ from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleReorder import QualityRuleReorder
-from module.QualityRule.QualityRuleStatistics import RuleStatInput
-from module.QualityRule.QualityRuleStatistics import RuleStatResult
-from module.QualityRule.QualityRuleStatistics import count_rule_occurrences
-from module.Utils.GapTool import GapTool
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.AppTable import AppTableModelBase
 from widget.AppTable import AppTableView
 from widget.AppTable import ColumnSpec
@@ -97,14 +94,6 @@ class QualityRulePageBase(Base, QWidget):
     STATISTICS_COLUMN_WIDTH: int = 70
     STATISTICS_ICON_SIZE: int = 16
     STATISTICS_ICON_SPACING: int = 4
-    # “仅可翻译条目”口径：排除结构跳过状态，保留翻译主流程状态。
-    STATISTICS_COUNTED_STATUSES: set[Base.ProjectStatus] = {
-        Base.ProjectStatus.NONE,
-        Base.ProjectStatus.PROCESSING,
-        Base.ProjectStatus.PROCESSED,
-        Base.ProjectStatus.PROCESSED_IN_PAST,
-        Base.ProjectStatus.ERROR,
-    }
     TERMINAL_STATISTICS_INVALIDATION_SUB_EVENTS: tuple[Base.SubEvent, ...] = (
         Base.SubEvent.DONE,
         Base.SubEvent.ERROR,
@@ -144,7 +133,7 @@ class QualityRulePageBase(Base, QWidget):
         self.statistics_running: bool = False
         self.statistics_token: int = 0
         self.statistics_column_index: int = -1
-        self.statistics_results: dict[str, RuleStatResult] = {}
+        self.statistics_results: dict[str, QualityRuleStatistics.RuleStatResult] = {}
         self.statistics_subset_parents: dict[str, tuple[str, ...]] = {}
         self.statistics_icon_cache: StatusColumnIconStrip.IconStripPixmapCache = {}
         self.statistics_button: CommandButton | None = None
@@ -229,7 +218,7 @@ class QualityRulePageBase(Base, QWidget):
 
     def build_statistics_inputs(
         self, entries: list[dict[str, Any]] | None = None
-    ) -> list[RuleStatInput]:
+    ) -> list[QualityRuleStatistics.RuleStatInput]:
         """子类可覆盖：构建当前页面的规则统计输入。"""
         del entries
 
@@ -1050,48 +1039,19 @@ class QualityRulePageBase(Base, QWidget):
             ],
         )
 
-    def normalize_item_text(self, value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        return str(value)
-
-    def normalize_project_status(self, value: Any) -> Base.ProjectStatus:
-        if isinstance(value, Base.ProjectStatus):
-            return value
-        if isinstance(value, str):
-            try:
-                return Base.ProjectStatus(value)
-            except ValueError:
-                return Base.ProjectStatus.NONE
-        return Base.ProjectStatus.NONE
-
     def collect_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """提取统计使用的 src/dst 文本快照。
 
         口径固定为“仅可翻译条目”，这样统计结果与翻译主流程一致。
         """
-
-        item_dicts = DataManager.get().get_all_item_dicts()
-        src_texts: list[str] = []
-        dst_texts: list[str] = []
-        for item in item_dicts:
-            if not isinstance(item, dict):
-                continue
-            status = self.normalize_project_status(item.get("status"))
-            if status not in self.STATISTICS_COUNTED_STATUSES:
-                continue
-            src_texts.append(self.normalize_item_text(item.get("src", "")))
-            dst_texts.append(self.normalize_item_text(item.get("dst", "")))
-        return tuple(src_texts), tuple(dst_texts)
+        return DataManager.get().collect_rule_statistics_texts()
 
     def get_statistics_entry_key(self, entry: dict[str, Any]) -> str:
         return self.build_statistics_entry_key(entry)
 
     def get_statistics_result_for_row(
         self, entry: dict[str, Any]
-    ) -> RuleStatResult | None:
+    ) -> QualityRuleStatistics.RuleStatResult | None:
         key = self.get_statistics_entry_key(entry)
         if key == "":
             return None
@@ -1213,50 +1173,10 @@ class QualityRulePageBase(Base, QWidget):
     def build_statistics_relation_candidates(
         self, entries: tuple[dict[str, Any], ...]
     ) -> tuple[tuple[str, str], ...]:
-        candidates: list[tuple[str, str]] = []
-        for entry in GapTool.iter(entries):
-            key = self.get_statistics_entry_key(entry)
-            src = str(entry.get("src", "")).strip()
-            if key == "" or src == "":
-                continue
-            candidates.append((key, src))
-        return tuple(candidates)
-
-    def build_statistics_subset_relation_map(
-        self,
-        candidates: tuple[tuple[str, str], ...],
-        token: int,
-    ) -> dict[str, tuple[str, ...]]:
-        subset_map: dict[str, tuple[str, ...]] = {}
-        # 包含关系是 O(n^2) 扫描，这里用 GapTool 定期让出 GIL，避免后台统计挤占 UI 调度。
-        for key, src in GapTool.iter(candidates):
-            if not self.is_statistics_token_valid(token):
-                return {}
-
-            src_fold = src.casefold()
-            if src_fold == "":
-                continue
-
-            parents: list[str] = []
-            seen_parent: set[str] = set()
-            for other_key, other_src in GapTool.iter(candidates):
-                if key == other_key:
-                    continue
-                other_fold = other_src.casefold()
-                if src_fold == other_fold:
-                    continue
-                if src_fold not in other_fold:
-                    continue
-                dedup_key = other_src.casefold()
-                if dedup_key in seen_parent:
-                    continue
-                seen_parent.add(dedup_key)
-                parents.append(other_src)
-
-            if parents:
-                subset_map[key] = tuple(parents)
-
-        return subset_map
+        return QualityRuleStatistics.build_subset_relation_candidates(
+            entries,
+            key_builder=self.get_statistics_entry_key,
+        )
 
     def on_statistics_done(self, token: int, payload: object) -> None:
         if token != self.statistics_token:
@@ -1270,18 +1190,18 @@ class QualityRulePageBase(Base, QWidget):
             self.refresh_statistics_column()
             return
 
-        normalized_results: dict[str, RuleStatResult] = {}
+        normalized_results: dict[str, QualityRuleStatistics.RuleStatResult] = {}
         raw_results = payload.get("results", {})
         if isinstance(raw_results, dict):
             for key, value in raw_results.items():
                 if not isinstance(key, str):
                     continue
-                if isinstance(value, RuleStatResult):
+                if isinstance(value, QualityRuleStatistics.RuleStatResult):
                     normalized_results[key] = value
                     continue
                 if isinstance(value, dict):
                     count = int(value.get("matched_item_count", 0))
-                    normalized_results[key] = RuleStatResult(
+                    normalized_results[key] = QualityRuleStatistics.RuleStatResult(
                         matched_item_count=count,
                     )
 
@@ -1314,23 +1234,19 @@ class QualityRulePageBase(Base, QWidget):
             if not self.is_statistics_token_valid(token):
                 return
 
-            results: dict[str, RuleStatResult] = {}
-            if rules:
-                # 一次性批量统计，避免“每条规则单独扫描文本”的调度开销。
-                results = count_rule_occurrences(rules, src_texts, dst_texts)
-                if not self.is_statistics_token_valid(token):
-                    return
-
-            subset_map = self.build_statistics_subset_relation_map(
-                relation_candidates,
-                token,
+            snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
+                rules=rules,
+                src_texts=src_texts,
+                dst_texts=dst_texts,
+                relation_candidates=relation_candidates,
+                should_stop=lambda: not self.is_statistics_token_valid(token),
             )
             if not self.is_statistics_token_valid(token):
                 return
 
             payload = {
-                "results": results,
-                "subset_parents": subset_map,
+                "results": snapshot.results,
+                "subset_parents": snapshot.subset_parents,
             }
         except Exception as e:
             LogManager.get().error("规则统计失败", e)

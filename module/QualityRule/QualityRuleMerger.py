@@ -60,6 +60,30 @@ class QualityRuleMerger:
         conflicts: tuple["QualityRuleMerger.Conflict", ...]
 
     @dataclass(frozen=True)
+    class PreviewEntry:
+        """合并预演后的单条结果。
+
+        为什么要单独保留 incoming_indexes：
+        导入分析候选时，多个 incoming 条目可能会折叠成 1 条结果；
+        只有拿到“这条结果来自哪些原始 incoming”，后续过滤时才能一次删干净。
+        """
+
+        entry: dict[str, Any]
+        is_new: bool
+        incoming_indexes: tuple[int, ...]
+
+    @dataclass(frozen=True)
+    class Preview:
+        """合并预演结果。
+
+        这里显式区分 preview 与 merge，避免上层为了拿元信息而被迫修改缓存或重新推导。
+        """
+
+        merged: tuple[dict[str, Any], ...]
+        report: "QualityRuleMerger.Report"
+        entries: tuple["QualityRuleMerger.PreviewEntry", ...]
+
+    @dataclass(frozen=True)
     class Item:
         entry: dict[str, Any]
         src_norm: str
@@ -67,6 +91,7 @@ class QualityRuleMerger:
         case_sensitive: bool
         order: int
         is_existing: bool
+        incoming_index: int | None
 
     @dataclass(frozen=True)
     class Kept:
@@ -79,6 +104,7 @@ class QualityRuleMerger:
         order: int
         key: object
         entry: dict[str, Any]
+        incoming_indexes: tuple[int, ...]
 
     @staticmethod
     def normalize_src(src: Any) -> str:
@@ -115,6 +141,24 @@ class QualityRuleMerger:
     ) -> tuple[list[dict[str, Any]], "QualityRuleMerger.Report"]:
         """合并 existing 与 incoming，返回 (merged, report)。"""
 
+        preview = __class__.preview_merge(
+            rule_type=rule_type,
+            existing=existing,
+            incoming=incoming,
+            merge_mode=merge_mode,
+        )
+        return [dict(entry) for entry in preview.merged], preview.report
+
+    @staticmethod
+    def preview_merge(
+        *,
+        rule_type: "QualityRuleMerger.RuleType",
+        existing: list[dict[str, Any]],
+        incoming: list[dict[str, Any]],
+        merge_mode: "QualityRuleMerger.MergeMode | None" = None,
+    ) -> "QualityRuleMerger.Preview":
+        """合并 existing 与 incoming，并返回带来源元信息的预演结果。"""
+
         if merge_mode is None:
             merge_mode = __class__.MergeMode.OVERWRITE
 
@@ -144,6 +188,7 @@ class QualityRuleMerger:
                         case_sensitive=bool(normalized.get("case_sensitive", False)),
                         order=order_offset + i,
                         is_existing=is_existing,
+                        incoming_index=None if is_existing else i,
                     )
                 )
 
@@ -183,6 +228,21 @@ class QualityRuleMerger:
         conflicts: list[QualityRuleMerger.Conflict] = []
 
         kept: list[QualityRuleMerger.Kept] = []
+
+        def collect_incoming_indexes(
+            items: list["QualityRuleMerger.Item"],
+        ) -> tuple[int, ...]:
+            """统一收集折叠后条目对应的 incoming 下标，避免两处分支各写一遍。"""
+
+            return tuple(
+                sorted(
+                    {
+                        int(item.incoming_index)
+                        for item in items
+                        if item.incoming_index is not None
+                    }
+                )
+            )
 
         def record_conflict(
             *,
@@ -324,7 +384,10 @@ class QualityRuleMerger:
 
                 kept.append(
                     __class__.Kept(
-                        order=items_sorted[0].order, key=src_fold, entry=base
+                        order=items_sorted[0].order,
+                        key=src_fold,
+                        entry=base,
+                        incoming_indexes=collect_incoming_indexes(items_sorted),
                     )
                 )
                 continue
@@ -348,11 +411,16 @@ class QualityRuleMerger:
                     if filled_changed:
                         filled += 1
                 kept.append(
-                    __class__.Kept(order=norm_items[0].order, key=key_obj, entry=base)
+                    __class__.Kept(
+                        order=norm_items[0].order,
+                        key=key_obj,
+                        entry=base,
+                        incoming_indexes=collect_incoming_indexes(norm_items),
+                    )
                 )
 
         kept_sorted = sorted(kept, key=lambda k: k.order)
-        merged = [k.entry for k in kept_sorted]
+        merged = tuple(dict(k.entry) for k in kept_sorted)
 
         for k in kept_sorted:
             if k.key not in existing_keys:
@@ -366,4 +434,16 @@ class QualityRuleMerger:
             skipped_empty_src=skipped_empty,
             conflicts=tuple(conflicts),
         )
-        return merged, report
+        preview_entries = tuple(
+            __class__.PreviewEntry(
+                entry=dict(k.entry),
+                is_new=k.key not in existing_keys,
+                incoming_indexes=k.incoming_indexes,
+            )
+            for k in kept_sorted
+        )
+        return __class__.Preview(
+            merged=merged,
+            report=report,
+            entries=preview_entries,
+        )

@@ -26,8 +26,7 @@ from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleStatistics import RuleStatInput
-from module.QualityRule.QualityRuleStatistics import RuleStatMode
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.AppTable import ColumnSpec
 from qfluentwidgets import SwitchButton
 from widget.SettingCard import SettingCard
@@ -139,28 +138,13 @@ class GlossaryPage(QualityRulePageBase):
         return (0, 1, 2)
 
     def build_statistics_entry_key(self, entry: dict[str, Any]) -> str:
-        src = str(entry.get("src", "")).strip()
-        case_sensitive = bool(entry.get("case_sensitive", False))
-        return f"{src}|{int(case_sensitive)}"
+        return QualityRuleStatistics.build_glossary_rule_stat_key(entry)
 
     def build_statistics_inputs(
         self, entries: list[dict[str, Any]] | None = None
-    ) -> list[RuleStatInput]:
-        rules: list[RuleStatInput] = []
+    ) -> list[QualityRuleStatistics.RuleStatInput]:
         entries_source = self.entries if entries is None else entries
-        for entry in entries_source:
-            src = str(entry.get("src", "")).strip()
-            if src == "":
-                continue
-            rules.append(
-                RuleStatInput(
-                    key=self.build_statistics_entry_key(entry),
-                    pattern=src,
-                    mode=RuleStatMode.GLOSSARY,
-                    case_sensitive=bool(entry.get("case_sensitive", False)),
-                )
-            )
-        return rules
+        return QualityRuleStatistics.build_glossary_rule_stat_inputs(entries_source)
 
     def get_column_specs(self) -> list[ColumnSpec[dict[str, Any]]]:
         specs = super().get_column_specs()

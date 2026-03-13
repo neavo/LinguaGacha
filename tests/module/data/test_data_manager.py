@@ -682,15 +682,21 @@ def test_import_analysis_term_pool_fills_empty_without_clearing_pool() -> None:
     dm.get_analysis_candidate_aggregate = MagicMock(
         return_value={"Alice": {"src": "Alice"}}
     )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+        }
+    ]
+    preview = SimpleNamespace(name="preview")
     dm.build_analysis_glossary_from_candidates = MagicMock(
-        return_value=[
-            {
-                "src": "Alice",
-                "dst": "爱丽丝",
-                "info": "女性人名",
-                "case_sensitive": False,
-            }
-        ]
+        return_value=glossary_entries
+    )
+    dm.build_analysis_glossary_import_preview = MagicMock(return_value=preview)
+    dm.filter_analysis_glossary_import_candidates = MagicMock(
+        return_value=glossary_entries
     )
     changed_report = QualityRuleMerger.Report(
         added=1,
@@ -707,15 +713,13 @@ def test_import_analysis_term_pool_fills_empty_without_clearing_pool() -> None:
     imported_count = dm.import_analysis_term_pool()
 
     assert imported_count == 3
+    dm.build_analysis_glossary_import_preview.assert_called_once_with(glossary_entries)
+    dm.filter_analysis_glossary_import_candidates.assert_called_once_with(
+        glossary_entries,
+        preview,
+    )
     dm.merge_glossary_incoming.assert_called_once_with(
-        [
-            {
-                "src": "Alice",
-                "dst": "爱丽丝",
-                "info": "女性人名",
-                "case_sensitive": False,
-            }
-        ],
+        glossary_entries,
         merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
         save=False,
     )
@@ -748,6 +752,220 @@ def test_import_analysis_term_pool_aborts_when_project_changed() -> None:
     dm.build_analysis_glossary_from_candidates.assert_not_called()
     dm.merge_glossary_incoming.assert_not_called()
     dm.batch_service.update_batch.assert_not_called()
+
+
+def test_filter_analysis_glossary_import_candidates_drops_low_hit_new_entry() -> None:
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "Alice appears once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is True
+    assert preview.statistics_results["Alice|0"].matched_item_count == 1
+    assert filtered == []
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_existing_fill_even_if_low_hit() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(
+        return_value=[
+            {
+                "src": "HP",
+                "dst": "",
+                "info": "",
+                "case_sensitive": False,
+            }
+        ]
+    )
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "hp only once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "hp",
+            "dst": "生命值",
+            "info": "角色属性",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is False
+    assert preview.entries[0].incoming_indexes == (0,)
+    assert preview.statistics_results["HP|0"].matched_item_count == 1
+    assert filtered == glossary_entries
+
+
+def test_filter_analysis_glossary_import_candidates_drops_new_short_entry_when_existing_parent_has_same_hit_count() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳",
+                "dst": "Saint Erin",
+                "info": "",
+                "case_sensitive": False,
+            }
+        ]
+    )
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳登场",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "src": "圣女艾琳祈祷",
+                "dst": "",
+                "status": Base.ProjectStatus.PROCESSED,
+            },
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "艾琳",
+            "dst": "Erin",
+            "info": "",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert preview.statistics_results["艾琳|0"].matched_item_count == 2
+    assert preview.statistics_results["圣女艾琳|0"].matched_item_count == 2
+    assert preview.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+    assert filtered == []
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_only_longest_new_entry_when_hit_count_matches() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳登场",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "src": "圣女艾琳祈祷",
+                "dst": "",
+                "status": Base.ProjectStatus.ERROR,
+            },
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "艾琳",
+            "dst": "Erin",
+            "info": "",
+            "case_sensitive": False,
+        },
+        {
+            "src": "圣女艾琳",
+            "dst": "Saint Erin",
+            "info": "",
+            "case_sensitive": False,
+        },
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert preview.statistics_results["艾琳|0"].matched_item_count == 2
+    assert preview.statistics_results["圣女艾琳|0"].matched_item_count == 2
+    assert preview.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+    assert filtered == [glossary_entries[1]]
+
+
+def test_filter_analysis_glossary_import_candidates_drops_all_collapsed_incoming_indexes() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "Alice appears once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "",
+            "case_sensitive": False,
+        },
+        {
+            "src": " alice ",
+            "dst": "",
+            "info": "女性人名",
+            "case_sensitive": False,
+        },
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].incoming_indexes == (0, 1)
+    assert preview.statistics_results["Alice|0"].matched_item_count == 1
+    assert filtered == []
 
 
 def test_clear_analysis_progress_also_clears_new_analysis_tables() -> None:

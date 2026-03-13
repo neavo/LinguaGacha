@@ -22,8 +22,7 @@ from frontend.Quality.TextPreserveEditPanel import TextPreserveEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleStatistics import RuleStatInput
-from module.QualityRule.QualityRuleStatistics import RuleStatMode
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.SettingCard import SettingCard
 
 
@@ -102,18 +101,18 @@ class TextPreservePage(QualityRulePageBase):
 
     def build_statistics_inputs(
         self, entries: list[dict[str, Any]] | None = None
-    ) -> list[RuleStatInput]:
-        rules: list[RuleStatInput] = []
+    ) -> list[QualityRuleStatistics.RuleStatInput]:
+        rules: list[QualityRuleStatistics.RuleStatInput] = []
         entries_source = self.entries if entries is None else entries
         for entry in entries_source:
             src = str(entry.get("src", "")).strip()
             if src == "":
                 continue
             rules.append(
-                RuleStatInput(
+                QualityRuleStatistics.RuleStatInput(
                     key=self.build_statistics_entry_key(entry),
                     pattern=src,
-                    mode=RuleStatMode.TEXT_PRESERVE,
+                    mode=QualityRuleStatistics.RuleStatMode.TEXT_PRESERVE,
                     regex=True,
                 )
             )
