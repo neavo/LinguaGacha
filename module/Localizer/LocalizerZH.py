@@ -116,6 +116,7 @@ class LocalizerZH:
     app_settings_page: str = "应用设置"
     app_model_page: str = "模型管理"
     app_translation_page: str = "翻译"
+    app_analysis_page: str = "分析"
     app_proofreading_page: str = "校对"
     app_workbench_page: str = "工作台"
     app_expert_settings_page: str = "专家设置"
@@ -125,8 +126,8 @@ class LocalizerZH:
     app_pre_translation_replacement_page: str = "译前替换"
     app_post_translation_replacement_page: str = "译后替换"
     app_custom_prompt_navigation_item: str = "自定义提示词"
-    app_custom_prompt_zh_page: str = "中文提示词"
-    app_custom_prompt_en_page: str = "英文提示词"
+    app_analysis_prompt_page: str = "分析提示词"
+    app_translation_prompt_page: str = "翻译提示词"
     app_laboratory_page: str = "实验室"
     app_treasure_chest_page: str = "百宝箱"
 
@@ -183,7 +184,7 @@ class LocalizerZH:
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"
-    engine_task_done: str = "所有数据均已处理，任务已结束 …"
+    engine_task_done: str = "任务已完成 …"
     engine_task_fail: str = "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"
@@ -389,6 +390,36 @@ class LocalizerZH:
     translation_page_alert_reset_all: str = "确定要重置所有条目吗，重置后可以继续翻译 …?"
     translation_page_reset_tooltip: str = "点击可选择重置失败条目或全部条目"
     translation_page_timer: str = "请设置延迟启动前要等待的时间"
+
+    # 分析
+    analysis_page_status_idle: str = "无任务"
+    analysis_page_status_analyzing: str = "分析中"
+    analysis_page_status_stopping: str = "停止中"
+    analysis_page_indeterminate_stopping: str = "正在停止分析任务 …"
+    analysis_page_card_time: str = "累计时间"
+    analysis_page_card_remaining_time: str = "剩余时间"
+    analysis_page_card_time_tooltip: str = "点击切换 剩余/累计"
+    analysis_page_card_line_processed: str = "分析成功"
+    analysis_page_card_line_error: str = "分析失败"
+    analysis_page_card_line_error_tooltip: str = "一般是网络故障或者接口问题导致"
+    analysis_page_card_remaining_line: str = "剩余行数"
+    analysis_page_card_speed: str = "平均速度"
+    analysis_page_card_token_input: str = "输入令牌"
+    analysis_page_card_token_output: str = "输出令牌"
+    analysis_page_card_token_tooltip: str = "点击切换 输入/输出"
+    analysis_page_card_task: str = "实时任务数"
+    analysis_page_alert_pause: str = "停止的分析任务可以随时继续执行，是否确定停止任务 …?"
+    analysis_page_continue: str = "继续"
+    analysis_page_reset_failed: str = "重置失败条目"
+    analysis_page_reset_all: str = "重置全部进度"
+    analysis_page_action_import: str = "导入到术语表"
+    analysis_page_import_success: str = "导入成功，新增 {COUNT} 条 …"
+    analysis_page_alert_reset_failed: str = "确定要重置失败条目吗，重置后可以继续分析 …?"
+    analysis_page_alert_reset_all: str = "确定要重置全部分析进度吗，重置后将重新分析全部文本 …?"
+    analysis_page_reset_tooltip: str = "点击可选择重置失败条目或全部分析进度"
+    analysis_task_source_texts: str = "分析输入："
+    analysis_task_extracted_terms: str = "提取术语："
+    analysis_task_no_terms: str = "未提取到术语"
 
     # 校对
     proofreading_page_filter: str = "筛选"
@@ -628,22 +659,22 @@ class LocalizerZH:
     post_translation_replacement_page_head_title: str = "译后替换"
     post_translation_replacement_page_head_content: str = "在翻译完成后，将译文中匹配的部分替换为指定的文本，执行的顺序为从上到下依次替换"
 
-    # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "自定义中文提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_zh_page_head_desc: str = (
+    # 自定义提示词 - 翻译
+    translation_prompt_page_head: str = "自定义翻译提示词（不支持 SakuraLLM 模型）"
+    translation_prompt_page_head_desc: str = (
         "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
         "<br>"
-        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有打开本页开关后，才会在翻译任务中使用这里的正文"
         ""
         ""
     )
 
-    # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "自定义英文提示词（不支持 SakuraLLM 模型）"
-    custom_prompt_en_page_head_desc: str = (
-        "通过自定义提示词追加故事设定、行文风格等额外翻译要求"
+    # 自定义提示词 - 分析
+    analysis_prompt_page_head: str = "自定义分析提示词"
+    analysis_prompt_page_head_desc: str = (
+        "通过自定义提示词调整术语分析时的抽取口径和输出要求"
         "<br>"
-        "注意：前缀与后缀部分固定不可修改，只有 <font color='darkgoldenrod'><b>译文语言设置为非中文时</b></font> 才会使用本页中的自定义提示词"
+        "注意：前缀与后缀部分固定不可修改，只有打开本页开关后，才会在分析任务中使用这里的正文"
         ""
         ""
     )

@@ -1,11 +1,127 @@
-from module.QualityRule.QualityRuleStatistics import LiteralRuleTask
-from module.QualityRule.QualityRuleStatistics import RegexRuleTask
-from module.QualityRule.QualityRuleStatistics import RuleStatInput
-from module.QualityRule.QualityRuleStatistics import RuleStatMode
-from module.QualityRule.QualityRuleStatistics import build_aho_nodes
-from module.QualityRule.QualityRuleStatistics import count_literal_bucket_hit_items
-from module.QualityRule.QualityRuleStatistics import count_regex_bucket_hit_items
-from module.QualityRule.QualityRuleStatistics import count_rule_occurrences
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
+
+
+LiteralRuleTask = QualityRuleStatistics.LiteralRuleTask
+RegexRuleTask = QualityRuleStatistics.RegexRuleTask
+RuleStatInput = QualityRuleStatistics.RuleStatInput
+RuleStatMode = QualityRuleStatistics.RuleStatMode
+build_aho_nodes = QualityRuleStatistics.build_aho_nodes
+build_glossary_rule_stat_inputs = QualityRuleStatistics.build_glossary_rule_stat_inputs
+build_glossary_rule_stat_key = QualityRuleStatistics.build_glossary_rule_stat_key
+build_rule_statistics_snapshot = QualityRuleStatistics.build_rule_statistics_snapshot
+build_subset_relation_candidates = (
+    QualityRuleStatistics.build_subset_relation_candidates
+)
+build_subset_relation_map = QualityRuleStatistics.build_subset_relation_map
+count_literal_bucket_hit_items = QualityRuleStatistics.count_literal_bucket_hit_items
+count_regex_bucket_hit_items = QualityRuleStatistics.count_regex_bucket_hit_items
+count_rule_occurrences = QualityRuleStatistics.count_rule_occurrences
+
+
+def test_build_glossary_rule_stat_key_and_inputs_skip_empty_entries() -> None:
+    entries = [
+        {"src": "  HP  ", "case_sensitive": False},
+        {"src": "", "case_sensitive": True},
+    ]
+
+    assert build_glossary_rule_stat_key(entries[0]) == "HP|0"
+    assert build_glossary_rule_stat_key(entries[1]) == ""
+    assert build_glossary_rule_stat_inputs(entries) == [
+        RuleStatInput(
+            key="HP|0",
+            pattern="HP",
+            mode=RuleStatMode.GLOSSARY,
+            case_sensitive=False,
+        )
+    ]
+
+
+def test_build_subset_relation_candidates_skips_empty_key_or_src() -> None:
+    entries = [
+        {"src": "艾琳", "case_sensitive": False},
+        {"src": "   ", "case_sensitive": False},
+    ]
+
+    assert build_subset_relation_candidates(
+        entries,
+        key_builder=build_glossary_rule_stat_key,
+    ) == (("艾琳|0", "艾琳"),)
+
+
+def test_build_subset_relation_map_dedupes_same_parent_text() -> None:
+    result = build_subset_relation_map(
+        (
+            ("child|0", "艾琳"),
+            ("parent_a|0", "圣女艾琳"),
+            ("parent_b|1", "圣女艾琳"),
+        )
+    )
+
+    assert result == {"child|0": ("圣女艾琳",)}
+
+
+def test_build_rule_statistics_snapshot_collects_results_and_relations() -> None:
+    entries = [
+        {"src": "艾琳", "case_sensitive": False},
+        {"src": "圣女艾琳", "case_sensitive": False},
+    ]
+
+    snapshot = build_rule_statistics_snapshot(
+        rules=build_glossary_rule_stat_inputs(entries),
+        src_texts=("圣女艾琳登场", "圣女艾琳祈祷"),
+        dst_texts=(),
+        relation_candidates=build_subset_relation_candidates(
+            entries,
+            key_builder=build_glossary_rule_stat_key,
+        ),
+    )
+
+    assert snapshot.results["艾琳|0"].matched_item_count == 2
+    assert snapshot.results["圣女艾琳|0"].matched_item_count == 2
+    assert snapshot.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+
+
+def test_build_rule_statistics_snapshot_only_returns_target_subset_relations() -> None:
+    entries = [
+        {"src": "艾琳", "case_sensitive": False},
+        {"src": "圣女艾琳", "case_sensitive": False},
+    ]
+    relation_candidates = build_subset_relation_candidates(
+        entries,
+        key_builder=build_glossary_rule_stat_key,
+    )
+
+    snapshot = build_rule_statistics_snapshot(
+        rules=build_glossary_rule_stat_inputs(entries),
+        src_texts=("圣女艾琳登场",),
+        dst_texts=(),
+        relation_candidates=relation_candidates,
+        relation_target_candidates=(("艾琳|0", "艾琳"),),
+    )
+
+    assert snapshot.results["艾琳|0"].matched_item_count == 1
+    assert snapshot.results["圣女艾琳|0"].matched_item_count == 1
+    assert snapshot.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+
+
+def test_build_rule_statistics_snapshot_returns_empty_when_stopped() -> None:
+    snapshot = build_rule_statistics_snapshot(
+        rules=(
+            RuleStatInput(
+                key="HP|0",
+                pattern="HP",
+                mode=RuleStatMode.GLOSSARY,
+                case_sensitive=False,
+            ),
+        ),
+        src_texts=("HP",),
+        dst_texts=(),
+        relation_candidates=tuple(),
+        should_stop=lambda: True,
+    )
+
+    assert snapshot.results == {}
+    assert snapshot.subset_parents == {}
 
 
 def test_count_glossary_case_sensitive_and_insensitive() -> None:

@@ -1,10 +1,8 @@
 import itertools
-import re
 import threading
 import time
 from functools import lru_cache
 from typing import Callable
-from typing import ClassVar
 
 import rich
 from rich import box
@@ -23,16 +21,13 @@ from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseChecker import ResponseChecker
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.TextProcessor import TextProcessor
 
 
 class TranslatorTask(Base):
-    WHY_TAG_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
-        r"<why>(.*?)</why>", re.DOTALL
-    )
-
     def __init__(
         self,
         config: Config,
@@ -152,12 +147,11 @@ class TranslatorTask(Base):
         request_timeout = bool(prepared.get("request_timeout", False))
 
         # 先剥离 <why>，避免 JSONLINE 解码受到干扰
-        response_result, why_text = self.extract_why_from_response(response_result)
-        if why_text:
-            response_think = (
-                response_think + "\n" + why_text if response_think else why_text
-            )
-        response_think = self.normalize_blank_lines(response_think).strip()
+        response_result, why_text = ResponseCleaner.extract_why_from_response(
+            response_result
+        )
+        response_think = ResponseCleaner.merge_text_blocks(response_think, why_text)
+        response_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
 
         if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
@@ -259,38 +253,6 @@ class TranslatorTask(Base):
             "output_tokens": 0,
             "glossaries": [],
         }
-
-    @classmethod
-    def extract_why_from_response(cls, response_result: str) -> tuple[str, str]:
-        if response_result == "":
-            return response_result, ""
-
-        matches = cls.WHY_TAG_PATTERN.findall(response_result)
-        if not matches:
-            return response_result, ""
-
-        cleaned = cls.WHY_TAG_PATTERN.sub("", response_result)
-        why_text = "\n".join(v.strip() for v in matches if v.strip())
-        return cleaned, why_text
-
-    @classmethod
-    def normalize_blank_lines(cls, text: str) -> str:
-        if text == "":
-            return text
-
-        lines = text.splitlines()
-        normalized: list[str] = []
-        prev_empty = False
-        for line in lines:
-            if line.strip() == "":
-                if not prev_empty:
-                    normalized.append("")
-                prev_empty = True
-                continue
-            normalized.append(line)
-            prev_empty = False
-
-        return "\n".join(normalized)
 
     def request(
         self,

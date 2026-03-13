@@ -26,12 +26,21 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.PromptResourceResolver import PromptResourceResolver
 
 # QT 日志黑名单
 QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
     "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
 )
+
+
+def resolve_app_dir() -> str:
+    """统一解析应用根目录，避免不同启动方式下 sys.argv[0] 漂移。"""
+
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def excepthook(
@@ -135,7 +144,7 @@ if __name__ == "__main__":
     )
 
     # 设置工作目录
-    app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    app_dir = resolve_app_dir()
     sys.path.append(app_dir)
 
     # 检测只读环境（AppImage, macOS .app bundle）
@@ -171,6 +180,9 @@ if __name__ == "__main__":
 
     # 启动早期先做更新残留清理，确保脚本异常中断后仍可自愈
     VersionManager.cleanup_update_temp_on_startup()
+
+    # 旧版用户提示词预设只迁移一次；目录不存在时直接跳过，保持启动幂等。
+    PromptResourceResolver.migrate_legacy_translation_user_presets()
 
     # 打印日志
     LogManager.get().info(f"LinguaGacha {version}")

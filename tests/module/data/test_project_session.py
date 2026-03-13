@@ -22,7 +22,7 @@ def test_clear_all_caches_only_clears_cache_fields() -> None:
     session.lg_path = "demo/sample.lg"
     session.meta_cache = {"name": "demo"}
     session.rule_cache = {LGDatabase.RuleType.GLOSSARY: [{"src": "A"}]}
-    session.rule_text_cache = {LGDatabase.RuleType.CUSTOM_PROMPT_EN: "prompt"}
+    session.rule_text_cache = {LGDatabase.RuleType.TRANSLATION_PROMPT: "prompt"}
     session.item_cache = [{"id": 1, "src": "A"}]
     session.item_cache_index = {1: 0}
     session.asset_decompress_cache["a.txt"] = b"data"

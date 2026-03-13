@@ -17,6 +17,46 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 data_manager_module = importlib.import_module("module.Data.DataManager")
+ANALYSIS_TIME = "2026-03-10T10:00:00"
+
+
+def build_analysis_candidate_entry(
+    *,
+    src: str,
+    dst_votes: dict[str, int],
+    info_votes: dict[str, int],
+    observation_count: int,
+    first_seen_at: str = ANALYSIS_TIME,
+    last_seen_at: str = ANALYSIS_TIME,
+    case_sensitive: bool = False,
+) -> dict[str, Any]:
+    """统一构造分析候选项，避免测试里反复铺一长串固定字段。"""
+    return {
+        "src": src,
+        "dst_votes": dst_votes,
+        "info_votes": info_votes,
+        "observation_count": observation_count,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": last_seen_at,
+        "case_sensitive": case_sensitive,
+    }
+
+
+def build_analysis_progress_snapshot(**overrides: Any) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "start_time": 0.0,
+        "time": 0.0,
+        "total_line": 0,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "added_glossary": 0,
+    }
+    snapshot.update(overrides)
+    return snapshot
 
 
 def build_manager(*, loaded: bool = True) -> Any:
@@ -28,6 +68,17 @@ def build_manager(*, loaded: bool = True) -> Any:
             open=MagicMock(),
             close=MagicMock(),
             connection=MagicMock(return_value=contextlib.nullcontext(conn)),
+            get_analysis_item_checkpoints=MagicMock(return_value=[]),
+            upsert_analysis_item_checkpoints=MagicMock(),
+            delete_analysis_item_checkpoints=MagicMock(return_value=0),
+            get_analysis_task_observations=MagicMock(return_value=[]),
+            insert_analysis_task_observations=MagicMock(return_value=0),
+            clear_analysis_task_observations=MagicMock(),
+            get_analysis_candidate_aggregates=MagicMock(return_value=[]),
+            get_analysis_candidate_aggregates_by_srcs=MagicMock(return_value=[]),
+            upsert_analysis_candidate_aggregates=MagicMock(),
+            upsert_meta_entries=MagicMock(),
+            clear_analysis_candidate_aggregates=MagicMock(),
             add_asset=MagicMock(return_value=1),
             get_items_by_file_path=MagicMock(return_value=[]),
             delete_items_by_file_path=MagicMock(return_value=0),
@@ -43,6 +94,7 @@ def build_manager(*, loaded: bool = True) -> Any:
         db=db,
         lg_path="/workspace/demo/project.lg" if loaded else None,
         state_lock=threading.RLock(),
+        meta_cache={},
         asset_decompress_cache={},
     )
     dm.state_lock = dm.session.state_lock
@@ -272,6 +324,729 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_rule_meta_keys() -
     }
 
 
+def test_get_analysis_item_checkpoints_normalizes_invalid_entries() -> None:
+    dm = build_manager()
+    dm.session.db.get_analysis_item_checkpoints.return_value = [
+        {
+            "item_id": 1,
+            "source_hash": "hash-1",
+            "status": Base.ProjectStatus.PROCESSED.value,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 0,
+        },
+        {
+            "item_id": 2,
+            "source_hash": "",
+            "status": Base.ProjectStatus.ERROR.value,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 1,
+        },
+        "broken",
+    ]
+
+    result = dm.get_analysis_item_checkpoints()
+
+    assert result == {
+        1: {
+            "item_id": 1,
+            "source_hash": "hash-1",
+            "status": Base.ProjectStatus.PROCESSED,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 0,
+        }
+    }
+
+
+def test_get_analysis_candidate_aggregate_normalizes_invalid_entries() -> None:
+    dm = build_manager()
+    dm.session.db.get_analysis_candidate_aggregates.return_value = [
+        {
+            "src": "HP",
+            "dst_votes": {"生命值": 2, "": 0},
+            "info_votes": {"属性": 1},
+            "observation_count": 2,
+            "first_seen_at": "2026-03-10T10:00:00",
+            "last_seen_at": "2026-03-10T10:01:00",
+            "case_sensitive": False,
+        },
+        {
+            "src": "",
+            "dst_votes": {"无效": 1},
+            "info_votes": {},
+            "observation_count": 1,
+            "first_seen_at": "2026-03-10T10:00:00",
+            "last_seen_at": "2026-03-10T10:01:00",
+            "case_sensitive": False,
+        },
+    ]
+
+    result = dm.get_analysis_candidate_aggregate()
+
+    assert result == {
+        "HP": {
+            "src": "HP",
+            "dst_votes": {"生命值": 2},
+            "info_votes": {"属性": 1},
+            "observation_count": 2,
+            "first_seen_at": "2026-03-10T10:00:00",
+            "last_seen_at": "2026-03-10T10:01:00",
+            "case_sensitive": False,
+            "first_seen_index": 0,
+        }
+    }
+
+
+def test_commit_analysis_task_result_writes_checkpoints_and_updates_aggregate() -> None:
+    dm = build_manager()
+    dm.session.db.get_analysis_task_observations.return_value = []
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.return_value = []
+    dm.session.db.insert_analysis_task_observations = MagicMock(return_value=1)
+
+    inserted = dm.commit_analysis_task_result(
+        task_fingerprint="task-1",
+        checkpoints=[
+            {
+                "item_id": 1,
+                "source_hash": "hash-1",
+                "status": Base.ProjectStatus.PROCESSED,
+                "updated_at": "2026-03-10T10:00:00",
+                "error_count": 0,
+            }
+        ],
+        glossary_entries=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            },
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            },
+        ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            start_time=1.0,
+            time=2.0,
+            total_line=3,
+            line=1,
+            processed_line=1,
+            total_tokens=9,
+            total_input_tokens=4,
+            total_output_tokens=5,
+            added_glossary=2,
+        ),
+    )
+
+    assert inserted == 1
+    dm.session.db.insert_analysis_task_observations.assert_called_once()
+    dm.session.db.get_analysis_candidate_aggregates.assert_not_called()
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.assert_called_once()
+    dm.session.db.upsert_analysis_item_checkpoints.assert_called_once()
+    dm.session.db.upsert_analysis_candidate_aggregates.assert_called_once()
+    dm.session.db.upsert_meta_entries.assert_called_once()
+    aggregate_rows = dm.session.db.upsert_analysis_candidate_aggregates.call_args.args[
+        0
+    ]
+    assert aggregate_rows == [
+        {
+            "src": "Alice",
+            "dst_votes": {"爱丽丝": 1},
+            "info_votes": {"女性人名": 1},
+            "observation_count": 1,
+            "first_seen_at": aggregate_rows[0]["first_seen_at"],
+            "last_seen_at": aggregate_rows[0]["last_seen_at"],
+            "case_sensitive": False,
+        }
+    ]
+    progress_meta = dm.session.db.upsert_meta_entries.call_args.args[0]
+    assert progress_meta["analysis_extras"]["added_glossary"] == 3
+    assert dm.session.meta_cache["analysis_extras"]["added_glossary"] == 3
+
+
+def test_commit_analysis_task_result_skips_aggregate_io_when_no_new_observation() -> (
+    None
+):
+    dm = build_manager()
+    dm.session.db.get_analysis_task_observations.return_value = [
+        {
+            "task_fingerprint": "task-1",
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+            "created_at": "2026-03-10T10:00:00",
+        }
+    ]
+
+    inserted = dm.commit_analysis_task_result(
+        task_fingerprint="task-1",
+        checkpoints=[
+            {
+                "item_id": 1,
+                "source_hash": "hash-1",
+                "status": Base.ProjectStatus.PROCESSED,
+                "updated_at": "2026-03-10T10:00:00",
+                "error_count": 0,
+            }
+        ],
+        glossary_entries=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            }
+        ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            processed_line=1,
+            line=1,
+        ),
+    )
+
+    assert inserted == 0
+    dm.session.db.get_analysis_candidate_aggregates_by_srcs.assert_not_called()
+    dm.session.db.upsert_analysis_candidate_aggregates.assert_not_called()
+    dm.session.db.upsert_analysis_item_checkpoints.assert_called_once()
+    dm.session.db.upsert_meta_entries.assert_called_once()
+
+
+def test_update_analysis_task_error_persists_progress_snapshot_in_same_transaction() -> (
+    None
+):
+    dm = build_manager()
+    dm.session.db.get_analysis_item_checkpoints.return_value = [
+        {
+            "item_id": 1,
+            "source_hash": "hash-1",
+            "status": Base.ProjectStatus.ERROR.value,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 2,
+        }
+    ]
+
+    updated = dm.update_analysis_task_error(
+        [
+            {
+                "item_id": 1,
+                "source_hash": "hash-1",
+                "status": Base.ProjectStatus.ERROR,
+                "error_count": 0,
+            }
+        ],
+        progress_snapshot=build_analysis_progress_snapshot(
+            processed_line=4,
+            error_line=2,
+            line=6,
+            total_tokens=11,
+        ),
+    )
+
+    error_rows = dm.session.db.upsert_analysis_item_checkpoints.call_args.args[0]
+    assert error_rows[0]["error_count"] == 3
+    dm.session.db.upsert_meta_entries.assert_called_once()
+    assert updated[1]["error_count"] == 3
+    assert updated[1]["status"] == Base.ProjectStatus.ERROR
+
+
+def test_merge_analysis_term_votes_merges_counts_into_project_pool() -> None:
+    dm = build_manager()
+    dm.get_analysis_candidate_aggregate = MagicMock(
+        return_value={
+            "HP": {
+                "src": "HP",
+                "dst_votes": {"生命值": 2},
+                "info_votes": {"属性": 1},
+                "observation_count": 2,
+                "first_seen_at": "2026-03-10T10:00:00",
+                "last_seen_at": "2026-03-10T10:00:00",
+                "case_sensitive": False,
+                "first_seen_index": 0,
+            }
+        }
+    )
+    dm.upsert_analysis_candidate_aggregate = MagicMock(side_effect=lambda pool: pool)
+
+    merged = dm.merge_analysis_term_votes(
+        {
+            "HP": {
+                "src": "HP",
+                "dst_votes": {"生命值": 1, "血量": 1},
+                "info_votes": {"属性": 2},
+                "observation_count": 2,
+                "first_seen_at": "2026-03-10T10:02:00",
+                "last_seen_at": "2026-03-10T10:02:00",
+                "case_sensitive": False,
+            },
+            "Alice": {
+                "src": "Alice",
+                "dst_votes": {"爱丽丝": 1},
+                "info_votes": {"女性人名": 1},
+                "observation_count": 1,
+                "first_seen_at": "2026-03-10T10:03:00",
+                "last_seen_at": "2026-03-10T10:03:00",
+                "case_sensitive": False,
+            },
+        }
+    )
+
+    assert merged["HP"]["dst_votes"] == {"生命值": 3, "血量": 1}
+    assert merged["HP"]["info_votes"] == {"属性": 3}
+    assert merged["HP"]["observation_count"] == 4
+    assert merged["Alice"]["dst_votes"] == {"爱丽丝": 1}
+    dm.upsert_analysis_candidate_aggregate.assert_called_once()
+
+
+def test_build_analysis_glossary_from_candidates_votes_and_filters() -> None:
+    dm = build_manager()
+    dm.get_analysis_candidate_aggregate = MagicMock(
+        return_value={
+            r"\n[7]": build_analysis_candidate_entry(
+                src=r"\n[7]",
+                dst_votes={r"\n[7]": 2},
+                info_votes={"未知性别人名": 2},
+                observation_count=2,
+            ),
+            "Alice": build_analysis_candidate_entry(
+                src="Alice",
+                dst_votes={"爱丽丝": 2, "艾丽斯": 2},
+                info_votes={"女性人名": 1, "其他": 1},
+                observation_count=2,
+            ),
+            "NoInfo": build_analysis_candidate_entry(
+                src="NoInfo",
+                dst_votes={"无标签术语": 1},
+                info_votes={"": 2},
+                observation_count=2,
+            ),
+            "same": build_analysis_candidate_entry(
+                src="same",
+                dst_votes={"same": 1},
+                info_votes={"属性": 1},
+                observation_count=1,
+            ),
+        }
+    )
+
+    result = dm.build_analysis_glossary_from_candidates()
+
+    assert result == [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+        },
+        {
+            "src": r"\n[7]",
+            "dst": r"\n[7]",
+            "info": "未知性别人名",
+            "case_sensitive": False,
+        },
+    ]
+
+
+def test_get_analysis_candidate_count_only_counts_importable_entries() -> None:
+    dm = build_manager()
+    dm.get_analysis_candidate_aggregate = MagicMock(
+        return_value={
+            "Alice": build_analysis_candidate_entry(
+                src="Alice",
+                dst_votes={"爱丽丝": 2},
+                info_votes={"女性人名": 1},
+                observation_count=2,
+            ),
+            "same": build_analysis_candidate_entry(
+                src="same",
+                dst_votes={"same": 2},
+                info_votes={"属性": 1},
+                observation_count=2,
+            ),
+            r"\n[7]": build_analysis_candidate_entry(
+                src=r"\n[7]",
+                dst_votes={r"\n[7]": 2},
+                info_votes={"未知性别人名": 2},
+                observation_count=2,
+            ),
+            "other": build_analysis_candidate_entry(
+                src="OtherEntry",
+                dst_votes={"其它译法": 1},
+                info_votes={"other": 1},
+                observation_count=1,
+            ),
+            "no_info": build_analysis_candidate_entry(
+                src="NoInfoEntry",
+                dst_votes={"无标签术语": 1},
+                info_votes={"": 2},
+                observation_count=2,
+            ),
+            "empty": build_analysis_candidate_entry(
+                src="EmptyDst",
+                dst_votes={},
+                info_votes={"属性": 1},
+                observation_count=1,
+            ),
+        }
+    )
+
+    assert dm.get_analysis_candidate_count() == 2
+
+
+def test_import_analysis_term_pool_fills_empty_without_clearing_pool() -> None:
+    dm = build_manager()
+    dm.get_analysis_candidate_aggregate = MagicMock(
+        return_value={"Alice": {"src": "Alice"}}
+    )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "女性人名",
+            "case_sensitive": False,
+        }
+    ]
+    preview = SimpleNamespace(name="preview")
+    dm.build_analysis_glossary_from_candidates = MagicMock(
+        return_value=glossary_entries
+    )
+    dm.build_analysis_glossary_import_preview = MagicMock(return_value=preview)
+    dm.filter_analysis_glossary_import_candidates = MagicMock(
+        return_value=glossary_entries
+    )
+    changed_report = QualityRuleMerger.Report(
+        added=1,
+        updated=0,
+        filled=2,
+        deduped=0,
+        skipped_empty_src=0,
+        conflicts=(),
+    )
+    dm.merge_glossary_incoming = MagicMock(
+        return_value=([{"src": "Alice", "dst": "爱丽丝"}], changed_report)
+    )
+
+    imported_count = dm.import_analysis_term_pool()
+
+    assert imported_count == 3
+    dm.build_analysis_glossary_import_preview.assert_called_once_with(glossary_entries)
+    dm.filter_analysis_glossary_import_candidates.assert_called_once_with(
+        glossary_entries,
+        preview,
+    )
+    dm.merge_glossary_incoming.assert_called_once_with(
+        glossary_entries,
+        merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+        save=False,
+    )
+    dm.batch_service.update_batch.assert_called_once_with(
+        items=None,
+        rules={LGDatabase.RuleType.GLOSSARY: [{"src": "Alice", "dst": "爱丽丝"}]},
+        meta=None,
+    )
+
+
+def test_import_analysis_term_pool_aborts_when_project_changed() -> None:
+    dm = build_manager()
+    dm.build_analysis_glossary_from_candidates = MagicMock(
+        return_value=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            }
+        ]
+    )
+    dm.merge_glossary_incoming = MagicMock()
+
+    imported_count = dm.import_analysis_term_pool(
+        expected_lg_path="/workspace/demo/other-project.lg"
+    )
+
+    assert imported_count is None
+    dm.build_analysis_glossary_from_candidates.assert_not_called()
+    dm.merge_glossary_incoming.assert_not_called()
+    dm.batch_service.update_batch.assert_not_called()
+
+
+def test_filter_analysis_glossary_import_candidates_drops_low_hit_new_entry() -> None:
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "Alice appears once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is True
+    assert preview.statistics_results["Alice|0"].matched_item_count == 1
+    assert filtered == []
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_control_code_self_mapping_even_if_low_hit() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": r"角色\n[7]只出现一次",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": r"\n[7]",
+            "dst": r"\n[7]",
+            "info": "未知性别人名",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is True
+    assert preview.statistics_results[r"\n[7]|0"].matched_item_count == 1
+    assert filtered == glossary_entries
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_existing_fill_even_if_low_hit() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(
+        return_value=[
+            {
+                "src": "HP",
+                "dst": "",
+                "info": "",
+                "case_sensitive": False,
+            }
+        ]
+    )
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "hp only once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "hp",
+            "dst": "生命值",
+            "info": "角色属性",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is False
+    assert preview.entries[0].incoming_indexes == (0,)
+    assert preview.statistics_results["HP|0"].matched_item_count == 1
+    assert filtered == glossary_entries
+
+
+def test_filter_analysis_glossary_import_candidates_drops_new_short_entry_when_existing_parent_has_same_hit_count() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳",
+                "dst": "Saint Erin",
+                "info": "",
+                "case_sensitive": False,
+            }
+        ]
+    )
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳登场",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "src": "圣女艾琳祈祷",
+                "dst": "",
+                "status": Base.ProjectStatus.PROCESSED,
+            },
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "艾琳",
+            "dst": "Erin",
+            "info": "",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert preview.statistics_results["艾琳|0"].matched_item_count == 2
+    assert preview.statistics_results["圣女艾琳|0"].matched_item_count == 2
+    assert preview.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+    assert filtered == []
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_only_longest_new_entry_when_hit_count_matches() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "圣女艾琳登场",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "src": "圣女艾琳祈祷",
+                "dst": "",
+                "status": Base.ProjectStatus.ERROR,
+            },
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "艾琳",
+            "dst": "Erin",
+            "info": "",
+            "case_sensitive": False,
+        },
+        {
+            "src": "圣女艾琳",
+            "dst": "Saint Erin",
+            "info": "",
+            "case_sensitive": False,
+        },
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert preview.statistics_results["艾琳|0"].matched_item_count == 2
+    assert preview.statistics_results["圣女艾琳|0"].matched_item_count == 2
+    assert preview.subset_parents == {"艾琳|0": ("圣女艾琳",)}
+    assert filtered == [glossary_entries[1]]
+
+
+def test_filter_analysis_glossary_import_candidates_drops_all_collapsed_incoming_indexes() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": "Alice appears once",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": "Alice",
+            "dst": "爱丽丝",
+            "info": "",
+            "case_sensitive": False,
+        },
+        {
+            "src": " alice ",
+            "dst": "",
+            "info": "女性人名",
+            "case_sensitive": False,
+        },
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].incoming_indexes == (0, 1)
+    assert preview.statistics_results["Alice|0"].matched_item_count == 1
+    assert filtered == []
+
+
+def test_clear_analysis_progress_also_clears_new_analysis_tables() -> None:
+    dm = build_manager()
+    dm.set_analysis_extras = MagicMock()
+    dm.set_meta = MagicMock()
+
+    dm.clear_analysis_progress()
+
+    dm.session.db.delete_analysis_item_checkpoints.assert_called_once()
+    dm.session.db.clear_analysis_task_observations.assert_called_once()
+    dm.session.db.clear_analysis_candidate_aggregates.assert_called_once()
+    dm.set_analysis_extras.assert_called_once_with({})
+    assert dm.set_meta.call_args_list[0].args == ("analysis_state", {})
+    assert dm.set_meta.call_args_list[1].args == ("analysis_term_pool", {})
+
+
+def test_reset_failed_analysis_checkpoints_only_deletes_error_rows() -> None:
+    dm = build_manager()
+    dm.session.db.delete_analysis_item_checkpoints = MagicMock(return_value=2)
+
+    deleted = dm.reset_failed_analysis_checkpoints()
+
+    assert deleted == 2
+    dm.session.db.delete_analysis_item_checkpoints.assert_called_once_with(
+        status=Base.ProjectStatus.ERROR.value
+    )
+
+
 def test_set_rules_cached_emits_quality_rule_update_only_when_save_true() -> None:
     dm = build_manager()
     dm.emit_quality_rule_update = MagicMock()
@@ -289,13 +1064,13 @@ def test_set_rule_text_cached_always_emits_quality_rule_update() -> None:
     dm = build_manager()
     dm.emit_quality_rule_update = MagicMock()
 
-    dm.set_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt")
+    dm.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt")
 
     dm.rule_service.set_rule_text_cached.assert_called_once_with(
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH, "prompt"
+        LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt"
     )
     dm.emit_quality_rule_update.assert_called_once_with(
-        rule_types=[LGDatabase.RuleType.CUSTOM_PROMPT_ZH]
+        rule_types=[LGDatabase.RuleType.TRANSLATION_PROMPT]
     )
 
 
@@ -811,7 +1586,7 @@ def test_update_file_matches_by_src_and_returns_stats(
     stats = dm.update_file("a.txt", str(new_path))
 
     assert stats == {"matched": 2, "new": 1, "total": 3}
-    conn.commit.assert_called_once()
+    assert conn.commit.call_count == 2
 
     assert "a.txt" not in dm.session.asset_decompress_cache
     dm.item_service.clear_item_cache.assert_called_once()
@@ -1199,7 +1974,7 @@ def test_delete_file_emits_event_and_clears_caches() -> None:
 
     dm.session.db.delete_items_by_file_path.assert_called_once_with("a.txt", conn=conn)
     dm.session.db.delete_asset.assert_called_once_with("a.txt", conn=conn)
-    conn.commit.assert_called_once()
+    assert conn.commit.call_count == 2
 
     dm.item_service.clear_item_cache.assert_called_once()
     assert "a.txt" not in dm.session.asset_decompress_cache
@@ -1262,19 +2037,19 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
     dm.item_service.replace_all_items = MagicMock(return_value=[10, 11])
 
     assert dm.get_rules_cached(LGDatabase.RuleType.GLOSSARY) == [{"src": "A"}]
-    assert dm.get_rule_text_cached(LGDatabase.RuleType.CUSTOM_PROMPT_ZH) == "prompt"
+    assert dm.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
     assert dm.get_glossary() == [{"src": "A"}]
     assert dm.get_text_preserve() == [{"src": "A"}]
     assert dm.get_pre_replacement() == [{"src": "A"}]
     assert dm.get_post_replacement() == [{"src": "A"}]
-    assert dm.get_custom_prompt_zh() == "prompt"
-    assert dm.get_custom_prompt_en() == "prompt"
+    assert dm.get_translation_prompt() == "prompt"
+    assert dm.get_analysis_prompt() == "prompt"
 
     dm.set_text_preserve([{"src": "tp"}])
     dm.set_pre_replacement([{"src": "pre"}])
     dm.set_post_replacement([{"src": "post"}])
-    dm.set_custom_prompt_zh("zh")
-    dm.set_custom_prompt_en("en")
+    dm.set_translation_prompt("translation")
+    dm.set_analysis_prompt("analysis")
 
     assert dm.set_rules_cached.call_args_list[0].args == (
         LGDatabase.RuleType.TEXT_PRESERVE,
@@ -1292,12 +2067,12 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
         True,
     )
     assert dm.set_rule_text_cached.call_args_list[0].args == (
-        LGDatabase.RuleType.CUSTOM_PROMPT_ZH,
-        "zh",
+        LGDatabase.RuleType.TRANSLATION_PROMPT,
+        "translation",
     )
     assert dm.set_rule_text_cached.call_args_list[1].args == (
-        LGDatabase.RuleType.CUSTOM_PROMPT_EN,
-        "en",
+        LGDatabase.RuleType.ANALYSIS_PROMPT,
+        "analysis",
     )
 
     sample_item = Item(src="hello")
@@ -1329,8 +2104,8 @@ def test_rule_prompt_item_and_asset_proxies_delegate_to_services() -> None:
             "",
             False,
         ),
-        ("get_custom_prompt_zh_enable", "custom_prompt_zh_enable", False, 1, True),
-        ("get_custom_prompt_en_enable", "custom_prompt_en_enable", False, 0, False),
+        ("get_translation_prompt_enable", "translation_prompt_enable", False, 1, True),
+        ("get_analysis_prompt_enable", "analysis_prompt_enable", False, 0, False),
     ],
 )
 def test_boolean_meta_getters_normalize_to_bool(
@@ -1359,8 +2134,8 @@ def test_boolean_meta_getters_normalize_to_bool(
             "",
             False,
         ),
-        ("set_custom_prompt_zh_enable", "custom_prompt_zh_enable", 1, True),
-        ("set_custom_prompt_en_enable", "custom_prompt_en_enable", None, False),
+        ("set_translation_prompt_enable", "translation_prompt_enable", 1, True),
+        ("set_analysis_prompt_enable", "analysis_prompt_enable", None, False),
     ],
 )
 def test_boolean_meta_setters_normalize_to_bool(

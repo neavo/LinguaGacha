@@ -33,8 +33,10 @@ def resolve_lucide_rcc_path() -> Path:
     # 与 Config.get_config_path 保持同一基准：优先使用应用根目录下的资源
     app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
     if not app_dir:
-        # 适配 onefile：sys.argv[0] 指向 exe 所在目录
-        app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if getattr(sys, "frozen", False):
+            app_dir = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            app_dir = str(MODULE_ROOT)
 
     rcc_path = Path(app_dir) / "resource" / "lucide_icons.rcc"
     if rcc_path.exists():

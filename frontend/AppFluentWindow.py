@@ -28,6 +28,7 @@ from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
+from frontend.Analysis import AnalysisPage
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
@@ -49,6 +50,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.PromptResourceResolver import PromptResourceResolver
 from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
@@ -60,6 +62,7 @@ ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.COG  # 侧边栏底部：应用设置
 
 ICON_NAV_MODEL: BaseIcon = BaseIcon.SLACK  # 侧边栏：模型管理
 ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
+ICON_NAV_ANALYSIS: BaseIcon = BaseIcon.RADAR  # 侧边栏：术语分析任务
 ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
 ICON_NAV_WORKBENCH: BaseIcon = BaseIcon.LAYOUT_DASHBOARD  # 侧边栏：工作台
 ICON_NAV_CLOSE_PROJECT: BaseIcon = BaseIcon.SQUARE_POWER  # 侧边栏：关闭当前工程
@@ -74,8 +77,10 @@ ICON_NAV_PRE_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_START  # 侧边�
 ICON_NAV_POST_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_END  # 侧边栏：译后替换
 
 ICON_NAV_CUSTOM_PROMPT: BaseIcon = BaseIcon.BOOK_OPEN_CHECK  # 侧边栏：自定义提示词入口
-ICON_NAV_CUSTOM_PROMPT_EN: BaseIcon = BaseIcon.PEN_TOOL  # 自定义提示词：英文页
-ICON_NAV_CUSTOM_PROMPT_ZH: BaseIcon = BaseIcon.PENCIL  # 自定义提示词：中文页
+ICON_NAV_ANALYSIS_PROMPT: BaseIcon = BaseIcon.RADAR  # 自定义提示词：分析页
+ICON_NAV_TRANSLATION_PROMPT: BaseIcon = (
+    ICON_NAV_TRANSLATION  # 自定义提示词：翻译页，与主翻译页保持一致
+)
 
 ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
 ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
@@ -103,7 +108,9 @@ class AppFluentWindow(Base, FluentWindow):
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
-        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        screen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
         if screen is not None:
             desktop = screen.availableGeometry()
             self.move(
@@ -146,7 +153,9 @@ class AppFluentWindow(Base, FluentWindow):
                 {"sub_event": Base.SubEvent.REQUEST},
             ),
         )
-        QTimer.singleShot(0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists())
+        QTimer.singleShot(
+            0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists()
+        )
 
         # 监控运行任务，动态禁用关闭项目按钮
         self.task_monitor_timer = QTimer(self)
@@ -167,7 +176,10 @@ class AppFluentWindow(Base, FluentWindow):
             return
 
         # 检查是否繁忙：Engine 状态非 IDLE 或 有后台任务线程
-        is_busy = Engine.get().get_status() != Base.TaskStatus.IDLE or Engine.get().get_running_task_count() > 0
+        is_busy = (
+            Engine.get().get_status() != Base.TaskStatus.IDLE
+            or Engine.get().get_running_task_count() > 0
+        )
 
         # 状态变更时更新
         if btn_widget.isEnabled() == is_busy:
@@ -200,8 +212,8 @@ class AppFluentWindow(Base, FluentWindow):
             "pre_translation_replacement_page",
             "post_translation_replacement_page",
             "custom_prompt_page",
-            "custom_prompt_zh_page",
-            "custom_prompt_en_page",
+            "analysis_prompt_page",
+            "translation_prompt_page",
             "laboratory_page",
             "tool_box_page",
         ]
@@ -221,7 +233,9 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 设置关闭项目按钮的可见性
         if self.navigationInterface.widget("close_project_button"):
-            self.navigationInterface.widget("close_project_button").setVisible(is_loaded)
+            self.navigationInterface.widget("close_project_button").setVisible(
+                is_loaded
+            )
 
     def is_project_dependent(self, interface: QWidget) -> bool:
         """判断页面是否依赖工程"""
@@ -234,6 +248,7 @@ class AppFluentWindow(Base, FluentWindow):
         """获取项目依赖页面名称列表（用于 switchTo 重定向）"""
         return [
             "translation_page",
+            "analysis_page",
             "proofreading_page",
             "workbench_page",
             "glossary_page",
@@ -242,8 +257,8 @@ class AppFluentWindow(Base, FluentWindow):
             "pre_translation_replacement_page",
             "post_translation_replacement_page",
             "custom_prompt_page",
-            "custom_prompt_zh_page",
-            "custom_prompt_en_page",
+            "analysis_prompt_page",
+            "translation_prompt_page",
             "laboratory_page",
             "tool_box_page",
             "ts_conversion_page",
@@ -251,7 +266,9 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 重写窗口关闭函数
     def closeEvent(self, e: QEvent) -> None:
-        message_box = MessageBox(Localizer.get().warning, Localizer.get().app_close_message_box, self)
+        message_box = MessageBox(
+            Localizer.get().warning, Localizer.get().app_close_message_box, self
+        )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
 
@@ -397,7 +414,9 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 切换语言
     def switch_language(self) -> None:
-        message_box = MessageBox(Localizer.get().alert, Localizer.get().switch_language, self)
+        message_box = MessageBox(
+            Localizer.get().alert, Localizer.get().switch_language, self
+        )
         message_box.yesButton.setText("中文")
         message_box.cancelButton.setText("English")
 
@@ -445,7 +464,9 @@ class AppFluentWindow(Base, FluentWindow):
         status = VersionManager.get().get_status()
         if status == VersionManager.Status.NEW_VERSION:
             # 更新 UI
-            self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", ""))
+            self.home_page_widget.setName(
+                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
+            )
 
             # 触发下载事件
             self.emit(
@@ -471,7 +492,9 @@ class AppFluentWindow(Base, FluentWindow):
         elif status == VersionManager.Status.APPLYING:
             pass
         elif status == VersionManager.Status.FAILED:
-            self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", ""))
+            self.home_page_widget.setName(
+                Localizer.get().app_new_version_update.replace("{PERCENT}", "")
+            )
             self.emit(
                 Base.Event.APP_UPDATE_DOWNLOAD,
                 {"sub_event": Base.SubEvent.REQUEST},
@@ -529,7 +552,11 @@ class AppFluentWindow(Base, FluentWindow):
     def app_update_download_update(self, event: Base.Event, data: dict) -> None:
         total_size: int = data.get("total_size", 0)
         downloaded_size: int = data.get("downloaded_size", 0)
-        self.home_page_widget.setName(Localizer.get().app_new_version_update.replace("{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%"))
+        self.home_page_widget.setName(
+            Localizer.get().app_new_version_update.replace(
+                "{PERCENT}", f"{downloaded_size / max(1, total_size) * 100:.2f}%"
+            )
+        )
 
     # 开始添加页面
     def add_pages(self) -> None:
@@ -555,7 +582,9 @@ class AppFluentWindow(Base, FluentWindow):
         self.stackedWidget.addWidget(self.project_page)
 
         # 主题切换按钮
-        theme_navigation_button = NavigationPushButton(ICON_NAV_THEME.qicon(), Localizer.get().app_theme_btn, False)
+        theme_navigation_button = NavigationPushButton(
+            ICON_NAV_THEME.qicon(), Localizer.get().app_theme_btn, False
+        )
         self.navigationInterface.addWidget(
             routeKey="theme_navigation_button",
             widget=theme_navigation_button,
@@ -564,7 +593,9 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 语言切换按钮
-        language_navigation_button = NavigationPushButton(ICON_NAV_LANGUAGE.qicon(), Localizer.get().app_language_btn, False)
+        language_navigation_button = NavigationPushButton(
+            ICON_NAV_LANGUAGE.qicon(), Localizer.get().app_language_btn, False
+        )
         self.navigationInterface.addWidget(
             routeKey="language_navigation_button",
             widget=language_navigation_button,
@@ -619,6 +650,15 @@ class AppFluentWindow(Base, FluentWindow):
             self.translation_page,
             ICON_NAV_TRANSLATION.qicon(),
             Localizer.get().app_translation_page,
+            NavigationItemPosition.SCROLL,
+        )
+
+        # 术语分析任务
+        self.analysis_page = AnalysisPage("analysis_page", self)
+        self.addSubInterface(
+            self.analysis_page,
+            ICON_NAV_ANALYSIS.qicon(),
+            Localizer.get().app_analysis_page,
             NavigationItemPosition.SCROLL,
         )
 
@@ -731,32 +771,26 @@ class AppFluentWindow(Base, FluentWindow):
             Localizer.get().app_custom_prompt_navigation_item,
             NavigationItemPosition.SCROLL,
         )
-        if Localizer.get_app_language() == BaseLanguage.Enum.EN:
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
-                Localizer.get().app_custom_prompt_en_page,
-                parent=self.custom_prompt_page,
-            )
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
-                Localizer.get().app_custom_prompt_zh_page,
-                parent=self.custom_prompt_page,
-            )
-        else:
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_zh_page", self, BaseLanguage.Enum.ZH),
-                ICON_NAV_CUSTOM_PROMPT_ZH.qicon(),
-                Localizer.get().app_custom_prompt_zh_page,
-                parent=self.custom_prompt_page,
-            )
-            self.addSubInterface(
-                CustomPromptPage("custom_prompt_en_page", self, BaseLanguage.Enum.EN),
-                ICON_NAV_CUSTOM_PROMPT_EN.qicon(),
-                Localizer.get().app_custom_prompt_en_page,
-                parent=self.custom_prompt_page,
-            )
+        self.addSubInterface(
+            CustomPromptPage(
+                "translation_prompt_page",
+                self,
+                PromptResourceResolver.TaskType.TRANSLATION,
+            ),
+            ICON_NAV_TRANSLATION_PROMPT.qicon(),
+            Localizer.get().app_translation_prompt_page,
+            parent=self.custom_prompt_page,
+        )
+        self.addSubInterface(
+            CustomPromptPage(
+                "analysis_prompt_page",
+                self,
+                PromptResourceResolver.TaskType.ANALYSIS,
+            ),
+            ICON_NAV_ANALYSIS_PROMPT.qicon(),
+            Localizer.get().app_analysis_prompt_page,
+            parent=self.custom_prompt_page,
+        )
 
     # 添加额外页面
     def add_extra_pages(self) -> None:
@@ -777,7 +811,9 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 百宝箱 - 姓名字段注入
-        self.name_field_extraction_page = NameFieldExtractionPage("name_field_extraction_page", self)
+        self.name_field_extraction_page = NameFieldExtractionPage(
+            "name_field_extraction_page", self
+        )
         self.stackedWidget.addWidget(self.name_field_extraction_page)
 
         # 百宝箱 - 繁简转换

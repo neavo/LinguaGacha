@@ -116,6 +116,7 @@ class LocalizerEN(LocalizerZH):
     app_settings_page: str = "App Settings"
     app_model_page: str = "Model"
     app_translation_page: str = "Translation"
+    app_analysis_page: str = "Analysis"
     app_proofreading_page: str = "Proofreading"
     app_workbench_page: str = "Workbench"
     app_expert_settings_page: str = "Expert Settings"
@@ -125,8 +126,8 @@ class LocalizerEN(LocalizerZH):
     app_pre_translation_replacement_page: str = "Pre-Translation"
     app_post_translation_replacement_page: str = "Post-Translation"
     app_custom_prompt_navigation_item: str = "Custom Prompts"
-    app_custom_prompt_zh_page: str = "Chinese Prompts"
-    app_custom_prompt_en_page: str = "English Prompts"
+    app_analysis_prompt_page: str = "Analysis Prompts"
+    app_translation_prompt_page: str = "Translation Prompts"
     app_laboratory_page: str = "Laboratory"
     app_treasure_chest_page: str = "Treasure Chest"
 
@@ -183,7 +184,7 @@ class LocalizerEN(LocalizerZH):
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"
-    engine_task_done: str = "All data has been processed, task finished …"
+    engine_task_done: str = "Task completed …"
     engine_task_fail: str = "Task failed to complete, some data remains unprocessed. Please check the results …"
     engine_task_stop: str = "Task stopped …"
     engine_task_rule_filter: str = "Rule filtering completed, {COUNT} entries that do not require translation were filtered in total …"
@@ -389,6 +390,36 @@ class LocalizerEN(LocalizerZH):
     translation_page_alert_reset_all: str = "Confirm to reset all items? You can continue translating after reset …?"
     translation_page_reset_tooltip: str = "Click to choose resetting failed items or all items"
     translation_page_timer: str = "Waiting time before delayed startup"
+
+    # 分析
+    analysis_page_status_idle: str = "Idle"
+    analysis_page_status_analyzing: str = "Analyzing"
+    analysis_page_status_stopping: str = "Stopping"
+    analysis_page_indeterminate_stopping: str = "Stopping analysis task …"
+    analysis_page_card_time: str = "Elapsed Time"
+    analysis_page_card_remaining_time: str = "Remaining Time"
+    analysis_page_card_time_tooltip: str = "Click to toggle Remaining/Elapsed"
+    analysis_page_card_line_processed: str = "Analyzed"
+    analysis_page_card_line_error: str = "Failed"
+    analysis_page_card_line_error_tooltip: str = "Usually caused by network failure or api issues"
+    analysis_page_card_remaining_line: str = "Remaining Lines"
+    analysis_page_card_speed: str = "Average Speed"
+    analysis_page_card_token_input: str = "Input Tokens"
+    analysis_page_card_token_output: str = "Output Tokens"
+    analysis_page_card_token_tooltip: str = "Click to toggle Input/Output"
+    analysis_page_card_task: str = "Real Time Tasks"
+    analysis_page_alert_pause: str = "Stopped analysis tasks can be resumed at any time. Confirm to stop the task …?"
+    analysis_page_continue: str = "Continue"
+    analysis_page_reset_failed: str = "Reset Failed Items"
+    analysis_page_reset_all: str = "Reset All Progress"
+    analysis_page_action_import: str = "Import To Glossary"
+    analysis_page_import_success: str = "Import succeeded, added {COUNT} entries …"
+    analysis_page_alert_reset_failed: str = "Confirm to reset failed items? You can continue analyzing after reset …?"
+    analysis_page_alert_reset_all: str = "Confirm to reset all analysis progress? The whole project text will be analyzed again after reset …?"
+    analysis_page_reset_tooltip: str = "Click to choose resetting failed items or all analysis progress"
+    analysis_task_source_texts: str = "Analysis Input:"
+    analysis_task_extracted_terms: str = "Extracted Terms:"
+    analysis_task_no_terms: str = "No terms extracted"
 
     # 校对
     proofreading_page_filter: str = "Filter"
@@ -628,24 +659,24 @@ class LocalizerEN(LocalizerZH):
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
     post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
 
-    # 自定义提示词 - 中文
-    custom_prompt_zh_page_head: str = "Custom Chinese Prompts (SakuraLLM model not supported)"
-    custom_prompt_zh_page_head_desc: str = (
+    # 自定义提示词 - 翻译
+    translation_prompt_page_head: str = "Custom Translation Prompts (SakuraLLM model not supported)"
+    translation_prompt_page_head_desc: str = (
         "Add extra translation requirements such as story settings and writing styles via custom prompts"
         "<br>"
         "Note: The prefix and suffix are fixed and cannot be modified"
         "<br>"
-        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to Chinese</b></font>"
+        "The content on this page is only used in translation tasks after this page is enabled"
     )
 
-    # 自定义提示词 - 英文
-    custom_prompt_en_page_head: str = "Custom English Prompts (SakuraLLM model not supported)"
-    custom_prompt_en_page_head_desc: str = (
-        "Add extra translation requirements such as story settings and writing styles via custom prompts"
+    # 自定义提示词 - 分析
+    analysis_prompt_page_head: str = "Custom Analysis Prompts"
+    analysis_prompt_page_head_desc: str = (
+        "Adjust glossary analysis scope and output requirements through custom prompts"
         "<br>"
         "Note: The prefix and suffix are fixed and cannot be modified"
         "<br>"
-        "The custom prompts on this page will only be used when the <font color='darkgoldenrod'><b>translation language is set to non-Chinese</b></font>"
+        "The content on this page is only used in analysis tasks after this page is enabled"
     )
 
     # 自定义提示词 - 导入导出

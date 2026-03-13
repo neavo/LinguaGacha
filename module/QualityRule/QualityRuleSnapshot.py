@@ -24,10 +24,10 @@ class QualityRuleSnapshot:
     pre_replacement_entries: tuple[dict[str, Any], ...]
     post_replacement_enable: bool
     post_replacement_entries: tuple[dict[str, Any], ...]
-    custom_prompt_zh_enable: bool
-    custom_prompt_zh: str
-    custom_prompt_en_enable: bool
-    custom_prompt_en: str
+    translation_prompt_enable: bool
+    translation_prompt: str
+    analysis_prompt_enable: bool
+    analysis_prompt: str
 
     glossary_entries: list[dict[str, Any]]
 
@@ -69,10 +69,10 @@ class QualityRuleSnapshot:
             pre_replacement_entries=pre_replacement_entries,
             post_replacement_enable=dm.get_post_replacement_enable(),
             post_replacement_entries=post_replacement_entries,
-            custom_prompt_zh_enable=dm.get_custom_prompt_zh_enable(),
-            custom_prompt_zh=dm.get_custom_prompt_zh(),
-            custom_prompt_en_enable=dm.get_custom_prompt_en_enable(),
-            custom_prompt_en=dm.get_custom_prompt_en(),
+            translation_prompt_enable=dm.get_translation_prompt_enable(),
+            translation_prompt=dm.get_translation_prompt(),
+            analysis_prompt_enable=dm.get_analysis_prompt_enable(),
+            analysis_prompt=dm.get_analysis_prompt(),
             glossary_entries=glossary_entries,
             glossary_src_set=glossary_src_set,
         )
@@ -84,14 +84,14 @@ class QualityRuleSnapshot:
     def merge_glossary_entries(
         self, incoming: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """将新术语合并进快照术语表，返回本次实际新增的条目列表。
+        """将新术语合并进快照术语表，返回本次实际生效的条目列表。
 
         自动术语表增量捕获只受 auto_glossary_enable 控制，此处不再受 glossary_enable 影响。
         """
         if not incoming:
             return []
 
-        added: list[dict[str, Any]] = []
+        changed: list[dict[str, Any]] = []
         with self.glossary_lock:
             for raw in incoming:
                 if not isinstance(raw, dict):
@@ -104,6 +104,21 @@ class QualityRuleSnapshot:
                     continue
 
                 if src in self.glossary_src_set:
+                    for entry in self.glossary_entries:
+                        if str(entry.get("src", "")).strip() != src:
+                            continue
+
+                        changed_flag = False
+                        if str(entry.get("dst", "")).strip() == "":
+                            entry["dst"] = dst
+                            changed_flag = True
+                        if str(entry.get("info", "")).strip() == "" and info != "":
+                            entry["info"] = info
+                            changed_flag = True
+
+                        if changed_flag:
+                            changed.append(dict(entry))
+                        break
                     continue
 
                 entry = {
@@ -114,6 +129,6 @@ class QualityRuleSnapshot:
                 }
                 self.glossary_entries.append(entry)
                 self.glossary_src_set.add(src)
-                added.append(entry)
+                changed.append(entry)
 
-        return added
+        return changed

@@ -26,8 +26,7 @@ from frontend.Quality.TextReplacementEditPanel import TextReplacementEditPanel
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleStatistics import RuleStatInput
-from module.QualityRule.QualityRuleStatistics import RuleStatMode
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.AppTable import ColumnSpec
 from widget.SettingCard import SettingCard
 
@@ -157,12 +156,12 @@ class TextReplacementPage(QualityRulePageBase):
 
     def build_statistics_inputs(
         self, entries: list[dict[str, Any]] | None = None
-    ) -> list[RuleStatInput]:
-        rules: list[RuleStatInput] = []
+    ) -> list[QualityRuleStatistics.RuleStatInput]:
+        rules: list[QualityRuleStatistics.RuleStatInput] = []
         mode = (
-            RuleStatMode.PRE_REPLACEMENT
+            QualityRuleStatistics.RuleStatMode.PRE_REPLACEMENT
             if self.base_key == "pre_translation_replacement"
-            else RuleStatMode.POST_REPLACEMENT
+            else QualityRuleStatistics.RuleStatMode.POST_REPLACEMENT
         )
         entries_source = self.entries if entries is None else entries
         for entry in entries_source:
@@ -170,7 +169,7 @@ class TextReplacementPage(QualityRulePageBase):
             if src == "":
                 continue
             rules.append(
-                RuleStatInput(
+                QualityRuleStatistics.RuleStatInput(
                     key=self.build_statistics_entry_key(entry),
                     pattern=src,
                     mode=mode,

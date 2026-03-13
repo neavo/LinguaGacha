@@ -6,10 +6,12 @@ from typing import Any
 from typing import cast
 from unittest.mock import ANY
 from unittest.mock import MagicMock
+from unittest.mock import call
 
 import pytest
 
 from base.Base import Base
+from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.DataManager import ProjectPrefilterRequest
@@ -32,7 +34,9 @@ def make_config(
     )
 
 
-def patch_engine_status(monkeypatch: pytest.MonkeyPatch, status: Base.TaskStatus) -> None:
+def patch_engine_status(
+    monkeypatch: pytest.MonkeyPatch, status: Base.TaskStatus
+) -> None:
     fake_engine = SimpleNamespace(get_status=lambda: status)
     monkeypatch.setattr("module.Engine.Engine.Engine.get", lambda: fake_engine)
 
@@ -40,7 +44,14 @@ def patch_engine_status(monkeypatch: pytest.MonkeyPatch, status: Base.TaskStatus
 @pytest.fixture
 def data_manager() -> Any:
     dm = cast(Any, DataManager.__new__(DataManager))
-    dm.session = SimpleNamespace(db=object(), lg_path="demo/project.lg")
+    dm.session = SimpleNamespace(
+        db=SimpleNamespace(
+            delete_analysis_item_checkpoints=MagicMock(),
+            clear_analysis_task_observations=MagicMock(),
+            clear_analysis_candidate_aggregates=MagicMock(),
+        ),
+        lg_path="demo/project.lg",
+    )
     dm.state_lock = threading.RLock()
 
     dm.prefilter_lock = threading.Lock()
@@ -61,10 +72,16 @@ def data_manager() -> Any:
 
 
 def collect_progress_toast_sub_events(data_manager: Any) -> list[Base.SubEvent]:
-    return [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROGRESS_TOAST]
+    return [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROGRESS_TOAST
+    ]
 
 
-def test_schedule_project_prefilter_returns_when_not_loaded(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_schedule_project_prefilter_returns_when_not_loaded(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     data_manager.session.db = None
 
     class FakeThread:
@@ -88,7 +105,9 @@ def test_schedule_project_prefilter_returns_when_not_loaded(monkeypatch: pytest.
     data_manager.emit.assert_not_called()
 
 
-def test_schedule_project_prefilter_returns_when_engine_is_busy(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_schedule_project_prefilter_returns_when_engine_is_busy(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.TRANSLATING)
 
     class FakeThread:
@@ -112,7 +131,9 @@ def test_schedule_project_prefilter_returns_when_engine_is_busy(monkeypatch: pyt
     data_manager.emit.assert_not_called()
 
 
-def test_schedule_project_prefilter_starts_worker_when_idle(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_schedule_project_prefilter_starts_worker_when_idle(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.IDLE)
 
     class FakeThread:
@@ -161,7 +182,9 @@ def test_schedule_project_prefilter_starts_worker_when_idle(monkeypatch: pytest.
     assert payload["lg_path"] == "demo/project.lg"
 
 
-def test_schedule_project_prefilter_merges_request_when_running(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_schedule_project_prefilter_merges_request_when_running(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.IDLE)
     data_manager.prefilter_running = True
     data_manager.prefilter_active_token = 9
@@ -192,7 +215,9 @@ def test_schedule_project_prefilter_merges_request_when_running(monkeypatch: pyt
     data_manager.emit.assert_not_called()
 
 
-def test_run_project_prefilter_merges_and_waits_when_running(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_run_project_prefilter_merges_and_waits_when_running(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.IDLE)
     data_manager.prefilter_running = True
     data_manager.prefilter_active_token = 5
@@ -219,7 +244,9 @@ def test_run_project_prefilter_merges_and_waits_when_running(monkeypatch: pytest
     data_manager.emit.assert_not_called()
 
 
-def test_run_project_prefilter_returns_when_not_loaded(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_run_project_prefilter_returns_when_not_loaded(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.IDLE)
     data_manager.session.db = None
     data_manager.project_prefilter_worker = MagicMock()
@@ -231,7 +258,9 @@ def test_run_project_prefilter_returns_when_not_loaded(monkeypatch: pytest.Monke
     data_manager.emit.assert_not_called()
 
 
-def test_run_project_prefilter_returns_when_engine_busy(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_run_project_prefilter_returns_when_engine_busy(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.TRANSLATING)
     data_manager.project_prefilter_worker = MagicMock()
 
@@ -242,7 +271,9 @@ def test_run_project_prefilter_returns_when_engine_busy(monkeypatch: pytest.Monk
     data_manager.emit.assert_not_called()
 
 
-def test_run_project_prefilter_starts_sync_worker_when_idle(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_run_project_prefilter_starts_sync_worker_when_idle(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     patch_engine_status(monkeypatch, Base.TaskStatus.IDLE)
     data_manager.project_prefilter_worker = MagicMock()
 
@@ -298,17 +329,23 @@ def test_apply_project_prefilter_once_returns_none_when_not_loaded(
     assert data_manager.apply_project_prefilter_once(request) is None
 
 
-def test_apply_project_prefilter_once_updates_batch_and_meta(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_apply_project_prefilter_once_updates_batch_and_meta(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     items = [Item(id=1, src="A"), Item(id=2, src="B")]
     data_manager.get_all_items = lambda: items
 
     expected_result = ProjectPrefilterResult(
-        stats=ProjectPrefilterStats(rule_skipped=0, language_skipped=0, mtool_skipped=0),
+        stats=ProjectPrefilterStats(
+            rule_skipped=0, language_skipped=0, mtool_skipped=0
+        ),
         prefilter_config={
             "source_language": "EN",
             "target_language": "ZH",
@@ -316,7 +353,9 @@ def test_apply_project_prefilter_once_updates_batch_and_meta(monkeypatch: pytest
         },
     )
     project_prefilter_apply = MagicMock(return_value=expected_result)
-    monkeypatch.setattr(data_manager_module.ProjectPrefilter, "apply", project_prefilter_apply)
+    monkeypatch.setattr(
+        data_manager_module.ProjectPrefilter, "apply", project_prefilter_apply
+    )
 
     request = ProjectPrefilterRequest(
         token=1,
@@ -340,8 +379,14 @@ def test_apply_project_prefilter_once_updates_batch_and_meta(monkeypatch: pytest
         "prefilter_config": expected_result.prefilter_config,
         "source_language": "EN",
         "target_language": "ZH",
+        "analysis_extras": {},
+        "analysis_state": {},
+        "analysis_term_pool": {},
     }
     assert [item_dict["id"] for item_dict in call_kwargs["items"]] == [1, 2]
+    data_manager.session.db.delete_analysis_item_checkpoints.assert_called_once()
+    data_manager.session.db.clear_analysis_task_observations.assert_called_once()
+    data_manager.session.db.clear_analysis_candidate_aggregates.assert_called_once()
 
     show_event, show_payload = data_manager.emit.call_args_list[0].args
     assert show_event == Base.Event.PROGRESS_TOAST
@@ -351,16 +396,22 @@ def test_apply_project_prefilter_once_updates_batch_and_meta(monkeypatch: pytest
     assert show_payload["indeterminate"] is False
 
 
-def test_apply_project_prefilter_once_emits_progress_update_via_callback(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_apply_project_prefilter_once_emits_progress_update_via_callback(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     data_manager.get_all_items = lambda: [Item(id=1, src="A")]
 
     expected_result = ProjectPrefilterResult(
-        stats=ProjectPrefilterStats(rule_skipped=0, language_skipped=0, mtool_skipped=0),
+        stats=ProjectPrefilterStats(
+            rule_skipped=0, language_skipped=0, mtool_skipped=0
+        ),
         prefilter_config={
             "source_language": "EN",
             "target_language": "ZH",
@@ -393,11 +444,15 @@ def test_apply_project_prefilter_once_emits_progress_update_via_callback(monkeyp
     assert Base.SubEvent.UPDATE in progress_sub_events
 
 
-def test_apply_project_prefilter_once_drops_result_when_project_changes_before_write(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_apply_project_prefilter_once_drops_result_when_project_changes_before_write(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     data_manager.get_all_items = lambda: [Item(id=1, src="A")]
 
@@ -435,14 +490,18 @@ def test_apply_project_prefilter_once_drops_result_when_project_changes_before_w
     data_manager.batch_service.update_batch.assert_not_called()
 
 
-def test_project_prefilter_worker_processes_one_request_and_emits_done(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_project_prefilter_worker_processes_one_request_and_emits_done(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
         engine_task_rule_filter = "rule {COUNT}"
         engine_task_language_filter = "lang {COUNT}"
         translator_mtool_optimizer_pre_log = "mtool {COUNT}"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     logger = SimpleNamespace(info=MagicMock(), print=MagicMock(), error=MagicMock())
     monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
@@ -462,7 +521,9 @@ def test_project_prefilter_worker_processes_one_request_and_emits_done(monkeypat
     data_manager.prefilter_latest_request = request
 
     expected_result = ProjectPrefilterResult(
-        stats=ProjectPrefilterStats(rule_skipped=1, language_skipped=2, mtool_skipped=3),
+        stats=ProjectPrefilterStats(
+            rule_skipped=1, language_skipped=2, mtool_skipped=3
+        ),
         prefilter_config={},
     )
     data_manager.apply_project_prefilter_once = MagicMock(return_value=expected_result)
@@ -474,7 +535,11 @@ def test_project_prefilter_worker_processes_one_request_and_emits_done(monkeypat
     assert data_manager.prefilter_active_token == 0
     assert data_manager.prefilter_last_handled_seq == 3
 
-    prefilter_sub_events = [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROJECT_PREFILTER]
+    prefilter_sub_events = [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROJECT_PREFILTER
+    ]
     progress_sub_events = collect_progress_toast_sub_events(data_manager)
     assert Base.SubEvent.RUN in progress_sub_events
     assert Base.SubEvent.DONE in progress_sub_events
@@ -482,12 +547,16 @@ def test_project_prefilter_worker_processes_one_request_and_emits_done(monkeypat
     assert Base.ProjectPrefilterSubEvent.DONE in prefilter_sub_events
 
 
-def test_project_prefilter_worker_emits_error_toast_on_exception(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_project_prefilter_worker_emits_error_toast_on_exception(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
         task_failed = "failed"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
     logger = SimpleNamespace(info=MagicMock(), print=MagicMock(), error=MagicMock())
     monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
 
@@ -509,8 +578,14 @@ def test_project_prefilter_worker_emits_error_toast_on_exception(monkeypatch: py
 
     data_manager.project_prefilter_worker(1)
 
-    prefilter_sub_events = [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROJECT_PREFILTER]
-    assert any(call.args[0] == Base.Event.TOAST for call in data_manager.emit.call_args_list)
+    prefilter_sub_events = [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROJECT_PREFILTER
+    ]
+    assert any(
+        call.args[0] == Base.Event.TOAST for call in data_manager.emit.call_args_list
+    )
     assert Base.SubEvent.DONE in collect_progress_toast_sub_events(data_manager)
     assert Base.ProjectPrefilterSubEvent.ERROR in prefilter_sub_events
     assert Base.ProjectPrefilterSubEvent.DONE in prefilter_sub_events
@@ -546,14 +621,43 @@ def build_manager_for_lifecycle() -> Any:
     return dm
 
 
-def test_load_project_sets_session_and_clears_caches(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def build_fake_lifecycle_db(
+    *,
+    current_translation_prompt: str = "",
+    legacy_prompt_zh: str = "",
+    legacy_prompt_en: str = "",
+) -> Any:
+    legacy_prompt_zh_rule_type = "CUSTOM_PROMPT_ZH"
+    legacy_prompt_en_rule_type = "CUSTOM_PROMPT_EN"
+
+    fake_db = SimpleNamespace(
+        set_meta=MagicMock(),
+        close=MagicMock(),
+        get_rule_text=MagicMock(return_value=current_translation_prompt),
+        get_rule_text_by_name=MagicMock(
+            side_effect=lambda rule_type: (
+                legacy_prompt_zh
+                if rule_type == legacy_prompt_zh_rule_type
+                else legacy_prompt_en
+                if rule_type == legacy_prompt_en_rule_type
+                else ""
+            )
+        ),
+        set_rule_text=MagicMock(),
+    )
+    return fake_db
+
+
+def test_load_project_sets_session_and_clears_caches(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     lg_path = Path("/workspace/data_manager/project.lg")
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -567,12 +671,15 @@ def test_load_project_sets_session_and_clears_caches(fs, monkeypatch: pytest.Mon
     assert dm.session.lg_path == str(lg_path)
     fake_db.set_meta.assert_any_call("updated_at", ANY)
     fake_db.set_meta.assert_any_call("text_preserve_mode", "smart")
+    fake_db.set_meta.assert_any_call("translation_prompt_legacy_migrated", True)
     dm.item_service.clear_item_cache.assert_called_once()
     dm.asset_service.clear_decompress_cache.assert_called_once()
     dm.emit.assert_called_once()
 
 
-def test_load_project_unloads_existing_project_first(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_project_unloads_existing_project_first(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     dm.session.db = object()
@@ -583,16 +690,20 @@ def test_load_project_unloads_existing_project_first(fs, monkeypatch: pytest.Mon
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
-    dm.meta_service.refresh_cache_from_db = lambda: setattr(dm.session, "meta_cache", {})
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
 
     dm.load_project(str(lg_path))
 
     dm.unload_project.assert_called_once()
 
 
-def test_load_project_raises_when_project_file_missing(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_project_raises_when_project_file_missing(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     missing_path = "/workspace/data_manager/missing.lg"
@@ -604,14 +715,16 @@ def test_load_project_raises_when_project_file_missing(fs, monkeypatch: pytest.M
     assert data_manager_module.LGDatabase.call_count == 0
 
 
-def test_load_project_migrates_text_preserve_mode_to_custom_when_legacy_enable_true(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_project_migrates_text_preserve_mode_to_custom_when_legacy_enable_true(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     lg_path = Path("/workspace/data_manager/custom/project.lg")
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -625,14 +738,16 @@ def test_load_project_migrates_text_preserve_mode_to_custom_when_legacy_enable_t
     assert dm.session.meta_cache.get("text_preserve_mode") == "custom"
 
 
-def test_load_project_migrates_text_preserve_mode_when_mode_string_invalid(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_project_migrates_text_preserve_mode_when_mode_string_invalid(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     lg_path = Path("/workspace/data_manager/invalid_mode/project.lg")
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -646,14 +761,16 @@ def test_load_project_migrates_text_preserve_mode_when_mode_string_invalid(fs, m
     assert dm.session.meta_cache.get("text_preserve_mode") == "smart"
 
 
-def test_load_project_does_not_migrate_text_preserve_mode_when_mode_is_valid(fs, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_project_does_not_migrate_text_preserve_mode_when_mode_is_valid(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del fs
     dm = build_manager_for_lifecycle()
     lg_path = Path("/workspace/data_manager/valid_mode/project.lg")
     lg_path.parent.mkdir(parents=True, exist_ok=True)
     lg_path.write_bytes(b"db")
 
-    fake_db = SimpleNamespace(set_meta=MagicMock(), close=MagicMock())
+    fake_db = build_fake_lifecycle_db()
     monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
 
     def refresh_meta() -> None:
@@ -663,8 +780,159 @@ def test_load_project_does_not_migrate_text_preserve_mode_when_mode_is_valid(fs,
 
     dm.load_project(str(lg_path))
 
-    assert all(call.args[0] != "text_preserve_mode" for call in fake_db.set_meta.call_args_list)
+    assert all(
+        call.args[0] != "text_preserve_mode" for call in fake_db.set_meta.call_args_list
+    )
     assert dm.session.meta_cache.get("text_preserve_mode") == "off"
+
+
+def test_load_project_migrates_legacy_translation_prompt_by_app_language(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.EN,
+    )
+
+    def refresh_meta() -> None:
+        dm.session.meta_cache = {}
+
+    dm.meta_service.refresh_cache_from_db = refresh_meta
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "Old English prompt",
+    )
+    assert dm.session.meta_cache.get("translation_prompt_legacy_migrated") is True
+
+
+def test_load_project_migrates_legacy_translation_prompt_to_zh_when_ui_is_zh(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt_zh/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.ZH,
+    )
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "旧中文提示词",
+    )
+
+
+def test_load_project_falls_back_to_second_legacy_translation_prompt_slot(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/legacy_prompt_fallback/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    monkeypatch.setattr(
+        data_manager_module.Localizer,
+        "get_app_language",
+        lambda: BaseLanguage.Enum.EN,
+    )
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    assert fake_db.get_rule_text_by_name.call_args_list == [
+        call(data_manager_module.DataManager.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE),
+        call(data_manager_module.DataManager.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE),
+    ]
+    fake_db.set_rule_text.assert_called_once_with(
+        data_manager_module.DataManager.RuleType.TRANSLATION_PROMPT,
+        "旧中文提示词",
+    )
+
+
+def test_load_project_marks_legacy_translation_prompt_migrated_without_overwrite(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/current_prompt/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(
+        current_translation_prompt="新提示词",
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English prompt",
+    )
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+    dm.meta_service.refresh_cache_from_db = lambda: setattr(
+        dm.session, "meta_cache", {}
+    )
+
+    dm.load_project(str(lg_path))
+
+    fake_db.set_rule_text.assert_not_called()
+    fake_db.set_meta.assert_any_call("translation_prompt_legacy_migrated", True)
+
+
+def test_load_project_skips_legacy_translation_prompt_when_already_migrated(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    dm = build_manager_for_lifecycle()
+    lg_path = Path("/workspace/data_manager/already_migrated/project.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+
+    fake_db = build_fake_lifecycle_db(legacy_prompt_zh="旧中文提示词")
+    monkeypatch.setattr(data_manager_module, "LGDatabase", lambda path: fake_db)
+
+    def refresh_meta() -> None:
+        dm.session.meta_cache = {"translation_prompt_legacy_migrated": True}
+
+    dm.meta_service.refresh_cache_from_db = refresh_meta
+
+    dm.load_project(str(lg_path))
+
+    fake_db.get_rule_text.assert_not_called()
+    fake_db.get_rule_text_by_name.assert_not_called()
+    fake_db.set_rule_text.assert_not_called()
 
 
 def test_unload_project_closes_db_and_emits_event() -> None:
@@ -705,11 +973,15 @@ def test_data_access_proxy_methods_delegate_to_services() -> None:
     assert dm.get_project_preview("demo.lg") == {"name": "demo"}
 
 
-def test_project_prefilter_worker_handles_pending_without_request(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_project_prefilter_worker_handles_pending_without_request(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     data_manager.prefilter_running = True
     data_manager.prefilter_active_token = 3
@@ -718,7 +990,11 @@ def test_project_prefilter_worker_handles_pending_without_request(monkeypatch: p
 
     data_manager.project_prefilter_worker(3)
 
-    prefilter_sub_events = [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROJECT_PREFILTER]
+    prefilter_sub_events = [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROJECT_PREFILTER
+    ]
     progress_sub_events = collect_progress_toast_sub_events(data_manager)
     assert Base.SubEvent.RUN in progress_sub_events
     assert Base.SubEvent.DONE in progress_sub_events
@@ -730,14 +1006,18 @@ def test_project_prefilter_worker_handles_pending_without_request(monkeypatch: p
     assert done_payload["reason"] == "unknown"
 
 
-def test_project_prefilter_worker_logs_mtool_stats_when_enabled(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_project_prefilter_worker_logs_mtool_stats_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
         engine_task_rule_filter = "rule {COUNT}"
         engine_task_language_filter = "lang {COUNT}"
         translator_mtool_optimizer_pre_log = "mtool {COUNT}"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     logger = SimpleNamespace(info=MagicMock(), print=MagicMock(), error=MagicMock())
     monkeypatch.setattr(data_manager_module.LogManager, "get", lambda: logger)
@@ -757,7 +1037,9 @@ def test_project_prefilter_worker_logs_mtool_stats_when_enabled(monkeypatch: pyt
     data_manager.prefilter_latest_request = request
 
     expected_result = ProjectPrefilterResult(
-        stats=ProjectPrefilterStats(rule_skipped=1, language_skipped=2, mtool_skipped=3),
+        stats=ProjectPrefilterStats(
+            rule_skipped=1, language_skipped=2, mtool_skipped=3
+        ),
         prefilter_config={},
     )
     data_manager.apply_project_prefilter_once = MagicMock(return_value=expected_result)
@@ -768,11 +1050,15 @@ def test_project_prefilter_worker_logs_mtool_stats_when_enabled(monkeypatch: pyt
     assert "mtool 3" in info_messages
 
 
-def test_project_prefilter_worker_skips_updated_event_when_apply_returns_none(monkeypatch: pytest.MonkeyPatch, data_manager: Any) -> None:
+def test_project_prefilter_worker_skips_updated_event_when_apply_returns_none(
+    monkeypatch: pytest.MonkeyPatch, data_manager: Any
+) -> None:
     class FakeLocalizer:
         toast_processing = "processing"
 
-    monkeypatch.setattr(data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer))
+    monkeypatch.setattr(
+        data_manager_module.Localizer, "get", staticmethod(lambda: FakeLocalizer)
+    )
 
     request = ProjectPrefilterRequest(
         token=9,
@@ -791,6 +1077,10 @@ def test_project_prefilter_worker_skips_updated_event_when_apply_returns_none(mo
 
     data_manager.project_prefilter_worker(9)
 
-    prefilter_sub_events = [call.args[1].get("sub_event") for call in data_manager.emit.call_args_list if call.args[0] == Base.Event.PROJECT_PREFILTER]
+    prefilter_sub_events = [
+        call.args[1].get("sub_event")
+        for call in data_manager.emit.call_args_list
+        if call.args[0] == Base.Event.PROJECT_PREFILTER
+    ]
     assert Base.ProjectPrefilterSubEvent.UPDATED not in prefilter_sub_events
     assert Base.ProjectPrefilterSubEvent.DONE in prefilter_sub_events

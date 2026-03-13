@@ -157,6 +157,8 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         close_db=MagicMock(),
         get_project_status=MagicMock(return_value=Base.ProjectStatus.PROCESSING),
         get_translation_extras=MagicMock(return_value={"line": 9, "time": 3}),
+        get_analysis_progress_snapshot=MagicMock(return_value={"line": 5, "time": 2}),
+        get_analysis_candidate_count=MagicMock(return_value=1),
         get_items_for_translation=MagicMock(return_value=item_list),
         replace_all_items=MagicMock(),
         set_translation_extras=MagicMock(),
@@ -253,6 +255,8 @@ def test_project_check_run_emits_done_with_loaded_project(
             "sub_event": Base.SubEvent.DONE,
             "status": Base.ProjectStatus.PROCESSING,
             "extras": {"line": 9, "time": 3},
+            "analysis_extras": {"line": 5, "time": 2},
+            "analysis_candidate_count": 1,
         },
     )
 

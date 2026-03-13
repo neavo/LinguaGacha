@@ -93,11 +93,16 @@ class Translator(Base):
         """更新翻译进度统计并返回不可变快照。"""
         self.extras.update(
             {
-                "processed_line": self.extras.get("processed_line", 0) + processed_count,
+                "processed_line": self.extras.get("processed_line", 0)
+                + processed_count,
                 "error_line": self.extras.get("error_line", 0) + error_count,
-                "total_tokens": self.extras.get("total_tokens", 0) + input_tokens + output_tokens,
-                "total_input_tokens": self.extras.get("total_input_tokens", 0) + input_tokens,
-                "total_output_tokens": self.extras.get("total_output_tokens", 0) + output_tokens,
+                "total_tokens": self.extras.get("total_tokens", 0)
+                + input_tokens
+                + output_tokens,
+                "total_input_tokens": self.extras.get("total_input_tokens", 0)
+                + input_tokens,
+                "total_output_tokens": self.extras.get("total_output_tokens", 0)
+                + output_tokens,
                 "time": time.time() - self.extras.get("start_time", 0),
             }
         )
@@ -131,6 +136,27 @@ class Translator(Base):
         self.extras["total_line"] = self.extras["line"] + remaining_line
         self.extras["time"] = time.time() - self.extras.get("start_time", 0)
 
+    def build_project_check_payload(self, dm: DataManager) -> dict[str, Any]:
+        """统一收敛工程检查返回值，避免线程任务里重复拼装字典。"""
+        if not dm.is_loaded():
+            return {
+                "status": Base.ProjectStatus.NONE,
+                "extras": {},
+                "analysis_extras": {},
+                "analysis_candidate_count": 0,
+            }
+
+        analysis_candidate_count = int(dm.get_analysis_candidate_count())
+        analysis_extras = dm.get_analysis_progress_snapshot()
+
+        payload = {
+            "status": dm.get_project_status(),
+            "extras": dm.get_translation_extras(),
+            "analysis_extras": analysis_extras,
+            "analysis_candidate_count": analysis_candidate_count,
+        }
+        return payload
+
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
         del event
@@ -140,20 +166,13 @@ class Translator(Base):
 
         def task() -> None:
             dm = DataManager.get()
-            extras = {}
-
-            if dm.is_loaded():
-                status = dm.get_project_status()
-                extras = dm.get_translation_extras()
-            else:
-                status = Base.ProjectStatus.NONE
+            payload = self.build_project_check_payload(dm)
 
             self.emit(
                 Base.Event.PROJECT_CHECK,
                 {
                     "sub_event": Base.SubEvent.DONE,
-                    "status": status,
-                    "extras": extras,
+                    **payload,
                 },
             )
 
@@ -302,7 +321,9 @@ class Translator(Base):
                 if is_reset_all:
                     # 1. 重新解析 assets 以获取初始状态的条目
                     # 这里必须使用 RESET 模式强制重解析 assets（避免沿用工程数据库里的既有条目/进度）
-                    items = dm.get_items_for_translation(self.config, Base.TranslationMode.RESET)
+                    items = dm.get_items_for_translation(
+                        self.config, Base.TranslationMode.RESET
+                    )
 
                     # 2. 清空并重新写入条目到数据库
                     dm.replace_all_items(items)
@@ -461,7 +482,11 @@ class Translator(Base):
         try:
             config: Config | None = data.get("config")
             mode_raw = data.get("mode")
-            mode: Base.TranslationMode = mode_raw if isinstance(mode_raw, Base.TranslationMode) else Base.TranslationMode.NEW
+            mode: Base.TranslationMode = (
+                mode_raw
+                if isinstance(mode_raw, Base.TranslationMode)
+                else Base.TranslationMode.NEW
+            )
 
             # 初始化
             self.config = config if isinstance(config, Config) else Config().load()
@@ -499,7 +524,11 @@ class Translator(Base):
             self.persist_quality_rules = bool(persist_quality_rules)
 
             snapshot_override = data.get("quality_snapshot")
-            self.quality_snapshot = snapshot_override if isinstance(snapshot_override, QualityRuleSnapshot) else QualityRuleSnapshot.capture()
+            self.quality_snapshot = (
+                snapshot_override
+                if isinstance(snapshot_override, QualityRuleSnapshot)
+                else QualityRuleSnapshot.capture()
+            )
 
             # 重置
             TextProcessor.reset()
@@ -526,9 +555,15 @@ class Translator(Base):
                 # 继续翻译：恢复进度
                 self.extras = dm.get_translation_extras()
                 self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-                self.extras["processed_line"] = self.get_item_count_by_status(Base.ProjectStatus.PROCESSED)
-                self.extras["error_line"] = self.get_item_count_by_status(Base.ProjectStatus.ERROR)
-                self.extras["line"] = self.extras["processed_line"] + self.extras["error_line"]
+                self.extras["processed_line"] = self.get_item_count_by_status(
+                    Base.ProjectStatus.PROCESSED
+                )
+                self.extras["error_line"] = self.get_item_count_by_status(
+                    Base.ProjectStatus.ERROR
+                )
+                self.extras["line"] = (
+                    self.extras["processed_line"] + self.extras["error_line"]
+                )
             else:
                 # 新翻译或重置翻译：初始化全新的进度数据
                 self.extras = {
@@ -563,9 +598,15 @@ class Translator(Base):
 
             # 输出开始翻译的日志
             LogManager.get().print("")
-            LogManager.get().info(f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}")
-            LogManager.get().info(f"{Localizer.get().api_url} - {self.model.get('api_url', '')}")
-            LogManager.get().info(f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}")
+            LogManager.get().info(
+                f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
+            )
+            LogManager.get().info(
+                f"{Localizer.get().api_url} - {self.model.get('api_url', '')}"
+            )
+            LogManager.get().info(
+                f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}"
+            )
             LogManager.get().print("")
             if self.model.get("api_format") != Base.APIFormat.SAKURALLM:
                 LogManager.get().info(
@@ -634,7 +675,9 @@ class Translator(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_stop if Engine.get().get_status() == Base.TaskStatus.STOPPING else Localizer.get().engine_task_fail,
+                        "message": Localizer.get().engine_task_stop
+                        if Engine.get().get_status() == Base.TaskStatus.STOPPING
+                        else Localizer.get().engine_task_fail,
                     },
                 )
         except Exception as e:
@@ -658,7 +701,11 @@ class Translator(Base):
                 self.mtool_optimizer_postprocess(self.items_cache)
 
             # 确定最终项目状态
-            final_status = Base.ProjectStatus.PROCESSED if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0 else Base.ProjectStatus.PROCESSING
+            final_status = (
+                Base.ProjectStatus.PROCESSED
+                if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0
+                else Base.ProjectStatus.PROCESSING
+            )
 
             # 保存翻译结果到 .lg 文件
             self.save_translation_state(final_status)
@@ -667,7 +714,11 @@ class Translator(Base):
             self.close_db_connection()
 
             # 检查结果并写入文件
-            if self.items_cache and not self.stop_requested and Engine.get().get_status() != Base.TaskStatus.STOPPING:
+            if (
+                self.items_cache
+                and not self.stop_requested
+                and Engine.get().get_status() != Base.TaskStatus.STOPPING
+            ):
                 self.run_translation_export(
                     source=self.ExportSource.AUTO_ON_FINISH,
                     apply_mtool_postprocess=False,
@@ -706,7 +757,9 @@ class Translator(Base):
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
         DataManager.get().close_db()
 
-    def merge_glossary(self, glossary_list: list[dict[str, str]], *, persist: bool = True) -> list[dict] | None:
+    def merge_glossary(
+        self, glossary_list: list[dict[str, str]], *, persist: bool = True
+    ) -> list[dict] | None:
         """
         合并术语表并更新缓存，返回待写入的数据（若无变化返回 None）
         """
@@ -764,7 +817,9 @@ class Translator(Base):
             )
             return merged
 
-    def save_translation_state(self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING) -> None:
+    def save_translation_state(
+        self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
+    ) -> None:
         """保存翻译状态到 .lg 文件"""
         dm = DataManager.get()
         if not dm.is_loaded() or self.items_cache is None:
@@ -818,9 +873,15 @@ class Translator(Base):
         """
         new_glossary_data = None
         if glossaries and self.config.auto_glossary_enable:
-            new_glossary_data = self.merge_glossary(glossaries, persist=self.persist_quality_rules)
+            new_glossary_data = self.merge_glossary(
+                glossaries, persist=self.persist_quality_rules
+            )
 
-        rules_map = {DataManager.RuleType.GLOSSARY: new_glossary_data} if new_glossary_data else {}
+        rules_map = (
+            {DataManager.RuleType.GLOSSARY: new_glossary_data}
+            if new_glossary_data
+            else {}
+        )
         DataManager.get().update_batch(
             items=finalized_items,
             rules=rules_map,
@@ -878,7 +939,9 @@ class Translator(Base):
                 src = item.get_src()
                 dst = item.get_dst()
                 if src.count("\n") > 0:
-                    for src_line, dst_line in zip_longest(src.splitlines(), dst.splitlines(), fillvalue=""):
+                    for src_line, dst_line in zip_longest(
+                        src.splitlines(), dst.splitlines(), fillvalue=""
+                    ):
                         item_ex = Item.from_dict(item.to_dict())
                         item_ex.set_src(src_line.strip())
                         item_ex.set_dst(dst_line.strip())
@@ -904,7 +967,9 @@ class Translator(Base):
         output_path = FileManager(self.config).write_to_path(items)
         LogManager.get().print("")
 
-        LogManager.get().info(Localizer.get().export_translation_done.replace("{PATH}", output_path))
+        LogManager.get().info(
+            Localizer.get().export_translation_done.replace("{PATH}", output_path)
+        )
         LogManager.get().print("")
 
         # 打开输出文件夹

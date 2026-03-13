@@ -13,6 +13,7 @@ from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Engine.Translator.TranslatorTask import TranslatorTask
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
+from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseChecker import ResponseChecker
 from module.TextProcessor import TextProcessor
 
@@ -30,10 +31,10 @@ def create_snapshot(
         pre_replacement_entries=(),
         post_replacement_enable=False,
         post_replacement_entries=(),
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[],
     )
 
@@ -268,13 +269,13 @@ class TestTranslatorTaskUtils:
     def test_extract_why_from_response(
         self, source: str, expected_cleaned: str, expected_why: str
     ) -> None:
-        cleaned, why_text = TranslatorTask.extract_why_from_response(source)
+        cleaned, why_text = ResponseCleaner.extract_why_from_response(source)
 
         assert cleaned == expected_cleaned
         assert why_text == expected_why
 
     def test_normalize_blank_lines_collapse_consecutive_blanks(self) -> None:
-        normalized = TranslatorTask.normalize_blank_lines("A\n\n\nB\n \n\nC\n")
+        normalized = ResponseCleaner.normalize_blank_lines("A\n\n\nB\n \n\nC\n")
         assert normalized == "A\n\nB\n\nC"
 
     @pytest.mark.parametrize(
@@ -817,16 +818,18 @@ class TestTranslatorTaskRequestAndStart:
             response_result,
             input_tokens,
             output_tokens,
-            start_time: captured.setdefault(
-                "args",
-                (
-                    prepared,
-                    response_think,
-                    response_result,
-                    input_tokens,
-                    output_tokens,
-                    start_time,
-                ),
+            start_time: (
+                captured.setdefault(
+                    "args",
+                    (
+                        prepared,
+                        response_think,
+                        response_result,
+                        input_tokens,
+                        output_tokens,
+                        start_time,
+                    ),
+                )
             ),
         )
 

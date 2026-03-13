@@ -1,0 +1,1 @@
+Task goal is to extract proprietary terminology from the source text to ensure translation consistency, and translate them into {target_language}:

@@ -16,10 +16,10 @@ def test_capture_collects_rules_and_filters_empty_src(monkeypatch) -> None:
         get_pre_replacement=lambda: [{"src": "A", "dst": "B"}],
         get_post_replacement_enable=lambda: True,
         get_post_replacement=lambda: [{"src": "B", "dst": "A"}],
-        get_custom_prompt_zh_enable=lambda: True,
-        get_custom_prompt_zh=lambda: "zh-prompt",
-        get_custom_prompt_en_enable=lambda: False,
-        get_custom_prompt_en=lambda: "",
+        get_translation_prompt_enable=lambda: True,
+        get_translation_prompt=lambda: "translation-prompt",
+        get_analysis_prompt_enable=lambda: False,
+        get_analysis_prompt=lambda: "",
     )
     monkeypatch.setattr(
         "module.QualityRule.QualityRuleSnapshot.DataManager.get", lambda: fake_dm
@@ -31,7 +31,7 @@ def test_capture_collects_rules_and_filters_empty_src(monkeypatch) -> None:
     assert snapshot.glossary_entries == [{"src": "HP", "dst": "生命值"}]
     assert snapshot.glossary_src_set == {"HP"}
     assert tuple(snapshot.text_preserve_entries) == ({"src": "<i>", "dst": "<i>"},)
-    assert snapshot.custom_prompt_zh == "zh-prompt"
+    assert snapshot.translation_prompt == "translation-prompt"
 
 
 def test_merge_glossary_entries_filters_invalid_and_deduplicates() -> None:
@@ -43,10 +43,10 @@ def test_merge_glossary_entries_filters_invalid_and_deduplicates() -> None:
         pre_replacement_entries=(),
         post_replacement_enable=False,
         post_replacement_entries=(),
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[{"src": "HP", "dst": "生命值", "info": ""}],
         glossary_src_set={"HP"},
     )
@@ -83,10 +83,10 @@ def test_merge_glossary_entries_merges_when_glossary_disabled() -> None:
         pre_replacement_entries=(),
         post_replacement_enable=False,
         post_replacement_entries=(),
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[],
     )
 
@@ -112,10 +112,10 @@ def test_get_glossary_entries_returns_tuple_snapshot() -> None:
         pre_replacement_entries=(),
         post_replacement_enable=False,
         post_replacement_entries=(),
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[{"src": "HP", "dst": "生命值"}],
         glossary_src_set={"HP"},
     )
@@ -136,10 +136,10 @@ def test_merge_glossary_entries_returns_empty_when_incoming_is_empty() -> None:
         pre_replacement_entries=(),
         post_replacement_enable=False,
         post_replacement_entries=(),
-        custom_prompt_zh_enable=False,
-        custom_prompt_zh="",
-        custom_prompt_en_enable=False,
-        custom_prompt_en="",
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
         glossary_entries=[{"src": "HP", "dst": "生命值"}],
         glossary_src_set={"HP"},
     )
@@ -148,3 +148,32 @@ def test_merge_glossary_entries_returns_empty_when_incoming_is_empty() -> None:
 
     assert added == []
     assert snapshot.glossary_entries == [{"src": "HP", "dst": "生命值"}]
+
+
+def test_merge_glossary_entries_fills_empty_existing_fields() -> None:
+    snapshot = QualityRuleSnapshot(
+        glossary_enable=True,
+        text_preserve_mode=DataManager.TextPreserveMode.SMART,
+        text_preserve_entries=(),
+        pre_replacement_enable=False,
+        pre_replacement_entries=(),
+        post_replacement_enable=False,
+        post_replacement_entries=(),
+        translation_prompt_enable=False,
+        translation_prompt="",
+        analysis_prompt_enable=False,
+        analysis_prompt="",
+        glossary_entries=[{"src": "HP", "dst": "", "info": ""}],
+        glossary_src_set={"HP"},
+    )
+
+    changed = snapshot.merge_glossary_entries(
+        [{"src": "HP", "dst": "生命值", "info": "stat", "case_sensitive": True}]
+    )
+
+    assert changed == [
+        {"src": "HP", "dst": "生命值", "info": "stat"},
+    ]
+    assert snapshot.glossary_entries == [
+        {"src": "HP", "dst": "生命值", "info": "stat"},
+    ]

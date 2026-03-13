@@ -17,12 +17,12 @@ from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
-from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.PromptResourceResolver import PromptResourceResolver
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -35,7 +35,7 @@ ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
 ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出
 ICON_PRESET_MENU_ROOT: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单入口
 
-ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空内容）
+ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置为当前 UI 模板
 ICON_PRESET_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
 ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
 ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用
@@ -49,94 +49,140 @@ ICON_PRESET_DELETE: BaseIcon = BaseIcon.TRASH_2  # 子菜单动作：删除
 
 
 class CustomPromptPage(Base, QWidget):
+    """自定义提示词页。
+
+    为什么改成 task_type：
+    - 页面语义已经从“中文/英文”切到“翻译/分析”
+    - 运行时模板语言由当前 UI 语言统一决定，页面自身不再持有语言分支
+    """
+
     def __init__(
-        self, text: str, window: FluentWindow, language: BaseLanguage.Enum
+        self,
+        text: str,
+        window: FluentWindow,
+        task_type: PromptResourceResolver.TaskType,
     ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        self.language = language
-        self.preset_base_path = "resource/preset/custom_prompt"
-        self.language_code = "zh" if language == BaseLanguage.Enum.ZH else "en"
+        self.task_type = task_type
 
-        # 载入配置
         config = Config().load()
 
-        # 设置主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
-        self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
+        self.root.setContentsMargins(24, 24, 24, 24)
 
-        # 添加控件
         self.add_widget_header(self.root, config, window)
         self.add_widget_body(self.root, config, window)
         self.add_widget_footer(self.root, config, window)
 
-        # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
-        # 工程卸载后清空数据
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-    # 获取自定义提示词数据
-    def get_custom_prompt_data(self) -> str:
-        if self.language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh()
-        return DataManager.get().get_custom_prompt_en()
+    def is_translation_task(self) -> bool:
+        return self.task_type == PromptResourceResolver.TaskType.TRANSLATION
 
-    # 保存自定义提示词数据
-    def set_custom_prompt_data(self, data: str) -> None:
-        if self.language == BaseLanguage.Enum.ZH:
-            DataManager.get().set_custom_prompt_zh(data)
+    def get_prompt_data(self) -> str:
+        if self.is_translation_task():
+            return DataManager.get().get_translation_prompt()
+        return DataManager.get().get_analysis_prompt()
+
+    def set_prompt_data(self, data: str) -> None:
+        if self.is_translation_task():
+            DataManager.get().set_translation_prompt(data)
         else:
-            DataManager.get().set_custom_prompt_en(data)
+            DataManager.get().set_analysis_prompt(data)
 
-    # 获取启用状态
-    def get_custom_prompt_enable(self) -> bool:
-        if self.language == BaseLanguage.Enum.ZH:
-            return DataManager.get().get_custom_prompt_zh_enable()
-        return DataManager.get().get_custom_prompt_en_enable()
+    def get_prompt_enable(self) -> bool:
+        if self.is_translation_task():
+            return DataManager.get().get_translation_prompt_enable()
+        return DataManager.get().get_analysis_prompt_enable()
 
-    # 设置启用状态
-    def set_custom_prompt_enable(self, enable: bool) -> None:
-        if self.language == BaseLanguage.Enum.ZH:
-            DataManager.get().set_custom_prompt_zh_enable(enable)
+    def set_prompt_enable(self, enable: bool) -> None:
+        if self.is_translation_task():
+            DataManager.get().set_translation_prompt_enable(enable)
         else:
-            DataManager.get().set_custom_prompt_en_enable(enable)
+            DataManager.get().set_analysis_prompt_enable(enable)
 
-    # 工程加载后刷新数据
+    def get_editor_prompt_data(self) -> str:
+        """统一收口编辑框当前正文，避免保存入口之间写入规则漂移。"""
+        return self.main_text.toPlainText().strip()
+
+    def persist_editor_prompt_data(self) -> str:
+        """先把当前编辑内容落库，再由其它入口决定是否更新开关或提示。"""
+        prompt_data = self.get_editor_prompt_data()
+        if not DataManager.get().is_loaded():
+            return prompt_data
+        self.set_prompt_data(prompt_data)
+        return prompt_data
+
+    def persist_editor_prompt_data_and_enable(self, enable: bool) -> None:
+        """切换开关时先保存正文，确保启用后立刻读取到最新规则。"""
+        self.persist_editor_prompt_data()
+        self.set_prompt_enable(enable)
+
+    def get_default_preset_config_key(self) -> str:
+        if self.is_translation_task():
+            return "translation_custom_prompt_default_preset"
+        return "analysis_custom_prompt_default_preset"
+
+    def get_page_key_prefix(self) -> str:
+        if self.is_translation_task():
+            return "translation_prompt"
+        return "analysis_prompt"
+
+    def build_default_prompt_text(self, config: Config) -> str:
+        builder = PromptBuilder(config)
+        language = builder.get_prompt_ui_language()
+        if self.is_translation_task():
+            return builder.get_base(language)
+        return builder.get_analysis_base(language)
+
+    def build_prefix_text(self, config: Config) -> str:
+        builder = PromptBuilder(config)
+        language = builder.get_prompt_ui_language()
+        if self.is_translation_task():
+            return builder.get_prefix(language)
+        return builder.get_analysis_prefix(language)
+
+    def build_suffix_text(self, config: Config) -> str:
+        builder = PromptBuilder(config)
+        language = builder.get_prompt_ui_language()
+        if self.is_translation_task():
+            return builder.get_suffix(language)
+        return builder.get_analysis_suffix(language)
+
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
-        prompt_data = self.get_custom_prompt_data()
+        del event
+        del data
 
-        # 如果数据为空（新工程），则加载默认提示词
+        prompt_data = self.get_prompt_data()
         if not prompt_data:
-            config = Config().load()
-            prompt_data = PromptBuilder(config).get_base(self.language)
-            self.set_custom_prompt_data(prompt_data)
+            prompt_data = self.build_default_prompt_text(Config().load())
 
         self.main_text.setPlainText(prompt_data)
-        # 刷新开关状态
         if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
-            self.prompt_switch.setChecked(self.get_custom_prompt_enable())
+            self.prompt_switch.setChecked(self.get_prompt_enable())
 
-    # 工程卸载后清空数据
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
-        self.main_text.clear()
-        # 重置开关状态
-        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
-            self.prompt_switch.setChecked(True)
+        del event
+        del data
 
-    # 头部
+        self.main_text.clear()
+        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
+            self.prompt_switch.setChecked(False)
+
     def add_widget_header(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        base_key = (
-            "custom_prompt_zh"
-            if self.language == BaseLanguage.Enum.ZH
-            else "custom_prompt_en"
-        )
+        del config
+        del window
+
+        base_key = self.get_page_key_prefix()
 
         def checked_changed(button: SwitchButton) -> None:
-            self.set_custom_prompt_enable(button.isChecked())
+            self.persist_editor_prompt_data_and_enable(button.isChecked())
 
         card = SettingCard(
             title=getattr(Localizer.get(), f"{base_key}_page_head"),
@@ -146,7 +192,7 @@ class CustomPromptPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(self.get_custom_prompt_enable())
+        switch_button.setChecked(self.get_prompt_enable())
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -154,13 +200,12 @@ class CustomPromptPage(Base, QWidget):
         self.prompt_switch = switch_button
         parent.addWidget(card)
 
-    # 主体
     def add_widget_body(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        self.prefix_body = SettingCard(
-            "", PromptBuilder(config).get_prefix(self.language), parent=self
-        )
+        del window
+
+        self.prefix_body = SettingCard("", self.build_prefix_text(config), parent=self)
         parent.addWidget(self.prefix_body)
 
         self.main_text = CustomTextEdit(self)
@@ -169,19 +214,17 @@ class CustomPromptPage(Base, QWidget):
 
         self.suffix_body = SettingCard(
             "",
-            PromptBuilder(config).get_suffix(self.language).replace("\n", ""),
+            self.build_suffix_text(config).replace("\n", ""),
             parent=self,
         )
         parent.addWidget(self.suffix_body)
 
-    # 底部
     def add_widget_footer(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
-        # 添加命令
         self.add_command_bar_action_import(self.command_bar_card, config, window)
         self.add_command_bar_action_export(self.command_bar_card, config, window)
         self.command_bar_card.add_separator()
@@ -204,7 +247,7 @@ class CustomPromptPage(Base, QWidget):
             )
             return
 
-        self.set_custom_prompt_data(text)
+        self.set_prompt_data(text)
         self.main_text.setPlainText(text)
 
         self.emit(
@@ -248,6 +291,7 @@ class CustomPromptPage(Base, QWidget):
         del window
 
         def triggered(checked: bool = False) -> None:
+            del checked
             path, _ = QFileDialog.getOpenFileName(
                 None,
                 Localizer.get().select_file,
@@ -273,6 +317,7 @@ class CustomPromptPage(Base, QWidget):
         del config
 
         def triggered(checked: bool = False) -> None:
+            del checked
             path, _ = QFileDialog.getSaveFileName(
                 window,
                 Localizer.get().select_file,
@@ -292,15 +337,15 @@ class CustomPromptPage(Base, QWidget):
             ),
         )
 
-    # 保存
     def add_command_bar_action_save(
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
-        def triggered(checked: bool = False) -> None:
-            # 保存数据
-            self.set_custom_prompt_data(self.main_text.toPlainText().strip())
+        del config
+        del window
 
-            # 弹出提示
+        def triggered(checked: bool = False) -> None:
+            del checked
+            self.persist_editor_prompt_data()
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -318,58 +363,21 @@ class CustomPromptPage(Base, QWidget):
             ),
         )
 
-    # 预设
     def add_command_bar_action_preset(
         self, parent: CommandBarCard, config: Config, window: FluentWindow
     ) -> None:
         widget: CommandButton = None
 
-        def get_preset_paths() -> tuple[list[dict], list[dict]]:
-            builtin_dir = f"{self.preset_base_path}/{self.language_code}"
-            user_dir = f"{self.preset_base_path}/user/{self.language_code}"
+        def get_preset_paths() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+            return PromptResourceResolver.list_presets(self.task_type)
 
-            builtin_presets = []
-            user_presets = []
-
-            # 加载内置预设
-            if os.path.exists(builtin_dir):
-                for f in os.listdir(builtin_dir):
-                    if f.lower().endswith(".txt"):
-                        path = os.path.join(builtin_dir, f).replace("\\", "/")
-                        builtin_presets.append(
-                            {
-                                "name": f[:-4],
-                                "path": path,
-                                "type": "builtin",
-                            }
-                        )
-
-            # 加载用户预设
-            if not os.path.exists(user_dir):
-                os.makedirs(user_dir)
-
-            for f in os.listdir(user_dir):
-                if f.lower().endswith(".txt"):
-                    path = os.path.join(user_dir, f).replace("\\", "/")
-                    user_presets.append(
-                        {
-                            "name": f[:-4],
-                            "path": path,
-                            "type": "user",
-                        }
-                    )
-
-            return builtin_presets, user_presets
-
-        def set_default_preset(item: dict, checked: bool = False) -> None:
-            key = f"custom_prompt_{self.language_code}_default_preset"
-            # 重新加载配置以防止覆盖其他页面的修改
+        def set_default_preset(item: dict[str, str], checked: bool = False) -> None:
+            del checked
+            key = self.get_default_preset_config_key()
             current_config = Config().load()
-            setattr(current_config, key, item["path"])
+            setattr(current_config, key, item["virtual_id"])
             current_config.save()
-
-            # 更新当前页面的配置对象
-            setattr(config, key, item["path"])
+            setattr(config, key, item["virtual_id"])
 
             self.emit(
                 Base.Event.TOAST,
@@ -380,13 +388,11 @@ class CustomPromptPage(Base, QWidget):
             )
 
         def cancel_default_preset(checked: bool = False) -> None:
-            key = f"custom_prompt_{self.language_code}_default_preset"
-            # 重新加载配置以防止覆盖其他页面的修改
+            del checked
+            key = self.get_default_preset_config_key()
             current_config = Config().load()
             setattr(current_config, key, "")
             current_config.save()
-
-            # 更新当前页面的配置对象
             setattr(config, key, "")
 
             self.emit(
@@ -398,6 +404,7 @@ class CustomPromptPage(Base, QWidget):
             )
 
         def reset(checked: bool = False) -> None:
+            del checked
             message_box = MessageBox(
                 Localizer.get().alert, Localizer.get().alert_confirm_reset_data, window
             )
@@ -407,15 +414,10 @@ class CustomPromptPage(Base, QWidget):
             if not message_box.exec():
                 return
 
-            # 重置为默认提示词
-            config = Config().load()
-            default_prompt = PromptBuilder(config).get_base(self.language)
-            self.set_custom_prompt_data(default_prompt)
-
-            # 更新 UI
+            default_prompt = self.build_default_prompt_text(Config().load())
+            self.set_prompt_data(default_prompt)
             self.main_text.setPlainText(default_prompt)
 
-            # 弹出提示
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -424,13 +426,16 @@ class CustomPromptPage(Base, QWidget):
                 },
             )
 
-        def apply_preset(path: str, checked: bool = False) -> None:
-            prompt: str = ""
+        def apply_preset(item: dict[str, str], checked: bool = False) -> None:
+            del checked
             try:
-                with open(path, "r", encoding="utf-8-sig") as reader:
-                    prompt = reader.read().strip()
+                prompt = PromptResourceResolver.read_preset(
+                    self.task_type, item["virtual_id"]
+                )
             except Exception as e:
-                LogManager.get().error(f"Failed to apply preset - {path}", e)
+                LogManager.get().error(
+                    f"Failed to apply preset - {item['virtual_id']}", e
+                )
                 self.emit(
                     Base.Event.TOAST,
                     {
@@ -440,13 +445,9 @@ class CustomPromptPage(Base, QWidget):
                 )
                 return
 
-            # 保存数据
-            self.set_custom_prompt_data(prompt)
-
-            # 更新 UI
+            self.set_prompt_data(prompt)
             self.main_text.setPlainText(prompt)
 
-            # 弹出提示
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -456,16 +457,21 @@ class CustomPromptPage(Base, QWidget):
             )
 
         def save_preset(checked: bool = False) -> None:
+            del checked
+
             def on_save(dialog: LineEditMessageBox, text: str) -> None:
-                if not text.strip():
+                normalized_name = text.strip()
+                if not normalized_name:
                     return
 
-                path = f"{self.preset_base_path}/user/{self.language_code}/{text.strip()}.txt"
-                user_dir = os.path.dirname(path)
-                if not os.path.exists(user_dir):
-                    os.makedirs(user_dir)
-
-                if os.path.exists(path):
+                target_virtual_id = PromptResourceResolver.build_virtual_id(
+                    PromptResourceResolver.PresetSource.USER,
+                    f"{normalized_name}.txt",
+                )
+                target_path = PromptResourceResolver.resolve_virtual_id_path(
+                    self.task_type, target_virtual_id
+                )
+                if os.path.exists(target_path):
                     message_box = MessageBox(
                         Localizer.get().warning,
                         Localizer.get().alert_preset_already_exists,
@@ -478,10 +484,11 @@ class CustomPromptPage(Base, QWidget):
                         return
 
                 try:
-                    data = self.main_text.toPlainText().strip()
-                    with open(path, "w", encoding="utf-8") as writer:
-                        writer.write(data)
-
+                    PromptResourceResolver.save_user_preset(
+                        self.task_type,
+                        normalized_name,
+                        self.main_text.toPlainText(),
+                    )
                     self.emit(
                         Base.Event.TOAST,
                         {
@@ -492,7 +499,8 @@ class CustomPromptPage(Base, QWidget):
                     dialog.accept()
                 except Exception as e:
                     LogManager.get().error(
-                        f"Failed to save custom prompt preset: {path}", e
+                        f"Failed to save custom prompt preset: task={self.task_type.value} name={normalized_name}",
+                        e,
                     )
                     self.emit(
                         Base.Event.TOAST,
@@ -507,13 +515,20 @@ class CustomPromptPage(Base, QWidget):
             )
             dialog.exec()
 
-        def rename_preset(item: dict, checked: bool = False) -> None:
+        def rename_preset(item: dict[str, str], checked: bool = False) -> None:
+            del checked
+
             def on_rename(dialog: LineEditMessageBox, text: str) -> None:
-                if not text.strip():
+                normalized_name = text.strip()
+                if not normalized_name:
                     return
 
-                new_path = os.path.join(
-                    os.path.dirname(item["path"]), text.strip() + ".txt"
+                new_virtual_id = PromptResourceResolver.build_virtual_id(
+                    PromptResourceResolver.PresetSource.USER,
+                    f"{normalized_name}.txt",
+                )
+                new_path = PromptResourceResolver.resolve_virtual_id_path(
+                    self.task_type, new_virtual_id
                 )
                 if os.path.exists(new_path):
                     self.emit(
@@ -526,7 +541,28 @@ class CustomPromptPage(Base, QWidget):
                     return
 
                 try:
-                    os.rename(item["path"], new_path)
+                    renamed_item = PromptResourceResolver.rename_user_preset(
+                        self.task_type, item["virtual_id"], normalized_name
+                    )
+                    current_default = getattr(
+                        Config().load(),
+                        self.get_default_preset_config_key(),
+                        "",
+                    )
+                    if current_default == item["virtual_id"]:
+                        current_config = Config().load()
+                        setattr(
+                            current_config,
+                            self.get_default_preset_config_key(),
+                            renamed_item["virtual_id"],
+                        )
+                        current_config.save()
+                        setattr(
+                            config,
+                            self.get_default_preset_config_key(),
+                            renamed_item["virtual_id"],
+                        )
+
                     self.emit(
                         Base.Event.TOAST,
                         {
@@ -537,7 +573,7 @@ class CustomPromptPage(Base, QWidget):
                     dialog.accept()
                 except Exception as e:
                     LogManager.get().error(
-                        f"Failed to rename preset: {item['path']} -> {new_path}",
+                        f"Failed to rename preset: {item['virtual_id']} -> {new_virtual_id}",
                         e,
                     )
                     self.emit(
@@ -552,7 +588,8 @@ class CustomPromptPage(Base, QWidget):
             dialog.get_line_edit().setText(item["name"])
             dialog.exec()
 
-        def delete_preset(item: dict, checked: bool = False) -> None:
+        def delete_preset(item: dict[str, str], checked: bool = False) -> None:
+            del checked
             message_box = MessageBox(
                 Localizer.get().warning,
                 Localizer.get().alert_confirm_delete_data,
@@ -561,42 +598,44 @@ class CustomPromptPage(Base, QWidget):
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
-            if message_box.exec():
-                try:
-                    os.remove(item["path"])
+            if not message_box.exec():
+                return
 
-                    # 如果删除的是默认预设，则清除配置
-                    current_config = Config().load()
-                    key = f"custom_prompt_{self.language_code}_default_preset"
-                    if getattr(current_config, key) == item["path"]:
-                        setattr(current_config, key, "")
-                        current_config.save()
-                        # 更新当前页面的配置对象
-                        setattr(config, key, "")
+            try:
+                PromptResourceResolver.delete_user_preset(
+                    self.task_type, item["virtual_id"]
+                )
 
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.SUCCESS,
-                            "message": Localizer.get().task_success,
-                        },
-                    )
-                except Exception as e:
-                    LogManager.get().error(
-                        f"Failed to delete preset: {item['path']}", e
-                    )
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.ERROR,
-                            "message": Localizer.get().task_failed,
-                        },
-                    )
+                key = self.get_default_preset_config_key()
+                current_config = Config().load()
+                if getattr(current_config, key, "") == item["virtual_id"]:
+                    setattr(current_config, key, "")
+                    current_config.save()
+                    setattr(config, key, "")
+
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.SUCCESS,
+                        "message": Localizer.get().task_success,
+                    },
+                )
+            except Exception as e:
+                LogManager.get().error(
+                    f"Failed to delete preset: {item['virtual_id']}", e
+                )
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
 
         def triggered(checked: bool = False) -> None:
+            del checked
             menu = RoundMenu("", widget)
 
-            # 重置
             menu.addAction(
                 Action(
                     ICON_PRESET_RESET,
@@ -604,8 +643,6 @@ class CustomPromptPage(Base, QWidget):
                     triggered=reset,
                 )
             )
-
-            # 保存
             menu.addAction(
                 Action(
                     ICON_PRESET_SAVE_PRESET,
@@ -613,29 +650,24 @@ class CustomPromptPage(Base, QWidget):
                     triggered=save_preset,
                 )
             )
-
             menu.addSeparator()
 
             builtin_presets, user_presets = get_preset_paths()
+            key = self.get_default_preset_config_key()
 
-            # 内置预设
             for item in builtin_presets:
-                # 导入
                 sub_menu = RoundMenu(item["name"], menu)
                 sub_menu.setIcon(ICON_PRESET_FOLDER)
                 sub_menu.addAction(
                     Action(
                         ICON_PRESET_IMPORT,
                         Localizer.get().quality_import,
-                        triggered=partial(apply_preset, item["path"]),
+                        triggered=partial(apply_preset, item),
                     )
                 )
-
                 sub_menu.addSeparator()
 
-                # 默认预设控制
-                key = f"custom_prompt_{self.language_code}_default_preset"
-                if getattr(config, key) == item["path"]:
+                if getattr(config, key, "") == item["virtual_id"]:
                     sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                     sub_menu.addAction(
                         Action(
@@ -655,25 +687,19 @@ class CustomPromptPage(Base, QWidget):
 
                 menu.addMenu(sub_menu)
 
-            # 如果需要分隔符
             if builtin_presets and user_presets:
                 menu.addSeparator()
 
-            # 用户预设
             for item in user_presets:
                 sub_menu = RoundMenu(item["name"], menu)
                 sub_menu.setIcon(ICON_PRESET_FOLDER)
-
-                # 导入
                 sub_menu.addAction(
                     Action(
                         ICON_PRESET_IMPORT,
                         Localizer.get().quality_import,
-                        triggered=partial(apply_preset, item["path"]),
+                        triggered=partial(apply_preset, item),
                     )
                 )
-
-                # 重命名
                 sub_menu.addAction(
                     Action(
                         ICON_PRESET_RENAME,
@@ -681,8 +707,6 @@ class CustomPromptPage(Base, QWidget):
                         triggered=partial(rename_preset, item),
                     )
                 )
-
-                # 删除
                 sub_menu.addAction(
                     Action(
                         ICON_PRESET_DELETE,
@@ -690,12 +714,9 @@ class CustomPromptPage(Base, QWidget):
                         triggered=partial(delete_preset, item),
                     )
                 )
-
                 sub_menu.addSeparator()
 
-                # 默认预设控制
-                key = f"custom_prompt_{self.language_code}_default_preset"
-                if getattr(config, key) == item["path"]:
+                if getattr(config, key, "") == item["virtual_id"]:
                     sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                     sub_menu.addAction(
                         Action(
@@ -715,7 +736,6 @@ class CustomPromptPage(Base, QWidget):
 
                 menu.addMenu(sub_menu)
 
-            # 计算弹出位置（向上弹出）
             global_pos = widget.mapToGlobal(QPoint(0, 0))
             menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
 

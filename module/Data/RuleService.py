@@ -6,6 +6,7 @@ from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
 from module.Data.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
+from module.PromptResourceResolver import PromptResourceResolver
 from module.Utils.JSONTool import JSONTool
 
 
@@ -134,39 +135,37 @@ class RuleService:
                     Localizer.get().app_post_translation_replacement_page
                 )
 
-        # 5. 自定义提示词（中文）
-        if config.custom_prompt_zh_default_preset and os.path.exists(
-            config.custom_prompt_zh_default_preset
-        ):
-            try:
-                with open(
-                    config.custom_prompt_zh_default_preset, "r", encoding="utf-8-sig"
-                ) as f:
-                    text = f.read().strip()
-                db.set_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_ZH, text)
-                db.set_meta("custom_prompt_zh_enable", True)
-                loaded_presets.append(Localizer.get().app_custom_prompt_zh_page)
-            except Exception as e:
-                LogManager.get().error(
-                    f"Failed to load default custom prompt (ZH) preset: {config.custom_prompt_zh_default_preset}",
-                    e,
-                )
+        prompt_defaults = [
+            (
+                PromptResourceResolver.TaskType.TRANSLATION,
+                config.translation_custom_prompt_default_preset,
+                LGDatabase.RuleType.TRANSLATION_PROMPT,
+                "translation_prompt_enable",
+                Localizer.get().app_translation_prompt_page,
+            ),
+            (
+                PromptResourceResolver.TaskType.ANALYSIS,
+                config.analysis_custom_prompt_default_preset,
+                LGDatabase.RuleType.ANALYSIS_PROMPT,
+                "analysis_prompt_enable",
+                Localizer.get().app_analysis_prompt_page,
+            ),
+        ]
 
-        # 6. 自定义提示词（英文）
-        if config.custom_prompt_en_default_preset and os.path.exists(
-            config.custom_prompt_en_default_preset
-        ):
+        for task_type, virtual_id, rule_type, meta_key, page_name in prompt_defaults:
+            if not virtual_id:
+                continue
+
             try:
-                with open(
-                    config.custom_prompt_en_default_preset, "r", encoding="utf-8-sig"
-                ) as f:
-                    text = f.read().strip()
-                db.set_rule_text(LGDatabase.RuleType.CUSTOM_PROMPT_EN, text)
-                db.set_meta("custom_prompt_en_enable", True)
-                loaded_presets.append(Localizer.get().app_custom_prompt_en_page)
+                text = PromptResourceResolver.get_default_preset_text(
+                    task_type, virtual_id
+                )
+                db.set_rule_text(rule_type, text)
+                db.set_meta(meta_key, True)
+                loaded_presets.append(page_name)
             except Exception as e:
                 LogManager.get().error(
-                    f"Failed to load default custom prompt (EN) preset: {config.custom_prompt_en_default_preset}",
+                    f"Failed to load default prompt preset: task={task_type.value} preset={virtual_id}",
                     e,
                 )
 
