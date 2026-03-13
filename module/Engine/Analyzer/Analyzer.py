@@ -12,6 +12,7 @@ from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
+from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
@@ -472,10 +473,19 @@ class Analyzer(Base):
             )
             self.log_analysis_start()
 
-            flow_final_status = self.execute_task_contexts(
-                task_contexts,
-                max_workers=max_workers,
-            )
+            with ProgressBar(transient=True) as progress:
+                task_id = progress.new(
+                    total=int(self.extras.get("total_line", 0) or 0),
+                    completed=int(self.extras.get("line", 0) or 0),
+                )
+                self.pipeline.bind_console_progress(progress, task_id)
+                try:
+                    flow_final_status = self.execute_task_contexts(
+                        task_contexts,
+                        max_workers=max_workers,
+                    )
+                finally:
+                    self.pipeline.clear_console_progress()
             self.log_analysis_finish(flow_final_status)
             self.emit_analysis_terminal_toast(flow_final_status)
         except Exception as e:

@@ -128,6 +128,14 @@ class FakePipelineLogger:
         self.print_messages.append(msg)
 
 
+class FakeConsoleProgress:
+    def __init__(self) -> None:
+        self.updates: list[dict[str, int]] = []
+
+    def update(self, task_id: int, **kwargs: int) -> None:
+        self.updates.append({"task_id": task_id, **kwargs})
+
+
 def build_analysis_pipeline() -> AnalysisPipeline:
     analyzer = Analyzer()
     return AnalysisPipeline(analyzer)
@@ -705,6 +713,45 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
     assert snapshot["line"] == 4
     assert snapshot["processed_line"] == 3
     assert snapshot["error_line"] == 1
+    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+
+
+def test_persist_progress_snapshot_updates_bound_console_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analyzer = Analyzer()
+    pipeline = AnalysisPipeline(analyzer)
+    analyzer.extras = build_analysis_runtime_extras(
+        total_line=9,
+        processed_line=3,
+        error_line=1,
+    )
+    emitted: list[tuple[Base.Event, dict[str, object]]] = []
+    progress = FakeConsoleProgress()
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(
+        analyzer,
+        "emit",
+        lambda event, data: emitted.append((event, data)),
+    )
+
+    pipeline.bind_console_progress(progress, 7)
+    snapshot = pipeline.persist_progress_snapshot(save_state=False)
+
+    assert progress.updates == [
+        {
+            "task_id": 7,
+            "completed": 4,
+            "total": 9,
+        }
+    ]
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 

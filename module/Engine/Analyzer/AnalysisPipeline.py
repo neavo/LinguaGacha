@@ -16,6 +16,7 @@ from typing import Any
 import rich
 from rich import box
 from rich import markup
+from rich.progress import TaskID
 from rich.table import Table
 
 from base.Base import Base
@@ -29,6 +30,7 @@ from module.Engine.TaskRequesterErrors import RequestCancelledError
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
+from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseDecoder import ResponseDecoder
@@ -50,6 +52,31 @@ class AnalysisPipeline:
 
     def __init__(self, analyzer: Analyzer) -> None:
         self.analyzer = analyzer
+        self.console_progress: ProgressBar | None = None
+        self.console_progress_task_id: TaskID | None = None
+
+    def bind_console_progress(self, progress: ProgressBar, task_id: TaskID) -> None:
+        """把控制台进度条绑定到流水线，后续统一跟着快照更新。"""
+        self.console_progress = progress
+        self.console_progress_task_id = task_id
+
+    def clear_console_progress(self) -> None:
+        """结束主任务后立刻解绑，避免收尾持久化再碰已关闭的进度条。"""
+        self.console_progress = None
+        self.console_progress_task_id = None
+
+    def update_console_progress(self, snapshot: dict[str, Any]) -> None:
+        """控制台进度和 UI 进度都吃同一份快照，避免两套口径越跑越偏。"""
+        progress = self.console_progress
+        task_id = self.console_progress_task_id
+        if progress is None or task_id is None:
+            return
+
+        progress.update(
+            task_id,
+            completed=int(snapshot.get("line", 0) or 0),
+            total=int(snapshot.get("total_line", 0) or 0),
+        )
 
     def is_skipped_analysis_status(self, status: Base.ProjectStatus) -> bool:
         """统一维护分析链路的跳过状态，避免不同入口各写一套判断。"""
@@ -723,6 +750,7 @@ class AnalysisPipeline:
                 snapshot = dict(dm.update_analysis_progress_snapshot(snapshot))
 
         self.analyzer.extras = dict(snapshot)
+        self.update_console_progress(snapshot)
         self.analyzer.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
         return snapshot
 

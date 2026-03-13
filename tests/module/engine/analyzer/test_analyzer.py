@@ -85,6 +85,29 @@ class ImmediateThread:
         self.target(*self.args)
 
 
+class FakeProgressBar:
+    instances: list["FakeProgressBar"] = []
+
+    def __init__(self, transient: bool) -> None:
+        self.transient = transient
+        self.new_calls: list[dict[str, int]] = []
+        FakeProgressBar.instances.append(self)
+
+    def __enter__(self) -> "FakeProgressBar":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        del exc_type, exc, tb
+        return False
+
+    def new(self, total: int = 0, completed: int = 0) -> int:
+        self.new_calls.append({"total": total, "completed": completed})
+        return 11
+
+    def update(self, task_id: int, **kwargs: int) -> None:
+        del task_id, kwargs
+
+
 def install_analysis_import_glossary_runtime(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
@@ -481,6 +504,119 @@ def test_start_stopped_does_not_import_term_pool(
     analyzer.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
     assert fake_data_manager.import_count == 0
+
+
+def test_start_creates_progress_bar_for_pending_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+    quality_snapshot,
+) -> None:
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
+    )
+
+    analyzer = Analyzer()
+    config = build_start_config()
+    FakeProgressBar.instances = []
+    patch_start_runtime(
+        monkeypatch,
+        analyzer,
+        task_contexts=[build_context("todo")],
+        progress_snapshot=build_analysis_progress_snapshot(
+            total_line=5,
+            line=2,
+            processed_line=1,
+            error_line=1,
+            time_value=12.0,
+        ),
+    )
+    monkeypatch.setattr(analyzer_module, "ProgressBar", FakeProgressBar)
+    monkeypatch.setattr(
+        analyzer_module,
+        "TaskLimiter",
+        lambda rps, rpm, max_concurrency: SimpleNamespace(
+            rps=rps,
+            rpm=rpm,
+            max_concurrency=max_concurrency,
+        ),
+    )
+    monkeypatch.setattr(analyzer, "log_analysis_start", lambda: None)
+    monkeypatch.setattr(analyzer, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(
+        analyzer,
+        "emit_analysis_terminal_toast",
+        lambda final_status: None,
+    )
+    monkeypatch.setattr(
+        analyzer,
+        "persist_progress_snapshot",
+        lambda save_state: dict(analyzer.extras),
+    )
+
+    def fake_execute(task_contexts, max_workers: int) -> str:
+        del task_contexts, max_workers
+        assert len(FakeProgressBar.instances) == 1
+        assert analyzer.pipeline.console_progress is FakeProgressBar.instances[0]
+        assert analyzer.pipeline.console_progress_task_id == 11
+        return "SUCCESS"
+
+    monkeypatch.setattr(analyzer, "execute_task_contexts", fake_execute)
+
+    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+
+    assert len(FakeProgressBar.instances) == 1
+    assert FakeProgressBar.instances[0].transient is True
+    assert FakeProgressBar.instances[0].new_calls == [{"total": 5, "completed": 2}]
+    assert analyzer.pipeline.console_progress is None
+    assert analyzer.pipeline.console_progress_task_id is None
+
+
+def test_start_without_pending_tasks_skips_progress_bar(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+    quality_snapshot,
+) -> None:
+    install_analyzer_start_runtime(
+        monkeypatch,
+        fake_data_manager,
+        quality_snapshot,
+    )
+
+    analyzer = Analyzer()
+    config = build_start_config()
+    patch_start_runtime(
+        monkeypatch,
+        analyzer,
+        task_contexts=[],
+        progress_snapshot=build_analysis_progress_snapshot(
+            total_line=3,
+            line=3,
+            processed_line=3,
+            error_line=0,
+            time_value=12.0,
+        ),
+    )
+
+    def fail_progress_bar(*args, **kwargs) -> FakeProgressBar:
+        del args, kwargs
+        raise AssertionError("没有待执行任务时不该创建进度条")
+
+    monkeypatch.setattr(analyzer_module, "ProgressBar", fail_progress_bar)
+    monkeypatch.setattr(analyzer, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(
+        analyzer,
+        "emit_analysis_terminal_toast",
+        lambda final_status: None,
+    )
+    monkeypatch.setattr(
+        analyzer,
+        "persist_progress_snapshot",
+        lambda save_state: dict(analyzer.extras),
+    )
+
+    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
 
 def test_analysis_import_glossary_emits_done_and_refresh(
