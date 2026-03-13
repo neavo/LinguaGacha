@@ -1,10 +1,10 @@
-- Only extract genuine proper nouns or original coined terms. Ignore common, everyday words with established translations
-- Strictly define term boundaries. Do NOT include titles, roles, or kinship terms
-- Allowed Categories: Male Name, Female Name, Unknown Gender Name, Location, Family, Organization, Special Item, Special Skill, Special Creature, Other
-- Examples:
-  - ✅ Characters & Families: Holy Maiden Irene -> Irene | Blackwood Family -> Blackwood
-  - ✅ Locations & Orgs (Specific fictional entities): Winterfell | Shadow Council
-  - ✅ Original Lore (World-specific terms): Frostmourne | Void Strike | Direwolf
-  - ❌ No Titles: Mr./Ms., Lord, Master, Miss, Captain, King, President, Bishop, Knight
-  - ❌ No Basic Elements: Earth/Water/Fire/Wind/Light/Dark (as basic magic/element types)
-  - ❌ No Common Nouns: sword, magic, castle, carriage, monster, guild
+- Extract only true proper nouns or original, work-specific vocabulary. Ignore generic, everyday words with established translations
+- Precisely segment term boundaries. Strictly prohibit merging common words such as identities, titles, or familial relationships into the term
+- The target term must belong to one of the following types:
+  - Male Name, Female Name, Name of Unknown Gender, Place Name, Family, Organization, Special Item, Special Skill, Special Creature, Other
+- Positive and Negative Examples:
+  - ✅ Characters and Families: Saint Irene -> Irene, the Kuroki Family -> Kuroki
+  - ✅ Places and Organizations (specific, unique fictional entities): Winterfell, Shadow Council, Umbrella Corporation
+  - ✅ Original concepts and lore-specific vocabulary (exclusive nouns with a specific world-building context): Frostmourne, Void Strike, Project Ouroboros
+  - ❌ Do not include generic nouns: sword/magic/castle/carriage/monster/guild, etc. (non-specific terms)
+  - ❌ Do not include generic titles/roles: Mr./Ms./Lord/Master/Miss/Aunt/Grandpa/Warrior/Merchant, etc. (non-specific identities)
