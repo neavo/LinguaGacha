@@ -184,9 +184,7 @@ class LocalizerZH:
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"
-    engine_task_completed: str = "任务已完成 …"
-    engine_task_done: str = "所有数据均已处理，任务已结束 …"
-    engine_task_done_with_terms: str = "所有数据均已处理，新增术语 {COUNT} 条 …"
+    engine_task_done: str = "任务已完成 …"
     engine_task_fail: str = "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …"
     engine_task_stop: str = "任务已停止 …"
     engine_task_rule_filter: str = "规则过滤已完成，共过滤 {COUNT} 个无需翻译的条目 …"

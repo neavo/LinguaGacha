@@ -577,8 +577,7 @@ def test_log_analysis_finish_success_logs_completion_and_added_terms(
     pipeline.log_analysis_finish("SUCCESS")
 
     assert logger.info_messages == [
-        Localizer.get().engine_task_completed,
-        Localizer.get().engine_task_done_with_terms.replace("{COUNT}", "2"),
+        Localizer.get().engine_task_done,
     ]
     assert logger.warning_messages == []
     assert logger.print_messages == ["", ""]

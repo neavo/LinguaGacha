@@ -821,11 +821,7 @@ class AnalysisPipeline:
         """收尾日志只维护一处，成功失败停止三种终态共用。"""
         LogManager.get().print("")
         if final_status == "SUCCESS":
-            added_terms = Localizer.get().engine_task_done_with_terms.replace(
-                "{COUNT}", str(int(self.analyzer.extras.get("added_glossary", 0) or 0))
-            )
-            LogManager.get().info(Localizer.get().engine_task_completed)
-            LogManager.get().info(added_terms)
+            LogManager.get().info(Localizer.get().engine_task_done)
         elif final_status == "STOPPED":
             LogManager.get().info(Localizer.get().engine_task_stop)
         else:
