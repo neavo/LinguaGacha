@@ -37,6 +37,7 @@ from module.Response.ResponseDecoder import ResponseDecoder
 from module.Text.TextHelper import TextHelper
 from module.Utils.JSONTool import JSONTool
 
+from module.Engine.Analyzer.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Engine.Analyzer.AnalysisModels import AnalysisItemContext
 from module.Engine.Analyzer.AnalysisModels import AnalysisProgressSnapshot
 from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
@@ -590,12 +591,13 @@ class AnalysisPipeline:
         if not srcs:
             return AnalysisTaskResult(context=context, success=True, stopped=False)
 
+        request_srcs, fake_name_injector = self.build_request_source_texts(srcs)
         start_time = time.time()
         prompt_builder = PromptBuilder(
             self.analyzer.config,
             quality_snapshot=self.analyzer.quality_snapshot,
         )
-        messages, _console_log = prompt_builder.generate_glossary_prompt(srcs)
+        messages, _console_log = prompt_builder.generate_glossary_prompt(request_srcs)
 
         requester = TaskRequester(self.analyzer.config, self.analyzer.model)
         (
@@ -657,7 +659,10 @@ class AnalysisPipeline:
         normalized_think = ResponseCleaner.merge_text_blocks(normalized_think, why_text)
 
         _, decoded_entries = ResponseDecoder().decode(response_result)
-        normalized_entries = self.normalize_glossary_entries(decoded_entries)
+        normalized_entries = self.normalize_glossary_entries(
+            decoded_entries,
+            fake_name_injector=fake_name_injector,
+        )
         if not normalized_entries and not has_why_block:
             self.print_chunk_log(
                 start=start_time,
@@ -701,6 +706,13 @@ class AnalysisPipeline:
             glossary_entries=tuple(normalized_entries),
         )
 
+    def build_request_source_texts(
+        self, srcs: list[str]
+    ) -> tuple[list[str], AnalysisFakeNameInjector]:
+        """分析请求只在这里注入伪名，避免外部状态和 checkpoint 口径被污染。"""
+        fake_name_injector = AnalysisFakeNameInjector(srcs)
+        return fake_name_injector.inject_texts(srcs), fake_name_injector
+
     def split_glossary_entry_pairs(self, src: str, dst: str) -> list[tuple[str, str]]:
         """复合术语沿用旧切分规则，保证新旧链路入池口径一致。"""
         src_parts = TextHelper.split_by_punctuation(src, split_by_space=True)
@@ -709,8 +721,21 @@ class AnalysisPipeline:
             return [(src, dst)]
         return list(zip(src_parts, dst_parts))
 
+    @staticmethod
+    def build_glossary_entry(src: str, dst: str, info: str) -> dict[str, Any]:
+        """术语条目统一从这里落盘，避免各个分支手写同一份结构。"""
+        return {
+            "src": src,
+            "dst": dst,
+            "info": info,
+            "case_sensitive": False,
+        }
+
     def normalize_glossary_entries(
-        self, glossary_entries: list[dict[str, Any]]
+        self,
+        glossary_entries: list[dict[str, Any]],
+        *,
+        fake_name_injector: AnalysisFakeNameInjector | None = None,
     ) -> list[dict[str, Any]]:
         """把模型输出规整成固定术语结构，后面日志和提交都只认这一种。"""
         normalized: list[dict[str, Any]] = []
@@ -720,21 +745,32 @@ class AnalysisPipeline:
 
             src = str(raw.get("src", "")).strip()
             dst = str(raw.get("dst", "")).strip()
+            if fake_name_injector is not None:
+                restored_entry = fake_name_injector.restore_glossary_entry(src, dst)
+                if restored_entry is None:
+                    continue
+                src, dst = restored_entry
+
             info = str(raw.get("info", "")).strip()
+            if AnalysisFakeNameInjector.is_control_code_self_mapping(src, dst):
+                normalized.append(self.build_glossary_entry(src, dst, info))
+                continue
+
             for src_part, dst_part in self.split_glossary_entry_pairs(src, dst):
                 normalized_src = src_part.strip()
                 normalized_dst = dst_part.strip()
                 if normalized_src == "" or normalized_dst == "":
                     continue
-                if normalized_src == normalized_dst:
+                if (
+                    normalized_src == normalized_dst
+                    and not AnalysisFakeNameInjector.is_control_code_self_mapping(
+                        normalized_src,
+                        normalized_dst,
+                    )
+                ):
                     continue
                 normalized.append(
-                    {
-                        "src": normalized_src,
-                        "dst": normalized_dst,
-                        "info": info,
-                        "case_sensitive": False,
-                    }
+                    self.build_glossary_entry(normalized_src, normalized_dst, info)
                 )
 
         return normalized

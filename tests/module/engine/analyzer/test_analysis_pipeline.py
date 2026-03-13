@@ -1,4 +1,3 @@
-from importlib import import_module
 from types import SimpleNamespace
 import time
 
@@ -13,7 +12,10 @@ from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
 from module.Engine.Analyzer.Analyzer import Analyzer
 
-analysis_pipeline_module = import_module("module.Engine.Analyzer.AnalysisPipeline")
+from tests.module.engine.analyzer.support import analysis_pipeline_module
+from tests.module.engine.analyzer.support import build_request_pipeline
+from tests.module.engine.analyzer.support import capture_chunk_log
+from tests.module.engine.analyzer.support import stub_glossary_request
 
 
 def build_analysis_runtime_extras(**overrides: object) -> dict[str, object]:
@@ -57,52 +59,6 @@ def build_context(
         items=items,
         retry_count=retry_count,
     )
-
-
-def build_request_pipeline() -> AnalysisPipeline:
-    analyzer = Analyzer()
-    analyzer.model = {"name": "demo-model"}
-    analyzer.quality_snapshot = SimpleNamespace()
-    return AnalysisPipeline(analyzer)
-
-
-def stub_glossary_request(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    response_result: str,
-    response_think: str = "",
-    input_tokens: int = 1,
-    output_tokens: int = 1,
-    exception: Exception | None = None,
-) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.PromptBuilder,
-        "generate_glossary_prompt",
-        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
-    )
-    monkeypatch.setattr(
-        analysis_pipeline_module.TaskRequester,
-        "request",
-        lambda self, messages, stop_checker: (
-            exception,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-        ),
-    )
-
-
-def capture_chunk_log(
-    monkeypatch: pytest.MonkeyPatch, pipeline: AnalysisPipeline
-) -> dict[str, object]:
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        pipeline,
-        "print_chunk_log",
-        lambda **kwargs: captured.update(kwargs),
-    )
-    return captured
 
 
 class FakePipelineLogger:

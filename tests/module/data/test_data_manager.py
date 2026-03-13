@@ -17,6 +17,29 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 data_manager_module = importlib.import_module("module.Data.DataManager")
+ANALYSIS_TIME = "2026-03-10T10:00:00"
+
+
+def build_analysis_candidate_entry(
+    *,
+    src: str,
+    dst_votes: dict[str, int],
+    info_votes: dict[str, int],
+    observation_count: int,
+    first_seen_at: str = ANALYSIS_TIME,
+    last_seen_at: str = ANALYSIS_TIME,
+    case_sensitive: bool = False,
+) -> dict[str, Any]:
+    """统一构造分析候选项，避免测试里反复铺一长串固定字段。"""
+    return {
+        "src": src,
+        "dst_votes": dst_votes,
+        "info_votes": info_votes,
+        "observation_count": observation_count,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": last_seen_at,
+        "case_sensitive": case_sensitive,
+    }
 
 
 def build_analysis_progress_snapshot(**overrides: Any) -> dict[str, Any]:
@@ -580,33 +603,30 @@ def test_build_analysis_glossary_from_candidates_votes_and_filters() -> None:
     dm = build_manager()
     dm.get_analysis_candidate_aggregate = MagicMock(
         return_value={
-            "Alice": {
-                "src": "Alice",
-                "dst_votes": {"爱丽丝": 2, "艾丽斯": 2},
-                "info_votes": {"女性人名": 1, "其他": 1},
-                "observation_count": 2,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "NoInfo": {
-                "src": "NoInfo",
-                "dst_votes": {"无标签术语": 1},
-                "info_votes": {"": 2},
-                "observation_count": 2,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "same": {
-                "src": "same",
-                "dst_votes": {"same": 1},
-                "info_votes": {"": 1},
-                "observation_count": 1,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
+            r"\n[7]": build_analysis_candidate_entry(
+                src=r"\n[7]",
+                dst_votes={r"\n[7]": 2},
+                info_votes={"未知性别人名": 2},
+                observation_count=2,
+            ),
+            "Alice": build_analysis_candidate_entry(
+                src="Alice",
+                dst_votes={"爱丽丝": 2, "艾丽斯": 2},
+                info_votes={"女性人名": 1, "其他": 1},
+                observation_count=2,
+            ),
+            "NoInfo": build_analysis_candidate_entry(
+                src="NoInfo",
+                dst_votes={"无标签术语": 1},
+                info_votes={"": 2},
+                observation_count=2,
+            ),
+            "same": build_analysis_candidate_entry(
+                src="same",
+                dst_votes={"same": 1},
+                info_votes={"属性": 1},
+                observation_count=1,
+            ),
         }
     )
 
@@ -618,7 +638,13 @@ def test_build_analysis_glossary_from_candidates_votes_and_filters() -> None:
             "dst": "爱丽丝",
             "info": "女性人名",
             "case_sensitive": False,
-        }
+        },
+        {
+            "src": r"\n[7]",
+            "dst": r"\n[7]",
+            "info": "未知性别人名",
+            "case_sensitive": False,
+        },
     ]
 
 
@@ -626,55 +652,46 @@ def test_get_analysis_candidate_count_only_counts_importable_entries() -> None:
     dm = build_manager()
     dm.get_analysis_candidate_aggregate = MagicMock(
         return_value={
-            "Alice": {
-                "src": "Alice",
-                "dst_votes": {"爱丽丝": 2},
-                "info_votes": {"女性人名": 1},
-                "observation_count": 2,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "same": {
-                "src": "same",
-                "dst_votes": {"same": 2},
-                "info_votes": {"属性": 1},
-                "observation_count": 2,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "other": {
-                "src": "OtherEntry",
-                "dst_votes": {"其它译法": 1},
-                "info_votes": {"other": 1},
-                "observation_count": 1,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "no_info": {
-                "src": "NoInfoEntry",
-                "dst_votes": {"无标签术语": 1},
-                "info_votes": {"": 2},
-                "observation_count": 2,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
-            "empty": {
-                "src": "EmptyDst",
-                "dst_votes": {},
-                "info_votes": {"属性": 1},
-                "observation_count": 1,
-                "first_seen_at": "2026-03-10T10:00:00",
-                "last_seen_at": "2026-03-10T10:00:00",
-                "case_sensitive": False,
-            },
+            "Alice": build_analysis_candidate_entry(
+                src="Alice",
+                dst_votes={"爱丽丝": 2},
+                info_votes={"女性人名": 1},
+                observation_count=2,
+            ),
+            "same": build_analysis_candidate_entry(
+                src="same",
+                dst_votes={"same": 2},
+                info_votes={"属性": 1},
+                observation_count=2,
+            ),
+            r"\n[7]": build_analysis_candidate_entry(
+                src=r"\n[7]",
+                dst_votes={r"\n[7]": 2},
+                info_votes={"未知性别人名": 2},
+                observation_count=2,
+            ),
+            "other": build_analysis_candidate_entry(
+                src="OtherEntry",
+                dst_votes={"其它译法": 1},
+                info_votes={"other": 1},
+                observation_count=1,
+            ),
+            "no_info": build_analysis_candidate_entry(
+                src="NoInfoEntry",
+                dst_votes={"无标签术语": 1},
+                info_votes={"": 2},
+                observation_count=2,
+            ),
+            "empty": build_analysis_candidate_entry(
+                src="EmptyDst",
+                dst_votes={},
+                info_votes={"属性": 1},
+                observation_count=1,
+            ),
         }
     )
 
-    assert dm.get_analysis_candidate_count() == 1
+    assert dm.get_analysis_candidate_count() == 2
 
 
 def test_import_analysis_term_pool_fills_empty_without_clearing_pool() -> None:
@@ -785,6 +802,41 @@ def test_filter_analysis_glossary_import_candidates_drops_low_hit_new_entry() ->
     assert preview.entries[0].is_new is True
     assert preview.statistics_results["Alice|0"].matched_item_count == 1
     assert filtered == []
+
+
+def test_filter_analysis_glossary_import_candidates_keeps_control_code_self_mapping_even_if_low_hit() -> (
+    None
+):
+    dm = build_manager()
+    dm.get_glossary = MagicMock(return_value=[])
+    dm.get_all_item_dicts = MagicMock(
+        return_value=[
+            {
+                "src": r"角色\n[7]只出现一次",
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ]
+    )
+    glossary_entries = [
+        {
+            "src": r"\n[7]",
+            "dst": r"\n[7]",
+            "info": "未知性别人名",
+            "case_sensitive": False,
+        }
+    ]
+
+    preview = dm.build_analysis_glossary_import_preview(glossary_entries)
+    filtered = dm.filter_analysis_glossary_import_candidates(
+        glossary_entries,
+        preview,
+    )
+
+    assert len(preview.entries) == 1
+    assert preview.entries[0].is_new is True
+    assert preview.statistics_results[r"\n[7]|0"].matched_item_count == 1
+    assert filtered == glossary_entries
 
 
 def test_filter_analysis_glossary_import_candidates_keeps_existing_fill_even_if_low_hit() -> (

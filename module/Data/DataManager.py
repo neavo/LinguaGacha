@@ -837,6 +837,27 @@ class DataManager(Base):
             return ""
         return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def is_analysis_control_code_text(text: str) -> bool:
+        """分析术语里只有纯控制码需要特殊放行，判断规则统一走这里。"""
+        from module.Engine.Analyzer.AnalysisFakeNameInjector import (
+            AnalysisFakeNameInjector,
+        )
+
+        return AnalysisFakeNameInjector.is_control_code_text(str(text).strip())
+
+    @classmethod
+    def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
+        """纯控制码自映射术语代表实体占位符本体，不走普通自映射过滤。"""
+        from module.Engine.Analyzer.AnalysisFakeNameInjector import (
+            AnalysisFakeNameInjector,
+        )
+
+        return AnalysisFakeNameInjector.is_control_code_self_mapping(
+            str(src).strip(),
+            str(dst).strip(),
+        )
+
     def normalize_analysis_term_vote_map(self, raw_votes: object) -> dict[str, int]:
         """把候选票数字段收敛成稳定的 {文本: 票数} 结构。"""
         if not isinstance(raw_votes, dict):
@@ -1587,11 +1608,14 @@ class DataManager(Base):
         dst = self.pick_analysis_term_pool_winner(entry.get("dst_votes", {}))
         info = self.pick_analysis_term_pool_winner(entry.get("info_votes", {}))
         normalized_info = info.strip().lower()
+        is_control_code_self_mapping = self.is_analysis_control_code_self_mapping(
+            src, dst
+        )
 
         # 分析导入要求术语类型完整，避免把缺少标签的候选直接写进正式术语表。
         if src == "" or dst == "" or normalized_info == "":
             return None
-        if dst == src:
+        if dst == src and not is_control_code_self_mapping:
             return None
         if normalized_info in {"其它", "其他", "other"}:
             return None
@@ -1712,6 +1736,12 @@ class DataManager(Base):
 
         for preview_entry in preview.entries:
             if not preview_entry.is_new:
+                continue
+
+            if self.is_analysis_control_code_self_mapping(
+                str(preview_entry.entry.get("src", "")).strip(),
+                str(preview_entry.entry.get("dst", "")).strip(),
+            ):
                 continue
 
             matched_item_count = get_matched_item_count(preview_entry.statistics_key)
