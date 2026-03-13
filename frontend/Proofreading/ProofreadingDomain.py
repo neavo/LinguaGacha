@@ -201,6 +201,32 @@ class ProofreadingDomain:
         )
 
     @classmethod
+    def build_lookup_filter_options(
+        cls,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        checker: ResultChecker | None,
+        *,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
+    ) -> ProofreadingFilterOptions:
+        """为“规则反查”构建全开筛选，避免旧筛选把真实命中藏起来。"""
+
+        base_options = cls.build_default_filter_options(
+            items,
+            warning_map,
+            checker,
+            failed_terms_by_item_key=failed_terms_by_item_key,
+        )
+        statuses = {item.get_status() for item in items} or set(cls.DEFAULT_STATUSES)
+
+        return ProofreadingFilterOptions(
+            warning_types=set(base_options.warning_types or set()),
+            statuses=statuses,
+            file_paths=set(base_options.file_paths or set()),
+            glossary_terms=set(base_options.glossary_terms or set()),
+        )
+
+    @classmethod
     def filter_items(
         cls,
         items: list[Item],

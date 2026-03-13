@@ -3,6 +3,7 @@ import threading
 from pathlib import Path
 from typing import Any
 from typing import Callable
+from typing import TypeVar
 from typing import cast
 
 from PySide6.QtCore import QPoint
@@ -24,14 +25,17 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
+from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import setCustomStyleSheet
+from qfluentwidgets import qconfig
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
+from frontend.Quality.QualityRuleEditPanelBase import QualityRuleEditPanelBase
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Config import Config
@@ -62,6 +66,8 @@ ICON_ACTION_MOVE_TOP: BaseIcon = BaseIcon.CHEVRON_FIRST  # 右键菜单：置顶
 ICON_ACTION_MOVE_BOTTOM: BaseIcon = BaseIcon.CHEVRON_LAST  # 右键菜单：置底
 ICON_STAT_HIT: BaseIcon = BaseIcon.CIRCLE_CHECK  # 统计列：命中
 ICON_STAT_ALERT: BaseIcon = BaseIcon.TRIANGLE_ALERT  # 统计列：告警（包含关系）
+
+EditPanelT = TypeVar("EditPanelT", bound=QualityRuleEditPanelBase)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -177,6 +183,16 @@ class QualityRulePageBase(Base, QWidget):
     def create_empty_entry(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    def build_proofreading_lookup(
+        self, entry: dict[str, Any]
+    ) -> tuple[str, bool] | None:
+        """把当前规则转换成校对页可直接消费的查询参数。"""
+
+        keyword = str(entry.get("src", "")).strip()
+        if not keyword:
+            return None
+        return keyword, False
+
     def get_merge_rule_type(self) -> QualityRuleMerger.RuleType:
         """返回当前页面对应的规则类型（用于判重 key 与字段级合并）。
 
@@ -228,6 +244,26 @@ class QualityRulePageBase(Base, QWidget):
         """子类可覆盖：为统计结果映射提供稳定 key。"""
 
         return self.get_entry_key(entry)
+
+    def bind_edit_panel_actions(self, panel: EditPanelT) -> EditPanelT:
+        """绑定规则编辑面板的通用动作，减少页面侧样板代码。"""
+
+        panel.add_requested.connect(
+            lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
+        )
+        panel.save_requested.connect(self.save_current_entry)
+        panel.delete_requested.connect(self.delete_current_entry)
+        panel.query_requested.connect(self.query_current_entry)
+        return panel
+
+    def disconnect_theme_changed_signal(self, callback: Callable[[], None]) -> None:
+        """统一断开主题切换信号，避免页面侧重复写相同兜底。"""
+
+        try:
+            qconfig.themeChanged.disconnect(callback)
+        except TypeError, RuntimeError:
+            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
+            pass
 
     # ==================== UI 组装（供子类调用） ====================
 
@@ -1013,6 +1049,18 @@ class QualityRulePageBase(Base, QWidget):
         self.run_reload_if_pending()
         return True
 
+    def confirm_delete_entries(self, count: int) -> bool:
+        """统一的删除确认框，避免各规则页重复维护相同文案与按钮。"""
+
+        message = Localizer.get().quality_delete_confirm.replace("{COUNT}", str(count))
+        message_box = MessageBox(Localizer.get().confirm, message, self.main_window)
+        message_box.yesButton.setText(Localizer.get().confirm)
+        message_box.cancelButton.setText(Localizer.get().cancel)
+        return bool(message_box.exec())
+
+    def delete_selected_entries(self) -> None:
+        self.delete_entries_by_rows(self.get_selected_entry_rows())
+
     def refresh_statistics_column(self) -> None:
         if not hasattr(self, "table_model"):
             return
@@ -1636,6 +1684,28 @@ class QualityRulePageBase(Base, QWidget):
             if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
         ]
 
+    def query_current_entry(self) -> None:
+        """把当前规则跳转到校对页查询，复用校对页现成搜索链路。"""
+
+        def action() -> None:
+            if self.current_index < 0 or self.current_index >= len(self.entries):
+                return
+
+            entry = self.entries[self.current_index]
+            lookup = self.build_proofreading_lookup(entry)
+            if lookup is None:
+                return
+
+            keyword, is_regex = lookup
+            proofreading_page = getattr(self.main_window, "proofreading_page", None)
+            if proofreading_page is None:
+                return
+
+            proofreading_page.request_lookup(keyword=keyword, is_regex=is_regex)
+            self.main_window.switchTo(proofreading_page)
+
+        self.run_with_unsaved_guard(action)
+
     # ==================== 搜索栏 ====================
 
     def show_search_bar(self) -> None:
@@ -1792,3 +1862,28 @@ class QualityRulePageBase(Base, QWidget):
         )
         push_button.clicked.connect(connect)
         self.command_bar_card.add_widget(push_button)
+
+    def add_standard_command_bar_actions(
+        self,
+        config: Config,
+        window: FluentWindow,
+        *,
+        extra_right_actions: tuple[Callable[[], None], ...] = (),
+    ) -> None:
+        """拼装规则页共用命令栏，减少多个页面重复布局代码。"""
+
+        self.command_bar_card.set_minimum_width(640)
+
+        self.add_command_bar_action_import(window)
+        self.add_command_bar_action_export(window)
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_search()
+        self.add_command_bar_action_statistics()
+        self.command_bar_card.add_separator()
+        self.add_command_bar_action_preset(config, window)
+        self.command_bar_card.add_stretch(1)
+
+        for action in extra_right_actions:
+            action()
+
+        self.add_command_bar_action_wiki()

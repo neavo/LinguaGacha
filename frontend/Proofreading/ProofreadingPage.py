@@ -53,6 +53,12 @@ class ReplaceAllResult:
     changes: tuple[tuple[int, str, Base.ProjectStatus], ...] = tuple()
 
 
+@dataclass(frozen=True)
+class ProofreadingLookupRequest:
+    keyword: str
+    is_regex: bool
+
+
 class ProofreadingPage(Base, QWidget):
     """校对任务主页面"""
 
@@ -136,6 +142,7 @@ class ProofreadingPage(Base, QWidget):
         self.pending_revert: Callable[[], None] | None = None
         # Replace 后不立刻重筛，等待下一次显式搜索再刷新列表范围。
         self.search_refilter_deferred: bool = False
+        self.pending_lookup_request: ProofreadingLookupRequest | None = None
 
         # 自动载入/同步调度
         self.data_stale: bool = True
@@ -508,7 +515,9 @@ class ProofreadingPage(Base, QWidget):
 
         self.edit_panel.set_result_checker(self.result_checker)
 
-        if self.items:
+        if self.pending_lookup_request is not None:
+            self.apply_pending_lookup_if_ready()
+        elif self.items:
             self.apply_filter(False)
         else:
             self.table_widget.set_items([], {})
@@ -676,48 +685,20 @@ class ProofreadingPage(Base, QWidget):
     # build_default_filter_options/build_review_items 已迁移到 ProofreadingDomain/ProofreadingLoadService。
 
     # ========== 搜索功能 ==========
-    def on_search_clicked(self) -> None:
-        """搜索按钮点击"""
-        self.search_card.set_replace_mode(False)
+    def show_search_panel(self, *, replace_mode: bool) -> None:
+        """统一切换搜索栏展示状态，避免搜索/替换/反查入口各自拼 UI。"""
+
+        self.search_card.set_replace_mode(replace_mode)
         self.search_card.setVisible(True)
         self.command_bar_card.setVisible(False)
-        # 聚焦到输入框
         self.search_card.get_line_edit().setFocus()
 
-    def on_replace_clicked(self) -> None:
-        """替换按钮点击"""
-        self.search_card.setVisible(True)
-        self.command_bar_card.setVisible(False)
-        self.search_card.set_replace_mode(True)
-        # 替换模式仍优先聚焦查找框，方便用户先输入关键词再执行替换。
-        self.search_card.get_line_edit().setFocus()
+    def hide_search_panel(self) -> None:
+        self.search_card.setVisible(False)
+        self.command_bar_card.setVisible(True)
 
-    def on_search_back_clicked(self) -> None:
-        """搜索栏返回点击，清除搜索状态"""
-
-        def action() -> None:
-            self.search_keyword = ""
-            self.search_is_regex = False
-            self.search_replace_mode = False
-            self.search_refilter_deferred = False
-            self.replace_once_pending_jump = False
-            self.replace_once_pending_refilter_apply = False
-            self.search_match_indices = []
-            self.search_current_match = -1
-            self.search_next_anchor_index = None
-            self.search_card.reset_state()
-            self.pending_selected_item = None
-            self.apply_filter(False)
-            self.search_card.setVisible(False)
-            self.command_bar_card.setVisible(True)
-
-        self.run_with_unsaved_guard(action)
-
-    def reset_search_state(self) -> None:
-        """清空搜索状态并退出搜索栏。
-
-        用于页面禁用/数据清空等场景：不保留搜索输入/模式/匹配进度。
-        """
+    def clear_search_runtime_state(self) -> None:
+        """清空搜索相关运行态，不直接改动搜索栏控件内容。"""
 
         self.search_keyword = ""
         self.search_is_regex = False
@@ -730,9 +711,99 @@ class ProofreadingPage(Base, QWidget):
         self.search_next_anchor_index = None
         self.pending_selected_item = None
 
+    def on_search_clicked(self) -> None:
+        """搜索按钮点击"""
+        self.show_search_panel(replace_mode=False)
+
+    def on_replace_clicked(self) -> None:
+        """替换按钮点击"""
+        self.show_search_panel(replace_mode=True)
+
+    def on_search_back_clicked(self) -> None:
+        """搜索栏返回点击，清除搜索状态"""
+
+        def action() -> None:
+            self.pending_lookup_request = None
+            self.clear_search_runtime_state()
+            self.search_card.reset_state()
+            self.apply_filter(False)
+            self.hide_search_panel()
+
+        self.run_with_unsaved_guard(action)
+
+    def reset_search_state(self) -> None:
+        """清空搜索状态并退出搜索栏。
+
+        用于页面禁用/数据清空等场景：不保留搜索输入/模式/匹配进度。
+        """
+
+        self.pending_lookup_request = None
+        self.clear_search_runtime_state()
+
         self.search_card.reset_state()
-        self.search_card.setVisible(False)
-        self.command_bar_card.setVisible(True)
+        self.hide_search_panel()
+
+    def request_lookup(self, *, keyword: str, is_regex: bool) -> None:
+        """接收质量规则页的反查请求，并尽量在页面可见后自动执行。"""
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            return
+
+        self.pending_lookup_request = ProofreadingLookupRequest(
+            keyword=normalized_keyword,
+            is_regex=bool(is_regex),
+        )
+        self.search_card.set_search_state(
+            keyword=normalized_keyword,
+            is_regex=bool(is_regex),
+            replace_mode=False,
+            emit_options_changed=False,
+        )
+        self.search_card.clear_match_info()
+        self.show_search_panel(replace_mode=False)
+        if self.isVisible():
+            self.apply_pending_lookup_if_ready()
+
+    def apply_pending_lookup_if_ready(self) -> None:
+        """在数据和可见性都就绪后执行挂起的反查请求。"""
+
+        lookup = self.pending_lookup_request
+        if lookup is None:
+            return
+        if not self.isVisible():
+            return
+        if self.is_loading:
+            return
+        if self.data_stale:
+            self.schedule_reload("quality_rule_lookup")
+            return
+
+        def action() -> None:
+            current_lookup = self.pending_lookup_request
+            if current_lookup is None:
+                return
+
+            self.pending_lookup_request = None
+            self.clear_search_runtime_state()
+            self.search_card.set_search_state(
+                keyword=current_lookup.keyword,
+                is_regex=current_lookup.is_regex,
+                replace_mode=False,
+                emit_options_changed=False,
+            )
+            self.search_keyword = current_lookup.keyword
+            self.search_is_regex = current_lookup.is_regex
+            self.filter_options = ProofreadingDomain.build_lookup_filter_options(
+                self.items,
+                self.warning_map,
+                self.result_checker,
+                failed_terms_by_item_key=self.failed_terms_by_item_key,
+            )
+            self.apply_filter(False)
+            self.search_card.get_line_edit().setFocus()
+
+        self.run_with_unsaved_guard(action)
 
     def do_search(self) -> None:
         """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
@@ -2099,6 +2170,8 @@ class ProofreadingPage(Base, QWidget):
         self.check_engine_status()
         if self.data_stale:
             self.schedule_reload("show")
+        elif self.pending_lookup_request is not None:
+            self.apply_pending_lookup_if_ready()
         if self.pending_quality_rule_refresh and self.items:
             self.pending_quality_rule_refresh = False
             self.schedule_quality_rule_refresh()

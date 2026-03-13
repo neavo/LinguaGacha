@@ -339,6 +339,38 @@ class SearchCard(CardWidget):
     def is_replace_mode(self) -> bool:
         return self.replace_mode
 
+    def set_search_state(
+        self,
+        *,
+        keyword: str,
+        is_regex: bool,
+        replace_mode: bool | None = None,
+        emit_options_changed: bool = True,
+    ) -> None:
+        """以编程方式同步搜索栏状态，避免外部直接操作内部控件细节。"""
+
+        normalized_keyword = keyword.strip()
+        self.line_edit.setText(normalized_keyword)
+
+        options_changed = False
+        new_regex_mode = bool(is_regex)
+        if self.regex_mode != new_regex_mode:
+            self.regex_mode = new_regex_mode
+            options_changed = True
+        self.regex_btn.setChecked(self.regex_mode)
+        self.update_regex_tooltip()
+
+        if replace_mode is not None:
+            new_replace_mode = bool(replace_mode)
+            if self.replace_mode != new_replace_mode:
+                self.replace_mode = new_replace_mode
+                options_changed = True
+            self.update_replace_mode_ui()
+
+        self.update_replace_action_state()
+        if options_changed and emit_options_changed:
+            self.search_options_changed.emit()
+
     def update_replace_mode_ui(self) -> None:
         replace_visible = self.replace_mode
         for widget in self.replace_section_widgets:

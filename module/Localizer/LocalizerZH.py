@@ -597,6 +597,7 @@ class LocalizerZH:
     quality_export_toast: str = "数据已导出 …"
     quality_merge_duplication: str = "已合并重复条目 …"
     quality_delete_confirm: str = "是否确认删除 {COUNT} 条记录？"
+    quality_query: str = "查询"
     quality_preset: str = "预设"
     quality_select_file_type: str = "支持的数据格式 (*.json *.xlsx)"
     quality_delete_row: str = "删除行"

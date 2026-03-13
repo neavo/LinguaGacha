@@ -597,6 +597,7 @@ class LocalizerEN(LocalizerZH):
     quality_export_toast: str = "Data exported …"
     quality_merge_duplication: str = "Merged duplicate entries …"
     quality_delete_confirm: str = "Confirm deleting {COUNT} item(s)?"
+    quality_query: str = "Query"
     quality_preset: str = "Preset"
     quality_select_file_type: str = "Supported Formats (*.json *.xlsx)"
     quality_delete_row: str = "Delete Row"

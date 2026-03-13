@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
-from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
@@ -74,10 +73,16 @@ class GlossaryPage(QualityRulePageBase):
         self.setup_split_body(self.root)
         self.setup_table_columns()
         self.setup_split_foot(self.root)
-        self.add_command_bar_actions(config, window)
+        self.add_standard_command_bar_actions(
+            config,
+            window,
+            extra_right_actions=(self.add_command_bar_action_kg,),
+        )
 
         qconfig.themeChanged.connect(self.on_theme_changed)
-        self.destroyed.connect(self.disconnect_theme_signals)
+        self.destroyed.connect(
+            lambda: self.disconnect_theme_changed_signal(self.on_theme_changed)
+        )
 
         # 注册事件
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
@@ -101,13 +106,7 @@ class GlossaryPage(QualityRulePageBase):
     # ==================== SplitPageBase hooks ====================
 
     def create_edit_panel(self, parent: QWidget) -> GlossaryEditPanel:
-        panel = GlossaryEditPanel(parent)
-        panel.add_requested.connect(
-            lambda: self.run_with_unsaved_guard(self.add_entry_after_current)
-        )
-        panel.save_requested.connect(self.save_current_entry)
-        panel.delete_requested.connect(self.delete_current_entry)
-        return panel
+        return self.bind_edit_panel_actions(GlossaryEditPanel(parent))
 
     def create_empty_entry(self) -> dict[str, Any]:
         return {
@@ -264,13 +263,6 @@ class GlossaryPage(QualityRulePageBase):
             lambda: self.set_case_sensitive_for_rows([row], enabled)
         )
 
-    def disconnect_theme_signals(self) -> None:
-        try:
-            qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except TypeError, RuntimeError:
-            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
-            pass
-
     def on_theme_changed(self) -> None:
         self.rule_icon_renderer.clear_cache()
         self.refresh_table()
@@ -327,16 +319,6 @@ class GlossaryPage(QualityRulePageBase):
             return
         menu.exec(viewport.mapToGlobal(position))
 
-    def delete_selected_entries(self) -> None:
-        self.delete_entries_by_rows(self.get_selected_entry_rows())
-
-    def confirm_delete_entries(self, count: int) -> bool:
-        message = Localizer.get().quality_delete_confirm.replace("{COUNT}", str(count))
-        message_box = MessageBox(Localizer.get().confirm, message, self.main_window)
-        message_box.yesButton.setText(Localizer.get().confirm)
-        message_box.cancelButton.setText(Localizer.get().cancel)
-        return bool(message_box.exec())
-
     def delete_entries_by_rows(self, rows: list[int]) -> None:
         self.delete_entries_by_rows_common(
             rows,
@@ -353,22 +335,6 @@ class GlossaryPage(QualityRulePageBase):
 
     def set_case_sensitive_for_selection(self, enabled: bool) -> None:
         self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
-
-    # ==================== UI：命令栏 ====================
-
-    def add_command_bar_actions(self, config: Config, window: FluentWindow) -> None:
-        self.command_bar_card.set_minimum_width(640)
-
-        self.add_command_bar_action_import(window)
-        self.add_command_bar_action_export(window)
-        self.command_bar_card.add_separator()
-        self.add_command_bar_action_search()
-        self.add_command_bar_action_statistics()
-        self.command_bar_card.add_separator()
-        self.add_command_bar_action_preset(config, window)
-        self.command_bar_card.add_stretch(1)
-        self.add_command_bar_action_kg()
-        self.add_command_bar_action_wiki()
 
     def add_command_bar_action_kg(self) -> None:
         def connect() -> None:

@@ -9,21 +9,12 @@ from qfluentwidgets import CaptionLabel
 from qfluentwidgets import CardWidget
 from qfluentwidgets import ToolTipFilter
 from qfluentwidgets import ToolTipPosition
-from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
 
-from base.BaseIcon import BaseIcon
 from frontend.Quality.QualityRuleEditPanelBase import QualityRuleEditPanelBase
 from module.Localizer.Localizer import Localizer
 from widget.CustomTextEdit import CustomTextEdit
 from widget.RuleWidget import RuleWidget
-
-
-# ==================== 图标常量 ====================
-
-ICON_ADD_ENTRY: BaseIcon = BaseIcon.PLUS  # 按钮：新增条目
-ICON_DELETE_ENTRY: BaseIcon = BaseIcon.TRASH_2  # 按钮：删除条目
-ICON_SAVE_ENTRY: BaseIcon = BaseIcon.SAVE  # 按钮：保存修改
 
 
 class TextReplacementEditPanel(QualityRuleEditPanelBase):
@@ -104,40 +95,12 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         editor_layout.addSpacing(6)
 
         editor_layout.addWidget(self.build_divider(self.editor_card))
-        self.button_container = QWidget(self.editor_card)
-        button_layout = QHBoxLayout(self.button_container)
-        button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.setSpacing(0)
-
-        self.btn_add = TransparentPushButton(self.button_container)
-        self.btn_add.setIcon(ICON_ADD_ENTRY)
-        self.btn_add.setText(Localizer.get().add)
-        self.btn_add.clicked.connect(lambda: self.add_requested.emit())
-        self.apply_button_style(self.btn_add)
-        button_layout.addWidget(self.btn_add, 1)
-
-        button_layout.addWidget(self.build_vertical_divider(self.button_container))
-
-        self.btn_delete = TransparentPushButton(self.button_container)
-        self.btn_delete.setIcon(ICON_DELETE_ENTRY)
-        self.btn_delete.setText(Localizer.get().delete)
-        self.btn_delete.clicked.connect(lambda: self.delete_requested.emit())
-        self.apply_button_style(self.btn_delete)
-        button_layout.addWidget(self.btn_delete, 1)
-
-        button_layout.addWidget(self.build_vertical_divider(self.button_container))
-
-        self.btn_save = TransparentPushButton(self.button_container)
-        self.btn_save.setIcon(ICON_SAVE_ENTRY)
-        self.btn_save.setText(Localizer.get().save)
-        self.btn_save.clicked.connect(lambda: self.save_requested.emit())
-        self.apply_button_style(self.btn_save)
-        self.btn_save.installEventFilter(
-            ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
-        )
-        self.btn_save.setToolTip(Localizer.get().shortcut_ctrl_s)
-        button_layout.addWidget(self.btn_save, 1)
-
+        self.button_container = self.build_action_button_bar(self.editor_card)
+        if self.btn_save is not None:
+            self.btn_save.installEventFilter(
+                ToolTipFilter(self.btn_save, 300, ToolTipPosition.TOP)
+            )
+            self.btn_save.setToolTip(Localizer.get().shortcut_ctrl_s)
         editor_layout.addWidget(self.button_container)
         content_layout.addWidget(self.editor_card, 1)
 
@@ -145,19 +108,14 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
 
         # 添加快捷键
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
-        self.save_shortcut.activated.connect(self.on_save_shortcut)
+        self.save_shortcut.activated.connect(self.trigger_save_button_if_enabled)
 
         self.clear()
 
         qconfig.themeChanged.connect(self.on_theme_changed)
-        self.destroyed.connect(self.disconnect_theme_signals)
-
-    def disconnect_theme_signals(self) -> None:
-        try:
-            qconfig.themeChanged.disconnect(self.on_theme_changed)
-        except TypeError, RuntimeError:
-            # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
-            pass
+        self.destroyed.connect(
+            lambda: self.disconnect_theme_changed_signal(self.on_theme_changed)
+        )
 
     def on_theme_changed(self) -> None:
         self.update_all_divider_styles()
@@ -211,10 +169,6 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         del case_sensitive
         self.update_button_states()
 
-    def on_save_shortcut(self) -> None:
-        if self.btn_save.isEnabled():
-            self.btn_save.click()
-
     def has_unsaved_changes(self) -> bool:
         if self.saved_entry is None:
             return False
@@ -229,12 +183,11 @@ class TextReplacementEditPanel(QualityRuleEditPanelBase):
         }
 
     def update_button_states(self) -> None:
-        has_entry = self.saved_entry is not None
-        has_changes = self.has_unsaved_changes()
-        is_readonly = self.src_text.isReadOnly()
-        self.btn_add.setEnabled(not is_readonly)
-        self.btn_save.setEnabled(has_entry and has_changes and not is_readonly)
-        self.btn_delete.setEnabled(has_entry and not is_readonly)
+        self.update_action_button_states(
+            has_entry=self.saved_entry is not None,
+            has_changes=self.has_unsaved_changes(),
+            is_readonly=self.src_text.isReadOnly(),
+        )
 
     def set_src_error(self, has_error: bool) -> None:
         self.src_text.set_error(has_error)
