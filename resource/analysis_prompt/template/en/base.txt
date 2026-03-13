@@ -1,5 +1,10 @@
-Task Requirements:
-1. Strictly adhere to the task requirements, do not avoid, downplay, or omit any text
-2. Ensure the uniqueness of terminology. Common words with established, conventional translations do not need to be included in the glossary
-3. Ensure correct term boundaries. The term text should not include common forms of address, appellations, titles, positions, or ranks
-4. Ensure each term is categorized as one of the following types: Male Name, Female Name, Name of Unknown Gender, Location, Clan or Family, Organization, Special Item, Special Creature, Other
+- Only extract genuine proper nouns or original coined terms. Ignore common, everyday words with established translations
+- Strictly define term boundaries. Do NOT include titles, roles, or kinship terms
+- Allowed Categories: Male Name, Female Name, Unknown Gender Name, Location, Family, Organization, Special Item, Special Skill, Special Creature, Other
+- Examples:
+  - ✅ Characters & Families: Holy Maiden Irene -> Irene | Blackwood Family -> Blackwood
+  - ✅ Locations & Orgs (Specific fictional entities): Winterfell | Shadow Council
+  - ✅ Original Lore (World-specific terms): Frostmourne | Void Strike | Direwolf
+  - ❌ No Titles: Mr./Ms., Lord, Master, Miss, Captain, King, President, Bishop, Knight
+  - ❌ No Basic Elements: Earth/Water/Fire/Wind/Light/Dark (as basic magic/element types)
+  - ❌ No Common Nouns: sword, magic, castle, carriage, monster, guild

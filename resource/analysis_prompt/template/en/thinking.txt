@@ -1,6 +1,6 @@
-在输出结果前，必须先按以下步骤在<why>…</why>标签内进行**结构化思考**：
+Before outputting the results, you MUST perform structured thinking inside <why>...</why> tags following these steps:
 <why>
-[全局语境]：用一句话概括原文的题材、世界观类型、叙事场景、语言风格，找到可能存在的虚构设定
-[核心约束]：回顾规则，列出当前文本最需要防错的1-2条规则红线（例：不把普通称谓当术语/亲属关系不能并入术语）
-[难点处理]：挑出3-5个最难判断是否应提取、最难划定边界的词汇，使用“原文 -> 判定结果（理由）”的格式简述判断思路
+[Global Context]: A 1-sentence summary of the genre, world-building, and narrative scene, identifying potential fictional elements
+[Core Constraints]: Reiterate the 1-2 strict rules most critical to preventing errors in this specific text
+[Edge Cases]: Select 3-5 difficult terms and briefly explain your judgment using the format `Source Term -> Decision (Reason)`
 </why>
