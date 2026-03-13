@@ -26,6 +26,7 @@ def test_analysis_task_context_exposes_item_count_and_source_texts() -> None:
 
     assert context.item_count == 2
     assert context.source_texts == ("A", "B")
+    assert context.retry_count == 0
 
 
 def test_analysis_task_result_defaults_stay_empty_and_zero() -> None:

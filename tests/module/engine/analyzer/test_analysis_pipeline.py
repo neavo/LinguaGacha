@@ -40,6 +40,7 @@ def build_context(
     *,
     item_ids: tuple[int, ...] = (1,),
     file_path: str = "story.txt",
+    retry_count: int = 0,
 ) -> AnalysisTaskContext:
     items = tuple(
         AnalysisItemContext(
@@ -54,7 +55,54 @@ def build_context(
         task_fingerprint=fingerprint,
         file_path=file_path,
         items=items,
+        retry_count=retry_count,
     )
+
+
+def build_request_pipeline() -> AnalysisPipeline:
+    analyzer = Analyzer()
+    analyzer.model = {"name": "demo-model"}
+    analyzer.quality_snapshot = SimpleNamespace()
+    return AnalysisPipeline(analyzer)
+
+
+def stub_glossary_request(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    response_result: str,
+    response_think: str = "",
+    input_tokens: int = 1,
+    output_tokens: int = 1,
+    exception: Exception | None = None,
+) -> None:
+    monkeypatch.setattr(
+        analysis_pipeline_module.PromptBuilder,
+        "generate_glossary_prompt",
+        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
+    )
+    monkeypatch.setattr(
+        analysis_pipeline_module.TaskRequester,
+        "request",
+        lambda self, messages, stop_checker: (
+            exception,
+            response_think,
+            response_result,
+            input_tokens,
+            output_tokens,
+        ),
+    )
+
+
+def capture_chunk_log(
+    monkeypatch: pytest.MonkeyPatch, pipeline: AnalysisPipeline
+) -> dict[str, object]:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        pipeline,
+        "print_chunk_log",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    return captured
 
 
 class FakePipelineLogger:
@@ -211,15 +259,7 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
 
     analyzer = Analyzer()
     pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = {
-        "start_time": time.time(),
-        "processed_line": 0,
-        "error_line": 0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "total_tokens": 0,
-        "added_glossary": 0,
-    }
+    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
     analyzer.task_limiter = None
 
     success_context = build_context("success", item_ids=(1, 2))
@@ -275,13 +315,10 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     )
 
 
-def test_execute_task_request_uses_analysis_response_decoder(
+def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.model = {"name": "demo-model"}
-    analyzer.quality_snapshot = SimpleNamespace()
+    pipeline = build_request_pipeline()
 
     context = AnalysisTaskContext(
         task_fingerprint="fp",
@@ -296,21 +333,11 @@ def test_execute_task_request_uses_analysis_response_decoder(
         ),
     )
 
-    monkeypatch.setattr(
-        analysis_pipeline_module.PromptBuilder,
-        "generate_glossary_prompt",
-        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
-    )
-    monkeypatch.setattr(
-        analysis_pipeline_module.TaskRequester,
-        "request",
-        lambda self, messages, stop_checker: (
-            None,
-            "",
-            '{"src":"Alice, Bob","dst":"爱丽丝, 鲍勃","type":"女性人名"}',
-            3,
-            4,
-        ),
+    stub_glossary_request(
+        monkeypatch,
+        response_result='{"src":"Alice, Bob","dst":"爱丽丝, 鲍勃","type":"女性人名"}',
+        input_tokens=3,
+        output_tokens=4,
     )
 
     result = pipeline.execute_task_request(context)
@@ -338,34 +365,174 @@ def test_execute_task_request_uses_analysis_response_decoder(
 def test_execute_task_request_returns_failure_when_response_shape_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.model = {"name": "demo-model"}
-    analyzer.quality_snapshot = SimpleNamespace()
-
+    pipeline = build_request_pipeline()
     context = build_context("fp")
 
-    monkeypatch.setattr(
-        analysis_pipeline_module.PromptBuilder,
-        "generate_glossary_prompt",
-        lambda self, srcs: ([{"role": "user", "content": "\n".join(srcs)}], []),
-    )
-    monkeypatch.setattr(
-        analysis_pipeline_module.TaskRequester,
-        "request",
-        lambda self, messages, stop_checker: (
-            None,
-            "",
-            '{"bad":[]}',
-            1,
-            1,
-        ),
+    stub_glossary_request(monkeypatch, response_result='{"bad":[]}')
+
+    result = pipeline.execute_task_request(context)
+
+    assert result.success is False
+    assert result.stopped is False
+
+
+def test_execute_task_request_returns_failure_when_glossary_is_filtered_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = build_request_pipeline()
+    context = build_context("fp")
+    captured = capture_chunk_log(monkeypatch, pipeline)
+
+    stub_glossary_request(
+        monkeypatch,
+        response_result='{"src":"Alice","dst":1,"type":"女性人名"}',
     )
 
     result = pipeline.execute_task_request(context)
 
     assert result.success is False
     assert result.stopped is False
+    assert captured["status_text"] == Localizer.get().response_checker_fail_data
+    assert captured["glossary_entries"] == []
+
+
+def test_execute_task_request_treats_empty_jsonline_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = build_request_pipeline()
+    context = build_context("fp")
+    captured = capture_chunk_log(monkeypatch, pipeline)
+
+    stub_glossary_request(
+        monkeypatch,
+        response_result="<why>当前文本没有稳定术语</why>\n```jsonline\n\n```",
+        output_tokens=2,
+    )
+
+    result = pipeline.execute_task_request(context)
+
+    assert result.success is True
+    assert result.stopped is False
+    assert result.glossary_entries == tuple()
+    assert captured["status_text"] == ""
+    assert captured["glossary_entries"] == []
+
+
+def test_execute_task_request_returns_failure_when_empty_result_has_no_why(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = build_request_pipeline()
+    context = build_context("fp")
+    captured = capture_chunk_log(monkeypatch, pipeline)
+
+    stub_glossary_request(
+        monkeypatch,
+        response_result="```jsonline\n```",
+        output_tokens=2,
+    )
+
+    result = pipeline.execute_task_request(context)
+
+    assert result.success is False
+    assert result.stopped is False
+    assert captured["status_text"] == Localizer.get().response_checker_fail_data
+    assert captured["glossary_entries"] == []
+
+
+def test_execute_task_contexts_retries_same_context_until_limit_then_marks_error(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    analyzer = Analyzer()
+    pipeline = AnalysisPipeline(analyzer)
+    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
+    analyzer.task_limiter = None
+
+    context = build_context("failed", item_ids=(1, 2))
+    seen_retry_counts: list[int] = []
+
+    def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
+        seen_retry_counts.append(task_context.retry_count)
+        return AnalysisTaskResult(
+            context=task_context,
+            success=False,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=0,
+        )
+
+    monkeypatch.setattr(analyzer, "run_task_context", fake_run)
+
+    status = pipeline.execute_task_contexts([context], max_workers=1)
+
+    assert status == "FAILED"
+    assert seen_retry_counts == [0, 1, 2]
+    assert analyzer.extras["error_line"] == 2
+    assert (
+        fake_data_manager.analysis_item_checkpoints[1]["status"]
+        == Base.ProjectStatus.ERROR
+    )
+    assert (
+        fake_data_manager.analysis_item_checkpoints[2]["status"]
+        == Base.ProjectStatus.ERROR
+    )
+
+
+def test_execute_task_contexts_stops_retrying_after_successful_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    analyzer = Analyzer()
+    pipeline = AnalysisPipeline(analyzer)
+    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
+    analyzer.task_limiter = None
+
+    context = build_context("retry-success", item_ids=(5,))
+    seen_retry_counts: list[int] = []
+
+    def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
+        seen_retry_counts.append(task_context.retry_count)
+        if task_context.retry_count < AnalysisPipeline.RETRY_LIMIT:
+            return AnalysisTaskResult(
+                context=task_context,
+                success=False,
+                stopped=False,
+                input_tokens=1,
+                output_tokens=0,
+            )
+        return AnalysisTaskResult(
+            context=task_context,
+            success=True,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=1,
+            glossary_entries=tuple(),
+        )
+
+    monkeypatch.setattr(analyzer, "run_task_context", fake_run)
+
+    status = pipeline.execute_task_contexts([context], max_workers=1)
+
+    assert status == "SUCCESS"
+    assert seen_retry_counts == [0, 1, 2]
+    assert analyzer.extras["processed_line"] == 1
+    assert analyzer.extras["error_line"] == 0
+    assert (
+        fake_data_manager.analysis_item_checkpoints[5]["status"]
+        == Base.ProjectStatus.PROCESSED
+    )
 
 
 def test_print_chunk_log_writes_source_and_extracted_terms(

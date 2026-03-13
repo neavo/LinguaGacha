@@ -7,6 +7,7 @@ from concurrent.futures import FIRST_COMPLETED
 from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait
+from dataclasses import replace
 from hashlib import sha256
 import time
 from typing import TYPE_CHECKING
@@ -29,8 +30,8 @@ from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.Response.AnalysisResponseDecoder import AnalysisResponseDecoder
 from module.Response.ResponseCleaner import ResponseCleaner
+from module.Response.ResponseDecoder import ResponseDecoder
 from module.Text.TextHelper import TextHelper
 from module.Utils.JSONTool import JSONTool
 
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
 
 # 流水线类只负责“分析怎么跑”，主控制器只保留事件和生命周期管理。
 class AnalysisPipeline:
+    RETRY_LIMIT: int = 2  # 分析任务最多自动重试 2 次，避免同类失败无限空转。
+
     def __init__(self, analyzer: Analyzer) -> None:
         self.analyzer = analyzer
 
@@ -216,31 +219,14 @@ class AnalysisPipeline:
         ]
         return sha256(JSONTool.dumps(payload).encode("utf-8")).hexdigest()
 
-    def split_task_context(
+    def create_retry_task_context(
         self, task_context: AnalysisTaskContext
-    ) -> tuple[AnalysisTaskContext, AnalysisTaskContext] | None:
-        """任务失败时按条目拆半重试，尽量缩小问题范围。"""
-        if task_context.item_count <= 1:
+    ) -> AnalysisTaskContext | None:
+        """失败后复用同一任务边界重试，避免拆分把同类失败重复放大。"""
+        if task_context.retry_count >= __class__.RETRY_LIMIT:
             return None
 
-        middle = task_context.item_count // 2
-        left_items = task_context.items[:middle]
-        right_items = task_context.items[middle:]
-        if not left_items or not right_items:
-            return None
-
-        return (
-            AnalysisTaskContext(
-                task_fingerprint=self.build_task_fingerprint(left_items),
-                file_path=task_context.file_path,
-                items=left_items,
-            ),
-            AnalysisTaskContext(
-                task_fingerprint=self.build_task_fingerprint(right_items),
-                file_path=task_context.file_path,
-                items=right_items,
-            ),
-        )
+        return replace(task_context, retry_count=task_context.retry_count + 1)
 
     def build_analysis_task_contexts(self, config: Config) -> list[AnalysisTaskContext]:
         """把待分析条目切成任务块，提交边界从这里开始就按任务走。"""
@@ -455,10 +441,28 @@ class AnalysisPipeline:
             progress_snapshot=self.build_runtime_progress_snapshot(),
         )
 
+    def submit_pending_task_contexts(
+        self,
+        *,
+        executor: ThreadPoolExecutor,
+        pending_queue: deque[AnalysisTaskContext],
+        running: dict[Future[AnalysisTaskResult], AnalysisTaskContext],
+        concurrency: int,
+    ) -> None:
+        """把待执行队列补满到并发上限，避免调度循环把同一段提交逻辑写两遍。"""
+        while (
+            pending_queue
+            and len(running) < concurrency
+            and not self.analyzer.should_stop()
+        ):
+            context = pending_queue.popleft()
+            future = executor.submit(self.analyzer.run_task_context, context)
+            running[future] = context
+
     def execute_task_contexts(
         self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
     ) -> str:
-        """并发执行任务块，失败时拆半重试，成功则立即提交。"""
+        """并发执行任务块，失败时按固定次数重试，成功则立即提交。"""
         if not task_contexts:
             return "SUCCESS"
 
@@ -469,14 +473,12 @@ class AnalysisPipeline:
         concurrency = max(1, min(max_workers, len(task_contexts)))
 
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            while (
-                pending_queue
-                and len(running) < concurrency
-                and not self.analyzer.should_stop()
-            ):
-                context = pending_queue.popleft()
-                future = executor.submit(self.analyzer.run_task_context, context)
-                running[future] = context
+            self.submit_pending_task_contexts(
+                executor=executor,
+                pending_queue=pending_queue,
+                running=running,
+                concurrency=concurrency,
+            )
 
             while running:
                 done, _ = wait(
@@ -507,27 +509,22 @@ class AnalysisPipeline:
                     elif result.stopped:
                         stopped = True
                     else:
-                        split_result = self.split_task_context(context)
-                        if split_result is not None:
-                            left_context, right_context = split_result
-                            pending_queue.appendleft(right_context)
-                            pending_queue.appendleft(left_context)
+                        retry_context = self.create_retry_task_context(context)
+                        if retry_context is not None:
+                            # 重试沿用同一 task_fingerprint，保证同一批输入的提交边界稳定。
+                            pending_queue.appendleft(retry_context)
                         else:
                             self.apply_error_result(context)
                             has_error = True
 
                     self.persist_progress_snapshot(save_state=False)
 
-                    while (
-                        pending_queue
-                        and len(running) < concurrency
-                        and not self.analyzer.should_stop()
-                    ):
-                        next_context = pending_queue.popleft()
-                        next_future = executor.submit(
-                            self.analyzer.run_task_context, next_context
-                        )
-                        running[next_future] = next_context
+                    self.submit_pending_task_contexts(
+                        executor=executor,
+                        pending_queue=pending_queue,
+                        running=running,
+                        concurrency=concurrency,
+                    )
 
                 if self.analyzer.should_stop():
                     stopped = True
@@ -623,14 +620,18 @@ class AnalysisPipeline:
                 output_tokens=output_tokens,
             )
 
+        has_why_block = (
+            ResponseCleaner.WHY_TAG_PATTERN.search(response_result) is not None
+        )
         response_result, why_text = ResponseCleaner.extract_why_from_response(
             response_result
         )
         normalized_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
         normalized_think = ResponseCleaner.merge_text_blocks(normalized_think, why_text)
 
-        decoded_entries = AnalysisResponseDecoder().decode(response_result)
-        if decoded_entries is None:
+        _, decoded_entries = ResponseDecoder().decode(response_result)
+        normalized_entries = self.normalize_glossary_entries(decoded_entries)
+        if not normalized_entries and not has_why_block:
             self.print_chunk_log(
                 start=start_time,
                 pt=input_tokens,
@@ -651,7 +652,6 @@ class AnalysisPipeline:
                 output_tokens=output_tokens,
             )
 
-        normalized_entries = self.normalize_glossary_entries(decoded_entries)
         self.print_chunk_log(
             start=start_time,
             pt=input_tokens,

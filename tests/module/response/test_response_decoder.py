@@ -41,6 +41,17 @@ class TestResponseDecoderLineBased:
         assert dsts == ["忽略这条翻译"]
         assert glossary == [{"src": "魔导具", "dst": "魔导器", "info": "特殊物品"}]
 
+    def test_decode_accepts_analysis_jsonline_code_block(self) -> None:
+        response = """
+```jsonline
+{"src":"HP","dst":"生命值","type":"属性"}
+```
+""".strip()
+
+        _, glossary = ResponseDecoder().decode(response)
+
+        assert glossary == [{"src": "HP", "dst": "生命值", "info": "属性"}]
+
 
 class TestResponseDecoderFallback:
     def test_decode_uses_whole_json_when_line_parse_has_no_translation(self) -> None:

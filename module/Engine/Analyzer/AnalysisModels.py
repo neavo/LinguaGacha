@@ -26,6 +26,7 @@ class AnalysisTaskContext:
     task_fingerprint: str
     file_path: str
     items: tuple[AnalysisItemContext, ...]
+    retry_count: int = 0
 
     @property
     def item_count(self) -> int:
