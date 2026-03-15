@@ -5,9 +5,9 @@ from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.ProjectSession import ProjectSession
-from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
 from module.Utils.GapTool import GapTool
+from module.Utils.ZstdTool import ZstdTool
 
 
 class TranslationItemService:
@@ -47,7 +47,7 @@ class TranslationItemService:
                 if not compressed:
                     continue
                 try:
-                    content = ZstdCodec.decompress(compressed)
+                    content = ZstdTool.decompress(compressed)
                 except Exception as e:
                     LogManager.get().warning(
                         f"Failed to decompress asset: {rel_path}", e

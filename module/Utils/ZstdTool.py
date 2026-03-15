@@ -2,7 +2,7 @@ import compression.zstd
 from pathlib import Path
 
 
-class ZstdCodec:
+class ZstdTool:
     """Zstd 压缩/解压工具类。"""
 
     # 压缩级别（1-22，默认 3 是速度与压缩率的平衡点）

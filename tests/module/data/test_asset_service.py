@@ -44,9 +44,11 @@ def test_get_asset_decompressed_uses_cache_and_lru(
     db = SimpleNamespace(get_asset=MagicMock(side_effect=[b"a", b"b", b"c"]))
     service, session = build_service(db)
 
-    monkeypatch.setattr("module.Data.AssetService.ASSET_DECOMPRESS_CACHE_MAX", 2)
     monkeypatch.setattr(
-        "module.Data.AssetService.ZstdCodec.decompress",
+        "module.Data.AssetService.AssetService.ASSET_DECOMPRESS_CACHE_MAX", 2
+    )
+    monkeypatch.setattr(
+        "module.Data.AssetService.ZstdTool.decompress",
         staticmethod(lambda data: b"dec-" + data),
     )
 
@@ -73,7 +75,7 @@ def test_get_asset_decompressed_logs_and_returns_none_on_error(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        "module.Data.AssetService.ZstdCodec.decompress",
+        "module.Data.AssetService.ZstdTool.decompress",
         staticmethod(fail_decompress),
     )
 

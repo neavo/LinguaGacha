@@ -2,12 +2,14 @@ from collections import OrderedDict
 
 from base.LogManager import LogManager
 from module.Data.ProjectSession import ProjectSession
-from module.Data.Type import ASSET_DECOMPRESS_CACHE_MAX
-from module.Data.ZstdCodec import ZstdCodec
+from module.Utils.ZstdTool import ZstdTool
 
 
 class AssetService:
     """资产（assets 表）访问与解压缓存。"""
+
+    # 限制缓存容量，避免大量大文件常驻内存。
+    ASSET_DECOMPRESS_CACHE_MAX: int = 32
 
     def __init__(self, session: ProjectSession) -> None:
         self.session = session
@@ -43,7 +45,7 @@ class AssetService:
             return None
 
         try:
-            decompressed = ZstdCodec.decompress(compressed)
+            decompressed = ZstdTool.decompress(compressed)
         except Exception as e:
             LogManager.get().error(f"解压资产失败: {rel_path}", e)
             return None
@@ -51,7 +53,7 @@ class AssetService:
         with self.session.state_lock:
             cache: OrderedDict[str, bytes] = self.session.asset_decompress_cache
             cache[rel_path] = decompressed
-            while len(cache) > ASSET_DECOMPRESS_CACHE_MAX:
+            while len(cache) > self.ASSET_DECOMPRESS_CACHE_MAX:
                 cache.popitem(last=False)
 
         return decompressed

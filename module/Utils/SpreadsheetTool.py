@@ -5,10 +5,10 @@ import openpyxl.styles
 import openpyxl.worksheet.worksheet
 
 
-class SpreadsheetUtil:
+class SpreadsheetTool:
     """openpyxl 相关的轻量工具。
 
-    这些函数不应依赖 Qt/UI，供 File 模块与 Data 导入导出复用。
+    这些函数不应依赖 Qt/UI，供 File 模块与规则导入导出复用。
     """
 
     @staticmethod

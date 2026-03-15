@@ -57,7 +57,7 @@ def test_get_items_for_translation_reset_reparses_assets(
         "module.Data.TranslationItemService.FileManager", FakeFileManager
     )
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.TranslationItemService.ZstdTool.decompress",
         staticmethod(lambda data: b"decoded-" + data),
     )
 
@@ -95,7 +95,7 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
         return b"decoded-" + data
 
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.TranslationItemService.ZstdTool.decompress",
         staticmethod(fake_decompress),
     )
     logger = MagicMock()
@@ -129,7 +129,7 @@ def test_get_items_for_translation_reset_skips_missing_asset_bytes(
         "module.Data.TranslationItemService.FileManager", FakeFileManager
     )
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.TranslationItemService.ZstdTool.decompress",
         staticmethod(lambda data: b"decoded-" + data),
     )
 

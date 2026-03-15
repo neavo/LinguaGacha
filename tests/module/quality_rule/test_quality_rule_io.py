@@ -7,8 +7,8 @@ import pytest
 from openpyxl.cell.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
-from module.Data.SpreadsheetUtil import SpreadsheetUtil
 from module.QualityRule.QualityRuleIO import QualityRuleIO
+from module.Utils.SpreadsheetTool import SpreadsheetTool
 
 
 def test_load_rules_from_file_dispatches_by_extension(
@@ -215,7 +215,7 @@ def test_load_from_xlsx_file_skips_rows_when_reader_returns_none(
     cast(Cell, sheet.cell(row=2, column=1)).value = "IGNORED"
     cast(Cell, sheet.cell(row=2, column=2)).value = "忽略"
 
-    original_get = SpreadsheetUtil.get_cell_value
+    original_get = SpreadsheetTool.get_cell_value
 
     def fake_get_cell_value(
         ws: Worksheet,
@@ -231,7 +231,7 @@ def test_load_from_xlsx_file_skips_rows_when_reader_returns_none(
         lambda *_args, **_kwargs: book,
     )
     monkeypatch.setattr(
-        "module.QualityRule.QualityRuleIO.SpreadsheetUtil.get_cell_value",
+        "module.QualityRule.QualityRuleIO.SpreadsheetTool.get_cell_value",
         fake_get_cell_value,
     )
 

@@ -176,7 +176,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
         compressed_inputs.append(data)
         return b"z" + data
 
-    monkeypatch.setattr("module.Data.ProjectService.ZstdCodec.compress", fake_compress)
+    monkeypatch.setattr("module.Data.ProjectService.ZstdTool.compress", fake_compress)
 
     class FakeFileManager:
         def __init__(self, config) -> None:
@@ -280,7 +280,7 @@ def test_create_skips_read_failures_and_continues(
             return []
 
     monkeypatch.setattr("module.Data.ProjectService.FileManager", FakeFileManager)
-    monkeypatch.setattr("module.Data.ProjectService.ZstdCodec.compress", lambda b: b"z")
+    monkeypatch.setattr("module.Data.ProjectService.ZstdTool.compress", lambda b: b"z")
 
     real_open = open
 
@@ -334,7 +334,7 @@ def test_create_logs_parse_errors_but_keeps_asset(
             raise ValueError("parse failed")
 
     monkeypatch.setattr("module.Data.ProjectService.FileManager", FakeFileManager)
-    monkeypatch.setattr("module.Data.ProjectService.ZstdCodec.compress", lambda b: b"z")
+    monkeypatch.setattr("module.Data.ProjectService.ZstdTool.compress", lambda b: b"z")
 
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
@@ -389,7 +389,7 @@ def test_create_logs_mtool_prefilter_count_when_optimizer_enabled(
             return [Item.from_dict({"src": "s", "dst": "d", "row": 1})]
 
     monkeypatch.setattr("module.Data.ProjectService.FileManager", FakeFileManager)
-    monkeypatch.setattr("module.Data.ProjectService.ZstdCodec.compress", lambda b: b)
+    monkeypatch.setattr("module.Data.ProjectService.ZstdTool.compress", lambda b: b)
 
     monkeypatch.setattr(
         "module.Data.ProjectService.ProjectPrefilter.apply",

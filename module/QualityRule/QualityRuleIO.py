@@ -4,8 +4,8 @@ from typing import Any
 import openpyxl
 import openpyxl.worksheet.worksheet
 
-from module.Data.SpreadsheetUtil import SpreadsheetUtil
 from module.Utils.JSONTool import JSONTool
+from module.Utils.SpreadsheetTool import SpreadsheetTool
 
 
 class QualityRuleIO:
@@ -123,7 +123,7 @@ class QualityRuleIO:
         for row in range(1, sheet.max_row + 1):
             # 读取每一行的 5 列（与历史 TableManager 导出列一致）
             data = [
-                SpreadsheetUtil.get_cell_value(sheet, row=row, column=col)
+                SpreadsheetTool.get_cell_value(sheet, row=row, column=col)
                 for col in range(1, 6)
             ]
 
@@ -173,37 +173,37 @@ class QualityRuleIO:
         sheet.column_dimensions["D"].width = 24
         sheet.column_dimensions["E"].width = 24
 
-        SpreadsheetUtil.set_cell_value(
+        SpreadsheetTool.set_cell_value(
             sheet, row=1, column=1, value="src", font_size=10
         )
-        SpreadsheetUtil.set_cell_value(
+        SpreadsheetTool.set_cell_value(
             sheet, row=1, column=2, value="dst", font_size=10
         )
-        SpreadsheetUtil.set_cell_value(
+        SpreadsheetTool.set_cell_value(
             sheet, row=1, column=3, value="info", font_size=10
         )
-        SpreadsheetUtil.set_cell_value(
+        SpreadsheetTool.set_cell_value(
             sheet, row=1, column=4, value="regex", font_size=10
         )
-        SpreadsheetUtil.set_cell_value(
+        SpreadsheetTool.set_cell_value(
             sheet, row=1, column=5, value="case_sensitive", font_size=10
         )
 
         for idx, item in enumerate(rules):
             row = idx + 2
-            SpreadsheetUtil.set_cell_value(
+            SpreadsheetTool.set_cell_value(
                 sheet, row=row, column=1, value=item.get("src", ""), font_size=10
             )
-            SpreadsheetUtil.set_cell_value(
+            SpreadsheetTool.set_cell_value(
                 sheet, row=row, column=2, value=item.get("dst", ""), font_size=10
             )
-            SpreadsheetUtil.set_cell_value(
+            SpreadsheetTool.set_cell_value(
                 sheet, row=row, column=3, value=item.get("info", ""), font_size=10
             )
-            SpreadsheetUtil.set_cell_value(
+            SpreadsheetTool.set_cell_value(
                 sheet, row=row, column=4, value=item.get("regex", ""), font_size=10
             )
-            SpreadsheetUtil.set_cell_value(
+            SpreadsheetTool.set_cell_value(
                 sheet,
                 row=row,
                 column=5,

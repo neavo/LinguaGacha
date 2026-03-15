@@ -8,7 +8,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.SpreadsheetUtil import SpreadsheetUtil
+from module.Utils.SpreadsheetTool import SpreadsheetTool
 
 
 class XLSX(Base):
@@ -134,10 +134,10 @@ class XLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                SpreadsheetUtil.set_cell_value(
+                SpreadsheetTool.set_cell_value(
                     sheet, row=row, column=1, value=item.get_src()
                 )
-                SpreadsheetUtil.set_cell_value(
+                SpreadsheetTool.set_cell_value(
                     sheet, row=row, column=2, value=item.get_dst()
                 )
 

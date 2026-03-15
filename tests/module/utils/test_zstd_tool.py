@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from module.Data.ZstdCodec import ZstdCodec
+from module.Utils.ZstdTool import ZstdTool
 
 
 def test_compress_and_decompress_roundtrip() -> None:
     original = (b"LinguaGacha " * 256) + b"end"
 
-    compressed = ZstdCodec.compress(original)
-    restored = ZstdCodec.decompress(compressed)
+    compressed = ZstdTool.compress(original)
+    restored = ZstdTool.decompress(compressed)
 
     assert restored == original
 
@@ -22,8 +22,8 @@ def test_compress_file_and_decompress_to_file(fs) -> None:
     content = b"\x00\x01\x02abc123" * 100
     source_path.write_bytes(content)
 
-    compressed, original_size = ZstdCodec.compress_file(str(source_path))
-    ZstdCodec.decompress_to_file(compressed, str(output_path))
+    compressed, original_size = ZstdTool.compress_file(str(source_path))
+    ZstdTool.decompress_to_file(compressed, str(output_path))
 
     assert original_size == len(content)
     assert output_path.read_bytes() == content
@@ -31,4 +31,4 @@ def test_compress_file_and_decompress_to_file(fs) -> None:
 
 def test_decompress_invalid_data_raises() -> None:
     with pytest.raises(Exception):
-        ZstdCodec.decompress(b"not-a-zstd-payload")
+        ZstdTool.decompress(b"not-a-zstd-payload")

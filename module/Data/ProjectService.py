@@ -5,12 +5,13 @@ from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.LGDatabase import LGDatabase
-from module.Data.Type import ProgressCallback
-from module.Data.ZstdCodec import ZstdCodec
 from module.File.FileManager import FileManager
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
+from module.Utils.ZstdTool import ZstdTool
+
+ProgressCallback = Callable[[int, int, str], None]
 
 
 class ProjectService(Base):
@@ -84,7 +85,7 @@ class ProjectService(Base):
                 LogManager.get().error(f"Failed to read source file - {file_path}", e)
                 continue
 
-            compressed = ZstdCodec.compress(original_data)
+            compressed = ZstdTool.compress(original_data)
             db.add_asset(rel_path, compressed, len(original_data))
 
             try:

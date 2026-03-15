@@ -25,8 +25,6 @@ from module.Data.LGDatabase import LGDatabase
 from module.Data.MetaService import MetaService
 from module.Data.ProjectSession import ProjectSession
 from module.Data.RuleService import RuleService
-from module.Data.Type import RULE_META_KEYS
-from module.Data.ZstdCodec import ZstdCodec
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
@@ -34,6 +32,7 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from module.Utils.GapTool import GapTool
 from module.Utils.JSONTool import JSONTool
+from module.Utils.ZstdTool import ZstdTool
 
 
 @dataclass(frozen=True)
@@ -128,6 +127,17 @@ class DataManager(Base):
                 Base.ProjectStatus.ERROR,
             }
         )
+    )
+    # 这些 meta 代表规则开关本身，导入时需要和规则正文分开处理。
+    RULE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "glossary_enable",
+            "text_preserve_mode",
+            "pre_translation_replacement_enable",
+            "post_translation_replacement_enable",
+            "translation_prompt_enable",
+            "analysis_prompt_enable",
+        }
     )
 
     class TextPreserveMode(StrEnum):
@@ -759,7 +769,7 @@ class DataManager(Base):
 
     def set_meta(self, key: str, value: Any) -> None:
         self.meta_service.set_meta(key, value)
-        if key in RULE_META_KEYS:
+        if key in self.RULE_META_KEYS:
             self.emit_quality_rule_update(meta_keys=[key])
 
     def get_project_status(self) -> Base.ProjectStatus:
@@ -2400,7 +2410,7 @@ class DataManager(Base):
         if rules:
             self.emit_quality_rule_update(rule_types=list(rules.keys()))
         if meta:
-            keys = [k for k in meta.keys() if k in RULE_META_KEYS]
+            keys = [k for k in meta.keys() if k in self.RULE_META_KEYS]
             if keys:
                 self.emit_quality_rule_update(meta_keys=keys)
 
@@ -2653,7 +2663,7 @@ class DataManager(Base):
         for item in GapTool.iter(items):
             items_dicts.append(item.to_dict())
 
-        compressed = ZstdCodec.compress(original_data)
+        compressed = ZstdTool.compress(original_data)
         db.add_asset(rel_path, compressed, len(original_data))
         db.insert_items(items_dicts)
 
@@ -2800,7 +2810,7 @@ class DataManager(Base):
             # matched 表示“按 src 找到旧条目候选”，不等价于“发生了继承”。
             matched += 1
 
-        compressed = ZstdCodec.compress(original_data)
+        compressed = ZstdTool.compress(original_data)
         with db.connection() as conn:
             db.update_asset(rel_path, compressed, len(original_data), conn=conn)
             if target_rel_path != rel_path:
