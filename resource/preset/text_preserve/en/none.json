@@ -1,0 +1,16 @@
+[
+    {
+        "src": "<br>",
+        "dst": "",
+        "info": "Line break - <br>",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "\\s",
+        "dst": "",
+        "info": "Whitespace - \\t \\n \\r \\f \\v",
+        "regex": false,
+        "case_sensitive": false
+    }
+]

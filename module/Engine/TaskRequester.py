@@ -1,482 +1,1023 @@
-import json
+import dataclasses
 import re
-import threading
-from functools import lru_cache
+import time
+from contextlib import contextmanager
+from typing import Any
+from typing import Callable
+from typing import Iterator
 
 import anthropic
-import httpx
 import openai
 from google import genai
 from google.genai import types
 
 from base.Base import Base
-from base.VersionManager import VersionManager
+from model.Model import ThinkingLevel
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
+from module.Engine.Engine import Engine
+from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
+from module.Engine.TaskRequesterErrors import RequestCancelledError
+from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequesterStream import StreamConsumer
+from module.Engine.TaskRequesterStream import StreamControl
+from module.Engine.TaskRequesterStream import StreamSession
+from module.Engine.TaskRequesterStream import StreamStrategy
+from module.Engine.TaskRequesterStream import safe_close_resource
+from module.Utils.JSONTool import JSONTool
+
 
 class TaskRequester(Base):
+    """任务请求器 - 负责向各种 LLM API 发送同步流式请求。
 
-    # 密钥索引
-    API_KEY_INDEX: int = 0
+    设计要点：
+    - 并发由线程池承担；请求器本身完全同步。
+    - 流式消费/硬超时/stop 检查统一在 `TaskRequesterStream`。
+    - 协议差异（OpenAI/Anthropic/Google 的 chunk 结构与最终结果提取）用 Strategy 隔离。
+    """
 
-    # qwen3_instruct_8b_q6k
-    RE_QWEN3: re.Pattern = re.compile(r"qwen3", flags = re.IGNORECASE)
-
-    # gemini-2.5-flash
-    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(r"gemini-2\.5-flash", flags = re.IGNORECASE)
+    # Gemini
+    RE_GEMINI_2_5_PRO: re.Pattern = re.compile(r"gemini-2\.5-pro", flags=re.IGNORECASE)
+    RE_GEMINI_2_5_FLASH: re.Pattern = re.compile(
+        r"gemini-2\.5-flash", flags=re.IGNORECASE
+    )
+    RE_GEMINI_3_PRO: re.Pattern = re.compile(r"gemini-3-pro", flags=re.IGNORECASE)
+    RE_GEMINI_3_FLASH: re.Pattern = re.compile(r"gemini-3-flash", flags=re.IGNORECASE)
+    RE_GEMINI_3_1_PRO: re.Pattern = re.compile(r"gemini-3\.1-pro", flags=re.IGNORECASE)
 
     # Claude
-    RE_CLAUDE: tuple[re.Pattern] = (
-        re.compile(r"claude-3-7-sonnet", flags = re.IGNORECASE),
-        re.compile(r"claude-opus-4-0", flags = re.IGNORECASE),
-        re.compile(r"claude-sonnet-4-0", flags = re.IGNORECASE),
+    RE_CLAUDE: tuple[re.Pattern, ...] = (
+        re.compile(r"claude-3-7-sonnet", flags=re.IGNORECASE),
+        re.compile(r"claude-opus-4-\d", flags=re.IGNORECASE),
+        re.compile(r"claude-haiku-4-\d", flags=re.IGNORECASE),
+        re.compile(r"claude-sonnet-4-\d", flags=re.IGNORECASE),
     )
 
-    # o1 o3-mini o4-mini-20240406
-    RE_O_SERIES: re.Pattern = re.compile(r"o\d$|o\d-", flags = re.IGNORECASE)
+    # OpenAI - GPT5
+    RE_GPT5: tuple[re.Pattern, ...] = (re.compile(r"gpt-5", flags=re.IGNORECASE),)
 
-    # 正则
+    # OpenAI - QWEN
+    RE_QWEN: tuple[re.Pattern, ...] = (re.compile(r"qwen3\.5", flags=re.IGNORECASE),)
+
+    # OpenAI - DOUBAO
+    RE_DOUBAO: tuple[re.Pattern, ...] = (
+        re.compile(r"doubao-seed-1-6", flags=re.IGNORECASE),
+        re.compile(r"doubao-seed-1-8", flags=re.IGNORECASE),
+        re.compile(r"doubao-seed-2-0", flags=re.IGNORECASE),
+    )
+
+    # OpenAI - THINKING_TYPE
+    RE_THINKING: tuple[re.Pattern, ...] = (
+        re.compile(r"glm", flags=re.IGNORECASE),
+        re.compile(r"kimi", flags=re.IGNORECASE),
+        re.compile(r"deepseek", flags=re.IGNORECASE),
+    )
+
     RE_LINE_BREAK: re.Pattern = re.compile(r"\n+")
 
-    # 类线程锁
-    LOCK: threading.Lock = threading.Lock()
+    # 阈值统一按"重复次数"统计，避免不同周期下的字符数语义不一致。
+    STREAM_DEGRADATION_REPEAT_THRESHOLD: int = 50
 
-    def __init__(self, config: Config, platform: dict[str, str | bool | int | float | list], current_round: int) -> None:
+    # 这是收尾时的保险检查，不是主流程。
+    # 理论上 150 个有效字符就可能判定重复，但实际文本常夹杂空格和换行。
+    # 所以这里留一定的字符窗口，多看一点，避免漏判。
+    STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS: int = 512
+
+    SDK_TIMEOUT_BUFFER_S: int = 5
+    OUTPUT_TOKEN_LIMIT_AUTO: int = 0
+    LEGACY_OUTPUT_TOKEN_LIMIT_AUTO: int = -1
+    ANTHROPIC_AUTO_MAX_TOKENS_MIN: int = 8192
+
+    def __init__(self, config: Config, model: dict) -> None:
+
         super().__init__()
-
-        # 初始化
         self.config = config
-        self.platform = platform
-        self.current_round = current_round
+        self.model = model
 
-    # 重置
-    @classmethod
-    def reset(cls) -> None:
-        cls.API_KEY_INDEX: int = 0
-        cls.get_client.cache_clear()
+        self.api_url: str = model.get("api_url", "")
+        self.api_format: str = model.get("api_format", "OpenAI")
+        self.model_id: str = model.get("model_id", "")
 
-    @classmethod
-    def get_key(cls, keys: list[str]) -> str:
-        key: str = ""
+        api_keys_str = str(model.get("api_key", ""))
+        self.api_keys: list[str] = [
+            k.strip() for k in api_keys_str.split("\n") if k.strip()
+        ]
 
-        if len(keys) == 0:
-            key = "no_key_required"
-        elif len(keys) == 1:
-            key = keys[0]
-        elif cls.API_KEY_INDEX >= len(keys) - 1:
-            key = keys[0]
-            cls.API_KEY_INDEX = 0
-        else:
-            key = keys[cls.API_KEY_INDEX]
-            cls.API_KEY_INDEX = cls.API_KEY_INDEX + 1
-
-        return key
-
-    # 获取客户端
-    @classmethod
-    @lru_cache(maxsize = None)
-    def get_client(cls, url: str, key: str, format: Base.APIFormat, timeout: int) -> openai.OpenAI | genai.Client | anthropic.Anthropic:
-        # connect (连接超时):
-        #   建议值: 5.0 到 10.0 秒。
-        #   解释: 建立到 LLM API 服务器的 TCP 连接。通常这个过程很快，但网络波动时可能需要更长时间。设置过短可能导致在网络轻微抖动时连接失败。
-        # read (读取超时):
-        #   建议值: 非常依赖具体场景。
-        #   对于快速响应的简单任务（如分类、简单问答）：10.0 到 30.0 秒。
-        #   对于中等复杂任务或中等长度输出：30.0 到 90.0 秒。
-        #   对于复杂任务或长文本生成（如 GPT-4 生成大段代码或文章）：60.0 到 180.0 秒，甚至更长。
-        #   解释: 这是从发送完请求到接收完整个响应体的最大时间。这是 LLM 请求中最容易超时的部分。你需要根据你的模型、提示和期望输出来估算一个合理的上限。强烈建议监控你的P95/P99响应时间来调整这个值。
-        # write (写入超时):
-        #   建议值: 5.0 到 10.0 秒。
-        #   解释: 发送请求体（包含你的 prompt）到服务器的时间。除非你的 prompt 非常巨大（例如，包含超长上下文），否则这个过程通常很快。
-        # pool (从连接池获取连接超时):
-        #   建议值: 5.0 到 10.0 秒 (如果并发量高，可以适当增加)。
-        #   解释: 如果你使用 httpx.Client 并且并发发起大量请求，可能会耗尽连接池中的连接。此参数定义了等待可用连接的最长时间。
-        if format == Base.APIFormat.SAKURALLM:
-            return openai.OpenAI(
-                base_url = url,
-                api_key = key,
-                timeout = httpx.Timeout(
-                    read = timeout,
-                    pool = 8.00,
-                    write = 8.00,
-                    connect = 8.00,
-                ),
-                max_retries = 1,
-            )
-        elif format == Base.APIFormat.GOOGLE:
-            # https://github.com/googleapis/python-genai
-            return genai.Client(
-                api_key = key,
-                http_options = types.HttpOptions(
-                    base_url = url,
-                    timeout = timeout * 1000,
-                    headers = {
-                        "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)",
-                    },
-                ),
-            )
-        elif format == Base.APIFormat.ANTHROPIC:
-            return anthropic.Anthropic(
-                base_url = url,
-                api_key = key,
-                timeout = httpx.Timeout(
-                    read = timeout,
-                    pool = 8.00,
-                    write = 8.00,
-                    connect = 8.00,
-                ),
-                max_retries = 1,
-            )
-        else:
-            return openai.OpenAI(
-                base_url = url,
-                api_key = key,
-                timeout = httpx.Timeout(
-                    read = timeout,
-                    pool = 8.00,
-                    write = 8.00,
-                    connect = 8.00,
-                ),
-                max_retries = 1,
-            )
-
-    # 发起请求
-    def request(self, messages: list[dict]) -> tuple[bool, str, int, int]:
-        args: dict[str, float] = {}
-        if self.platform.get("top_p_custom_enable") == True:
-            args["top_p"] = self.platform.get("top_p")
-        if self.platform.get("temperature_custom_enable") == True:
-            args["temperature"] = self.platform.get("temperature")
-        if self.platform.get("presence_penalty_custom_enable") == True:
-            args["presence_penalty"] = self.platform.get("presence_penalty")
-        if self.platform.get("frequency_penalty_custom_enable") == True:
-            args["frequency_penalty"] = self.platform.get("frequency_penalty")
-
-        thinking = self.platform.get("thinking")
-
-        # 发起请求
-        if self.platform.get("api_format") == Base.APIFormat.SAKURALLM:
-            skip, response_think, response_result, input_tokens, output_tokens = self.request_sakura(
-                messages,
-                thinking,
-                args,
-            )
-        elif self.platform.get("api_format") == Base.APIFormat.GOOGLE:
-            skip, response_think, response_result, input_tokens, output_tokens = self.request_google(
-                messages,
-                thinking,
-                args,
-            )
-        elif self.platform.get("api_format") == Base.APIFormat.ANTHROPIC:
-            skip, response_think, response_result, input_tokens, output_tokens = self.request_anthropic(
-                messages,
-                thinking,
-                args,
-            )
-        else:
-            skip, response_think, response_result, input_tokens, output_tokens = self.request_openai(
-                messages,
-                thinking,
-                args,
-            )
-
-        return skip, response_think, response_result, input_tokens, output_tokens
-
-    # 生成请求参数
-    def generate_sakura_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
-        args: dict = args | {
-            "model": self.platform.get("model"),
-            "messages": messages,
-            "max_tokens": max(512, self.config.token_threshold),
-            "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
-            }
-        }
-
-        return args
-
-    # 发起请求
-    def request_sakura(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
-        try:
-            # 获取客户端
-            with __class__.LOCK:
-                client: openai.OpenAI = __class__.get_client(
-                    url = self.platform.get("api_url"),
-                    key = __class__.get_key(self.platform.get("api_key")),
-                    format = self.platform.get("api_format"),
-                    timeout = self.config.request_timeout,
-                )
-
-            # 发起请求
-            response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_sakura_args(messages, thinking, args)
-            )
-
-            # 提取回复的文本内容
-            response_result = response.choices[0].message.content
-        except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
-
-        # 获取输入消耗
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
-
-        # 获取输出消耗
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
-
-        # Sakura 返回的内容多行文本，将其转换为 JSON 字符串
-        response_result = json.dumps(
-            {str(i): line.strip() for i, line in enumerate(response_result.strip().splitlines())},
-            indent = None,
-            ensure_ascii = False,
+        self.output_token_limit = model.get("threshold", {}).get(
+            "output_token_limit", 4096
+        )
+        self.input_token_threshold: int = int(
+            model.get("threshold", {}).get("input_token_limit", 512)
         )
 
-        return False, "", response_result, input_tokens, output_tokens
+        request_config = model.get("request", {})
+        extra_headers_custom_enable = request_config.get(
+            "extra_headers_custom_enable", False
+        )
+        extra_body_custom_enable = request_config.get("extra_body_custom_enable", False)
+        self.extra_headers: dict = (
+            request_config.get("extra_headers", {})
+            if extra_headers_custom_enable
+            else {}
+        )
+        self.extra_body: dict = (
+            request_config.get("extra_body", {}) if extra_body_custom_enable else {}
+        )
 
-    # 生成请求参数
-    def generate_openai_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
-        args: dict = args | {
-            "model": self.platform.get("model"),
-            "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
-            "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
-            }
-        }
-
-        # OpenAI O-Series 模型兼容性处理
-        if (
-            self.platform.get("api_url").startswith("https://api.openai.com") or
-            __class__.RE_O_SERIES.search(self.platform.get("model")) is not None
-        ):
-            args.pop("max_tokens", None)
-            args["max_completion_tokens"] = max(4 * 1024, self.config.token_threshold)
-
-        # 思考模式切换 - QWEN3
-        if __class__.RE_QWEN3.search(self.platform.get("model")) is not None:
-            if thinking == True:
-                pass
-            else:
-                if "/no_think" not in messages[-1].get("content", ""):
-                    messages[-1]["content"] = messages[-1].get("content") + "\n" + "/no_think"
-
-        return args
-
-    # 发起请求
-    def request_openai(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+        thinking_config = model.get("thinking", {})
+        thinking_level_str = thinking_config.get("level", "OFF")
         try:
-            # 获取客户端
-            with __class__.LOCK:
-                client: openai.OpenAI = __class__.get_client(
-                    url = self.platform.get("api_url"),
-                    key = __class__.get_key(self.platform.get("api_key")),
-                    format = self.platform.get("api_format"),
-                    timeout = self.config.request_timeout,
+            self.thinking_level = ThinkingLevel(thinking_level_str)
+        except ValueError:
+            self.thinking_level = ThinkingLevel.OFF
+
+        self.generation = model.get("generation", {})
+
+    @classmethod
+    def reset(cls) -> None:
+        TaskRequesterClientPool.reset()
+
+    def should_use_max_completion_tokens(self) -> bool:
+        return str(self.api_url).startswith("https://api.openai.com")
+
+    def apply_output_token_limit(self, args: dict[str, Any], token_key: str) -> None:
+        if self.output_token_limit in (
+            self.OUTPUT_TOKEN_LIMIT_AUTO,
+            self.LEGACY_OUTPUT_TOKEN_LIMIT_AUTO,
+        ):
+            return
+        args[token_key] = self.output_token_limit
+
+    def get_anthropic_auto_max_tokens(self) -> int:
+        # Anthropic 要求 max_tokens 必传；自动模式时用统一下限和输入阈值兜底。
+        return max(self.ANTHROPIC_AUTO_MAX_TOKENS_MIN, self.input_token_threshold)
+
+    def get_sdk_timeout_seconds(self) -> int:
+
+        # 同步模式下无法像 asyncio 那样快速取消阻塞拉取，因此依赖 SDK 超时来兜底退出。
+        hard_timeout_s = max(1, int(self.config.request_timeout))
+        return hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
+
+    def request(
+        self,
+        messages: list[dict],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+    ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
+        args: dict[str, Any] = {}
+        if self.generation.get("top_p_custom_enable"):
+            args["top_p"] = self.generation.get("top_p")
+        if self.generation.get("temperature_custom_enable"):
+            args["temperature"] = self.generation.get("temperature")
+        if self.generation.get("presence_penalty_custom_enable"):
+            args["presence_penalty"] = self.generation.get("presence_penalty")
+        if self.generation.get("frequency_penalty_custom_enable"):
+            args["frequency_penalty"] = self.generation.get("frequency_penalty")
+
+        Engine.get().inc_request_in_flight()
+        try:
+            if self.api_format == Base.APIFormat.SAKURALLM:
+                return self.request_sakura(messages, args, stop_checker=stop_checker)
+            if self.api_format == Base.APIFormat.GOOGLE:
+                return self.request_google(messages, args, stop_checker=stop_checker)
+            if self.api_format == Base.APIFormat.ANTHROPIC:
+                return self.request_anthropic(messages, args, stop_checker=stop_checker)
+            return self.request_openai(messages, args, stop_checker=stop_checker)
+        finally:
+            Engine.get().dec_request_in_flight()
+
+    def build_extra_headers(self) -> dict:
+        headers = TaskRequesterClientPool.get_default_headers()
+        headers.update(self.extra_headers)
+        return headers
+
+    @classmethod
+    def extract_openai_think_and_result(cls, message: Any) -> tuple[str, str]:
+        if hasattr(message, "reasoning_content") and isinstance(
+            message.reasoning_content, str
+        ):
+            response_think = cls.RE_LINE_BREAK.sub(
+                "\n", message.reasoning_content.strip()
+            )
+            response_result = str(getattr(message, "content", "") or "").strip()
+            return response_think, response_result
+
+        content = str(getattr(message, "content", "") or "")
+        if "</think>" in content:
+            splited = content.split("</think>")
+            response_think = cls.RE_LINE_BREAK.sub(
+                "\n", splited[0].removeprefix("<think>").strip()
+            )
+            response_result = splited[-1].strip()
+            return response_think, response_result
+
+        return "", content.strip()
+
+    @classmethod
+    def has_output_degradation(cls, text: str) -> bool:
+        if not text:
+            return False
+        detector = cls.DegradationDetector()
+        return detector.feed(text)
+
+    @dataclasses.dataclass
+    class DegradationDetector:
+        """流式退化检测器。
+
+        - 周期 1：`AAA...`，按连续单字符重复次数计数。
+        - 周期 2：`ABAB...`，按完整 `AB` 循环次数计数。
+        - 周期 3：`ABCABC...`，按完整 `ABC` 循环次数计数。
+        """
+
+        last_char: str | None = None
+        second_last_char: str | None = None
+        third_last_char: str | None = None
+        single_run: int = 0
+        alternating_run: int = 0
+        alternating_char_run: int = 0
+        period_3_run: int = 0
+        period_3_char_run: int = 0
+
+        def feed(self, text: str) -> bool:
+            for ch in text:
+                if ch.isspace():
+                    continue
+
+                if self.last_char is None:
+                    self.last_char = ch
+                    self.single_run = 1
+                    self.alternating_char_run = 1
+                    self.alternating_run = 0
+                    self.period_3_char_run = 1
+                    self.period_3_run = 0
+                    continue
+
+                if ch == self.last_char:
+                    self.single_run += 1
+                else:
+                    self.single_run = 1
+
+                if self.single_run >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD:
+                    return True
+
+                if (
+                    self.second_last_char is not None
+                    and ch == self.second_last_char
+                    and self.second_last_char != self.last_char
+                ):
+                    # 只有满足 AB 位置回环时才延长周期 2 序列，避免把普通重复误算为退化。
+                    self.alternating_char_run += 1
+                else:
+                    self.alternating_char_run = 2 if ch != self.last_char else 1
+
+                self.alternating_run = self.alternating_char_run // 2
+
+                if (
+                    self.alternating_run
+                    >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD
+                ):
+                    return True
+
+                if (
+                    self.third_last_char is not None
+                    and self.second_last_char is not None
+                    and ch == self.third_last_char
+                    and self.third_last_char != self.second_last_char
+                    and self.second_last_char != self.last_char
+                    and self.third_last_char != self.last_char
+                ):
+                    # 周期 3 必须满足三字符都不同，避免把 ABAA 这类模式误判为 ABC 循环。
+                    self.period_3_char_run += 1
+                elif (
+                    self.second_last_char is not None
+                    and ch != self.last_char
+                    and ch != self.second_last_char
+                    and self.last_char != self.second_last_char
+                ):
+                    # 当窗口首次形成 3 个不同字符时，从 1 轮 ABC 候选重新开始计数。
+                    self.period_3_char_run = 3
+                else:
+                    # 一旦不满足周期 3 条件，回落到最小窗口，避免跨模式串联误判。
+                    self.period_3_char_run = 1
+
+                self.period_3_run = self.period_3_char_run // 3
+                if (
+                    self.period_3_run
+                    >= TaskRequester.STREAM_DEGRADATION_REPEAT_THRESHOLD
+                ):
+                    return True
+
+                # 状态只在本轮检测结束后推进，确保所有判断都基于同一时刻的历史窗口。
+                self.third_last_char = self.second_last_char
+                self.second_last_char = self.last_char
+                self.last_char = ch
+
+            return False
+
+    @dataclasses.dataclass
+    class OpenAIStreamState:
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
+
+    class OpenAIStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
+
+        def create_state(self) -> "TaskRequester.OpenAIStreamState":
+            return TaskRequester.OpenAIStreamState()
+
+        @contextmanager
+        def build_stream_session(
+            self,
+            client: openai.OpenAI,
+            request_args: dict[str, Any],
+        ) -> Iterator[StreamSession]:
+            with client.chat.completions.stream(**request_args) as stream:
+                iterator: Any = iter(stream) if hasattr(stream, "__iter__") else stream
+
+                def close() -> Any:
+                    return safe_close_resource(stream)
+
+                yield StreamSession(
+                    iterator=iterator,
+                    close=close,
+                    finalize=stream.get_final_completion,
                 )
 
-            # 发起请求
-            response: openai.types.completion.Completion = client.chat.completions.create(
-                **self.generate_openai_args(messages, thinking, args)
+        def handle_item(
+            self, state: "TaskRequester.OpenAIStreamState", item: Any
+        ) -> None:
+            event_type = getattr(item, "type", "")
+            if event_type != "content.delta":
+                return
+
+            text = getattr(item, "content", None)
+            if not isinstance(text, str) or not text:
+                return
+
+            if state.degradation_detector.feed(text):
+                raise StreamDegradationError("degradation detected")
+
+        def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.OpenAIStreamState",
+        ) -> tuple[str, str, int, int]:
+            if session.finalize is None:
+                raise RuntimeError("OpenAI stream missing finalize")
+
+            completion: Any = session.finalize()
+            message = completion.choices[0].message
+            response_think, response_result = (
+                self.requester.extract_openai_think_and_result(message)
             )
 
-            # 提取回复内容
-            message = response.choices[0].message
-            if hasattr(message, "reasoning_content") and isinstance(message.reasoning_content, str):
-                response_think = __class__.RE_LINE_BREAK.sub("\n", message.reasoning_content.strip())
-                response_result = message.content.strip()
-            elif "</think>" in message.content:
-                splited = message.content.split("</think>")
-                response_think = __class__.RE_LINE_BREAK.sub("\n", splited[0].removeprefix("<think>").strip())
-                response_result = splited[-1].strip()
-            else:
-                response_think = ""
-                response_result = message.content.strip()
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
+            ):
+                raise StreamDegradationError("degradation detected")
+
+            usage: Any = getattr(completion, "usage", None)
+            try:
+                input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            except TypeError, ValueError:
+                input_tokens = 0
+
+            try:
+                output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+            except TypeError, ValueError:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    @dataclasses.dataclass
+    class AnthropicStreamState:
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
+
+    class AnthropicStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
+
+        def create_state(self) -> "TaskRequester.AnthropicStreamState":
+            return TaskRequester.AnthropicStreamState()
+
+        @contextmanager
+        def build_stream_session(
+            self,
+            client: anthropic.Anthropic,
+            request_args: dict[str, Any],
+        ) -> Iterator[StreamSession]:
+            with client.messages.stream(**request_args) as stream:
+                iterator: Any = stream.text_stream
+                yield StreamSession(
+                    iterator=iterator,
+                    close=stream.close,
+                    finalize=stream.get_final_message,
+                )
+
+        def handle_item(
+            self, state: "TaskRequester.AnthropicStreamState", item: Any
+        ) -> None:
+            if not isinstance(item, str) or not item:
+                return
+            if state.degradation_detector.feed(item):
+                raise StreamDegradationError("degradation detected")
+
+        def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.AnthropicStreamState",
+        ) -> tuple[str, str, int, int]:
+            if session.finalize is None:
+                raise RuntimeError("Anthropic stream missing finalize")
+
+            message: Any = session.finalize()
+
+            text_messages: list[str] = []
+            think_messages: list[str] = []
+            for msg in message.content:
+                msg_any: Any = msg
+
+                text = getattr(msg_any, "text", None)
+                if isinstance(text, str) and text:
+                    text_messages.append(text)
+
+                thinking = getattr(msg_any, "thinking", None)
+                if isinstance(thinking, str) and thinking:
+                    think_messages.append(thinking)
+
+            response_result = text_messages[-1].strip() if text_messages else ""
+            response_think = (
+                self.requester.RE_LINE_BREAK.sub("\n", think_messages[-1].strip())
+                if think_messages
+                else ""
+            )
+
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
+            ):
+                raise StreamDegradationError("degradation detected")
+
+            usage: Any = getattr(message, "usage", None)
+            try:
+                input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            except TypeError, ValueError:
+                input_tokens = 0
+
+            try:
+                output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+            except TypeError, ValueError:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    @dataclasses.dataclass
+    class GoogleStreamState:
+        think_parts: list[str] = dataclasses.field(default_factory=list)
+        result_parts: list[str] = dataclasses.field(default_factory=list)
+        degradation_detector: "TaskRequester.DegradationDetector" = dataclasses.field(
+            default_factory=lambda: TaskRequester.DegradationDetector()
+        )
+        last_usage: Any = None
+
+    class GoogleStreamStrategy:
+        def __init__(self, requester: "TaskRequester") -> None:
+            self.requester = requester
+
+        def create_state(self) -> "TaskRequester.GoogleStreamState":
+            return TaskRequester.GoogleStreamState()
+
+        @contextmanager
+        def build_stream_session(
+            self,
+            client: genai.Client,
+            request_args: dict[str, Any],
+        ) -> Iterator[StreamSession]:
+            generator = client.models.generate_content_stream(**request_args)
+
+            def close() -> Any:
+                return safe_close_resource(generator)
+
+            yield StreamSession(iterator=generator, close=close)
+
+        def handle_item(
+            self, state: "TaskRequester.GoogleStreamState", item: Any
+        ) -> None:
+            candidates = getattr(item, "candidates", None)
+            if candidates and len(candidates) > 0:
+                content = getattr(candidates[0], "content", None)
+                if content:
+                    parts = getattr(content, "parts", None)
+                    if parts:
+                        for part in parts:
+                            text = getattr(part, "text", None)
+                            if not isinstance(text, str) or not text:
+                                continue
+                            is_thought = getattr(part, "thought", False)
+                            if is_thought:
+                                state.think_parts.append(text)
+                            else:
+                                state.result_parts.append(text)
+                                if state.degradation_detector.feed(text):
+                                    raise StreamDegradationError("degradation detected")
+
+            usage_metadata = getattr(item, "usage_metadata", None)
+            if usage_metadata is not None:
+                state.last_usage = usage_metadata
+
+        def finalize(
+            self,
+            session: StreamSession,
+            state: "TaskRequester.GoogleStreamState",
+        ) -> tuple[str, str, int, int]:
+            response_result = "".join(state.result_parts).strip()
+            response_think = self.requester.RE_LINE_BREAK.sub(
+                "\n", "".join(state.think_parts).strip()
+            )
+
+            if self.requester.has_output_degradation(
+                response_result[
+                    -self.requester.STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS :
+                ]
+            ):
+                raise StreamDegradationError("degradation detected")
+
+            last_usage: Any = state.last_usage
+            try:
+                input_tokens = int(last_usage.prompt_token_count)
+            except AttributeError, TypeError, ValueError:
+                input_tokens = 0
+
+            try:
+                total_token_count = int(last_usage.total_token_count)
+                prompt_token_count = int(last_usage.prompt_token_count)
+                output_tokens = total_token_count - prompt_token_count
+            except AttributeError, TypeError, ValueError:
+                output_tokens = 0
+
+            return response_think, response_result, input_tokens, output_tokens
+
+    def request_stream_with_strategy(
+        self,
+        client: Any,
+        request_args: dict[str, Any],
+        strategy: StreamStrategy,
+        *,
+        stop_checker: Callable[[], bool] | None,
+    ) -> tuple[str, str, int, int]:
+        deadline_monotonic = time.monotonic() + float(self.config.request_timeout)
+        control = StreamControl.create(
+            stop_checker=stop_checker,
+            deadline_monotonic=deadline_monotonic,
+        )
+        state = strategy.create_state()
+
+        with strategy.build_stream_session(client, request_args) as session:
+
+            def on_item(item: Any) -> None:
+                strategy.handle_item(state, item)
+
+            StreamConsumer.consume(session, control, on_item=on_item)
+            return strategy.finalize(session, state)
+
+    # ========== Sakura 请求 ==========
+
+    def generate_sakura_args(
+        self, messages: list[dict[str, str]], args: dict[str, Any]
+    ) -> dict:
+        result: dict[str, Any] = dict(args)
+        token_key = (
+            "max_completion_tokens"
+            if self.should_use_max_completion_tokens()
+            else "max_tokens"
+        )
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": messages,
+                "extra_headers": self.build_extra_headers(),
+                "extra_body": self.extra_body,
+            }
+        )
+        self.apply_output_token_limit(result, token_key)
+        result.setdefault("stream_options", {"include_usage": True})
+        return result
+
+    def request_sakura(
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, Any],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+    ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
+        try:
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
+                api_format=self.api_format,
+                timeout=self.get_sdk_timeout_seconds(),
+            )
+
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = self.request_stream_with_strategy(
+                client,
+                self.generate_sakura_args(messages, args),
+                __class__.OpenAIStreamStrategy(self),
+                stop_checker=stop_checker,
+            )
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
-        # 获取输入消耗
-        try:
-            input_tokens = int(response.usage.prompt_tokens)
-        except Exception:
-            input_tokens = 0
+        response_result = JSONTool.dumps(
+            {
+                str(i): line.strip()
+                for i, line in enumerate(str(response_result).strip().splitlines())
+            },
+        )
 
-        # 获取输出消耗
-        try:
-            output_tokens = int(response.usage.completion_tokens)
-        except Exception:
-            output_tokens = 0
+        return None, response_think, response_result, input_tokens, output_tokens
 
-        return False, response_think, response_result, input_tokens, output_tokens
+    # ========== OpenAI 请求 ==========
 
-    # 生成请求参数
-    def generate_google_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict[str, str | int | float]:
-        args: dict = args | {
-            "max_output_tokens": max(4 * 1024, self.config.token_threshold),
-            "safety_settings": (
-                types.SafetySetting(
-                    category = "HARM_CATEGORY_HARASSMENT",
-                    threshold = "BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category = "HARM_CATEGORY_HATE_SPEECH",
-                    threshold = "BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    threshold = "BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category = "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    threshold = "BLOCK_NONE",
-                ),
-            ),
-        }
+    def generate_openai_args(
+        self, messages: list[dict[str, str]], args: dict[str, Any]
+    ) -> dict:
+        result: dict[str, Any] = dict(args)
+        token_key = (
+            "max_completion_tokens"
+            if self.should_use_max_completion_tokens()
+            else "max_tokens"
+        )
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": messages,
+                "extra_headers": self.build_extra_headers(),
+            }
+        )
+        self.apply_output_token_limit(result, token_key)
+        result.setdefault("stream_options", {"include_usage": True})
 
-        # 思考模式切换 - Gemini 2.5 Flash
-        if __class__.RE_GEMINI_2_5_FLASH.search(self.platform.get("model")) is not None:
-            if thinking == True:
-                args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget = 1024,
-                    include_thoughts = True,
-                )
+        extra_body: dict[str, Any] = {}
+        if any(v.search(self.model_id) is not None for v in __class__.RE_GPT5):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["reasoning_effort"] = "none"
             else:
-                args["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget = 0,
-                    include_thoughts = False,
+                extra_body["reasoning_effort"] = self.thinking_level.lower()
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_QWEN):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["enable_thinking"] = False
+            else:
+                extra_body["enable_thinking"] = True
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_DOUBAO):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["reasoning_effort"] = "minimal"
+            else:
+                extra_body["reasoning_effort"] = self.thinking_level.lower()
+        elif any(v.search(self.model_id) is not None for v in __class__.RE_THINKING):
+            if self.thinking_level == ThinkingLevel.OFF:
+                extra_body["thinking"] = {"type": "disabled"}
+            else:
+                extra_body["thinking"] = {"type": "enabled"}
+
+        extra_body.update(self.extra_body)
+        result["extra_body"] = extra_body
+
+        return result
+
+    def request_openai(
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, Any],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+    ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
+        try:
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
+                api_format=self.api_format,
+                timeout=self.get_sdk_timeout_seconds(),
+            )
+
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = self.request_stream_with_strategy(
+                client,
+                self.generate_openai_args(messages, args),
+                __class__.OpenAIStreamStrategy(self),
+                stop_checker=stop_checker,
+            )
+        except Exception as e:
+            return e, "", "", 0, 0
+
+        return None, response_think, response_result, input_tokens, output_tokens
+
+    # ========== Google 请求 ==========
+
+    def generate_google_args(
+        self, messages: list[dict[str, str]], args: dict[str, Any]
+    ) -> dict:
+        system_texts: list[str] = []
+        user_texts: list[str] = []
+        for msg in messages:
+            content = msg.get("content")
+            if not isinstance(content, str):
+                continue
+
+            role = msg.get("role")
+            if role == "system":
+                if content.strip() != "":
+                    system_texts.append(content)
+            elif role == "user":
+                user_texts.append(content)
+
+        config_args: dict[str, Any] = dict(args)
+        config_args.update(
+            {
+                "safety_settings": [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_NONE",
+                    },
+                ],
+            }
+        )
+        self.apply_output_token_limit(config_args, "max_output_tokens")
+
+        # Gemini
+        if __class__.RE_GEMINI_3_1_PRO.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
                 )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MEDIUM,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH,
+                    include_thoughts=True,
+                )
+        elif __class__.RE_GEMINI_3_PRO.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH,
+                    include_thoughts=True,
+                )
+        elif __class__.RE_GEMINI_3_FLASH.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MEDIUM,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH,
+                    include_thoughts=True,
+                )
+        elif __class__.RE_GEMINI_2_5_PRO.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=128,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=384,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=768,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1024,
+                    include_thoughts=True,
+                )
+        elif __class__.RE_GEMINI_2_5_FLASH.search(self.model_id) is not None:
+            if self.thinking_level == ThinkingLevel.OFF:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=0,
+                    include_thoughts=False,
+                )
+            elif self.thinking_level == ThinkingLevel.LOW:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=384,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=768,
+                    include_thoughts=True,
+                )
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                config_args["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=1024,
+                    include_thoughts=True,
+                )
+
+        if self.extra_body:
+            config_args.update(self.extra_body)
+
+        if system_texts:
+            config_args["system_instruction"] = "\n\n".join(system_texts)
 
         return {
-            "model": self.platform.get("model"),
-            "contents": [v.get("content") for v in messages if v.get("role") == "user"],
-            "config": types.GenerateContentConfig(**args),
+            "model": self.model_id,
+            "contents": user_texts,
+            "config": types.GenerateContentConfig(**config_args),
         }
 
-    # 发起请求
-    def request_google(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, int, int]:
-        try:
-            # 获取客户端
-            with __class__.LOCK:
-                client: genai.Client = __class__.get_client(
-                    url = self.platform.get("api_url"),
-                    key = __class__.get_key(self.platform.get("api_key")),
-                    format = self.platform.get("api_format"),
-                    timeout = self.config.request_timeout,
-                )
+    def request_google(
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, Any],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+    ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
 
-            # 发起请求
-            response: types.GenerateContentResponse = client.models.generate_content(
-                **self.generate_google_args(messages, thinking, args)
+        try:
+            extra_headers_tuple = (
+                tuple(sorted(self.extra_headers.items())) if self.extra_headers else ()
+            )
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
+                api_format=self.api_format,
+                timeout=self.get_sdk_timeout_seconds(),
+                extra_headers_tuple=extra_headers_tuple,
             )
 
-            # 提取回复内容
-            response_think = ""
-            response_result = ""
-            if len(response.candidates) > 0 and len(response.candidates[-1].content.parts) > 0:
-                parts = response.candidates[-1].content.parts
-                think_messages = [v for v in parts if v.thought == True]
-                if len(think_messages) > 0:
-                    response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].text.strip())
-                result_messages = [v for v in parts if v.thought != True]
-                if len(result_messages) > 0:
-                    response_result = result_messages[-1].text.strip()
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = self.request_stream_with_strategy(
+                client,
+                self.generate_google_args(messages, args),
+                __class__.GoogleStreamStrategy(self),
+                stop_checker=stop_checker,
+            )
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
-        # 获取输入消耗
-        try:
-            input_tokens = int(response.usage_metadata.prompt_token_count)
-        except Exception:
-            input_tokens = 0
+        return None, response_think, response_result, input_tokens, output_tokens
 
-        # 获取输出消耗
-        try:
-            total_token_count = int(response.usage_metadata.total_token_count)
-            prompt_token_count = int(response.usage_metadata.prompt_token_count)
-            output_tokens = total_token_count - prompt_token_count
-        except Exception:
-            output_tokens = 0
+    # ========== Anthropic 请求 ==========
 
-        return False, response_think, response_result, input_tokens, output_tokens
+    def generate_anthropic_args(
+        self, messages: list[dict[str, str]], args: dict[str, Any]
+    ) -> dict:
+        system_texts: list[str] = []
+        filtered_messages: list[dict[str, str]] = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "system":
+                if isinstance(content, str) and content.strip() != "":
+                    system_texts.append(content)
+                continue
+            filtered_messages.append(msg)
 
-    # 生成请求参数
-    def generate_anthropic_args(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> dict:
-        args: dict = args | {
-            "model": self.platform.get("model"),
-            "messages": messages,
-            "max_tokens": max(4 * 1024, self.config.token_threshold),
-            "extra_headers": {
-                "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+        result: dict[str, Any] = dict(args)
+        result.update(
+            {
+                "model": self.model_id,
+                "messages": filtered_messages,
+                "extra_headers": self.build_extra_headers(),
             }
-        }
+        )
+        self.apply_output_token_limit(result, "max_tokens")
+        if "max_tokens" not in result:
+            result["max_tokens"] = self.get_anthropic_auto_max_tokens()
 
-        # 移除 Anthropic 模型不支持的参数
-        args.pop("presence_penalty", None)
-        args.pop("frequency_penalty", None)
+        if system_texts:
+            result["system"] = "\n\n".join(system_texts)
 
-        # 思考模式切换
-        if any(v.search(self.platform.get("model")) is not None for v in __class__.RE_CLAUDE):
-            if thinking == True:
-                args["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 1024,
-                }
-            else:
-                pass
+        result.pop("presence_penalty", None)
+        result.pop("frequency_penalty", None)
 
-        return args
+        if any(v.search(self.model_id) is not None for v in __class__.RE_CLAUDE):
+            if self.thinking_level == ThinkingLevel.OFF:
+                result["thinking"] = {"type": "disabled"}
+            elif self.thinking_level == ThinkingLevel.LOW:
+                result["thinking"] = {"type": "enabled", "budget_tokens": 384}
+                result.pop("top_p", None)
+                result.pop("temperature", None)
+            elif self.thinking_level == ThinkingLevel.MEDIUM:
+                result["thinking"] = {"type": "enabled", "budget_tokens": 768}
+                result.pop("top_p", None)
+                result.pop("temperature", None)
+            elif self.thinking_level == ThinkingLevel.HIGH:
+                result["thinking"] = {"type": "enabled", "budget_tokens": 1024}
+                result.pop("top_p", None)
+                result.pop("temperature", None)
 
-    # 发起请求
-    def request_anthropic(self, messages: list[dict[str, str]], thinking: bool, args: dict[str, float]) -> tuple[bool, str, str, int, int]:
+        if self.extra_body:
+            result["extra_body"] = self.extra_body
+
+        return result
+
+    def request_anthropic(
+        self,
+        messages: list[dict[str, str]],
+        args: dict[str, Any],
+        *,
+        stop_checker: Callable[[], bool] | None = None,
+    ) -> tuple[Exception | None, str, str, int, int]:
+        if stop_checker is not None and stop_checker():
+            return RequestCancelledError("stop requested"), "", "", 0, 0
+
         try:
-            # 获取客户端
-            with __class__.LOCK:
-                client: anthropic.Anthropic = __class__.get_client(
-                    url = self.platform.get("api_url"),
-                    key = __class__.get_key(self.platform.get("api_key")),
-                    format = self.platform.get("api_format"),
-                    timeout = self.config.request_timeout,
-                )
-
-            # 发起请求
-            response: anthropic.types.Message = client.messages.create(
-                **self.generate_anthropic_args(messages, thinking, args)
+            client: Any = TaskRequesterClientPool.get_client(
+                url=TaskRequesterClientPool.get_url(self.api_url, self.api_format),
+                key=TaskRequesterClientPool.get_key(self.api_keys),
+                api_format=self.api_format,
+                timeout=self.get_sdk_timeout_seconds(),
             )
 
-            # 提取回复内容
-            text_messages = [msg for msg in response.content if hasattr(msg, "text") and isinstance(msg.text, str)]
-            think_messages = [msg for msg in response.content if hasattr(msg, "thinking") and isinstance(msg.thinking, str)]
-
-            if text_messages != []:
-                response_result = text_messages[-1].text.strip()
-            else:
-                response_result = ""
-
-            if think_messages != []:
-                response_think = __class__.RE_LINE_BREAK.sub("\n", think_messages[-1].thinking.strip())
-            else:
-                response_think = ""
+            (
+                response_think,
+                response_result,
+                input_tokens,
+                output_tokens,
+            ) = self.request_stream_with_strategy(
+                client,
+                self.generate_anthropic_args(messages, args),
+                __class__.AnthropicStreamStrategy(self),
+                stop_checker=stop_checker,
+            )
         except Exception as e:
-            self.error(f"{Localizer.get().log_task_fail}", e)
-            return True, None, None, None, None
+            return e, "", "", 0, 0
 
-        # 获取输入消耗
-        try:
-            input_tokens = int(response.usage.input_tokens)
-        except Exception:
-            input_tokens = 0
-
-        # 获取输出消耗
-        try:
-            output_tokens = int(response.usage.output_tokens)
-        except Exception:
-            output_tokens = 0
-
-        return False, response_think, response_result, input_tokens, output_tokens
+        return None, response_think, response_result, input_tokens, output_tokens

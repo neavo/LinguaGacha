@@ -1,0 +1,54 @@
+[project]
+name = "linguagacha"
+version = "0.59.1"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.14.*"
+dependencies = [
+    # System
+    "PySide6",
+    "PySide6-Fluent-Widgets[full]",
+    "openai",
+    "anthropic",
+    "google-genai",
+    "httpx",
+    "tiktoken",
+
+    # Tools
+    "rich",
+    "opencc_pyo3",
+    "openpyxl",
+    "orjson",
+    "json-repair",
+    "lxml",
+    "beautifulsoup4",
+    "charset-normalizer",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pyfakefs",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=module --cov-branch --cov-report=term-missing"
+
+[tool.coverage.run]
+data_file = "tests/.coverage"
+
+[tool.ruff]
+# line-length = 256
+force-exclude = true        # 强制应用排除规则
+extend-exclude = [
+    "module/Localizer/",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint.isort]
+force-single-line = true

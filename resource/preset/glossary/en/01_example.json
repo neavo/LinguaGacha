@@ -1,0 +1,23 @@
+[
+    {
+        "src": "ダリヤ",
+        "dst": "Daria",
+        "info": "female",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "コリウス",
+        "dst": "Kelvis",
+        "info": "name",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "エルギア",
+        "dst": "Eerga",
+        "info": "location",
+        "regex": false,
+        "case_sensitive": false
+    }
+]

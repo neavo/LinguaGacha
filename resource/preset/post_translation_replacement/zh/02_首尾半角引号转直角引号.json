@@ -1,0 +1,16 @@
+[
+    {
+        "src": "^\"",
+        "dst": "「",
+        "info": "",
+        "regex": true,
+        "case_sensitive": false
+    },
+    {
+        "src": "\"$",
+        "dst": "」",
+        "info": "",
+        "regex": true,
+        "case_sensitive": false
+    }
+]

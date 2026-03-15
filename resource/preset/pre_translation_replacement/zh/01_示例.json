@@ -1,0 +1,16 @@
+[
+    {
+        "src": "\\n[1]",
+        "dst": "达莉娅",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "\\[(.+?)\\]\\(.+\\)",
+        "dst": "\\1",
+        "info": "",
+        "regex": true,
+        "case_sensitive": false
+    }
+]

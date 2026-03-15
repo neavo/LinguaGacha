@@ -1,12 +1,14 @@
 import re
 
-class NumberFixer():
 
+class NumberFixer:
     # 圆圈数字列表
-    CIRCLED_NUMBERS = tuple(chr(i) for i in range(0x2460, 0x2474))                                      # ①-⑳
-    CIRCLED_NUMBERS_CJK_01 = tuple(chr(i) for i in range(0x3251, 0x3260))                               # ㉑-㉟
-    CIRCLED_NUMBERS_CJK_02 = tuple(chr(i) for i in range(0x32B1, 0x32C0))                               # ㊱-㊿
-    CIRCLED_NUMBERS_ALL = ("",) + CIRCLED_NUMBERS + CIRCLED_NUMBERS_CJK_01 + CIRCLED_NUMBERS_CJK_02     # 开头加个空字符来对齐索引和数值
+    CIRCLED_NUMBERS = tuple(chr(i) for i in range(0x2460, 0x2474))  # ①-⑳
+    CIRCLED_NUMBERS_CJK_01 = tuple(chr(i) for i in range(0x3251, 0x3260))  # ㉑-㉟
+    CIRCLED_NUMBERS_CJK_02 = tuple(chr(i) for i in range(0x32B1, 0x32C0))  # ㊱-㊿
+    CIRCLED_NUMBERS_ALL = (
+        ("",) + CIRCLED_NUMBERS + CIRCLED_NUMBERS_CJK_01 + CIRCLED_NUMBERS_CJK_02
+    )  # 开头加个空字符来对齐索引和数值
 
     # 预设编译正则
     PATTERN_ALL_NUM = re.compile(r"\d+|[①-⑳㉑-㉟㊱-㊿]", re.IGNORECASE)
@@ -66,14 +68,16 @@ class NumberFixer():
 
         try:
             result = int(s)
-        except Exception:
+        except ValueError:
             pass
 
         return result
 
     # 通过索引修复圆圈数字
     @classmethod
-    def fix_circled_numbers_by_index(cls, dst: str, target_i: int, target_str: str) -> str:
+    def fix_circled_numbers_by_index(
+        cls, dst: str, target_i: int, target_str: str
+    ) -> str:
         # 用于标识目标位置
         i = [0]
 

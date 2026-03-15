@@ -1,20 +1,19 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QHBoxLayout
-
-from qfluentwidgets import CardWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout
 from qfluentwidgets import Action
+from qfluentwidgets import CardWidget
 from qfluentwidgets import CommandBar
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
-class CommandBarCard(CardWidget):
 
+class CommandBarCard(CardWidget):
     def __init__(self) -> None:
         super().__init__(None)
 
         # 设置容器
         self.setBorderRadius(4)
         self.hbox = QHBoxLayout(self)
-        self.hbox.setContentsMargins(16, 16, 16, 16) # 左、上、右、下
+        self.hbox.setContentsMargins(16, 16, 16, 16)  # 左、上、右、下
 
         # 文本控件
         self.command_bar = CommandBar()
@@ -23,6 +22,11 @@ class CommandBarCard(CardWidget):
 
     def add_widget(self, widget) -> None:
         return self.hbox.addWidget(widget)
+
+    def add_widget_to_command_bar(self, widget) -> None:
+        """将自定义控件添加到 CommandBar 内部"""
+        # CommandBar 继承自 QToolBar，可以直接使用 addWidget
+        self.command_bar.addWidget(widget)
 
     def add_stretch(self, stretch: int) -> None:
         self.hbox.addStretch(stretch)

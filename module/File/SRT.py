@@ -1,15 +1,14 @@
 import os
-import re
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
+from module.Data.DataManager import DataManager
+from module.Text.TextHelper import TextHelper
+
 
 class SRT(Base):
-
     # 1
     # 00:00:08,120 --> 00:00:10,460
     # にゃにゃにゃ
@@ -27,8 +26,6 @@ class SRT(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
@@ -40,101 +37,112 @@ class SRT(Base):
     # 在扩展名前插入文本
     def insert_source_target(self, path: str) -> str:
         root, ext = os.path.splitext(path)
-        return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        return (
+            f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        )
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path = abs_path, add_sig_to_utf8 = True)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
-            with open(abs_path, "r", encoding = encoding) as reader:
-                chunks = re.split(r"\n{2,}", reader.read().strip())
-                for chunk in chunks:
-                    lines = [line.strip() for line in chunk.splitlines()]
-
-                    # isdecimal
-                    # 字符串中的字符是否全是十进制数字。也就是说，只有那些在数字系统中被认为是“基本”的数字字符（0-9）才会返回 True。
-                    # isdigit
-                    # 字符串中的字符是否都是数字字符。它不仅检查十进制数字，还包括其他可以表示数字的字符，如数字上标、罗马数字、圆圈数字等。
-                    # isnumeric
-                    # 字符串中的字符是否表示任何类型的数字，包括整数、分数、数字字符的变种（比如上标、下标）以及其他可以被认为是数字的字符（如中文数字）。
-
-                    # 格式校验
-                    if len(lines) < 3 or not lines[0].isdecimal():
-                        continue
-
-                    # 添加数据
-                    if lines[-1] != "":
-                        items.append(
-                            CacheItem.from_dict({
-                                "src": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
-                                "dst": "\n".join(lines[2:]),            # 如有多行文本则用换行符拼接
-                                "extra_field": lines[1],
-                                "row": str(lines[0]),
-                                "file_type": CacheItem.FileType.SRT,
-                                "file_path": rel_path,
-                            })
-                        )
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
         return items
 
-    # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
-        # 筛选
-        target = [
-            item for item in items
-            if item.get_file_type() == CacheItem.FileType.SRT
-        ]
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+        text = content.decode(encoding)
+
+        # 使用 splitlines() 原生处理各种换行符，无需手动归一化
+        lines = text.splitlines()
+        current_chunk: list[str] = []
+
+        def process_chunk(chunk: list[str]) -> None:
+            # 格式校验：标准 SRT 块至少包含序号、时间、文本三部分
+            if len(chunk) < 3 or not chunk[0].isdecimal():
+                return
+
+            items.append(
+                Item.from_dict(
+                    {
+                        "src": "\n".join(chunk[2:]),
+                        "dst": "",
+                        "extra_field": chunk[1],
+                        "row": int(chunk[0]),
+                        "file_type": Item.FileType.SRT,
+                        "file_path": rel_path,
+                    }
+                )
+            )
+
+        for line in lines:
+            stripped = line.strip()
+
+            # 空行作为分隔符
+            if not stripped:
+                if current_chunk:
+                    process_chunk(current_chunk)
+                    current_chunk = []
+            else:
+                current_chunk.append(stripped)
+
+        # 处理文件末尾可能的最后一个块
+        if current_chunk:
+            process_chunk(current_chunk)
+
+        return items
+
+    def write_to_path(self, items: list[Item]) -> None:
+        dm = DataManager.get()
+        output_path = dm.get_translated_path()
+        bilingual_path = dm.get_bilingual_path()
+
+        # 筛选 SRT 条目
+        target_items = [i for i in items if i.get_file_type() == Item.FileType.SRT]
+        if not target_items:
+            return
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
-        for item in target:
+        group: dict[str, list[Item]] = {}
+        for item in target_items:
             group.setdefault(item.get_file_path(), []).append(item)
 
-        # 分别处理每个文件
-        for rel_path, items in group.items():
-            abs_path = os.path.join(self.output_path, rel_path)
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+        # 同时处理翻译和双语文件写入
+        for rel_path, group_items in group.items():
+            abs_out = os.path.join(output_path, rel_path)
+            abs_bi = os.path.join(bilingual_path, rel_path)
 
-            result: list[str] = []
-            for item in items:
-                result.append([
-                    item.get_row(),
-                    item.get_extra_field(),
-                    item.get_dst(),
-                ])
+            os.makedirs(os.path.dirname(abs_out), exist_ok=True)
+            os.makedirs(os.path.dirname(abs_bi), exist_ok=True)
 
-            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
-                for item in result:
-                    writer.write("\n".join(item))
-                    writer.write("\n\n")
+            target_path = self.insert_target(abs_out)
+            bilingual_target_path = self.insert_source_target(abs_bi)
 
-        # 分别处理每个文件（双语）
-        for rel_path, items in group.items():
-            result: list[str] = []
-            for item in items:
-                if self.config.deduplication_in_bilingual == True and item.get_src() == item.get_dst():
-                    result.append([
-                        item.get_row(),
-                        item.get_extra_field(),
-                        item.get_dst(),
-                    ])
-                else:
-                    result.append([
-                        item.get_row(),
-                        item.get_extra_field(),
-                        f"{item.get_src()}\n{item.get_dst()}",
-                    ])
+            with (
+                open(target_path, "w", encoding="utf-8") as f_out,
+                open(bilingual_target_path, "w", encoding="utf-8") as f_bi,
+            ):
+                for item in group_items:
+                    row = str(item.get_row())
+                    time_code = str(item.get_extra_field())
+                    src = item.get_src()
+                    effective_dst = item.get_effective_dst()
 
-            abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
-                for item in result:
-                    writer.write("\n".join(item))
-                    writer.write("\n\n")
+                    # 写入翻译文件
+                    f_out.write(f"{row}\n{time_code}\n{effective_dst}\n\n")
+
+                    # 写入双语文件
+                    if self.config.deduplication_in_bilingual and src == effective_dst:
+                        content = effective_dst
+                    else:
+                        content = f"{src}\n{effective_dst}"
+                    f_bi.write(f"{row}\n{time_code}\n{content}\n\n")

@@ -38,21 +38,25 @@
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
+  - Windows: Download `.zip` file, extract and run `app.exe`
+  - macOS: Download `.dmg` file, choose `x86_64` for Intel or `arm64` for Apple Silicon, drag to Applications folder
+    - On first launch, you may see "unidentified developer" warning
+    - Please right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
+  - Linux: Download `.AppImage` file
+    - Make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
-  - [ [Gemini API](https://aistudio.google.com/) ] (Paid, cost-effective, fast, relatively-high-quality, no GPU required)　`👈👈 Recommended`
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Unstable during the day, Alternative`
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Recommended`
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
-- Launch application via `app.exe`:
+- Launch the application:
   - Configure essential settings (source/target languages) in `Project Settings`
   - Copy files to input folder (default: `input`), start translation in `Begin Translation`
 
 ## User Guide 📝
 - Overall
   - [Basic Tutorial](https://github.com/neavo/LinguaGacha/wiki/BasicTutorial)　`👈👈 Step-by-step tutorial, easy to follow, a must-read for beginners`
-  - [Google Gemini Free API](https://github.com/neavo/LinguaGacha/wiki/GoogleGeminiFreeEN)
   - [Best Practices for High-Quality Translation of WOLF Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForWOLFEN)
   - [Best Practices for High-Quality Translation of RPGMaker Series Engine Games](https://github.com/neavo/LinguaGacha/wiki/BestPracticeForRPGMakerEN)
 - Video Tutorial
@@ -61,8 +65,8 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [Incremental Translation](https://github.com/neavo/LinguaGacha/wiki/IncrementalTranslationEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [Treasure Chest - Batch Correction](https://github.com/neavo/LinguaGacha/wiki/BatchCorrectionEN)　　[Treasure Chest - Partial ReTranslatio](https://github.com/neavo/LinguaGacha/wiki/ReTranslationEN)　　[Treasure Chest - Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
-- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
+  - [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN) [Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
 - Processes all supported files in input folder (including subdirectories):
@@ -79,17 +83,20 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20250604 v0.29.2
-  - OPT - Updated phonetic notation cleanup rules
-  - FIX - An issue where tasks could not be stopped properly under specific circumstances
+- 20260304 v0.59.1
+  - Optimizations and Improvements #461
 
-- 20250603 v0.29.1
-  - FIX - Continue task feature
+- 20260303 v0.59.0
+  - feat - Quality Rule Effectiveness Statistics
+    - `Glossary` `Text Replacement` `Text Protection`
+  - Optimizations and Improvements #453 #457
 
-- 20250602 v0.29.0
-  - NEW - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
-  - OPT - More accurate request timeout control
-  - OPT - Print failed API keys during interface testing
+### Development Guide 🛠️
+- This project is managed using [**uv**](https://github.com/astral-sh/uv)
+- Install dependencies `uv sync -U`
+- Run application `uv run app.py`
+- Please ensure you run `uv run ruff check --fix` and `uv run ruff format` to maintain code standards before submitting a PR
+- For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥
 - Runtime logs are stored in `log` folder

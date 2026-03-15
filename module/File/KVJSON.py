@@ -1,14 +1,15 @@
 import os
-import json
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
+from module.Text.TextHelper import TextHelper
+from module.Utils.JSONTool import JSONTool
+
 
 class KVJSON(Base):
-
     # {
     #     "「あ・・」": "「あ・・」",
     #     "「ごめん、ここ使う？」": "「ごめん、ここ使う？」",
@@ -20,91 +21,111 @@ class KVJSON(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path = abs_path, add_sig_to_utf8 = True)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
-            with open(abs_path, "r", encoding = encoding) as reader:
-                json_data: dict[str, str] = json.load(reader)
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                # 格式校验
-                if not isinstance(json_data, dict):
-                    continue
+        return items
 
-                # 读取数据
-                for k, v in json_data.items():
-                    if isinstance(k, str) and isinstance(v, str):
-                        src = k
-                        dst = v
-                        if src == "":
-                            items.append(
-                                CacheItem.from_dict({
-                                    "src": src,
-                                    "dst": dst,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
-                                    "file_path": rel_path,
-                                    "status": Base.TranslationStatus.EXCLUDED,
-                                })
-                            )
-                        elif dst != "" and src != dst:
-                            items.append(
-                                CacheItem.from_dict({
-                                    "src": src,
-                                    "dst": dst,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
-                                    "file_path": rel_path,
-                                    "status": Base.TranslationStatus.TRANSLATED_IN_PAST,
-                                })
-                            )
-                        else:
-                            items.append(
-                                CacheItem.from_dict({
-                                    "src": src,
-                                    "dst": dst,
-                                    "row": len(items),
-                                    "file_type": CacheItem.FileType.KVJSON,
-                                    "file_path": rel_path,
-                                    "status": Base.TranslationStatus.UNTRANSLATED,
-                                })
-                            )
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
+
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        if encoding.lower() in ("utf-8", "utf-8-sig"):
+            json_data: dict[str, str] = JSONTool.loads(content)
+        else:
+            json_data: dict[str, str] = JSONTool.loads(content.decode(encoding))
+
+        # 格式校验
+        if not isinstance(json_data, dict):
+            return items
+
+        # 读取数据
+        for k, v in json_data.items():
+            if isinstance(k, str) and isinstance(v, str):
+                src = k
+                # KVJSON 属于展示型格式：writer 可能会把未翻译项导出为 value==key；
+                # 回读时需把这种兜底视为“无译文”。
+                dst = "" if v == src else v
+                if src == "":
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.EXCLUDED,
+                            }
+                        )
+                    )
+                elif dst != "" and dst != src:
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+                            }
+                        )
+                    )
+                else:
+                    items.append(
+                        Item.from_dict(
+                            {
+                                "src": src,
+                                "dst": dst,
+                                "row": len(items),
+                                "file_type": Item.FileType.KVJSON,
+                                "file_path": rel_path,
+                                "status": Base.ProjectStatus.NONE,
+                            }
+                        )
+                    )
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
+        # 获取输出目录
+        output_path = DataManager.get().get_translated_path()
+
         target = [
-            item for item in items
-            if item.get_file_type() == CacheItem.FileType.KVJSON
+            item for item in items if item.get_file_type() == Item.FileType.KVJSON
         ]
 
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
-        for rel_path, items in group.items():
-            abs_path = os.path.join(self.output_path, rel_path)
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(abs_path, "w", encoding = "utf-8") as writer:
+        for rel_path, group_items in group.items():
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(abs_path, "w", encoding="utf-8") as writer:
                 writer.write(
-                    json.dumps(
+                    JSONTool.dumps(
                         {
-                            item.get_src(): item.get_dst() for item in items
+                            item.get_src(): item.get_effective_dst()
+                            for item in group_items
                         },
-                        indent = 4,
-                        ensure_ascii = False,
+                        indent=4,
                     )
                 )

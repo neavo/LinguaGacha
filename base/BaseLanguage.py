@@ -1,25 +1,28 @@
 from enum import StrEnum
 
-class BaseLanguage():
+
+class BaseLanguage:
+    # 特殊值：表示“任意原文语言”（关闭语言过滤）。
+    ALL: str = "ALL"
 
     class Enum(StrEnum):
-        ZH = "ZH"                                          # 中文 (Chinese)
-        EN = "EN"                                          # 英文 (English)
-        JA = "JA"                                          # 日文 (Japanese)
-        KO = "KO"                                          # 韩文 (Korean)
-        RU = "RU"                                          # 阿拉伯文 (Russian)
-        AR = "AR"                                          # 俄文 (Arabic)
-        DE = "DE"                                          # 德文 (German)
-        FR = "FR"                                          # 法文 (French)
-        PL = "PL"                                          # 波兰文 (Polish)
-        ES = "ES"                                          # 西班牙文 (Spanish)
-        IT = "IT"                                          # 意大利文 (Italian)
-        PT = "PT"                                          # 葡萄牙文 (Portuguese)
-        HU = "HU"                                          # 匈牙利文 (Hungrarian)
-        TR = "TR"                                          # 土耳其文 (Turkish)
-        TH = "TH"                                          # 泰文 (Thai)
-        ID = "ID"                                          # 印尼文 (Indonesian)
-        VI = "VI"                                          # 越南文 (Vietnamese)
+        ZH = "ZH"  # 中文 (Chinese)
+        EN = "EN"  # 英文 (English)
+        JA = "JA"  # 日文 (Japanese)
+        KO = "KO"  # 韩文 (Korean)
+        RU = "RU"  # 阿拉伯文 (Russian)
+        AR = "AR"  # 俄文 (Arabic)
+        DE = "DE"  # 德文 (German)
+        FR = "FR"  # 法文 (French)
+        PL = "PL"  # 波兰文 (Polish)
+        ES = "ES"  # 西班牙文 (Spanish)
+        IT = "IT"  # 意大利文 (Italian)
+        PT = "PT"  # 葡萄牙文 (Portuguese)
+        HU = "HU"  # 匈牙利文 (Hungrarian)
+        TR = "TR"  # 土耳其文 (Turkish)
+        TH = "TH"  # 泰文 (Thai)
+        ID = "ID"  # 印尼文 (Indonesian)
+        VI = "VI"  # 越南文 (Vietnamese)
 
     LANGUAGE_NAMES: dict[Enum, dict[str, str]] = {
         Enum.ZH: {"zh": "中文", "en": "Chinese"},
@@ -42,17 +45,17 @@ class BaseLanguage():
     }
 
     @classmethod
-    def is_cjk(cls, language: Enum) -> bool:
+    def is_cjk(cls, language: Enum | str) -> bool:
         return language in (cls.Enum.ZH, cls.Enum.JA, cls.Enum.KO)
 
     @classmethod
-    def get_name_zh(cls, language: Enum) -> str:
-        return cls.LANGUAGE_NAMES.get(language, {}).get("zh" "")
+    def get_name_zh(cls, language: Enum | str) -> str:
+        return cls.LANGUAGE_NAMES.get(language, {}).get("zh") or ""
 
     @classmethod
-    def get_name_en(cls, language: Enum) -> str:
+    def get_name_en(cls, language: Enum | str) -> str:
         return cls.LANGUAGE_NAMES.get(language, {}).get("en", "")
 
     @classmethod
-    def get_languages(cls) -> list[str]:
+    def get_languages(cls) -> list[Enum]:
         return list(cls.LANGUAGE_NAMES.keys())

@@ -2,13 +2,13 @@ import os
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
-from module.Localizer.Localizer import Localizer
+from module.Data.DataManager import DataManager
+from module.Text.TextHelper import TextHelper
+
 
 class ASS(Base):
-
     # [Script Info]
     # ; This is an Advanced Sub Station Alpha v4+ script.
     # Title:
@@ -31,8 +31,6 @@ class ASS(Base):
 
         # 初始化
         self.config = config
-        self.input_path: str = config.input_folder
-        self.output_path: str = config.output_folder
         self.source_language: BaseLanguage.Enum = config.source_language
         self.target_language: BaseLanguage.Enum = config.target_language
 
@@ -44,92 +42,141 @@ class ASS(Base):
     # 在扩展名前插入文本
     def insert_source_target(self, path: str) -> str:
         root, ext = os.path.splitext(path)
-        return f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        return (
+            f"{root}.{self.source_language.lower()}.{self.target_language.lower()}{ext}"
+        )
 
     # 读取
-    def read_from_path(self, abs_paths: list[str]) -> list[CacheItem]:
-        items:list[CacheItem] = []
+    def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
+        items: list[Item] = []
         for abs_path in abs_paths:
             # 获取相对路径
-            rel_path = os.path.relpath(abs_path, self.input_path)
-
-            # 获取文件编码
-            encoding = TextHelper.get_enconding(path = abs_path, add_sig_to_utf8 = True)
+            rel_path = os.path.relpath(abs_path, input_path)
 
             # 数据处理
-            with open(abs_path, "r", encoding = encoding) as reader:
-                lines = [line.strip() for line in reader.readlines()]
+            with open(abs_path, "rb") as reader:
+                items.extend(self.read_from_stream(reader.read(), rel_path))
 
-                # 格式字段的数量
-                in_event = False
-                format_field_num = -1
-                for line in lines:
-                    # 判断是否进入事件块
-                    if line == "[Events]":
-                        in_event = True
-                    # 在事件块中寻找格式字段
-                    if in_event == True and line.startswith("Format:"):
-                        format_field_num = len(line.split(",")) - 1
-                        break
+        return items
 
-                for line in lines:
-                    content = ",".join(line.split(",")[format_field_num:]) if line.startswith("Dialogue:") else ""
-                    extra_field = line.replace(f"{content}", "{{CONTENT}}") if content != "" else line
+    # 从流读取
+    def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
+        items: list[Item] = []
 
-                    # 添加数据
-                    items.append(
-                        CacheItem.from_dict({
-                            "src": content.replace("\\N", "\n"),
-                            "dst": content.replace("\\N", "\n"),
-                            "extra_field": extra_field,
-                            "row": len(items),
-                            "file_type": CacheItem.FileType.ASS,
-                            "file_path": rel_path,
-                        })
-                    )
+        # 获取文件编码
+        encoding = TextHelper.get_encoding(content=content, add_sig_to_utf8=True)
+
+        # 数据处理
+        text = content.decode(encoding)
+        lines = [line.strip() for line in text.splitlines()]
+
+        # 格式字段的数量
+        in_event = False
+        format_field_num = -1
+        for line in lines:
+            # 判断是否进入事件块
+            if line == "[Events]":
+                in_event = True
+            # 在事件块中寻找格式字段
+            if in_event and line.startswith("Format:"):
+                format_field_num = len(line.split(",")) - 1
+                break
+
+        for line in lines:
+            content_val = (
+                ",".join(line.split(",")[format_field_num:])
+                if line.startswith("Dialogue:")
+                else ""
+            )
+            extra_field = (
+                line.replace(f"{content_val}", "{{CONTENT}}")
+                if content_val != ""
+                else line
+            )
+
+            # 添加数据
+            items.append(
+                Item.from_dict(
+                    {
+                        "src": content_val.replace("\\N", "\n"),
+                        "dst": "",
+                        "extra_field": extra_field,
+                        "row": len(items),
+                        "file_type": Item.FileType.ASS,
+                        "file_path": rel_path,
+                    }
+                )
+            )
 
         return items
 
     # 写入
-    def write_to_path(self, items: list[CacheItem]) -> None:
+    def write_to_path(self, items: list[Item]) -> None:
+        # 获取输出目录
+        dm = DataManager.get()
+        output_path = dm.get_translated_path()
+        bilingual_path = dm.get_bilingual_path()
+
         # 筛选
-        target = [
-            item for item in items
-            if item.get_file_type() == CacheItem.FileType.ASS
-        ]
+        target = [item for item in items if item.get_file_type() == Item.FileType.ASS]
 
         # 按文件路径分组
-        group: dict[str, list[str]] = {}
+        group: dict[str, list[Item]] = {}
         for item in target:
             group.setdefault(item.get_file_path(), []).append(item)
 
         # 分别处理每个文件
-        for rel_path, items in group.items():
-            abs_path = os.path.join(self.output_path, rel_path)
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
+        for rel_path, group_items in group.items():
+            abs_path = os.path.join(output_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
             result: list[str] = []
-            for item in items:
-                result.append(item.get_extra_field().replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N")))
+            for item in group_items:
+                extra_field_raw = item.get_extra_field()
+                extra_field: str = (
+                    extra_field_raw if isinstance(extra_field_raw, str) else ""
+                )
+                effective_dst = item.get_effective_dst()
+                result.append(
+                    extra_field.replace(
+                        "{{CONTENT}}", effective_dst.replace("\n", "\\N")
+                    )
+                )
 
-            with open(self.insert_target(abs_path), "w", encoding = "utf-8") as writer:
+            with open(self.insert_target(abs_path), "w", encoding="utf-8") as writer:
                 writer.write("\n".join(result))
 
         # 分别处理每个文件（双语）
-        for rel_path, items in group.items():
+        for rel_path, group_items in group.items():
             result: list[str] = []
-            for item in items:
-                if self.config.deduplication_in_bilingual == True and item.get_src() == item.get_dst():
-                    line = item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
-                    line = line.replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
-                    result.append(line)
+            for item in group_items:
+                extra_field_raw = item.get_extra_field()
+                extra_field: str = (
+                    extra_field_raw if isinstance(extra_field_raw, str) else ""
+                )
+                src = item.get_src()
+                effective_dst = item.get_effective_dst()
+                if self.config.deduplication_in_bilingual and src == effective_dst:
+                    # 去重：原文与译文一致时，不再拼接两份内容。
+                    result.append(
+                        extra_field.replace(
+                            "{{CONTENT}}",
+                            effective_dst.replace("\n", "\\N"),
+                        )
+                    )
                 else:
-                    line = item.get_extra_field().replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
-                    line = line.replace("{{CONTENT}}", item.get_src().replace("\n", "\\N"), 1)
-                    line = line.replace("{{CONTENT}}", item.get_dst().replace("\n", "\\N"), 1)
+                    line = extra_field.replace(
+                        "{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}"
+                    )
+                    line = line.replace("{{CONTENT}}", src.replace("\n", "\\N"), 1)
+                    line = line.replace(
+                        "{{CONTENT}}", effective_dst.replace("\n", "\\N"), 1
+                    )
                     result.append(line)
 
-            abs_path = f"{self.output_path}/{Localizer.get().path_bilingual}/{rel_path}"
-            os.makedirs(os.path.dirname(abs_path), exist_ok = True)
-            with open(self.insert_source_target(abs_path), "w", encoding = "utf-8") as writer:
+            abs_path = os.path.join(bilingual_path, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(
+                self.insert_source_target(abs_path), "w", encoding="utf-8"
+            ) as writer:
                 writer.write("\n".join(result))

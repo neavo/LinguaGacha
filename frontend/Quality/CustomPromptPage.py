@@ -1,211 +1,729 @@
 import os
 from functools import partial
+from pathlib import Path
 
-from PyQt5.QtCore import QPoint
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLayout
-from PyQt5.QtWidgets import QVBoxLayout
-
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QLayout
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
-from qfluentwidgets import RoundMenu
-from qfluentwidgets import FluentIcon
-from qfluentwidgets import MessageBox
-from qfluentwidgets import FluentWindow
 from qfluentwidgets import CommandButton
-from qfluentwidgets import PlainTextEdit
+from qfluentwidgets import FluentWindow
+from qfluentwidgets import MenuAnimationType
+from qfluentwidgets import MessageBox
+from qfluentwidgets import RoundMenu
+from qfluentwidgets import SwitchButton
 
 from base.Base import Base
+from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from widget.EmptyCard import EmptyCard
 from widget.CommandBarCard import CommandBarCard
-from widget.SwitchButtonCard import SwitchButtonCard
+from widget.CustomTextEdit import CustomTextEdit
+from widget.LineEditMessageBox import LineEditMessageBox
+from widget.SettingCard import SettingCard
 
-class CustomPromptPage(QWidget, Base):
+# ==================== 图标常量 ====================
 
-    def __init__(self, text: str, window: FluentWindow, language: BaseLanguage.Enum) -> None:
+ICON_ACTION_SAVE: BaseIcon = BaseIcon.SAVE  # 命令栏：保存当前提示词
+ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
+ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出
+ICON_PRESET_MENU_ROOT: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单入口
+
+ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空内容）
+ICON_PRESET_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
+ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
+ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用
+
+ICON_PRESET_DEFAULT_MARK: BaseIcon = BaseIcon.FOLDER_HEART  # 子菜单：当前为默认预设
+ICON_PRESET_SET_DEFAULT: BaseIcon = BaseIcon.HEART  # 子菜单动作：设为默认预设
+ICON_PRESET_CANCEL_DEFAULT: BaseIcon = BaseIcon.HEART_OFF  # 子菜单动作：取消默认预设
+
+ICON_PRESET_RENAME: BaseIcon = BaseIcon.PENCIL_LINE  # 子菜单动作：重命名
+ICON_PRESET_DELETE: BaseIcon = BaseIcon.TRASH_2  # 子菜单动作：删除
+
+
+class CustomPromptPage(Base, QWidget):
+    def __init__(
+        self, text: str, window: FluentWindow, language: BaseLanguage.Enum
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        if language == BaseLanguage.Enum.ZH:
-            self.language = language
-            self.base_key = "custom_prompt_zh"
-            self.preset_path = "resource/custom_prompt/zh"
-        else:
-            self.language = language
-            self.base_key = "custom_prompt_en"
-            self.preset_path = "resource/custom_prompt/en"
+        self.language = language
+        self.preset_base_path = "resource/preset/custom_prompt"
+        self.language_code = "zh" if language == BaseLanguage.Enum.ZH else "en"
 
-        # 载入并保存默认配置
+        # 载入配置
         config = Config().load()
-        if getattr(config, f"{self.base_key}_data", None) == None:
-            setattr(config, f"{self.base_key}_data", PromptBuilder(config).get_base(language))
-        config.save()
 
         # 设置主容器
         self.root = QVBoxLayout(self)
         self.root.setSpacing(8)
-        self.root.setContentsMargins(24, 24, 24, 24) # 左、上、右、下
+        self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 添加控件
         self.add_widget_header(self.root, config, window)
         self.add_widget_body(self.root, config, window)
         self.add_widget_footer(self.root, config, window)
 
-    # 头部
-    def add_widget_header(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+        # 注册事件：工程加载后刷新数据（从 .lg 文件读取）
+        self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+        # 工程卸载后清空数据
+        self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-        def init(widget: SwitchButtonCard) -> None:
-            widget.get_switch_button().setChecked(
-                getattr(config, f"{self.base_key}_enable"),
-            )
+    # 获取自定义提示词数据
+    def get_custom_prompt_data(self) -> str:
+        if self.language == BaseLanguage.Enum.ZH:
+            return DataManager.get().get_custom_prompt_zh()
+        return DataManager.get().get_custom_prompt_en()
 
-        def checked_changed(widget: SwitchButtonCard) -> None:
+    # 保存自定义提示词数据
+    def set_custom_prompt_data(self, data: str) -> None:
+        if self.language == BaseLanguage.Enum.ZH:
+            DataManager.get().set_custom_prompt_zh(data)
+        else:
+            DataManager.get().set_custom_prompt_en(data)
+
+    # 获取启用状态
+    def get_custom_prompt_enable(self) -> bool:
+        if self.language == BaseLanguage.Enum.ZH:
+            return DataManager.get().get_custom_prompt_zh_enable()
+        return DataManager.get().get_custom_prompt_en_enable()
+
+    # 设置启用状态
+    def set_custom_prompt_enable(self, enable: bool) -> None:
+        if self.language == BaseLanguage.Enum.ZH:
+            DataManager.get().set_custom_prompt_zh_enable(enable)
+        else:
+            DataManager.get().set_custom_prompt_en_enable(enable)
+
+    # 工程加载后刷新数据
+    def on_project_loaded(self, event: Base.Event, data: dict) -> None:
+        prompt_data = self.get_custom_prompt_data()
+
+        # 如果数据为空（新工程），则加载默认提示词
+        if not prompt_data:
             config = Config().load()
-            setattr(config, f"{self.base_key}_enable", widget.get_switch_button().isChecked())
-            config.save()
+            prompt_data = PromptBuilder(config).get_base(self.language)
+            self.set_custom_prompt_data(prompt_data)
 
-        parent.addWidget(
-            SwitchButtonCard(
-                title = getattr(Localizer.get(), f"{self.base_key}_page_head"),
-                description = getattr(Localizer.get(), f"{self.base_key}_page_head_desc"),
-                init = init,
-                checked_changed = checked_changed,
-            )
+        self.main_text.setPlainText(prompt_data)
+        # 刷新开关状态
+        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
+            self.prompt_switch.setChecked(self.get_custom_prompt_enable())
+
+    # 工程卸载后清空数据
+    def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
+        self.main_text.clear()
+        # 重置开关状态
+        if hasattr(self, "prompt_switch") and self.prompt_switch is not None:
+            self.prompt_switch.setChecked(True)
+
+    # 头部
+    def add_widget_header(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        base_key = (
+            "custom_prompt_zh"
+            if self.language == BaseLanguage.Enum.ZH
+            else "custom_prompt_en"
         )
 
+        def checked_changed(button: SwitchButton) -> None:
+            self.set_custom_prompt_enable(button.isChecked())
+
+        card = SettingCard(
+            title=getattr(Localizer.get(), f"{base_key}_page_head"),
+            description=getattr(Localizer.get(), f"{base_key}_page_head_desc"),
+            parent=self,
+        )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(self.get_custom_prompt_enable())
+        switch_button.checkedChanged.connect(
+            lambda checked: checked_changed(switch_button)
+        )
+        card.add_right_widget(switch_button)
+        self.prompt_switch = switch_button
+        parent.addWidget(card)
+
     # 主体
-    def add_widget_body(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
-        self.prefix_body = EmptyCard("", PromptBuilder(config).get_prefix(self.language))
-        self.prefix_body.remove_title()
+    def add_widget_body(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
+        self.prefix_body = SettingCard(
+            "", PromptBuilder(config).get_prefix(self.language), parent=self
+        )
         parent.addWidget(self.prefix_body)
 
-        self.main_text = PlainTextEdit(self)
-        self.main_text.setPlainText(getattr(config, f"{self.base_key}_data",))
+        self.main_text = CustomTextEdit(self)
+        self.main_text.setPlainText("")
         parent.addWidget(self.main_text)
 
-        self.suffix_body = EmptyCard("", PromptBuilder(config).get_suffix(self.language).replace("\n", ""))
-        self.suffix_body.remove_title()
+        self.suffix_body = SettingCard(
+            "",
+            PromptBuilder(config).get_suffix(self.language).replace("\n", ""),
+            parent=self,
+        )
         parent.addWidget(self.suffix_body)
 
     # 底部
-    def add_widget_footer(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_widget_footer(
+        self, parent: QLayout, config: Config, window: FluentWindow
+    ) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
+        self.add_command_bar_action_import(self.command_bar_card, config, window)
+        self.add_command_bar_action_export(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
         self.add_command_bar_action_save(self.command_bar_card, config, window)
+        self.command_bar_card.add_separator()
         self.add_command_bar_action_preset(self.command_bar_card, config, window)
 
-    # 保存
-    def add_command_bar_action_save(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
+    def import_prompt_from_path(self, path: str) -> None:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as reader:
+                text = reader.read().strip()
+        except Exception as e:
+            LogManager.get().error(f"Failed to import custom prompt - {path}", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
 
-        def triggered() -> None:
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", self.main_text.toPlainText().strip())
-            config.save()
+        self.set_custom_prompt_data(text)
+        self.main_text.setPlainText(text)
 
-            # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
+        self.emit(
+            Base.Event.TOAST,
+            {
                 "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_save_toast,
-            })
+                "message": Localizer.get().quality_import_toast,
+            },
+        )
+
+    def export_prompt_to_path(self, path: str) -> None:
+        try:
+            final_path = Path(path)
+            if final_path.suffix.lower() != ".txt":
+                final_path = final_path.with_suffix(".txt")
+            with open(str(final_path), "w", encoding="utf-8") as writer:
+                writer.write(self.main_text.toPlainText().strip())
+        except Exception as e:
+            LogManager.get().error(f"Failed to export custom prompt - {path}", e)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().quality_export_toast,
+            },
+        )
+
+    def add_command_bar_action_import(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        del config
+        del window
+
+        def triggered(checked: bool = False) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                None,
+                Localizer.get().select_file,
+                "",
+                Localizer.get().custom_prompt_select_file_type,
+            )
+            if not isinstance(path, str) or not path:
+                return
+            self.import_prompt_from_path(path)
 
         parent.add_action(
-            Action(FluentIcon.SAVE, Localizer.get().quality_save, parent, triggered = triggered),
+            Action(
+                ICON_ACTION_IMPORT,
+                Localizer.get().quality_import,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    def add_command_bar_action_export(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        del config
+
+        def triggered(checked: bool = False) -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                window,
+                Localizer.get().select_file,
+                "",
+                Localizer.get().custom_prompt_select_file_type,
+            )
+            if not isinstance(path, str) or not path:
+                return
+            self.export_prompt_to_path(path)
+
+        parent.add_action(
+            Action(
+                ICON_ACTION_EXPORT,
+                Localizer.get().quality_export,
+                parent,
+                triggered=triggered,
+            ),
+        )
+
+    # 保存
+    def add_command_bar_action_save(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
+        def triggered(checked: bool = False) -> None:
+            # 保存数据
+            self.set_custom_prompt_data(self.main_text.toPlainText().strip())
+
+            # 弹出提示
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().toast_save,
+                },
+            )
+
+        parent.add_action(
+            Action(
+                ICON_ACTION_SAVE,
+                Localizer.get().save,
+                parent,
+                triggered=triggered,
+            ),
         )
 
     # 预设
-    def add_command_bar_action_preset(self, parent: CommandBarCard, config: Config, window: FluentWindow) -> None:
-
+    def add_command_bar_action_preset(
+        self, parent: CommandBarCard, config: Config, window: FluentWindow
+    ) -> None:
         widget: CommandButton = None
 
-        def load_preset() -> list[str]:
-            filenames: list[str] = []
+        def get_preset_paths() -> tuple[list[dict], list[dict]]:
+            builtin_dir = f"{self.preset_base_path}/{self.language_code}"
+            user_dir = f"{self.preset_base_path}/user/{self.language_code}"
 
-            try:
-                for root, _, filenames in os.walk(f"{self.preset_path}"):
-                    filenames = [v.lower().removesuffix(".txt") for v in filenames if v.lower().endswith(".txt")]
-            except Exception:
-                pass
+            builtin_presets = []
+            user_presets = []
 
-            return filenames
+            # 加载内置预设
+            if os.path.exists(builtin_dir):
+                for f in os.listdir(builtin_dir):
+                    if f.lower().endswith(".txt"):
+                        path = os.path.join(builtin_dir, f).replace("\\", "/")
+                        builtin_presets.append(
+                            {
+                                "name": f[:-4],
+                                "path": path,
+                                "type": "builtin",
+                            }
+                        )
 
-        def reset() -> None:
-            message_box = MessageBox(Localizer.get().alert, Localizer.get().quality_reset_alert, window)
+            # 加载用户预设
+            if not os.path.exists(user_dir):
+                os.makedirs(user_dir)
+
+            for f in os.listdir(user_dir):
+                if f.lower().endswith(".txt"):
+                    path = os.path.join(user_dir, f).replace("\\", "/")
+                    user_presets.append(
+                        {
+                            "name": f[:-4],
+                            "path": path,
+                            "type": "user",
+                        }
+                    )
+
+            return builtin_presets, user_presets
+
+        def set_default_preset(item: dict, checked: bool = False) -> None:
+            key = f"custom_prompt_{self.language_code}_default_preset"
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            setattr(current_config, key, item["path"])
+            current_config.save()
+
+            # 更新当前页面的配置对象
+            setattr(config, key, item["path"])
+
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_set_default_preset_success,
+                },
+            )
+
+        def cancel_default_preset(checked: bool = False) -> None:
+            key = f"custom_prompt_{self.language_code}_default_preset"
+            # 重新加载配置以防止覆盖其他页面的修改
+            current_config = Config().load()
+            setattr(current_config, key, "")
+            current_config.save()
+
+            # 更新当前页面的配置对象
+            setattr(config, key, "")
+
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_cancel_default_preset_success,
+                },
+            )
+
+        def reset(checked: bool = False) -> None:
+            message_box = MessageBox(
+                Localizer.get().alert, Localizer.get().alert_confirm_reset_data, window
+            )
             message_box.yesButton.setText(Localizer.get().confirm)
             message_box.cancelButton.setText(Localizer.get().cancel)
 
             if not message_box.exec():
                 return
 
-            # 更新配置文件
+            # 重置为默认提示词
             config = Config().load()
-            setattr(config, f"{self.base_key}_data", PromptBuilder(config).get_base(self.language))
-            config.save()
+            default_prompt = PromptBuilder(config).get_base(self.language)
+            self.set_custom_prompt_data(default_prompt)
 
             # 更新 UI
-            self.main_text.setPlainText(
-                getattr(config, f"{self.base_key}_data"),
-            )
+            self.main_text.setPlainText(default_prompt)
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_reset_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().toast_reset,
+                },
+            )
 
-        def apply_preset(filename: str) -> None:
-            path: str = f"{self.preset_path}/{filename}.txt"
-
+        def apply_preset(path: str, checked: bool = False) -> None:
             prompt: str = ""
             try:
-                with open(path, "r", encoding = "utf-8-sig") as reader:
+                with open(path, "r", encoding="utf-8-sig") as reader:
                     prompt = reader.read().strip()
-            except Exception:
-                pass
+            except Exception as e:
+                LogManager.get().error(f"Failed to apply preset - {path}", e)
+                self.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+                return
 
-            # 更新配置文件
-            config = Config().load()
-            setattr(config, f"{self.base_key}_data", prompt)
-            config.save()
+            # 保存数据
+            self.set_custom_prompt_data(prompt)
 
             # 更新 UI
-            self.main_text.setPlainText(
-                getattr(config, f"{self.base_key}_data"),
-            )
+            self.main_text.setPlainText(prompt)
 
             # 弹出提示
-            self.emit(Base.Event.APP_TOAST_SHOW, {
-                "type": Base.ToastType.SUCCESS,
-                "message": Localizer.get().quality_import_toast,
-            })
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().quality_import_toast,
+                },
+            )
 
-        def triggered() -> None:
+        def save_preset(checked: bool = False) -> None:
+            def on_save(dialog: LineEditMessageBox, text: str) -> None:
+                if not text.strip():
+                    return
+
+                path = f"{self.preset_base_path}/user/{self.language_code}/{text.strip()}.txt"
+                user_dir = os.path.dirname(path)
+                if not os.path.exists(user_dir):
+                    os.makedirs(user_dir)
+
+                if os.path.exists(path):
+                    message_box = MessageBox(
+                        Localizer.get().warning,
+                        Localizer.get().alert_preset_already_exists,
+                        window,
+                    )
+                    message_box.yesButton.setText(Localizer.get().confirm)
+                    message_box.cancelButton.setText(Localizer.get().cancel)
+
+                    if not message_box.exec():
+                        return
+
+                try:
+                    data = self.main_text.toPlainText().strip()
+                    with open(path, "w", encoding="utf-8") as writer:
+                        writer.write(data)
+
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().quality_save_preset_success,
+                        },
+                    )
+                    dialog.accept()
+                except Exception as e:
+                    LogManager.get().error(
+                        f"Failed to save custom prompt preset: {path}", e
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
+
+            dialog = LineEditMessageBox(
+                window, Localizer.get().quality_save_preset_title, on_save
+            )
+            dialog.exec()
+
+        def rename_preset(item: dict, checked: bool = False) -> None:
+            def on_rename(dialog: LineEditMessageBox, text: str) -> None:
+                if not text.strip():
+                    return
+
+                new_path = os.path.join(
+                    os.path.dirname(item["path"]), text.strip() + ".txt"
+                )
+                if os.path.exists(new_path):
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.WARNING,
+                            "message": Localizer.get().alert_file_already_exists,
+                        },
+                    )
+                    return
+
+                try:
+                    os.rename(item["path"], new_path)
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().task_success,
+                        },
+                    )
+                    dialog.accept()
+                except Exception as e:
+                    LogManager.get().error(
+                        f"Failed to rename preset: {item['path']} -> {new_path}",
+                        e,
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
+
+            dialog = LineEditMessageBox(window, Localizer.get().rename, on_rename)
+            dialog.get_line_edit().setText(item["name"])
+            dialog.exec()
+
+        def delete_preset(item: dict, checked: bool = False) -> None:
+            message_box = MessageBox(
+                Localizer.get().warning,
+                Localizer.get().alert_confirm_delete_data,
+                window,
+            )
+            message_box.yesButton.setText(Localizer.get().confirm)
+            message_box.cancelButton.setText(Localizer.get().cancel)
+
+            if message_box.exec():
+                try:
+                    os.remove(item["path"])
+
+                    # 如果删除的是默认预设，则清除配置
+                    current_config = Config().load()
+                    key = f"custom_prompt_{self.language_code}_default_preset"
+                    if getattr(current_config, key) == item["path"]:
+                        setattr(current_config, key, "")
+                        current_config.save()
+                        # 更新当前页面的配置对象
+                        setattr(config, key, "")
+
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.SUCCESS,
+                            "message": Localizer.get().task_success,
+                        },
+                    )
+                except Exception as e:
+                    LogManager.get().error(
+                        f"Failed to delete preset: {item['path']}", e
+                    )
+                    self.emit(
+                        Base.Event.TOAST,
+                        {
+                            "type": Base.ToastType.ERROR,
+                            "message": Localizer.get().task_failed,
+                        },
+                    )
+
+        def triggered(checked: bool = False) -> None:
             menu = RoundMenu("", widget)
+
+            # 重置
             menu.addAction(
                 Action(
-                    FluentIcon.CLEAR_SELECTION,
-                    Localizer.get().quality_reset,
-                    triggered = reset,
+                    ICON_PRESET_RESET,
+                    Localizer.get().reset,
+                    triggered=reset,
                 )
             )
-            for v in load_preset():
-                menu.addAction(
+
+            # 保存
+            menu.addAction(
+                Action(
+                    ICON_PRESET_SAVE_PRESET,
+                    Localizer.get().quality_save_preset,
+                    triggered=save_preset,
+                )
+            )
+
+            menu.addSeparator()
+
+            builtin_presets, user_presets = get_preset_paths()
+
+            # 内置预设
+            for item in builtin_presets:
+                # 导入
+                sub_menu = RoundMenu(item["name"], menu)
+                sub_menu.setIcon(ICON_PRESET_FOLDER)
+                sub_menu.addAction(
                     Action(
-                        FluentIcon.EDIT,
-                        v,
-                        triggered = partial(apply_preset, v),
+                        ICON_PRESET_IMPORT,
+                        Localizer.get().quality_import,
+                        triggered=partial(apply_preset, item["path"]),
                     )
                 )
-            menu.exec(widget.mapToGlobal(QPoint(0, -menu.height())))
 
-        widget = parent.add_action(Action(
-            FluentIcon.EXPRESSIVE_INPUT_ENTRY,
-            Localizer.get().quality_preset,
-            parent = parent,
-            triggered = triggered
-        ))
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                key = f"custom_prompt_{self.language_code}_default_preset"
+                if getattr(config, key) == item["path"]:
+                    sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
+                    sub_menu.addAction(
+                        Action(
+                            ICON_PRESET_CANCEL_DEFAULT,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            ICON_PRESET_SET_DEFAULT,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
+                menu.addMenu(sub_menu)
+
+            # 如果需要分隔符
+            if builtin_presets and user_presets:
+                menu.addSeparator()
+
+            # 用户预设
+            for item in user_presets:
+                sub_menu = RoundMenu(item["name"], menu)
+                sub_menu.setIcon(ICON_PRESET_FOLDER)
+
+                # 导入
+                sub_menu.addAction(
+                    Action(
+                        ICON_PRESET_IMPORT,
+                        Localizer.get().quality_import,
+                        triggered=partial(apply_preset, item["path"]),
+                    )
+                )
+
+                # 重命名
+                sub_menu.addAction(
+                    Action(
+                        ICON_PRESET_RENAME,
+                        Localizer.get().rename,
+                        triggered=partial(rename_preset, item),
+                    )
+                )
+
+                # 删除
+                sub_menu.addAction(
+                    Action(
+                        ICON_PRESET_DELETE,
+                        Localizer.get().quality_delete_preset,
+                        triggered=partial(delete_preset, item),
+                    )
+                )
+
+                sub_menu.addSeparator()
+
+                # 默认预设控制
+                key = f"custom_prompt_{self.language_code}_default_preset"
+                if getattr(config, key) == item["path"]:
+                    sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
+                    sub_menu.addAction(
+                        Action(
+                            ICON_PRESET_CANCEL_DEFAULT,
+                            Localizer.get().quality_cancel_default_preset,
+                            triggered=cancel_default_preset,
+                        )
+                    )
+                else:
+                    sub_menu.addAction(
+                        Action(
+                            ICON_PRESET_SET_DEFAULT,
+                            Localizer.get().quality_set_as_default_preset,
+                            triggered=partial(set_default_preset, item),
+                        )
+                    )
+
+                menu.addMenu(sub_menu)
+
+            # 计算弹出位置（向上弹出）
+            global_pos = widget.mapToGlobal(QPoint(0, 0))
+            menu.exec(global_pos, ani=True, aniType=MenuAnimationType.PULL_UP)
+
+        widget = parent.add_action(
+            Action(
+                ICON_PRESET_MENU_ROOT,
+                Localizer.get().quality_preset,
+                parent=parent,
+                triggered=triggered,
+            )
+        )

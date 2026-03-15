@@ -1,269 +1,297 @@
-import os
-import json
-
-import opencc
+import re
+from enum import StrEnum
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from module.Text.TextHelper import TextHelper
-from module.Cache.CacheItem import CacheItem
+from model.Item import Item
 from module.Config import Config
+from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker
-from module.Localizer.Localizer import Localizer
+from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
+from module.Utils.GapTool import GapTool
+
+
+class WarningType(StrEnum):
+    """检查警告类型枚举"""
+
+    KANA = "KANA"  # 假名残留
+    HANGEUL = "HANGEUL"  # 谚文残留
+    TEXT_PRESERVE = "TEXT_PRESERVE"  # 文本保护失效
+    SIMILARITY = "SIMILARITY"  # 相似度过高
+    GLOSSARY = "GLOSSARY"  # 术语表未生效
+    RETRY_THRESHOLD = "RETRY_THRESHOLD"  # 重试次数达阈值
+
 
 class ResultChecker(Base):
+    # 用常量集中维护过滤状态，避免调用点散落重复分支
+    SKIPPED_STATUS: tuple[Base.ProjectStatus, ...] = (
+        Base.ProjectStatus.NONE,
+        Base.ProjectStatus.RULE_SKIPPED,
+        Base.ProjectStatus.LANGUAGE_SKIPPED,
+        Base.ProjectStatus.EXCLUDED,
+        Base.ProjectStatus.DUPLICATED,
+    )
+    SIMILARITY_THRESHOLD: float = 0.80
 
-    # 类变量
-    OPENCCT2S = opencc.OpenCC("t2s")
-    OPENCCS2T = opencc.OpenCC("s2tw")
-
-    def __init__(self, config: Config, items: list[CacheItem]) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
-        # 初始化
         self.config: Config = config
-        self.text_processor: TextProcessor = TextProcessor(config, None)
+        self.text_processor: TextProcessor = TextProcessor(config, Item())
+        # 预处理术语表数据（用于单条检查时复用）
+        self.prepared_glossary_data: list[dict] = self.prepare_glossary_data()
 
-        # 筛选数据
-        self.items_translated: list[CacheItem] = []
-        self.items_untranslated = [item for item in items if item.get_status() == Base.TranslationStatus.UNTRANSLATED]
-        for item in items:
-            if item.get_status() == Base.TranslationStatus.TRANSLATED:
-                processors = TextProcessor(config, item)
-                processors.pre_process()
-                if len(processors.srcs) > 0:
-                    self.items_translated.append(item)
+    def prepare_glossary_data(self) -> list[dict]:
+        """预处理术语表数据"""
+        glossary_items = DataManager.get().get_glossary()
+        if not DataManager.get().get_glossary_enable() or not glossary_items:
+            return []
 
-        # 获取译前替换后的原文
-        self.src_repls: list[str] = []
-        pre_translation_replacement_data: list[dict] = config.pre_translation_replacement_data
-        pre_translation_replacement_enable: bool = config.pre_translation_replacement_enable
-        for item in self.items_translated:
-            src = item.get_src()
-
-            if pre_translation_replacement_enable == True and len(pre_translation_replacement_data) > 0:
-                for v in pre_translation_replacement_data:
-                    src = src.replace(v.get("src"), v.get("dst"))
-
-            self.src_repls.append(src)
-
-        # 获取译后替换前的译文
-        self.dst_repls: list[str] = []
-        post_translation_replacement_data: list[dict] = config.post_translation_replacement_data
-        post_translation_replacement_enable: bool = config.post_translation_replacement_enable
-        for item in self.items_translated:
-            dst = item.get_dst()
-
-            if post_translation_replacement_enable == True and len(post_translation_replacement_data) > 0:
-                for v in post_translation_replacement_data:
-                    dst = dst.replace(v.get("dst"), v.get("src"))
-
-            self.dst_repls.append(dst)
-
-    # 检查
-    def check(self) -> None:
-        os.makedirs(self.config.output_folder, exist_ok = True)
-        [
-            os.remove(entry.path)
-            for entry in os.scandir(self.config.output_folder)
-            if entry.is_file() and entry.name.startswith(("结果检查_", "result_check_"))
+        return [
+            {
+                "src": term.get("src", ""),
+                "dst": term.get("dst", ""),
+            }
+            for term in glossary_items
         ]
 
-        self.check_kana()
-        self.check_hangeul()
-        self.check_text_preserve()
-        self.check_similarity()
-        self.check_glossary()
-        self.check_untranslated()
-        self.check_retry_count_threshold()
+    # 单条目检查的私有方法
+    def get_replaced_text(
+        self,
+        item: Item,
+        pre_rules: list[dict] | None = None,
+        post_rules: list[dict] | None = None,
+    ) -> tuple[str, str]:
+        """获取单条目的替换后原文和替换前译文
 
-    # 假名残留检查
-    def check_kana(self) -> None:
+        Args:
+            item: 条目对象
+            pre_rules: 可选的预热规则
+            post_rules: 可选的预热规则
+        """
+        src = item.get_src()
+        dst = item.get_dst()
+        data_manager = DataManager.get()
+
+        # 优先使用传入的预热规则，否则从管理器实时获取
+        pre_replacement_data: list[dict]
+        if pre_rules is not None:
+            pre_replacement_data = pre_rules
+        elif data_manager.get_pre_replacement_enable():
+            pre_replacement_data = data_manager.get_pre_replacement()
+        else:
+            pre_replacement_data = []
+
+        if pre_replacement_data:
+            for replacement in pre_replacement_data:
+                src = src.replace(
+                    replacement.get("src", ""), replacement.get("dst", "")
+                )
+
+        post_replacement_data: list[dict]
+        if post_rules is not None:
+            post_replacement_data = post_rules
+        elif data_manager.get_post_replacement_enable():
+            post_replacement_data = data_manager.get_post_replacement()
+        else:
+            post_replacement_data = []
+
+        if post_replacement_data:
+            for replacement in post_replacement_data:
+                dst = dst.replace(
+                    replacement.get("dst", ""), replacement.get("src", "")
+                )
+
+        return src, dst
+
+    def has_kana_error(self, item: Item) -> bool:
+        """检查是否存在假名残留"""
         if self.config.source_language != BaseLanguage.Enum.JA:
-            return None
+            return False
+        dst = self.normalize_dst_for_residue_check(item)
+        return TextHelper.JA.any_hiragana(dst) or TextHelper.JA.any_katakana(dst)
 
-        count = 0
-        result: dict[str, str] = {}
-
-        for item in self.items_translated:
-            if TextHelper.JA.any_hiragana(item.get_dst()) or TextHelper.JA.any_katakana(item.get_dst()):
-                count = count + 1
-                result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
-
-        if count == 0:
-            self.info(Localizer.get().file_checker_kana)
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_kana}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
-
-            # 打印日志
-            message = Localizer.get().file_checker_kana_full.replace("{COUNT}", f"{count}")
-            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
-            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_kana}")
-            self.info(message)
-
-    # 谚文残留检查
-    def check_hangeul(self) -> None:
+    def has_hangeul_error(self, item: Item) -> bool:
+        """检查是否存在谚文残留"""
         if self.config.source_language != BaseLanguage.Enum.KO:
-            return None
+            return False
+        return TextHelper.KO.any_hangeul(self.normalize_dst_for_residue_check(item))
 
-        count = 0
-        result: dict[str, str] = {}
+    def normalize_dst_for_residue_check(self, item: Item) -> str:
+        """构建残留检测输入，避免保护片段中的字符被误判为残留"""
+        dst = item.get_dst()
+        rule: re.Pattern[str] | None = self.text_processor.get_re_sample(
+            custom=self.text_processor.get_text_preserve_custom_enabled(),
+            text_type=item.get_text_type(),
+        )
+        if rule is not None:
+            dst = rule.sub("", dst)
+        return dst
 
-        for item in self.items_translated:
-            if TextHelper.KO.any_hangeul(item.get_dst()):
-                count = count + 1
-                result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
+    def has_text_preserve_error(self, item: Item, src_repl: str, dst_repl: str) -> bool:
+        """检查文本保护是否失效"""
+        return not self.text_processor.check(src_repl, dst_repl, item.get_text_type())
 
-        if count == 0:
-            self.info(Localizer.get().file_checker_hangeul)
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_hangeul}".replace("\\", "/")
-            self.info(
-                Localizer.get().file_checker_hangeul_full.replace("{COUNT}", f"{count}")
-                                                         .replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
-                                                         .replace("{TARGET}", f"{Localizer.get().path_result_check_hangeul}")
+    def normalize_text_for_similarity_check(
+        self, item: Item, src_repl: str, dst_repl: str
+    ) -> tuple[str, str]:
+        """构建相似度检测输入，避免保护片段导致相似度误报"""
+        src = src_repl
+        dst = dst_repl
+        rule: re.Pattern[str] | None = self.text_processor.get_re_sample(
+            custom=self.text_processor.get_text_preserve_custom_enabled(),
+            text_type=item.get_text_type(),
+        )
+        if rule is not None:
+            src = rule.sub("", src)
+            dst = rule.sub("", dst)
+        return src.strip(), dst.strip()
+
+    def has_similarity_error(self, item: Item, src_repl: str, dst_repl: str) -> bool:
+        """检查原文和译文相似度是否过高"""
+        src, dst = self.normalize_text_for_similarity_check(item, src_repl, dst_repl)
+        # 剥离文本保护片段后若出现空串，跳过包含判断，避免 "" in text 触发误报。
+        if src == "" or dst == "":
+            return False
+        # 判断是否包含或相似
+        return (
+            src in dst
+            or dst in src
+            or TextHelper.check_similarity_by_jaccard(src, dst)
+            > __class__.SIMILARITY_THRESHOLD
+        )
+
+    def has_glossary_error(self, src_repl: str, dst_repl: str) -> bool:
+        """检查术语表是否未生效"""
+        if not self.prepared_glossary_data:
+            return False
+        return len(self.get_failed_glossary_terms_from_replaced(src_repl, dst_repl)) > 0
+
+    def get_failed_glossary_terms(self, item: Item) -> list[tuple[str, str]]:
+        """获取单个条目中未生效的术语列表，返回 (src, dst) 元组列表"""
+        if not self.prepared_glossary_data:
+            return []
+
+        src_repl, dst_repl = self.get_replaced_text(item)
+        return self.get_failed_glossary_terms_from_replaced(src_repl, dst_repl)
+
+    def get_failed_glossary_terms_from_replaced(
+        self, src_repl: str, dst_repl: str
+    ) -> list[tuple[str, str]]:
+        """复用术语命中判定，避免多处逻辑漂移"""
+        failed_terms: list[tuple[str, str]] = []
+
+        for term in self.prepared_glossary_data:
+            glossary_src = term.get("src", "")
+            glossary_dst = term.get("dst", "")
+            # 原文包含术语原文，但译文不包含术语译文
+            if (
+                glossary_src
+                and glossary_src in src_repl
+                and glossary_dst not in dst_repl
+            ):
+                failed_terms.append((glossary_src, glossary_dst))
+
+        return failed_terms
+
+    def has_untranslated_error(self, item: Item) -> bool:
+        """检查是否未翻译"""
+        return item.get_status() == Base.ProjectStatus.NONE
+
+    def has_retry_threshold_error(self, item: Item) -> bool:
+        """检查重试次数是否达到阈值"""
+        return item.get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD
+
+    # =========================================
+    # 公共接口方法
+    # =========================================
+
+    def check_items(self, items: list[Item]) -> dict[int, list[WarningType]]:
+        """
+        对全量数据进行内存检查，返回警告映射表。
+        通过一次性提取规则缓存，将复杂度从 O(N*M) 降至 O(N+M)。
+        """
+        warning_map: dict[int, list[WarningType]] = {}
+
+        # 1. 在循环外部一次性准备所有规则数据
+        prepared_glossary = self.prepare_glossary_data()
+        pre_rules = (
+            DataManager.get().get_pre_replacement()
+            if DataManager.get().get_pre_replacement_enable()
+            else []
+        )
+        post_rules = (
+            DataManager.get().get_post_replacement()
+            if DataManager.get().get_post_replacement_enable()
+            else []
+        )
+
+        # 2. 紧凑循环处理
+        for item in GapTool.iter(items):
+            warnings = self.check_item(
+                item,
+                glossary=prepared_glossary,
+                pre_rules=pre_rules,
+                post_rules=post_rules,
             )
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+            if warnings:
+                warning_map[id(item)] = warnings
 
-    # 文本保护检查
-    def check_text_preserve(self) -> None:
-        count = 0
-        result: dict[str, str] = {
-            Localizer.get().file_checker_text_preserve_alert_key: Localizer.get().file_checker_text_preserve_alert_value,
-        }
+        return warning_map
 
-        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
-            if self.text_processor.check(src_repl, dst_repl, item.get_text_type()) == False:
-                count = count + 1
-                result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
+    def check_item(
+        self,
+        item: Item,
+        glossary: list[dict] | None = None,
+        pre_rules: list[dict] | None = None,
+        post_rules: list[dict] | None = None,
+    ) -> list[WarningType]:
+        """
+        对单个条目进行纯内存检查。
 
-        if count == 0:
-            self.info(Localizer.get().file_checker_text_preserve)
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_text_preserve}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+        Args:
+            item: 待检查的 Item 对象
+            glossary: 可选预热术语表
+            pre_rules: 可选预热预替换规则
+            post_rules: 可选预热后替换规则
+        """
+        warnings: list[WarningType] = []
 
-            # 打印日志
-            message = Localizer.get().file_checker_text_preserve_full.replace("{COUNT}", f"{count}")
-            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
-            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_text_preserve}")
-            self.info(message)
+        # 1. 快速过滤
+        if item.get_status() in __class__.SKIPPED_STATUS:
+            return warnings
 
-    # 相似度较高检查
-    def check_similarity(self) -> None:
-        count = 0
-        result: dict[str, str] = {
-            Localizer.get().file_checker_similarity_alert_key: Localizer.get().file_checker_similarity_alert_value,
-        }
+        if not item.get_dst():
+            return warnings
 
-        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
-            src: str = src_repl.strip()
-            dst: str = dst_repl.strip()
+        # 2. 准备本次检查使用的术语表数据（优先使用传入的缓存）
+        self.prepared_glossary_data = (
+            glossary if glossary is not None else self.prepare_glossary_data()
+        )
 
-            # 判断是否包含或相似
-            if src in dst or dst in src or TextHelper.check_similarity_by_jaccard(src, dst) > 0.80:
-                count = count + 1
-                result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
+        # 3. 获取替换后的文本
+        src_repl, dst_repl = self.get_replaced_text(
+            item, pre_rules=pre_rules, post_rules=post_rules
+        )
 
-        if count == 0:
-            self.info(Localizer.get().file_checker_similarity)
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_similarity}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+        # 4. 执行各项原子检查
+        if self.has_kana_error(item):
+            warnings.append(WarningType.KANA)
 
-            # 打印日志
-            message = Localizer.get().file_checker_similarity_full.replace("{COUNT}", f"{count}")
-            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
-            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_similarity}")
-            self.info(message)
+        if self.has_hangeul_error(item):
+            warnings.append(WarningType.HANGEUL)
 
-    # 术语表未生效检查
-    def check_glossary(self) -> None:
-        # 有效性检查
-        if self.config.glossary_enable == False or len(self.config.glossary_data) == 0:
-            return None
+        if self.has_text_preserve_error(item, src_repl, dst_repl):
+            warnings.append(WarningType.TEXT_PRESERVE)
 
-        # 如果启用了繁体输出，则先将数据转换为繁体
-        if self.config.traditional_chinese_enable == True:
-            self.config.glossary_data = [
-                {
-                    "src": v.get("src"),
-                    "dst": ResultChecker.OPENCCS2T.convert(v.get("dst")),
-                }
-                for v in self.config.glossary_data
-            ]
-        else:
-            self.config.glossary_data = [
-                {
-                    "src": v.get("src"),
-                    "dst": ResultChecker.OPENCCT2S.convert(v.get("dst")),
-                }
-                for v in self.config.glossary_data
-            ]
+        if self.has_similarity_error(item, src_repl, dst_repl):
+            warnings.append(WarningType.SIMILARITY)
 
-        count = 0
-        result: dict[str, dict] = {}
-        for item, src_repl, dst_repl in zip(self.items_translated, self.src_repls, self.dst_repls):
-            seen = set()
-            for v in self.config.glossary_data:
-                glossary_src = v.get("src", "")
-                glossary_dst = v.get("dst", "")
-                if glossary_src in src_repl and glossary_dst not in dst_repl:
-                    seen.add(item.get_src())
-                    result.setdefault(f"{item.get_file_path()} | {glossary_src} -> {glossary_dst}", {})[item.get_src()] = item.get_dst()
-            # 避免对同一条目重复计数
-            count = count + len(seen)
+        if self.has_glossary_error(src_repl, dst_repl):
+            warnings.append(WarningType.GLOSSARY)
 
-        if count == 0:
-            self.info(Localizer.get().file_checker_glossary)
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_glossary}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+        if self.has_retry_threshold_error(item):
+            warnings.append(WarningType.RETRY_THRESHOLD)
 
-            # 打印日志
-            message = Localizer.get().file_checker_glossary_full.replace("{COUNT}", f"{count}")
-            message = message.replace("{PERCENT}", f"{(count / (len(self.items_translated) + len(self.items_untranslated)) * 100):.2f}")
-            message = message.replace("{TARGET}", f"{Localizer.get().path_result_check_glossary}")
-            self.info(message)
-
-    # 未翻译检查
-    def check_untranslated(self) -> None:
-        count = 0
-        result: dict[str, str] = {}
-
-        for item in self.items_untranslated:
-            count = count + 1
-            result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
-
-        if count == 0:
-            pass
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_untranslated}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
-
-    # 重试次数达到阈值检查
-    def check_retry_count_threshold(self) -> None:
-        if self.config.result_checker_retry_count_threshold != True:
-            return None
-
-        count = 0
-        result: dict[str, str] = {}
-
-        for item in [v for v in self.items_translated if v.get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD]:
-            count = count + 1
-            result.setdefault(item.get_file_path(), {})[item.get_src()] = item.get_dst()
-
-        if count == 0:
-            pass
-        else:
-            target = f"{self.config.output_folder}/{Localizer.get().path_result_check_retry_count_threshold}".replace("\\", "/")
-            with open(target, "w", encoding = "utf-8") as writer:
-                writer.write(json.dumps(result, indent = 4, ensure_ascii = False))
+        return warnings

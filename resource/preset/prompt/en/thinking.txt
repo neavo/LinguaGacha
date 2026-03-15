@@ -1,0 +1,6 @@
+Before outputting the translation result, you must first perform **structured thinking** within the <why>...</why> tags according to the following steps:
+<why>
+[Global Context]: Accurately understand the original meaning; summarize the context, tone, emotional color, and any potential subtext or special expressions of the original text in one sentence.
+[Core Constraints]: Review the rules; list only the 1-2 most critical translation red lines to guard against for the current paragraph (e.g., must preserve onomatopoeia / line count must be strictly consistent).
+[Difficulty Handling]: Pick out 3-5 of the most difficult words, phrases, or special sentence structures to translate, and briefly describe the handling approach using the format "Original Text -> Translation (Reasoning)".
+</why>

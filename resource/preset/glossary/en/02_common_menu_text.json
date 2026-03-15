@@ -1,0 +1,72 @@
+[
+    {
+        "src": "スキル",
+        "dst": "Skill",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "アイテム",
+        "dst": "Item",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ステータス",
+        "dst": "Status",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "大事なもの",
+        "dst": "Key Item",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "セーブ",
+        "dst": "Save",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ロード",
+        "dst": "Load",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "オプション",
+        "dst": "Option",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "コンティニュー",
+        "dst": "Continue",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ニューゲーム",
+        "dst": "New Game",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "タイトルへ",
+        "dst": "Back to Title",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    }
+]

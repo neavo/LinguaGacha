@@ -1,0 +1,72 @@
+[
+    {
+        "src": "スキル",
+        "dst": "技能",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "アイテム",
+        "dst": "道具",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ステータス",
+        "dst": "状态",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "大事なもの",
+        "dst": "重要物品",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "セーブ",
+        "dst": "保存",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ロード",
+        "dst": "读取",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "オプション",
+        "dst": "选项",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "コンティニュー",
+        "dst": "继续",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "ニューゲーム",
+        "dst": "重新开始",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    },
+    {
+        "src": "タイトルへ",
+        "dst": "返回标题",
+        "info": "",
+        "regex": false,
+        "case_sensitive": false
+    }
+]

@@ -1,0 +1,4 @@
+- The line count of the source and translation must correspond strictly; merging or splitting lines is strictly prohibited.
+- Follow the principles of faithfulness, expressiveness, and elegance, using graceful, concise, and literary diction.
+- The original details and style must be faithfully reproduced; explicit, vulgar, or extreme descriptions must not be avoided, whitewashed, or watered down.
+- Fully translate all content text, including onomatopoeia and interjections, but preserve code, style markers, escape characters, and other control characters without actual content exactly as they are.

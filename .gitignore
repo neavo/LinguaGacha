@@ -1,10 +1,15 @@
-*__pycache__
+/.venv
+/uv.lock
+/openspec
+.coverage
+__pycache__
 
 /*log*
-/*debug*
 /*input*
 /*output*
-/*.json
+
+*.lg
 /*.xlsx
+/*.json
 /resource/config.json
-/resource/expert_config.json
+/resource/preset/*/user/
