@@ -4,7 +4,7 @@ from pathlib import Path
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Data.LGDatabase import LGDatabase
+from module.Data.Storage.LGDatabase import LGDatabase
 from module.File.FileManager import FileManager
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer

@@ -1,7 +1,7 @@
 from typing import Any
 
-from module.Data.LGDatabase import LGDatabase
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 class BatchService:

@@ -4,11 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from module.Data.DataManager import DataManager
-from module.Data.QualityRuleService import QualityRuleService
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 def build_service() -> QualityRuleService:
+    session = ProjectSession()
     rule_service = SimpleNamespace(
         get_rules_cached=MagicMock(return_value=[]),
         set_rules_cached=MagicMock(),
@@ -16,12 +18,18 @@ def build_service() -> QualityRuleService:
         set_rule_text_cached=MagicMock(),
     )
     meta: dict[str, object] = {}
+    meta_service = SimpleNamespace(
+        get_meta=MagicMock(
+            side_effect=lambda key, default=None: meta.get(key, default)
+        ),
+        set_meta=MagicMock(side_effect=lambda key, value: meta.__setitem__(key, value)),
+    )
+    item_service = SimpleNamespace(get_all_item_dicts=MagicMock(return_value=[]))
     return QualityRuleService(
+        session,
         rule_service,
-        lambda key, default=None: meta.get(key, default),
-        lambda key, value: meta.__setitem__(key, value),
-        lambda: [],
-        DataManager.TextPreserveMode,
+        meta_service,
+        item_service,
     )
 
 

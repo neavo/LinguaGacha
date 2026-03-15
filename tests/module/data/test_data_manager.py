@@ -9,7 +9,7 @@ import pytest
 
 from base.Base import Base
 from module.Data.DataManager import DataManager
-from module.Data.LGDatabase import LGDatabase
+from module.Data.Storage.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
 
 
@@ -72,8 +72,8 @@ def test_data_manager_init_sets_up_services(
     dm = DataManager()
 
     assert dm.session is not None
-    assert dm.prefilter_cond is not None
-    assert dm.file_op_lock is not None
+    assert dm.prefilter_service is not None
+    assert dm.project_file_service is not None
     assert dm.analysis_service is not None
     assert dm.quality_rule_service is not None
 

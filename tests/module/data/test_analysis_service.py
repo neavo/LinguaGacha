@@ -6,9 +6,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from module.Data.AnalysisService import AnalysisService
-from module.Data.BatchService import BatchService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Analysis.AnalysisService import AnalysisService
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.ProjectSession import ProjectSession
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -35,23 +35,34 @@ def build_analysis_service() -> tuple[AnalysisService, ProjectSession]:
     session.lg_path = "demo/project.lg"
 
     meta: dict[str, Any] = {}
+    meta_service = SimpleNamespace(
+        get_meta=MagicMock(
+            side_effect=lambda key, default=None: meta.get(key, default)
+        ),
+        set_meta=MagicMock(side_effect=lambda key, value: meta.__setitem__(key, value)),
+    )
+    item_service = SimpleNamespace(
+        get_all_items=MagicMock(return_value=[]),
+        get_all_item_dicts=MagicMock(return_value=[]),
+    )
+    quality_rule_service = SimpleNamespace(
+        get_glossary=MagicMock(return_value=[]),
+        merge_glossary_incoming=MagicMock(
+            side_effect=lambda incoming, **kwargs: (
+                incoming,
+                QualityRuleMerger.Report(1, 0, 0, 0, 0, ()),
+            )
+        ),
+        collect_rule_statistics_texts=MagicMock(return_value=((), ())),
+    )
     batch_service = BatchService(session)
     batch_service.update_batch = MagicMock()
     service = AnalysisService(
         session,
         batch_service,
-        lambda key, default=None: meta.get(key, default),
-        lambda key, value: meta.__setitem__(key, value),
-        lambda: [],
-        lambda: [],
-        lambda: [],
-        lambda incoming, **kwargs: (
-            incoming,
-            QualityRuleMerger.Report(1, 0, 0, 0, 0, ()),
-        ),
-        lambda: ((), ()),
-        lambda: {},
-        lambda **kwargs: None,
+        meta_service,
+        item_service,
+        quality_rule_service,
     )
     return service, session
 

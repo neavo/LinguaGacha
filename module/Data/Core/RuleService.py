@@ -3,8 +3,8 @@ from typing import Any
 
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Data.LGDatabase import LGDatabase
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
 from module.PromptResourceResolver import PromptResourceResolver
 from module.Utils.JSONTool import JSONTool

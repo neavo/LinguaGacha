@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from module.Data.BatchService import BatchService
-from module.Data.LGDatabase import LGDatabase
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.BatchService import BatchService
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 def build_service(db: object | None) -> tuple[BatchService, SimpleNamespace]:

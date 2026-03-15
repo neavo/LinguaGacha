@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from module.Data.LGDatabase import LGDatabase
+from module.Data.Storage.LGDatabase import LGDatabase
 
 
 @pytest.fixture
@@ -125,7 +125,7 @@ def test_get_rules_logs_and_returns_empty_when_first_row_is_invalid_json(
     database: LGDatabase, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     logger = MagicMock()
-    monkeypatch.setattr("module.Data.LGDatabase.LogManager.get", lambda: logger)
+    monkeypatch.setattr("module.Data.Storage.LGDatabase.LogManager.get", lambda: logger)
 
     with database.connection() as conn:
         conn.execute(
@@ -679,7 +679,7 @@ def test_get_rules_handles_list_row_and_multiple_decode_errors(
     database: LGDatabase, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     logger = MagicMock()
-    monkeypatch.setattr("module.Data.LGDatabase.LogManager.get", lambda: logger)
+    monkeypatch.setattr("module.Data.Storage.LGDatabase.LogManager.get", lambda: logger)
 
     with database.connection() as conn:
         conn.execute(

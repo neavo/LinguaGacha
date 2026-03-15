@@ -4,7 +4,7 @@ from collections import OrderedDict
 import threading
 from typing import Any
 
-from module.Data.LGDatabase import LGDatabase
+from module.Data.Storage.LGDatabase import LGDatabase
 
 
 class ProjectSession:

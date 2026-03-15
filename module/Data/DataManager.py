@@ -3,34 +3,37 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from enum import StrEnum
 from typing import Any
 from typing import ClassVar
+from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
-from module.Data.AnalysisService import AnalysisService
-from module.Data.AssetService import AssetService
-from module.Data.BatchService import BatchService
-from module.Data.DataTypes import AnalysisGlossaryImportPreview
-from module.Data.DataTypes import ProjectFileMutationResult
-from module.Data.DataTypes import ProjectPrefilterRequest
-from module.Data.DataTypes import WorkbenchSnapshot
-from module.Data.ExportPathService import ExportPathService
-from module.Data.ItemService import ItemService
-from module.Data.LGDatabase import LGDatabase
-from module.Data.MetaService import MetaService
-from module.Data.ProjectFileService import ProjectFileService
-from module.Data.ProjectLifecycleService import ProjectLifecycleService
-from module.Data.ProjectPrefilterService import ProjectPrefilterService
-from module.Data.ProjectSession import ProjectSession
-from module.Data.QualityRuleService import QualityRuleService
-from module.Data.RuleService import RuleService
-from module.Data.WorkbenchService import WorkbenchService
+from module.Data.Analysis.AnalysisService import AnalysisService
+from module.Data.Core.AssetService import AssetService
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.DataEnums import TextPreserveMode as DataTextPreserveMode
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.MetaService import MetaService
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Core.RuleService import RuleService
+from module.Data.Project.ExportPathService import ExportPathService
+from module.Data.Project.ProjectFileService import ProjectFileService
+from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
+from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
+from module.Data.Project.WorkbenchService import WorkbenchService
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
+
+if TYPE_CHECKING:
+    from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
+    from module.Data.Core.DataTypes import ProjectFileMutationResult
+    from module.Data.Core.DataTypes import ProjectPrefilterRequest
+    from module.Data.Core.DataTypes import WorkbenchSnapshot
 
 
 class DataManager(Base):
@@ -59,28 +62,7 @@ class DataManager(Base):
             "analysis_prompt_enable",
         }
     )
-
-    class TextPreserveMode(StrEnum):
-        OFF = "off"
-        SMART = "smart"
-        CUSTOM = "custom"
-
-    PREFILTER_PROXY_ATTRS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "prefilter_lock",
-            "prefilter_cond",
-            "prefilter_running",
-            "prefilter_pending",
-            "prefilter_token",
-            "prefilter_active_token",
-            "prefilter_request_seq",
-            "prefilter_last_handled_seq",
-            "prefilter_latest_request",
-        }
-    )
-    FILE_OP_PROXY_ATTRS: ClassVar[frozenset[str]] = frozenset(
-        {"file_op_lock", "file_op_running"}
-    )
+    TextPreserveMode = DataTextPreserveMode
 
     def __init__(self) -> None:
         super().__init__()
@@ -93,9 +75,10 @@ class DataManager(Base):
         self.item_service = ItemService(self.session)
         self.asset_service = AssetService(self.session)
         self.batch_service = BatchService(self.session)
-
-        from module.Data.ProjectService import ProjectService
-        from module.Data.TranslationItemService import TranslationItemService
+        from module.Data.Project.ProjectService import ProjectService
+        from module.Data.Translation.TranslationItemService import (
+            TranslationItemService,
+        )
 
         self.translation_item_service = TranslationItemService(self.session)
         self.project_service = ProjectService()
@@ -104,9 +87,8 @@ class DataManager(Base):
         self.lifecycle_service = ProjectLifecycleService(
             self.session,
             self.meta_service,
-            self.item_service.clear_item_cache,
-            self.asset_service.clear_decompress_cache,
-            __class__.TextPreserveMode,
+            self.item_service,
+            self.asset_service,
             __class__.RuleType,
             __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
             __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
@@ -119,30 +101,23 @@ class DataManager(Base):
         )
         self.workbench_service = WorkbenchService()
         self.quality_rule_service = QualityRuleService(
+            self.session,
             self.rule_service,
-            self.get_meta,
-            self.set_meta,
-            self.get_all_item_dicts,
-            __class__.TextPreserveMode,
+            self.meta_service,
+            self.item_service,
         )
         self.analysis_service = AnalysisService(
             self.session,
             self.batch_service,
-            self.get_meta,
-            self.set_meta,
-            self.get_all_items,
-            self.get_all_item_dicts,
-            self.quality_rule_service.get_glossary,
-            self.quality_rule_service.merge_glossary_incoming,
-            self.quality_rule_service.collect_rule_statistics_texts,
-            self.get_translation_extras,
-            self.update_batch,
+            self.meta_service,
+            self.item_service,
+            self.quality_rule_service,
         )
         self.project_file_service = ProjectFileService(
             self.session,
             self.item_service,
-            self.analysis_service.clear_analysis_progress,
-            self.get_supported_extensions,
+            self.analysis_service,
+            self.project_service.SUPPORTED_EXTENSIONS,
         )
 
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
@@ -153,135 +128,6 @@ class DataManager(Base):
         )
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
-
-    def __getattr__(self, name: str) -> Any:
-        if name == "lifecycle_service":
-            return self.ensure_lifecycle_service()
-        if name == "prefilter_service":
-            return self.ensure_prefilter_service()
-        if name == "workbench_service":
-            return self.ensure_workbench_service()
-        if name == "quality_rule_service":
-            return self.ensure_quality_rule_service()
-        if name == "analysis_service":
-            return self.ensure_analysis_service()
-        if name == "project_file_service":
-            return self.ensure_project_file_service()
-        if name in self.PREFILTER_PROXY_ATTRS:
-            return getattr(self.ensure_prefilter_service(), name)
-        if name in self.FILE_OP_PROXY_ATTRS:
-            return getattr(self.ensure_project_file_service(), name)
-        raise AttributeError(name)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        if (
-            name in self.PREFILTER_PROXY_ATTRS
-            and "session" in self.__dict__
-            and (
-                "prefilter_service" in self.__dict__
-                or (
-                    "item_service" in self.__dict__ and "batch_service" in self.__dict__
-                )
-            )
-        ):
-            setattr(self.ensure_prefilter_service(), name, value)
-            return
-        if (
-            name in self.FILE_OP_PROXY_ATTRS
-            and "session" in self.__dict__
-            and (
-                "project_file_service" in self.__dict__
-                or "item_service" in self.__dict__
-            )
-        ):
-            setattr(self.ensure_project_file_service(), name, value)
-            return
-        super().__setattr__(name, value)
-
-    def ensure_lifecycle_service(self) -> ProjectLifecycleService:
-        service = self.__dict__.get("lifecycle_service")
-        if service is None:
-            service = ProjectLifecycleService(
-                self.session,
-                self.meta_service,
-                self.item_service.clear_item_cache,
-                self.asset_service.clear_decompress_cache,
-                __class__.TextPreserveMode,
-                __class__.RuleType,
-                __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
-                __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
-                __class__.LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
-            )
-            super().__setattr__("lifecycle_service", service)
-        return service
-
-    def ensure_prefilter_service(self) -> ProjectPrefilterService:
-        service = self.__dict__.get("prefilter_service")
-        if service is None:
-            service = ProjectPrefilterService(
-                self.session,
-                self.item_service,
-                self.batch_service,
-            )
-            for name in self.PREFILTER_PROXY_ATTRS:
-                if name in self.__dict__:
-                    setattr(service, name, self.__dict__[name])
-            super().__setattr__("prefilter_service", service)
-        return service
-
-    def ensure_workbench_service(self) -> WorkbenchService:
-        service = self.__dict__.get("workbench_service")
-        if service is None:
-            service = WorkbenchService()
-            super().__setattr__("workbench_service", service)
-        return service
-
-    def ensure_quality_rule_service(self) -> QualityRuleService:
-        service = self.__dict__.get("quality_rule_service")
-        if service is None:
-            service = QualityRuleService(
-                self.rule_service,
-                self.get_meta,
-                self.set_meta,
-                self.get_all_item_dicts,
-                __class__.TextPreserveMode,
-            )
-            super().__setattr__("quality_rule_service", service)
-        return service
-
-    def ensure_analysis_service(self) -> AnalysisService:
-        service = self.__dict__.get("analysis_service")
-        if service is None:
-            service = AnalysisService(
-                self.session,
-                self.batch_service,
-                self.get_meta,
-                self.set_meta,
-                self.get_all_items,
-                self.get_all_item_dicts,
-                self.ensure_quality_rule_service().get_glossary,
-                self.ensure_quality_rule_service().merge_glossary_incoming,
-                self.ensure_quality_rule_service().collect_rule_statistics_texts,
-                self.get_translation_extras,
-                self.update_batch,
-            )
-            super().__setattr__("analysis_service", service)
-        return service
-
-    def ensure_project_file_service(self) -> ProjectFileService:
-        service = self.__dict__.get("project_file_service")
-        if service is None:
-            service = ProjectFileService(
-                self.session,
-                self.item_service,
-                self.clear_analysis_progress,
-                self.get_supported_extensions,
-            )
-            for name in self.FILE_OP_PROXY_ATTRS:
-                if name in self.__dict__:
-                    setattr(service, name, self.__dict__[name])
-            super().__setattr__("project_file_service", service)
-        return service
 
     @classmethod
     def get(cls) -> "DataManager":

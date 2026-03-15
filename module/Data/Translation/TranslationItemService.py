@@ -4,7 +4,7 @@ from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.ProjectSession import ProjectSession
 from module.File.FileManager import FileManager
 from module.Utils.GapTool import GapTool
 from module.Utils.ZstdTool import ZstdTool

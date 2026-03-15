@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from module.Config import Config
-from module.Data.LGDatabase import LGDatabase
-from module.Data.ProjectSession import ProjectSession
-from module.Data.RuleService import RuleService
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Core.RuleService import RuleService
 from module.PromptResourceResolver import PromptResourceResolver
 
 
@@ -144,9 +144,9 @@ def test_initialize_project_rules_loads_all_available_presets(
         translation_custom_prompt_default_preset="builtin:translation.txt",
         analysis_custom_prompt_default_preset="user:analysis.txt",
     )
-    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+    monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
-        "module.Data.RuleService.Localizer.get",
+        "module.Data.Core.RuleService.Localizer.get",
         lambda: SimpleNamespace(
             app_glossary_page="术语表",
             app_text_preserve_page="文本保护",
@@ -157,7 +157,7 @@ def test_initialize_project_rules_loads_all_available_presets(
         ),
     )
     monkeypatch.setattr(
-        "module.Data.RuleService.PromptResourceResolver.get_default_preset_text",
+        "module.Data.Core.RuleService.PromptResourceResolver.get_default_preset_text",
         lambda task_type, virtual_id: (
             "翻译提示词正文"
             if task_type == PromptResourceResolver.TaskType.TRANSLATION
@@ -205,9 +205,9 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
         glossary_default_preset=str(valid),
         text_preserve_default_preset=str(broken),
     )
-    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+    monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
-        "module.Data.RuleService.Localizer.get",
+        "module.Data.Core.RuleService.Localizer.get",
         lambda: SimpleNamespace(
             app_glossary_page="术语表",
             app_text_preserve_page="文本保护",
@@ -219,7 +219,7 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
     )
 
     logger = MagicMock()
-    monkeypatch.setattr("module.Data.RuleService.LogManager.get", lambda: logger)
+    monkeypatch.setattr("module.Data.Core.RuleService.LogManager.get", lambda: logger)
 
     db = MagicMock()
     service, _ = build_service(db)
@@ -248,7 +248,7 @@ def test_initialize_project_rules_skips_non_list_json_presets(
         pre_translation_replacement_default_preset=str(pre_replace),
         post_translation_replacement_default_preset=str(post_replace),
     )
-    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+    monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
 
     db = MagicMock()
     service, _ = build_service(db)
@@ -268,14 +268,14 @@ def test_initialize_project_rules_logs_and_skips_custom_prompts_when_open_fails(
         translation_custom_prompt_default_preset="builtin:translation.txt",
         analysis_custom_prompt_default_preset="user:analysis.txt",
     )
-    monkeypatch.setattr("module.Data.RuleService.Config.load", lambda self: config)
+    monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
-        "module.Data.RuleService.PromptResourceResolver.get_default_preset_text",
+        "module.Data.Core.RuleService.PromptResourceResolver.get_default_preset_text",
         lambda task_type, virtual_id: (_ for _ in ()).throw(OSError("boom")),
     )
 
     logger = MagicMock()
-    monkeypatch.setattr("module.Data.RuleService.LogManager.get", lambda: logger)
+    monkeypatch.setattr("module.Data.Core.RuleService.LogManager.get", lambda: logger)
 
     db = MagicMock()
     service, _ = build_service(db)

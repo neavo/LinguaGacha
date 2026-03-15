@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from base.Base import Base
-from module.Data.LGDatabase import LGDatabase
-from module.Data.RuleService import RuleService
+from module.Data.Core.DataEnums import TextPreserveMode
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.MetaService import MetaService
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.RuleService import RuleService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -24,17 +27,15 @@ class QualityRuleService:
 
     def __init__(
         self,
+        session: ProjectSession,
         rule_service: RuleService,
-        get_meta: Callable[[str, Any], Any],
-        set_meta: Callable[[str, Any], None],
-        get_all_item_dicts: Callable[[], list[dict[str, Any]]],
-        text_preserve_mode_type: type,
+        meta_service: MetaService,
+        item_service: ItemService,
     ) -> None:
+        self.session = session
         self.rule_service = rule_service
-        self.get_meta = get_meta
-        self.set_meta = set_meta
-        self.get_all_item_dicts = get_all_item_dicts
-        self.text_preserve_mode_type = text_preserve_mode_type
+        self.meta_service = meta_service
+        self.item_service = item_service
 
     def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
         return self.rule_service.get_rules_cached(rule_type)
@@ -118,10 +119,10 @@ class QualityRuleService:
         return merged, report
 
     def get_glossary_enable(self) -> bool:
-        return bool(self.get_meta("glossary_enable", True))
+        return bool(self.meta_service.get_meta("glossary_enable", True))
 
     def set_glossary_enable(self, enable: bool) -> None:
-        self.set_meta("glossary_enable", bool(enable))
+        self.meta_service.set_meta("glossary_enable", bool(enable))
 
     def get_text_preserve(self) -> list[dict[str, Any]]:
         return self.get_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE)
@@ -130,28 +131,28 @@ class QualityRuleService:
         return self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
 
     def get_text_preserve_mode(self) -> Any:
-        raw = self.get_meta(
+        raw = self.meta_service.get_meta(
             "text_preserve_mode",
-            self.text_preserve_mode_type.SMART.value,
+            TextPreserveMode.SMART.value,
         )
         if isinstance(raw, str):
             try:
-                return self.text_preserve_mode_type(raw)
+                return TextPreserveMode(raw)
             except ValueError:
-                return self.text_preserve_mode_type.SMART
-        return self.text_preserve_mode_type.SMART
+                return TextPreserveMode.SMART
+        return TextPreserveMode.SMART
 
     def set_text_preserve_mode(self, mode: Any) -> Any:
         try:
             normalized = (
                 mode
-                if isinstance(mode, self.text_preserve_mode_type)
-                else self.text_preserve_mode_type(str(mode))
+                if isinstance(mode, TextPreserveMode)
+                else TextPreserveMode(str(mode))
             )
         except ValueError:
-            normalized = self.text_preserve_mode_type.OFF
+            normalized = TextPreserveMode.OFF
 
-        self.set_meta("text_preserve_mode", normalized.value)
+        self.meta_service.set_meta("text_preserve_mode", normalized.value)
         return normalized
 
     def get_pre_replacement(self) -> list[dict[str, Any]]:
@@ -161,10 +162,12 @@ class QualityRuleService:
         return self.set_rules_cached(LGDatabase.RuleType.PRE_REPLACEMENT, data, True)
 
     def get_pre_replacement_enable(self) -> bool:
-        return bool(self.get_meta("pre_translation_replacement_enable", True))
+        return bool(
+            self.meta_service.get_meta("pre_translation_replacement_enable", True)
+        )
 
     def set_pre_replacement_enable(self, enable: bool) -> None:
-        self.set_meta("pre_translation_replacement_enable", bool(enable))
+        self.meta_service.set_meta("pre_translation_replacement_enable", bool(enable))
 
     def get_post_replacement(self) -> list[dict[str, Any]]:
         return self.get_rules_cached(LGDatabase.RuleType.POST_REPLACEMENT)
@@ -173,10 +176,12 @@ class QualityRuleService:
         return self.set_rules_cached(LGDatabase.RuleType.POST_REPLACEMENT, data, True)
 
     def get_post_replacement_enable(self) -> bool:
-        return bool(self.get_meta("post_translation_replacement_enable", True))
+        return bool(
+            self.meta_service.get_meta("post_translation_replacement_enable", True)
+        )
 
     def set_post_replacement_enable(self, enable: bool) -> None:
-        self.set_meta("post_translation_replacement_enable", bool(enable))
+        self.meta_service.set_meta("post_translation_replacement_enable", bool(enable))
 
     def get_translation_prompt(self) -> str:
         return self.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT)
@@ -185,10 +190,10 @@ class QualityRuleService:
         self.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, text)
 
     def get_translation_prompt_enable(self) -> bool:
-        return bool(self.get_meta("translation_prompt_enable", False))
+        return bool(self.meta_service.get_meta("translation_prompt_enable", False))
 
     def set_translation_prompt_enable(self, enable: bool) -> None:
-        self.set_meta("translation_prompt_enable", bool(enable))
+        self.meta_service.set_meta("translation_prompt_enable", bool(enable))
 
     def get_analysis_prompt(self) -> str:
         return self.get_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT)
@@ -197,10 +202,10 @@ class QualityRuleService:
         self.set_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT, text)
 
     def get_analysis_prompt_enable(self) -> bool:
-        return bool(self.get_meta("analysis_prompt_enable", False))
+        return bool(self.meta_service.get_meta("analysis_prompt_enable", False))
 
     def set_analysis_prompt_enable(self, enable: bool) -> None:
-        self.set_meta("analysis_prompt_enable", bool(enable))
+        self.meta_service.set_meta("analysis_prompt_enable", bool(enable))
 
     @staticmethod
     def normalize_rule_statistics_text(value: Any) -> str:
@@ -230,7 +235,7 @@ class QualityRuleService:
 
         src_texts: list[str] = []
         dst_texts: list[str] = []
-        for item in self.get_all_item_dicts():
+        for item in self.item_service.get_all_item_dicts():
             if not isinstance(item, dict):
                 continue
 

@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from module.Data.BatchService import BatchService
-from module.Data.ItemService import ItemService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 def build_fake_session(*, loaded: bool = True) -> Any:

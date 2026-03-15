@@ -6,10 +6,10 @@ from typing import Any
 
 from model.Item import Item
 from module.Config import Config
-from module.Data.BatchService import BatchService
-from module.Data.DataTypes import ProjectPrefilterRequest
-from module.Data.ItemService import ItemService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.DataTypes import ProjectPrefilterRequest
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Utils.GapTool import GapTool

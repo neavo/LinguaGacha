@@ -1,7 +1,7 @@
 from collections import OrderedDict
 
 from base.LogManager import LogManager
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Utils.ZstdTool import ZstdTool
 
 

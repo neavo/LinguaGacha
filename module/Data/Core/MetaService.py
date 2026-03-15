@@ -1,7 +1,7 @@
 import copy
 from typing import Any
 
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 class MetaService:

@@ -7,18 +7,25 @@ from unittest.mock import MagicMock
 import pytest
 
 from module.Data.DataManager import DataManager
-from module.Data.ProjectLifecycleService import ProjectLifecycleService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.AssetService import AssetService
+from module.Data.Core.ItemService import ItemService
+from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 def build_service(session: ProjectSession) -> ProjectLifecycleService:
     meta_service = SimpleNamespace(refresh_cache_from_db=MagicMock())
+    item_service = SimpleNamespace(
+        clear_item_cache=MagicMock(spec=ItemService.clear_item_cache)
+    )
+    asset_service = SimpleNamespace(
+        clear_decompress_cache=MagicMock(spec=AssetService.clear_decompress_cache)
+    )
     return ProjectLifecycleService(
         session,
         meta_service,
-        MagicMock(),
-        MagicMock(),
-        DataManager.TextPreserveMode,
+        item_service,
+        asset_service,
         DataManager.RuleType,
         DataManager.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
         DataManager.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
@@ -64,7 +71,7 @@ def test_load_project_sets_session_and_migrates_legacy_values(
 
     fake_db = build_fake_db(legacy_prompt_zh="旧中文提示词")
     monkeypatch.setattr(
-        "module.Data.ProjectLifecycleService.LGDatabase", lambda path: fake_db
+        "module.Data.Project.ProjectLifecycleService.LGDatabase", lambda path: fake_db
     )
 
     service.load_project(str(lg_path))

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from base.Base import Base
 from model.Item import Item
-from module.Data.WorkbenchService import WorkbenchService
+from module.Data.Project.WorkbenchService import WorkbenchService
 
 
 def test_build_workbench_snapshot_counts_and_types() -> None:

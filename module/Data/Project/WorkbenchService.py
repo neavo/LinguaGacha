@@ -5,8 +5,8 @@ from typing import Any
 
 from base.Base import Base
 from model.Item import Item
-from module.Data.DataTypes import WorkbenchFileEntrySnapshot
-from module.Data.DataTypes import WorkbenchSnapshot
+from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
+from module.Data.Core.DataTypes import WorkbenchSnapshot
 from module.Utils.GapTool import GapTool
 
 

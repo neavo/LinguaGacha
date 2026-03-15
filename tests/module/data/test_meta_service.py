@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import threading
 from unittest.mock import MagicMock
 
-from module.Data.MetaService import MetaService
+from module.Data.Core.MetaService import MetaService
 
 
 def build_service(db: object | None) -> tuple[MetaService, SimpleNamespace]:

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from base.Base import Base
 from model.Item import Item
-from module.Data.BatchService import BatchService
-from module.Data.DataTypes import AnalysisGlossaryImportPreview
-from module.Data.DataTypes import AnalysisGlossaryImportPreviewEntry
-from module.Data.LGDatabase import LGDatabase
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
+from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.MetaService import MetaService
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from module.Utils.JSONTool import JSONTool
@@ -25,31 +27,15 @@ class AnalysisService:
         self,
         session: ProjectSession,
         batch_service: BatchService,
-        get_meta: Callable[[str, Any], Any],
-        set_meta: Callable[[str, Any], None],
-        get_all_items: Callable[[], list[Item]],
-        get_all_item_dicts: Callable[[], list[dict[str, Any]]],
-        get_glossary: Callable[[], list[dict[str, Any]]],
-        merge_glossary_incoming: Callable[
-            ..., tuple[list[dict[str, Any]] | None, QualityRuleMerger.Report]
-        ],
-        collect_rule_statistics_texts: Callable[
-            [], tuple[tuple[str, ...], tuple[str, ...]]
-        ],
-        get_translation_extras: Callable[[], dict[str, Any]],
-        update_batch: Callable[..., None],
+        meta_service: MetaService,
+        item_service: ItemService,
+        quality_rule_service: QualityRuleService,
     ) -> None:
         self.session = session
         self.batch_service = batch_service
-        self.get_meta = get_meta
-        self.set_meta = set_meta
-        self.get_all_items = get_all_items
-        self.get_all_item_dicts = get_all_item_dicts
-        self.get_glossary = get_glossary
-        self.merge_glossary_incoming = merge_glossary_incoming
-        self.collect_rule_statistics_texts = collect_rule_statistics_texts
-        self.get_translation_extras = get_translation_extras
-        self.update_batch = update_batch
+        self.meta_service = meta_service
+        self.item_service = item_service
+        self.quality_rule_service = quality_rule_service
 
     @staticmethod
     def is_skipped_analysis_status(status: Base.ProjectStatus) -> bool:
@@ -121,11 +107,11 @@ class AnalysisService:
         )
 
     def get_analysis_extras(self) -> dict[str, Any]:
-        extras = self.get_meta("analysis_extras", {})
+        extras = self.meta_service.get_meta("analysis_extras", {})
         return extras if isinstance(extras, dict) else {}
 
     def set_analysis_extras(self, extras: dict[str, Any]) -> None:
-        self.set_meta("analysis_extras", extras)
+        self.meta_service.set_meta("analysis_extras", extras)
 
     def normalize_analysis_state_value(
         self,
@@ -141,7 +127,7 @@ class AnalysisService:
         return None
 
     def get_analysis_state(self) -> dict[str, Base.ProjectStatus]:
-        raw_state = self.get_meta("analysis_state", {})
+        raw_state = self.meta_service.get_meta("analysis_state", {})
         if not isinstance(raw_state, dict):
             return {}
 
@@ -162,7 +148,7 @@ class AnalysisService:
             status = self.normalize_analysis_state_value(raw_status)
             if status is not None:
                 normalized[rel_path] = status.value
-        self.set_meta("analysis_state", normalized)
+        self.meta_service.set_meta("analysis_state", normalized)
 
     def normalize_analysis_term_vote_map(self, raw_votes: object) -> dict[str, int]:
         """把候选票数字段规整成稳定的 {文本: 票数} 结构。"""
@@ -951,7 +937,7 @@ class AnalysisService:
 
         preview = QualityRuleMerger.preview_merge(
             rule_type=QualityRuleMerger.RuleType.GLOSSARY,
-            existing=self.get_glossary(),
+            existing=self.quality_rule_service.get_glossary(),
             incoming=glossary_entries,
             merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
         )
@@ -982,7 +968,7 @@ class AnalysisService:
                 continue
             relation_target_candidates.append((statistics_key, src))
 
-        src_texts, dst_texts = self.collect_rule_statistics_texts()
+        src_texts, dst_texts = self.quality_rule_service.collect_rule_statistics_texts()
         statistics_snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
             rules=tuple(
                 QualityRuleStatistics.build_glossary_rule_stat_inputs(merged_entries)
@@ -1098,7 +1084,7 @@ class AnalysisService:
             if not filtered_glossary_entries:
                 return 0
 
-            merged, report = self.merge_glossary_incoming(
+            merged, report = self.quality_rule_service.merge_glossary_incoming(
                 filtered_glossary_entries,
                 merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
                 save=False,
@@ -1126,8 +1112,8 @@ class AnalysisService:
                     conn.commit()
 
         self.set_analysis_extras({})
-        self.set_meta("analysis_state", {})
-        self.set_meta("analysis_term_pool", {})
+        self.meta_service.set_meta("analysis_state", {})
+        self.meta_service.set_meta("analysis_term_pool", {})
 
     def clear_analysis_candidates_and_progress(self) -> None:
         """兼容旧入口，统一走完整重置。"""
@@ -1153,7 +1139,7 @@ class AnalysisService:
         processed_line = 0
         error_line = 0
 
-        for item in self.get_all_items():
+        for item in self.item_service.get_all_items():
             if self.is_skipped_analysis_status(item.get_status()):
                 continue
 
@@ -1225,7 +1211,7 @@ class AnalysisService:
 
         checkpoints = self.get_analysis_item_checkpoints()
         pending_items: list[Item] = []
-        for item in self.get_all_items():
+        for item in self.item_service.get_all_items():
             if self.is_skipped_analysis_status(item.get_status()):
                 continue
 
@@ -1317,7 +1303,7 @@ class AnalysisService:
 
         if normalized:
             self.upsert_analysis_candidate_aggregate(normalized)
-        self.set_meta("analysis_term_pool", {})
+        self.meta_service.set_meta("analysis_term_pool", {})
 
     def clear_analysis_term_pool(self) -> None:
         """兼容旧接口：清空候选池相关表，但不动 checkpoint。"""
@@ -1332,7 +1318,7 @@ class AnalysisService:
                 db.clear_analysis_candidate_aggregates(conn=conn)
                 conn.commit()
 
-        self.set_meta("analysis_term_pool", {})
+        self.meta_service.set_meta("analysis_term_pool", {})
 
     def merge_analysis_term_votes(
         self,
@@ -1362,7 +1348,7 @@ class AnalysisService:
             if self.session.db is None:
                 return None
 
-        items = self.get_all_items()
+        items = self.item_service.get_all_items()
         if not items:
             return None
 
@@ -1396,7 +1382,9 @@ class AnalysisService:
             )
         )
 
-        extras = self.get_translation_extras()
+        extras = self.meta_service.get_meta("translation_extras", {})
+        if not isinstance(extras, dict):
+            extras = {}
         extras["processed_line"] = processed_line
         extras["error_line"] = error_line
         extras["line"] = processed_line + error_line
@@ -1408,7 +1396,7 @@ class AnalysisService:
             else Base.ProjectStatus.PROCESSED
         )
 
-        self.update_batch(
+        self.batch_service.update_batch(
             items=changed_items or None,
             meta={
                 "translation_extras": extras,

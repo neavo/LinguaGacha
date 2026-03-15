@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from base.BaseLanguage import BaseLanguage
-from module.Data.LGDatabase import LGDatabase
-from module.Data.MetaService import MetaService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.AssetService import AssetService
+from module.Data.Core.DataEnums import TextPreserveMode
+from module.Data.Core.ItemService import ItemService
+from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Core.MetaService import MetaService
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
 
 
@@ -18,19 +20,17 @@ class ProjectLifecycleService:
         self,
         session: ProjectSession,
         meta_service: MetaService,
-        item_cache_clearer: Callable[[], None],
-        asset_cache_clearer: Callable[[], None],
-        text_preserve_mode_type: type,
-        rule_type: type,
+        item_service: ItemService,
+        asset_service: AssetService,
+        rule_type: type[LGDatabase.RuleType],
         legacy_prompt_zh_rule_type: str,
         legacy_prompt_en_rule_type: str,
         legacy_translation_prompt_migrated_meta_key: str,
     ) -> None:
         self.session = session
         self.meta_service = meta_service
-        self.item_cache_clearer = item_cache_clearer
-        self.asset_cache_clearer = asset_cache_clearer
-        self.text_preserve_mode_type = text_preserve_mode_type
+        self.item_service = item_service
+        self.asset_service = asset_service
         self.rule_type = rule_type
         self.legacy_prompt_zh_rule_type = legacy_prompt_zh_rule_type
         self.legacy_prompt_en_rule_type = legacy_prompt_en_rule_type
@@ -53,8 +53,8 @@ class ProjectLifecycleService:
             self.migrate_legacy_translation_prompt_text_once()
             self.session.rule_cache.clear()
             self.session.rule_text_cache.clear()
-            self.item_cache_clearer()
-            self.asset_cache_clearer()
+            self.item_service.clear_item_cache()
+            self.asset_service.clear_decompress_cache()
 
     def unload_project(self) -> str | None:
         """卸载工程并返回旧路径。"""
@@ -75,7 +75,7 @@ class ProjectLifecycleService:
         mode_valid = False
         if isinstance(raw_mode, str):
             try:
-                self.text_preserve_mode_type(raw_mode)
+                TextPreserveMode(raw_mode)
                 mode_valid = True
             except ValueError:
                 mode_valid = False
@@ -85,9 +85,9 @@ class ProjectLifecycleService:
 
         legacy_enable = bool(self.session.meta_cache.get("text_preserve_enable", False))
         migrated = (
-            self.text_preserve_mode_type.CUSTOM.value
+            TextPreserveMode.CUSTOM.value
             if legacy_enable
-            else self.text_preserve_mode_type.SMART.value
+            else TextPreserveMode.SMART.value
         )
         self.session.db.set_meta("text_preserve_mode", migrated)
         self.session.meta_cache["text_preserve_mode"] = migrated

@@ -3,16 +3,16 @@ from __future__ import annotations
 import os
 import threading
 from collections import defaultdict
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from base.Base import Base
 from model.Item import Item
+from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Config import Config
-from module.Data.DataTypes import ProjectFileMutationResult
-from module.Data.ItemService import ItemService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.DataTypes import ProjectFileMutationResult
+from module.Data.Core.ItemService import ItemService
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
 from module.Utils.ZstdTool import ZstdTool
@@ -25,13 +25,13 @@ class ProjectFileService:
         self,
         session: ProjectSession,
         item_service: ItemService,
-        clear_analysis_progress: Callable[[], None],
-        get_supported_extensions: Callable[[], set[str]],
+        analysis_service: AnalysisService,
+        supported_extensions: set[str],
     ) -> None:
         self.session = session
         self.item_service = item_service
-        self.clear_analysis_progress = clear_analysis_progress
-        self.get_supported_extensions = get_supported_extensions
+        self.analysis_service = analysis_service
+        self.supported_extensions = set(supported_extensions)
         self.file_op_lock = threading.Lock()
         self.file_op_running = False
 
@@ -54,7 +54,7 @@ class ProjectFileService:
         """把外部文件导入工程。"""
 
         ext = Path(file_path).suffix.lower()
-        if ext not in self.get_supported_extensions():
+        if ext not in self.supported_extensions:
             raise ValueError(Localizer.get().workbench_msg_unsupported_format)
 
         rel_path = os.path.basename(file_path)
@@ -77,7 +77,7 @@ class ProjectFileService:
         db.insert_items(item_dicts)
 
         self.item_service.clear_item_cache()
-        self.clear_analysis_progress()
+        self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(
             rel_path=rel_path,
             new=len(item_dicts),
@@ -141,7 +141,7 @@ class ProjectFileService:
             if target_rel_path != rel_path:
                 self.session.asset_decompress_cache.pop(target_rel_path, None)
 
-        self.clear_analysis_progress()
+        self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(
             rel_path=target_rel_path,
             old_rel_path=(
@@ -167,7 +167,7 @@ class ProjectFileService:
             db.update_batch(items=items)
 
         self.item_service.clear_item_cache()
-        self.clear_analysis_progress()
+        self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(
             rel_path=rel_path,
             matched=len(items),
@@ -186,7 +186,7 @@ class ProjectFileService:
         self.item_service.clear_item_cache()
         with self.session.state_lock:
             self.session.asset_decompress_cache.pop(rel_path, None)
-        self.clear_analysis_progress()
+        self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(rel_path=rel_path)
 
     def get_loaded_db(self) -> Any:

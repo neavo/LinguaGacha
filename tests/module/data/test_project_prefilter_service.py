@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from model.Item import Item
-from module.Data.BatchService import BatchService
-from module.Data.ItemService import ItemService
-from module.Data.ProjectPrefilterService import ProjectPrefilterService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Core.BatchService import BatchService
+from module.Data.Core.ItemService import ItemService
+from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
+from module.Data.Core.ProjectSession import ProjectSession
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Filter.ProjectPrefilter import ProjectPrefilterStats
 
@@ -109,7 +109,7 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
         },
     )
     monkeypatch.setattr(
-        "module.Data.ProjectPrefilterService.ProjectPrefilter.apply",
+        "module.Data.Project.ProjectPrefilterService.ProjectPrefilter.apply",
         MagicMock(return_value=expected_result),
     )
 

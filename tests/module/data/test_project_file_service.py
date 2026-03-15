@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 from base.Base import Base
 from model.Item import Item
-from module.Data.ProjectFileService import ProjectFileService
-from module.Data.ProjectSession import ProjectSession
+from module.Data.Project.ProjectFileService import ProjectFileService
+from module.Data.Core.ProjectSession import ProjectSession
 
 
 def build_service() -> tuple[ProjectFileService, ProjectSession]:
@@ -30,11 +30,12 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
     )
     session.lg_path = "demo/project.lg"
     item_service = SimpleNamespace(clear_item_cache=MagicMock())
+    analysis_service = SimpleNamespace(clear_analysis_progress=MagicMock())
     service = ProjectFileService(
         session,
         item_service,
-        MagicMock(),
-        lambda: {".txt"},
+        analysis_service,
+        {".txt"},
     )
     return service, session
 
