@@ -204,7 +204,6 @@ class ProjectPrefilterService:
             "target_language": request.target_language,
             "analysis_extras": {},
             "analysis_state": {},
-            "analysis_term_pool": {},
         }
 
         with self.session.state_lock:

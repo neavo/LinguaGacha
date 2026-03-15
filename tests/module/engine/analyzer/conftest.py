@@ -197,7 +197,7 @@ class FakeDataManager:
             }
         return self.get_analysis_item_checkpoints()
 
-    def import_analysis_term_pool(
+    def import_analysis_candidates(
         self, expected_lg_path: str | None = None
     ) -> int | None:
         self.import_expected_paths.append(expected_lg_path)

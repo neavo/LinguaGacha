@@ -147,14 +147,16 @@ class Analyzer(Base):
             },
         )
 
-    def import_analysis_term_pool_sync(
+    def import_analysis_candidates_sync(
         self,
         dm: DataManager,
         *,
         expected_lg_path: str,
     ) -> int | None:
         """手动导入候选池时固定当前工程，避免后台线程串写到新工程。"""
-        imported_count = dm.import_analysis_term_pool(expected_lg_path=expected_lg_path)
+        imported_count = dm.import_analysis_candidates(
+            expected_lg_path=expected_lg_path
+        )
         if imported_count is None:
             return None
 
@@ -245,7 +247,7 @@ class Analyzer(Base):
             # 工程已切换时保持静默收口，只通知页面当前导入流程结束即可。
             completion_event: dict[str, Any] = {"sub_event": Base.SubEvent.ERROR}
             try:
-                imported_count = self.import_analysis_term_pool_sync(
+                imported_count = self.import_analysis_candidates_sync(
                     dm,
                     expected_lg_path=expected_lg_path,
                 )

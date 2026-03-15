@@ -497,4 +497,4 @@ class CLIManager(Base):
 
     def translation_reset_failed_sync(self) -> None:
         dm = DataManager.get()
-        dm.reset_failed_items_sync()
+        dm.reset_failed_translation_items_sync()

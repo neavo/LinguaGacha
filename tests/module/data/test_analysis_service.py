@@ -6,9 +6,16 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from base.Base import Base
+from model.Item import Item
+from module.Data.Analysis.AnalysisCandidateService import AnalysisCandidateService
+from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.QualityRule.AnalysisGlossaryImportService import (
+    AnalysisGlossaryImportService,
+)
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -168,7 +175,7 @@ def test_build_analysis_glossary_from_candidates_votes_and_filters() -> None:
     ]
 
 
-def test_merge_analysis_term_votes_merges_counts() -> None:
+def test_merge_analysis_candidate_aggregate_merges_counts() -> None:
     service, _session = build_analysis_service()
     service.get_analysis_candidate_aggregate = MagicMock(
         return_value={
@@ -184,7 +191,7 @@ def test_merge_analysis_term_votes_merges_counts() -> None:
         side_effect=lambda pool: pool
     )
 
-    merged = service.merge_analysis_term_votes(
+    merged = service.merge_analysis_candidate_aggregate(
         {
             "HP": build_candidate_entry(
                 src="HP",
@@ -213,3 +220,68 @@ def test_import_analysis_candidates_returns_zero_when_no_candidate() -> None:
     service.build_analysis_glossary_from_candidates = MagicMock(return_value=[])
 
     assert service.import_analysis_candidates() == 0
+
+
+def test_analysis_text_policy_builds_source_text_and_hash() -> None:
+    item = SimpleNamespace(
+        get_src=lambda: "hello",
+        get_name_src=lambda: ["Alice", "Alice", ""],
+    )
+
+    source_text = AnalysisTextPolicy.build_source_text(item)
+
+    assert source_text == "Alice\nhello"
+    assert AnalysisTextPolicy.build_source_hash(source_text) != ""
+
+
+def test_analysis_candidate_service_builds_glossary_entry_from_candidate() -> None:
+    candidate_service = AnalysisCandidateService()
+
+    glossary_entry = candidate_service.build_glossary_entry_from_candidate(
+        "Alice",
+        build_candidate_entry(
+            src="Alice",
+            dst_votes={"爱丽丝": 2, "艾丽斯": 1},
+            info_votes={"女性人名": 2},
+            observation_count=2,
+        ),
+    )
+
+    assert glossary_entry == {
+        "src": "Alice",
+        "dst": "爱丽丝",
+        "info": "女性人名",
+        "case_sensitive": False,
+    }
+
+
+def test_analysis_progress_service_collects_pending_items() -> None:
+    progress_service = AnalysisProgressService()
+    done_item = Item(id=1, src="done")
+    pending_item = Item(id=2, src="pending")
+
+    pending_items = progress_service.collect_pending_items(
+        [done_item, pending_item],
+        {
+            1: {
+                "source_hash": AnalysisTextPolicy.build_source_hash("done"),
+                "status": Base.ProjectStatus.PROCESSED,
+            }
+        },
+    )
+
+    assert [item.get_id() for item in pending_items] == [2]
+
+
+def test_analysis_glossary_import_service_filters_low_value_candidates() -> None:
+    quality_rule_service = SimpleNamespace(
+        get_glossary=MagicMock(return_value=[]),
+        collect_rule_statistics_texts=MagicMock(return_value=((), ())),
+    )
+    import_service = AnalysisGlossaryImportService(quality_rule_service)
+    glossary_entries = [{"src": "Alice", "dst": "爱丽丝", "info": "女性人名"}]
+
+    preview = import_service.build_preview(glossary_entries)
+    filtered = import_service.filter_candidates(glossary_entries, preview)
+
+    assert isinstance(filtered, list)

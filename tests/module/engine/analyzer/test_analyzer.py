@@ -471,7 +471,7 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
     assert fake_data_manager.analysis_extras["error_line"] == 0
 
 
-def test_start_stopped_does_not_import_term_pool(
+def test_start_stopped_does_not_import_candidates(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -738,7 +738,7 @@ def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_fai
 
     monkeypatch.setattr(
         analyzer,
-        "import_analysis_term_pool_sync",
+        "import_analysis_candidates_sync",
         raise_import_error,
     )
 
@@ -764,6 +764,30 @@ def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_fai
     assert logger.error_messages == ["任务执行失败 …"]
     assert isinstance(logger.error_exceptions[0], RuntimeError)
     assert logger.print_messages == [""]
+
+
+def test_import_analysis_candidates_sync_calls_new_entry(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analyzer = Analyzer()
+    called: list[str | None] = []
+
+    def fake_import(expected_lg_path: str | None = None) -> int | None:
+        called.append(expected_lg_path)
+        return 1
+
+    fake_data_manager.import_analysis_candidates = fake_import
+    monkeypatch.setattr(analyzer, "emit", lambda event, data: None)
+
+    assert (
+        analyzer.import_analysis_candidates_sync(
+            fake_data_manager,
+            expected_lg_path="demo.lg",
+        )
+        == 1
+    )
+    assert called == ["demo.lg"]
 
 
 def test_start_success_emits_auto_import_glossary_request(

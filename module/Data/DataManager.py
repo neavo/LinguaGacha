@@ -26,7 +26,9 @@ from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
 from module.Data.Project.WorkbenchService import WorkbenchService
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
+from module.Data.Translation.TranslationResetService import TranslationResetService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
+from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
 from module.Localizer.Localizer import Localizer
 
 if TYPE_CHECKING:
@@ -112,6 +114,12 @@ class DataManager(Base):
             self.meta_service,
             self.item_service,
             self.quality_rule_service,
+        )
+        self.translation_reset_service = TranslationResetService(
+            self.session,
+            self.batch_service,
+            self.meta_service,
+            self.item_service,
         )
         self.project_file_service = ProjectFileService(
             self.session,
@@ -514,19 +522,19 @@ class DataManager(Base):
 
     @staticmethod
     def build_analysis_source_text(item: Item) -> str:
-        return AnalysisService.build_analysis_source_text(item)
+        return AnalysisTextPolicy.build_source_text(item)
 
     @staticmethod
     def build_analysis_source_hash(source_text: str) -> str:
-        return AnalysisService.build_analysis_source_hash(source_text)
+        return AnalysisTextPolicy.build_source_hash(source_text)
 
     @staticmethod
     def is_analysis_control_code_text(text: str) -> bool:
-        return AnalysisService.is_analysis_control_code_text(text)
+        return AnalysisTextPolicy.is_control_code_text(text)
 
     @classmethod
     def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
-        return AnalysisService.is_analysis_control_code_self_mapping(src, dst)
+        return AnalysisTextPolicy.is_control_code_self_mapping(src, dst)
 
     def get_analysis_extras(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_extras()
@@ -542,19 +550,6 @@ class DataManager(Base):
 
     def normalize_analysis_term_vote_map(self, raw_votes: object) -> dict[str, int]:
         return self.analysis_service.normalize_analysis_term_vote_map(raw_votes)
-
-    def normalize_analysis_term_pool_entry(
-        self,
-        raw_src: str,
-        raw_entry: object,
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.normalize_analysis_term_pool_entry(
-            raw_src,
-            raw_entry,
-        )
-
-    def pick_analysis_term_pool_winner(self, votes: dict[str, int]) -> str:
-        return self.analysis_service.pick_analysis_term_pool_winner(votes)
 
     def normalize_analysis_state_value(
         self,
@@ -818,35 +813,15 @@ class DataManager(Base):
             progress_snapshot=progress_snapshot,
         )
 
-    def get_analysis_term_pool(self) -> dict[str, dict[str, Any]]:
-        return self.analysis_service.get_analysis_term_pool()
+    def reset_failed_translation_items_sync(self) -> dict[str, Any] | None:
+        """翻译域统一入口，避免继续从分析服务借道。"""
 
-    def set_analysis_term_pool(self, pool: dict[str, dict[str, Any]]) -> None:
-        self.analysis_service.set_analysis_term_pool(pool)
-
-    def clear_analysis_term_pool(self) -> None:
-        self.analysis_service.clear_analysis_term_pool()
-
-    def merge_analysis_term_votes(
-        self,
-        incoming_pool: dict[str, dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        return self.analysis_service.merge_analysis_term_votes(incoming_pool)
-
-    def build_analysis_glossary_from_term_pool(self) -> list[dict[str, Any]]:
-        return self.analysis_service.build_analysis_glossary_from_term_pool()
-
-    def import_analysis_term_pool(
-        self,
-        expected_lg_path: str | None = None,
-    ) -> int | None:
-        imported = self.analysis_service.import_analysis_term_pool(expected_lg_path)
-        if imported and imported > 0:
-            self.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
-        return imported
+        return self.translation_reset_service.reset_failed_translation_items_sync()
 
     def reset_failed_items_sync(self) -> dict[str, Any] | None:
-        return self.analysis_service.reset_failed_items_sync()
+        """兼容旧入口，内部已切到翻译域服务。"""
+
+        return self.reset_failed_translation_items_sync()
 
     def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
         return self.quality_rule_service.get_rules_cached(rule_type)

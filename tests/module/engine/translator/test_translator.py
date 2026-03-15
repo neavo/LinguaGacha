@@ -217,6 +217,7 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         set_translation_extras=MagicMock(),
         set_project_status=MagicMock(),
         run_project_prefilter=MagicMock(),
+        reset_failed_translation_items_sync=MagicMock(return_value={"line": 7}),
         reset_failed_items_sync=MagicMock(return_value={"line": 7}),
         get_all_items=MagicMock(return_value=item_list),
         state_lock=threading.Lock(),
@@ -980,7 +981,7 @@ def test_translation_reset_failed_updates_extras_when_returned(
     translator = create_translator_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
-    dm.reset_failed_items_sync = MagicMock(return_value={"line": 22})
+    dm.reset_failed_translation_items_sync = MagicMock(return_value={"line": 22})
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
@@ -1001,7 +1002,7 @@ def test_translation_reset_failed_keeps_extras_when_reset_returns_none(
     translator.extras = {"line": 1}
     engine = create_engine()
     dm = create_data_manager(loaded=True)
-    dm.reset_failed_items_sync = MagicMock(return_value=None)
+    dm.reset_failed_translation_items_sync = MagicMock(return_value=None)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
@@ -1021,7 +1022,7 @@ def test_translation_reset_emits_error_when_task_raises(
     translator = create_translator_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
-    dm.reset_failed_items_sync = MagicMock(side_effect=RuntimeError("boom"))
+    dm.reset_failed_translation_items_sync = MagicMock(side_effect=RuntimeError("boom"))
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)

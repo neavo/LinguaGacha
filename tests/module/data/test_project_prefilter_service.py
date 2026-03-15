@@ -126,3 +126,6 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
     assert result == expected_result
     service.batch_service.update_batch.assert_called_once()
     session.db.delete_analysis_item_checkpoints.assert_called_once()
+
+    meta = service.batch_service.update_batch.call_args.kwargs["meta"]
+    assert "analysis_term_pool" not in meta

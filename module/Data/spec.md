@@ -64,9 +64,13 @@ module/Data/
 ├─ Quality/                       # 质量规则业务
 │  └─ QualityRuleService.py
 ├─ Analysis/                      # 分析业务
-│  └─ AnalysisService.py
+│  ├─ AnalysisService.py
+│  ├─ AnalysisRepository.py
+│  ├─ AnalysisCandidateService.py
+│  └─ AnalysisProgressService.py
 └─ Translation/                   # 翻译条目准备
-   └─ TranslationItemService.py
+   ├─ TranslationItemService.py
+   └─ TranslationResetService.py
 ```
 
 ## 模块边界
@@ -243,14 +247,14 @@ AnalysisPage
 ### `Analysis`
 放分析业务，不承担项目生命周期管理。
 
-- checkpoint
-- observation
-- aggregate
-- 分析进度快照
-- 候选池导入术语
+- `AnalysisService`：对外门面，只负责装配内部服务和保持公开接口稳定
+- `AnalysisRepository`：分析表读写、事务内 meta 同步
+- `AnalysisCandidateService`：observation 去重、aggregate 合并、候选转术语
+- `AnalysisProgressService`：checkpoint 规整、覆盖率汇总、待分析项筛选
+- 分析候选导入术语前的预演与过滤由 `module/QualityRule/AnalysisGlossaryImportService.py` 负责
 
 ### `Translation`
-只管“翻译前把什么条目交给翻译器”。
+只管“翻译前把什么条目交给翻译器”和“翻译失败条目的重置”。
 
 ## 修改建议
 ### 新需求要放哪

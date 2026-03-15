@@ -340,7 +340,7 @@ class Translator(Base):
                     # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
                     dm.run_project_prefilter(self.config, reason="translation_reset")
                 else:
-                    extras = dm.reset_failed_items_sync()
+                    extras = dm.reset_failed_translation_items_sync()
                     if extras is not None:
                         self.extras = extras
 
