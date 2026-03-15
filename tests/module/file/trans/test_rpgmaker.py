@@ -25,13 +25,11 @@ def test_filter_blocks_blacklist_path_with_cache() -> None:
 def test_filter_blocks_by_tag_or_blacklist_address() -> None:
     processor = RPGMAKER(project={})
 
-    by_tag = processor.filter("hello", "Map001.json", ["blue"], ["any"])
-    by_address = processor.filter("hello", "Map001.json", [], ["MapInfos/1/name"])
-    allow = processor.filter("hello", "Map001.json", [], ["MapInfos/1/displayName"])
-
-    assert by_tag == [True]
-    assert by_address == [True]
-    assert allow == [False]
+    assert processor.filter("hello", "Map001.json", ["blue"], ["any"]) == [True]
+    assert processor.filter("hello", "Map001.json", [], ["MapInfos/1/name"]) == [True]
+    assert processor.filter("hello", "Map001.json", [], ["MapInfos/1/displayName"]) == [
+        False
+    ]
 
 
 def test_filter_without_context_uses_tag_rule() -> None:

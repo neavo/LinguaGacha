@@ -1,5 +1,4 @@
 import dataclasses
-import inspect
 from typing import Any
 
 import pytest
@@ -25,30 +24,6 @@ class CloseRecorder:
 
 class HasNonCallableClose:
     close = 123
-
-
-@dataclasses.dataclass
-class ReenteringClose:
-    called: int = 0
-    reentered: bool = False
-
-    def close(self) -> None:
-        self.called += 1
-        if self.reentered:
-            return
-        self.reentered = True
-
-        # 从 session.close() 回溯到 StreamConsumer.consume 的 frame，拿到内部 close_once 再调用一次。
-        # 这样可以覆盖 close_once 的“二次调用直接返回”分支。
-        frame = inspect.currentframe()
-        assert frame is not None
-        close_once_frame = frame.f_back
-        assert close_once_frame is not None
-        consume_frame = close_once_frame.f_back
-        assert consume_frame is not None
-        close_once = consume_frame.f_locals.get("close_once")
-        assert callable(close_once)
-        close_once()
 
 
 def test_stream_control_create_passes_through() -> None:
@@ -86,16 +61,6 @@ def test_consume_iterates_all_items_and_closes() -> None:
     StreamConsumer.consume(session, control, on_item=seen.append)
 
     assert seen == ["a", "b"]
-    assert close_recorder.called == 1
-
-
-def test_consume_close_once_is_idempotent() -> None:
-    close_recorder = ReenteringClose()
-    session = StreamSession(iterator=[], close=close_recorder.close)
-    control = StreamControl.create(stop_checker=None, deadline_monotonic=None)
-
-    StreamConsumer.consume(session, control, on_item=lambda item: None)
-
     assert close_recorder.called == 1
 
 

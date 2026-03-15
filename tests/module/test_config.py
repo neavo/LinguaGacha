@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -58,8 +57,13 @@ class TestConfigBehavior:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{bad", encoding="utf-8")
 
-        logger = MagicMock()
-        monkeypatch.setattr("module.Config.LogManager.get", lambda: logger)
+        errors: list[tuple[str, Exception]] = []
+
+        class DummyLogger:
+            def error(self, msg: str, e: Exception) -> None:
+                errors.append((msg, e))
+
+        monkeypatch.setattr("module.Config.LogManager.get", lambda: DummyLogger())
 
         def raise_decode_error(path: str) -> dict:
             del path
@@ -69,7 +73,8 @@ class TestConfigBehavior:
 
         Config().load(str(path))
 
-        assert logger.error.call_count == 1
+        assert len(errors) == 1
+        assert isinstance(errors[0][1], ValueError)
 
     def test_load_ignores_non_dict_payload(self, fs) -> None:
         del fs
@@ -232,8 +237,13 @@ class TestConfigModels:
         path = Path("/workspace/config/config.json")
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger = MagicMock()
-        monkeypatch.setattr("module.Config.LogManager.get", lambda: logger)
+        errors: list[tuple[str, Exception]] = []
+
+        class DummyLogger:
+            def error(self, msg: str, e: Exception) -> None:
+                errors.append((msg, e))
+
+        monkeypatch.setattr("module.Config.LogManager.get", lambda: DummyLogger())
 
         def raise_open(*args, **kwargs):
             del args
@@ -244,7 +254,8 @@ class TestConfigModels:
 
         Config().save(str(path))
 
-        assert logger.error.call_count == 1
+        assert len(errors) == 1
+        assert isinstance(errors[0][1], OSError)
 
     def test_initialize_models_sets_active_model_id_when_missing(
         self, monkeypatch: pytest.MonkeyPatch

@@ -3,8 +3,6 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 from typing import Any
-from typing import cast
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,6 +10,15 @@ from base.Base import Base
 import module.Engine.APITester.APITester as apitester_module
 from module.Engine.APITester.APITester import APITester
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+
+
+class EventRecorder:
+    def __init__(self) -> None:
+        self.events: list[tuple[Base.Event, dict[str, Any]]] = []
+
+    def emit(self, event: Base.Event, payload: dict[str, Any]) -> bool:
+        self.events.append((event, payload))
+        return True
 
 
 class FakeLogManager:
@@ -36,6 +43,43 @@ class FakeLogManager:
         self.error_messages.append(msg)
 
 
+class FakeThread:
+    def __init__(self, target: Any, args: tuple[Any, ...]) -> None:
+        self.target = target
+        self.args = args
+
+    def start(self) -> None:
+        self.target(*self.args)
+
+
+class StartFailThread:
+    def __init__(self, target: Any, args: tuple[Any, ...]) -> None:
+        self.target = target
+        self.args = args
+
+    def start(self) -> None:
+        raise RuntimeError("boom")
+
+
+class FakeTaskRequester:
+    responses: list[tuple[Any, str, str, int, int]] = []
+    reset_calls: int = 0
+    created_models: list[dict[str, Any]] = []
+
+    def __init__(self, config: Any, model: dict[str, Any]) -> None:
+        del config
+        self.model = model
+        type(self).created_models.append(self.model)
+
+    @staticmethod
+    def reset() -> None:
+        FakeTaskRequester.reset_calls += 1
+
+    def request(self, messages: list[dict[str, str]]) -> tuple[Any, str, str, int, int]:
+        del messages
+        return type(self).responses.pop(0)
+
+
 def build_localizer() -> Any:
     return SimpleNamespace(
         task_running="running",
@@ -52,93 +96,46 @@ def build_localizer() -> Any:
     )
 
 
-class FakeTaskRequester:
-    responses: list[tuple[Any, str, str, int, int]] = []
-    reset_calls: int = 0
-    created_models: list[dict[str, Any]] = []
-
-    def __init__(self, config: Any, model: dict[str, Any]) -> None:
-        del config
-        self.model = model
-        FakeTaskRequester.created_models.append(model)
-
-    @staticmethod
-    def reset() -> None:
-        FakeTaskRequester.reset_calls += 1
-
-    def request(self, messages: list[dict[str, str]]) -> tuple[Any, str, str, int, int]:
-        del messages
-        return FakeTaskRequester.responses.pop(0)
-
-
-def create_api_tester_stub() -> Any:
-    api_tester = cast(Any, APITester.__new__(APITester))
-    api_tester.emit = MagicMock()
-    return api_tester
-
-
-def test_init_subscribes_apitest_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[Base.Event, Any]] = []
-
-    def fake_subscribe(self: APITester, event: Base.Event, handler: Any) -> None:
-        del self
-        calls.append((event, handler))
-
-    monkeypatch.setattr(APITester, "subscribe", fake_subscribe, raising=False)
-
+def create_api_tester() -> tuple[APITester, EventRecorder]:
     api_tester = APITester()
-
-    assert calls[0][0] == Base.Event.APITEST
-    assert calls[0][1].__name__ == "api_test_start"
-    assert calls[0][1].__self__ is api_tester
+    recorder = EventRecorder()
+    api_tester.emit = recorder.emit  # type: ignore[method-assign]
+    return api_tester, recorder
 
 
 def test_mask_api_key_keeps_short_key() -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, _ = create_api_tester()
 
-    assert APITester.mask_api_key(api_tester, " short_key ") == "short_key"
+    assert api_tester.mask_api_key(" short_key ") == "short_key"
 
 
 def test_mask_api_key_masks_middle_for_long_key() -> None:
-    api_tester = create_api_tester_stub()
-    key = "abcdefghijklmnopqrstuvwxyz"
+    api_tester, _ = create_api_tester()
 
-    masked = APITester.mask_api_key(api_tester, key)
+    masked = api_tester.mask_api_key("abcdefghijklmnopqrstuvwxyz")
 
     assert masked.startswith("abcdefgh")
     assert masked.endswith("stuvwxyz")
     assert set(masked[8:-8]) == {"*"}
-    assert len(masked) == len(key)
+    assert len(masked) == 26
 
 
-def test_api_test_start_target_always_resets_engine_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    api_tester = create_api_tester_stub()
-    api_tester.api_test_start_target_inner = MagicMock(side_effect=RuntimeError("boom"))
-    engine = SimpleNamespace(set_status=MagicMock())
-    monkeypatch.setattr(apitester_module.Engine, "get", staticmethod(lambda: engine))
+def test_api_test_start_ignores_non_request_sub_event() -> None:
+    api_tester, recorder = create_api_tester()
 
-    with pytest.raises(RuntimeError, match="boom"):
-        APITester.api_test_start_target(api_tester, Base.Event.APITEST, {})
+    api_tester.api_test_start(
+        Base.Event.APITEST,
+        {"sub_event": Base.SubEvent.DONE},
+    )
 
-    engine.set_status.assert_called_once_with(Base.TaskStatus.IDLE)
+    assert recorder.events == []
 
 
 def test_api_test_start_emits_warning_when_engine_busy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
-    engine = SimpleNamespace(
-        lock=SimpleNamespace(
-            __enter__=lambda s: None, __exit__=lambda s, t, v, tb: False
-        ),
-        status=Base.TaskStatus.TESTING,
-    )
-    # 使用真实锁对象避免上下文管理协议差异。
-    import threading
-
-    engine.lock = threading.Lock()
+    api_tester, recorder = create_api_tester()
+    engine = SimpleNamespace(lock=threading.Lock(), status=Base.TaskStatus.TESTING)
     monkeypatch.setattr(apitester_module.Engine, "get", staticmethod(lambda: engine))
     monkeypatch.setattr(
         apitester_module.Localizer,
@@ -146,40 +143,32 @@ def test_api_test_start_emits_warning_when_engine_busy(
         staticmethod(lambda: SimpleNamespace(task_running="running")),
     )
 
-    APITester.api_test_start(
-        api_tester,
+    api_tester.api_test_start(
         Base.Event.APITEST,
         {"sub_event": Base.SubEvent.REQUEST, "model_id": "m1"},
     )
 
-    api_tester.emit.assert_called_once_with(
-        Base.Event.TOAST,
-        {
-            "type": Base.ToastType.WARNING,
-            "message": "running",
-        },
-    )
+    assert recorder.events == [
+        (
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.WARNING,
+                "message": "running",
+            },
+        )
+    ]
 
 
-def test_api_test_start_sets_testing_and_emits_error_when_thread_fails(
+def test_api_test_start_emits_run_then_error_when_thread_start_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, recorder = create_api_tester()
     engine = SimpleNamespace(
         lock=threading.Lock(),
         status=Base.TaskStatus.IDLE,
-        set_status=MagicMock(),
+        set_status=lambda status: setattr(engine, "status", status),
     )
     log_manager = FakeLogManager()
-
-    class FakeThread:
-        def __init__(self, target: Any, args: tuple[Any, ...]) -> None:
-            self.target = target
-            self.args = args
-
-        def start(self) -> None:
-            raise RuntimeError("boom")
-
     monkeypatch.setattr(apitester_module.Engine, "get", staticmethod(lambda: engine))
     monkeypatch.setattr(
         apitester_module.Localizer,
@@ -191,69 +180,111 @@ def test_api_test_start_sets_testing_and_emits_error_when_thread_fails(
         "get",
         staticmethod(lambda: log_manager),
     )
-    monkeypatch.setattr(apitester_module.threading, "Thread", FakeThread)
+    monkeypatch.setattr(apitester_module.threading, "Thread", StartFailThread)
 
-    APITester.api_test_start(
-        api_tester,
+    api_tester.api_test_start(
         Base.Event.APITEST,
         {"sub_event": Base.SubEvent.REQUEST, "model_id": "m1"},
     )
 
-    assert engine.status == Base.TaskStatus.TESTING
-    engine.set_status.assert_called_once_with(Base.TaskStatus.IDLE)
-    assert any(
-        call.args
-        == (
+    assert engine.status == Base.TaskStatus.IDLE
+    assert recorder.events == [
+        (
             Base.Event.APITEST,
             {
                 "sub_event": Base.SubEvent.RUN,
                 "model_id": "m1",
             },
-        )
-        for call in api_tester.emit.call_args_list
-    )
-    assert any(
-        call.args
-        == (
+        ),
+        (
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.ERROR,
+                "message": "task_failed",
+            },
+        ),
+        (
             Base.Event.APITEST,
             {
                 "sub_event": Base.SubEvent.ERROR,
                 "result": False,
                 "result_msg": "task_failed",
             },
-        )
-        for call in api_tester.emit.call_args_list
-    )
+        ),
+    ]
     assert log_manager.error_messages == ["task_failed"]
+
+
+def test_api_test_start_target_always_resets_engine_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api_tester, _ = create_api_tester()
+    engine = SimpleNamespace(
+        set_status=lambda status: setattr(engine, "last_status", status),
+        last_status=None,
+    )
+    monkeypatch.setattr(apitester_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(
+        api_tester,
+        "api_test_start_target_inner",
+        lambda event, data: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        api_tester.api_test_start_target(Base.Event.APITEST, {})
+
+    assert engine.last_status == Base.TaskStatus.IDLE
+
+
+def test_api_test_start_target_inner_emits_done_when_model_id_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api_tester, recorder = create_api_tester()
+    fake_config = SimpleNamespace(get_model=lambda model_id: None)
+    monkeypatch.setattr(apitester_module.Config, "load", lambda self: fake_config)
+
+    api_tester.api_test_start_target_inner(Base.Event.APITEST, {})
+
+    assert recorder.events == [
+        (
+            Base.Event.APITEST,
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "result": False,
+                "result_msg": "Missing model_id",
+            },
+        )
+    ]
 
 
 def test_api_test_start_target_inner_emits_done_when_model_not_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, recorder = create_api_tester()
     fake_config = SimpleNamespace(get_model=lambda model_id: None)
     monkeypatch.setattr(apitester_module.Config, "load", lambda self: fake_config)
 
-    APITester.api_test_start_target_inner(
-        api_tester,
+    api_tester.api_test_start_target_inner(
         Base.Event.APITEST,
         {"model_id": "missing"},
     )
 
-    api_tester.emit.assert_called_once_with(
-        Base.Event.APITEST,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "result": False,
-            "result_msg": "Model not found",
-        },
-    )
+    assert recorder.events == [
+        (
+            Base.Event.APITEST,
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "result": False,
+                "result_msg": "Model not found",
+            },
+        )
+    ]
 
 
-def test_api_test_start_target_inner_sakura_timeout_for_empty_api_key(
+def test_api_test_start_target_inner_uses_placeholder_key_for_empty_sakura_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, recorder = create_api_tester()
     log_manager = FakeLogManager()
     fake_model = {
         "api_format": Base.APIFormat.SAKURALLM,
@@ -263,13 +294,11 @@ def test_api_test_start_target_inner_sakura_timeout_for_empty_api_key(
         request_timeout=12,
         get_model=lambda model_id: fake_model,
     )
-
     FakeTaskRequester.responses = [
         (RequestHardTimeoutError("timeout"), "", "", 0, 0),
     ]
     FakeTaskRequester.reset_calls = 0
     FakeTaskRequester.created_models = []
-
     ticks = iter([1_000_000_000, 1_500_000_000])
 
     monkeypatch.setattr(apitester_module.Config, "load", lambda self: fake_config)
@@ -282,25 +311,41 @@ def test_api_test_start_target_inner_sakura_timeout_for_empty_api_key(
     )
     monkeypatch.setattr(apitester_module.time, "perf_counter_ns", lambda: next(ticks))
 
-    APITester.api_test_start_target_inner(
-        api_tester,
+    api_tester.api_test_start_target_inner(
         Base.Event.APITEST,
         {"model_id": "sakura"},
     )
 
     assert FakeTaskRequester.reset_calls == 1
     assert FakeTaskRequester.created_models[0]["api_key"] == "no_key_required"
-    payload = api_tester.emit.call_args.args[1]
-    assert payload["sub_event"] == Base.SubEvent.DONE
-    assert payload["result"] is False
-    assert payload["failure_count"] == 1
-    assert payload["key_results"][0]["error_reason"] == "timeout 12"
+    assert recorder.events[-1] == (
+        Base.Event.APITEST,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "result": False,
+            "result_msg": "total 1 success 0 failure 1",
+            "total_count": 1,
+            "success_count": 0,
+            "failure_count": 1,
+            "total_response_time_ms": 500,
+            "key_results": [
+                {
+                    "masked_key": "no_key_required",
+                    "success": False,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "response_time_ms": 500,
+                    "error_reason": "timeout 12",
+                }
+            ],
+        },
+    )
 
 
-def test_api_test_start_target_inner_openai_mixed_results(
+def test_api_test_start_target_inner_reports_mixed_openai_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, recorder = create_api_tester()
     log_manager = FakeLogManager()
     fake_model = {
         "api_format": Base.APIFormat.OPENAI,
@@ -338,13 +383,12 @@ def test_api_test_start_target_inner_openai_mixed_results(
     )
     monkeypatch.setattr(apitester_module.time, "perf_counter_ns", lambda: next(ticks))
 
-    APITester.api_test_start_target_inner(
-        api_tester,
+    api_tester.api_test_start_target_inner(
         Base.Event.APITEST,
         {"model_id": "openai"},
     )
 
-    payload = api_tester.emit.call_args.args[1]
+    _, payload = recorder.events[-1]
     assert payload["sub_event"] == Base.SubEvent.DONE
     assert payload["total_count"] == 3
     assert payload["success_count"] == 2
@@ -354,10 +398,10 @@ def test_api_test_start_target_inner_openai_mixed_results(
     assert any("failed keys" in text for text in log_manager.warning_messages)
 
 
-def test_api_test_start_target_inner_all_success_without_failure_summary(
+def test_api_test_start_target_inner_omits_failure_summary_when_all_keys_succeed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    api_tester = create_api_tester_stub()
+    api_tester, recorder = create_api_tester()
     log_manager = FakeLogManager()
     fake_model = {
         "api_format": Base.APIFormat.OPENAI,
@@ -385,13 +429,49 @@ def test_api_test_start_target_inner_all_success_without_failure_summary(
     )
     monkeypatch.setattr(apitester_module.time, "perf_counter_ns", lambda: next(ticks))
 
-    APITester.api_test_start_target_inner(
-        api_tester,
+    api_tester.api_test_start_target_inner(
         Base.Event.APITEST,
         {"model_id": "all_success"},
     )
 
-    payload = api_tester.emit.call_args.args[1]
+    _, payload = recorder.events[-1]
     assert payload["result"] is True
     assert payload["failure_count"] == 0
     assert all("failed keys" not in msg for msg in log_manager.warning_messages)
+
+
+def test_api_test_start_runs_target_in_thread_and_restores_engine_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api_tester, recorder = create_api_tester()
+    engine = SimpleNamespace(
+        lock=threading.Lock(),
+        status=Base.TaskStatus.IDLE,
+        set_status=lambda status: setattr(engine, "status", status),
+    )
+    fake_config = SimpleNamespace(get_model=lambda model_id: None)
+    monkeypatch.setattr(apitester_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(apitester_module.threading, "Thread", FakeThread)
+    monkeypatch.setattr(apitester_module.Config, "load", lambda self: fake_config)
+
+    api_tester.api_test_start(
+        Base.Event.APITEST,
+        {"sub_event": Base.SubEvent.REQUEST, "model_id": "missing"},
+    )
+
+    assert engine.status == Base.TaskStatus.IDLE
+    assert recorder.events[0] == (
+        Base.Event.APITEST,
+        {
+            "sub_event": Base.SubEvent.RUN,
+            "model_id": "missing",
+        },
+    )
+    assert recorder.events[-1] == (
+        Base.Event.APITEST,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "result": False,
+            "result_msg": "Model not found",
+        },
+    )

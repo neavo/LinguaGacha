@@ -7,7 +7,7 @@ from base.Base import Base
 from module.File.TRANS.NONE import NONE
 
 
-def test_check_handles_empty_and_aqua_and_processed_states() -> None:
+def test_check_handles_empty_aqua_and_processed_rows() -> None:
     processor = NONE(project={})
 
     src, dst, tag, status, skip_internal_filter = processor.check(
@@ -127,23 +127,38 @@ def test_check_does_not_add_gold_tag_when_all_blocked_and_no_color_tags() -> Non
     assert skip_internal_filter is False
 
 
-def test_generate_parameter_handles_none_and_non_dict_entries() -> None:
+def test_generate_parameter_handles_none_non_dict_and_span_schema() -> None:
     processor = NONE(project={})
 
-    result = processor.generate_parameter(
+    assert processor.generate_parameter(
         src="src",
         context=["a", "b"],
         parameter=cast(Any, None),
         block=[True, False],
-    )
-
-    assert result == [
+    ) == [
         {"contextStr": "a", "translation": "src"},
         {"contextStr": "b", "translation": ""},
     ]
 
+    assert (
+        processor.generate_parameter(
+            src="src",
+            context=["a"],
+            parameter=cast(Any, "not-list"),
+            block=[True],
+        )
+        == []
+    )
 
-def test_check_uses_default_block_when_filter_returns_empty() -> None:
+    assert processor.generate_parameter(
+        src="src",
+        context=["a", "b"],
+        parameter=cast(Any, [{"start": 1, "end": 2}, None]),
+        block=[True, False],
+    ) == [{"start": 1, "end": 2}]
+
+
+def test_check_uses_default_block_and_adds_gold_for_mixed_filter() -> None:
     processor = NONE(project={})
     processor.filter = lambda src, path, tag, context: []
 
@@ -160,11 +175,7 @@ def test_check_uses_default_block_when_filter_returns_empty() -> None:
     assert status == Base.ProjectStatus.NONE
     assert skip_internal_filter is False
 
-
-def test_check_adds_gold_tag_when_filter_result_is_mixed() -> None:
-    processor = NONE(project={})
     processor.filter = lambda src, path, tag, context: [True, False]
-
     _, _, tag, status, _ = processor.check(
         "a",
         ["hello", ""],
@@ -174,43 +185,3 @@ def test_check_adds_gold_tag_when_filter_result_is_mixed() -> None:
 
     assert tag == ["keep", "gold"]
     assert status == Base.ProjectStatus.NONE
-
-
-def test_generate_parameter_returns_empty_when_all_blocked_and_parameter_not_list() -> (
-    None
-):
-    processor = NONE(project={})
-
-    result = processor.generate_parameter(
-        src="src",
-        context=["a"],
-        parameter=cast(Any, "not-list"),
-        block=[True],
-    )
-
-    assert result == []
-
-
-def test_generate_parameter_preserves_span_schema_without_partition_keys() -> None:
-    processor = NONE(project={})
-
-    result = processor.generate_parameter(
-        src="src",
-        context=["a", "b"],
-        parameter=cast(Any, [{"start": 1, "end": 2}, None]),
-        block=[True, False],
-    )
-
-    assert result == [{"start": 1, "end": 2}]
-
-    result = processor.generate_parameter(
-        src="src",
-        context=["a", "b"],
-        parameter=cast(Any, [None]),
-        block=[True, False],
-    )
-
-    assert result == [
-        {"contextStr": "a", "translation": "src"},
-        {"contextStr": "b", "translation": ""},
-    ]

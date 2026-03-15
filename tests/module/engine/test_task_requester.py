@@ -212,10 +212,19 @@ def test_init_parses_api_keys_and_invalid_thinking_level_falls_back_to_off() -> 
     assert requester.thinking_level == ThinkingLevel.OFF
 
 
-def test_reset_delegates_to_client_pool() -> None:
-    with patch("module.Engine.TaskRequester.TaskRequesterClientPool.reset") as reset:
-        TaskRequester.reset()
-    reset.assert_called_once_with()
+def test_reset_restores_key_rotation_and_url_cache_state() -> None:
+    from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
+
+    TaskRequesterClientPool.KEY_INDEX = 1
+    TaskRequesterClientPool.get_url(
+        "https://example.invalid/chat/completions",
+        Base.APIFormat.OPENAI,
+    )
+
+    TaskRequester.reset()
+
+    assert TaskRequesterClientPool.KEY_INDEX == 0
+    assert TaskRequesterClientPool.get_url.cache_info().currsize == 0
 
 
 def test_should_use_max_completion_tokens_and_sdk_timeout() -> None:

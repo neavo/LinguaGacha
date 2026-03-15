@@ -5,11 +5,506 @@ import json
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+
 from module.Config import Config
+
+from module.File.TRANS.KAG import KAG
+
 from module.File.TRANS.NONE import NONE
+
+from module.File.TRANS.RENPY import RENPY
+
+from module.File.TRANS.RPGMAKER import RPGMAKER
+
 from module.File.TRANS.TRANS import TRANS
+
+from module.File.TRANS.WOLF import WOLF
+
+from pathlib import Path
+
+from model.Item import Item
+
 from tests.module.file.conftest import DummyDataManager
+
+
+def test_get_processor_routes_by_game_engine(config: Config) -> None:
+    handler = TRANS(config)
+
+    assert isinstance(handler.get_processor({"gameEngine": "kag"}), KAG)
+    assert isinstance(handler.get_processor({"gameEngine": "wolf"}), WOLF)
+    assert isinstance(handler.get_processor({"gameEngine": "renpy"}), RENPY)
+    assert isinstance(handler.get_processor({"gameEngine": "rmmz"}), RPGMAKER)
+    assert isinstance(handler.get_processor({"gameEngine": "unknown"}), NONE)
+
+
+def test_read_from_stream_marks_duplicates_when_enabled(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = TRANS(config)
+    config.deduplication_in_trans = True
+
+    class DummyProcessor(NONE):
+        def pre_process(self) -> None:
+            return
+
+        def check(self, path: str, data: list[str], tag: list[str], context: list[str]):
+            del path
+            del context
+            src = data[0] if data else ""
+            dst = data[1] if len(data) > 1 else src
+            return src, dst, tag, Base.ProjectStatus.NONE, False
+
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.TRANS.get_processor",
+        lambda self, project: DummyProcessor(project),
+    )
+
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                "script.json": {
+                    "tags": [[], []],
+                    "data": [["hello", ""], ["hello", ""]],
+                    "context": [["ctx1"], ["ctx2"]],
+                    "parameters": [[], []],
+                }
+            },
+        }
+    }
+
+    items = handler.read_from_stream(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        "sample.trans",
+    )
+
+    assert len(items) == 2
+    assert items[0].get_status() == Base.ProjectStatus.NONE
+    assert items[1].get_status() == Base.ProjectStatus.DUPLICATED
+    assert items[0].get_text_type() == NONE.TEXT_TYPE
+
+
+def test_read_from_stream_does_not_mark_duplicates_when_disabled(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = TRANS(config)
+    config.deduplication_in_trans = False
+
+    class DummyProcessor(NONE):
+        def pre_process(self) -> None:
+            return
+
+        def check(self, path: str, data: list[str], tag: list[str], context: list[str]):
+            del path
+            del context
+            src = data[0] if data else ""
+            dst = data[1] if len(data) > 1 else src
+            return src, dst, tag, Base.ProjectStatus.NONE, False
+
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.TRANS.get_processor",
+        lambda self, project: DummyProcessor(project),
+    )
+
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                "script.json": {
+                    "tags": [[], []],
+                    "data": [["hello", ""], ["hello", ""]],
+                    "context": [[], []],
+                    "parameters": [[], []],
+                }
+            },
+        }
+    }
+
+    items = handler.read_from_stream(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        "sample.trans",
+    )
+
+    assert len(items) == 2
+    assert items[0].get_status() == Base.ProjectStatus.NONE
+    assert items[1].get_status() == Base.ProjectStatus.NONE
+
+
+def test_read_from_stream_returns_empty_for_invalid_shapes(
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = TRANS(config)
+
+    monkeypatch.setattr("module.File.TRANS.TRANS.JSONTool.loads", lambda content: [])
+    assert handler.read_from_stream(b"[]", "a.trans") == []
+
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.JSONTool.loads",
+        lambda content: {"project": {"files": []}},
+    )
+    assert handler.read_from_stream(b"{}", "a.trans") == []
+
+
+def test_read_from_path_reads_files_and_builds_rel_path(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    handler = TRANS(config)
+    input_root = Path("/workspace/trans")
+    file_a = input_root / "a.trans"
+    file_b = input_root / "sub" / "b.trans"
+    file_b.parent.mkdir(parents=True, exist_ok=True)
+    file_a.write_text("a", encoding="utf-8")
+    file_b.write_text("b", encoding="utf-8")
+
+    def fake_read_from_stream(content: bytes, rel_path: str) -> list[Item]:
+        del content
+        return [Item.from_dict({"src": rel_path})]
+
+    handler.read_from_stream = fake_read_from_stream
+    items = handler.read_from_path([str(file_a), str(file_b)], str(input_root))
+
+    rels = sorted(item.get_src().replace("\\", "/") for item in items)
+    assert rels == ["a.trans", "sub/b.trans"]
+
+
+def test_read_from_stream_clamps_negative_column_indices(config: Config) -> None:
+    handler = TRANS(config)
+
+    # indexOriginal/indexTranslation 出现负数时，不应触发 Python 负索引取值。
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "indexOriginal": -1,
+            "indexTranslation": -2,
+            "files": {
+                "script/a.json": {
+                    "tags": [[]],
+                    "data": [["SRC", "DST"]],
+                    "context": [[]],
+                    "parameters": [[]],
+                }
+            },
+        }
+    }
+
+    items = handler.read_from_stream(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        "negative.trans",
+    )
+
+    assert len(items) == 1
+    assert items[0].get_src() == "SRC"
+    assert items[0].get_dst() == "DST"
+
+
+def test_read_from_stream_filters_metadata_and_builds_trans_ref(
+    config: Config,
+) -> None:
+    handler = TRANS(config)
+    rel_path = "meta.trans"
+    file_key = "script/meta.json"
+
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                file_key: {
+                    "tags": [["keep", 1, None]],
+                    "data": [["src", ""]],
+                    "context": [["ctx1", None, 2]],
+                    "parameters": [[{"ok": True}, None, "bad"]],
+                }
+            },
+        }
+    }
+
+    items = handler.read_from_stream(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        rel_path,
+    )
+
+    assert len(items) == 1
+    item = items[0]
+    extra = item.get_extra_field()
+
+    assert item.get_tag() == file_key
+    assert item.get_file_path() == rel_path
+    assert isinstance(extra, dict)
+    assert extra["tag"] == ["keep"]
+    assert extra["context"] == ["ctx1"]
+    assert extra["parameter"] == [{"ok": True}]
+    assert extra["trans_ref"] == {"file_key": file_key, "row_index": 0}
+
+
+def test_read_from_stream_skips_non_dict_file_entries(config: Config) -> None:
+    handler = TRANS(config)
+    rel_path = "skip_entries.trans"
+    file_key = "script/good.json"
+
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                "bad_entry": [],
+                file_key: {
+                    "tags": [[]],
+                    "data": [["src", "dst"]],
+                    "context": [[]],
+                    "parameters": [[]],
+                },
+            },
+        }
+    }
+
+    items = handler.read_from_stream(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        rel_path,
+    )
+
+    assert len(items) == 1
+    assert items[0].get_tag() == file_key
+    assert items[0].get_src() == "src"
+    assert items[0].get_dst() == "dst"
+
+
+def test_write_to_path_skips_when_asset_missing_or_invalid_json(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = TRANS(config)
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
+    )
+
+    rel_path = "sample.trans"
+    item = Item.from_dict(
+        {
+            "src": "src",
+            "dst": "dst",
+            "row": 0,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "tag": "script/a.json",
+            "extra_field": {"tag": [], "context": [], "parameter": []},
+        }
+    )
+
+    handler.write_to_path([item])
+    assert (dummy_data_manager.translated_path / rel_path).exists() is False
+
+    dummy_data_manager.assets[rel_path] = json.dumps(["not", "dict"]).encode("utf-8")
+    handler.write_to_path([item])
+    assert (dummy_data_manager.translated_path / rel_path).exists() is False
+
+
+@pytest.mark.parametrize(
+    ("rel_path", "payload"),
+    [
+        ("invalid_project.trans", {"project": []}),
+        ("invalid_files.trans", {"project": {"files": []}}),
+    ],
+)
+def test_write_to_path_skips_when_project_or_files_shape_invalid(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+    rel_path: str,
+    payload: dict,
+) -> None:
+    handler = TRANS(config)
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
+    )
+
+    item = Item.from_dict(
+        {
+            "src": "src",
+            "dst": "dst",
+            "row": 0,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "tag": "script/a.json",
+            "extra_field": {"tag": [], "context": [], "parameter": []},
+        }
+    )
+    dummy_data_manager.assets[rel_path] = json.dumps(payload).encode("utf-8")
+
+    handler.write_to_path([item])
+    assert (dummy_data_manager.translated_path / rel_path).exists() is False
+
+
+class DummyProcessor(NONE):
+    def post_process(self) -> None:
+        return
+
+    def filter(
+        self, src: str, path: str, tag: list[str], context: list[str]
+    ) -> list[bool]:
+        del src
+        del path
+        del tag
+        # 混合分区，确保触发 generate_parameter。
+        return [i % 2 == 0 for i, _ in enumerate(context)] if context else [False]
+
+
+def test_write_to_path_updates_data_and_parameters(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config.deduplication_in_trans = True
+    handler = TRANS(config)
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
+    )
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.TRANS.get_processor",
+        lambda self, project: DummyProcessor(project),
+    )
+
+    rel_path = "sample.trans"
+    tag_path = "script/a.json"
+    base_payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                tag_path: {
+                    "tags": [],
+                    "data": [],
+                    "context": [],
+                    "parameters": [],
+                }
+            },
+        }
+    }
+    dummy_data_manager.assets[rel_path] = json.dumps(base_payload).encode("utf-8")
+
+    processed_item = Item.from_dict(
+        {
+            "src": "src1",
+            "dst": "dst1",
+            "status": Base.ProjectStatus.PROCESSED,
+            "tag": tag_path,
+            "row": 0,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "extra_field": {
+                "tag": ["gold"],
+                "context": ["c1", "c2"],
+                "parameter": [],
+            },
+        }
+    )
+    duplicated_item = Item.from_dict(
+        {
+            "src": "src1",
+            "dst": "",
+            "status": Base.ProjectStatus.DUPLICATED,
+            "tag": tag_path,
+            "row": 1,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "extra_field": {
+                "tag": ["gold"],
+                "context": ["c3", "c4"],
+                "parameter": [],
+            },
+        }
+    )
+    excluded_item = Item.from_dict(
+        {
+            "src": "src2",
+            "dst": "src2",
+            "status": Base.ProjectStatus.EXCLUDED,
+            "tag": tag_path,
+            "row": 2,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "extra_field": {
+                "tag": [],
+                "context": ["c5"],
+                "parameter": [{"keep": "yes"}],
+            },
+        }
+    )
+
+    handler.write_to_path([processed_item, duplicated_item, excluded_item])
+
+    output_file = dummy_data_manager.translated_path / rel_path
+    output = json.loads(output_file.read_text(encoding="utf-8"))
+    file_obj = output["project"]["files"][tag_path]
+
+    assert file_obj["data"] == [["src1", "dst1"], ["src1", "dst1"], ["src2", "src2"]]
+    assert file_obj["context"] == [["c1", "c2"], ["c3", "c4"], ["c5"]]
+    assert file_obj["parameters"][0] == [
+        {"contextStr": "c1", "translation": "src1"},
+        {"contextStr": "c2", "translation": ""},
+    ]
+    assert file_obj["parameters"][2] == [{"keep": "yes"}]
+
+
+def test_write_to_path_cleans_empty_tags_and_parameters(
+    config: Config,
+    dummy_data_manager: DummyDataManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = TRANS(config)
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
+    )
+    monkeypatch.setattr(
+        "module.File.TRANS.TRANS.TRANS.get_processor",
+        lambda self, project: DummyProcessor(project),
+    )
+
+    rel_path = "clean.trans"
+    tag_path = "script/clean.json"
+    payload = {
+        "project": {
+            "gameEngine": "dummy",
+            "files": {
+                tag_path: {
+                    "tags": [["old"]],
+                    "data": [["old", "old"]],
+                    "context": [["ctx"]],
+                    "parameters": [[{"old": "1"}]],
+                }
+            },
+        }
+    }
+    dummy_data_manager.assets[rel_path] = json.dumps(payload).encode("utf-8")
+
+    item = Item.from_dict(
+        {
+            "src": "src",
+            "dst": "dst",
+            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+            "tag": tag_path,
+            "row": 0,
+            "file_type": Item.FileType.TRANS,
+            "file_path": rel_path,
+            "extra_field": {
+                "tag": [],
+                "context": ["ctx"],
+                "parameter": [],
+            },
+        }
+    )
+
+    handler.write_to_path([item])
+
+    result = json.loads(
+        (dummy_data_manager.translated_path / rel_path).read_text(encoding="utf-8")
+    )
+    file_obj = result["project"]["files"][tag_path]
+    assert file_obj["tags"] == [[]]
+    assert file_obj["parameters"] == [[]]
 
 
 class MixedBlockProcessor(NONE):
