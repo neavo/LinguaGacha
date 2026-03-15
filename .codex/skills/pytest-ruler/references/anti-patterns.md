@@ -1,27 +1,38 @@
-# Anti-Patterns
+# 测试反模式
 
-## Bad Naming
+## 先看一个总判断
+
+如果断言回答的是“内部是不是刚好这样写”，这大概率就是坏味道；如果断言回答的是“用户能看到的结果对不对”，这才是正路。
+
+优先断言这些公开结果：
+
+- 返回值和异常
+- 最终状态和可读取快照
+- 公开事件和回调载荷
+- 文件内容、数据库记录、持久化结果
+
+## 命名含糊
 
 ```python
-# ❌
+# ❌ 看不出在测什么
 def test_func1(): ...
 def test_it_works(): ...
 
-# ✅ Describe the expected behavior
+# ✅ 直接写清业务意图
 def test_returns_empty_list_when_input_is_none(): ...
 def test_raises_value_error_for_negative_amount(): ...
 ```
 
-## Magic Test Data
+## 测试数据没语义
 
 ```python
-# ❌ Meaningless values
+# ❌ 只是随手凑值
 def test_user():
     user = create_user("aaa", "bbb", 123)
     assert user.is_valid()
 
-# ✅ Data expresses intent
-def test_user_with_valid_email():
+# ✅ 数据本身就说明场景
+def test_user_accepts_valid_email():
     user = create_user(name="John Doe", email="john@example.com", age=25)
     assert user.is_valid()
 
@@ -30,15 +41,15 @@ def test_user_rejects_invalid_email():
     assert not user.is_valid()
 ```
 
-## Meaningless Tests
+## 无意义断言
 
 ```python
-# ❌ Proves nothing useful
-assert obj is not None                              # Tests existence, not behavior
-assert len([1, 2, 3]) == 3                          # Tests Python, not your code
-assert calculate_total([1, 2, 3]) == sum([1, 2, 3]) # Duplicates implementation
+# ❌ 证明不了业务
+assert obj is not None
+assert len([1, 2, 3]) == 3
+assert calculate_total([1, 2, 3]) == sum([1, 2, 3])
 
-# ✅ Tests actual behavior
+# ✅ 直接测需求
 def test_returns_zero_for_empty_list():
     assert calculate_total([]) == 0
 
@@ -46,144 +57,162 @@ def test_handles_negative_values():
     assert calculate_total([-5, 10]) == 5
 ```
 
-## Testing Implementation Details
+## 盯内部实现
 
 ```python
-# ❌ Testing internal state
+# ❌ 看私有缓存
 def test_cache_internal():
-    service = CacheService()
+    service = CacheService(source=lambda key: "value")
     service.get("key")
-    assert "key" in service._cache_dict
+    assert "key" in service.cache_dict
 
-# ❌ Patching internal method to verify short-circuit — still implementation-bound
-def test_cached_via_internal_patch():
-    service = CacheService()
-    service.get("key")
-    with patch.object(service, "fetch_from_source") as mock:
-        service.get("key")
-        mock.assert_not_called()
+# ❌ 只看内部调用细节
+def test_updates_via_mock_call_args():
+    service = MagicMock()
+    run_job(service)
+    assert service.save.call_args.kwargs["status"] == "done"
 
-# ✅ Test through injected dependency (external boundary)
-def test_cached_value_returned_without_extra_source_calls():
-    source = MagicMock(return_value="value")
-    service = CacheService(source=source)
-    first = service.get("key")
-    second = service.get("key")
-    assert first == second == "value"
-    source.assert_called_once()  # external source consulted only once
+# ✅ 记录公开结果快照
+def test_records_completed_job():
+    saved_jobs: list[dict[str, str]] = []
+
+    repository = SimpleNamespace(
+        save=lambda **kwargs: saved_jobs.append(kwargs)
+    )
+
+    run_job(repository)
+
+    assert saved_jobs == [{"status": "done", "result": "ok"}]
 ```
 
-## Mock Mistakes
+## 半成品对象
 
 ```python
-# ❌ Wrong mock location (definition site)
+# ❌ 跳过正常初始化
+service = Service.__new__(Service)
+service.client = MagicMock()
+service.cache = {}
+
+# ✅ 真实构造对象，只隔离副作用边界
+with patch("module.service.ExternalClient") as mock_client:
+    mock_client.return_value.fetch.return_value = {"status": "ok"}
+    service = Service()
+```
+
+不要用 `Class.__new__(Class)` 或手工塞属性去拼一个“看起来能跑”的实例。优先走真实构造，再 patch 网络、线程、事件订阅这类副作用边界。
+
+## Mock 用错地方
+
+```python
+# ❌ patch 在定义点
 @patch("module.utils.helper")
 
-# ✅ Correct (usage site)
+# ✅ patch 在使用点
 @patch("module.service.helper")
 ```
 
+## 只看 mock 调用，不看结果
+
 ```python
-# ❌ Mock without verification
+# ❌ 只证明外部函数被调了
 @patch("module.api.send")
 def test_sends_data(mock_send):
-    process_and_send(data)
-    # Forgot to verify!
+    process_and_send({"id": 1})
+    mock_send.assert_called_once()
 
-# ✅ Verify mock was called
+# ✅ 先证明业务结果，再补边界校验
 @patch("module.api.send")
-def test_sends_data(mock_send):
-    process_and_send(data)
-    mock_send.assert_called_once_with(expected_payload)
+def test_sends_processed_payload(mock_send):
+    result = process_and_send({"id": 1})
+
+    assert result["status"] == "queued"
+    mock_send.assert_called_once_with({"id": 1, "state": "ready"})
 ```
 
-```python
-# ❌ Mock returns wrong structure
-mock_api.return_value = {"data": "value"}
-# But real API returns: {"data": {"items": [...]}}
-
-# ✅ Match real response structure
-mock_api.return_value = {"data": {"items": [{"id": 1}]}}
-```
-
-## File I/O Isolation Anti-Patterns
+## 文件隔离做歪了
 
 ```python
-# ❌ Disk-backed temporary files in unit tests
+# ❌ 依赖磁盘临时目录
 def test_write(tmp_path):
     path = tmp_path / "out.txt"
     save(path)
 
-# ✅ Use pyfakefs fs fixture
+# ✅ 用 pyfakefs 统一隔离
 def test_write(fs):
     path = Path("/workspace/out.txt")
     save(path)
+    assert path.read_text(encoding="utf-8") == "done"
 ```
 
 ```python
-# ❌ Patching open only covers part of file APIs
+# ❌ 只 patch open，覆盖不全
 with patch("builtins.open", mock_open(read_data="x")):
     load()
 
-# ✅ fs fixture covers Path/open/os/shutil/glob together
+# ✅ 用 fs 一次接住 Path/open/os/shutil/glob
 def test_load(fs):
-    Path("/workspace/data.txt").write_text("x", encoding="utf-8")
-    assert load() == "x"
+    path = Path("/workspace/data.txt")
+    path.write_text("x", encoding="utf-8")
+    assert load(path) == "x"
 ```
 
-## Test Isolation
+新增测试不要再用 `tmp_path`、`tempfile`、`mock_open`。
+
+## 测试互相污染
 
 ```python
-# ❌ Tests depend on execution order
+# ❌ 依赖执行顺序
 class TestOrdered:
     shared_state = []
+
     def test_first(self):
         self.shared_state.append(1)
-    def test_second(self):
-        assert self.shared_state == [1]  # Fails if run alone
 
-# ✅ Each test is independent
+    def test_second(self):
+        assert self.shared_state == [1]
+
+# ✅ 每个测试都自给自足
 def test_first():
     state = [1]
     assert state == [1]
 ```
 
 ```python
-# ❌ Fixture returns mutable shared object
+# ❌ 返回共享可变对象
 @pytest.fixture
 def shared_list():
-    return global_list  # Mutations affect other tests
+    return global_list
 
-# ✅ Return fresh copy
+# ✅ 返回新对象
 @pytest.fixture
 def items():
     return [1, 2, 3]
 ```
 
-## Time-Dependent Tests
+## 时间相关测试不受控
 
 ```python
-# ❌ Flaky - fails at certain times
+# ❌ 靠当前时间碰运气
 def test_expiry():
     token = create_token()
     assert not token.is_expired()
 
-# ✅ Control time explicitly
+# ✅ 显式控制时间
 @patch("module.auth.datetime")
-def test_expiry(mock_dt):
-    mock_dt.now.return_value = datetime(2024, 1, 1, 12, 0)
+def test_expiry(mock_datetime):
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0)
     token = create_token()
     assert not token.is_expired()
 ```
 
-## Coverage Traps
+## 覆盖率陷阱
 
 ```python
-# ❌ Only happy path
+# ❌ 只有快乐路径
 def test_process():
     assert process(valid_data) == expected
 
-# ✅ Cover edge cases and errors
+# ✅ 把边界和错误分支补齐
 def test_process_valid():
     assert process(valid_data) == expected
 
@@ -195,19 +224,10 @@ def test_process_invalid_raises():
         process(None)
 ```
 
-## Over-Abstraction
+## 旧白盒测试整改顺序
 
-```python
-# ❌ Too DRY - hard to understand each test
-def assert_valid(resp, code, body):
-    assert resp.status == code
-    assert resp.body == body
-
-def test_create(): assert_valid(create(), 201, {...})
-
-# ✅ Readable, some repetition is OK
-def test_create_returns_201():
-    response = create()
-    assert response.status == 201
-    assert response.body["id"] is not None
-```
+1. 先扫：`rg -n "__new__|call_args|call_args_list|tmp_path|mock_open" tests`
+2. 说清这个测试到底要证明什么业务行为
+3. 把内部调用断言换成结果快照、事件序列或持久化断言
+4. 把重复准备逻辑收进最近的 `conftest.py`
+5. 能用内存数据库和虚拟文件系统，就别再手造假的系统壳

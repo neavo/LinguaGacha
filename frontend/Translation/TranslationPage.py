@@ -538,8 +538,7 @@ class TranslationPage(Base, QWidget):
                     Localizer.get().translation_page_card_token_output
                 )
 
-            # 应用淡入淡出动效
-            self.animate_token_card_switch()
+            self.update_token(self.data)
 
         self.token = DashboardCard(
             parent=self,
@@ -555,72 +554,6 @@ class TranslationPage(Base, QWidget):
         )
         self.token.setToolTip(Localizer.get().translation_page_card_token_tooltip)
         parent.addWidget(self.token)
-
-    def animate_token_card_switch(self) -> None:
-        """为累计消耗卡片的数值标签执行淡入淡出动效"""
-        from PySide6.QtCore import QEasingCurve
-        from PySide6.QtCore import QPropertyAnimation
-        from PySide6.QtWidgets import QGraphicsOpacityEffect
-
-        value_label = self.token.value_label
-        unit_label = self.token.unit_label
-
-        # 为标签添加透明度效果（如果还没有的话）
-        if (
-            not hasattr(self, "token_value_opacity_effect")
-            or self.token_value_opacity_effect is None
-        ):
-            self.token_value_opacity_effect = QGraphicsOpacityEffect(value_label)
-            value_label.setGraphicsEffect(self.token_value_opacity_effect)
-
-        if (
-            not hasattr(self, "token_unit_opacity_effect")
-            or self.token_unit_opacity_effect is None
-        ):
-            self.token_unit_opacity_effect = QGraphicsOpacityEffect(unit_label)
-            unit_label.setGraphicsEffect(self.token_unit_opacity_effect)
-
-        # 创建淡出动画
-        fade_out = QPropertyAnimation(self.token_value_opacity_effect, b"opacity")
-        fade_out.setDuration(100)
-        fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.3)
-        fade_out.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        fade_out_unit = QPropertyAnimation(self.token_unit_opacity_effect, b"opacity")
-        fade_out_unit.setDuration(100)
-        fade_out_unit.setStartValue(1.0)
-        fade_out_unit.setEndValue(0.3)
-        fade_out_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        # 创建淡入动画
-        fade_in = QPropertyAnimation(self.token_value_opacity_effect, b"opacity")
-        fade_in.setDuration(100)
-        fade_in.setStartValue(0.3)
-        fade_in.setEndValue(1.0)
-        fade_in.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        fade_in_unit = QPropertyAnimation(self.token_unit_opacity_effect, b"opacity")
-        fade_in_unit.setDuration(100)
-        fade_in_unit.setStartValue(0.3)
-        fade_in_unit.setEndValue(1.0)
-        fade_in_unit.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        # 淡出完成后更新数据并开始淡入
-        def on_fade_out_finished() -> None:
-            self.update_token(self.data)
-            fade_in.start()
-            fade_in_unit.start()
-
-        fade_out.finished.connect(on_fade_out_finished)
-        fade_out.start()
-        fade_out_unit.start()
-
-        # 保持动画引用避免被垃圾回收
-        self.token_fade_out_anim = fade_out
-        self.token_fade_out_unit_anim = fade_out_unit
-        self.token_fade_in_anim = fade_in
-        self.token_fade_in_unit_anim = fade_in_unit
 
     # 并行任务
     def add_task_card(

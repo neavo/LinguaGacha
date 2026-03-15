@@ -238,6 +238,8 @@ class QualityRulePresetManager:
 
     def build_preset_menu(self, parent_widget: QWidget) -> RoundMenu:
         menu = RoundMenu("", parent_widget)
+        builtin_presets, user_presets = self.get_preset_paths()
+
         menu.addAction(
             Action(
                 ICON_RULE_RESET,
@@ -256,9 +258,9 @@ class QualityRulePresetManager:
                 ),
             )
         )
-        menu.addSeparator()
-
-        builtin_presets, user_presets = self.get_preset_paths()
+        if builtin_presets or user_presets:
+            # 只有后面真有预设分组时，才需要把固定动作和预设列表隔开。
+            menu.addSeparator()
 
         for item in builtin_presets:
             sub_menu = RoundMenu(item["name"], menu)
