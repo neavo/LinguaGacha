@@ -447,7 +447,7 @@ class QualityRuleIconDelegate(TableItemDelegate):
     def get_icon_strip_rect(self, option_rect: QRect, decoration: QPixmap) -> QRect:
         try:
             dpr = float(decoration.devicePixelRatio())
-        except TypeError, RuntimeError:
+        except (TypeError, RuntimeError):
             dpr = 1.0
 
         strip_width = int(decoration.width() / max(1.0, dpr))
@@ -485,7 +485,7 @@ class QualityRuleIconRenderer:
         is_dark = isDarkTheme()
         try:
             dpr = float(table.devicePixelRatioF())
-        except AttributeError, TypeError, RuntimeError:
+        except (AttributeError, TypeError, RuntimeError):
             # 在部分 Qt 对象/生命周期阶段可能取不到 DPR，回退到 1.0。
             dpr = 1.0
 
@@ -531,7 +531,7 @@ class QualityRuleIconRenderer:
 
         try:
             pixmap.setDevicePixelRatio(dpr)
-        except AttributeError, TypeError, RuntimeError:
+        except (AttributeError, TypeError, RuntimeError):
             # 设置 DPR 失败不影响绘制结果，可忽略。
             pass
         return pixmap

@@ -1,0 +1,42 @@
+# Core UI
+PySide6
+PySide6-Fluent-Widgets[full]
+
+# AI / LLM
+openai
+anthropic
+google-genai
+
+# Network
+httpx
+
+# Tokenizer
+tiktoken
+
+# Tools
+rich
+opencc-pyo3
+openpyxl
+orjson
+json-repair
+lxml
+beautifulsoup4
+charset-normalizer
+
+# Compression
+# compression.zstd is Python 3.14+ stdlib; use zstandard for Python 3.12/3.13
+zstandard
+
+# API server (colin4k fork)
+fastapi
+uvicorn[standard]
+pydantic
+
+# Web backend (colin4k fork)
+supabase
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+aiofiles
+asyncio-mqtt
+python-dotenv

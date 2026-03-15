@@ -189,7 +189,7 @@ class ActionMenuDelegate(TableItemDelegate):
             dpr = float(view.devicePixelRatioF())
         except AttributeError:
             dpr = 1.0
-        except TypeError, RuntimeError:
+        except (TypeError, RuntimeError):
             dpr = 1.0
 
         key = (is_dark, int(round(dpr * 100)), icon.name)

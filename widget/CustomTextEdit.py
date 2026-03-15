@@ -89,7 +89,7 @@ class CustomTextEdit(PlainTextEdit):
         """断开全局信号连接，避免内存泄漏"""
         try:
             qconfig.themeChangedFinished.disconnect(self.refresh_style)
-        except TypeError, RuntimeError:
+        except (TypeError, RuntimeError):
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
 

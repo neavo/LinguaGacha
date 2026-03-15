@@ -335,7 +335,7 @@ class TaskRequester(Base):
             client: openai.OpenAI,
             request_args: dict[str, Any],
         ) -> Iterator[StreamSession]:
-            with client.chat.completions.stream(**request_args) as stream:
+            with client.beta.chat.completions.stream(**request_args) as stream:
                 iterator: Any = iter(stream) if hasattr(stream, "__iter__") else stream
 
                 def close() -> Any:
@@ -385,12 +385,12 @@ class TaskRequester(Base):
             usage: Any = getattr(completion, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -470,12 +470,12 @@ class TaskRequester(Base):
             usage: Any = getattr(message, "usage", None)
             try:
                 input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens
@@ -554,14 +554,14 @@ class TaskRequester(Base):
             last_usage: Any = state.last_usage
             try:
                 input_tokens = int(last_usage.prompt_token_count)
-            except AttributeError, TypeError, ValueError:
+            except (AttributeError, TypeError, ValueError):
                 input_tokens = 0
 
             try:
                 total_token_count = int(last_usage.total_token_count)
                 prompt_token_count = int(last_usage.prompt_token_count)
                 output_tokens = total_token_count - prompt_token_count
-            except AttributeError, TypeError, ValueError:
+            except (AttributeError, TypeError, ValueError):
                 output_tokens = 0
 
             return response_think, response_result, input_tokens, output_tokens

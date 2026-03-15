@@ -34,7 +34,7 @@ class StatusColumnIconStrip:
 
         try:
             return float(table.devicePixelRatioF())
-        except AttributeError, TypeError, RuntimeError:
+        except (AttributeError, TypeError, RuntimeError):
             return 1.0
 
     @staticmethod
@@ -168,7 +168,7 @@ class StatusColumnIconStrip:
 
         try:
             pixmap.setDevicePixelRatio(dpr)
-        except AttributeError, TypeError, RuntimeError:
+        except (AttributeError, TypeError, RuntimeError):
             # 设置 DPR 失败不影响显示，可安全忽略。
             pass
 
