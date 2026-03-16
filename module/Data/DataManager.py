@@ -223,9 +223,7 @@ class DataManager(Base):
         del event
         del data
 
-        config = Config().load()
-        if self.is_prefilter_needed(config):
-            self.schedule_project_prefilter(config, reason="project_loaded")
+        self.schedule_prefilter_if_needed(reason="project_loaded")
 
     def on_config_updated(self, event: Base.Event, data: dict) -> None:
         """关键配置变化后补跑预过滤。"""
@@ -241,9 +239,14 @@ class DataManager(Base):
         if not self.is_loaded():
             return
 
+        self.schedule_prefilter_if_needed(reason="config_updated")
+
+    def schedule_prefilter_if_needed(self, *, reason: str) -> None:
+        """按当前配置判断是否需要补跑预过滤。"""
+
         config = Config().load()
         if self.is_prefilter_needed(config):
-            self.schedule_project_prefilter(config, reason="config_updated")
+            self.schedule_project_prefilter(config, reason=reason)
 
     def is_prefilter_needed(self, config: Config) -> bool:
         """判断当前工程是否需要重跑预过滤。"""
@@ -935,6 +938,14 @@ class DataManager(Base):
             payload["old_rel_path"] = result.old_rel_path
         self.emit(Base.Event.PROJECT_FILE_UPDATE, payload)
 
+    def require_loaded_lg_path(self) -> str:
+        """读取当前工程路径；未加载工程时统一抛出同一条错误。"""
+
+        lg_path = self.get_lg_path()
+        if not self.is_loaded() or not lg_path:
+            raise RuntimeError("工程未加载，无法获取输出路径")
+        return lg_path
+
     def build_workbench_snapshot(self) -> WorkbenchSnapshot:
         return self.workbench_service.build_snapshot(
             self.get_all_asset_paths(),
@@ -988,25 +999,22 @@ class DataManager(Base):
         self.emit_project_file_update(self.project_file_service.delete_file(rel_path))
 
     def timestamp_suffix_context(self) -> AbstractContextManager[None]:
-        lg_path = self.get_lg_path()
-        if not self.is_loaded() or not lg_path:
-            raise RuntimeError("工程未加载，无法获取输出路径")
-        return self.export_path_service.timestamp_suffix_context(lg_path)
+        return self.export_path_service.timestamp_suffix_context(
+            self.require_loaded_lg_path()
+        )
 
     def export_custom_suffix_context(self, suffix: str) -> AbstractContextManager[None]:
         return self.export_path_service.custom_suffix_context(suffix)
 
     def get_translated_path(self) -> str:
-        lg_path = self.get_lg_path()
-        if not self.is_loaded() or not lg_path:
-            raise RuntimeError("工程未加载，无法获取输出路径")
-        return self.export_path_service.get_translated_path(lg_path)
+        return self.export_path_service.get_translated_path(
+            self.require_loaded_lg_path()
+        )
 
     def get_bilingual_path(self) -> str:
-        lg_path = self.get_lg_path()
-        if not self.is_loaded() or not lg_path:
-            raise RuntimeError("工程未加载，无法获取输出路径")
-        return self.export_path_service.get_bilingual_path(lg_path)
+        return self.export_path_service.get_bilingual_path(
+            self.require_loaded_lg_path()
+        )
 
     def get_supported_extensions(self) -> set[str]:
         return set(self.project_service.SUPPORTED_EXTENSIONS)

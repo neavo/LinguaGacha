@@ -101,6 +101,15 @@ class CLIManager(Base):
                 )
                 raise ValueError(message) from e
 
+        def normalize_rule_entries(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            """统一清理规则项，只保留 src 非空的有效行。"""
+
+            return [
+                dict(value)
+                for value in data
+                if isinstance(value, dict) and str(value.get("src", "")).strip() != ""
+            ]
+
         # 默认：不使用任何规则（包含工程内 rules/meta）。
         glossary_enable = False
         glossary_entries: list[dict[str, Any]] = []
@@ -118,11 +127,7 @@ class CLIManager(Base):
         if isinstance(glossary_path, str) and glossary_path:
             data = load_rule_list("--glossary", glossary_path)
             glossary_enable = True
-            glossary_entries = [
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            ]
+            glossary_entries = normalize_rule_entries(data)
 
         effective_text_preserve_mode: DataManager.TextPreserveMode
         if isinstance(text_preserve_mode_arg, str) and text_preserve_mode_arg:
@@ -146,11 +151,7 @@ class CLIManager(Base):
 
             data = load_rule_list("--text_preserve", text_preserve_path)
             text_preserve_mode = DataManager.TextPreserveMode.CUSTOM
-            text_preserve_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            text_preserve_entries = tuple(normalize_rule_entries(data))
         elif effective_text_preserve_mode == DataManager.TextPreserveMode.SMART:
             if isinstance(text_preserve_path, str) and text_preserve_path:
                 message = (
@@ -173,20 +174,12 @@ class CLIManager(Base):
         if isinstance(pre_replacement_path, str) and pre_replacement_path:
             data = load_rule_list("--pre_replacement", pre_replacement_path)
             pre_replacement_enable = True
-            pre_replacement_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            pre_replacement_entries = tuple(normalize_rule_entries(data))
 
         if isinstance(post_replacement_path, str) and post_replacement_path:
             data = load_rule_list("--post_replacement", post_replacement_path)
             post_replacement_enable = True
-            post_replacement_entries = tuple(
-                dict(v)
-                for v in data
-                if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-            )
+            post_replacement_entries = tuple(normalize_rule_entries(data))
 
         def load_text_prompt(arg_name: str, path: str) -> str:
             if not os.path.isfile(path):

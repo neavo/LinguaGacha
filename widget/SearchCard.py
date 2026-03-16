@@ -493,8 +493,6 @@ class SearchCard(CardWidget):
                 regex_mode=self.regex_mode,
             )
 
-        return
-
     def apply_table_search(self) -> None:
         """根据当前 keyword/regex 状态应用搜索（用于选项切换/回车触发）。"""
 
@@ -667,28 +665,48 @@ class SearchCard(CardWidget):
         except re.error as e:
             return False, str(e)
 
+    def build_self_callback(
+        self, callback: Callable[["SearchCard"], None]
+    ) -> Callable[..., None]:
+        """统一包装 Qt 信号回调，忽略额外参数并透传当前卡片实例。"""
+
+        def wrapped(*args: object) -> None:
+            del args
+            callback(self)
+
+        return wrapped
+
+    @staticmethod
+    def build_emit_callback(callback: Callable[[], None]) -> Callable[..., None]:
+        """统一吞掉 Qt 信号的附带参数，避免重复写等价 lambda。"""
+
+        def wrapped(*args: object) -> None:
+            del args
+            callback()
+
+        return wrapped
+
     def on_prev_clicked(self, clicked: Callable) -> None:
         """注册上一个按钮点击回调，传递 self 以便外部获取上下文"""
-        self.prev_btn.clicked.connect(lambda: clicked(self))
+        self.prev_btn.clicked.connect(self.build_self_callback(clicked))
 
     def on_next_clicked(self, clicked: Callable) -> None:
         """注册下一个按钮点击回调，传递 self 以便外部获取上下文"""
-        self.next_btn.clicked.connect(lambda: clicked(self))
+        self.next_btn.clicked.connect(self.build_self_callback(clicked))
 
     def on_back_clicked(self, clicked: Callable) -> None:
         """注册返回按钮点击回调，传递 self 以便外部获取上下文"""
-        self.back.clicked.connect(lambda: clicked(self))
+        self.back.clicked.connect(self.build_self_callback(clicked))
 
     def on_search_triggered(self, triggered: Callable) -> None:
         """注册搜索触发回调（回车或点击搜索图标）"""
-        # searchSignal 在点击搜索按钮时触发，某些版本回车键也会触发此信号
-        self.line_edit.searchSignal.connect(
-            lambda text: self.emit_search_triggered(triggered)
-        )
-        # 显式连接 returnPressed 信号，确保回车键始终能响应搜索
-        self.line_edit.returnPressed.connect(
+        handler = self.build_emit_callback(
             lambda: self.emit_search_triggered(triggered)
         )
+        # searchSignal 在点击搜索按钮时触发，某些版本回车键也会触发此信号
+        self.line_edit.searchSignal.connect(handler)
+        # 显式连接 returnPressed 信号，确保回车键始终能响应搜索
+        self.line_edit.returnPressed.connect(handler)
 
     def emit_search_triggered(self, triggered: Callable) -> None:
         keyword = self.get_keyword()
@@ -708,16 +726,18 @@ class SearchCard(CardWidget):
 
     def on_search_options_changed(self, changed: Callable) -> None:
         """注册搜索选项切换回调。"""
-        self.search_options_changed.connect(lambda: changed(self))
+        self.search_options_changed.connect(self.build_self_callback(changed))
 
     def on_replace_clicked(self, clicked: Callable) -> None:
         """注册单步替换点击回调。"""
-        self.replace_btn.clicked.connect(lambda: self.emit_replace_triggered(clicked))
+        self.replace_btn.clicked.connect(
+            self.build_emit_callback(lambda: self.emit_replace_triggered(clicked))
+        )
 
     def on_replace_all_clicked(self, clicked: Callable) -> None:
         """注册全部替换点击回调。"""
         self.replace_all_btn.clicked.connect(
-            lambda: self.emit_replace_all_triggered(clicked)
+            self.build_emit_callback(lambda: self.emit_replace_all_triggered(clicked))
         )
 
     def emit_replace_triggered(self, clicked: Callable) -> None:
