@@ -24,7 +24,6 @@ def build_service() -> tuple[ProjectPrefilterService, ProjectSession]:
     session = ProjectSession()
     session.db = SimpleNamespace(
         delete_analysis_item_checkpoints=MagicMock(),
-        clear_analysis_task_observations=MagicMock(),
         clear_analysis_candidate_aggregates=MagicMock(),
     )
     session.lg_path = "demo/project.lg"

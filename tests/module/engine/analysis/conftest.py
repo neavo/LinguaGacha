@@ -5,6 +5,7 @@ import pytest
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
+from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 
 class FakeDataManager:
@@ -104,13 +105,11 @@ class FakeDataManager:
                 error_line += 1
 
         line = processed_line + error_line
-        pending_line = max(0, total_line - line)
         return {
             "total_line": total_line,
             "processed_line": processed_line,
             "error_line": error_line,
             "line": line,
-            "pending_line": pending_line,
         }
 
     def get_pending_analysis_items(self):
@@ -124,14 +123,10 @@ class FakeDataManager:
             if source_text == "":
                 continue
 
-            source_hash = DataManager.build_analysis_source_hash(source_text)
             checkpoint = self.analysis_item_checkpoints.get(item_id)
-            if checkpoint is not None:
-                if (
-                    checkpoint.get("status") == Base.ProjectStatus.PROCESSED
-                    and checkpoint.get("source_hash") == source_hash
-                ):
-                    continue
+            status = checkpoint.get("status") if isinstance(checkpoint, dict) else None
+            if not TaskModeStrategy.should_schedule_continue(status):
+                continue
 
             pending_items.append(item)
 
@@ -140,12 +135,10 @@ class FakeDataManager:
     def commit_analysis_task_result(
         self,
         *,
-        task_fingerprint: str = "",
         checkpoints: list[dict[str, object]] | None = None,
         glossary_entries: list[dict[str, object]] | None = None,
         progress_snapshot: dict[str, object] | None = None,
     ) -> int:
-        del task_fingerprint
         if checkpoints is None:
             checkpoints = []
         if glossary_entries is None:
@@ -165,7 +158,6 @@ class FakeDataManager:
             if item_id <= 0:
                 continue
             self.analysis_item_checkpoints[item_id] = {
-                "source_hash": checkpoint.get("source_hash", ""),
                 "status": Base.ProjectStatus.PROCESSED,
                 "error_count": 0,
             }
@@ -191,7 +183,6 @@ class FakeDataManager:
                 old_error_count = int(checkpoint.get("error_count", 0) or 0)
 
             self.analysis_item_checkpoints[item_id] = {
-                "source_hash": raw_checkpoint.get("source_hash", ""),
                 "status": Base.ProjectStatus.ERROR,
                 "error_count": old_error_count + 1,
             }

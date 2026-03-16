@@ -6,8 +6,9 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.ChunkGenerator import ChunkGenerator
+from module.Engine.TaskModeStrategy import TaskModeStrategy
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
-from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.Engine.Translation.TranslationTask import TranslationTask
 
 
 @dataclass(order=True)
@@ -46,7 +47,7 @@ class TaskScheduler(Base):
         self.factor = math.pow(16 / t0_effective, 0.25)
 
     def generate_initial_contexts_iter(self) -> "Iterator[TaskContext]":
-        """流式生成初始任务上下文（不创建 TranslatorTask）。"""
+        """流式生成初始任务上下文（不创建 TranslationTask）。"""
         for chunk_items, chunk_precedings in ChunkGenerator.generate_item_chunks_iter(
             items=self.items,
             input_token_threshold=self.initial_t0,
@@ -63,7 +64,11 @@ class TaskScheduler(Base):
         self, context: TaskContext, result: dict
     ) -> list[TaskContext]:
         """处理失败任务上下文，返回新的上下文列表（可能为空）。"""
-        items = [i for i in context.items if i.get_status() == Base.ProjectStatus.NONE]
+        items = [
+            item
+            for item in context.items
+            if TaskModeStrategy.should_schedule_continue(item.get_status())
+        ]
         if not items:
             return []
 
@@ -120,9 +125,9 @@ class TaskScheduler(Base):
 
         return new_contexts
 
-    def create_task(self, context: TaskContext) -> TranslatorTask:
-        """根据上下文创建 TranslatorTask"""
-        task = TranslatorTask(
+    def create_task(self, context: TaskContext) -> TranslationTask:
+        """根据上下文创建 TranslationTask"""
+        task = TranslationTask(
             config=self.config,
             model=self.model,
             items=context.items,

@@ -7,6 +7,7 @@ from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 
 class TranslationResetService:
@@ -37,7 +38,7 @@ class TranslationResetService:
 
         changed_items: list[dict[str, Any]] = []
         for item in items:
-            if item.get_status() != Base.ProjectStatus.ERROR:
+            if not TaskModeStrategy.should_reset_failed(item.get_status()):
                 continue
 
             item.set_dst("")
@@ -57,12 +58,7 @@ class TranslationResetService:
         total_line = sum(
             1
             for item in items
-            if item.get_status()
-            in (
-                Base.ProjectStatus.NONE,
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.ERROR,
-            )
+            if TaskModeStrategy.is_tracked_progress_status(item.get_status())
         )
 
         extras = self.meta_service.get_meta("translation_extras", {})

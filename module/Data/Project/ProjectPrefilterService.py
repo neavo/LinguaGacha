@@ -203,7 +203,6 @@ class ProjectPrefilterService:
             "source_language": request.source_language,
             "target_language": request.target_language,
             "analysis_extras": {},
-            "analysis_state": {},
         }
 
         with self.session.state_lock:
@@ -212,7 +211,6 @@ class ProjectPrefilterService:
 
             self.batch_service.update_batch(items=item_dicts, meta=meta)
             self.session.db.delete_analysis_item_checkpoints()
-            self.session.db.clear_analysis_task_observations()
             self.session.db.clear_analysis_candidate_aggregates()
 
         return result

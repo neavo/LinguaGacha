@@ -1,25 +1,22 @@
-from module.Engine.Analyzer.AnalysisModels import AnalysisProgressSnapshot
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
-from module.Engine.Analyzer.AnalysisModels import AnalysisItemContext
+from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
+from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 
 
 def test_analysis_task_context_exposes_item_count_and_source_texts() -> None:
     context = AnalysisTaskContext(
-        task_fingerprint="fp",
         file_path="story.txt",
         items=(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
                 source_text="A",
-                source_hash="h1",
             ),
             AnalysisItemContext(
                 item_id=2,
                 file_path="story.txt",
                 source_text="B",
-                source_hash="h2",
             ),
         ),
     )
@@ -30,7 +27,7 @@ def test_analysis_task_context_exposes_item_count_and_source_texts() -> None:
 
 
 def test_analysis_task_result_defaults_stay_empty_and_zero() -> None:
-    context = AnalysisTaskContext(task_fingerprint="fp", file_path="a.txt", items=())
+    context = AnalysisTaskContext(file_path="a.txt", items=())
 
     result = AnalysisTaskResult(context=context, success=True, stopped=False)
 

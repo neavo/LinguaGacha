@@ -7,16 +7,16 @@ from base.Base import Base
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
 from module.Data.DataManager import DataManager
-from module.Engine.Analyzer.AnalysisModels import AnalysisItemContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
-from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
-from module.Engine.Analyzer.Analyzer import Analyzer
+from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
+from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
+from module.Engine.Analysis.Analysis import Analysis
 
-from tests.module.engine.analyzer.support import analysis_pipeline_module
-from tests.module.engine.analyzer.support import build_request_pipeline
-from tests.module.engine.analyzer.support import capture_chunk_log
-from tests.module.engine.analyzer.support import stub_glossary_request
+from tests.module.engine.analysis.support import analysis_pipeline_module
+from tests.module.engine.analysis.support import build_request_pipeline
+from tests.module.engine.analysis.support import capture_chunk_log
+from tests.module.engine.analysis.support import stub_glossary_request
 
 
 def build_analysis_runtime_extras(**overrides: object) -> dict[str, object]:
@@ -39,7 +39,6 @@ def build_item(item_id: int, src: str, file_path: str = "story.txt") -> Item:
 
 
 def build_context(
-    fingerprint: str,
     *,
     item_ids: tuple[int, ...] = (1,),
     file_path: str = "story.txt",
@@ -50,12 +49,10 @@ def build_context(
             item_id=item_id,
             file_path=file_path,
             source_text=f"src-{item_id}",
-            source_hash=f"hash-{item_id}",
         )
         for item_id in item_ids
     )
     return AnalysisTaskContext(
-        task_fingerprint=fingerprint,
         file_path=file_path,
         items=items,
         retry_count=retry_count,
@@ -94,8 +91,8 @@ class FakeConsoleProgress:
 
 
 def build_analysis_pipeline() -> AnalysisPipeline:
-    analyzer = Analyzer()
-    return AnalysisPipeline(analyzer)
+    analysis = Analysis()
+    return AnalysisPipeline(analysis)
 
 
 def install_print_chunk_log_runtime(
@@ -123,12 +120,12 @@ def install_print_chunk_log_runtime(
     return logger, console_outputs
 
 
-def test_build_progress_snapshot_counts_current_hash_status_and_reuses_progress(
+def test_build_progress_snapshot_counts_current_status_and_reuses_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
     fake_data_manager.items = [
         build_item(1, "A"),
         build_item(2, "B"),
@@ -136,9 +133,7 @@ def test_build_progress_snapshot_counts_current_hash_status_and_reuses_progress(
     ]
     checkpoint_map = {}
     for item in fake_data_manager.items[:2]:
-        source_text = pipeline.build_analysis_source_text(item)
         checkpoint_map[item.get_id()] = {
-            "source_hash": pipeline.build_source_hash(source_text),
             "status": Base.ProjectStatus.PROCESSED
             if item.get_id() == 1
             else Base.ProjectStatus.ERROR,
@@ -174,29 +169,21 @@ def test_build_progress_snapshot_counts_current_hash_status_and_reuses_progress(
     assert float(snapshot.start_time) <= time.time()
 
 
-def test_build_analysis_task_contexts_skips_processed_same_hash_and_keeps_changed_text(
+def test_build_analysis_task_contexts_continue_only_schedules_none_items(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
     done_item = build_item(1, "done")
     changed_item = build_item(2, "changed")
     error_item = build_item(3, "error", file_path="scene.txt")
-    fake_data_manager.items = [done_item, changed_item, error_item]
-
-    done_hash = pipeline.build_source_hash(
-        pipeline.build_analysis_source_text(done_item)
-    )
+    pending_item = build_item(4, "pending", file_path="scene.txt")
+    fake_data_manager.items = [done_item, changed_item, error_item, pending_item]
     fake_data_manager.analysis_item_checkpoints = {
-        1: {"source_hash": done_hash, "status": Base.ProjectStatus.PROCESSED},
-        2: {"source_hash": "old-hash", "status": Base.ProjectStatus.PROCESSED},
-        3: {
-            "source_hash": pipeline.build_source_hash(
-                pipeline.build_analysis_source_text(error_item)
-            ),
-            "status": Base.ProjectStatus.ERROR,
-        },
+        1: {"status": Base.ProjectStatus.PROCESSED},
+        2: {"status": Base.ProjectStatus.PROCESSED},
+        3: {"status": Base.ProjectStatus.ERROR},
     }
 
     monkeypatch.setattr(
@@ -205,11 +192,10 @@ def test_build_analysis_task_contexts_skips_processed_same_hash_and_keeps_change
         lambda: fake_data_manager,
     )
 
-    contexts = pipeline.build_analysis_task_contexts(analyzer.config)
+    contexts = pipeline.build_analysis_task_contexts(analysis.config)
 
-    assert [context.file_path for context in contexts] == ["story.txt", "scene.txt"]
-    assert [item.item_id for item in contexts[0].items] == [2]
-    assert [item.item_id for item in contexts[1].items] == [3]
+    assert [context.file_path for context in contexts] == ["scene.txt"]
+    assert [item.item_id for item in contexts[0].items] == [4]
 
 
 def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
@@ -222,15 +208,15 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
         lambda: fake_data_manager,
     )
 
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
-    analyzer.task_limiter = None
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
+    analysis.task_limiter = None
 
-    success_context = build_context("success", item_ids=(1, 2))
-    fail_context = build_context("failed", item_ids=(3,))
+    success_context = build_context(item_ids=(1, 2))
+    fail_context = build_context(item_ids=(3,))
     results = {
-        "success": AnalysisTaskResult(
+        (1, 2): AnalysisTaskResult(
             context=success_context,
             success=True,
             stopped=False,
@@ -245,7 +231,7 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
                 },
             ),
         ),
-        "failed": AnalysisTaskResult(
+        (3,): AnalysisTaskResult(
             context=fail_context,
             success=False,
             stopped=False,
@@ -255,9 +241,9 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     }
 
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "run_task_context",
-        lambda context: results[context.task_fingerprint],
+        lambda context: results[tuple(item.item_id for item in context.items)],
     )
 
     status = pipeline.execute_task_contexts(
@@ -267,9 +253,9 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
 
     assert status == "FAILED"
     assert fake_data_manager.analysis_candidate_count == 1
-    assert analyzer.extras["processed_line"] == 2
-    assert analyzer.extras["error_line"] == 1
-    assert analyzer.extras["added_glossary"] == 1
+    assert analysis.extras["processed_line"] == 2
+    assert analysis.extras["error_line"] == 1
+    assert analysis.extras["added_glossary"] == 1
     assert (
         fake_data_manager.analysis_item_checkpoints[1]["status"]
         == Base.ProjectStatus.PROCESSED
@@ -286,14 +272,12 @@ def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
     pipeline = build_request_pipeline()
 
     context = AnalysisTaskContext(
-        task_fingerprint="fp",
         file_path="story.txt",
         items=(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
                 source_text="Alice, Bob",
-                source_hash="h1",
             ),
         ),
     )
@@ -331,7 +315,7 @@ def test_execute_task_request_returns_failure_when_response_shape_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline = build_request_pipeline()
-    context = build_context("fp")
+    context = build_context()
 
     stub_glossary_request(monkeypatch, response_result='{"bad":[]}')
 
@@ -345,7 +329,7 @@ def test_execute_task_request_returns_failure_when_glossary_is_filtered_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline = build_request_pipeline()
-    context = build_context("fp")
+    context = build_context()
     captured = capture_chunk_log(monkeypatch, pipeline)
 
     stub_glossary_request(
@@ -365,7 +349,7 @@ def test_execute_task_request_treats_empty_jsonline_as_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline = build_request_pipeline()
-    context = build_context("fp")
+    context = build_context()
     captured = capture_chunk_log(monkeypatch, pipeline)
 
     stub_glossary_request(
@@ -387,7 +371,7 @@ def test_execute_task_request_returns_failure_when_empty_result_has_no_why(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline = build_request_pipeline()
-    context = build_context("fp")
+    context = build_context()
     captured = capture_chunk_log(monkeypatch, pipeline)
 
     stub_glossary_request(
@@ -414,12 +398,12 @@ def test_execute_task_contexts_retries_same_context_until_limit_then_marks_error
         lambda: fake_data_manager,
     )
 
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
-    analyzer.task_limiter = None
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
+    analysis.task_limiter = None
 
-    context = build_context("failed", item_ids=(1, 2))
+    context = build_context(item_ids=(1, 2))
     seen_retry_counts: list[int] = []
 
     def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
@@ -432,13 +416,13 @@ def test_execute_task_contexts_retries_same_context_until_limit_then_marks_error
             output_tokens=0,
         )
 
-    monkeypatch.setattr(analyzer, "run_task_context", fake_run)
+    monkeypatch.setattr(analysis, "run_task_context", fake_run)
 
     status = pipeline.execute_task_contexts([context], max_workers=1)
 
     assert status == "FAILED"
     assert seen_retry_counts == [0, 1, 2]
-    assert analyzer.extras["error_line"] == 2
+    assert analysis.extras["error_line"] == 2
     assert (
         fake_data_manager.analysis_item_checkpoints[1]["status"]
         == Base.ProjectStatus.ERROR
@@ -459,12 +443,12 @@ def test_execute_task_contexts_stops_retrying_after_successful_retry(
         lambda: fake_data_manager,
     )
 
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(start_time=time.time())
-    analyzer.task_limiter = None
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
+    analysis.task_limiter = None
 
-    context = build_context("retry-success", item_ids=(5,))
+    context = build_context(item_ids=(5,))
     seen_retry_counts: list[int] = []
 
     def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
@@ -486,14 +470,14 @@ def test_execute_task_contexts_stops_retrying_after_successful_retry(
             glossary_entries=tuple(),
         )
 
-    monkeypatch.setattr(analyzer, "run_task_context", fake_run)
+    monkeypatch.setattr(analysis, "run_task_context", fake_run)
 
     status = pipeline.execute_task_contexts([context], max_workers=1)
 
     assert status == "SUCCESS"
     assert seen_retry_counts == [0, 1, 2]
-    assert analyzer.extras["processed_line"] == 1
-    assert analyzer.extras["error_line"] == 0
+    assert analysis.extras["processed_line"] == 1
+    assert analysis.extras["error_line"] == 0
     assert (
         fake_data_manager.analysis_item_checkpoints[5]["status"]
         == Base.ProjectStatus.PROCESSED
@@ -552,7 +536,7 @@ def test_print_chunk_log_summary_mode_omits_candidate_count(
     )
 
     combined = "\n".join(str(output) for output in console_outputs)
-    assert Localizer.get().translator_simple_log_prefix in combined
+    assert Localizer.get().engine_task_simple_log_prefix in combined
     assert "候选术语" not in combined
 
 
@@ -567,7 +551,7 @@ def test_log_analysis_finish_success_logs_completion_and_added_terms(
     )
 
     pipeline = build_analysis_pipeline()
-    pipeline.analyzer.extras = build_analysis_runtime_extras(
+    pipeline.analysis.extras = build_analysis_runtime_extras(
         line=3,
         time=12.0,
         total_input_tokens=5,
@@ -605,7 +589,7 @@ def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
     )
 
     pipeline = build_analysis_pipeline()
-    pipeline.analyzer.extras = build_analysis_runtime_extras(
+    pipeline.analysis.extras = build_analysis_runtime_extras(
         line=3,
         time=12.0,
         total_input_tokens=5,
@@ -632,9 +616,9 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=3,
         error_line=1,
@@ -658,7 +642,7 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
     )
     monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
@@ -676,9 +660,9 @@ def test_persist_progress_snapshot_updates_bound_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=3,
         error_line=1,
@@ -693,7 +677,7 @@ def test_persist_progress_snapshot_updates_bound_console_progress(
     )
     monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
@@ -715,9 +699,9 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
-    pipeline = AnalysisPipeline(analyzer)
-    analyzer.extras = build_analysis_runtime_extras(
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=1,
         total_tokens=7,
@@ -753,7 +737,7 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
     )
     monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
@@ -770,14 +754,12 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
 
 def build_single_item_context(source_text: str) -> AnalysisTaskContext:
     return AnalysisTaskContext(
-        task_fingerprint="fp",
         file_path="story.txt",
         items=(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
                 source_text=source_text,
-                source_hash="h1",
             ),
         ),
     )
@@ -895,7 +877,7 @@ def test_execute_task_request_keeps_normal_terms_when_source_contains_control_co
     ]
 
 
-def test_build_analysis_source_text_keeps_original_hash_input_unchanged() -> None:
+def test_build_analysis_source_text_keeps_original_source_text_unchanged() -> None:
     item = Item(id=1, src=r"正文\n[7]", name_src="角色名")
 
     assert DataManager.build_analysis_source_text(item) == "角色名\n正文\\n[7]"

@@ -28,7 +28,7 @@ from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.Localizer.Localizer import Localizer
 
 if TYPE_CHECKING:
@@ -438,7 +438,7 @@ class DataManager(Base):
         )
         if request.mtool_optimizer_enable:
             logger.info(
-                Localizer.get().translator_mtool_optimizer_pre_log.replace(
+                Localizer.get().translation_mtool_optimizer_pre_log.replace(
                     "{COUNT}",
                     str(result.stats.mtool_skipped),
                 )
@@ -525,10 +525,6 @@ class DataManager(Base):
         return AnalysisTextPolicy.build_source_text(item)
 
     @staticmethod
-    def build_analysis_source_hash(source_text: str) -> str:
-        return AnalysisTextPolicy.build_source_hash(source_text)
-
-    @staticmethod
     def is_analysis_control_code_text(text: str) -> bool:
         return AnalysisTextPolicy.is_control_code_text(text)
 
@@ -542,151 +538,11 @@ class DataManager(Base):
     def set_analysis_extras(self, extras: dict[str, Any]) -> None:
         self.analysis_service.set_analysis_extras(extras)
 
-    def get_analysis_state(self) -> dict[str, Base.ProjectStatus]:
-        return self.analysis_service.get_analysis_state()
-
-    def set_analysis_state(self, state: dict[str, Base.ProjectStatus | str]) -> None:
-        self.analysis_service.set_analysis_state(state)
-
-    def normalize_analysis_term_vote_map(self, raw_votes: object) -> dict[str, int]:
-        return self.analysis_service.normalize_analysis_term_vote_map(raw_votes)
-
-    def normalize_analysis_state_value(
-        self,
-        raw_status: Base.ProjectStatus | str | object,
-    ) -> Base.ProjectStatus | None:
-        return self.analysis_service.normalize_analysis_state_value(raw_status)
-
-    def normalize_analysis_item_checkpoint(
-        self,
-        raw_checkpoint: object,
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.normalize_analysis_item_checkpoint(raw_checkpoint)
-
-    def normalize_analysis_task_observation(
-        self,
-        raw_observation: object,
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.normalize_analysis_task_observation(
-            raw_observation
-        )
-
-    def normalize_analysis_candidate_aggregate_entry(
-        self,
-        raw_src: str,
-        raw_entry: object,
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.normalize_analysis_candidate_aggregate_entry(
-            raw_src,
-            raw_entry,
-        )
-
-    def normalize_analysis_item_checkpoint_rows(
-        self,
-        raw_rows: list[dict[str, Any]],
-    ) -> dict[int, dict[str, Any]]:
-        return self.analysis_service.normalize_analysis_item_checkpoint_rows(raw_rows)
-
-    def normalize_analysis_candidate_aggregate_rows(
-        self,
-        raw_rows: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        return self.analysis_service.normalize_analysis_candidate_aggregate_rows(
-            raw_rows
-        )
-
     def normalize_analysis_progress_snapshot(
         self,
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
         return self.analysis_service.normalize_analysis_progress_snapshot(snapshot)
-
-    def normalize_analysis_item_checkpoint_upsert_rows(
-        self,
-        checkpoints: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.normalize_analysis_item_checkpoint_upsert_rows(
-            checkpoints
-        )
-
-    def build_analysis_task_observations_for_commit(
-        self,
-        task_fingerprint: str,
-        glossary_entries: list[dict[str, Any]],
-        *,
-        created_at: str,
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.build_analysis_task_observations_for_commit(
-            task_fingerprint,
-            glossary_entries,
-            created_at=created_at,
-        )
-
-    def collect_new_analysis_task_observations(
-        self,
-        existing_rows: list[dict[str, Any]],
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.collect_new_analysis_task_observations(
-            existing_rows,
-            observations,
-        )
-
-    def build_analysis_task_observation_insert_rows(
-        self,
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.build_analysis_task_observation_insert_rows(
-            observations
-        )
-
-    def merge_analysis_observations_into_candidate_aggregates(
-        self,
-        observations: list[dict[str, Any]],
-        aggregate_map: dict[str, dict[str, Any]],
-    ) -> None:
-        self.analysis_service.merge_analysis_observations_into_candidate_aggregates(
-            observations,
-            aggregate_map,
-        )
-
-    def build_analysis_candidate_aggregate_upsert_rows(
-        self,
-        aggregate_map: dict[str, dict[str, Any]],
-        srcs: list[str],
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.build_analysis_candidate_aggregate_upsert_rows(
-            aggregate_map,
-            srcs,
-        )
-
-    def persist_analysis_progress_snapshot_with_db(
-        self,
-        db: LGDatabase,
-        conn: Any,
-        snapshot: dict[str, Any] | None,
-        *,
-        added_glossary_delta: int = 0,
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.persist_analysis_progress_snapshot_with_db(
-            db,
-            conn,
-            snapshot,
-            added_glossary_delta=added_glossary_delta,
-        )
-
-    def build_analysis_error_checkpoint_rows(
-        self,
-        checkpoints: list[dict[str, Any]],
-        existing: dict[int, dict[str, Any]],
-        *,
-        updated_at: str,
-    ) -> tuple[list[dict[str, Any]], dict[int, dict[str, Any]]]:
-        return self.analysis_service.build_analysis_error_checkpoint_rows(
-            checkpoints,
-            existing,
-            updated_at=updated_at,
-        )
 
     def get_analysis_item_checkpoints(self) -> dict[int, dict[str, Any]]:
         return self.analysis_service.get_analysis_item_checkpoints()
@@ -696,15 +552,6 @@ class DataManager(Base):
         checkpoints: list[dict[str, Any]],
     ) -> dict[int, dict[str, Any]]:
         return self.analysis_service.upsert_analysis_item_checkpoints(checkpoints)
-
-    def get_analysis_task_observations(
-        self,
-        *,
-        task_fingerprint: str | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.get_analysis_task_observations(
-            task_fingerprint=task_fingerprint
-        )
 
     def get_analysis_candidate_aggregate(self) -> dict[str, dict[str, Any]]:
         return self.analysis_service.get_analysis_candidate_aggregate()
@@ -727,26 +574,14 @@ class DataManager(Base):
     def commit_analysis_task_result(
         self,
         *,
-        task_fingerprint: str = "",
         checkpoints: list[dict[str, Any]] | None = None,
         glossary_entries: list[dict[str, Any]] | None = None,
         progress_snapshot: dict[str, Any] | None = None,
     ) -> int:
         return self.analysis_service.commit_analysis_task_result(
-            task_fingerprint=task_fingerprint,
             checkpoints=checkpoints,
             glossary_entries=glossary_entries,
             progress_snapshot=progress_snapshot,
-        )
-
-    def build_analysis_glossary_entry_from_candidate(
-        self,
-        src: str,
-        entry: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        return self.analysis_service.build_analysis_glossary_entry_from_candidate(
-            src,
-            entry,
         )
 
     def build_analysis_glossary_from_candidates(self) -> list[dict[str, Any]]:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-
 from model.Item import Item
 
 
@@ -36,18 +34,10 @@ class AnalysisTextPolicy:
         return "\n".join(parts).strip()
 
     @staticmethod
-    def build_source_hash(source_text: str) -> str:
-        """统一哈希规则，避免切块或调用点不同导致重复分析。"""
-
-        if source_text == "":
-            return ""
-        return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-
-    @staticmethod
     def is_control_code_text(text: str) -> bool:
         """分析术语里只有纯控制码需要特殊放行。"""
 
-        from module.Engine.Analyzer.AnalysisFakeNameInjector import (
+        from module.Engine.Analysis.AnalysisFakeNameInjector import (
             AnalysisFakeNameInjector,
         )
 
@@ -57,7 +47,7 @@ class AnalysisTextPolicy:
     def is_control_code_self_mapping(src: str, dst: str) -> bool:
         """纯控制码自映射代表占位符本体，不走普通自映射过滤。"""
 
-        from module.Engine.Analyzer.AnalysisFakeNameInjector import (
+        from module.Engine.Analysis.AnalysisFakeNameInjector import (
             AnalysisFakeNameInjector,
         )
 

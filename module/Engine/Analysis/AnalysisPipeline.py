@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from collections import deque
 from collections.abc import Callable
@@ -8,8 +9,6 @@ from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait
 from dataclasses import replace
-from hashlib import sha256
-import time
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -24,7 +23,13 @@ from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
+from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
+from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Engine import Engine
+from module.Engine.TaskModeStrategy import TaskModeStrategy
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequesterErrors import RequestCancelledError
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
@@ -35,24 +40,17 @@ from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.Text.TextHelper import TextHelper
-from module.Utils.JSONTool import JSONTool
-
-from module.Engine.Analyzer.AnalysisFakeNameInjector import AnalysisFakeNameInjector
-from module.Engine.Analyzer.AnalysisModels import AnalysisItemContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisProgressSnapshot
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
 
 if TYPE_CHECKING:
-    from module.Engine.Analyzer.Analyzer import Analyzer
+    from module.Engine.Analysis.Analysis import Analysis
 
 
 # 流水线类只负责“分析怎么跑”，主控制器只保留事件和生命周期管理。
 class AnalysisPipeline:
     RETRY_LIMIT: int = 2  # 分析任务最多自动重试 2 次，避免同类失败无限空转。
 
-    def __init__(self, analyzer: Analyzer) -> None:
-        self.analyzer = analyzer
+    def __init__(self, analysis: Analysis) -> None:
+        self.analysis = analysis
         self.console_progress: ProgressBar | None = None
         self.console_progress_task_id: TaskID | None = None
 
@@ -93,16 +91,12 @@ class AnalysisPipeline:
         """统一分析输入口径，保证姓名和正文在所有入口下拼法一致。"""
         return DataManager.build_analysis_source_text(item)
 
-    def build_source_hash(self, source_text: str) -> str:
-        """分析 hash 只认当前分析口径下的规范化文本。"""
-        return DataManager.build_analysis_source_hash(source_text)
-
     def get_input_token_threshold(self) -> int:
         """切块阈值跟当前模型能力走，避免任务计划和请求能力脱节。"""
-        if self.analyzer.model is None:
+        if self.analysis.model is None:
             return 512
 
-        threshold = self.analyzer.model.get("threshold", {})
+        threshold = self.analysis.model.get("threshold", {})
         return max(16, int(threshold.get("input_token_limit", 512) or 512))
 
     def normalize_checkpoint_status(
@@ -129,15 +123,11 @@ class AnalysisPipeline:
             if not isinstance(raw_checkpoint, dict):
                 continue
 
-            source_hash = raw_checkpoint.get("source_hash", "")
             status = self.normalize_checkpoint_status(raw_checkpoint.get("status"))
-            if not isinstance(source_hash, str) or source_hash == "":
-                continue
             if status is None:
                 continue
 
             normalized[raw_item_id] = {
-                "source_hash": source_hash,
                 "status": status,
                 "error_count": int(raw_checkpoint.get("error_count", 0) or 0),
             }
@@ -158,11 +148,10 @@ class AnalysisPipeline:
         if source_text == "":
             return None
 
-        source_hash = self.build_source_hash(source_text)
         previous_status: Base.ProjectStatus | None = None
         if checkpoint_map is not None:
             checkpoint = checkpoint_map.get(item_id)
-            if checkpoint is not None and checkpoint.get("source_hash") == source_hash:
+            if checkpoint is not None:
                 status = checkpoint.get("status")
                 if isinstance(status, Base.ProjectStatus):
                     previous_status = status
@@ -171,7 +160,6 @@ class AnalysisPipeline:
             item_id=item_id,
             file_path=item.get_file_path(),
             source_text=source_text,
-            source_hash=source_hash,
             previous_status=previous_status,
         )
 
@@ -199,17 +187,16 @@ class AnalysisPipeline:
                 pending_items.append(context)
                 continue
 
-            if checkpoint["source_hash"] != context.source_hash:
+            status = checkpoint["status"]
+            if TaskModeStrategy.should_schedule_continue(status):
                 pending_items.append(context)
                 continue
 
-            status = checkpoint["status"]
             if status == Base.ProjectStatus.PROCESSED:
                 processed_line += 1
                 continue
             if status == Base.ProjectStatus.ERROR:
                 error_line += 1
-                pending_items.append(context)
                 continue
 
             pending_items.append(context)
@@ -240,13 +227,6 @@ class AnalysisPipeline:
             chunks.append(tuple(current_chunk))
         return tuple(chunks)
 
-    def build_task_fingerprint(self, items: tuple[AnalysisItemContext, ...]) -> str:
-        """任务幂等键只看本次任务的有序 item_id/source_hash 列表。"""
-        payload = [
-            {"item_id": item.item_id, "source_hash": item.source_hash} for item in items
-        ]
-        return sha256(JSONTool.dumps(payload).encode("utf-8")).hexdigest()
-
     def create_retry_task_context(
         self, task_context: AnalysisTaskContext
     ) -> AnalysisTaskContext | None:
@@ -257,7 +237,7 @@ class AnalysisPipeline:
         return replace(task_context, retry_count=task_context.retry_count + 1)
 
     def build_analysis_task_contexts(self, config: Config) -> list[AnalysisTaskContext]:
-        """把待分析条目切成任务块，提交边界从这里开始就按任务走。"""
+        """把待分析条目切成任务块，后续重试和提交都沿用这份切块边界。"""
         del config
         dm = DataManager.get()
         checkpoint_map = self.get_checkpoint_map()
@@ -277,7 +257,6 @@ class AnalysisPipeline:
             for chunk in self.chunk_analysis_items(file_items):
                 task_contexts.append(
                     AnalysisTaskContext(
-                        task_fingerprint=self.build_task_fingerprint(chunk),
                         file_path=file_path,
                         items=chunk,
                     )
@@ -328,27 +307,27 @@ class AnalysisPipeline:
 
     def update_extras_after_result(self, result: AnalysisTaskResult) -> None:
         """token 统计统一在这里累加，避免成功和失败两条分支各写一遍。"""
-        self.analyzer.extras["total_input_tokens"] = (
-            int(self.analyzer.extras.get("total_input_tokens", 0)) + result.input_tokens
+        self.analysis.extras["total_input_tokens"] = (
+            int(self.analysis.extras.get("total_input_tokens", 0)) + result.input_tokens
         )
-        self.analyzer.extras["total_output_tokens"] = (
-            int(self.analyzer.extras.get("total_output_tokens", 0))
+        self.analysis.extras["total_output_tokens"] = (
+            int(self.analysis.extras.get("total_output_tokens", 0))
             + result.output_tokens
         )
-        self.analyzer.extras["total_tokens"] = int(
-            self.analyzer.extras.get("total_input_tokens", 0)
-        ) + int(self.analyzer.extras.get("total_output_tokens", 0))
+        self.analysis.extras["total_tokens"] = int(
+            self.analysis.extras.get("total_input_tokens", 0)
+        ) + int(self.analysis.extras.get("total_output_tokens", 0))
 
     def sync_runtime_line_stats(self) -> None:
         """运行中只维护轻量计数，避免每个结果都回库全量重算覆盖率。"""
-        self.analyzer.extras["line"] = int(
-            self.analyzer.extras.get("processed_line", 0)
-        ) + int(self.analyzer.extras.get("error_line", 0))
+        self.analysis.extras["line"] = int(
+            self.analysis.extras.get("processed_line", 0)
+        ) + int(self.analysis.extras.get("error_line", 0))
 
     def build_runtime_progress_snapshot(self) -> dict[str, Any]:
         """运行态快照直接取内存累计值，对齐翻译链路的热路径做法。"""
-        start_time = float(self.analyzer.extras.get("start_time", time.time()) or 0.0)
-        snapshot = dict(self.analyzer.extras)
+        start_time = float(self.analysis.extras.get("start_time", time.time()) or 0.0)
+        snapshot = dict(self.analysis.extras)
         snapshot["start_time"] = start_time
         snapshot["time"] = max(0.0, time.time() - start_time)
         snapshot["line"] = int(snapshot.get("processed_line", 0)) + int(
@@ -383,7 +362,6 @@ class AnalysisPipeline:
         return [
             {
                 "item_id": item.item_id,
-                "source_hash": item.source_hash,
                 "status": Base.ProjectStatus.PROCESSED,
                 "updated_at": updated_at,
                 "error_count": 0,
@@ -394,11 +372,10 @@ class AnalysisPipeline:
     def build_error_checkpoints(
         self, context: AnalysisTaskContext
     ) -> list[dict[str, Any]]:
-        """失败记录只落当前任务条目的 hash，不触碰候选池。"""
+        """失败记录只落当前任务条目，不触碰候选池。"""
         return [
             {
                 "item_id": item.item_id,
-                "source_hash": item.source_hash,
                 "status": Base.ProjectStatus.ERROR,
                 "error_count": 0,
             }
@@ -413,13 +390,13 @@ class AnalysisPipeline:
             if item.previous_status == Base.ProjectStatus.ERROR
         )
         if recovered_error_count > 0:
-            self.analyzer.extras["error_line"] = max(
+            self.analysis.extras["error_line"] = max(
                 0,
-                int(self.analyzer.extras.get("error_line", 0)) - recovered_error_count,
+                int(self.analysis.extras.get("error_line", 0)) - recovered_error_count,
             )
 
-        self.analyzer.extras["processed_line"] = (
-            int(self.analyzer.extras.get("processed_line", 0))
+        self.analysis.extras["processed_line"] = (
+            int(self.analysis.extras.get("processed_line", 0))
             + result.context.item_count
         )
         self.sync_runtime_line_stats()
@@ -434,8 +411,8 @@ class AnalysisPipeline:
             if item.previous_status != Base.ProjectStatus.ERROR
         )
         if new_error_count > 0:
-            self.analyzer.extras["error_line"] = (
-                int(self.analyzer.extras.get("error_line", 0)) + new_error_count
+            self.analysis.extras["error_line"] = (
+                int(self.analysis.extras.get("error_line", 0)) + new_error_count
             )
         self.sync_runtime_line_stats()
 
@@ -447,15 +424,14 @@ class AnalysisPipeline:
         progress_snapshot = self.build_runtime_progress_snapshot()
         changed_count = int(
             dm.commit_analysis_task_result(
-                task_fingerprint=result.context.task_fingerprint,
                 checkpoints=checkpoints,
                 glossary_entries=list(result.glossary_entries),
                 progress_snapshot=progress_snapshot,
             )
             or 0
         )
-        self.analyzer.extras["added_glossary"] = (
-            int(self.analyzer.extras.get("added_glossary", 0)) + changed_count
+        self.analysis.extras["added_glossary"] = (
+            int(self.analysis.extras.get("added_glossary", 0)) + changed_count
         )
         return changed_count
 
@@ -481,10 +457,10 @@ class AnalysisPipeline:
         while (
             pending_queue
             and len(running) < concurrency
-            and not self.analyzer.should_stop()
+            and not self.analysis.should_stop()
         ):
             context = pending_queue.popleft()
-            future = executor.submit(self.analyzer.run_task_context, context)
+            future = executor.submit(self.analysis.run_task_context, context)
             running[future] = context
 
     def execute_task_contexts(
@@ -515,7 +491,7 @@ class AnalysisPipeline:
                     return_when=FIRST_COMPLETED,
                 )
                 if not done:
-                    if self.analyzer.should_stop():
+                    if self.analysis.should_stop():
                         stopped = True
                     continue
 
@@ -539,7 +515,6 @@ class AnalysisPipeline:
                     else:
                         retry_context = self.create_retry_task_context(context)
                         if retry_context is not None:
-                            # 重试沿用同一 task_fingerprint，保证同一批输入的提交边界稳定。
                             pending_queue.appendleft(retry_context)
                         else:
                             self.apply_error_result(context)
@@ -554,7 +529,7 @@ class AnalysisPipeline:
                         concurrency=concurrency,
                     )
 
-                if self.analyzer.should_stop():
+                if self.analysis.should_stop():
                     stopped = True
 
         if stopped:
@@ -565,18 +540,18 @@ class AnalysisPipeline:
 
     def run_task_context(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
         """请求前统一经过限流器，避免请求层知道调度细节。"""
-        if self.analyzer.should_stop():
+        if self.analysis.should_stop():
             return AnalysisTaskResult(context=context, success=False, stopped=True)
 
-        limiter = self.analyzer.task_limiter
+        limiter = self.analysis.task_limiter
         if limiter is None:
             return self.execute_task_request(context)
 
-        if not limiter.acquire(stop_checker=self.analyzer.should_stop):
+        if not limiter.acquire(stop_checker=self.analysis.should_stop):
             return AnalysisTaskResult(context=context, success=False, stopped=True)
 
         try:
-            if not limiter.wait(stop_checker=self.analyzer.should_stop):
+            if not limiter.wait(stop_checker=self.analysis.should_stop):
                 return AnalysisTaskResult(context=context, success=False, stopped=True)
             return self.execute_task_request(context)
         finally:
@@ -584,7 +559,7 @@ class AnalysisPipeline:
 
     def execute_task_request(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
         """执行单个任务块的模型请求，并把响应解码成统一术语结构。"""
-        if self.analyzer.model is None or self.analyzer.quality_snapshot is None:
+        if self.analysis.model is None or self.analysis.quality_snapshot is None:
             return AnalysisTaskResult(context=context, success=False, stopped=False)
 
         srcs = [text for text in context.source_texts if text.strip() != ""]
@@ -594,23 +569,23 @@ class AnalysisPipeline:
         request_srcs, fake_name_injector = self.build_request_source_texts(srcs)
         start_time = time.time()
         prompt_builder = PromptBuilder(
-            self.analyzer.config,
-            quality_snapshot=self.analyzer.quality_snapshot,
+            self.analysis.config,
+            quality_snapshot=self.analysis.quality_snapshot,
         )
         messages, _console_log = prompt_builder.generate_glossary_prompt(request_srcs)
 
-        requester = TaskRequester(self.analyzer.config, self.analyzer.model)
+        requester = TaskRequester(self.analysis.config, self.analysis.model)
         (
             exception,
             response_think,
             response_result,
             input_tokens,
             output_tokens,
-        ) = requester.request(messages, stop_checker=self.analyzer.should_stop)
+        ) = requester.request(messages, stop_checker=self.analysis.should_stop)
 
         if isinstance(exception, RequestCancelledError):
             return AnalysisTaskResult(context=context, success=False, stopped=True)
-        if self.analyzer.should_stop():
+        if self.analysis.should_stop():
             return AnalysisTaskResult(context=context, success=False, stopped=True)
 
         if isinstance(exception, (RequestHardTimeoutError, StreamDegradationError)):
@@ -714,7 +689,7 @@ class AnalysisPipeline:
         return fake_name_injector.inject_texts(srcs), fake_name_injector
 
     def split_glossary_entry_pairs(self, src: str, dst: str) -> list[tuple[str, str]]:
-        """复合术语沿用旧切分规则，保证新旧链路入池口径一致。"""
+        """复合术语按统一分词结果拆分，避免候选池重复混入整句条目。"""
         src_parts = TextHelper.split_by_punctuation(src, split_by_space=True)
         dst_parts = TextHelper.split_by_punctuation(dst, split_by_space=True)
         if len(src_parts) != len(dst_parts):
@@ -785,34 +760,34 @@ class AnalysisPipeline:
             if dm.is_loaded():
                 snapshot = dict(dm.update_analysis_progress_snapshot(snapshot))
 
-        self.analyzer.extras = dict(snapshot)
+        self.analysis.extras = dict(snapshot)
         self.update_console_progress(snapshot)
-        self.analyzer.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
+        self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
         return snapshot
 
     def log_analysis_start(self) -> None:
         """启动日志集中到这里，方便后面继续收口展示内容。"""
-        if self.analyzer.model is None or self.analyzer.quality_snapshot is None:
+        if self.analysis.model is None or self.analysis.quality_snapshot is None:
             return
 
         LogManager.get().print("")
         LogManager.get().info(
-            f"{Localizer.get().engine_api_name} - {self.analyzer.model.get('name', '')}"
+            f"{Localizer.get().engine_api_name} - {self.analysis.model.get('name', '')}"
         )
         LogManager.get().info(
-            f"{Localizer.get().api_url} - {self.analyzer.model.get('api_url', '')}"
+            f"{Localizer.get().api_url} - {self.analysis.model.get('api_url', '')}"
         )
         LogManager.get().info(
-            f"{Localizer.get().engine_api_model} - {self.analyzer.model.get('model_id', '')}"
+            f"{Localizer.get().engine_api_model} - {self.analysis.model.get('model_id', '')}"
         )
         LogManager.get().print("")
 
-        if self.analyzer.model.get("api_format") == Base.APIFormat.SAKURALLM:
+        if self.analysis.model.get("api_format") == Base.APIFormat.SAKURALLM:
             return
 
         prompt_builder = PromptBuilder(
-            self.analyzer.config,
-            quality_snapshot=self.analyzer.quality_snapshot,
+            self.analysis.config,
+            quality_snapshot=self.analysis.quality_snapshot,
         )
         LogManager.get().info(prompt_builder.build_glossary_analysis_main())
         LogManager.get().print("")
@@ -860,12 +835,12 @@ class AnalysisPipeline:
         normalized_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
         normalized_result = response_result.strip()
         if normalized_think != "":
-            think_log = Localizer.get().engine_response_think + "\n" + normalized_think
+            think_log = Localizer.get().engine_task_response_think + "\n" + normalized_think
             file_logs.append(think_log)
             console_logs.append(think_log)
         if normalized_result != "":
             result_log = (
-                Localizer.get().engine_response_result + "\n" + normalized_result
+                Localizer.get().engine_task_response_result + "\n" + normalized_result
             )
             file_logs.append(result_log)
             if LogManager.get().is_expert_mode():
@@ -882,7 +857,7 @@ class AnalysisPipeline:
         if Engine.get().get_running_task_count() > 32:
             summary_text = status_text or Localizer.get().task_success
             prefix = (
-                f"[{style}][{Localizer.get().translator_simple_log_prefix}][/{style}]"
+                f"[{style}][{Localizer.get().engine_task_simple_log_prefix}][/{style}]"
             )
             display_msg = "\n".join([prefix + " " + summary_text, stats_info])
             rich.get_console().print("\n" + display_msg + "\n")

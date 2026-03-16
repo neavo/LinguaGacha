@@ -62,6 +62,22 @@ def test_handle_failed_context_returns_empty_when_no_pending_items() -> None:
     assert new_contexts == []
 
 
+def test_handle_failed_context_skips_error_items_during_continue_semantics() -> None:
+    failed = create_item("failed", Base.ProjectStatus.ERROR)
+    context = TaskContext(
+        items=[failed],
+        precedings=[],
+        token_threshold=32,
+    )
+    scheduler = TaskScheduler(
+        Config(), {"threshold": {"input_token_limit": 64}}, [failed]
+    )
+
+    new_contexts = scheduler.handle_failed_context(context, {})
+
+    assert new_contexts == []
+
+
 def test_handle_failed_context_splits_items_when_threshold_above_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -163,14 +179,14 @@ def test_create_task_injects_split_retry_and_threshold(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeTranslatorTask:
+    class FakeTranslationTask:
         def __init__(self, **kwargs: Any) -> None:
             captured.update(kwargs)
             self.split_count = -1
             self.token_threshold = -1
             self.retry_count = -1
 
-    monkeypatch.setattr(task_scheduler_module, "TranslatorTask", FakeTranslatorTask)
+    monkeypatch.setattr(task_scheduler_module, "TranslationTask", FakeTranslationTask)
 
     item = create_item("line")
     scheduler = TaskScheduler(

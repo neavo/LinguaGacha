@@ -5,15 +5,15 @@ import time
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Engine.APITester.APITesterResult import APITestResult
-from module.Engine.APITester.APITesterResult import KeyTestResult
+from module.Engine.APITest.APITestResult import APITestResult
+from module.Engine.APITest.APITestResult import KeyTestResult
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Localizer.Localizer import Localizer
 
 
-class APITester(Base):
+class APITest(Base):
     """API 测试器 - 直接使用新的 Model 数据结构"""
 
     def __init__(self) -> None:
@@ -164,8 +164,12 @@ class APITester(Base):
             requester = TaskRequester(config, model_test)
 
             LogManager.get().print("")
-            LogManager.get().info(Localizer.get().api_tester_key + "\n" + f"[green]{masked_key}[/]")
-            LogManager.get().info(Localizer.get().api_tester_messages + "\n" + f"{messages}")
+            LogManager.get().info(
+                Localizer.get().api_test_key + "\n" + f"[green]{masked_key}[/]"
+            )
+            LogManager.get().info(
+                Localizer.get().api_test_messages + "\n" + f"{messages}"
+            )
 
             # 记录开始时间
             start_time_ns = time.perf_counter_ns()
@@ -184,10 +188,16 @@ class APITester(Base):
             if exception:
                 # 确定失败原因
                 if isinstance(exception, RequestHardTimeoutError):
-                    reason = Localizer.get().api_tester_timeout.replace("{SECONDS}", str(config.request_timeout))
+                    reason = Localizer.get().api_test_timeout.replace(
+                        "{SECONDS}", str(config.request_timeout)
+                    )
                 else:
                     exception_text = str(exception).strip()
-                    reason = f"{exception.__class__.__name__}: {exception_text}" if exception_text else exception.__class__.__name__
+                    reason = (
+                        f"{exception.__class__.__name__}: {exception_text}"
+                        if exception_text
+                        else exception.__class__.__name__
+                    )
 
                 key_results.append(
                     KeyTestResult(
@@ -200,7 +210,9 @@ class APITester(Base):
                     )
                 )
 
-                LogManager.get().warning(Localizer.get().log_api_test_fail.replace("{REASON}", reason))
+                LogManager.get().warning(
+                    Localizer.get().log_api_test_fail.replace("{REASON}", reason)
+                )
             else:
                 key_results.append(
                     KeyTestResult(
@@ -214,13 +226,24 @@ class APITester(Base):
                 )
 
                 if response_think == "":
-                    LogManager.get().info(Localizer.get().engine_response_result + "\n" + response_result)
+                    LogManager.get().info(
+                        Localizer.get().engine_task_response_result + "\n" + response_result
+                    )
                 else:
-                    LogManager.get().info(Localizer.get().engine_response_think + "\n" + response_think)
-                    LogManager.get().info(Localizer.get().engine_response_result + "\n" + response_result)
+                    LogManager.get().info(
+                        Localizer.get().engine_task_response_think + "\n" + response_think
+                    )
+                    LogManager.get().info(
+                        Localizer.get().engine_task_response_result + "\n" + response_result
+                    )
 
                 # Token 信息放在回复之后，便于阅读。
-                token_info = Localizer.get().api_tester_token_info.replace("{INPUT}", str(input_tokens)).replace("{OUTPUT}", str(output_tokens)).replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
+                token_info = (
+                    Localizer.get()
+                    .api_test_token_info.replace("{INPUT}", str(input_tokens))
+                    .replace("{OUTPUT}", str(output_tokens))
+                    .replace("{TIME}", f"{response_time_ms / 1000.0:.2f}")
+                )
                 LogManager.get().info(token_info)
 
         # 统计结果
@@ -229,14 +252,23 @@ class APITester(Base):
         total_response_time_ms = sum(r.response_time_ms for r in key_results)
 
         # 测试结果消息
-        result_msg = Localizer.get().api_tester_result.replace("{COUNT}", str(len(api_keys))).replace("{SUCCESS}", str(len(success_results))).replace("{FAILURE}", str(len(failure_results)))
+        result_msg = (
+            Localizer.get()
+            .api_test_result.replace("{COUNT}", str(len(api_keys)))
+            .replace("{SUCCESS}", str(len(success_results)))
+            .replace("{FAILURE}", str(len(failure_results)))
+        )
         LogManager.get().print("")
         LogManager.get().info(result_msg)
 
         # 失败密钥
         if failure_results:
             failed_masked_keys = [r.masked_key for r in failure_results]
-            LogManager.get().warning(Localizer.get().api_tester_result_failure + "\n" + "\n".join(failed_masked_keys))
+            LogManager.get().warning(
+                Localizer.get().api_test_result_failure
+                + "\n"
+                + "\n".join(failed_masked_keys)
+            )
 
         # 构建结果对象
         test_result = APITestResult(

@@ -19,8 +19,11 @@ from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
+from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
+from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
 from module.Engine.TaskScheduler import TaskScheduler
-from module.Engine.Translator.TranslatorTaskPipeline import TranslatorTaskPipeline
+from module.Engine.Translation.TranslationTaskPipeline import TranslationTaskPipeline
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
@@ -30,7 +33,7 @@ from module.TextProcessor import TextProcessor
 
 
 # 翻译器
-class Translator(Base):
+class Translation(Base):
     class ExportSource(StrEnum):
         MANUAL = "MANUAL"
         AUTO_ON_FINISH = "AUTO_ON_FINISH"
@@ -198,71 +201,27 @@ class Translator(Base):
 
     # 翻译开始事件
     def translation_run(self, data: dict) -> None:
-        engine = Engine.get()
-        with engine.lock:
-            if engine.status != Base.TaskStatus.IDLE:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                self.emit(
-                    Base.Event.TRANSLATION_TASK,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                return
-
-            # 原子化占用状态，避免短时间重复触发导致多线程并发启动。
-            engine.status = Base.TaskStatus.TRANSLATING
-
-        self.emit(
-            Base.Event.TRANSLATION_TASK,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "mode": data.get("mode", Base.TranslationMode.NEW),
-            },
-        )
-
         self.stop_requested = False
-        try:
-            threading.Thread(
-                target=self.start,
-                args=(data,),
-            ).start()
-        except Exception as e:
-            engine.set_status(Base.TaskStatus.IDLE)
-            LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
-            self.emit(
-                Base.Event.TRANSLATION_TASK,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
+        mode = data.get("mode", Base.TranslationMode.NEW)
+        if not isinstance(mode, Base.TranslationMode):
+            mode = Base.TranslationMode.NEW
+
+        TaskRunnerLifecycle.start_background_run(
+            self,
+            busy_status=Base.TaskStatus.TRANSLATING,
+            task_event=Base.Event.TRANSLATION_TASK,
+            mode=mode,
+            worker=lambda: self.start(data),
+            thread_factory=threading.Thread,
+        )
 
     # 翻译停止事件
     def translation_require_stop(self, data: dict) -> None:
         del data
-        # 更新运行状态
-        self.stop_requested = True
-        Engine.get().set_status(Base.TaskStatus.STOPPING)
-        self.emit(
-            Base.Event.TRANSLATION_REQUEST_STOP,
-            {
-                "sub_event": Base.SubEvent.RUN,
-            },
+        TaskRunnerLifecycle.request_stop(
+            self,
+            stop_event=Base.Event.TRANSLATION_REQUEST_STOP,
+            mark_stop_requested=lambda: setattr(self, "stop_requested", True),
         )
         # 同步流式下 stop 依赖底层 SDK/HTTP 超时收尾，响应可能有延迟；后续可优化为可中断 IO。
 
@@ -478,51 +437,34 @@ class Translator(Base):
 
     # 实际的翻译流程
     def start(self, data: dict) -> None:
-        flow_final_status = "FAILED"
-        try:
+        dm = DataManager.get()
+        run_state: dict[str, Any] = {
+            "mode": Base.TranslationMode.NEW,
+        }
+
+        def prepare() -> bool:
             config: Config | None = data.get("config")
             mode_raw = data.get("mode")
-            mode: Base.TranslationMode = (
+            mode = (
                 mode_raw
                 if isinstance(mode_raw, Base.TranslationMode)
                 else Base.TranslationMode.NEW
             )
+            run_state["mode"] = mode
 
-            # 初始化
             self.config = config if isinstance(config, Config) else Config().load()
+            if not TaskRunnerLifecycle.ensure_project_loaded(self, dm=dm):
+                return False
 
-            # 检查工程是否已加载
-            dm = DataManager.get()
-            if not dm.is_loaded():
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().alert_project_not_loaded,
-                    },
-                )
-                return None
-
-            # 翻译期间打开长连接（提升高频写入性能，翻译结束后关闭以清理 WAL 文件）
             dm.open_db()
-
-            # 从新模型系统获取激活模型
-            self.model = self.config.get_active_model()
+            self.model = TaskRunnerLifecycle.resolve_active_model(
+                self,
+                config=self.config,
+            )
             if self.model is None:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().alert_no_active_model,
-                    },
-                )
-                return None
+                return False
 
-            max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
-
-            persist_quality_rules = data.get("persist_quality_rules", True)
-            self.persist_quality_rules = bool(persist_quality_rules)
-
+            self.persist_quality_rules = bool(data.get("persist_quality_rules", True))
             snapshot_override = data.get("quality_snapshot")
             self.quality_snapshot = (
                 snapshot_override
@@ -530,29 +472,18 @@ class Translator(Base):
                 else QualityRuleSnapshot.capture()
             )
 
-            # 重置
             TextProcessor.reset()
             TaskRequester.reset()
             PromptBuilder.reset()
-
-            # 1. 获取数据：翻译器不再关心是从工程数据库加载，还是重解析 assets
-            # 具体数据来源由 TranslationItemService 按 mode 决定
             self.items_cache = dm.get_items_for_translation(self.config, mode)
+            return True
 
-            # 检查数据是否为空
-            if len(self.items_cache) == 0:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().engine_no_items,
-                    },
-                )
-                return None
+        def build_plan() -> TaskRunnerExecutionPlan:
+            mode: Base.TranslationMode = run_state["mode"]
+            if self.items_cache is None:
+                self.items_cache = []
 
-            # 2. 进度管理与初始化
             if mode == Base.TranslationMode.CONTINUE:
-                # 继续翻译：恢复进度
                 self.extras = dm.get_translation_extras()
                 self.extras["start_time"] = time.time() - self.extras.get("time", 0)
                 self.extras["processed_line"] = self.get_item_count_by_status(
@@ -565,7 +496,6 @@ class Translator(Base):
                     self.extras["processed_line"] + self.extras["error_line"]
                 )
             else:
-                # 新翻译或重置翻译：初始化全新的进度数据
                 self.extras = {
                     "start_time": time.time(),
                     "total_line": 0,
@@ -578,13 +508,7 @@ class Translator(Base):
                     "time": 0,
                 }
 
-            # 更新翻译进度
             self.emit(Base.Event.TRANSLATION_PROGRESS, self.extras)
-
-            # 3. 预过滤已在工程创建/配置变更/重置翻译阶段完成并落库。
-            # 翻译开始阶段不再重复执行过滤，避免双跑与语义漂移。
-
-            # 初始化任务调度器
             self.scheduler = TaskScheduler(
                 self.config,
                 self.model,
@@ -592,44 +516,37 @@ class Translator(Base):
                 quality_snapshot=self.quality_snapshot,
             )
 
-            # 更新任务的总行数
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
             self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
+            return TaskRunnerExecutionPlan(
+                total_line=int(self.extras.get("total_line", 0) or 0),
+                line=int(self.extras.get("line", 0) or 0),
+                has_pending_work=remaining_count > 0,
+                idle_final_status="SUCCESS",
+            )
 
-            # 输出开始翻译的日志
-            LogManager.get().print("")
-            LogManager.get().info(
-                f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
-            )
-            LogManager.get().info(
-                f"{Localizer.get().api_url} - {self.model.get('api_url', '')}"
-            )
-            LogManager.get().info(
-                f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}"
-            )
-            LogManager.get().print("")
-            if self.model.get("api_format") != Base.APIFormat.SAKURALLM:
-                LogManager.get().info(
-                    PromptBuilder(
-                        self.config,
-                        quality_snapshot=self.quality_snapshot,
-                    ).build_main()
-                )
-                LogManager.get().print("")
-
-            task_limiter = TaskLimiter(
+        def bind_task_limiter(
+            max_workers: int,
+            rps_limit: int,
+            rpm_threshold: int,
+        ) -> None:
+            self.task_limiter = TaskLimiter(
                 rps=rps_limit,
                 rpm=rpm_threshold,
                 max_concurrency=max_workers,
             )
-            self.task_limiter = task_limiter
+
+        def execute(plan: TaskRunnerExecutionPlan, max_workers: int) -> str:
+            del plan
+            task_limiter = self.task_limiter
+            if task_limiter is None:
+                return "FAILED"
 
             with ProgressBar(transient=True) as progress:
                 pid = progress.new(
-                    total=self.extras.get("total_line", 0),
-                    completed=self.extras.get("line", 0),
+                    total=int(self.extras.get("total_line", 0) or 0),
+                    completed=int(self.extras.get("line", 0) or 0),
                 )
-
                 self.start_translation_pipeline(
                     progress=progress,
                     pid=pid,
@@ -637,107 +554,111 @@ class Translator(Base):
                     max_workers=max_workers,
                 )
 
-            # 任务结束后以最终状态回填行数统计，避免 UI 出现“少量剩余行数”但实际已完成。
             self.sync_extras_line_stats()
             self.emit(Base.Event.TRANSLATION_PROGRESS, dict(self.extras))
-
-            # 判断翻译是否完成
             if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
-                flow_final_status = "SUCCESS"
-                # 日志
-                LogManager.get().print("")
-                LogManager.get().info(Localizer.get().engine_task_done)
-                LogManager.get().print("")
+                return "SUCCESS"
+            if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+                return "STOPPED"
+            return "FAILED"
 
-                # 通知
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_done,
-                    },
-                )
-            else:
-                # 停止翻译（可能是主动停止，也可能是其他原因未完成）
-                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                    flow_final_status = "STOPPED"
-                else:
-                    flow_final_status = "FAILED"
-                LogManager.get().print("")
-                if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-                    LogManager.get().info(Localizer.get().engine_task_stop)
-                else:
-                    LogManager.get().warning(Localizer.get().engine_task_fail)
-                LogManager.get().print("")
+        TaskRunnerLifecycle.run_task_flow(
+            self,
+            task_event=Base.Event.TRANSLATION_TASK,
+            hooks=TaskRunnerHooks(
+                prepare=prepare,
+                build_plan=build_plan,
+                persist_progress=self.persist_translation_progress,
+                get_model=lambda: self.model if isinstance(self.model, dict) else None,
+                bind_task_limiter=bind_task_limiter,
+                clear_task_limiter=lambda: setattr(self, "task_limiter", None),
+                on_before_execute=self.log_translation_start,
+                execute=execute,
+                on_after_execute=self.log_translation_finish,
+                terminal_toast=self.emit_translation_terminal_toast,
+                finalize=self.finalize_translation_run,
+                after_done=lambda final_status: None,
+            ),
+        )
 
-                # 通知
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().engine_task_stop
-                        if Engine.get().get_status() == Base.TaskStatus.STOPPING
-                        else Localizer.get().engine_task_fail,
-                    },
-                )
-        except Exception as e:
-            LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
+    def persist_translation_progress(self, save_state: bool) -> dict[str, Any]:
+        """共享骨架需要统一入口回写翻译快照，避免起止阶段各写一套。"""
+
+        if save_state and self.items_cache is not None:
+            self.save_translation_state(Base.ProjectStatus.PROCESSING)
+        return dict(self.extras)
+
+    def log_translation_start(self) -> None:
+        """启动日志单独收口，方便共享骨架在开始阶段统一调用。"""
+
+        if self.model is None:
+            return
+
+        LogManager.get().print("")
+        LogManager.get().info(
+            f"{Localizer.get().engine_api_name} - {self.model.get('name', '')}"
+        )
+        LogManager.get().info(
+            f"{Localizer.get().api_url} - {self.model.get('api_url', '')}"
+        )
+        LogManager.get().info(
+            f"{Localizer.get().engine_api_model} - {self.model.get('model_id', '')}"
+        )
+        LogManager.get().print("")
+        if self.model.get("api_format") != Base.APIFormat.SAKURALLM:
+            LogManager.get().info(
+                PromptBuilder(
+                    self.config,
+                    quality_snapshot=self.quality_snapshot,
+                ).build_main()
             )
-        finally:
-            # 等待最后的回调执行完毕
-            time.sleep(1.0)
+            LogManager.get().print("")
 
-            # 清理限流器引用，避免 UI 读取到上一次任务的并发数据
-            self.task_limiter = None
+    def log_translation_finish(self, final_status: str) -> None:
+        """终态日志和公共 Toast 分离，避免共享层和领域层互相覆盖。"""
 
-            # MTool 优化器后处理
-            if self.items_cache:
-                self.mtool_optimizer_postprocess(self.items_cache)
+        LogManager.get().print("")
+        if final_status == "SUCCESS":
+            LogManager.get().info(Localizer.get().engine_task_done)
+        elif final_status == "STOPPED":
+            LogManager.get().info(Localizer.get().engine_task_stop)
+        else:
+            LogManager.get().warning(Localizer.get().engine_task_fail)
+        LogManager.get().print("")
 
-            # 确定最终项目状态
-            final_status = (
-                Base.ProjectStatus.PROCESSED
-                if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0
-                else Base.ProjectStatus.PROCESSING
+    def emit_translation_terminal_toast(self, final_status: str) -> None:
+        """翻译终态提示仍走共享口径，但保留领域侧可替换入口。"""
+
+        TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
+
+    def finalize_translation_run(self, final_status: str) -> None:
+        """共享骨架只负责调度，翻译域自己的落库和导出留在这里。"""
+
+        del final_status
+        time.sleep(1.0)
+
+        if self.items_cache:
+            self.mtool_optimizer_postprocess(self.items_cache)
+
+        final_project_status = (
+            Base.ProjectStatus.PROCESSED
+            if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0
+            else Base.ProjectStatus.PROCESSING
+        )
+        self.save_translation_state(final_project_status)
+        self.close_db_connection()
+
+        if (
+            self.items_cache
+            and not self.stop_requested
+            and Engine.get().get_status() != Base.TaskStatus.STOPPING
+        ):
+            self.run_translation_export(
+                source=self.ExportSource.AUTO_ON_FINISH,
+                apply_mtool_postprocess=False,
             )
 
-            # 保存翻译结果到 .lg 文件
-            self.save_translation_state(final_status)
-
-            # 关闭长连接（WAL 文件将被清理）
-            self.close_db_connection()
-
-            # 检查结果并写入文件
-            if (
-                self.items_cache
-                and not self.stop_requested
-                and Engine.get().get_status() != Base.TaskStatus.STOPPING
-            ):
-                self.run_translation_export(
-                    source=self.ExportSource.AUTO_ON_FINISH,
-                    apply_mtool_postprocess=False,
-                )
-
-            # 重置内部状态（正常完成翻译）
-            Engine.get().set_status(Base.TaskStatus.IDLE)
-
-            # 清理任务内存快照
-            self.items_cache = None
-
-            # 触发翻译停止完成的事件
-            self.emit(
-                Base.Event.TRANSLATION_TASK,
-                {
-                    "sub_event": Base.SubEvent.DONE,
-                    "final_status": flow_final_status,
-                },
-            )
+        self.items_cache = None
 
     # ========== 辅助方法 ==========
 
@@ -838,23 +759,8 @@ class Translator(Base):
         - `concurrency_limit=0` 表示自动：根据 rpm 估算。
         - 未配置 rpm 时，沿用旧行为：rps 默认为 concurrency，避免短时间突发。
         """
-        if not hasattr(self, "model") or self.model is None:
-            return 8, 8, 0
-
-        threshold = self.model.get("threshold", {})
-        max_concurrency = max(0, int(threshold.get("concurrency_limit", 0) or 0))
-        rpm_limit = max(0, int(threshold.get("rpm_limit", 0) or 0))
-
-        if max_concurrency == 0:
-            if rpm_limit > 0:
-                # 估算：假设平均请求耗时 ~250ms，取 4 倍 rps 作为并发冗余，并限制上限避免失控。
-                derived = (rpm_limit * 4 + 59) // 60
-                max_concurrency = max(8, min(64, derived))
-            else:
-                max_concurrency = 8
-
-        rps_limit = 0 if rpm_limit > 0 else max_concurrency
-        return max_concurrency, rps_limit, rpm_limit
+        model = self.model if hasattr(self, "model") else None
+        return TaskRunnerLifecycle.build_task_limits(model)
 
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
@@ -902,10 +808,10 @@ class Translator(Base):
         """
         同步翻译调度入口。
 
-        具体的生产者/消费者/提交逻辑封装在 TranslatorTaskPipeline 中，避免本方法过长。
+        具体的生产者/消费者/提交逻辑封装在 TranslationTaskPipeline 中，避免本方法过长。
         """
-        pipeline = TranslatorTaskPipeline(
-            translator=self,
+        pipeline = TranslationTaskPipeline(
+            translation=self,
             progress=progress,
             pid=pid,
             task_limiter=task_limiter,
@@ -949,15 +855,15 @@ class Translator(Base):
                         items.append(item_ex)
 
         # 打印日志
-        LogManager.get().info(Localizer.get().translator_mtool_optimizer_post_log)
+        LogManager.get().info(Localizer.get().translation_mtool_optimizer_post_log)
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
         # 自动术语表更新事件仅受自动术语表开关控制。
         if self.config.auto_glossary_enable and self.persist_quality_rules:
-            # 更新规则管理器 (已在 TranslatorTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
+            # 更新规则管理器 (已在 TranslationTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
 
-            # 实际上 TranslatorTask 已经处理了保存，这里只需要触发事件即可
+            # 实际上 TranslationTask 已经处理了保存，这里只需要触发事件即可
             self.emit(
                 Base.Event.QUALITY_RULE_UPDATE,
                 {"rule_types": [DataManager.RuleType.GLOSSARY.value]},

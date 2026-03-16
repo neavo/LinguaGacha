@@ -2,8 +2,8 @@ import dataclasses
 
 import pytest
 
-from module.Engine.APITester.APITesterResult import APITestResult
-from module.Engine.APITester.APITesterResult import KeyTestResult
+from module.Engine.APITest.APITestResult import APITestResult
+from module.Engine.APITest.APITestResult import KeyTestResult
 
 
 def test_api_test_result_to_event_dict_keeps_all_fields() -> None:

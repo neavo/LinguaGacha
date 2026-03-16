@@ -1,4 +1,4 @@
-from module.Engine.Analyzer.AnalysisFakeNameInjector import AnalysisFakeNameInjector
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 
 
 class TestAnalysisFakeNameInjector:

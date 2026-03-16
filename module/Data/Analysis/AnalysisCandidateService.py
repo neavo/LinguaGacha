@@ -3,12 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.Utils.JSONTool import JSONTool
 
 
 class AnalysisCandidateService:
-    """承接分析 observation、候选聚合和候选转术语的纯业务逻辑。"""
+    """承接分析候选聚合和候选转术语的纯业务逻辑。"""
 
     def normalize_vote_map(self, raw_votes: object) -> dict[str, int]:
         """把票数字段规整成稳定的 {文本: 票数} 结构。"""
@@ -30,34 +30,27 @@ class AnalysisCandidateService:
             normalized[key] = normalized.get(key, 0) + votes
         return normalized
 
-    def normalize_task_observation(
+    def normalize_commit_glossary_entry(
         self,
-        raw_observation: object,
+        raw_entry: object,
+        *,
+        created_at: str,
     ) -> dict[str, Any] | None:
-        """把任务级 observation 规整成稳定结构。"""
+        """把单次提交里的术语规整成稳定结构。"""
 
-        if not isinstance(raw_observation, dict):
+        if not isinstance(raw_entry, dict):
             return None
 
-        task_fingerprint = str(raw_observation.get("task_fingerprint", "")).strip()
-        src = str(raw_observation.get("src", "")).strip()
-        dst = str(raw_observation.get("dst", "")).strip()
-        info = str(raw_observation.get("info", "")).strip()
-        if task_fingerprint == "" or src == "" or dst == "":
+        src = str(raw_entry.get("src", "")).strip()
+        dst = str(raw_entry.get("dst", "")).strip()
+        if src == "" or dst == "":
             return None
-
-        created_at_raw = raw_observation.get("created_at", "")
-        if isinstance(created_at_raw, str) and created_at_raw.strip() != "":
-            created_at = created_at_raw.strip()
-        else:
-            created_at = datetime.now().isoformat()
 
         return {
-            "task_fingerprint": task_fingerprint,
             "src": src,
             "dst": dst,
-            "info": info,
-            "case_sensitive": bool(raw_observation.get("case_sensitive", False)),
+            "info": str(raw_entry.get("info", "")).strip(),
+            "case_sensitive": bool(raw_entry.get("case_sensitive", False)),
             "created_at": created_at,
         }
 
@@ -136,120 +129,75 @@ class AnalysisCandidateService:
             normalized[entry["src"]] = entry
         return normalized
 
-    def build_task_observations_for_commit(
+    def build_commit_glossary_entries(
         self,
-        task_fingerprint: str,
         glossary_entries: list[dict[str, Any]],
         *,
         created_at: str,
     ) -> list[dict[str, Any]]:
-        """把模型抽出的术语规整成 observation 行。"""
+        """规整单次提交术语，并去掉同一任务里的完全重复项。"""
 
-        normalized_observations: list[dict[str, Any]] = []
+        normalized_entries: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str, bool]] = set()
+
         for raw_entry in glossary_entries:
-            observation = self.normalize_task_observation(
-                {
-                    "task_fingerprint": task_fingerprint,
-                    "src": raw_entry.get("src", ""),
-                    "dst": raw_entry.get("dst", ""),
-                    "info": raw_entry.get("info", ""),
-                    "case_sensitive": bool(raw_entry.get("case_sensitive", False)),
-                    "created_at": created_at,
-                }
+            entry = self.normalize_commit_glossary_entry(
+                raw_entry,
+                created_at=created_at,
             )
-            if observation is None:
+            if entry is None:
                 continue
-            normalized_observations.append(observation)
-        return normalized_observations
 
-    def collect_new_task_observations(
-        self,
-        existing_rows: list[dict[str, Any]],
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """只保留当前任务真正新增的 observation。"""
-
-        existing_keys = {
-            (
-                str(row.get("src", "")),
-                str(row.get("dst", "")),
-                str(row.get("info", "")),
-                bool(row.get("case_sensitive", False)),
+            entry_key = (
+                entry["src"],
+                entry["dst"],
+                entry["info"],
+                entry["case_sensitive"],
             )
-            for row in existing_rows
-        }
-
-        new_observations: list[dict[str, Any]] = []
-        pending_keys = set(existing_keys)
-        for observation in observations:
-            observation_key = (
-                observation["src"],
-                observation["dst"],
-                observation["info"],
-                observation["case_sensitive"],
-            )
-            if observation_key in pending_keys:
+            if entry_key in seen_keys:
                 continue
-            pending_keys.add(observation_key)
-            new_observations.append(observation)
-        return new_observations
+            seen_keys.add(entry_key)
+            normalized_entries.append(entry)
 
-    def build_task_observation_insert_rows(
+        return normalized_entries
+
+    def merge_glossary_entries_into_candidate_aggregates(
         self,
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """把 observation 快照转换成写库行。"""
-
-        return [
-            {
-                "task_fingerprint": observation["task_fingerprint"],
-                "src": observation["src"],
-                "dst": observation["dst"],
-                "info": observation["info"],
-                "case_sensitive": observation["case_sensitive"],
-                "created_at": observation["created_at"],
-            }
-            for observation in observations
-        ]
-
-    def merge_observations_into_candidate_aggregates(
-        self,
-        observations: list[dict[str, Any]],
+        glossary_entries: list[dict[str, Any]],
         aggregate_map: dict[str, dict[str, Any]],
     ) -> None:
-        """把新增 observation 合并进候选池快照。"""
+        """把本次提交里的术语直接合并进候选池快照。"""
 
-        for observation in observations:
-            src = observation["src"]
+        for entry in glossary_entries:
+            src = entry["src"]
             existing_entry = aggregate_map.get(src)
             if existing_entry is None:
                 aggregate_map[src] = {
                     "src": src,
-                    "dst_votes": {observation["dst"]: 1},
-                    "info_votes": {observation["info"]: 1},
+                    "dst_votes": {entry["dst"]: 1},
+                    "info_votes": {entry["info"]: 1},
                     "observation_count": 1,
-                    "first_seen_at": observation["created_at"],
-                    "last_seen_at": observation["created_at"],
-                    "case_sensitive": observation["case_sensitive"],
+                    "first_seen_at": entry["created_at"],
+                    "last_seen_at": entry["created_at"],
+                    "case_sensitive": entry["case_sensitive"],
                     "first_seen_index": 0,
                 }
                 continue
 
-            dst = observation["dst"]
+            dst = entry["dst"]
             existing_entry["dst_votes"][dst] = (
                 int(existing_entry["dst_votes"].get(dst, 0)) + 1
             )
-            info = observation["info"]
+            info = entry["info"]
             existing_entry["info_votes"][info] = (
                 int(existing_entry["info_votes"].get(info, 0)) + 1
             )
             existing_entry["observation_count"] = (
                 int(existing_entry.get("observation_count", 0)) + 1
             )
-            existing_entry["last_seen_at"] = observation["created_at"]
+            existing_entry["last_seen_at"] = entry["created_at"]
             existing_entry["case_sensitive"] = bool(
-                existing_entry.get("case_sensitive", False)
-                or observation["case_sensitive"]
+                existing_entry.get("case_sensitive", False) or entry["case_sensitive"]
             )
 
     def build_candidate_aggregate_upsert_rows(

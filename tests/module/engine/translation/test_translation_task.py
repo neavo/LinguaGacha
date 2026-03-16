@@ -11,7 +11,7 @@ from module.Data.DataManager import DataManager
 from module.Engine.TaskRequesterErrors import RequestCancelledError
 from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
-from module.Engine.Translator.TranslatorTask import TranslatorTask
+from module.Engine.Translation.TranslationTask import TranslationTask
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseChecker import ResponseChecker
@@ -158,9 +158,9 @@ def create_task(
     src: str = "hello",
     skip_response_check: bool = True,
     model: dict[str, Any] | None = None,
-) -> TranslatorTask:
+) -> TranslationTask:
     item = Item(src=src, text_type=Item.TextType.NONE)
-    return TranslatorTask(
+    return TranslationTask(
         config=Config(auto_process_prefix_suffix_preserved_text=False),
         model=model or {"api_format": Base.APIFormat.OPENAI},
         items=[item],
@@ -169,7 +169,7 @@ def create_task(
     )
 
 
-class TestTranslatorTaskPrepareRequestData:
+class TestTranslationTaskPrepareRequestData:
     def test_prepare_request_data_marks_done_when_all_lines_are_skipped(self) -> None:
         item = Item(src="<b></b>\n<i></i>", text_type=Item.TextType.NONE)
         config = Config(auto_process_prefix_suffix_preserved_text=False)
@@ -177,7 +177,7 @@ class TestTranslatorTaskPrepareRequestData:
             text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
             text_preserve_entries=({"src": "<[^>]+>"},),
         )
-        task = TranslatorTask(
+        task = TranslationTask(
             config=config,
             model={"api_format": Base.APIFormat.OPENAI},
             items=[item],
@@ -204,7 +204,7 @@ class TestTranslatorTaskPrepareRequestData:
             text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
             text_preserve_entries=({"src": "<[^>]+>"},),
         )
-        task = TranslatorTask(
+        task = TranslationTask(
             config=config,
             model={"api_format": Base.APIFormat.OPENAI},
             items=[item],
@@ -257,7 +257,7 @@ class TestTranslatorTaskPrepareRequestData:
         assert prepared["console_log"] == ["SAKURA_LOG"]
 
 
-class TestTranslatorTaskUtils:
+class TestTranslationTaskUtils:
     @pytest.mark.parametrize(
         ("source", "expected_cleaned", "expected_why"),
         [
@@ -305,13 +305,13 @@ class TestTranslatorTaskUtils:
     ) -> None:
         from module.Localizer.Localizer import Localizer
 
-        TranslatorTask.get_error_text.cache_clear()
+        TranslationTask.get_error_text.cache_clear()
         expected_text = getattr(Localizer.get(), expected_attr)
-        assert TranslatorTask.get_error_text(error) == expected_text
+        assert TranslationTask.get_error_text(error) == expected_text
 
     def test_get_error_text_returns_empty_for_unknown(self) -> None:
-        TranslatorTask.get_error_text.cache_clear()
-        assert TranslatorTask.get_error_text(ResponseChecker.Error.UNKNOWN) == ""
+        TranslationTask.get_error_text.cache_clear()
+        assert TranslationTask.get_error_text(ResponseChecker.Error.UNKNOWN) == ""
 
     def test_generate_log_rows_formats_console_and_plain_text(self) -> None:
         task = create_task()
@@ -340,7 +340,7 @@ class TestTranslatorTaskUtils:
         assert len(table.rows) == 2
 
 
-class TestTranslatorTaskApplyResponseData:
+class TestTranslationTaskApplyResponseData:
     def test_apply_response_data_updates_item_when_checks_pass(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -353,7 +353,7 @@ class TestTranslatorTaskApplyResponseData:
         task.response_checker = checker
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             lambda self, _: (["decoded"], [{"src": "s", "dst": "d"}]),
         )
 
@@ -394,7 +394,7 @@ class TestTranslatorTaskApplyResponseData:
         task.processors = [processor]
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             lambda self, _: (["only-one"], []),
         )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
@@ -422,7 +422,7 @@ class TestTranslatorTaskApplyResponseData:
             raise AssertionError("request_timeout 分支不应调用 decode")
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             fail_decode,
         )
 
@@ -488,7 +488,7 @@ class TestTranslatorTaskApplyResponseData:
         task.response_checker = checker
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             lambda self, _: (["bad"], []),
         )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
@@ -509,7 +509,7 @@ class TestTranslatorTaskApplyResponseData:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         items = [Item(src="a"), Item(src="b")]
-        task = TranslatorTask(
+        task = TranslationTask(
             config=Config(auto_process_prefix_suffix_preserved_text=False),
             model={"api_format": Base.APIFormat.OPENAI},
             items=items,
@@ -554,11 +554,11 @@ class TestTranslatorTaskApplyResponseData:
         task = create_task(skip_response_check=True)
         fake_log = FakeLogManager(expert_mode=False)
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             lambda self, _: (["ok"], []),
         )
 
@@ -597,7 +597,7 @@ class TestTranslatorTaskApplyResponseData:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         items = [Item(src="a"), Item(src="b")]
-        task = TranslatorTask(
+        task = TranslationTask(
             config=Config(auto_process_prefix_suffix_preserved_text=False),
             model={"api_format": Base.APIFormat.OPENAI},
             items=items,
@@ -614,7 +614,7 @@ class TestTranslatorTaskApplyResponseData:
         ]
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.ResponseDecoder.decode",
+            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
             lambda self, _: (["da", "db"], []),
         )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
@@ -635,7 +635,7 @@ class TestTranslatorTaskApplyResponseData:
         assert task.items[1].get_dst() == ""
 
 
-class TestTranslatorTaskRequestAndStart:
+class TestTranslationTaskRequestAndStart:
     def test_start_returns_default_and_logs_when_request_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -647,7 +647,7 @@ class TestTranslatorTaskRequestAndStart:
         )
         fake_log = FakeLogManager()
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
 
@@ -726,7 +726,7 @@ class TestTranslatorTaskRequestAndStart:
                 return RequestCancelledError("cancelled"), "", "", 0, 0
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TaskRequester",
+            "module.Engine.Translation.TranslationTask.TaskRequester",
             FakeRequester,
         )
 
@@ -744,7 +744,7 @@ class TestTranslatorTaskRequestAndStart:
             lambda *args: {"done": False, "messages": []},
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.STOPPING),
         )
 
@@ -759,7 +759,7 @@ class TestTranslatorTaskRequestAndStart:
                 return RuntimeError("boom"), "TH", "RR", 1, 2
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TaskRequester",
+            "module.Engine.Translation.TranslationTask.TaskRequester",
             FakeRequester,
         )
 
@@ -790,7 +790,7 @@ class TestTranslatorTaskRequestAndStart:
             },
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
@@ -807,7 +807,7 @@ class TestTranslatorTaskRequestAndStart:
         captured: dict[str, Any] = {}
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TaskRequester",
+            "module.Engine.Translation.TranslationTask.TaskRequester",
             FakeRequester,
         )
         monkeypatch.setattr(
@@ -862,7 +862,7 @@ class TestTranslatorTaskRequestAndStart:
             },
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
@@ -878,11 +878,11 @@ class TestTranslatorTaskRequestAndStart:
 
         fake_log = FakeLogManager()
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TaskRequester",
+            "module.Engine.Translation.TranslationTask.TaskRequester",
             FakeRequester,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
 
@@ -907,7 +907,7 @@ class TestTranslatorTaskRequestAndStart:
             },
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
@@ -922,7 +922,7 @@ class TestTranslatorTaskRequestAndStart:
                 return None, "THINK", "RESULT", 11, 22
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TaskRequester",
+            "module.Engine.Translation.TranslationTask.TaskRequester",
             FakeRequester,
         )
         monkeypatch.setattr(
@@ -946,7 +946,7 @@ class TestTranslatorTaskRequestAndStart:
         }
 
 
-class TestTranslatorTaskPrintLogTable:
+class TestTranslationTaskPrintLogTable:
     @pytest.mark.parametrize(
         ("checks", "expected_level"),
         [
@@ -974,15 +974,15 @@ class TestTranslatorTaskPrintLogTable:
         fake_console = FakeConsole()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 1),
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.rich.get_console",
+            "module.Engine.Translation.TranslationTask.rich.get_console",
             lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
@@ -1019,15 +1019,15 @@ class TestTranslatorTaskPrintLogTable:
         fake_console = FakeConsole()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 64),
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.rich.get_console",
+            "module.Engine.Translation.TranslationTask.rich.get_console",
             lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
@@ -1059,15 +1059,15 @@ class TestTranslatorTaskPrintLogTable:
         fake_console = FakeConsole()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 1),
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.rich.get_console",
+            "module.Engine.Translation.TranslationTask.rich.get_console",
             lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
@@ -1099,15 +1099,15 @@ class TestTranslatorTaskPrintLogTable:
         fake_console = FakeConsole()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.Engine.get",
+            "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 64),
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.rich.get_console",
+            "module.Engine.Translation.TranslationTask.rich.get_console",
             lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
@@ -1127,7 +1127,7 @@ class TestTranslatorTaskPrintLogTable:
         assert fake_console.messages[0].count("\n") == 3
 
 
-class TestTranslatorTaskTranslateSingle:
+class TestTranslationTaskTranslateSingle:
     def test_translate_single_callback_false_when_no_active_model(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1147,12 +1147,12 @@ class TestTranslatorTaskTranslateSingle:
                 self.target()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.threading.Thread",
+            "module.Engine.Translation.TranslationTask.threading.Thread",
             ImmediateThread,
         )
 
         callback_result: list[tuple[Item, bool]] = []
-        TranslatorTask.translate_single(
+        TranslationTask.translate_single(
             item,
             config,
             lambda callback_item, success: callback_result.append(
@@ -1182,11 +1182,11 @@ class TestTranslatorTaskTranslateSingle:
                 self.target()
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.threading.Thread",
+            "module.Engine.Translation.TranslationTask.threading.Thread",
             ImmediateThread,
         )
 
-        TranslatorTask.translate_single(item, config, None)  # type: ignore[arg-type]
+        TranslationTask.translate_single(item, config, None)  # type: ignore[arg-type]
 
         assert created_threads == ["ENGINE_SINGLE"]
 
@@ -1211,7 +1211,7 @@ class TestTranslatorTaskTranslateSingle:
 
         created_task_args: dict[str, Any] = {}
 
-        class FakeTranslatorTaskCtor:
+        class FakeTranslationTaskCtor:
             def __init__(self, **kwargs: Any) -> None:
                 created_task_args.update(kwargs)
 
@@ -1219,16 +1219,16 @@ class TestTranslatorTaskTranslateSingle:
                 return {"row_count": 1}
 
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.threading.Thread",
+            "module.Engine.Translation.TranslationTask.threading.Thread",
             ImmediateThread,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TranslatorTask",
-            FakeTranslatorTaskCtor,
+            "module.Engine.Translation.TranslationTask.TranslationTask",
+            FakeTranslationTaskCtor,
         )
 
         callback_result: list[tuple[Item, bool]] = []
-        TranslatorTask.translate_single(
+        TranslationTask.translate_single(
             item,
             config,
             lambda callback_item, success: callback_result.append(
@@ -1259,7 +1259,7 @@ class TestTranslatorTaskTranslateSingle:
             def start(self) -> None:
                 self.target()
 
-        class FakeTranslatorTaskCtor:
+        class FakeTranslationTaskCtor:
             def __init__(self, **kwargs: Any) -> None:
                 del kwargs
 
@@ -1268,20 +1268,20 @@ class TestTranslatorTaskTranslateSingle:
 
         fake_log = FakeLogManager()
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.threading.Thread",
+            "module.Engine.Translation.TranslationTask.threading.Thread",
             ImmediateThread,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.TranslatorTask",
-            FakeTranslatorTaskCtor,
+            "module.Engine.Translation.TranslationTask.TranslationTask",
+            FakeTranslationTaskCtor,
         )
         monkeypatch.setattr(
-            "module.Engine.Translator.TranslatorTask.LogManager.get",
+            "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
 
         callback_result: list[tuple[Item, bool]] = []
-        TranslatorTask.translate_single(
+        TranslationTask.translate_single(
             item,
             config,
             lambda callback_item, success: callback_result.append(

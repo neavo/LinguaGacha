@@ -5,7 +5,8 @@ from typing import Any
 
 from base.Base import Base
 from model.Item import Item
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 
 class AnalysisProgressService:
@@ -39,12 +40,12 @@ class AnalysisProgressService:
         if not isinstance(item_id, int) or item_id <= 0:
             return None
 
-        source_hash = str(raw_checkpoint.get("source_hash", "")).strip()
-        if source_hash == "":
-            return None
-
         status = self.normalize_state_value(raw_checkpoint.get("status"))
-        if status not in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR):
+        if status not in (
+            Base.ProjectStatus.NONE,
+            Base.ProjectStatus.PROCESSED,
+            Base.ProjectStatus.ERROR,
+        ):
             return None
 
         try:
@@ -60,7 +61,6 @@ class AnalysisProgressService:
 
         return {
             "item_id": item_id,
-            "source_hash": source_hash,
             "status": status,
             "updated_at": updated_at,
             "error_count": max(0, error_count),
@@ -113,7 +113,6 @@ class AnalysisProgressService:
             normalized_rows.append(
                 {
                     "item_id": checkpoint["item_id"],
-                    "source_hash": checkpoint["source_hash"],
                     "status": checkpoint["status"].value,
                     "updated_at": checkpoint["updated_at"],
                     "error_count": checkpoint["error_count"],
@@ -137,7 +136,6 @@ class AnalysisProgressService:
             checkpoint = self.normalize_item_checkpoint(
                 {
                     "item_id": raw_checkpoint.get("item_id"),
-                    "source_hash": raw_checkpoint.get("source_hash"),
                     "status": Base.ProjectStatus.ERROR.value,
                     "updated_at": updated_at,
                     "error_count": raw_checkpoint.get("error_count", 0),
@@ -148,16 +146,11 @@ class AnalysisProgressService:
 
             previous = existing.get(checkpoint["item_id"])
             error_count = 1
-            if (
-                previous is not None
-                and previous["status"] == Base.ProjectStatus.ERROR
-                and previous["source_hash"] == checkpoint["source_hash"]
-            ):
+            if previous is not None and previous["status"] == Base.ProjectStatus.ERROR:
                 error_count = int(previous.get("error_count", 0)) + 1
 
             row = {
                 "item_id": checkpoint["item_id"],
-                "source_hash": checkpoint["source_hash"],
                 "status": Base.ProjectStatus.ERROR.value,
                 "updated_at": checkpoint["updated_at"],
                 "error_count": error_count,
@@ -165,7 +158,6 @@ class AnalysisProgressService:
             error_rows.append(row)
             updated_checkpoints[checkpoint["item_id"]] = {
                 "item_id": checkpoint["item_id"],
-                "source_hash": checkpoint["source_hash"],
                 "status": Base.ProjectStatus.ERROR,
                 "updated_at": checkpoint["updated_at"],
                 "error_count": error_count,
@@ -199,24 +191,22 @@ class AnalysisProgressService:
                 continue
 
             total_line += 1
-            source_hash = AnalysisTextPolicy.build_source_hash(source_text)
             checkpoint = checkpoints.get(item_id)
-            if checkpoint is None or checkpoint["source_hash"] != source_hash:
-                continue
-
-            status = checkpoint["status"]
+            status = (
+                checkpoint["status"]
+                if checkpoint is not None
+                else Base.ProjectStatus.NONE
+            )
             if status == Base.ProjectStatus.PROCESSED:
                 processed_line += 1
             elif status == Base.ProjectStatus.ERROR:
                 error_line += 1
 
-        pending_line = max(0, total_line - processed_line - error_line)
         return {
             "total_line": total_line,
             "processed_line": processed_line,
             "error_line": error_line,
             "line": processed_line + error_line,
-            "pending_line": pending_line,
         }
 
     def build_progress_snapshot(
@@ -267,13 +257,9 @@ class AnalysisProgressService:
             if source_text == "":
                 continue
 
-            source_hash = AnalysisTextPolicy.build_source_hash(source_text)
             checkpoint = checkpoints.get(item_id)
-            if (
-                checkpoint is not None
-                and checkpoint["status"] == Base.ProjectStatus.PROCESSED
-                and checkpoint["source_hash"] == source_hash
-            ):
+            status = checkpoint["status"] if checkpoint is not None else None
+            if not TaskModeStrategy.should_schedule_continue(status):
                 continue
 
             pending_items.append(item)

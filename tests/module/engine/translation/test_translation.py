@@ -11,8 +11,8 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-import module.Engine.Translator.Translator as translator_module
-from module.Engine.Translator.Translator import Translator
+import module.Engine.Translation.Translation as translation_module
+from module.Engine.Translation.Translation import Translation
 
 
 class EventRecorder:
@@ -48,41 +48,41 @@ class FakeLogger:
         del msg
 
 
-def create_translator_stub() -> Translator:
-    translator = Translator()
+def create_translation_stub() -> Translation:
+    translation = Translation()
     recorder = EventRecorder()
-    translator.extras = {}
-    translator.items_cache = None
-    translator.task_limiter = None
-    translator.stop_requested = False
-    translator.persist_quality_rules = True
-    translator.quality_snapshot = None
-    translator.config = Config(
+    translation.extras = {}
+    translation.items_cache = None
+    translation.task_limiter = None
+    translation.stop_requested = False
+    translation.persist_quality_rules = True
+    translation.quality_snapshot = None
+    translation.config = Config(
         auto_glossary_enable=False,
         mtool_optimizer_enable=False,
         output_folder_open_on_finish=False,
     )
-    translator.emit = recorder.emit  # type: ignore[method-assign]
-    translator.emitted_events = recorder.events  # type: ignore[attr-defined]
-    return translator
+    translation.emit = recorder.emit  # type: ignore[method-assign]
+    translation.emitted_events = recorder.events  # type: ignore[attr-defined]
+    return translation
 
 
-def emitted_events(translator: Translator) -> list[tuple[Base.Event, dict[str, Any]]]:
-    return list(getattr(translator, "emitted_events", []))
+def emitted_events(translation: Translation) -> list[tuple[Base.Event, dict[str, Any]]]:
+    return list(getattr(translation, "emitted_events", []))
 
 
 def has_emitted(
-    translator: Translator,
+    translation: Translation,
     event: Base.Event,
     payload: dict[str, Any] | None = None,
 ) -> bool:
     if payload is None:
         return any(
-            emitted_event == event for emitted_event, _ in emitted_events(translator)
+            emitted_event == event for emitted_event, _ in emitted_events(translation)
         )
     return any(
         emitted_event == event and emitted_payload == payload
-        for emitted_event, emitted_payload in emitted_events(translator)
+        for emitted_event, emitted_payload in emitted_events(translation)
     )
 
 
@@ -190,7 +190,7 @@ def build_localizer() -> Any:
         engine_task_done="task_done",
         engine_task_stop="task_stop",
         engine_task_fail="task_fail",
-        translator_mtool_optimizer_post_log="mtool_done",
+        translation_mtool_optimizer_post_log="mtool_done",
         export_translation_done="done {PATH}",
     )
 
@@ -234,49 +234,49 @@ def setup_common_patches(
     dm: Any,
     logger: FakeLogManager,
 ) -> None:
-    monkeypatch.setattr(translator_module.Engine, "get", staticmethod(lambda: engine))
-    monkeypatch.setattr(translator_module.DataManager, "get", staticmethod(lambda: dm))
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
     monkeypatch.setattr(
-        translator_module.Localizer, "get", staticmethod(build_localizer)
+        translation_module.Localizer, "get", staticmethod(build_localizer)
     )
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
-    monkeypatch.setattr(translator_module.time, "sleep", lambda seconds: None)
-    monkeypatch.setattr(translator_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(translation_module.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(translation_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(
-        translator_module.TextProcessor, "reset", staticmethod(lambda: None)
-    )
-    monkeypatch.setattr(
-        translator_module.TaskRequester, "reset", staticmethod(lambda: None)
+        translation_module.TextProcessor, "reset", staticmethod(lambda: None)
     )
     monkeypatch.setattr(
-        translator_module.PromptBuilder, "reset", staticmethod(lambda: None)
+        translation_module.TaskRequester, "reset", staticmethod(lambda: None)
+    )
+    monkeypatch.setattr(
+        translation_module.PromptBuilder, "reset", staticmethod(lambda: None)
     )
 
 
 def test_get_concurrency_helpers_return_zero_without_limiter() -> None:
-    translator = create_translator_stub()
-    assert Translator.get_concurrency_in_use(translator) == 0
-    assert Translator.get_concurrency_limit(translator) == 0
+    translation = create_translation_stub()
+    assert Translation.get_concurrency_in_use(translation) == 0
+    assert Translation.get_concurrency_limit(translation) == 0
 
 
 def test_get_concurrency_helpers_delegate_to_limiter() -> None:
-    translator = create_translator_stub()
-    translator.task_limiter = SimpleNamespace(
+    translation = create_translation_stub()
+    translation.task_limiter = SimpleNamespace(
         get_concurrency_in_use=lambda: 3,
         get_concurrency_limit=lambda: 9,
     )
 
-    assert Translator.get_concurrency_in_use(translator) == 3
-    assert Translator.get_concurrency_limit(translator) == 9
+    assert Translation.get_concurrency_in_use(translation) == 3
+    assert Translation.get_concurrency_limit(translation) == 9
 
 
 def test_update_extras_snapshot_accumulates_runtime_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.extras = {
+    translation = create_translation_stub()
+    translation.extras = {
         "processed_line": 2,
         "error_line": 1,
         "total_tokens": 10,
@@ -284,10 +284,10 @@ def test_update_extras_snapshot_accumulates_runtime_data(
         "total_output_tokens": 4,
         "start_time": 100.0,
     }
-    monkeypatch.setattr(translator_module.time, "time", lambda: 112.5)
+    monkeypatch.setattr(translation_module.time, "time", lambda: 112.5)
 
-    snapshot = Translator.update_extras_snapshot(
-        translator,
+    snapshot = Translation.update_extras_snapshot(
+        translation,
         processed_count=3,
         error_count=2,
         input_tokens=7,
@@ -306,53 +306,53 @@ def test_update_extras_snapshot_accumulates_runtime_data(
 def test_sync_extras_line_stats_uses_items_cache_as_source_of_truth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     processed = Item(src="a")
     processed.set_status(Base.ProjectStatus.PROCESSED)
     failed = Item(src="b")
     failed.set_status(Base.ProjectStatus.ERROR)
     pending = Item(src="c")
     pending.set_status(Base.ProjectStatus.NONE)
-    translator.items_cache = [processed, failed, pending]
-    translator.extras = {"start_time": 10.0}
-    monkeypatch.setattr(translator_module.time, "time", lambda: 16.0)
+    translation.items_cache = [processed, failed, pending]
+    translation.extras = {"start_time": 10.0}
+    monkeypatch.setattr(translation_module.time, "time", lambda: 16.0)
 
-    Translator.sync_extras_line_stats(translator)
+    Translation.sync_extras_line_stats(translation)
 
-    assert translator.extras["processed_line"] == 1
-    assert translator.extras["error_line"] == 1
-    assert translator.extras["line"] == 2
-    assert translator.extras["total_line"] == 3
-    assert translator.extras["time"] == pytest.approx(6.0)
+    assert translation.extras["processed_line"] == 1
+    assert translation.extras["error_line"] == 1
+    assert translation.extras["line"] == 2
+    assert translation.extras["total_line"] == 3
+    assert translation.extras["time"] == pytest.approx(6.0)
 
 
 def test_should_emit_export_result_toast_only_for_manual_source() -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
 
     assert (
-        Translator.should_emit_export_result_toast(
-            translator,
-            Translator.ExportSource.MANUAL,
+        Translation.should_emit_export_result_toast(
+            translation,
+            Translation.ExportSource.MANUAL,
         )
         is True
     )
     assert (
-        Translator.should_emit_export_result_toast(
-            translator,
-            Translator.ExportSource.AUTO_ON_FINISH,
+        Translation.should_emit_export_result_toast(
+            translation,
+            Translation.ExportSource.AUTO_ON_FINISH,
         )
         is False
     )
 
 
 def test_resolve_export_items_prefers_runtime_cache() -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     cached_item = Item(src="live")
-    translator.items_cache = [cached_item]
+    translation.items_cache = [cached_item]
     copied_item = Item(src="copied")
-    translator.copy_items = lambda: [copied_item]
+    translation.copy_items = lambda: [copied_item]
 
-    resolved = Translator.resolve_export_items(translator)
+    resolved = Translation.resolve_export_items(translation)
 
     assert resolved == [copied_item]
 
@@ -360,64 +360,64 @@ def test_resolve_export_items_prefers_runtime_cache() -> None:
 def test_resolve_export_items_reads_data_manager_when_cache_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.items_cache = None
+    translation = create_translation_stub()
+    translation.items_cache = None
     loaded_item = Item(src="db")
     fake_dm = SimpleNamespace(
         is_loaded=lambda: True, get_all_items=lambda: [loaded_item]
     )
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translator.resolve_export_items(translator) == [loaded_item]
+    assert Translation.resolve_export_items(translation) == [loaded_item]
 
 
 def test_resolve_export_items_returns_empty_when_project_not_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.items_cache = None
+    translation = create_translation_stub()
+    translation.items_cache = None
     fake_dm = SimpleNamespace(is_loaded=lambda: False)
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translator.resolve_export_items(translator) == []
+    assert Translation.resolve_export_items(translation) == []
 
 
 def test_get_item_count_by_status_and_copy_items() -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     first = Item(src="a")
     second = Item(src="b")
     second.set_status(Base.ProjectStatus.PROCESSED)
-    translator.items_cache = [first, second]
+    translation.items_cache = [first, second]
 
-    none_count = Translator.get_item_count_by_status(
-        translator, Base.ProjectStatus.NONE
+    none_count = Translation.get_item_count_by_status(
+        translation, Base.ProjectStatus.NONE
     )
-    copied = Translator.copy_items(translator)
+    copied = Translation.copy_items(translation)
     copied[0].set_src("changed")
 
     assert none_count == 1
-    assert translator.items_cache[0].get_src() == "a"
+    assert translation.items_cache[0].get_src() == "a"
 
 
 def test_save_translation_state_skips_when_project_not_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.items_cache = None
+    translation = create_translation_stub()
+    translation.items_cache = None
     fake_dm = SimpleNamespace(
         is_loaded=lambda: False,
         set_translation_extras=MagicMock(),
         set_project_status=MagicMock(),
     )
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    Translator.save_translation_state(translator)
+    Translation.save_translation_state(translation)
 
     fake_dm.set_translation_extras.assert_not_called()
     fake_dm.set_project_status.assert_not_called()
@@ -426,52 +426,52 @@ def test_save_translation_state_skips_when_project_not_ready(
 def test_save_translation_state_persists_extras_and_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.items_cache = [Item(src="a")]
-    translator.extras = {"line": 1}
+    translation = create_translation_stub()
+    translation.items_cache = [Item(src="a")]
+    translation.extras = {"line": 1}
     fake_dm = SimpleNamespace(
         is_loaded=lambda: True,
         set_translation_extras=MagicMock(),
         set_project_status=MagicMock(),
     )
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    Translator.save_translation_state(translator, Base.ProjectStatus.PROCESSING)
+    Translation.save_translation_state(translation, Base.ProjectStatus.PROCESSING)
 
     fake_dm.set_translation_extras.assert_called_once_with({"line": 1})
     fake_dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSING)
 
 
 def test_initialize_task_limits_covers_default_and_auto_derive() -> None:
-    translator = create_translator_stub()
-    if hasattr(translator, "model"):
-        del translator.model
+    translation = create_translation_stub()
+    if hasattr(translation, "model"):
+        del translation.model
 
-    assert Translator.initialize_task_limits(translator) == (8, 8, 0)
+    assert Translation.initialize_task_limits(translation) == (8, 8, 0)
 
-    translator.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 120}}
-    assert Translator.initialize_task_limits(translator) == (8, 0, 120)
+    translation.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 120}}
+    assert Translation.initialize_task_limits(translation) == (8, 0, 120)
 
-    translator.model = {"threshold": {"concurrency_limit": 5, "rpm_limit": 0}}
-    assert Translator.initialize_task_limits(translator) == (5, 5, 0)
+    translation.model = {"threshold": {"concurrency_limit": 5, "rpm_limit": 0}}
+    assert Translation.initialize_task_limits(translation) == (5, 5, 0)
 
 
 def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
-    translator = create_translator_stub()
-    assert Translator.get_task_buffer_size(translator, 1) == 64
-    assert Translator.get_task_buffer_size(translator, 5000) == 4096
-    assert Translator.get_task_buffer_size(translator, 40) == 160
+    translation = create_translation_stub()
+    assert Translation.get_task_buffer_size(translation, 1) == 64
+    assert Translation.get_task_buffer_size(translation, 5000) == 4096
+    assert Translation.get_task_buffer_size(translation, 40) == 160
 
 
 def test_merge_glossary_returns_none_when_snapshot_missing() -> None:
-    translator = create_translator_stub()
-    translator.quality_snapshot = None
+    translation = create_translation_stub()
+    translation.quality_snapshot = None
 
     assert (
-        Translator.merge_glossary(
-            translator, [{"src": "A", "dst": "甲", "info": "male"}]
+        Translation.merge_glossary(
+            translation, [{"src": "A", "dst": "甲", "info": "male"}]
         )
         is None
     )
@@ -480,19 +480,19 @@ def test_merge_glossary_returns_none_when_snapshot_missing() -> None:
 def test_merge_glossary_filters_invalid_and_supports_runtime_only_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     snapshot = FakeSnapshot()
-    translator.quality_snapshot = snapshot
+    translation.quality_snapshot = snapshot
     monkeypatch.setattr(
-        translator_module.TextHelper,
+        translation_module.TextHelper,
         "split_by_punctuation",
         staticmethod(
             lambda text, split_by_space=True: [v.strip() for v in text.split(",")]
         ),
     )
 
-    result = Translator.merge_glossary(
-        translator,
+    result = Translation.merge_glossary(
+        translation,
         [
             {"src": "Alice, Bob", "dst": "爱丽丝, 鲍勃", "info": "female"},
             {"src": "same", "dst": "same", "info": "male"},
@@ -521,8 +521,8 @@ def test_merge_glossary_filters_invalid_and_supports_runtime_only_mode(
 def test_merge_glossary_persist_mode_calls_data_manager(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.quality_snapshot = FakeSnapshot()
+    translation = create_translation_stub()
+    translation.quality_snapshot = FakeSnapshot()
     fake_dm = SimpleNamespace(
         state_lock=threading.Lock(),
         merge_glossary_incoming=MagicMock(
@@ -530,11 +530,11 @@ def test_merge_glossary_persist_mode_calls_data_manager(
         ),
     )
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    merged = Translator.merge_glossary(
-        translator,
+    merged = Translation.merge_glossary(
+        translation,
         [{"src": "A", "dst": "甲", "info": "male"}],
         persist=True,
     )
@@ -546,16 +546,16 @@ def test_merge_glossary_persist_mode_calls_data_manager(
 def test_apply_batch_update_sync_without_auto_glossary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.config.auto_glossary_enable = False
+    translation = create_translation_stub()
+    translation.config.auto_glossary_enable = False
     update_calls: list[dict[str, Any]] = []
     fake_dm = SimpleNamespace(update_batch=lambda **kwargs: update_calls.append(kwargs))
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    Translator.apply_batch_update_sync(
-        translator,
+    Translation.apply_batch_update_sync(
+        translation,
         finalized_items=[{"id": 1, "dst": "a"}],
         glossaries=[{"src": "A", "dst": "甲"}],
         extras_snapshot={"line": 1},
@@ -570,17 +570,17 @@ def test_apply_batch_update_sync_without_auto_glossary(
 def test_apply_batch_update_sync_with_auto_glossary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.config.auto_glossary_enable = True
-    translator.merge_glossary = MagicMock(return_value=[{"src": "A", "dst": "甲"}])
+    translation = create_translation_stub()
+    translation.config.auto_glossary_enable = True
+    translation.merge_glossary = MagicMock(return_value=[{"src": "A", "dst": "甲"}])
     update_calls: list[dict[str, Any]] = []
     fake_dm = SimpleNamespace(update_batch=lambda **kwargs: update_calls.append(kwargs))
     monkeypatch.setattr(
-        translator_module.DataManager, "get", staticmethod(lambda: fake_dm)
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    Translator.apply_batch_update_sync(
-        translator,
+    Translation.apply_batch_update_sync(
+        translation,
         finalized_items=[{"id": 1, "dst": "a"}],
         glossaries=[{"src": "A", "dst": "甲"}],
         extras_snapshot={"line": 1},
@@ -590,7 +590,7 @@ def test_apply_batch_update_sync_with_auto_glossary(
     assert kwargs["rules"] == {
         DataManager.RuleType.GLOSSARY: [{"src": "A", "dst": "甲"}]
     }
-    translator.merge_glossary.assert_called_once_with(
+    translation.merge_glossary.assert_called_once_with(
         [{"src": "A", "dst": "甲"}],
         persist=True,
     )
@@ -599,15 +599,15 @@ def test_apply_batch_update_sync_with_auto_glossary(
 def test_translation_require_stop_sets_engine_status_and_emits_run_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = SimpleNamespace(set_status=MagicMock())
-    monkeypatch.setattr(translator_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
 
-    Translator.translation_require_stop(translator, {})
+    Translation.translation_require_stop(translation, {})
 
-    assert translator.stop_requested is True
+    assert translation.stop_requested is True
     engine.set_status.assert_called_once_with(Base.TaskStatus.STOPPING)
-    assert emitted_events(translator) == [
+    assert emitted_events(translation) == [
         (
             Base.Event.TRANSLATION_REQUEST_STOP,
             {"sub_event": Base.SubEvent.RUN},
@@ -618,14 +618,14 @@ def test_translation_require_stop_sets_engine_status_and_emits_run_event(
 def test_translation_export_returns_immediately_when_engine_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = SimpleNamespace(get_status=lambda: Base.TaskStatus.STOPPING)
-    monkeypatch.setattr(translator_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
     thread_factory = MagicMock()
-    monkeypatch.setattr(translator_module.threading, "Thread", thread_factory)
+    monkeypatch.setattr(translation_module.threading, "Thread", thread_factory)
 
-    Translator.translation_export(
-        translator,
+    Translation.translation_export(
+        translation,
         Base.Event.TRANSLATION_EXPORT,
         {"sub_event": Base.SubEvent.REQUEST},
     )
@@ -636,16 +636,16 @@ def test_translation_export_returns_immediately_when_engine_stopping(
 def test_run_translation_export_manual_success_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.resolve_export_items = lambda: [Item(src="a", dst="b")]
-    translator.mtool_optimizer_postprocess = MagicMock()
-    translator.check_and_wirte_result = MagicMock()
+    translation = create_translation_stub()
+    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.mtool_optimizer_postprocess = MagicMock()
+    translation.check_and_wirte_result = MagicMock()
     logger = FakeLogger()
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
     monkeypatch.setattr(
-        translator_module.Localizer,
+        translation_module.Localizer,
         "get",
         staticmethod(
             lambda: SimpleNamespace(
@@ -656,15 +656,15 @@ def test_run_translation_export_manual_success_flow(
         ),
     )
 
-    Translator.run_translation_export(
-        translator,
-        source=Translator.ExportSource.MANUAL,
+    Translation.run_translation_export(
+        translation,
+        source=Translation.ExportSource.MANUAL,
         apply_mtool_postprocess=True,
     )
 
-    translator.mtool_optimizer_postprocess.assert_called_once()
-    translator.check_and_wirte_result.assert_called_once()
-    assert emitted_events(translator)[0] == (
+    translation.mtool_optimizer_postprocess.assert_called_once()
+    translation.check_and_wirte_result.assert_called_once()
+    assert emitted_events(translation)[0] == (
         Base.Event.PROGRESS_TOAST,
         {
             "sub_event": Base.SubEvent.RUN,
@@ -672,7 +672,7 @@ def test_run_translation_export_manual_success_flow(
             "indeterminate": True,
         },
     )
-    assert emitted_events(translator)[-1] == (
+    assert emitted_events(translation)[-1] == (
         Base.Event.TOAST,
         {
             "type": Base.ToastType.SUCCESS,
@@ -684,16 +684,16 @@ def test_run_translation_export_manual_success_flow(
 def test_run_translation_export_emits_error_toast_when_write_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.resolve_export_items = lambda: [Item(src="a", dst="b")]
-    translator.mtool_optimizer_postprocess = MagicMock()
-    translator.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
+    translation = create_translation_stub()
+    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.mtool_optimizer_postprocess = MagicMock()
+    translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
     logger = FakeLogger()
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
     monkeypatch.setattr(
-        translator_module.Localizer,
+        translation_module.Localizer,
         "get",
         staticmethod(
             lambda: SimpleNamespace(
@@ -704,14 +704,14 @@ def test_run_translation_export_emits_error_toast_when_write_fails(
         ),
     )
 
-    Translator.run_translation_export(
-        translator,
-        source=Translator.ExportSource.MANUAL,
+    Translation.run_translation_export(
+        translation,
+        source=Translation.ExportSource.MANUAL,
         apply_mtool_postprocess=True,
     )
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.ERROR,
@@ -721,34 +721,34 @@ def test_run_translation_export_emits_error_toast_when_write_fails(
 
 
 def test_project_check_run_ignores_non_request_sub_event() -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
 
-    Translator.project_check_run(
-        translator,
+    Translation.project_check_run(
+        translation,
         Base.Event.PROJECT_CHECK,
         {"sub_event": Base.SubEvent.DONE},
     )
 
-    assert emitted_events(translator) == []
+    assert emitted_events(translation) == []
 
 
 def test_project_check_run_emits_done_with_loaded_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     dm = create_data_manager(loaded=True)
     engine = create_engine()
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.project_check_run(
-        translator,
+    Translation.project_check_run(
+        translation,
         Base.Event.PROJECT_CHECK,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert emitted_events(translator) == [
+    assert emitted_events(translation) == [
         (
             Base.Event.PROJECT_CHECK,
             {
@@ -765,20 +765,20 @@ def test_project_check_run_emits_done_with_loaded_project(
 def test_project_check_run_emits_none_payload_when_project_unloaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     dm = create_data_manager(loaded=False)
     engine = create_engine()
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.project_check_run(
-        translator,
+    Translation.project_check_run(
+        translation,
         Base.Event.PROJECT_CHECK,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert emitted_events(translator) == [
+    assert emitted_events(translation) == [
         (
             Base.Event.PROJECT_CHECK,
             {
@@ -793,49 +793,49 @@ def test_project_check_run_emits_none_payload_when_project_unloaded(
 
 
 def test_translation_run_event_ignores_non_request_sub_event() -> None:
-    translator = create_translator_stub()
-    translator.translation_run = MagicMock()
+    translation = create_translation_stub()
+    translation.translation_run = MagicMock()
 
-    Translator.translation_run_event(
-        translator,
+    Translation.translation_run_event(
+        translation,
         Base.Event.TRANSLATION_TASK,
         {"sub_event": Base.SubEvent.DONE},
     )
 
-    translator.translation_run.assert_not_called()
+    translation.translation_run.assert_not_called()
 
 
 def test_translation_stop_event_ignores_non_request_sub_event() -> None:
-    translator = create_translator_stub()
-    translator.translation_require_stop = MagicMock()
+    translation = create_translation_stub()
+    translation.translation_require_stop = MagicMock()
 
-    Translator.translation_stop_event(
-        translator,
+    Translation.translation_stop_event(
+        translation,
         Base.Event.TRANSLATION_REQUEST_STOP,
         {"sub_event": Base.SubEvent.ERROR},
     )
 
-    translator.translation_require_stop.assert_not_called()
+    translation.translation_require_stop.assert_not_called()
 
 
 def test_translation_run_emits_busy_toast_and_error_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine(Base.TaskStatus.TRANSLATING)
-    monkeypatch.setattr(translator_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
     monkeypatch.setattr(
-        translator_module.Localizer,
+        translation_module.Localizer,
         "get",
         staticmethod(lambda: SimpleNamespace(task_running="task running")),
     )
 
-    Translator.translation_run(
-        translator,
+    Translation.translation_run(
+        translation,
         {"sub_event": Base.SubEvent.REQUEST, "mode": Base.TranslationMode.NEW},
     )
 
-    assert emitted_events(translator) == [
+    assert emitted_events(translation) == [
         (
             Base.Event.TOAST,
             {
@@ -856,7 +856,7 @@ def test_translation_run_emits_busy_toast_and_error_event(
 def test_translation_run_emits_error_when_thread_start_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     logger = FakeLogManager()
     dm = create_data_manager(loaded=True)
@@ -870,16 +870,16 @@ def test_translation_run_emits_error_when_thread_start_fails(
         def start(self) -> None:
             raise RuntimeError("thread failed")
 
-    monkeypatch.setattr(translator_module.threading, "Thread", StartFailThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", StartFailThread)
 
-    Translator.translation_run(
-        translator,
+    Translation.translation_run(
+        translation,
         {"sub_event": Base.SubEvent.REQUEST, "mode": Base.TranslationMode.NEW},
     )
 
     assert engine.status == Base.TaskStatus.IDLE
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TRANSLATION_TASK,
         {
             "sub_event": Base.SubEvent.ERROR,
@@ -892,50 +892,50 @@ def test_translation_run_emits_error_when_thread_start_fails(
 def test_translation_reset_returns_when_project_not_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=False)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_ALL,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert emitted_events(translator) == []
+    assert emitted_events(translation) == []
 
 
 def test_translation_reset_ignores_non_request_sub_event() -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_ALL,
         {"sub_event": Base.SubEvent.DONE},
     )
 
-    assert emitted_events(translator) == []
+    assert emitted_events(translation) == []
 
 
 def test_translation_reset_emits_warning_when_engine_busy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine(Base.TaskStatus.TRANSLATING)
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.ERROR},
     )
@@ -944,32 +944,32 @@ def test_translation_reset_emits_warning_when_engine_busy(
 def test_translation_reset_all_runs_reset_task_and_emits_done(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     items = [Item(src="a")]
     dm = create_data_manager(loaded=True, items=items)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_ALL,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
     dm.get_items_for_translation.assert_called_once_with(
-        translator.config,
+        translation.config,
         Base.TranslationMode.RESET,
     )
     dm.replace_all_items.assert_called_once_with(items)
     dm.set_project_status.assert_called_once_with(Base.ProjectStatus.NONE)
     dm.run_project_prefilter.assert_called_once_with(
-        translator.config,
+        translation.config,
         reason="translation_reset",
     )
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TRANSLATION_RESET_ALL,
         {"sub_event": Base.SubEvent.DONE},
     )
@@ -978,63 +978,63 @@ def test_translation_reset_all_runs_reset_task_and_emits_done(
 def test_translation_reset_failed_updates_extras_when_returned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     dm.reset_failed_translation_items_sync = MagicMock(return_value={"line": 22})
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert translator.extras == {"line": 22}
+    assert translation.extras == {"line": 22}
 
 
 def test_translation_reset_failed_keeps_extras_when_reset_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.extras = {"line": 1}
+    translation = create_translation_stub()
+    translation.extras = {"line": 1}
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     dm.reset_failed_translation_items_sync = MagicMock(return_value=None)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert translator.extras == {"line": 1}
+    assert translation.extras == {"line": 1}
 
 
 def test_translation_reset_emits_error_when_task_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     dm.reset_failed_translation_items_sync = MagicMock(side_effect=RuntimeError("boom"))
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.translation_reset(
-        translator,
+    Translation.translation_reset(
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.ERROR,
@@ -1042,7 +1042,7 @@ def test_translation_reset_emits_error_when_task_raises(
         },
     )
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TRANSLATION_RESET_FAILED,
         {"sub_event": Base.SubEvent.ERROR},
     )
@@ -1051,21 +1051,21 @@ def test_translation_reset_emits_error_when_task_raises(
 def test_run_translation_export_finishes_progress_when_no_items(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translator.resolve_export_items = lambda: []
-    translator.check_and_wirte_result = MagicMock()
+    translation.resolve_export_items = lambda: []
+    translation.check_and_wirte_result = MagicMock()
 
-    Translator.run_translation_export(
-        translator,
-        source=Translator.ExportSource.MANUAL,
+    Translation.run_translation_export(
+        translation,
+        source=Translation.ExportSource.MANUAL,
     )
 
-    translator.check_and_wirte_result.assert_not_called()
-    assert emitted_events(translator)[-1] == (
+    translation.check_and_wirte_result.assert_not_called()
+    assert emitted_events(translation)[-1] == (
         Base.Event.PROGRESS_TOAST,
         {"sub_event": Base.SubEvent.DONE},
     )
@@ -1074,87 +1074,89 @@ def test_run_translation_export_finishes_progress_when_no_items(
 def test_run_translation_export_auto_source_error_has_no_result_toast(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translator.resolve_export_items = lambda: [Item(src="a", dst="b")]
-    translator.mtool_optimizer_postprocess = MagicMock()
-    translator.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
+    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.mtool_optimizer_postprocess = MagicMock()
+    translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
 
-    Translator.run_translation_export(
-        translator,
-        source=Translator.ExportSource.AUTO_ON_FINISH,
+    Translation.run_translation_export(
+        translation,
+        source=Translation.ExportSource.AUTO_ON_FINISH,
         apply_mtool_postprocess=False,
     )
 
-    translator.mtool_optimizer_postprocess.assert_not_called()
-    assert not has_emitted(translator, Base.Event.TOAST)
+    translation.mtool_optimizer_postprocess.assert_not_called()
+    assert not has_emitted(translation, Base.Event.TOAST)
 
 
 def test_run_translation_export_auto_source_success_skips_result_toast(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translator.resolve_export_items = lambda: [Item(src="a", dst="b")]
-    translator.mtool_optimizer_postprocess = MagicMock()
-    translator.check_and_wirte_result = MagicMock()
+    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.mtool_optimizer_postprocess = MagicMock()
+    translation.check_and_wirte_result = MagicMock()
 
-    Translator.run_translation_export(
-        translator,
-        source=Translator.ExportSource.AUTO_ON_FINISH,
+    Translation.run_translation_export(
+        translation,
+        source=Translation.ExportSource.AUTO_ON_FINISH,
         apply_mtool_postprocess=True,
     )
 
-    translator.mtool_optimizer_postprocess.assert_called_once()
-    assert not has_emitted(translator, Base.Event.TOAST)
+    translation.mtool_optimizer_postprocess.assert_called_once()
+    assert not has_emitted(translation, Base.Event.TOAST)
 
 
 def test_translation_export_spawns_thread_when_not_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.run_translation_export = MagicMock()
+    translation = create_translation_stub()
+    translation.run_translation_export = MagicMock()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module.threading, "Thread", InlineThread)
+    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
 
-    Translator.translation_export(
-        translator,
+    Translation.translation_export(
+        translation,
         Base.Event.TRANSLATION_EXPORT,
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    translator.run_translation_export.assert_called_once_with(
-        source=Translator.ExportSource.MANUAL
+    translation.run_translation_export.assert_called_once_with(
+        source=Translation.ExportSource.MANUAL
     )
 
 
 def test_start_handles_project_not_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=False)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translator.mtool_optimizer_postprocess = MagicMock()
-    translator.run_translation_export = MagicMock()
+    translation.mtool_optimizer_postprocess = MagicMock()
+    translation.run_translation_export = MagicMock()
     monkeypatch.setattr(
-        translator_module.QualityRuleSnapshot, "capture", staticmethod(lambda: object())
+        translation_module.QualityRuleSnapshot,
+        "capture",
+        staticmethod(lambda: object()),
     )
 
-    Translator.start(translator, {})
+    Translation.start(translation, {})
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.WARNING,
@@ -1166,7 +1168,7 @@ def test_start_handles_project_not_loaded(
 def test_start_handles_no_active_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     config = Config()
     config.get_active_model = lambda: None  # type: ignore[method-assign]
     engine = create_engine()
@@ -1174,16 +1176,18 @@ def test_start_handles_no_active_model(
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(
-        translator_module.QualityRuleSnapshot, "capture", staticmethod(lambda: object())
+        translation_module.QualityRuleSnapshot,
+        "capture",
+        staticmethod(lambda: object()),
     )
 
-    Translator.start(
-        translator,
+    Translation.start(
+        translation,
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.WARNING,
@@ -1195,7 +1199,7 @@ def test_start_handles_no_active_model(
 def test_start_emits_warning_when_items_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     config = Config()
     config.get_active_model = lambda: {  # type: ignore[method-assign]
         "api_format": Base.APIFormat.OPENAI,
@@ -1206,16 +1210,18 @@ def test_start_emits_warning_when_items_are_empty(
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(
-        translator_module.QualityRuleSnapshot, "capture", staticmethod(lambda: object())
+        translation_module.QualityRuleSnapshot,
+        "capture",
+        staticmethod(lambda: object()),
     )
 
-    Translator.start(
-        translator,
+    Translation.start(
+        translation,
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.WARNING,
@@ -1227,17 +1233,19 @@ def test_start_emits_warning_when_items_are_empty(
 def test_start_success_flow_triggers_auto_export(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     item = Item(src="line")
     dm = create_data_manager(loaded=True, items=[item])
     engine = create_engine()
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module, "ProgressBar", FakeProgressBar)
-    monkeypatch.setattr(translator_module, "TaskLimiter", FakeTaskLimiter)
-    monkeypatch.setattr(translator_module, "PromptBuilder", FakePromptBuilder)
+    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
+    monkeypatch.setattr(translation_module, "TaskLimiter", FakeTaskLimiter)
+    monkeypatch.setattr(translation_module, "PromptBuilder", FakePromptBuilder)
     monkeypatch.setattr(
-        translator_module.QualityRuleSnapshot, "capture", staticmethod(lambda: object())
+        translation_module.QualityRuleSnapshot,
+        "capture",
+        staticmethod(lambda: object()),
     )
     config = Config()
     config.get_active_model = lambda: {
@@ -1252,22 +1260,22 @@ def test_start_success_flow_triggers_auto_export(
         del kwargs
         item.set_status(Base.ProjectStatus.PROCESSED)
 
-    translator.start_translation_pipeline = fake_pipeline
-    translator.run_translation_export = MagicMock()
+    translation.start_translation_pipeline = fake_pipeline
+    translation.run_translation_export = MagicMock()
 
-    Translator.start(
-        translator,
+    Translation.start(
+        translation,
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
-    translator.run_translation_export.assert_called_once_with(
-        source=Translator.ExportSource.AUTO_ON_FINISH,
+    translation.run_translation_export.assert_called_once_with(
+        source=Translation.ExportSource.AUTO_ON_FINISH,
         apply_mtool_postprocess=False,
     )
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == "SUCCESS"
-        for event, payload in emitted_events(translator)
+        for event, payload in emitted_events(translation)
     )
 
 
@@ -1283,18 +1291,20 @@ def test_start_continue_mode_handles_stop_and_failed_states(
     engine_status: Base.TaskStatus,
     expected_final_status: str,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     item = Item(src="line")
     dm = create_data_manager(loaded=True, items=[item])
     dm.get_translation_extras = MagicMock(return_value={"time": 8})
     engine = create_engine(engine_status)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translator_module, "ProgressBar", FakeProgressBar)
-    monkeypatch.setattr(translator_module, "TaskLimiter", FakeTaskLimiter)
-    monkeypatch.setattr(translator_module, "PromptBuilder", FakePromptBuilder)
+    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
+    monkeypatch.setattr(translation_module, "TaskLimiter", FakeTaskLimiter)
+    monkeypatch.setattr(translation_module, "PromptBuilder", FakePromptBuilder)
     monkeypatch.setattr(
-        translator_module.QualityRuleSnapshot, "capture", staticmethod(lambda: object())
+        translation_module.QualityRuleSnapshot,
+        "capture",
+        staticmethod(lambda: object()),
     )
     config = Config()
     config.get_active_model = lambda: {
@@ -1304,25 +1314,25 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         "model_id": "id",
         "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
     }  # type: ignore[method-assign]
-    translator.start_translation_pipeline = lambda **kwargs: None
-    translator.run_translation_export = MagicMock()
+    translation.start_translation_pipeline = lambda **kwargs: None
+    translation.run_translation_export = MagicMock()
 
-    Translator.start(
-        translator,
+    Translation.start(
+        translation,
         {"config": config, "mode": Base.TranslationMode.CONTINUE},
     )
 
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == expected_final_status
-        for event, payload in emitted_events(translator)
+        for event, payload in emitted_events(translation)
     )
 
 
 def test_start_emits_error_toast_when_exception_occurs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     config = Config()
     config.get_active_model = lambda: {
         "threshold": {"concurrency_limit": 1, "rpm_limit": 0}
@@ -1333,10 +1343,10 @@ def test_start_emits_error_toast_when_exception_occurs(
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
 
-    Translator.start(translator, {"config": config})
+    Translation.start(translation, {"config": config})
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.TOAST,
         {
             "type": Base.ToastType.ERROR,
@@ -1348,50 +1358,52 @@ def test_start_emits_error_toast_when_exception_occurs(
 def test_get_item_count_copy_and_close_db_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     dm = create_data_manager(loaded=True)
-    monkeypatch.setattr(translator_module.DataManager, "get", staticmethod(lambda: dm))
+    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
 
-    assert Translator.get_item_count_by_status(translator, Base.ProjectStatus.NONE) == 0
-    assert Translator.copy_items(translator) == []
+    assert (
+        Translation.get_item_count_by_status(translation, Base.ProjectStatus.NONE) == 0
+    )
+    assert Translation.copy_items(translation) == []
 
-    Translator.close_db_connection(translator)
+    Translation.close_db_connection(translation)
     dm.close_db.assert_called_once()
 
 
 def test_sync_extras_line_stats_returns_when_items_cache_is_none() -> None:
-    translator = create_translator_stub()
-    translator.items_cache = None
-    translator.extras = {"start_time": 10.0}
+    translation = create_translation_stub()
+    translation.items_cache = None
+    translation.extras = {"start_time": 10.0}
 
-    Translator.sync_extras_line_stats(translator)
+    Translation.sync_extras_line_stats(translation)
 
-    assert translator.extras == {"start_time": 10.0}
+    assert translation.extras == {"start_time": 10.0}
 
 
 def test_sync_extras_line_stats_ignores_untracked_item_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     item = Item(src="x")
     item.set_status(Base.ProjectStatus.EXCLUDED)
-    translator.items_cache = [item]
-    translator.extras = {"start_time": 0.0}
-    monkeypatch.setattr(translator_module.time, "time", lambda: 1.0)
+    translation.items_cache = [item]
+    translation.extras = {"start_time": 0.0}
+    monkeypatch.setattr(translation_module.time, "time", lambda: 1.0)
 
-    Translator.sync_extras_line_stats(translator)
+    Translation.sync_extras_line_stats(translation)
 
-    assert translator.extras["processed_line"] == 0
-    assert translator.extras["error_line"] == 0
-    assert translator.extras["total_line"] == 0
+    assert translation.extras["processed_line"] == 0
+    assert translation.extras["error_line"] == 0
+    assert translation.extras["total_line"] == 0
 
 
 def test_merge_glossary_covers_mismatch_and_empty_parts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     snapshot = FakeSnapshot()
-    translator.quality_snapshot = snapshot
+    translation.quality_snapshot = snapshot
 
     def fake_split(text: str, split_by_space: bool = True) -> list[str]:
         del split_by_space
@@ -1406,13 +1418,13 @@ def test_merge_glossary_covers_mismatch_and_empty_parts(
         return [text]
 
     monkeypatch.setattr(
-        translator_module.TextHelper,
+        translation_module.TextHelper,
         "split_by_punctuation",
         staticmethod(fake_split),
     )
 
-    Translator.merge_glossary(
-        translator,
+    Translation.merge_glossary(
+        translation,
         [
             {"src": "mismatch_src", "dst": "mismatch_dst", "info": "female"},
             {"src": "empty_src", "dst": "empty_dst", "info": "male"},
@@ -1427,29 +1439,29 @@ def test_merge_glossary_covers_mismatch_and_empty_parts(
 def test_save_translation_state_without_extras_still_sets_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.items_cache = [Item(src="a")]
-    translator.extras = {}
+    translation = create_translation_stub()
+    translation.items_cache = [Item(src="a")]
+    translation.extras = {}
     dm = create_data_manager(loaded=True)
-    monkeypatch.setattr(translator_module.DataManager, "get", staticmethod(lambda: dm))
+    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
 
-    Translator.save_translation_state(translator, Base.ProjectStatus.PROCESSED)
+    Translation.save_translation_state(translation, Base.ProjectStatus.PROCESSED)
 
     dm.set_translation_extras.assert_not_called()
     dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSED)
 
 
 def test_initialize_task_limits_defaults_when_rpm_and_concurrency_are_zero() -> None:
-    translator = create_translator_stub()
-    translator.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 0}}
+    translation = create_translation_stub()
+    translation.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 0}}
 
-    assert Translator.initialize_task_limits(translator) == (8, 8, 0)
+    assert Translation.initialize_task_limits(translation) == (8, 8, 0)
 
 
 def test_start_translation_pipeline_builds_pipeline_and_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
+    translation = create_translation_stub()
     called: dict[str, Any] = {}
 
     class FakePipeline:
@@ -1459,17 +1471,17 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
         def run(self) -> None:
             called["ran"] = True
 
-    monkeypatch.setattr(translator_module, "TranslatorTaskPipeline", FakePipeline)
+    monkeypatch.setattr(translation_module, "TranslationTaskPipeline", FakePipeline)
 
-    Translator.start_translation_pipeline(
-        translator,
+    Translation.start_translation_pipeline(
+        translation,
         progress=FakeProgressBar(),
         pid=3,
         task_limiter=FakeTaskLimiter(rps=1, rpm=0, max_concurrency=1),
         max_workers=2,
     )
 
-    assert called["translator"] is translator
+    assert called["translation"] is translation
     assert called["max_workers"] == 2
     assert called["ran"] is True
 
@@ -1477,15 +1489,15 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
 def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.config.mtool_optimizer_enable = True
+    translation = create_translation_stub()
+    translation.config.mtool_optimizer_enable = True
     logger = FakeLogManager()
-    monkeypatch.setattr(translator_module, "ProgressBar", FakeProgressBar)
+    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
     monkeypatch.setattr(
-        translator_module.Localizer, "get", staticmethod(build_localizer)
+        translation_module.Localizer, "get", staticmethod(build_localizer)
     )
 
     item = Item(src="a\nb", dst="甲\n乙")
@@ -1499,7 +1511,7 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     ignored_item.set_file_path("note.txt")
     items = [item, plain_item, ignored_item]
 
-    Translator.mtool_optimizer_postprocess(translator, items)
+    Translation.mtool_optimizer_postprocess(translation, items)
 
     assert len(items) == 5
     assert any(value.get_src() == "a" for value in items[3:])
@@ -1510,25 +1522,25 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
 def test_check_and_wirte_result_emits_glossary_event_and_opens_output_folder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.config.auto_glossary_enable = True
-    translator.persist_quality_rules = True
-    translator.config.output_folder_open_on_finish = True
+    translation = create_translation_stub()
+    translation.config.auto_glossary_enable = True
+    translation.persist_quality_rules = True
+    translation.config.output_folder_open_on_finish = True
     logger = FakeLogManager()
     open_mock = MagicMock()
-    monkeypatch.setattr(translator_module, "FileManager", FakeFileManager)
+    monkeypatch.setattr(translation_module, "FileManager", FakeFileManager)
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
     monkeypatch.setattr(
-        translator_module.Localizer, "get", staticmethod(build_localizer)
+        translation_module.Localizer, "get", staticmethod(build_localizer)
     )
-    monkeypatch.setattr(translator_module.webbrowser, "open", open_mock)
+    monkeypatch.setattr(translation_module.webbrowser, "open", open_mock)
 
-    Translator.check_and_wirte_result(translator, [Item(src="a", dst="b")])
+    Translation.check_and_wirte_result(translation, [Item(src="a", dst="b")])
 
     assert has_emitted(
-        translator,
+        translation,
         Base.Event.QUALITY_RULE_UPDATE,
         {"rule_types": [DataManager.RuleType.GLOSSARY.value]},
     )
@@ -1538,22 +1550,22 @@ def test_check_and_wirte_result_emits_glossary_event_and_opens_output_folder(
 def test_check_and_wirte_result_skips_glossary_event_and_open_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    translator = create_translator_stub()
-    translator.config.auto_glossary_enable = False
-    translator.persist_quality_rules = True
-    translator.config.output_folder_open_on_finish = False
+    translation = create_translation_stub()
+    translation.config.auto_glossary_enable = False
+    translation.persist_quality_rules = True
+    translation.config.output_folder_open_on_finish = False
     logger = FakeLogManager()
     open_mock = MagicMock()
-    monkeypatch.setattr(translator_module, "FileManager", FakeFileManager)
+    monkeypatch.setattr(translation_module, "FileManager", FakeFileManager)
     monkeypatch.setattr(
-        translator_module.LogManager, "get", staticmethod(lambda: logger)
+        translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
     monkeypatch.setattr(
-        translator_module.Localizer, "get", staticmethod(build_localizer)
+        translation_module.Localizer, "get", staticmethod(build_localizer)
     )
-    monkeypatch.setattr(translator_module.webbrowser, "open", open_mock)
+    monkeypatch.setattr(translation_module.webbrowser, "open", open_mock)
 
-    Translator.check_and_wirte_result(translator, [Item(src="a", dst="b")])
+    Translation.check_and_wirte_result(translation, [Item(src="a", dst="b")])
 
-    assert emitted_events(translator) == []
+    assert emitted_events(translation) == []
     open_mock.assert_not_called()

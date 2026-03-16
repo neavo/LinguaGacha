@@ -122,7 +122,7 @@ class DummyLocalizer:
     toast_processing = "processing"
     engine_task_rule_filter = "rule {COUNT}"
     engine_task_language_filter = "lang {COUNT}"
-    translator_mtool_optimizer_pre_log = "mtool {COUNT}"
+    translation_mtool_optimizer_pre_log = "mtool {COUNT}"
 
 
 class FakeDB:

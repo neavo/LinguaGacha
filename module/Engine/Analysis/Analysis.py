@@ -11,19 +11,22 @@ from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
+from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
+from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
-from module.Engine.Analyzer.AnalysisModels import AnalysisProgressSnapshot
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskResult
-from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
+from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
+from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
 
 
 # 主控制器只保留事件生命周期和任务总控，分析细节统一下沉到流水线类。
-class Analyzer(Base):
+class Analysis(Base):
     def __init__(self) -> None:
         super().__init__()
 
@@ -86,65 +89,26 @@ class Analyzer(Base):
 
     # 这里先原子占用引擎状态，再把真正任务扔到后台线程，避免重复点击并发启动。
     def analysis_run(self, data: dict[str, Any]) -> None:
-        engine = Engine.get()
-        with engine.lock:
-            if engine.status != Base.TaskStatus.IDLE:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                self.emit(
-                    Base.Event.ANALYSIS_TASK,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                return
-
-            engine.status = Base.TaskStatus.ANALYZING
-
-        self.emit(
-            Base.Event.ANALYSIS_TASK,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "mode": data.get("mode", Base.AnalysisMode.NEW),
-            },
-        )
-
         self.stop_requested = False
-        try:
-            threading.Thread(target=self.start, args=(data,), daemon=True).start()
-        except Exception as e:
-            engine.set_status(Base.TaskStatus.IDLE)
-            LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
-            self.emit(
-                Base.Event.ANALYSIS_TASK,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
+        mode = data.get("mode", Base.AnalysisMode.NEW)
+        if not isinstance(mode, Base.AnalysisMode):
+            mode = Base.AnalysisMode.NEW
+
+        TaskRunnerLifecycle.start_background_run(
+            self,
+            busy_status=Base.TaskStatus.ANALYZING,
+            task_event=Base.Event.ANALYSIS_TASK,
+            mode=mode,
+            worker=lambda: self.start(data),
+            thread_factory=threading.Thread,
+        )
 
     # 这里只切停止标记和全局状态，具体让 in-flight 请求怎么收尾交给流水线判断。
     def analysis_require_stop(self) -> None:
-        self.stop_requested = True
-        Engine.get().set_status(Base.TaskStatus.STOPPING)
-        self.emit(
-            Base.Event.ANALYSIS_REQUEST_STOP,
-            {
-                "sub_event": Base.SubEvent.RUN,
-            },
+        TaskRunnerLifecycle.request_stop(
+            self,
+            stop_event=Base.Event.ANALYSIS_REQUEST_STOP,
+            mark_stop_requested=lambda: setattr(self, "stop_requested", True),
         )
 
     def import_analysis_candidates_sync(
@@ -303,23 +267,7 @@ class Analyzer(Base):
 
     def emit_analysis_terminal_toast(self, final_status: str) -> None:
         """分析终态提示只维护一处，避免空跑和正常执行两条路径各改一遍。"""
-        if final_status == "SUCCESS":
-            toast_type = Base.ToastType.SUCCESS
-            message = Localizer.get().engine_task_done
-        elif final_status == "STOPPED":
-            toast_type = Base.ToastType.SUCCESS
-            message = Localizer.get().engine_task_stop
-        else:
-            toast_type = Base.ToastType.WARNING
-            message = Localizer.get().engine_task_fail
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": toast_type,
-                "message": message,
-            },
-        )
+        TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
 
     # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
@@ -388,43 +336,32 @@ class Analyzer(Base):
 
     # 启动主流程时只在这里串联准备、执行、收尾，其他细节都交给流水线。
     def start(self, data: dict[str, Any]) -> None:
-        flow_final_status = "FAILED"
         dm = DataManager.get()
-        has_active_snapshot = False
+        run_state: dict[str, Any] = {
+            "mode": Base.AnalysisMode.NEW,
+            "task_contexts": [],
+        }
 
-        try:
+        def prepare() -> bool:
             config: Config | None = data.get("config")
             mode_raw = data.get("mode")
-            if isinstance(mode_raw, Base.AnalysisMode):
-                mode = mode_raw
-            else:
-                mode = Base.AnalysisMode.NEW
+            mode = (
+                mode_raw
+                if isinstance(mode_raw, Base.AnalysisMode)
+                else Base.AnalysisMode.NEW
+            )
+            run_state["mode"] = mode
 
-            if isinstance(config, Config):
-                self.config = config
-            else:
-                self.config = Config().load()
+            self.config = config if isinstance(config, Config) else Config().load()
+            if not TaskRunnerLifecycle.ensure_project_loaded(self, dm=dm):
+                return False
 
-            if not dm.is_loaded():
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().alert_project_not_loaded,
-                    },
-                )
-                return
-
-            self.model = self.config.get_active_model()
+            self.model = TaskRunnerLifecycle.resolve_active_model(
+                self,
+                config=self.config,
+            )
             if self.model is None:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().alert_no_active_model,
-                    },
-                )
-                return
+                return False
 
             dm.open_db()
             TaskRequester.reset()
@@ -436,44 +373,47 @@ class Analyzer(Base):
                 dm.clear_analysis_candidates_and_progress()
             else:
                 self.extras = dm.get_analysis_progress_snapshot()
+            return True
 
+        def build_plan() -> TaskRunnerExecutionPlan:
+            mode: Base.AnalysisMode = run_state["mode"]
             progress_snapshot = self.build_progress_snapshot(
                 previous_extras=self.extras,
                 continue_mode=mode == Base.AnalysisMode.CONTINUE,
             )
             task_contexts = self.build_analysis_task_contexts(self.config)
+            run_state["task_contexts"] = task_contexts
 
-            if progress_snapshot.total_line == 0:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().engine_no_items,
-                    },
-                )
-                return
-
-            progress_snapshot_dict = progress_snapshot.to_dict()
+            progress_snapshot_dict = self.normalize_progress_snapshot(progress_snapshot)
             self.extras = progress_snapshot_dict
-            has_active_snapshot = True
-            self.persist_progress_snapshot(save_state=True)
+            idle_final_status = (
+                "FAILED"
+                if int(progress_snapshot_dict.get("error_line", 0) or 0) > 0
+                else "SUCCESS"
+            )
+            return TaskRunnerExecutionPlan(
+                total_line=int(progress_snapshot_dict.get("total_line", 0) or 0),
+                line=int(progress_snapshot_dict.get("line", 0) or 0),
+                has_pending_work=bool(task_contexts),
+                idle_final_status=idle_final_status,
+                payload=task_contexts,
+            )
 
-            if not task_contexts:
-                if int(progress_snapshot_dict.get("error_line", 0) or 0) > 0:
-                    flow_final_status = "FAILED"
-                else:
-                    flow_final_status = "SUCCESS"
-                self.log_analysis_finish(flow_final_status)
-                self.emit_analysis_terminal_toast(flow_final_status)
-                return
-
-            max_workers, rps_limit, rpm_threshold = self.initialize_task_limits()
+        def bind_task_limiter(
+            max_workers: int,
+            rps_limit: int,
+            rpm_threshold: int,
+        ) -> None:
             self.task_limiter = TaskLimiter(
                 rps=rps_limit,
                 rpm=rpm_threshold,
                 max_concurrency=max_workers,
             )
-            self.log_analysis_start()
+
+        def execute(plan: TaskRunnerExecutionPlan, max_workers: int) -> str:
+            task_contexts = plan.payload
+            if not isinstance(task_contexts, list):
+                return "FAILED"
 
             with ProgressBar(transient=True) as progress:
                 task_id = progress.new(
@@ -482,66 +422,51 @@ class Analyzer(Base):
                 )
                 self.pipeline.bind_console_progress(progress, task_id)
                 try:
-                    flow_final_status = self.execute_task_contexts(
+                    return self.execute_task_contexts(
                         task_contexts,
                         max_workers=max_workers,
                     )
                 finally:
                     self.pipeline.clear_console_progress()
-            self.log_analysis_finish(flow_final_status)
-            self.emit_analysis_terminal_toast(flow_final_status)
-        except Exception as e:
-            LogManager.get().error(Localizer.get().task_failed, e)
+
+        TaskRunnerLifecycle.run_task_flow(
+            self,
+            task_event=Base.Event.ANALYSIS_TASK,
+            hooks=TaskRunnerHooks(
+                prepare=prepare,
+                build_plan=build_plan,
+                persist_progress=self.persist_progress_snapshot,
+                get_model=lambda: self.model,
+                bind_task_limiter=bind_task_limiter,
+                clear_task_limiter=lambda: setattr(self, "task_limiter", None),
+                on_before_execute=self.log_analysis_start,
+                execute=execute,
+                on_after_execute=self.log_analysis_finish,
+                terminal_toast=self.emit_analysis_terminal_toast,
+                finalize=lambda final_status: dm.close_db(),
+                after_done=lambda final_status: self.after_analysis_done(
+                    dm,
+                    final_status,
+                ),
+            ),
+        )
+
+    def after_analysis_done(
+        self,
+        dm: DataManager,
+        final_status: str,
+    ) -> None:
+        """分析任务进入 DONE 后，再决定是否桥接自动导入流程。"""
+
+        if self.should_auto_import_glossary(dm, final_status):
             self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
+                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+                {"sub_event": Base.SubEvent.REQUEST},
             )
-        finally:
-            if has_active_snapshot:
-                self.persist_progress_snapshot(save_state=True)
-            dm.close_db()
-            self.task_limiter = None
-            Engine.get().set_status(Base.TaskStatus.IDLE)
-            self.emit(
-                Base.Event.ANALYSIS_TASK,
-                {
-                    "sub_event": Base.SubEvent.DONE,
-                    "final_status": flow_final_status,
-                },
-            )
-            if self.should_auto_import_glossary(
-                dm,
-                flow_final_status,
-            ):
-                self.emit(
-                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                    {"sub_event": Base.SubEvent.REQUEST},
-                )
 
     # 并发和速率推导维持原有策略，只保留一个公开入口方便两边共用。
     def initialize_task_limits(self) -> tuple[int, int, int]:
-        if self.model is None:
-            return 8, 8, 0
-
-        threshold = self.model.get("threshold", {})
-        max_concurrency = max(0, int(threshold.get("concurrency_limit", 0) or 0))
-        rpm_limit = max(0, int(threshold.get("rpm_limit", 0) or 0))
-
-        if max_concurrency == 0:
-            if rpm_limit > 0:
-                derived = (rpm_limit * 4 + 59) // 60
-                max_concurrency = max(8, min(64, derived))
-            else:
-                max_concurrency = 8
-
-        if rpm_limit > 0:
-            rps_limit = 0
-        else:
-            rps_limit = max_concurrency
-        return max_concurrency, rps_limit, rpm_limit
+        return TaskRunnerLifecycle.build_task_limits(self.model)
 
     # 停止判断收口成一个入口，流水线和主流程都不用重复看两处状态。
     def should_stop(self) -> bool:
@@ -580,6 +505,44 @@ class Analyzer(Base):
             task_contexts,
             max_workers=max_workers,
         )
+
+    def normalize_progress_snapshot(self, snapshot: object) -> dict[str, Any]:
+        """把运行期进度快照统一转成字典，避免各调用点自己拆字段。"""
+
+        if hasattr(snapshot, "to_dict"):
+            snapshot_dict = getattr(snapshot, "to_dict")()
+            if isinstance(snapshot_dict, dict):
+                return {
+                    "start_time": snapshot_dict.get("start_time", 0),
+                    "time": snapshot_dict.get("time", 0),
+                    "total_line": int(snapshot_dict.get("total_line", 0) or 0),
+                    "line": int(snapshot_dict.get("line", 0) or 0),
+                    "processed_line": int(snapshot_dict.get("processed_line", 0) or 0),
+                    "error_line": int(snapshot_dict.get("error_line", 0) or 0),
+                    "total_tokens": int(snapshot_dict.get("total_tokens", 0) or 0),
+                    "total_input_tokens": int(
+                        snapshot_dict.get("total_input_tokens", 0) or 0
+                    ),
+                    "total_output_tokens": int(
+                        snapshot_dict.get("total_output_tokens", 0) or 0
+                    ),
+                    "added_glossary": int(snapshot_dict.get("added_glossary", 0) or 0),
+                }
+
+        return {
+            "start_time": getattr(snapshot, "start_time", 0),
+            "time": getattr(snapshot, "time", 0),
+            "total_line": int(getattr(snapshot, "total_line", 0) or 0),
+            "line": int(getattr(snapshot, "line", 0) or 0),
+            "processed_line": int(getattr(snapshot, "processed_line", 0) or 0),
+            "error_line": int(getattr(snapshot, "error_line", 0) or 0),
+            "total_tokens": int(getattr(snapshot, "total_tokens", 0) or 0),
+            "total_input_tokens": int(getattr(snapshot, "total_input_tokens", 0) or 0),
+            "total_output_tokens": int(
+                getattr(snapshot, "total_output_tokens", 0) or 0
+            ),
+            "added_glossary": int(getattr(snapshot, "added_glossary", 0) or 0),
+        }
 
     def run_task_context(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
         return self.pipeline.run_task_context(context)

@@ -12,7 +12,7 @@ from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.QualityRule.AnalysisGlossaryImportService import (
     AnalysisGlossaryImportService,
 )
@@ -30,9 +30,6 @@ def build_analysis_service() -> tuple[AnalysisService, ProjectSession]:
         get_analysis_item_checkpoints=MagicMock(return_value=[]),
         upsert_analysis_item_checkpoints=MagicMock(),
         delete_analysis_item_checkpoints=MagicMock(return_value=0),
-        get_analysis_task_observations=MagicMock(return_value=[]),
-        insert_analysis_task_observations=MagicMock(return_value=0),
-        clear_analysis_task_observations=MagicMock(),
         get_analysis_candidate_aggregates=MagicMock(return_value=[]),
         get_analysis_candidate_aggregates_by_srcs=MagicMock(return_value=[]),
         upsert_analysis_candidate_aggregates=MagicMock(),
@@ -114,14 +111,11 @@ def test_get_analysis_candidate_aggregate_normalizes_invalid_entries() -> None:
 
 def test_commit_analysis_task_result_writes_checkpoints_and_aggregate() -> None:
     service, session = build_analysis_service()
-    session.db.insert_analysis_task_observations = MagicMock(return_value=1)
 
     inserted = service.commit_analysis_task_result(
-        task_fingerprint="task-1",
         checkpoints=[
             {
                 "item_id": 1,
-                "source_hash": "hash-1",
                 "status": Base.ProjectStatus.PROCESSED,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
@@ -211,7 +205,6 @@ def test_clear_analysis_progress_clears_tables_and_meta() -> None:
     service.clear_analysis_progress()
 
     session.db.delete_analysis_item_checkpoints.assert_called_once()
-    session.db.clear_analysis_task_observations.assert_called_once()
     session.db.clear_analysis_candidate_aggregates.assert_called_once()
 
 
@@ -222,7 +215,7 @@ def test_import_analysis_candidates_returns_zero_when_no_candidate() -> None:
     assert service.import_analysis_candidates() == 0
 
 
-def test_analysis_text_policy_builds_source_text_and_hash() -> None:
+def test_analysis_text_policy_builds_source_text() -> None:
     item = SimpleNamespace(
         get_src=lambda: "hello",
         get_name_src=lambda: ["Alice", "Alice", ""],
@@ -231,7 +224,6 @@ def test_analysis_text_policy_builds_source_text_and_hash() -> None:
     source_text = AnalysisTextPolicy.build_source_text(item)
 
     assert source_text == "Alice\nhello"
-    assert AnalysisTextPolicy.build_source_hash(source_text) != ""
 
 
 def test_analysis_candidate_service_builds_glossary_entry_from_candidate() -> None:
@@ -258,19 +250,40 @@ def test_analysis_candidate_service_builds_glossary_entry_from_candidate() -> No
 def test_analysis_progress_service_collects_pending_items() -> None:
     progress_service = AnalysisProgressService()
     done_item = Item(id=1, src="done")
-    pending_item = Item(id=2, src="pending")
+    failed_item = Item(id=2, src="failed")
+    pending_item = Item(id=3, src="pending")
 
     pending_items = progress_service.collect_pending_items(
-        [done_item, pending_item],
+        [done_item, failed_item, pending_item],
         {
             1: {
-                "source_hash": AnalysisTextPolicy.build_source_hash("done"),
                 "status": Base.ProjectStatus.PROCESSED,
-            }
+            },
+            2: {"status": Base.ProjectStatus.ERROR},
         },
     )
 
-    assert [item.get_id() for item in pending_items] == [2]
+    assert [item.get_id() for item in pending_items] == [3]
+
+
+def test_analysis_progress_service_normalizes_minimal_checkpoint_payload() -> None:
+    progress_service = AnalysisProgressService()
+
+    checkpoint = progress_service.normalize_item_checkpoint(
+        {
+            "item_id": 9,
+            "status": Base.ProjectStatus.PROCESSED.value,
+            "updated_at": ANALYSIS_TIME,
+            "error_count": 1,
+        }
+    )
+
+    assert checkpoint == {
+        "item_id": 9,
+        "status": Base.ProjectStatus.PROCESSED,
+        "updated_at": ANALYSIS_TIME,
+        "error_count": 1,
+    }
 
 
 def test_analysis_glossary_import_service_filters_low_value_candidates() -> None:

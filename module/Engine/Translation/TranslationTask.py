@@ -13,7 +13,6 @@ from base.Base import Base
 from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
-from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequesterErrors import RequestCancelledError
@@ -21,13 +20,14 @@ from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
 from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.Response.ResponseCleaner import ResponseCleaner
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseChecker import ResponseChecker
+from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseDecoder import ResponseDecoder
 from module.TextProcessor import TextProcessor
 
 
-class TranslatorTask(Base):
+class TranslationTask(Base):
     def __init__(
         self,
         config: Config,
@@ -193,18 +193,18 @@ class TranslatorTask(Base):
         response_result_log = response_result.strip("\n")
         if response_think_log != "":
             file_log.append(
-                Localizer.get().engine_response_think + "\n" + response_think_log
+                Localizer.get().engine_task_response_think + "\n" + response_think_log
             )
             console_log.append(
-                Localizer.get().engine_response_think + "\n" + response_think_log
+                Localizer.get().engine_task_response_think + "\n" + response_think_log
             )
         if response_result_log != "":
             file_log.append(
-                Localizer.get().engine_response_result + "\n" + response_result_log
+                Localizer.get().engine_task_response_result + "\n" + response_result_log
             )
             if LogManager.get().is_expert_mode():
                 console_log.append(
-                    Localizer.get().engine_response_result + "\n" + response_result_log
+                    Localizer.get().engine_task_response_result + "\n" + response_result_log
                 )
 
         updated_count = 0
@@ -319,7 +319,7 @@ class TranslatorTask(Base):
 
             msg = (
                 Localizer.get()
-                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .translation_task_status_info.replace("{SPLIT}", str(self.split_count))
                 .replace("{RETRY}", str(self.retry_count))
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
@@ -339,7 +339,8 @@ class TranslatorTask(Base):
                 output_tokens = 0
             else:
                 LogManager.get().error(
-                    f"{Localizer.get().task_failed}\n{msg}", exception
+                    f"{Localizer.get().task_failed}\n{msg}",
+                    exception,
                 )
                 return {
                     "row_count": 0,
@@ -386,7 +387,7 @@ class TranslatorTask(Base):
         if self.is_sub_task:
             sub_info = (
                 Localizer.get()
-                .translator_task_status_info.replace("{SPLIT}", str(self.split_count))
+                .translation_task_status_info.replace("{SPLIT}", str(self.split_count))
                 .replace("{RETRY}", str(self.retry_count))
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
@@ -394,7 +395,7 @@ class TranslatorTask(Base):
             # 检查是否为强制接受（重试达到上限）
             if len(srcs) == 1 and self.retry_count >= 3:
                 is_force_accept = True
-                sub_info += Localizer.get().translator_task_force_accept_info.replace(
+                sub_info += Localizer.get().translation_task_force_accept_info.replace(
                     "{REASON}", reason if reason else Localizer.get().log_unknown_reason
                 )
 
@@ -410,47 +411,47 @@ class TranslatorTask(Base):
         # 确定日志样式和消息
         if is_force_accept:
             style = "#9ACD32"
-            message = Localizer.get().translator_response_check_fail_force
+            message = Localizer.get().translation_response_check_fail_force
             log_func = LogManager.get().warning
         elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail.replace(
+            message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_TIMEOUT for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail_all.replace(
+            message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", Localizer.get().response_checker_fail_timeout
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DEGRADATION for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail_all.replace(
+            message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DATA for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail.replace(
+            message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail.replace(
+            message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "red"
-            message = Localizer.get().translator_response_check_fail_all.replace(
+            message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif any(v in ResponseChecker.LINE_ERROR for v in checks):
             style = "yellow"
-            message = Localizer.get().translator_response_check_fail_part.replace(
+            message = Localizer.get().translation_response_check_fail_part.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().warning
@@ -484,7 +485,7 @@ class TranslatorTask(Base):
             # 构建三行简略日志
             # 第一行：染色前缀 + 状态
             prefix = (
-                f"[{style}][{Localizer.get().translator_simple_log_prefix}][/{style}]"
+                f"[{style}][{Localizer.get().engine_task_simple_log_prefix}][/{style}]"
             )
             line1 = f"{prefix} {status_text}"
 
@@ -579,7 +580,7 @@ class TranslatorTask(Base):
         item: Item, config: Config, callback: Callable[[Item, bool], None]
     ) -> None:
         """
-        单条翻译的简化入口，复用 TranslatorTask 的完整翻译流程。
+        单条翻译的简化入口，复用 TranslationTask 的完整翻译流程。
 
         注意：此方法为低频调用场景设计（用户手动触发单条重新翻译），
         使用后台线程执行同步请求路径；SDK client 由 TaskRequester 按参数组合全局缓存复用。
@@ -599,7 +600,7 @@ class TranslatorTask(Base):
                     return
 
                 # 创建翻译任务（跳过术语表合并和响应校验）
-                translator_task = TranslatorTask(
+                translation_task = TranslationTask(
                     config=config,
                     model=model,
                     items=[item],
@@ -608,7 +609,7 @@ class TranslatorTask(Base):
                 )
 
                 # 执行翻译（同步请求路径）
-                result = translator_task.start()
+                result = translation_task.start()
                 success = bool(result.get("row_count", 0) > 0)
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)

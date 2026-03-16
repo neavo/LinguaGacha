@@ -7,12 +7,12 @@ from typing import ClassVar
 class AnalysisFakeNameInjector:
     """把控制码临时伪装成人名，避免术语分析把它们当实体。"""
 
-    # 这里沿用 KG 的控制码口径，保证旧经验可以直接迁过来。
+    # 控制码识别规则集中放在这里，避免请求构造和结果清洗各写一套。
     CONTROL_CODE_PATTERN: ClassVar[re.Pattern[str]] = re.compile(
         r"\\(?:n|N){1,2}\[\d+\]"
     )
 
-    # 这里优先复用 KG 的伪名列表，减少模型把控制码识别成术语的概率。
+    # 伪名列表只服务控制码伪装，尽量降低模型把它们误识别成术语的概率。
     DEFAULT_FAKE_NAMES: ClassVar[tuple[str, ...]] = (
         "蓝霁云",
         "檀秋萦",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from base.Base import Base
@@ -15,7 +14,7 @@ from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Storage.LGDatabase import LGDatabase
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.QualityRule.AnalysisGlossaryImportService import (
     AnalysisGlossaryImportService,
 )
@@ -68,12 +67,6 @@ class AnalysisService:
         return AnalysisTextPolicy.build_source_text(item)
 
     @staticmethod
-    def build_analysis_source_hash(source_text: str) -> str:
-        """只认稳定文本哈希，避免切块变化导致重复提交。"""
-
-        return AnalysisTextPolicy.build_source_hash(source_text)
-
-    @staticmethod
     def is_analysis_control_code_text(text: str) -> bool:
         """分析术语里只有纯控制码需要特殊放行。"""
 
@@ -92,161 +85,11 @@ class AnalysisService:
     def set_analysis_extras(self, extras: dict[str, Any]) -> None:
         self.meta_service.set_meta("analysis_extras", extras)
 
-    def normalize_analysis_state_value(
-        self,
-        raw_status: Base.ProjectStatus | str | object,
-    ) -> Base.ProjectStatus | None:
-        return self.progress_service.normalize_state_value(raw_status)
-
-    def get_analysis_state(self) -> dict[str, Base.ProjectStatus]:
-        raw_state = self.meta_service.get_meta("analysis_state", {})
-        if not isinstance(raw_state, dict):
-            return {}
-
-        normalized: dict[str, Base.ProjectStatus] = {}
-        for rel_path, raw_status in raw_state.items():
-            if not isinstance(rel_path, str) or rel_path.strip() == "":
-                continue
-            status = self.normalize_analysis_state_value(raw_status)
-            if status is not None:
-                normalized[rel_path] = status
-        return normalized
-
-    def set_analysis_state(self, state: dict[str, Base.ProjectStatus | str]) -> None:
-        normalized: dict[str, str] = {}
-        for rel_path, raw_status in state.items():
-            if not isinstance(rel_path, str) or rel_path.strip() == "":
-                continue
-            status = self.normalize_analysis_state_value(raw_status)
-            if status is not None:
-                normalized[rel_path] = status.value
-        self.meta_service.set_meta("analysis_state", normalized)
-
-    def normalize_analysis_term_vote_map(self, raw_votes: object) -> dict[str, int]:
-        return self.candidate_service.normalize_vote_map(raw_votes)
-
-    def normalize_analysis_item_checkpoint(
-        self,
-        raw_checkpoint: object,
-    ) -> dict[str, Any] | None:
-        return self.progress_service.normalize_item_checkpoint(raw_checkpoint)
-
-    def normalize_analysis_task_observation(
-        self,
-        raw_observation: object,
-    ) -> dict[str, Any] | None:
-        return self.candidate_service.normalize_task_observation(raw_observation)
-
-    def normalize_analysis_candidate_aggregate_entry(
-        self,
-        raw_src: str,
-        raw_entry: object,
-    ) -> dict[str, Any] | None:
-        return self.candidate_service.normalize_candidate_aggregate_entry(
-            raw_src,
-            raw_entry,
-        )
-
-    def normalize_analysis_item_checkpoint_rows(
-        self,
-        raw_rows: list[dict[str, Any]],
-    ) -> dict[int, dict[str, Any]]:
-        return self.progress_service.normalize_item_checkpoint_rows(raw_rows)
-
-    def normalize_analysis_candidate_aggregate_rows(
-        self,
-        raw_rows: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        return self.candidate_service.normalize_candidate_aggregate_rows(raw_rows)
-
     def normalize_analysis_progress_snapshot(
         self,
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
         return self.progress_service.normalize_progress_snapshot(snapshot)
-
-    def normalize_analysis_item_checkpoint_upsert_rows(
-        self,
-        checkpoints: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.progress_service.normalize_item_checkpoint_upsert_rows(checkpoints)
-
-    def build_analysis_task_observations_for_commit(
-        self,
-        task_fingerprint: str,
-        glossary_entries: list[dict[str, Any]],
-        *,
-        created_at: str,
-    ) -> list[dict[str, Any]]:
-        return self.candidate_service.build_task_observations_for_commit(
-            task_fingerprint,
-            glossary_entries,
-            created_at=created_at,
-        )
-
-    def collect_new_analysis_task_observations(
-        self,
-        existing_rows: list[dict[str, Any]],
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.candidate_service.collect_new_task_observations(
-            existing_rows,
-            observations,
-        )
-
-    def build_analysis_task_observation_insert_rows(
-        self,
-        observations: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        return self.candidate_service.build_task_observation_insert_rows(observations)
-
-    def merge_analysis_observations_into_candidate_aggregates(
-        self,
-        observations: list[dict[str, Any]],
-        aggregate_map: dict[str, dict[str, Any]],
-    ) -> None:
-        self.candidate_service.merge_observations_into_candidate_aggregates(
-            observations,
-            aggregate_map,
-        )
-
-    def build_analysis_candidate_aggregate_upsert_rows(
-        self,
-        aggregate_map: dict[str, dict[str, Any]],
-        srcs: list[str],
-    ) -> list[dict[str, Any]]:
-        return self.candidate_service.build_candidate_aggregate_upsert_rows(
-            aggregate_map,
-            srcs,
-        )
-
-    def persist_analysis_progress_snapshot_with_db(
-        self,
-        db: LGDatabase,
-        conn: sqlite3.Connection,
-        snapshot: dict[str, Any] | None,
-        *,
-        added_glossary_delta: int = 0,
-    ) -> dict[str, Any] | None:
-        return self.repository.persist_progress_snapshot_with_db(
-            db,
-            conn,
-            snapshot,
-            added_glossary_delta=added_glossary_delta,
-        )
-
-    def build_analysis_error_checkpoint_rows(
-        self,
-        checkpoints: list[dict[str, Any]],
-        existing: dict[int, dict[str, Any]],
-        *,
-        updated_at: str,
-    ) -> tuple[list[dict[str, Any]], dict[int, dict[str, Any]]]:
-        return self.progress_service.build_error_checkpoint_rows(
-            checkpoints,
-            existing,
-            updated_at=updated_at,
-        )
 
     def get_analysis_item_checkpoints(self) -> dict[int, dict[str, Any]]:
         return self.repository.get_item_checkpoints()
@@ -256,13 +99,6 @@ class AnalysisService:
         checkpoints: list[dict[str, Any]],
     ) -> dict[int, dict[str, Any]]:
         return self.repository.upsert_item_checkpoints(checkpoints)
-
-    def get_analysis_task_observations(
-        self,
-        *,
-        task_fingerprint: str | None = None,
-    ) -> list[dict[str, Any]]:
-        return self.repository.get_task_observations(task_fingerprint=task_fingerprint)
 
     def get_analysis_candidate_aggregate(self) -> dict[str, dict[str, Any]]:
         return self.repository.get_candidate_aggregate()
@@ -293,16 +129,11 @@ class AnalysisService:
     def commit_analysis_task_result(
         self,
         *,
-        task_fingerprint: str = "",
         checkpoints: list[dict[str, Any]] | None = None,
         glossary_entries: list[dict[str, Any]] | None = None,
         progress_snapshot: dict[str, Any] | None = None,
     ) -> int:
         """原子提交单个分析任务结果。"""
-
-        task_key = task_fingerprint.strip()
-        if task_key == "":
-            return 0
 
         normalized_progress_snapshot = None
         if progress_snapshot is not None:
@@ -311,18 +142,10 @@ class AnalysisService:
             )
 
         return self.repository.commit_task_result(
-            task_fingerprint=task_key,
             checkpoints=checkpoints or [],
             glossary_entries=glossary_entries or [],
             progress_snapshot=normalized_progress_snapshot,
         )
-
-    def build_analysis_glossary_entry_from_candidate(
-        self,
-        src: str,
-        entry: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        return self.candidate_service.build_glossary_entry_from_candidate(src, entry)
 
     def build_analysis_glossary_from_candidates(self) -> list[dict[str, Any]]:
         return self.candidate_service.build_glossary_from_candidates(
@@ -390,7 +213,6 @@ class AnalysisService:
     def clear_analysis_progress(self) -> None:
         self.repository.clear_progress()
         self.set_analysis_extras({})
-        self.meta_service.set_meta("analysis_state", {})
 
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_progress()

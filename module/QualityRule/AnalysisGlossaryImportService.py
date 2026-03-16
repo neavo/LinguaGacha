@@ -4,7 +4,7 @@ from typing import Any
 
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
-from module.Engine.Analyzer.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 

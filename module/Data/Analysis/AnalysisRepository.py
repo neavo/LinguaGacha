@@ -75,29 +75,6 @@ class AnalysisRepository:
 
         return self.get_item_checkpoints()
 
-    def get_task_observations(
-        self,
-        *,
-        task_fingerprint: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """返回任务级 observation 快照。"""
-
-        with self.session.state_lock:
-            db = self.session.db
-            if db is None:
-                return []
-            raw_rows = db.get_analysis_task_observations(
-                task_fingerprint=task_fingerprint
-            )
-
-        normalized_rows: list[dict[str, Any]] = []
-        for raw_row in raw_rows:
-            observation = self.candidate_service.normalize_task_observation(raw_row)
-            if observation is None:
-                continue
-            normalized_rows.append(observation)
-        return normalized_rows
-
     def get_candidate_aggregate(self) -> dict[str, dict[str, Any]]:
         """返回项目级候选池汇总。"""
 
@@ -149,7 +126,6 @@ class AnalysisRepository:
     def commit_task_result(
         self,
         *,
-        task_fingerprint: str,
         checkpoints: list[dict[str, Any]],
         glossary_entries: list[dict[str, Any]],
         progress_snapshot: dict[str, Any] | None,
@@ -157,9 +133,8 @@ class AnalysisRepository:
         """原子提交单个分析任务结果。"""
 
         now = datetime.now().isoformat()
-        normalized_observations = (
-            self.candidate_service.build_task_observations_for_commit(
-                task_fingerprint,
+        normalized_glossary_entries = (
+            self.candidate_service.build_commit_glossary_entries(
                 glossary_entries,
                 created_at=now,
             )
@@ -174,23 +149,9 @@ class AnalysisRepository:
                 return 0
 
             with db.connection() as conn:
-                existing_rows = db.get_analysis_task_observations(
-                    task_fingerprint=task_fingerprint,
-                    conn=conn,
-                )
-                new_observations = self.candidate_service.collect_new_task_observations(
-                    existing_rows,
-                    normalized_observations,
-                )
-                inserted_count = db.insert_analysis_task_observations(
-                    self.candidate_service.build_task_observation_insert_rows(
-                        new_observations
-                    ),
-                    conn=conn,
-                )
-
+                inserted_count = len(normalized_glossary_entries)
                 touched_srcs = sorted(
-                    {observation["src"] for observation in new_observations}
+                    {entry["src"] for entry in normalized_glossary_entries}
                 )
                 if touched_srcs:
                     aggregate_map = (
@@ -201,8 +162,8 @@ class AnalysisRepository:
                             )
                         )
                     )
-                    self.candidate_service.merge_observations_into_candidate_aggregates(
-                        new_observations,
+                    self.candidate_service.merge_glossary_entries_into_candidate_aggregates(
+                        normalized_glossary_entries,
                         aggregate_map,
                     )
                     db.upsert_analysis_candidate_aggregates(
@@ -238,7 +199,6 @@ class AnalysisRepository:
                 return
             with db.connection() as conn:
                 db.delete_analysis_item_checkpoints(conn=conn)
-                db.clear_analysis_task_observations(conn=conn)
                 db.clear_analysis_candidate_aggregates(conn=conn)
                 conn.commit()
 
@@ -258,7 +218,7 @@ class AnalysisRepository:
         checkpoints: list[dict[str, Any]],
         progress_snapshot: dict[str, Any] | None = None,
     ) -> dict[int, dict[str, Any]]:
-        """任务失败后记录当前 hash 的失败检查点，并和进度快照同事务落库。"""
+        """任务失败后记录当前条目的失败检查点，并和进度快照同事务落库。"""
 
         now_text = datetime.now().isoformat()
         with self.session.state_lock:

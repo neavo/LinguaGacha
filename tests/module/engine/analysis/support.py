@@ -4,18 +4,18 @@ from collections.abc import Callable
 
 import pytest
 
-from module.Engine.Analyzer.AnalysisPipeline import AnalysisPipeline
-from module.Engine.Analyzer.Analyzer import Analyzer
+from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
+from module.Engine.Analysis.Analysis import Analysis
 
-analysis_pipeline_module = import_module("module.Engine.Analyzer.AnalysisPipeline")
+analysis_pipeline_module = import_module("module.Engine.Analysis.AnalysisPipeline")
 
 
 def build_request_pipeline() -> AnalysisPipeline:
     """统一构造最小分析流水线，避免每个测试自己重复搭环境。"""
-    analyzer = Analyzer()
-    analyzer.model = {"name": "demo-model"}
-    analyzer.quality_snapshot = SimpleNamespace()
-    return AnalysisPipeline(analyzer)
+    analysis = Analysis()
+    analysis.model = {"name": "demo-model"}
+    analysis.quality_snapshot = SimpleNamespace()
+    return AnalysisPipeline(analysis)
 
 
 def stub_glossary_prompt(

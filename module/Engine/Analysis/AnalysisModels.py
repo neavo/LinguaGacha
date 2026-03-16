@@ -14,16 +14,14 @@ class AnalysisItemContext:
     item_id: int
     file_path: str
     source_text: str
-    source_hash: str
     previous_status: Base.ProjectStatus | None = None
 
 
-# 这里把一次分析任务需要提交的数据收成一个上下文，保证任务幂等和提交边界稳定。
+# 这里把一次分析任务需要提交的数据收成一个上下文，保证切块边界和重试输入稳定。
 @dataclass(frozen=True)
 class AnalysisTaskContext:
     """单个分析任务的上下文。"""
 
-    task_fingerprint: str
     file_path: str
     items: tuple[AnalysisItemContext, ...]
     retry_count: int = 0

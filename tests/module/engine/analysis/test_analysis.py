@@ -7,20 +7,26 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
-from module.Engine.Analyzer.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analyzer.Analyzer import Analyzer
+from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 
-analyzer_module = import_module("module.Engine.Analyzer.Analyzer")
+analysis_module = import_module("module.Engine.Analysis.Analysis")
 EmittedEvent = tuple[Base.Event, dict[str, object]]
 
 
-def build_context(task_fingerprint: str) -> AnalysisTaskContext:
+def build_context(file_path: str) -> AnalysisTaskContext:
     return AnalysisTaskContext(
-        task_fingerprint=task_fingerprint,
-        file_path="story.txt",
-        items=tuple(),
+        file_path=file_path,
+        items=(
+            AnalysisItemContext(
+                item_id=1,
+                file_path=file_path,
+                source_text="src-1",
+            ),
+        ),
     )
 
 
@@ -116,22 +122,22 @@ def install_analysis_import_glossary_runtime(
 ) -> None:
     # 导入测试只关心事件流，不关心真实线程与日志实现，这里统一装最小运行环境。
     monkeypatch.setattr(
-        analyzer_module.DataManager,
+        analysis_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
-    monkeypatch.setattr(analyzer_module.threading, "Thread", thread_type)
-    monkeypatch.setattr(analyzer_module.LogManager, "get", lambda: logger)
+    monkeypatch.setattr(analysis_module.threading, "Thread", thread_type)
+    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: logger)
 
 
 def capture_emitted_events(
     monkeypatch: pytest.MonkeyPatch,
-    analyzer: Analyzer,
+    analysis: Analysis,
 ) -> list[EmittedEvent]:
     # 统一把事件收进列表，避免每个测试都手写一遍同样的 lambda。
     emitted: list[EmittedEvent] = []
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
@@ -172,7 +178,7 @@ def assert_analysis_import_finished(
 def build_import_glossary_test_context(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager: object,
-) -> tuple[Analyzer, list[EmittedEvent], FakeLogManager]:
+) -> tuple[Analysis, list[EmittedEvent], FakeLogManager]:
     logger = FakeLogManager()
     install_analysis_import_glossary_runtime(
         monkeypatch,
@@ -180,24 +186,24 @@ def build_import_glossary_test_context(
         logger,
         ImmediateThread,
     )
-    analyzer = Analyzer()
-    emitted = capture_emitted_events(monkeypatch, analyzer)
-    return analyzer, emitted, logger
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
+    return analysis, emitted, logger
 
 
-def install_analyzer_start_runtime(
+def install_analysis_start_runtime(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager: object,
     quality_snapshot: object,
 ) -> None:
     # 启动类测试都依赖同一套 DataManager 和质量快照补丁，这里集中收口。
     monkeypatch.setattr(
-        analyzer_module.DataManager,
+        analysis_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(
-        analyzer_module.QualityRuleSnapshot,
+        analysis_module.QualityRuleSnapshot,
         "capture",
         lambda: quality_snapshot,
     )
@@ -211,19 +217,19 @@ def build_start_config() -> Config:
 
 def patch_start_runtime(
     monkeypatch: pytest.MonkeyPatch,
-    analyzer: Analyzer,
+    analysis: Analysis,
     *,
     task_contexts: list[AnalysisTaskContext],
     progress_snapshot: SimpleNamespace,
 ) -> None:
     # 启动路径只关心任务列表和进度快照，统一在这里替身，减少测试样板。
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "build_analysis_task_contexts",
         lambda config: task_contexts,
     )
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "build_progress_snapshot",
         lambda previous_extras, continue_mode: progress_snapshot,
     )
@@ -232,14 +238,14 @@ def patch_start_runtime(
 def test_analysis_require_stop_marks_engine_as_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analyzer = Analyzer()
-    emitted = capture_emitted_events(monkeypatch, analyzer)
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
 
     Engine.get().set_status(Base.TaskStatus.ANALYZING)
 
-    analyzer.analysis_require_stop()
+    analysis.analysis_require_stop()
 
-    assert analyzer.stop_requested is True
+    assert analysis.stop_requested is True
     assert Engine.get().get_status() == Base.TaskStatus.STOPPING
     assert emitted == [
         (
@@ -263,10 +269,10 @@ def test_emit_analysis_terminal_toast_matches_final_status(
     toast_type: Base.ToastType,
     message_attr: str,
 ) -> None:
-    analyzer = Analyzer()
-    emitted = capture_emitted_events(monkeypatch, analyzer)
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
 
-    analyzer.emit_analysis_terminal_toast(final_status)
+    analysis.emit_analysis_terminal_toast(final_status)
 
     assert emitted == [
         (
@@ -296,19 +302,19 @@ def test_start_continue_only_executes_pending_tasks(
         Item(id=2, src="B", file_path="story.txt"),
         Item(id=3, src="C", file_path="story.txt"),
     ]
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
     config = build_start_config()
 
     contexts = [build_context("todo")]
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=contexts,
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=3,
@@ -325,15 +331,14 @@ def test_start_continue_only_executes_pending_tasks(
 
     called: list[str] = []
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "execute_task_contexts",
         lambda task_contexts, max_workers: (
-            called.extend(context.task_fingerprint for context in task_contexts)
-            or "SUCCESS"
+            called.extend(context.file_path for context in task_contexts) or "SUCCESS"
         ),
     )
 
-    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
     assert called == ["todo"]
     assert fake_data_manager.import_count == 0
@@ -346,18 +351,18 @@ def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_
     quality_snapshot,
 ) -> None:
     fake_data_manager.analysis_candidate_count = 2
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
-    emitted = capture_emitted_events(monkeypatch, analyzer)
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=3,
@@ -372,7 +377,7 @@ def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_
         ),
     )
 
-    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
@@ -385,18 +390,18 @@ def test_start_continue_without_pending_tasks_skips_auto_import_when_no_candidat
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
-    emitted = capture_emitted_events(monkeypatch, analyzer)
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=3,
@@ -411,7 +416,7 @@ def test_start_continue_without_pending_tasks_skips_auto_import_when_no_candidat
         ),
     )
 
-    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
@@ -432,20 +437,20 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
     }
     fake_data_manager.analysis_candidate_count = 5
     fake_data_manager.analysis_item_checkpoints = {
-        1: {"source_hash": "h1", "status": Base.ProjectStatus.PROCESSED},
-        2: {"source_hash": "h2", "status": Base.ProjectStatus.ERROR},
+        1: {"status": Base.ProjectStatus.PROCESSED},
+        2: {"status": Base.ProjectStatus.ERROR},
     }
     monkeypatch.setattr(
-        analyzer_module.DataManager,
+        analysis_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
 
-    monkeypatch.setattr(analyzer_module.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(analysis_module.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "build_progress_snapshot",
         lambda previous_extras, continue_mode: build_analysis_progress_snapshot(
             total_line=2,
@@ -460,7 +465,7 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
         ),
     )
 
-    analyzer.analysis_reset(
+    analysis.analysis_reset(
         Base.Event.ANALYSIS_RESET_FAILED,
         {"sub_event": Base.SubEvent.REQUEST},
     )
@@ -476,17 +481,17 @@ def test_start_stopped_does_not_import_candidates(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[build_context("todo")],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=2,
@@ -496,12 +501,12 @@ def test_start_stopped_does_not_import_candidates(
         ),
     )
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "execute_task_contexts",
         lambda task_contexts, max_workers: "STOPPED",
     )
 
-    analyzer.start({"mode": Base.AnalysisMode.NEW, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
     assert fake_data_manager.import_count == 0
 
@@ -511,18 +516,18 @@ def test_start_creates_progress_bar_for_pending_tasks(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
     config = build_start_config()
     FakeProgressBar.instances = []
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[build_context("todo")],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=5,
@@ -532,9 +537,9 @@ def test_start_creates_progress_bar_for_pending_tasks(
             time_value=12.0,
         ),
     )
-    monkeypatch.setattr(analyzer_module, "ProgressBar", FakeProgressBar)
+    monkeypatch.setattr(analysis_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(
-        analyzer_module,
+        analysis_module,
         "TaskLimiter",
         lambda rps, rpm, max_concurrency: SimpleNamespace(
             rps=rps,
@@ -542,35 +547,35 @@ def test_start_creates_progress_bar_for_pending_tasks(
             max_concurrency=max_concurrency,
         ),
     )
-    monkeypatch.setattr(analyzer, "log_analysis_start", lambda: None)
-    monkeypatch.setattr(analyzer, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(analysis, "log_analysis_start", lambda: None)
+    monkeypatch.setattr(analysis, "log_analysis_finish", lambda final_status: None)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit_analysis_terminal_toast",
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "persist_progress_snapshot",
-        lambda save_state: dict(analyzer.extras),
+        lambda save_state: dict(analysis.extras),
     )
 
     def fake_execute(task_contexts, max_workers: int) -> str:
         del task_contexts, max_workers
         assert len(FakeProgressBar.instances) == 1
-        assert analyzer.pipeline.console_progress is FakeProgressBar.instances[0]
-        assert analyzer.pipeline.console_progress_task_id == 11
+        assert analysis.pipeline.console_progress is FakeProgressBar.instances[0]
+        assert analysis.pipeline.console_progress_task_id == 11
         return "SUCCESS"
 
-    monkeypatch.setattr(analyzer, "execute_task_contexts", fake_execute)
+    monkeypatch.setattr(analysis, "execute_task_contexts", fake_execute)
 
-    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
     assert len(FakeProgressBar.instances) == 1
     assert FakeProgressBar.instances[0].transient is True
     assert FakeProgressBar.instances[0].new_calls == [{"total": 5, "completed": 2}]
-    assert analyzer.pipeline.console_progress is None
-    assert analyzer.pipeline.console_progress_task_id is None
+    assert analysis.pipeline.console_progress is None
+    assert analysis.pipeline.console_progress_task_id is None
 
 
 def test_start_without_pending_tasks_skips_progress_bar(
@@ -578,17 +583,17 @@ def test_start_without_pending_tasks_skips_progress_bar(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=3,
@@ -603,20 +608,20 @@ def test_start_without_pending_tasks_skips_progress_bar(
         del args, kwargs
         raise AssertionError("没有待执行任务时不该创建进度条")
 
-    monkeypatch.setattr(analyzer_module, "ProgressBar", fail_progress_bar)
-    monkeypatch.setattr(analyzer, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(analysis_module, "ProgressBar", fail_progress_bar)
+    monkeypatch.setattr(analysis, "log_analysis_finish", lambda final_status: None)
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "emit_analysis_terminal_toast",
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "persist_progress_snapshot",
-        lambda save_state: dict(analyzer.extras),
+        lambda save_state: dict(analysis.extras),
     )
 
-    analyzer.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
 
 def test_analysis_import_glossary_emits_done_and_refresh(
@@ -624,12 +629,12 @@ def test_analysis_import_glossary_emits_done_and_refresh(
     fake_data_manager,
 ) -> None:
     fake_data_manager.analysis_candidate_count = 1
-    analyzer, emitted, logger = build_import_glossary_test_context(
+    analysis, emitted, logger = build_import_glossary_test_context(
         monkeypatch,
         fake_data_manager,
     )
 
-    analyzer.analysis_import_glossary()
+    analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
     assert (
@@ -657,12 +662,12 @@ def test_analysis_import_glossary_emits_success_toast_when_zero_imported(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer, emitted, logger = build_import_glossary_test_context(
+    analysis, emitted, logger = build_import_glossary_test_context(
         monkeypatch,
         fake_data_manager,
     )
 
-    analyzer.analysis_import_glossary()
+    analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
     assert (
@@ -686,7 +691,7 @@ def test_analysis_import_glossary_skips_stale_project_after_switch(
     fake_data_manager,
 ) -> None:
     fake_data_manager.analysis_candidate_count = 1
-    analyzer, emitted, logger = build_import_glossary_test_context(
+    analysis, emitted, logger = build_import_glossary_test_context(
         monkeypatch,
         fake_data_manager,
     )
@@ -701,9 +706,9 @@ def test_analysis_import_glossary_skips_stale_project_after_switch(
             fake_data_manager.lg_path = "/workspace/demo/other-project.lg"
             self.target(*self.args)
 
-    monkeypatch.setattr(analyzer_module.threading, "Thread", SwitchingThread)
+    monkeypatch.setattr(analysis_module.threading, "Thread", SwitchingThread)
 
-    analyzer.analysis_import_glossary()
+    analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
     assert_analysis_import_finished(emitted, sub_event=Base.SubEvent.DONE)
@@ -723,7 +728,7 @@ def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_fai
     fake_data_manager,
 ) -> None:
     fake_data_manager.analysis_candidate_count = 1
-    analyzer, emitted, logger = build_import_glossary_test_context(
+    analysis, emitted, logger = build_import_glossary_test_context(
         monkeypatch,
         fake_data_manager,
     )
@@ -737,12 +742,12 @@ def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_fai
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "import_analysis_candidates_sync",
         raise_import_error,
     )
 
-    analyzer.analysis_import_glossary()
+    analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
     assert (
@@ -770,7 +775,7 @@ def test_import_analysis_candidates_sync_calls_new_entry(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analyzer = Analyzer()
+    analysis = Analysis()
     called: list[str | None] = []
 
     def fake_import(expected_lg_path: str | None = None) -> int | None:
@@ -778,10 +783,10 @@ def test_import_analysis_candidates_sync_calls_new_entry(
         return 1
 
     fake_data_manager.import_analysis_candidates = fake_import
-    monkeypatch.setattr(analyzer, "emit", lambda event, data: None)
+    monkeypatch.setattr(analysis, "emit", lambda event, data: None)
 
     assert (
-        analyzer.import_analysis_candidates_sync(
+        analysis.import_analysis_candidates_sync(
             fake_data_manager,
             expected_lg_path="demo.lg",
         )
@@ -795,17 +800,17 @@ def test_start_success_emits_auto_import_glossary_request(
     fake_data_manager,
     quality_snapshot,
 ) -> None:
-    install_analyzer_start_runtime(
+    install_analysis_start_runtime(
         monkeypatch,
         fake_data_manager,
         quality_snapshot,
     )
 
-    analyzer = Analyzer()
+    analysis = Analysis()
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
-        analyzer,
+        analysis,
         task_contexts=[build_context("todo")],
         progress_snapshot=build_analysis_progress_snapshot(
             total_line=2,
@@ -815,15 +820,15 @@ def test_start_success_emits_auto_import_glossary_request(
         ),
     )
     monkeypatch.setattr(
-        analyzer,
+        analysis,
         "execute_task_contexts",
         lambda task_contexts, max_workers: (
             setattr(fake_data_manager, "analysis_candidate_count", 1) or "SUCCESS"
         ),
     )
-    emitted = capture_emitted_events(monkeypatch, analyzer)
+    emitted = capture_emitted_events(monkeypatch, analysis)
 
-    analyzer.start({"mode": Base.AnalysisMode.NEW, "config": config})
+    analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
