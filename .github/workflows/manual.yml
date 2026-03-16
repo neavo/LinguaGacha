@@ -14,12 +14,12 @@ jobs:
 
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check Version
         id: check_version
@@ -75,7 +75,7 @@ jobs:
           "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LinguaGacha_${{ steps.check_version.outputs.version }}_Windows
           path: |
@@ -97,12 +97,12 @@ jobs:
 
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check Version
         id: check_version
@@ -156,7 +156,7 @@ jobs:
           ls -la "$DMG_FILE"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LinguaGacha_${{ steps.check_version.outputs.version }}_macOS_${{ matrix.arch }}
           path: "*.dmg"
@@ -168,12 +168,12 @@ jobs:
 
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check Version
         id: check_version
@@ -251,7 +251,7 @@ jobs:
           ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run AppDir "LinguaGacha_${VERSION}_Linux_x86_64.AppImage"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LinguaGacha_${{ steps.check_version.outputs.version }}_Linux_x86_64
           path: "LinguaGacha_*.AppImage"
@@ -264,7 +264,7 @@ jobs:
 
     steps:
       - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: false
