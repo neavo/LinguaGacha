@@ -706,14 +706,6 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "◈ When functioning normally, model reasoning output will be visible in the translation logs"
     )
-    laboratory_page_auto_glossary_enable: str = "Auto Complete Glossary"
-    laboratory_page_auto_glossary_enable_desc: str = (
-        "Automatically supplement the glossary while translating, disabled by default, and does not support SakuraLLM"
-        "<br>"
-        "◈ Intended only for filling gaps; it may generate <font color='darkgoldenrod'><b>incorrect or inappropriate</b></font> data"
-        "<br>"
-        "◈ Recommended to enable this feature on top of a complete, filtered glossary obtained using <font color='darkgoldenrod'><b>KeywordGacha</b></font>"
-    )
 
     # 百宝箱
     tool_box_page_name_field_extraction_desc: str = (

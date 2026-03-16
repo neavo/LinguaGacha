@@ -73,6 +73,57 @@ class TranslationTask(Base):
             )
         )
 
+    @staticmethod
+    def build_empty_result() -> dict[str, int]:
+        """统一返回空结果，避免不同分支各写一套零值字典。"""
+        return {
+            "row_count": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+
+    @staticmethod
+    def build_result(
+        *,
+        row_count: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> dict[str, int]:
+        """统一构造任务结果，保证字段口径始终一致。"""
+        return {
+            "row_count": row_count,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    @staticmethod
+    def build_recoverable_request_response(
+        request_response: TaskRequestResult,
+    ) -> TaskRequestResult:
+        """将可恢复异常归一成空响应，后续仍复用同一套落盘和校验流程。"""
+        return TaskRequestResult(
+            start_time=request_response.start_time,
+            exception=request_response.exception,
+            response_think="",
+            response_result="",
+            input_tokens=0,
+            output_tokens=0,
+            normalized_think="",
+            cleaned_response_result="",
+            has_why_block=False,
+            decoded_translations=tuple(),
+            decoded_glossary_entries=tuple(),
+        )
+
+    def build_task_status_info(self) -> str:
+        """统一拼装拆分/重试状态，避免日志和异常分支各自拼字符串。"""
+        return (
+            Localizer.get()
+            .translation_task_status_info.replace("{SPLIT}", str(self.split_count))
+            .replace("{RETRY}", str(self.retry_count))
+            .replace("{THRESHOLD}", str(self.token_threshold))
+        )
+
     def start(self) -> dict:
         try:
             return self.request(
@@ -82,12 +133,7 @@ class TranslationTask(Base):
             )
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
+            return self.build_empty_result()
 
     def prepare_request_data(
         self,
@@ -109,12 +155,7 @@ class TranslationTask(Base):
 
             return {
                 "done": True,
-                "result": {
-                    "row_count": len(items),
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                },
+                "result": self.build_result(row_count=len(items)),
             }
 
         api_format = self.model.get("api_format", "OpenAI")
@@ -146,10 +187,8 @@ class TranslationTask(Base):
 
         if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
-            glossaries: list[dict[str, str]] = []
         else:
             dsts = list(request_response.decoded_translations)
-            glossaries = list(request_response.decoded_glossary_entries)
 
         if request_timeout:
             checks = [ResponseChecker.Error.FAIL_TIMEOUT] * len(srcs)
@@ -235,18 +274,12 @@ class TranslationTask(Base):
         )
 
         if updated_count > 0:
-            return {
-                "row_count": updated_count,
-                "input_tokens": request_response.input_tokens,
-                "output_tokens": request_response.output_tokens,
-                "glossaries": glossaries,
-            }
-        return {
-            "row_count": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "glossaries": [],
-        }
+            return self.build_result(
+                row_count=updated_count,
+                input_tokens=request_response.input_tokens,
+                output_tokens=request_response.output_tokens,
+            )
+        return self.build_empty_result()
 
     def request(
         self,
@@ -258,25 +291,13 @@ class TranslationTask(Base):
 
         if prepared.get("done"):
             result = prepared.get("result")
-            return (
-                result
-                if isinstance(result, dict)
-                else {
-                    "row_count": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                }
-            )
+            if isinstance(result, dict):
+                return result
+            return self.build_empty_result()
 
         messages = prepared.get("messages")
         if not isinstance(messages, list):
-            return {
-                "row_count": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "glossaries": [],
-            }
+            return self.build_empty_result()
 
         def stop_checker() -> bool:
             return Engine.get().get_status() == Base.TaskStatus.STOPPING
@@ -291,69 +312,29 @@ class TranslationTask(Base):
 
         if request_response.exception:
             if isinstance(request_response.exception, RequestCancelledError):
-                return {
-                    "row_count": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                }
+                return self.build_empty_result()
 
             if stop_checker():
-                return {
-                    "row_count": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                }
+                return self.build_empty_result()
 
-            msg = (
-                Localizer.get()
-                .translation_task_status_info.replace("{SPLIT}", str(self.split_count))
-                .replace("{RETRY}", str(self.retry_count))
-                .replace("{THRESHOLD}", str(self.token_threshold))
-            )
+            msg = self.build_task_status_info()
 
             if isinstance(request_response.exception, RequestHardTimeoutError):
                 prepared["request_timeout"] = True
-                request_response = TaskRequestResult(
-                    start_time=request_response.start_time,
-                    exception=request_response.exception,
-                    response_think="",
-                    response_result="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    normalized_think="",
-                    cleaned_response_result="",
-                    has_why_block=False,
-                    decoded_translations=tuple(),
-                    decoded_glossary_entries=tuple(),
+                request_response = self.build_recoverable_request_response(
+                    request_response
                 )
             elif isinstance(request_response.exception, StreamDegradationError):
                 prepared["stream_degraded"] = True
-                request_response = TaskRequestResult(
-                    start_time=request_response.start_time,
-                    exception=request_response.exception,
-                    response_think="",
-                    response_result="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    normalized_think="",
-                    cleaned_response_result="",
-                    has_why_block=False,
-                    decoded_translations=tuple(),
-                    decoded_glossary_entries=tuple(),
+                request_response = self.build_recoverable_request_response(
+                    request_response
                 )
             else:
                 LogManager.get().error(
                     f"{Localizer.get().task_failed}\n{msg}",
                     request_response.exception,
                 )
-                return {
-                    "row_count": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "glossaries": [],
-                }
+                return self.build_empty_result()
 
         return self.apply_response_data(prepared, request_response)
 
@@ -384,12 +365,7 @@ class TranslationTask(Base):
         sub_info = ""
         is_force_accept = False
         if self.is_sub_task:
-            sub_info = (
-                Localizer.get()
-                .translation_task_status_info.replace("{SPLIT}", str(self.split_count))
-                .replace("{RETRY}", str(self.retry_count))
-                .replace("{THRESHOLD}", str(self.token_threshold))
-            )
+            sub_info = self.build_task_status_info()
 
             # 检查是否为强制接受（重试达到上限）
             if len(srcs) == 1 and self.retry_count >= 3:

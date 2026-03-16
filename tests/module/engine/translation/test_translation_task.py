@@ -403,7 +403,6 @@ class TestTranslationTaskApplyResponseData:
             "row_count": 1,
             "input_tokens": 3,
             "output_tokens": 4,
-            "glossaries": [{"src": "s", "dst": "d"}],
         }
         assert task.items[0].get_dst() == "你好"
         assert task.items[0].get_name_dst() == "艾莉丝"
@@ -674,7 +673,6 @@ class TestTranslationTaskRequestAndStart:
             "row_count": 2,
             "input_tokens": 1,
             "output_tokens": 1,
-            "glossaries": [],
         }
         monkeypatch.setattr(
             task,
@@ -899,7 +897,6 @@ class TestTranslationTaskRequestAndStart:
                 "row_count": 9,
                 "input_tokens": request_response.input_tokens,
                 "output_tokens": request_response.output_tokens,
-                "glossaries": [],
             },
         )
 
@@ -909,7 +906,6 @@ class TestTranslationTaskRequestAndStart:
             "row_count": 9,
             "input_tokens": 11,
             "output_tokens": 22,
-            "glossaries": [],
         }
 
 

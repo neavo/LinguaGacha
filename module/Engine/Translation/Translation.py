@@ -14,7 +14,6 @@ from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
@@ -28,7 +27,6 @@ from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.Text.TextHelper import TextHelper
 
 
 # 翻译器
@@ -613,66 +611,6 @@ class Translation(Base):
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
         DataManager.get().close_db()
 
-    def merge_glossary(
-        self, glossary_list: list[dict[str, str]], *, persist: bool = True
-    ) -> list[dict] | None:
-        """
-        合并术语表并更新缓存，返回待写入的数据（若无变化返回 None）
-        """
-        snapshot = self.quality_snapshot
-        if snapshot is None:
-            return None
-
-        incoming: list[dict[str, Any]] = []
-        for item in glossary_list:
-            src = str(item.get("src", "")).strip()
-            dst = str(item.get("dst", "")).strip()
-            info = str(item.get("info", "")).strip()
-
-            # 有效性校验
-            if not any(x in info.lower() for x in ("男", "女", "male", "female")):
-                continue
-
-            # 将原文和译文都按标点切分
-            srcs: list[str] = TextHelper.split_by_punctuation(src, split_by_space=True)
-            dsts: list[str] = TextHelper.split_by_punctuation(dst, split_by_space=True)
-            if len(srcs) != len(dsts):
-                srcs = [src]
-                dsts = [dst]
-
-            for src_part, dst_part in zip(srcs, dsts):
-                src_part = src_part.strip()
-                dst_part = dst_part.strip()
-                if not src_part or not dst_part:
-                    continue
-                if src_part == dst_part:
-                    continue
-                incoming.append(
-                    {
-                        "src": src_part,
-                        "dst": dst_part,
-                        "info": info,
-                        "case_sensitive": False,
-                    }
-                )
-
-        # 快照用于运行时质量检查/提示词一致性；写回入口的去重/补空由统一合并器负责。
-        snapshot.merge_glossary_entries(incoming)
-
-        # CLI 模式可禁用规则写回：保留本次快照的增量效果，但不触碰工程缓存/落库。
-        if not persist:
-            return None
-
-        dm = DataManager.get()
-        # 与 UI 写入串行化：避免 auto glossary 覆盖用户在翻译过程中的手动编辑。
-        with dm.state_lock:
-            merged, _report = dm.merge_glossary_incoming(
-                incoming,
-                merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
-                save=False,
-            )
-            return merged
-
     def save_translation_state(
         self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
     ) -> None:
@@ -704,7 +642,6 @@ class Translation(Base):
     def apply_batch_update_sync(
         self,
         finalized_items: list[dict[str, Any]],
-        glossaries: list[dict[str, str]],
         extras_snapshot: dict[str, Any],
     ) -> None:
         """
@@ -712,20 +649,8 @@ class Translation(Base):
 
         为什么串行：DataManager.update_batch(...) 需要事务一致性，并且要保证缓存/事件顺序稳定。
         """
-        new_glossary_data = None
-        if glossaries and self.config.auto_glossary_enable:
-            new_glossary_data = self.merge_glossary(
-                glossaries, persist=self.persist_quality_rules
-            )
-
-        rules_map = (
-            {DataManager.RuleType.GLOSSARY: new_glossary_data}
-            if new_glossary_data
-            else {}
-        )
         DataManager.get().update_batch(
             items=finalized_items,
-            rules=rules_map,
             meta={
                 "translation_extras": extras_snapshot,
                 "project_status": Base.ProjectStatus.PROCESSING,
@@ -794,16 +719,6 @@ class Translation(Base):
 
     # 检查结果并写入文件
     def check_and_wirte_result(self, items: list[Item]) -> None:
-        # 自动术语表更新事件仅受自动术语表开关控制。
-        if self.config.auto_glossary_enable and self.persist_quality_rules:
-            # 更新规则管理器 (已在 TranslationTask.merge_glossary 中即时处理，此处仅作为冗余检查或保留事件触发)
-
-            # 实际上 TranslationTask 已经处理了保存，这里只需要触发事件即可
-            self.emit(
-                Base.Event.QUALITY_RULE_UPDATE,
-                {"rule_types": [DataManager.RuleType.GLOSSARY.value]},
-            )
-
         # 写入文件并获取实际输出路径（带时间戳）
         output_path = FileManager(self.config).write_to_path(items)
         LogManager.get().print("")

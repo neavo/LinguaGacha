@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from dataclasses import field
-import threading
 from typing import Any
 
 from module.Data.DataManager import DataManager
@@ -13,8 +11,7 @@ class QualityRuleSnapshot:
     """翻译用质量规则快照。
 
     约束：
-    - 除自动术语表外，翻译过程中不应受到 UI 对规则的修改影响
-    - 自动术语表的新增条目需要“即时生效”，因此术语表列表允许在翻译过程中增量更新
+    - 翻译过程中不应受到 UI 对规则的修改影响
     """
 
     glossary_enable: bool
@@ -31,104 +28,39 @@ class QualityRuleSnapshot:
 
     glossary_entries: list[dict[str, Any]]
 
-    glossary_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    glossary_src_set: set[str] = field(default_factory=set, repr=False)
+    @staticmethod
+    def copy_non_empty_entries(
+        raw_entries: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], ...]:
+        """统一复制有效规则项，避免不同规则各写一套筛选逻辑。"""
+        return tuple(
+            dict(entry)
+            for entry in raw_entries
+            if isinstance(entry, dict) and str(entry.get("src", "")).strip() != ""
+        )
 
     @classmethod
     def capture(cls) -> "QualityRuleSnapshot":
         dm = DataManager.get()
 
-        glossary_entries = [
-            dict(v)
-            for v in dm.get_glossary()
-            if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-        ]
-        glossary_src_set = {str(v.get("src", "")).strip() for v in glossary_entries}
-
-        preserve_entries = tuple(
-            dict(v)
-            for v in dm.get_text_preserve()
-            if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-        )
-        pre_replacement_entries = tuple(
-            dict(v)
-            for v in dm.get_pre_replacement()
-            if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-        )
-        post_replacement_entries = tuple(
-            dict(v)
-            for v in dm.get_post_replacement()
-            if isinstance(v, dict) and str(v.get("src", "")).strip() != ""
-        )
-
         return cls(
             glossary_enable=dm.get_glossary_enable(),
             text_preserve_mode=dm.get_text_preserve_mode(),
-            text_preserve_entries=preserve_entries,
+            text_preserve_entries=cls.copy_non_empty_entries(dm.get_text_preserve()),
             pre_replacement_enable=dm.get_pre_replacement_enable(),
-            pre_replacement_entries=pre_replacement_entries,
+            pre_replacement_entries=cls.copy_non_empty_entries(
+                dm.get_pre_replacement()
+            ),
             post_replacement_enable=dm.get_post_replacement_enable(),
-            post_replacement_entries=post_replacement_entries,
+            post_replacement_entries=cls.copy_non_empty_entries(
+                dm.get_post_replacement()
+            ),
             translation_prompt_enable=dm.get_translation_prompt_enable(),
             translation_prompt=dm.get_translation_prompt(),
             analysis_prompt_enable=dm.get_analysis_prompt_enable(),
             analysis_prompt=dm.get_analysis_prompt(),
-            glossary_entries=glossary_entries,
-            glossary_src_set=glossary_src_set,
+            glossary_entries=list(cls.copy_non_empty_entries(dm.get_glossary())),
         )
 
     def get_glossary_entries(self) -> tuple[dict[str, Any], ...]:
-        with self.glossary_lock:
-            return tuple(self.glossary_entries)
-
-    def merge_glossary_entries(
-        self, incoming: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """将新术语合并进快照术语表，返回本次实际生效的条目列表。
-
-        自动术语表增量捕获只受 auto_glossary_enable 控制，此处不再受 glossary_enable 影响。
-        """
-        if not incoming:
-            return []
-
-        changed: list[dict[str, Any]] = []
-        with self.glossary_lock:
-            for raw in incoming:
-                if not isinstance(raw, dict):
-                    continue
-
-                src = str(raw.get("src", "")).strip()
-                dst = str(raw.get("dst", "")).strip()
-                info = str(raw.get("info", "")).strip()
-                if not src or not dst:
-                    continue
-
-                if src in self.glossary_src_set:
-                    for entry in self.glossary_entries:
-                        if str(entry.get("src", "")).strip() != src:
-                            continue
-
-                        changed_flag = False
-                        if str(entry.get("dst", "")).strip() == "":
-                            entry["dst"] = dst
-                            changed_flag = True
-                        if str(entry.get("info", "")).strip() == "" and info != "":
-                            entry["info"] = info
-                            changed_flag = True
-
-                        if changed_flag:
-                            changed.append(dict(entry))
-                        break
-                    continue
-
-                entry = {
-                    "src": src,
-                    "dst": dst,
-                    "info": info,
-                    "case_sensitive": bool(raw.get("case_sensitive", False)),
-                }
-                self.glossary_entries.append(entry)
-                self.glossary_src_set.add(src)
-                changed.append(entry)
-
-        return changed
+        return tuple(self.glossary_entries)

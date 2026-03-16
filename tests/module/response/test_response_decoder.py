@@ -5,14 +5,14 @@ class TestResponseDecoderLineBased:
     def test_decode_parses_translation_and_glossary_entries(self) -> None:
         response = """
 {"0":"你好"}
-{"src":"Alice","dst":"爱丽丝","gender":"female"}
+{"src":"Alice","dst":"爱丽丝","type":"女性人名"}
 {"invalid":1}
 """.strip()
 
         dsts, glossary = ResponseDecoder().decode(response)
 
         assert dsts == ["你好"]
-        assert glossary == [{"src": "Alice", "dst": "爱丽丝", "info": "female"}]
+        assert glossary == [{"src": "Alice", "dst": "爱丽丝", "info": "女性人名"}]
 
     def test_decode_skips_non_string_translation_values(self) -> None:
         response = '{"0":100}\n{"1":"ok"}'
@@ -51,6 +51,14 @@ class TestResponseDecoderLineBased:
         _, glossary = ResponseDecoder().decode(response)
 
         assert glossary == [{"src": "HP", "dst": "生命值", "info": "属性"}]
+
+    def test_decode_rejects_legacy_gender_glossary_field(self) -> None:
+        response = '{"src":"Alice","dst":"爱丽丝","gender":"female"}'
+
+        dsts, glossary = ResponseDecoder().decode(response)
+
+        assert dsts == ["Alice", "爱丽丝", "female"]
+        assert glossary == []
 
 
 class TestResponseDecoderFallback:

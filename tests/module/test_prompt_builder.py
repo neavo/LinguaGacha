@@ -54,7 +54,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.ALL,
             target_language=BaseLanguage.Enum.EN,
-            auto_glossary_enable=False,
             force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
@@ -93,7 +92,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.ALL,
-            auto_glossary_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=False,
@@ -127,7 +125,6 @@ class TestPromptBuilder:
             config=Config(
                 source_language=BaseLanguage.Enum.JA,
                 target_language=BaseLanguage.Enum.ZH,
-                auto_glossary_enable=False,
                 force_thinking_enable=False,
             ),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
@@ -147,16 +144,10 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
-        monkeypatch.setattr(
-            PromptBuilder,
-            "get_suffix_glossary",
-            classmethod(lambda cls, language: "GLOSSARY_SUFFIX"),
-        )
 
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
-            auto_glossary_enable=False,
             force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
@@ -195,7 +186,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
-            auto_glossary_enable=False,
             force_thinking_enable=True,
         )
         snapshot = FakeQualitySnapshot(
@@ -382,17 +372,11 @@ class TestPromptBuilder:
         (zh_dir / "prefix.txt").write_text("PREFIX", encoding="utf-8-sig")
         (zh_dir / "suffix.txt").write_text("SUFFIX", encoding="utf-8-sig")
         (zh_dir / "thinking.txt").write_text("THINKING_SUFFIX", encoding="utf-8-sig")
-        (zh_dir / "suffix_glossary.txt").write_text(
-            "GLOSSARY_SUFFIX", encoding="utf-8-sig"
-        )
 
         (en_dir / "base.txt").write_text("BASE_EN", encoding="utf-8-sig")
         (en_dir / "prefix.txt").write_text("PREFIX_EN", encoding="utf-8-sig")
         (en_dir / "suffix.txt").write_text("SUFFIX_EN", encoding="utf-8-sig")
         (en_dir / "thinking.txt").write_text("THINKING_SUFFIX_EN", encoding="utf-8-sig")
-        (en_dir / "suffix_glossary.txt").write_text(
-            "GLOSSARY_SUFFIX_EN", encoding="utf-8-sig"
-        )
 
         monkeypatch.chdir(str(root))
 
@@ -401,9 +385,6 @@ class TestPromptBuilder:
         assert PromptBuilder.get_suffix(BaseLanguage.Enum.ZH) == "SUFFIX"
         assert (
             PromptBuilder.get_suffix_thinking(BaseLanguage.Enum.ZH) == "THINKING_SUFFIX"
-        )
-        assert (
-            PromptBuilder.get_suffix_glossary(BaseLanguage.Enum.ZH) == "GLOSSARY_SUFFIX"
         )
 
         # lru_cache: 未 reset 前应保持旧内容
@@ -668,7 +649,7 @@ class TestPromptBuilder:
             is False
         )
 
-    def test_build_main_uses_english_names_and_glossary_suffix(
+    def test_build_main_uses_english_names_and_suffix(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         Localizer.set_app_language(BaseLanguage.Enum.EN)
@@ -683,16 +664,9 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
-        monkeypatch.setattr(
-            PromptBuilder,
-            "get_suffix_glossary",
-            classmethod(lambda cls, language: "GLOSSARY_SUFFIX"),
-        )
-
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
-            auto_glossary_enable=True,
             force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
@@ -707,7 +681,7 @@ class TestPromptBuilder:
         expected = (
             "PREFIX\n"
             + f"BASE {BaseLanguage.get_name_en(BaseLanguage.Enum.EN)}\n\n"
-            + "GLOSSARY_SUFFIX"
+            + "SUFFIX"
         )
         assert result == expected
 
@@ -827,7 +801,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
-            auto_glossary_enable=False,
             force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
@@ -864,7 +837,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.ALL,
             target_language=BaseLanguage.Enum.ZH,
-            auto_glossary_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=False,
@@ -915,7 +887,6 @@ class TestPromptBuilder:
             config=Config(
                 source_language=BaseLanguage.Enum.JA,
                 target_language=BaseLanguage.Enum.ZH,
-                auto_glossary_enable=False,
             ),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
         )
@@ -953,7 +924,6 @@ class TestPromptBuilder:
             config=Config(
                 source_language=BaseLanguage.Enum.JA,
                 target_language=BaseLanguage.Enum.EN,
-                auto_glossary_enable=False,
             ),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
         )

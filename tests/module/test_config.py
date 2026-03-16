@@ -49,6 +49,20 @@ class TestConfigBehavior:
         assert config.expert_mode is True
         assert not hasattr(config, "unknown_field")
 
+    def test_load_ignores_removed_auto_glossary_field(self, fs) -> None:
+        del fs
+        path = Path("/workspace/config/config.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"force_thinking_enable": False, "auto_glossary_enable": True}),
+            encoding="utf-8",
+        )
+
+        config = Config().load(str(path))
+
+        assert config.force_thinking_enable is False
+        assert not hasattr(config, "auto_glossary_enable")
+
     def test_load_logs_error_when_file_corrupted(
         self, fs, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -158,6 +172,7 @@ class TestConfigBehavior:
         assert saved["target_language"] == "ZH"
         assert saved["models"][0]["id"] == "m1"
         assert saved["recent_projects"][0]["path"] == "/a"
+        assert "auto_glossary_enable" not in saved
 
     def test_recent_projects_deduplicate_and_limit_to_ten(self) -> None:
         config = Config()

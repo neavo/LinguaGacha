@@ -1,5 +1,6 @@
 import threading
 from functools import lru_cache
+from typing import Any
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -35,7 +36,6 @@ class PromptBuilder(Base):
         cls.get_prefix.cache_clear()
         cls.get_suffix.cache_clear()
         cls.get_suffix_thinking.cache_clear()
-        cls.get_suffix_glossary.cache_clear()
         cls.get_analysis_base.cache_clear()
         cls.get_analysis_prefix.cache_clear()
         cls.get_analysis_thinking.cache_clear()
@@ -76,15 +76,6 @@ class PromptBuilder(Base):
     def get_suffix_thinking(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
             PromptResourceResolver.TaskType.TRANSLATION, language, "thinking.txt"
-        )
-
-    @classmethod
-    @lru_cache(maxsize=None)
-    def get_suffix_glossary(cls, language: BaseLanguage.Enum) -> str:
-        return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.TRANSLATION,
-            language,
-            "suffix_glossary.txt",
         )
 
     @classmethod
@@ -198,6 +189,47 @@ class PromptBuilder(Base):
             return self.get_custom_prompt_data(PromptResourceResolver.TaskType.ANALYSIS)
         return __class__.get_analysis_base(prompt_language)
 
+    @staticmethod
+    def join_prompt_sections(
+        prefix: str,
+        base: str,
+        thinking: str,
+        suffix: str,
+    ) -> str:
+        """统一拼接提示词段落，保证输出块始终在末尾。"""
+        parts = ["\n".join([prefix, base])]
+        if thinking:
+            parts.append(thinking)
+        parts.append(suffix)
+        return "\n\n".join(parts)
+
+    def get_glossary_source_data(
+        self,
+    ) -> tuple[dict[str, Any], ...] | list[dict[str, Any]]:
+        """统一读取术语来源，避免快照和 DataManager 分支在多处重复。"""
+        if self.quality_snapshot is not None:
+            return self.quality_snapshot.get_glossary_entries()
+        return DataManager.get().get_glossary()
+
+    def get_matched_glossary_entries(
+        self,
+        srcs: list[str],
+    ) -> list[dict[str, Any]]:
+        """按大小写规则筛选命中的术语，供不同提示词格式复用。"""
+        full_text = "\n".join(srcs)
+        full_text_lower = full_text.lower()
+        matched_entries: list[dict[str, str]] = []
+
+        for entry in self.get_glossary_source_data():
+            src = str(entry.get("src", ""))
+            is_case_sensitive = bool(entry.get("case_sensitive", False))
+            if is_case_sensitive and src in full_text:
+                matched_entries.append(entry)
+            elif not is_case_sensitive and src.lower() in full_text_lower:
+                matched_entries.append(entry)
+
+        return matched_entries
+
     # 获取主提示词
     def build_main(self) -> str:
         prompt_language, _source_placeholder, source_language, target_language = (
@@ -217,18 +249,9 @@ class PromptBuilder(Base):
                 thinking = __class__.get_suffix_thinking(prompt_language)
 
             # 输出块
-            if not self.config.auto_glossary_enable:
-                suffix_output = __class__.get_suffix(prompt_language)
-            else:
-                suffix_output = __class__.get_suffix_glossary(prompt_language)
+            suffix_output = __class__.get_suffix(prompt_language)
 
-        # 组装提示词：输出块必须位于末尾，避免影响 JSONLINE 规则
-        base_block = "\n".join([prefix, base])
-        parts = [base_block]
-        if thinking:
-            parts.append(thinking)
-        parts.append(suffix_output)
-        full_prompt = "\n\n".join(parts)
+        full_prompt = self.join_prompt_sections(prefix, base, thinking, suffix_output)
         full_prompt = full_prompt.replace("{source_language}", source_language)
         full_prompt = full_prompt.replace("{target_language}", target_language)
 
@@ -249,12 +272,7 @@ class PromptBuilder(Base):
             suffix = __class__.get_analysis_suffix(prompt_language)
 
         # 分析任务与翻译任务保持同样的三段式结构，避免 thinking 规则重新混回 base。
-        base_block = "\n".join([prefix, base])
-        parts = [base_block]
-        if thinking:
-            parts.append(thinking)
-        parts.append(suffix)
-        full_prompt = "\n\n".join(parts)
+        full_prompt = self.join_prompt_sections(prefix, base, thinking, suffix)
         return full_prompt.replace("{target_language}", target_language)
 
     # 构造参考上文
@@ -280,34 +298,8 @@ class PromptBuilder(Base):
 
     # 构造术语表
     def build_glossary(self, srcs: list[str]) -> str:
-        full = "\n".join(srcs)
-        full_lower = full.lower()  # 用于不区分大小写的匹配
-
-        # 筛选匹配的术语
-        glossary: list[dict[str, str]] = []
-        glossary_data = (
-            self.quality_snapshot.get_glossary_entries()
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary()
-        )
-
-        for v in glossary_data:
-            src = v.get("src", "")
-            is_case_sensitive = v.get("case_sensitive", False)
-
-            # 根据 case_sensitive 决定匹配方式
-            if is_case_sensitive:
-                # 大小写敏感：直接使用 in
-                if src in full:
-                    glossary.append(v)
-            else:
-                # 大小写不敏感：转换为小写后匹配
-                if src.lower() in full_lower:
-                    glossary.append(v)
-
-        # 构建文本
-        result = []
-        for item in glossary:
+        result: list[str] = []
+        for item in self.get_matched_glossary_entries(srcs):
             src = item.get("src", "")
             dst = item.get("dst", "")
             info = item.get("info", "")
@@ -336,34 +328,8 @@ class PromptBuilder(Base):
 
     # 构造术语表
     def build_glossary_sakura(self, srcs: list[str]) -> str:
-        full = "\n".join(srcs)
-        full_lower = full.lower()  # 用于不区分大小写的匹配
-
-        # 筛选匹配的术语
-        glossary: list[dict[str, str]] = []
-        glossary_data = (
-            self.quality_snapshot.get_glossary_entries()
-            if self.quality_snapshot is not None
-            else DataManager.get().get_glossary()
-        )
-
-        for v in glossary_data:
-            src = v.get("src", "")
-            is_case_sensitive = v.get("case_sensitive", False)
-
-            # 根据 case_sensitive 决定匹配方式
-            if is_case_sensitive:
-                # 大小写敏感：直接使用 in
-                if src in full:
-                    glossary.append(v)
-            else:
-                # 大小写不敏感：转换为小写后匹配
-                if src.lower() in full_lower:
-                    glossary.append(v)
-
-        # 构建文本
-        result = []
-        for item in glossary:
+        result: list[str] = []
+        for item in self.get_matched_glossary_entries(srcs):
             src = item.get("src", "")
             dst = item.get("dst", "")
             info = item.get("info", "")

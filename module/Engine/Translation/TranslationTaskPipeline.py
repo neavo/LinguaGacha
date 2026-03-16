@@ -131,6 +131,22 @@ class TranslationTaskPipeline:
             if self.pending_commit_count > 0:
                 self.pending_commit_count -= 1
 
+    def has_pending_contexts(self) -> bool:
+        """统一判断是否还有待处理上下文，避免退出条件散落多处。"""
+        return not self.normal_queue.empty() or not self.high_queue.empty()
+
+    def can_stop_dispatch(self) -> bool:
+        """生产者结束且没有待提交结果时，worker 可以安全停止取任务。"""
+        return (
+            self.producer_done.is_set()
+            and not self.has_pending_contexts()
+            and self.get_pending_commit_count() == 0
+        )
+
+    def can_stop_commit_loop(self) -> bool:
+        """提交线程只在队列、在途任务和待提交计数都清空后退出。"""
+        return self.can_stop_dispatch() and self.get_active_context_count() == 0
+
     def get_next_context(self) -> TaskContext | None:
         """优先级：high_queue > normal_queue。"""
         while True:
@@ -142,12 +158,7 @@ class TranslationTaskPipeline:
             except queue.Empty:
                 pass
 
-            if (
-                self.producer_done.is_set()
-                and self.normal_queue.empty()
-                and self.high_queue.empty()
-                and self.get_pending_commit_count() == 0
-            ):
+            if self.can_stop_dispatch():
                 return None
 
             try:
@@ -216,13 +227,7 @@ class TranslationTaskPipeline:
             except queue.Empty:
                 # 任务未完成时，commit_queue 可能在一段时间内为空（尤其是高并发+长请求）。
                 # 此时必须保持 commit_loop 存活，等待 worker 产出结果。
-                if (
-                    self.producer_done.is_set()
-                    and self.normal_queue.empty()
-                    and self.high_queue.empty()
-                    and self.get_pending_commit_count() == 0
-                    and self.get_active_context_count() == 0
-                ):
+                if self.can_stop_commit_loop():
                     return
 
                 if self.should_stop():
@@ -269,10 +274,6 @@ class TranslationTaskPipeline:
                     1 for i in task.items if i.get_status() == Base.ProjectStatus.ERROR
                 )
 
-                glossaries = result.get("glossaries")
-                if not isinstance(glossaries, list):
-                    glossaries = []
-
                 input_tokens = int(result.get("input_tokens", 0) or 0)
                 output_tokens = int(result.get("output_tokens", 0) or 0)
                 extras_snapshot = self.translation.update_extras_snapshot(
@@ -284,7 +285,6 @@ class TranslationTaskPipeline:
 
                 self.translation.apply_batch_update_sync(
                     finalized_items,
-                    glossaries,
                     extras_snapshot,
                 )
 

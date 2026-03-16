@@ -10,7 +10,6 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
 import module.Engine.Translation.Translation as translation_module
 from module.Engine.Translation.Translation import Translation
 
@@ -22,14 +21,6 @@ class EventRecorder:
     def emit(self, event: Base.Event, payload: dict[str, Any]) -> bool:
         self.events.append((event, payload))
         return True
-
-
-class FakeSnapshot:
-    def __init__(self) -> None:
-        self.merged_entries: list[dict[str, Any]] = []
-
-    def merge_glossary_entries(self, incoming: list[dict[str, Any]]) -> None:
-        self.merged_entries.extend(incoming)
 
 
 class FakeLogger:
@@ -58,7 +49,6 @@ def create_translation_stub() -> Translation:
     translation.persist_quality_rules = True
     translation.quality_snapshot = None
     translation.config = Config(
-        auto_glossary_enable=False,
         mtool_optimizer_enable=False,
         output_folder_open_on_finish=False,
     )
@@ -461,89 +451,10 @@ def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
     assert Translation.get_task_buffer_size(translation, 40) == 160
 
 
-def test_merge_glossary_returns_none_when_snapshot_missing() -> None:
-    translation = create_translation_stub()
-    translation.quality_snapshot = None
-
-    assert (
-        Translation.merge_glossary(
-            translation, [{"src": "A", "dst": "甲", "info": "male"}]
-        )
-        is None
-    )
-
-
-def test_merge_glossary_filters_invalid_and_supports_runtime_only_mode(
+def test_apply_batch_update_sync_writes_items_and_meta_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    snapshot = FakeSnapshot()
-    translation.quality_snapshot = snapshot
-    monkeypatch.setattr(
-        translation_module.TextHelper,
-        "split_by_punctuation",
-        staticmethod(
-            lambda text, split_by_space=True: [v.strip() for v in text.split(",")]
-        ),
-    )
-
-    result = Translation.merge_glossary(
-        translation,
-        [
-            {"src": "Alice, Bob", "dst": "爱丽丝, 鲍勃", "info": "female"},
-            {"src": "same", "dst": "same", "info": "male"},
-            {"src": "ignored", "dst": "x", "info": "unknown"},
-        ],
-        persist=False,
-    )
-
-    assert result is None
-    assert snapshot.merged_entries == [
-        {
-            "src": "Alice",
-            "dst": "爱丽丝",
-            "info": "female",
-            "case_sensitive": False,
-        },
-        {
-            "src": "Bob",
-            "dst": "鲍勃",
-            "info": "female",
-            "case_sensitive": False,
-        },
-    ]
-
-
-def test_merge_glossary_persist_mode_calls_data_manager(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.quality_snapshot = FakeSnapshot()
-    fake_dm = SimpleNamespace(
-        state_lock=threading.Lock(),
-        merge_glossary_incoming=MagicMock(
-            return_value=([{"src": "A", "dst": "甲"}], {})
-        ),
-    )
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    merged = Translation.merge_glossary(
-        translation,
-        [{"src": "A", "dst": "甲", "info": "male"}],
-        persist=True,
-    )
-
-    assert merged == [{"src": "A", "dst": "甲"}]
-    fake_dm.merge_glossary_incoming.assert_called_once()
-
-
-def test_apply_batch_update_sync_without_auto_glossary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.config.auto_glossary_enable = False
     update_calls: list[dict[str, Any]] = []
     fake_dm = SimpleNamespace(update_batch=lambda **kwargs: update_calls.append(kwargs))
     monkeypatch.setattr(
@@ -553,43 +464,13 @@ def test_apply_batch_update_sync_without_auto_glossary(
     Translation.apply_batch_update_sync(
         translation,
         finalized_items=[{"id": 1, "dst": "a"}],
-        glossaries=[{"src": "A", "dst": "甲"}],
         extras_snapshot={"line": 1},
     )
 
     kwargs = update_calls[0]
     assert kwargs["items"] == [{"id": 1, "dst": "a"}]
-    assert kwargs["rules"] == {}
+    assert "rules" not in kwargs
     assert kwargs["meta"]["project_status"] == Base.ProjectStatus.PROCESSING
-
-
-def test_apply_batch_update_sync_with_auto_glossary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.config.auto_glossary_enable = True
-    translation.merge_glossary = MagicMock(return_value=[{"src": "A", "dst": "甲"}])
-    update_calls: list[dict[str, Any]] = []
-    fake_dm = SimpleNamespace(update_batch=lambda **kwargs: update_calls.append(kwargs))
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    Translation.apply_batch_update_sync(
-        translation,
-        finalized_items=[{"id": 1, "dst": "a"}],
-        glossaries=[{"src": "A", "dst": "甲"}],
-        extras_snapshot={"line": 1},
-    )
-
-    kwargs = update_calls[0]
-    assert kwargs["rules"] == {
-        DataManager.RuleType.GLOSSARY: [{"src": "A", "dst": "甲"}]
-    }
-    translation.merge_glossary.assert_called_once_with(
-        [{"src": "A", "dst": "甲"}],
-        persist=True,
-    )
 
 
 def test_translation_require_stop_sets_engine_status_and_emits_run_event(
@@ -1404,44 +1285,6 @@ def test_sync_extras_line_stats_ignores_untracked_item_status(
     assert translation.extras["total_line"] == 0
 
 
-def test_merge_glossary_covers_mismatch_and_empty_parts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    snapshot = FakeSnapshot()
-    translation.quality_snapshot = snapshot
-
-    def fake_split(text: str, split_by_space: bool = True) -> list[str]:
-        del split_by_space
-        if text == "mismatch_src":
-            return ["A", "B"]
-        if text == "mismatch_dst":
-            return ["甲"]
-        if text == "empty_src":
-            return [""]
-        if text == "empty_dst":
-            return [""]
-        return [text]
-
-    monkeypatch.setattr(
-        translation_module.TextHelper,
-        "split_by_punctuation",
-        staticmethod(fake_split),
-    )
-
-    Translation.merge_glossary(
-        translation,
-        [
-            {"src": "mismatch_src", "dst": "mismatch_dst", "info": "female"},
-            {"src": "empty_src", "dst": "empty_dst", "info": "male"},
-        ],
-        persist=False,
-    )
-
-    assert snapshot.merged_entries[0]["src"] == "mismatch_src"
-    assert snapshot.merged_entries[0]["dst"] == "mismatch_dst"
-
-
 def test_save_translation_state_without_extras_still_sets_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1525,12 +1368,10 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     assert logger.info_messages[-1] == "mtool_done"
 
 
-def test_check_and_wirte_result_emits_glossary_event_and_opens_output_folder(
+def test_check_and_wirte_result_opens_output_folder_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.config.auto_glossary_enable = True
-    translation.persist_quality_rules = True
     translation.config.output_folder_open_on_finish = True
     logger = FakeLogManager()
     open_mock = MagicMock()
@@ -1545,20 +1386,14 @@ def test_check_and_wirte_result_emits_glossary_event_and_opens_output_folder(
 
     Translation.check_and_wirte_result(translation, [Item(src="a", dst="b")])
 
-    assert has_emitted(
-        translation,
-        Base.Event.QUALITY_RULE_UPDATE,
-        {"rule_types": [DataManager.RuleType.GLOSSARY.value]},
-    )
+    assert emitted_events(translation) == []
     open_mock.assert_called_once()
 
 
-def test_check_and_wirte_result_skips_glossary_event_and_open_when_disabled(
+def test_check_and_wirte_result_skips_open_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.config.auto_glossary_enable = False
-    translation.persist_quality_rules = True
     translation.config.output_folder_open_on_finish = False
     logger = FakeLogManager()
     open_mock = MagicMock()

@@ -1,3 +1,5 @@
+from typing import Callable
+
 from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -25,10 +27,6 @@ class LaboratoryPage(Base, QWidget):
     FORCE_THINKING_URL_EN: str = (
         "https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN"
     )
-    AUTO_GLOSSARY_URL_ZH: str = "https://github.com/neavo/LinguaGacha/wiki/AutoGlossary"
-    AUTO_GLOSSARY_URL_EN: str = (
-        "https://github.com/neavo/LinguaGacha/wiki/AutoGlossaryEN"
-    )
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -43,9 +41,8 @@ class LaboratoryPage(Base, QWidget):
         self.root.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 添加控件
-        self.add_widget_mtool(self.root, config, window)
-        self.add_widget_force_thinking(self.root, config, window)
-        self.add_widget_auto_glossary(self.root, config, window)
+        self.add_widget_mtool(self.root, config)
+        self.add_widget_force_thinking(self.root, config)
 
         # 填充
         self.root.addStretch(1)
@@ -75,99 +72,70 @@ class LaboratoryPage(Base, QWidget):
         ):
             self.force_thinking_switch.setEnabled(not locked)
 
+    def add_switch_card(
+        self,
+        *,
+        parent: QLayout,
+        title: str,
+        description: str,
+        help_url_zh: str,
+        help_url_en: str,
+        checked: bool,
+        on_checked_changed: Callable[[], None],
+    ) -> SwitchButton:
+        """统一创建实验室页面的开关卡片，避免每个选项重复搭 UI。"""
+        help_spec = CardHelpSpec(
+            url_localized=Localizer.UnionText(
+                zh=help_url_zh,
+                en=help_url_en,
+            )
+        )
+        card = SettingCard(
+            title=title,
+            description=description,
+            help_spec=help_spec,
+            parent=self,
+        )
+        switch_button = SwitchButton(card)
+        switch_button.setOnText("")
+        switch_button.setOffText("")
+        switch_button.setChecked(checked)
+        switch_button.checkedChanged.connect(lambda _checked: on_checked_changed())
+        card.add_right_widget(switch_button)
+        parent.addWidget(card)
+        return switch_button
+
     # MTool 优化器
-    def add_widget_mtool(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        def checked_changed(button: SwitchButton) -> None:
+    def add_widget_mtool(self, parent: QLayout, config: Config) -> None:
+        def checked_changed() -> None:
             config = Config().load()
-            config.mtool_optimizer_enable = button.isChecked()
+            config.mtool_optimizer_enable = self.mtool_switch.isChecked()
             config.save()
             self.emit(Base.Event.CONFIG_UPDATED, {"keys": ["mtool_optimizer_enable"]})
 
-        # 问号链接走 UI 语言适配，保持中英文说明一致。
-        help_spec = CardHelpSpec(
-            url_localized=Localizer.UnionText(
-                zh=self.MTOOL_OPTIMIZER_URL_ZH,
-                en=self.MTOOL_OPTIMIZER_URL_EN,
-            )
-        )
-        card = SettingCard(
+        self.mtool_switch = self.add_switch_card(
+            parent=parent,
             title=Localizer.get().laboratory_page_mtool_optimizer_enable,
             description=Localizer.get().laboratory_page_mtool_optimizer_enable_desc,
-            help_spec=help_spec,
-            parent=self,
+            help_url_zh=self.MTOOL_OPTIMIZER_URL_ZH,
+            help_url_en=self.MTOOL_OPTIMIZER_URL_EN,
+            checked=config.mtool_optimizer_enable,
+            on_checked_changed=checked_changed,
         )
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
-        switch_button.setChecked(config.mtool_optimizer_enable)
-        switch_button.checkedChanged.connect(
-            lambda checked: checked_changed(switch_button)
-        )
-        card.add_right_widget(switch_button)
-        self.mtool_switch = switch_button
-        parent.addWidget(card)
 
     # 强制思考
-    def add_widget_force_thinking(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        def checked_changed(button: SwitchButton) -> None:
+    def add_widget_force_thinking(self, parent: QLayout, config: Config) -> None:
+        def checked_changed() -> None:
             config = Config().load()
-            config.force_thinking_enable = button.isChecked()
+            config.force_thinking_enable = self.force_thinking_switch.isChecked()
             config.save()
 
-        help_spec = CardHelpSpec(
-            url_localized=Localizer.UnionText(
-                zh=self.FORCE_THINKING_URL_ZH,
-                en=self.FORCE_THINKING_URL_EN,
-            )
-        )
-        card = SettingCard(
+        self.force_thinking_switch = self.add_switch_card(
+            parent=parent,
             title=Localizer.get().laboratory_page_force_thinking_enable,
             description=Localizer.get().laboratory_page_force_thinking_enable_desc,
-            help_spec=help_spec,
-            parent=self,
+            help_url_zh=self.FORCE_THINKING_URL_ZH,
+            help_url_en=self.FORCE_THINKING_URL_EN,
+            checked=config.force_thinking_enable,
+            on_checked_changed=checked_changed,
         )
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
-        switch_button.setChecked(config.force_thinking_enable)
-        switch_button.checkedChanged.connect(
-            lambda checked: checked_changed(switch_button)
-        )
-        card.add_right_widget(switch_button)
-        self.force_thinking_switch = switch_button
-        parent.addWidget(card)
-
-    # 自动补全术语表
-    def add_widget_auto_glossary(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        def checked_changed(button: SwitchButton) -> None:
-            config = Config().load()
-            config.auto_glossary_enable = button.isChecked()
-            config.save()
-
-        help_spec = CardHelpSpec(
-            url_localized=Localizer.UnionText(
-                zh=self.AUTO_GLOSSARY_URL_ZH,
-                en=self.AUTO_GLOSSARY_URL_EN,
-            )
-        )
-        card = SettingCard(
-            title=Localizer.get().laboratory_page_auto_glossary_enable,
-            description=Localizer.get().laboratory_page_auto_glossary_enable_desc,
-            help_spec=help_spec,
-            parent=self,
-        )
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
-        switch_button.setChecked(config.auto_glossary_enable)
-        switch_button.checkedChanged.connect(
-            lambda checked: checked_changed(switch_button)
-        )
-        card.add_right_widget(switch_button)
-        parent.addWidget(card)

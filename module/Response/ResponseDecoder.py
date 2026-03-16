@@ -9,10 +9,9 @@ class ResponseDecoder(Base):
         super().__init__()
 
     def get_glossary_info_key(self, json_data: dict) -> str:
-        """兼容历史字段名，保证翻译和分析链路共用一套术语入口。"""
-        for info_key in ("gender", "type"):
-            if all(v in json_data for v in ("src", "dst", info_key)):
-                return info_key
+        """术语信息字段当前只接受分析链路使用的 type。"""
+        if all(v in json_data for v in ("src", "dst", "type")):
+            return "type"
         return ""
 
     def get_translation_text(self, json_data: dict) -> str | None:

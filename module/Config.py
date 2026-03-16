@@ -60,7 +60,6 @@ class Config:
     auto_process_prefix_suffix_preserved_text: bool = True
 
     # LaboratoryPage
-    auto_glossary_enable: bool = False
     force_thinking_enable: bool = True
     mtool_optimizer_enable: bool = False
 

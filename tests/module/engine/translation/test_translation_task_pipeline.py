@@ -82,7 +82,7 @@ def create_pipeline(
     translation = SimpleNamespace(
         get_task_buffer_size=lambda workers: 4,
         scheduler=SimpleNamespace(
-            create_task=lambda context: FakeTask(context.items, {"glossaries": []}),
+            create_task=lambda context: FakeTask(context.items, {}),
             handle_failed_context=lambda context, result: [],
         ),
         update_extras_snapshot=MagicMock(return_value={"line": 1, "total_line": 1}),
@@ -170,7 +170,7 @@ def test_run_one_context_puts_payload_when_task_succeeds(
     pipeline, translation, _, _ = create_pipeline(monkeypatch)
     item = Item(src="s")
     context = TaskContext(items=[item], precedings=[], token_threshold=8)
-    expected_result = {"input_tokens": 1, "output_tokens": 2, "glossaries": []}
+    expected_result = {"input_tokens": 1, "output_tokens": 2}
     translation.scheduler.create_task = lambda ctx: FakeTask(ctx.items, expected_result)
 
     pipeline.run_one_context(context)
@@ -210,7 +210,6 @@ def test_commit_loop_applies_batch_and_updates_progress(
         result={
             "input_tokens": 3,
             "output_tokens": 4,
-            "glossaries": [{"src": "A", "dst": "甲"}],
         },
     )
 
@@ -544,7 +543,7 @@ def test_commit_loop_empty_queue_continues_when_not_stopping(
     pipeline.drain_context_queues_on_stop.assert_called_once()
 
 
-def test_commit_loop_enqueues_failed_context_and_fallbacks_glossaries(
+def test_commit_loop_enqueues_failed_context_without_glossary_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline, translation, _, _ = create_pipeline(monkeypatch)
@@ -555,7 +554,7 @@ def test_commit_loop_enqueues_failed_context_and_fallbacks_glossaries(
     translation.scheduler.handle_failed_context = lambda ctx, result: [retry_context]
     task = FakeTask(
         items=[item],
-        result={"input_tokens": 0, "output_tokens": 0, "glossaries": "invalid"},
+        result={"input_tokens": 0, "output_tokens": 0},
     )
     pipeline.inc_pending_commit()
     pipeline.commit_queue.put((context, task, task.result))
@@ -587,10 +586,7 @@ def test_commit_loop_breaks_retry_enqueue_when_stop_requested_in_loop(
     context = TaskContext(items=[item], precedings=[], token_threshold=8)
     retry_context = TaskContext(items=[], precedings=[], token_threshold=4)
     translation.scheduler.handle_failed_context = lambda ctx, result: [retry_context]
-    task = FakeTask(
-        items=[item],
-        result={"input_tokens": 0, "output_tokens": 0, "glossaries": []},
-    )
+    task = FakeTask(items=[item], result={"input_tokens": 0, "output_tokens": 0})
     pipeline.inc_pending_commit()
     pipeline.commit_queue.put((context, task, task.result))
     pipeline.producer_done.set()
@@ -611,9 +607,7 @@ def test_commit_loop_sets_engine_stopping_when_commit_processing_raises(
     item = Item(src="a")
     item.set_status(Base.ProjectStatus.PROCESSED)
     context = TaskContext(items=[item], precedings=[], token_threshold=8)
-    task = FakeTask(
-        items=[item], result={"input_tokens": 0, "output_tokens": 0, "glossaries": []}
-    )
+    task = FakeTask(items=[item], result={"input_tokens": 0, "output_tokens": 0})
     translation.update_extras_snapshot = MagicMock(side_effect=RuntimeError("boom"))
     pipeline.inc_pending_commit()
     pipeline.commit_queue.put((context, task, task.result))
