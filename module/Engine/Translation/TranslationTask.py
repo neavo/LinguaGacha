@@ -14,16 +14,16 @@ from base.LogManager import LogManager
 from model.Item import Item
 from module.Config import Config
 from module.Engine.Engine import Engine
+from module.Engine.TaskRequestExecutor import TaskRequestExecutor
+from module.Engine.TaskRequestExecutor import TaskRequestResult
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import StreamDegradationError
 from module.Engine.TaskRequester import TaskRequester
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseChecker import ResponseChecker
-from module.Response.ResponseCleaner import ResponseCleaner
-from module.Response.ResponseDecoder import ResponseDecoder
 from module.TextProcessor import TextProcessor
 
 
@@ -135,29 +135,21 @@ class TranslationTask(Base):
     def apply_response_data(
         self,
         prepared: dict,
-        response_think: str,
-        response_result: str,
-        input_tokens: int,
-        output_tokens: int,
-        start_time: float,
+        request_response: TaskRequestResult,
     ) -> dict:
         srcs: list[str] = prepared.get("srcs", [])
         console_log: list[str] = prepared.get("console_log", [])
         stream_degraded = bool(prepared.get("stream_degraded", False))
         request_timeout = bool(prepared.get("request_timeout", False))
-
-        # 先剥离 <why>，避免 JSONLINE 解码受到干扰
-        response_result, why_text = ResponseCleaner.extract_why_from_response(
-            response_result
-        )
-        response_think = ResponseCleaner.merge_text_blocks(response_think, why_text)
-        response_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
+        response_think = request_response.normalized_think
+        response_result = request_response.cleaned_response_result
 
         if stream_degraded or request_timeout:
             dsts = [""] * len(srcs)
             glossaries: list[dict[str, str]] = []
         else:
-            dsts, glossaries = ResponseDecoder().decode(response_result)
+            dsts = list(request_response.decoded_translations)
+            glossaries = list(request_response.decoded_glossary_entries)
 
         if request_timeout:
             checks = [ResponseChecker.Error.FAIL_TIMEOUT] * len(srcs)
@@ -204,7 +196,9 @@ class TranslationTask(Base):
             )
             if LogManager.get().is_expert_mode():
                 console_log.append(
-                    Localizer.get().engine_task_response_result + "\n" + response_result_log
+                    Localizer.get().engine_task_response_result
+                    + "\n"
+                    + response_result_log
                 )
 
         updated_count = 0
@@ -231,9 +225,9 @@ class TranslationTask(Base):
 
         self.print_log_table(
             checks,
-            start_time,
-            input_tokens,
-            output_tokens,
+            request_response.start_time,
+            request_response.input_tokens,
+            request_response.output_tokens,
             [line.strip() for line in srcs],
             [line.strip() for line in dsts],
             file_log,
@@ -243,8 +237,8 @@ class TranslationTask(Base):
         if updated_count > 0:
             return {
                 "row_count": updated_count,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
+                "input_tokens": request_response.input_tokens,
+                "output_tokens": request_response.output_tokens,
                 "glossaries": glossaries,
             }
         return {
@@ -260,7 +254,6 @@ class TranslationTask(Base):
         processors: list[TextProcessor],
         precedings: list[Item],
     ) -> dict:
-        start_time = time.time()
         prepared = self.prepare_request_data(items, processors, precedings)
 
         if prepared.get("done"):
@@ -288,20 +281,16 @@ class TranslationTask(Base):
         def stop_checker() -> bool:
             return Engine.get().get_status() == Base.TaskStatus.STOPPING
 
-        requester = TaskRequester(self.config, self.model)
-        (
-            exception,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-        ) = requester.request(
-            messages,
+        request_response = TaskRequestExecutor.execute(
+            config=self.config,
+            model=self.model,
+            messages=messages,
+            requester_factory=TaskRequester,
             stop_checker=stop_checker,
         )
 
-        if exception:
-            if isinstance(exception, RequestCancelledError):
+        if request_response.exception:
+            if isinstance(request_response.exception, RequestCancelledError):
                 return {
                     "row_count": 0,
                     "input_tokens": 0,
@@ -324,23 +313,40 @@ class TranslationTask(Base):
                 .replace("{THRESHOLD}", str(self.token_threshold))
             )
 
-            if isinstance(exception, RequestHardTimeoutError):
+            if isinstance(request_response.exception, RequestHardTimeoutError):
                 prepared["request_timeout"] = True
-                response_think = ""
-                response_result = ""
-                input_tokens = 0
-                output_tokens = 0
-
-            elif isinstance(exception, StreamDegradationError):
+                request_response = TaskRequestResult(
+                    start_time=request_response.start_time,
+                    exception=request_response.exception,
+                    response_think="",
+                    response_result="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    normalized_think="",
+                    cleaned_response_result="",
+                    has_why_block=False,
+                    decoded_translations=tuple(),
+                    decoded_glossary_entries=tuple(),
+                )
+            elif isinstance(request_response.exception, StreamDegradationError):
                 prepared["stream_degraded"] = True
-                response_think = ""
-                response_result = ""
-                input_tokens = 0
-                output_tokens = 0
+                request_response = TaskRequestResult(
+                    start_time=request_response.start_time,
+                    exception=request_response.exception,
+                    response_think="",
+                    response_result="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    normalized_think="",
+                    cleaned_response_result="",
+                    has_why_block=False,
+                    decoded_translations=tuple(),
+                    decoded_glossary_entries=tuple(),
+                )
             else:
                 LogManager.get().error(
                     f"{Localizer.get().task_failed}\n{msg}",
-                    exception,
+                    request_response.exception,
                 )
                 return {
                     "row_count": 0,
@@ -349,14 +355,7 @@ class TranslationTask(Base):
                     "glossaries": [],
                 }
 
-        return self.apply_response_data(
-            prepared,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-            start_time,
-        )
+        return self.apply_response_data(prepared, request_response)
 
     # 打印日志表格
     def print_log_table(

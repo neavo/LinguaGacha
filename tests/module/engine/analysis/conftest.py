@@ -84,7 +84,6 @@ class FakeDataManager:
             "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
             "total_input_tokens": int(snapshot.get("total_input_tokens", 0) or 0),
             "total_output_tokens": int(snapshot.get("total_output_tokens", 0) or 0),
-            "added_glossary": int(snapshot.get("added_glossary", 0) or 0),
         }
 
     def update_analysis_progress_snapshot(
@@ -149,9 +148,6 @@ class FakeDataManager:
             )
 
         changed_count = len(glossary_entries)
-        self.analysis_extras["added_glossary"] = (
-            int(self.analysis_extras.get("added_glossary", 0)) + changed_count
-        )
         self.analysis_candidate_count += changed_count
         for checkpoint in checkpoints:
             item_id = int(checkpoint.get("item_id", 0) or 0)

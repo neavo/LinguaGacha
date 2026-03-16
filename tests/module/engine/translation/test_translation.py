@@ -245,13 +245,9 @@ def setup_common_patches(
     monkeypatch.setattr(translation_module.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(translation_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(
-        translation_module.TextProcessor, "reset", staticmethod(lambda: None)
-    )
-    monkeypatch.setattr(
-        translation_module.TaskRequester, "reset", staticmethod(lambda: None)
-    )
-    monkeypatch.setattr(
-        translation_module.PromptBuilder, "reset", staticmethod(lambda: None)
+        translation_module.TaskRunnerLifecycle,
+        "reset_request_runtime",
+        staticmethod(lambda reset_text_processor: None),
     )
 
 

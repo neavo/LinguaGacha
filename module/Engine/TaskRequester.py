@@ -16,8 +16,8 @@ from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import StreamDegradationError
 from module.Engine.TaskRequesterStream import StreamConsumer
 from module.Engine.TaskRequesterStream import StreamControl
 from module.Engine.TaskRequesterStream import StreamSession

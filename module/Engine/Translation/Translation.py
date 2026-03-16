@@ -18,7 +18,7 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
-from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
@@ -29,7 +29,6 @@ from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Text.TextHelper import TextHelper
-from module.TextProcessor import TextProcessor
 
 
 # 翻译器
@@ -85,6 +84,15 @@ class Translation(Base):
             return 0
         return limiter.get_concurrency_limit()
 
+    def get_progress_snapshot(self) -> TaskProgressSnapshot:
+        """把翻译运行态字典统一映射到共享快照，便于公共层复用。"""
+        return TaskProgressSnapshot.from_dict(self.extras)
+
+    def set_progress_snapshot(self, snapshot: TaskProgressSnapshot) -> dict[str, Any]:
+        """翻译域内部统一经由快照对象回写字典，避免字段漏同步。"""
+        self.extras = snapshot.to_dict()
+        return dict(self.extras)
+
     def update_extras_snapshot(
         self,
         *,
@@ -94,23 +102,17 @@ class Translation(Base):
         output_tokens: int,
     ) -> dict[str, Any]:
         """更新翻译进度统计并返回不可变快照。"""
-        self.extras.update(
-            {
-                "processed_line": self.extras.get("processed_line", 0)
-                + processed_count,
-                "error_line": self.extras.get("error_line", 0) + error_count,
-                "total_tokens": self.extras.get("total_tokens", 0)
-                + input_tokens
-                + output_tokens,
-                "total_input_tokens": self.extras.get("total_input_tokens", 0)
-                + input_tokens,
-                "total_output_tokens": self.extras.get("total_output_tokens", 0)
-                + output_tokens,
-                "time": time.time() - self.extras.get("start_time", 0),
-            }
+        snapshot = self.get_progress_snapshot()
+        snapshot = snapshot.with_counts(
+            processed_line=snapshot.processed_line + processed_count,
+            error_line=snapshot.error_line + error_count,
         )
-        self.extras["line"] = self.extras["processed_line"] + self.extras["error_line"]
-        return dict(self.extras)
+        snapshot = snapshot.add_tokens(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        snapshot = snapshot.with_elapsed(now=time.time())
+        return self.set_progress_snapshot(snapshot)
 
     def sync_extras_line_stats(self) -> None:
         """以 items_cache 为权威来源，重算行数统计。
@@ -133,11 +135,14 @@ class Translation(Base):
             elif status == Base.ProjectStatus.NONE:
                 remaining_line += 1
 
-        self.extras["processed_line"] = processed_line
-        self.extras["error_line"] = error_line
-        self.extras["line"] = processed_line + error_line
-        self.extras["total_line"] = self.extras["line"] + remaining_line
-        self.extras["time"] = time.time() - self.extras.get("start_time", 0)
+        snapshot = self.get_progress_snapshot()
+        snapshot = snapshot.with_counts(
+            processed_line=processed_line,
+            error_line=error_line,
+            total_line=processed_line + error_line + remaining_line,
+        )
+        snapshot = snapshot.with_elapsed(now=time.time())
+        self.set_progress_snapshot(snapshot)
 
     def build_project_check_payload(self, dm: DataManager) -> dict[str, Any]:
         """统一收敛工程检查返回值，避免线程任务里重复拼装字典。"""
@@ -238,104 +243,37 @@ class Translation(Base):
         else:
             reset_event = Base.Event.TRANSLATION_RESET_FAILED
 
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            self.emit(
-                reset_event,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                },
-            )
-            return
-
         dm = DataManager.get()
-        if not dm.is_loaded():
-            return
 
-        self.emit(
-            reset_event,
-            {
-                "sub_event": Base.SubEvent.RUN,
-            },
+        def run_reset_worker() -> None:
+            if is_reset_all:
+                # 这里必须强制重解析 assets，避免沿用旧数据库里残留的条目和进度。
+                items = dm.get_items_for_translation(
+                    self.config, Base.TranslationMode.RESET
+                )
+                dm.replace_all_items(items)
+                dm.set_translation_extras({})
+                dm.set_project_status(Base.ProjectStatus.NONE)
+                self.extras = dm.get_translation_extras()
+                dm.run_project_prefilter(self.config, reason="translation_reset")
+            else:
+                extras = dm.reset_failed_translation_items_sync()
+                if extras is not None:
+                    self.extras = extras
+
+            self.emit(
+                Base.Event.PROJECT_CHECK,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
+
+        TaskRunnerLifecycle.run_reset_flow(
+            self,
+            reset_event=reset_event,
+            progress_message=Localizer.get().translation_page_toast_resetting,
+            worker=run_reset_worker,
+            thread_factory=threading.Thread,
+            ensure_loaded=dm.is_loaded,
         )
-
-        # 先给用户即时反馈：重置可能非常耗时（尤其是强制重解析资产时）
-        self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "message": Localizer.get().translation_page_toast_resetting,
-                "indeterminate": True,
-            },
-        )
-
-        def task() -> None:
-            try:
-                if is_reset_all:
-                    # 1. 重新解析 assets 以获取初始状态的条目
-                    # 这里必须使用 RESET 模式强制重解析 assets（避免沿用工程数据库里的既有条目/进度）
-                    items = dm.get_items_for_translation(
-                        self.config, Base.TranslationMode.RESET
-                    )
-
-                    # 2. 清空并重新写入条目到数据库
-                    dm.replace_all_items(items)
-
-                    # 3. 清除元数据中的进度信息
-                    dm.set_translation_extras({})
-
-                    # 4. 设置项目状态为 NONE
-                    dm.set_project_status(Base.ProjectStatus.NONE)
-
-                    # 5. 更新本地进度快照
-                    self.extras = dm.get_translation_extras()
-
-                    # 6. 预过滤重算并落库（已移除翻译期过滤，reset 后必须补上）
-                    dm.run_project_prefilter(self.config, reason="translation_reset")
-                else:
-                    extras = dm.reset_failed_translation_items_sync()
-                    if extras is not None:
-                        self.extras = extras
-
-                # 触发状态检查以同步 UI
-                self.emit(
-                    Base.Event.PROJECT_CHECK,
-                    {"sub_event": Base.SubEvent.REQUEST},
-                )
-                self.emit(
-                    reset_event,
-                    {
-                        "sub_event": Base.SubEvent.DONE,
-                    },
-                )
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().task_failed,
-                    },
-                )
-                self.emit(
-                    reset_event,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                    },
-                )
-            finally:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-
-        threading.Thread(target=task).start()
 
     # 翻译结果手动导出事件
 
@@ -472,9 +410,7 @@ class Translation(Base):
                 else QualityRuleSnapshot.capture()
             )
 
-            TextProcessor.reset()
-            TaskRequester.reset()
-            PromptBuilder.reset()
+            TaskRunnerLifecycle.reset_request_runtime(reset_text_processor=True)
             self.items_cache = dm.get_items_for_translation(self.config, mode)
             return True
 
@@ -484,30 +420,24 @@ class Translation(Base):
                 self.items_cache = []
 
             if mode == Base.TranslationMode.CONTINUE:
-                self.extras = dm.get_translation_extras()
-                self.extras["start_time"] = time.time() - self.extras.get("time", 0)
-                self.extras["processed_line"] = self.get_item_count_by_status(
-                    Base.ProjectStatus.PROCESSED
-                )
-                self.extras["error_line"] = self.get_item_count_by_status(
-                    Base.ProjectStatus.ERROR
-                )
-                self.extras["line"] = (
-                    self.extras["processed_line"] + self.extras["error_line"]
-                )
+                snapshot = TaskProgressSnapshot.from_dict(dm.get_translation_extras())
+                snapshot = TaskProgressSnapshot(
+                    start_time=time.time() - snapshot.time,
+                    time=snapshot.time,
+                    total_line=snapshot.total_line,
+                    line=snapshot.line,
+                    processed_line=self.get_item_count_by_status(
+                        Base.ProjectStatus.PROCESSED
+                    ),
+                    error_line=self.get_item_count_by_status(Base.ProjectStatus.ERROR),
+                    total_tokens=snapshot.total_tokens,
+                    total_input_tokens=snapshot.total_input_tokens,
+                    total_output_tokens=snapshot.total_output_tokens,
+                ).with_counts()
             else:
-                self.extras = {
-                    "start_time": time.time(),
-                    "total_line": 0,
-                    "line": 0,
-                    "processed_line": 0,
-                    "error_line": 0,
-                    "total_tokens": 0,
-                    "total_input_tokens": 0,
-                    "total_output_tokens": 0,
-                    "time": 0,
-                }
+                snapshot = TaskProgressSnapshot.empty(start_time=time.time())
 
+            self.set_progress_snapshot(snapshot)
             self.emit(Base.Event.TRANSLATION_PROGRESS, self.extras)
             self.scheduler = TaskScheduler(
                 self.config,
@@ -517,10 +447,13 @@ class Translation(Base):
             )
 
             remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
-            self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
+            snapshot = self.get_progress_snapshot().with_counts(
+                total_line=self.get_progress_snapshot().line + remaining_count
+            )
+            self.set_progress_snapshot(snapshot)
             return TaskRunnerExecutionPlan(
-                total_line=int(self.extras.get("total_line", 0) or 0),
-                line=int(self.extras.get("line", 0) or 0),
+                total_line=int(snapshot.total_line),
+                line=int(snapshot.line),
                 has_pending_work=remaining_count > 0,
                 idle_final_status="SUCCESS",
             )

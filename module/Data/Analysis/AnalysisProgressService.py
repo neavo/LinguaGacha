@@ -96,7 +96,6 @@ class AnalysisProgressService:
             "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
             "total_input_tokens": int(snapshot.get("total_input_tokens", 0) or 0),
             "total_output_tokens": int(snapshot.get("total_output_tokens", 0) or 0),
-            "added_glossary": int(snapshot.get("added_glossary", 0) or 0),
         }
 
     def normalize_item_checkpoint_upsert_rows(
@@ -226,14 +225,17 @@ class AnalysisProgressService:
             "total_tokens": 0,
             "total_input_tokens": 0,
             "total_output_tokens": 0,
-            "added_glossary": 0,
         }
         snapshot.update(extras)
-        snapshot["total_line"] = status_summary["total_line"]
-        snapshot["line"] = status_summary["line"]
-        snapshot["processed_line"] = status_summary["processed_line"]
-        snapshot["error_line"] = status_summary["error_line"]
-        return snapshot
+        return self.normalize_progress_snapshot(
+            {
+                **snapshot,
+                "total_line": status_summary["total_line"],
+                "line": status_summary["line"],
+                "processed_line": status_summary["processed_line"],
+                "error_line": status_summary["error_line"],
+            }
+        )
 
     def collect_pending_items(
         self,

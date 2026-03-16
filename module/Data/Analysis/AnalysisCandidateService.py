@@ -319,7 +319,7 @@ class AnalysisCandidateService:
             return None
         if dst == src and not is_control_code_self_mapping:
             return None
-        if normalized_info in {"其它", "其他", "other"}:
+        if normalized_info in {"其它", "其他", "other", "others"}:
             return None
 
         return {

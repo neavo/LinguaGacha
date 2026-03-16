@@ -9,7 +9,9 @@ from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Engine.Engine import Engine
+from module.Engine.TaskRequester import TaskRequester
 from module.Localizer.Localizer import Localizer
+from module.PromptBuilder import PromptBuilder
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,18 @@ class TaskRunnerHooks:
 
 class TaskRunnerLifecycle:
     """抽取分析与翻译共享的任务生命周期骨架。"""
+
+    @staticmethod
+    def reset_request_runtime(*, reset_text_processor: bool) -> None:
+        """统一清理请求期缓存，避免两条任务线初始化顺序漂移。"""
+        TaskRequester.reset()
+        PromptBuilder.reset()
+        if not reset_text_processor:
+            return
+
+        from module.TextProcessor import TextProcessor
+
+        TextProcessor.reset()
 
     @staticmethod
     def start_background_run(
@@ -234,6 +248,67 @@ class TaskRunnerLifecycle:
                 "message": Localizer.get().engine_no_items,
             },
         )
+
+    @staticmethod
+    def run_reset_flow(
+        owner: Base,
+        *,
+        reset_event: Base.Event,
+        progress_message: str | None,
+        worker: Callable[[], None],
+        thread_factory: Callable[..., Any] = threading.Thread,
+        ensure_loaded: Callable[[], bool],
+    ) -> None:
+        """统一重置任务的边界事件、线程启动和异常提示。"""
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            owner.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
+                },
+            )
+            owner.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
+            return
+
+        if not ensure_loaded():
+            return
+
+        owner.emit(reset_event, {"sub_event": Base.SubEvent.RUN})
+        progress_toast_active = False
+        if progress_message:
+            owner.emit(
+                Base.Event.PROGRESS_TOAST,
+                {
+                    "sub_event": Base.SubEvent.RUN,
+                    "message": progress_message,
+                    "indeterminate": True,
+                },
+            )
+            progress_toast_active = True
+
+        def task() -> None:
+            try:
+                worker()
+                owner.emit(reset_event, {"sub_event": Base.SubEvent.DONE})
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                owner.emit(
+                    Base.Event.TOAST,
+                    {
+                        "type": Base.ToastType.ERROR,
+                        "message": Localizer.get().task_failed,
+                    },
+                )
+                owner.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
+            finally:
+                if progress_toast_active:
+                    owner.emit(
+                        Base.Event.PROGRESS_TOAST,
+                        {"sub_event": Base.SubEvent.DONE},
+                    )
+
+        thread_factory(target=task, daemon=True).start()
 
     @classmethod
     def run_task_flow(

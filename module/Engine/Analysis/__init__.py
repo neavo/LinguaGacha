@@ -1,14 +1,14 @@
 # 统一从包根导出稳定入口，外部代码就不用关心内部拆成了几个实现文件。
 from module.Engine.Analysis.AnalysisModels import AnalysisCandidateAggregate
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
-from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 __all__ = [
     "AnalysisCandidateAggregate",
     "AnalysisItemContext",
-    "AnalysisProgressSnapshot",
+    "TaskProgressSnapshot",
     "AnalysisTaskContext",
     "AnalysisTaskResult",
     "AnalysisPipeline",

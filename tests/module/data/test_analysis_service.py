@@ -129,7 +129,7 @@ def test_commit_analysis_task_result_writes_checkpoints_and_aggregate() -> None:
                 "case_sensitive": False,
             }
         ],
-        progress_snapshot={"processed_line": 1, "line": 1, "added_glossary": 2},
+        progress_snapshot={"processed_line": 1, "line": 1},
     )
 
     assert inserted == 1

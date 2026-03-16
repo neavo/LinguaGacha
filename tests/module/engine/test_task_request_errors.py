@@ -1,8 +1,8 @@
 import pytest
 
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import StreamDegradationError
 
 
 @pytest.mark.parametrize(

@@ -48,37 +48,6 @@ class AnalysisTaskResult:
     glossary_entries: tuple[dict[str, Any], ...] = tuple()
 
 
-# 进度快照显式建模，避免各处随手拼 dict 时把字段口径拼歪。
-@dataclass(frozen=True)
-class AnalysisProgressSnapshot:
-    """分析页使用的进度快照。"""
-
-    start_time: float
-    time: float
-    total_line: int
-    line: int
-    processed_line: int
-    error_line: int
-    total_tokens: int
-    total_input_tokens: int
-    total_output_tokens: int
-    added_glossary: int
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "start_time": self.start_time,
-            "time": self.time,
-            "total_line": self.total_line,
-            "line": self.line,
-            "processed_line": self.processed_line,
-            "error_line": self.error_line,
-            "total_tokens": self.total_tokens,
-            "total_input_tokens": self.total_input_tokens,
-            "total_output_tokens": self.total_output_tokens,
-            "added_glossary": self.added_glossary,
-        }
-
-
 # 这里保留项目级候选池单项结构，方便接口和测试都围绕同一份口径断言。
 @dataclass(frozen=True)
 class AnalysisCandidateAggregate:

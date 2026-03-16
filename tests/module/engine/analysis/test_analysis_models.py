@@ -1,7 +1,7 @@
-from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 
 def test_analysis_task_context_exposes_item_count_and_source_texts() -> None:
@@ -36,8 +36,8 @@ def test_analysis_task_result_defaults_stay_empty_and_zero() -> None:
     assert result.glossary_entries == tuple()
 
 
-def test_analysis_progress_snapshot_to_dict_keeps_expected_fields() -> None:
-    snapshot = AnalysisProgressSnapshot(
+def test_task_progress_snapshot_to_dict_keeps_expected_fields() -> None:
+    snapshot = TaskProgressSnapshot(
         start_time=1.0,
         time=2.0,
         total_line=3,
@@ -47,7 +47,6 @@ def test_analysis_progress_snapshot_to_dict_keeps_expected_fields() -> None:
         total_tokens=9,
         total_input_tokens=4,
         total_output_tokens=5,
-        added_glossary=6,
     )
 
     assert snapshot.to_dict() == {
@@ -60,5 +59,4 @@ def test_analysis_progress_snapshot_to_dict_keeps_expected_fields() -> None:
         "total_tokens": 9,
         "total_input_tokens": 4,
         "total_output_tokens": 5,
-        "added_glossary": 6,
     }

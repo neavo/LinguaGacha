@@ -29,8 +29,6 @@ class AnalysisRepository:
         db: LGDatabase,
         conn: sqlite3.Connection,
         snapshot: dict[str, Any] | None,
-        *,
-        added_glossary_delta: int = 0,
     ) -> dict[str, Any] | None:
         """在现有事务内持久化分析快照，并同步会话缓存。"""
 
@@ -38,9 +36,6 @@ class AnalysisRepository:
             return None
 
         persisted_snapshot = dict(snapshot)
-        persisted_snapshot["added_glossary"] = (
-            int(persisted_snapshot.get("added_glossary", 0) or 0) + added_glossary_delta
-        )
         db.upsert_meta_entries({"analysis_extras": persisted_snapshot}, conn=conn)
         self.session.meta_cache["analysis_extras"] = dict(persisted_snapshot)
         return persisted_snapshot
@@ -184,7 +179,6 @@ class AnalysisRepository:
                     db,
                     conn,
                     progress_snapshot,
-                    added_glossary_delta=inserted_count,
                 )
                 conn.commit()
 

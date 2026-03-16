@@ -9,7 +9,7 @@ import pytest
 import module.Engine.APITest.APITest as api_test_module
 from base.Base import Base
 from module.Engine.APITest.APITest import APITest
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
 
 
 class EventRecorder:

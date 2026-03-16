@@ -8,9 +8,10 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import StreamDegradationError
+from module.Engine.TaskRequestExecutor import TaskRequestResult
 from module.Engine.Translation.TranslationTask import TranslationTask
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Response.ResponseCleaner import ResponseCleaner
@@ -166,6 +167,32 @@ def create_task(
         items=[item],
         precedings=[],
         skip_response_check=skip_response_check,
+    )
+
+
+def create_request_response(
+    *,
+    start_time: float = 1.0,
+    exception: Exception | None = None,
+    normalized_think: str = "",
+    cleaned_response_result: str = "",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    decoded_translations: tuple[str, ...] = tuple(),
+    decoded_glossary_entries: tuple[dict[str, Any], ...] = tuple(),
+) -> TaskRequestResult:
+    return TaskRequestResult(
+        start_time=start_time,
+        exception=exception,
+        response_think=normalized_think,
+        response_result=cleaned_response_result,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        normalized_think=normalized_think,
+        cleaned_response_result=cleaned_response_result,
+        has_why_block=False,
+        decoded_translations=decoded_translations,
+        decoded_glossary_entries=decoded_glossary_entries,
     )
 
 
@@ -352,11 +379,6 @@ class TestTranslationTaskApplyResponseData:
         task.processors = [processor]
         task.response_checker = checker
 
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            lambda self, _: (["decoded"], [{"src": "s", "dst": "d"}]),
-        )
-
         logged: dict[str, Any] = {}
         monkeypatch.setattr(
             task,
@@ -366,11 +388,15 @@ class TestTranslationTaskApplyResponseData:
 
         result = task.apply_response_data(
             prepared={"srcs": ["hello"], "console_log": ["PREP"]},
-            response_think="think",
-            response_result='{"0":"decoded"}<why>because</why>',
-            input_tokens=3,
-            output_tokens=4,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                normalized_think="think\nbecause",
+                cleaned_response_result='{"0":"decoded"}',
+                input_tokens=3,
+                output_tokens=4,
+                decoded_translations=("decoded",),
+                decoded_glossary_entries=({"src": "s", "dst": "d"},),
+            ),
         )
 
         assert result == {
@@ -393,19 +419,16 @@ class TestTranslationTaskApplyResponseData:
         processor = FakeProcessor(["a", "b"], (None, "joined"))
         task.processors = [processor]
 
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            lambda self, _: (["only-one"], []),
-        )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
 
         result = task.apply_response_data(
             prepared={"srcs": ["a", "b"], "console_log": []},
-            response_think="",
-            response_result='{"0":"only-one"}',
-            input_tokens=10,
-            output_tokens=20,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                input_tokens=10,
+                output_tokens=20,
+                decoded_translations=("only-one",),
+            ),
         )
 
         assert result["row_count"] == 1
@@ -417,14 +440,6 @@ class TestTranslationTaskApplyResponseData:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         task = create_task(skip_response_check=True)
-
-        def fail_decode(_: Any, __: str) -> tuple[list[str], list[dict[str, str]]]:
-            raise AssertionError("request_timeout 分支不应调用 decode")
-
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            fail_decode,
-        )
 
         captured: dict[str, Any] = {}
         monkeypatch.setattr(
@@ -439,11 +454,14 @@ class TestTranslationTaskApplyResponseData:
                 "console_log": [],
                 "request_timeout": True,
             },
-            response_think="think",
-            response_result='{"0":"x"}',
-            input_tokens=1,
-            output_tokens=1,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                normalized_think="think",
+                cleaned_response_result='{"0":"x"}',
+                input_tokens=1,
+                output_tokens=1,
+                decoded_translations=("x",),
+            ),
         )
 
         assert result["row_count"] == 0
@@ -468,11 +486,11 @@ class TestTranslationTaskApplyResponseData:
                 "console_log": [],
                 "stream_degraded": True,
             },
-            response_think="",
-            response_result="",
-            input_tokens=1,
-            output_tokens=1,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                input_tokens=1,
+                output_tokens=1,
+            ),
         )
 
         assert result["row_count"] == 0
@@ -487,19 +505,16 @@ class TestTranslationTaskApplyResponseData:
         checker = FakeResponseChecker([ResponseChecker.Error.FAIL_DATA])
         task.response_checker = checker
 
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            lambda self, _: (["bad"], []),
-        )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
 
         result = task.apply_response_data(
             prepared={"srcs": ["hello"], "console_log": []},
-            response_think="",
-            response_result='{"0":"bad"}',
-            input_tokens=1,
-            output_tokens=1,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                input_tokens=1,
+                output_tokens=1,
+                decoded_translations=("bad",),
+            ),
         )
 
         assert result["row_count"] == 0
@@ -534,11 +549,11 @@ class TestTranslationTaskApplyResponseData:
                 "console_log": [],
                 "stream_degraded": True,
             },
-            response_think="",
-            response_result="",
-            input_tokens=1,
-            output_tokens=1,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                input_tokens=1,
+                output_tokens=1,
+            ),
         )
 
         assert result["row_count"] == 0
@@ -557,11 +572,6 @@ class TestTranslationTaskApplyResponseData:
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
         )
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            lambda self, _: (["ok"], []),
-        )
-
         captured: dict[str, Any] = {}
 
         def capture_logs(
@@ -582,11 +592,13 @@ class TestTranslationTaskApplyResponseData:
 
         result = task.apply_response_data(
             prepared={"srcs": ["hello"], "console_log": ["BASE"]},
-            response_think="",
-            response_result='{"0":"ok"}',
-            input_tokens=1,
-            output_tokens=2,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                cleaned_response_result='{"0":"ok"}',
+                input_tokens=1,
+                output_tokens=2,
+                decoded_translations=("ok",),
+            ),
         )
 
         assert result["row_count"] == 1
@@ -613,19 +625,16 @@ class TestTranslationTaskApplyResponseData:
             FakeProcessor(["b"], (None, "B_DST")),
         ]
 
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.ResponseDecoder.decode",
-            lambda self, _: (["da", "db"], []),
-        )
         monkeypatch.setattr(task, "print_log_table", lambda *args: None)
 
         result = task.apply_response_data(
             prepared={"srcs": ["a", "b"], "console_log": []},
-            response_think="",
-            response_result='{"0":"da"}\n{"1":"db"}',
-            input_tokens=5,
-            output_tokens=6,
-            start_time=1.0,
+            request_response=create_request_response(
+                start_time=1.0,
+                input_tokens=5,
+                output_tokens=6,
+                decoded_translations=("da", "db"),
+            ),
         )
 
         assert result["row_count"] == 1
@@ -715,19 +724,11 @@ class TestTranslationTaskRequestAndStart:
             lambda *args: {"done": False, "messages": []},
         )
 
-        class FakeRequester:
-            def __init__(self, config: Config, model: dict[str, Any]) -> None:
-                del config, model
-
-            def request(
-                self, messages: list[dict], stop_checker: Any
-            ) -> tuple[Any, str, str, int, int]:
-                del messages, stop_checker
-                return RequestCancelledError("cancelled"), "", "", 0, 0
-
         monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.TaskRequester",
-            FakeRequester,
+            "module.Engine.Translation.TranslationTask.TaskRequestExecutor.execute",
+            lambda **kwargs: create_request_response(
+                exception=RequestCancelledError("cancelled")
+            ),
         )
 
         result = task.request(task.items, task.processors, task.precedings)
@@ -748,19 +749,15 @@ class TestTranslationTaskRequestAndStart:
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.STOPPING),
         )
 
-        class FakeRequester:
-            def __init__(self, config: Config, model: dict[str, Any]) -> None:
-                del config, model
-
-            def request(
-                self, messages: list[dict], stop_checker: Any
-            ) -> tuple[Any, str, str, int, int]:
-                del messages, stop_checker
-                return RuntimeError("boom"), "TH", "RR", 1, 2
-
         monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.TaskRequester",
-            FakeRequester,
+            "module.Engine.Translation.TranslationTask.TaskRequestExecutor.execute",
+            lambda **kwargs: create_request_response(
+                exception=RuntimeError("boom"),
+                normalized_think="TH",
+                cleaned_response_result="RR",
+                input_tokens=1,
+                output_tokens=2,
+            ),
         )
 
         result = task.request(task.items, task.processors, task.precedings)
@@ -794,55 +791,34 @@ class TestTranslationTaskRequestAndStart:
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
-        class FakeRequester:
-            def __init__(self, config: Config, model: dict[str, Any]) -> None:
-                del config, model
-
-            def request(
-                self, messages: list[dict], stop_checker: Any
-            ) -> tuple[Any, str, str, int, int]:
-                del messages, stop_checker
-                return exception, "think", "result", 7, 8
-
         captured: dict[str, Any] = {}
 
         monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.TaskRequester",
-            FakeRequester,
+            "module.Engine.Translation.TranslationTask.TaskRequestExecutor.execute",
+            lambda **kwargs: create_request_response(
+                exception=exception,
+                normalized_think="think",
+                cleaned_response_result="result",
+                input_tokens=7,
+                output_tokens=8,
+            ),
         )
         monkeypatch.setattr(
             task,
             "apply_response_data",
-            lambda prepared,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-            start_time: (
-                captured.setdefault(
-                    "args",
-                    (
-                        prepared,
-                        response_think,
-                        response_result,
-                        input_tokens,
-                        output_tokens,
-                        start_time,
-                    ),
-                )
+            lambda prepared, request_response: (
+                captured.setdefault("args", (prepared, request_response))
             ),
         )
 
         result = task.request(task.items, task.processors, task.precedings)
 
-        prepared, response_think, response_result, input_tokens, output_tokens, _ = (
-            captured["args"]
-        )
+        prepared, request_response = captured["args"]
         assert prepared[expected_flag] is True
-        assert response_think == ""
-        assert response_result == ""
-        assert input_tokens == 0
-        assert output_tokens == 0
+        assert request_response.normalized_think == ""
+        assert request_response.cleaned_response_result == ""
+        assert request_response.input_tokens == 0
+        assert request_response.output_tokens == 0
         assert result == captured["args"]
 
     def test_request_logs_unknown_exception_and_returns_default(
@@ -866,20 +842,16 @@ class TestTranslationTaskRequestAndStart:
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
-        class FakeRequester:
-            def __init__(self, config: Config, model: dict[str, Any]) -> None:
-                del config, model
-
-            def request(
-                self, messages: list[dict], stop_checker: Any
-            ) -> tuple[Any, str, str, int, int]:
-                del messages, stop_checker
-                return RuntimeError("boom"), "TH", "RR", 1, 2
-
         fake_log = FakeLogManager()
         monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.TaskRequester",
-            FakeRequester,
+            "module.Engine.Translation.TranslationTask.TaskRequestExecutor.execute",
+            lambda **kwargs: create_request_response(
+                exception=RuntimeError("boom"),
+                normalized_think="TH",
+                cleaned_response_result="RR",
+                input_tokens=1,
+                output_tokens=2,
+            ),
         )
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
@@ -911,27 +883,22 @@ class TestTranslationTaskRequestAndStart:
             lambda: SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE),
         )
 
-        class FakeRequester:
-            def __init__(self, config: Config, model: dict[str, Any]) -> None:
-                del config, model
-
-            def request(
-                self, messages: list[dict], stop_checker: Any
-            ) -> tuple[Any, str, str, int, int]:
-                del messages, stop_checker
-                return None, "THINK", "RESULT", 11, 22
-
         monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.TaskRequester",
-            FakeRequester,
+            "module.Engine.Translation.TranslationTask.TaskRequestExecutor.execute",
+            lambda **kwargs: create_request_response(
+                normalized_think="THINK",
+                cleaned_response_result="RESULT",
+                input_tokens=11,
+                output_tokens=22,
+            ),
         )
         monkeypatch.setattr(
             task,
             "apply_response_data",
-            lambda *args: {
+            lambda prepared, request_response: {
                 "row_count": 9,
-                "input_tokens": args[3],
-                "output_tokens": args[4],
+                "input_tokens": request_response.input_tokens,
+                "output_tokens": request_response.output_tokens,
                 "glossaries": [],
             },
         )

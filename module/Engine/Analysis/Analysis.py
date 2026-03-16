@@ -10,16 +10,14 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
-from module.Engine.TaskRequester import TaskRequester
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
-from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
-from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
@@ -60,6 +58,15 @@ class Analysis(Base):
         if limiter is None:
             return 0
         return limiter.get_concurrency_limit()
+
+    def get_progress_snapshot(self) -> TaskProgressSnapshot:
+        """分析控制器统一把运行态字典映射成共享快照。"""
+        return TaskProgressSnapshot.from_dict(self.extras)
+
+    def set_progress_snapshot(self, snapshot: TaskProgressSnapshot) -> dict[str, Any]:
+        """控制器侧只接受共享快照，避免旧结构继续混入运行时。"""
+        self.extras = snapshot.to_dict()
+        return dict(self.extras)
 
     # 事件入口只做筛选，让真正的业务逻辑继续待在同步方法里便于测试。
     def analysis_run_event(self, event: Base.Event, data: dict[str, Any]) -> None:
@@ -282,57 +289,35 @@ class Analysis(Base):
             reset_event = Base.Event.ANALYSIS_RESET_FAILED
             is_reset_all = False
 
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            self.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
-            return
-
         dm = DataManager.get()
-        if not dm.is_loaded():
-            return
 
-        self.emit(reset_event, {"sub_event": Base.SubEvent.RUN})
-
-        def task() -> None:
-            try:
-                if is_reset_all:
-                    dm.clear_analysis_candidates_and_progress()
-                    self.extras = {}
-                    snapshot: dict[str, Any] = {}
-                    self.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
-                else:
-                    dm.reset_failed_analysis_checkpoints()
-                    previous_snapshot = dm.get_analysis_progress_snapshot()
-                    snapshot = self.build_progress_snapshot(
-                        previous_extras=previous_snapshot,
-                        continue_mode=True,
-                    ).to_dict()
-                    self.extras = snapshot
-                    self.persist_progress_snapshot(save_state=True)
-
-                self.emit(
-                    Base.Event.PROJECT_CHECK,
-                    {"sub_event": Base.SubEvent.REQUEST},
+        def run_reset_worker() -> None:
+            if is_reset_all:
+                dm.clear_analysis_candidates_and_progress()
+                self.extras = {}
+                self.emit(Base.Event.ANALYSIS_PROGRESS, {})
+            else:
+                dm.reset_failed_analysis_checkpoints()
+                snapshot = self.build_progress_snapshot(
+                    previous_extras=dm.get_analysis_progress_snapshot(),
+                    continue_mode=True,
                 )
-                self.emit(reset_event, {"sub_event": Base.SubEvent.DONE})
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().task_failed,
-                    },
-                )
-                self.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
+                self.set_progress_snapshot(snapshot)
+                self.persist_progress_snapshot(save_state=True)
 
-        threading.Thread(target=task, daemon=True).start()
+            self.emit(
+                Base.Event.PROJECT_CHECK,
+                {"sub_event": Base.SubEvent.REQUEST},
+            )
+
+        TaskRunnerLifecycle.run_reset_flow(
+            self,
+            reset_event=reset_event,
+            progress_message=None,
+            worker=run_reset_worker,
+            thread_factory=threading.Thread,
+            ensure_loaded=dm.is_loaded,
+        )
 
     # 启动主流程时只在这里串联准备、执行、收尾，其他细节都交给流水线。
     def start(self, data: dict[str, Any]) -> None:
@@ -364,8 +349,7 @@ class Analysis(Base):
                 return False
 
             dm.open_db()
-            TaskRequester.reset()
-            PromptBuilder.reset()
+            TaskRunnerLifecycle.reset_request_runtime(reset_text_processor=False)
             self.quality_snapshot = QualityRuleSnapshot.capture()
 
             if mode in (Base.AnalysisMode.NEW, Base.AnalysisMode.RESET):
@@ -384,8 +368,7 @@ class Analysis(Base):
             task_contexts = self.build_analysis_task_contexts(self.config)
             run_state["task_contexts"] = task_contexts
 
-            progress_snapshot_dict = self.normalize_progress_snapshot(progress_snapshot)
-            self.extras = progress_snapshot_dict
+            progress_snapshot_dict = self.set_progress_snapshot(progress_snapshot)
             idle_final_status = (
                 "FAILED"
                 if int(progress_snapshot_dict.get("error_line", 0) or 0) > 0
@@ -492,7 +475,7 @@ class Analysis(Base):
         *,
         previous_extras: dict[str, Any],
         continue_mode: bool,
-    ) -> AnalysisProgressSnapshot:
+    ) -> TaskProgressSnapshot:
         return self.pipeline.build_progress_snapshot(
             previous_extras=previous_extras,
             continue_mode=continue_mode,
@@ -505,44 +488,6 @@ class Analysis(Base):
             task_contexts,
             max_workers=max_workers,
         )
-
-    def normalize_progress_snapshot(self, snapshot: object) -> dict[str, Any]:
-        """把运行期进度快照统一转成字典，避免各调用点自己拆字段。"""
-
-        if hasattr(snapshot, "to_dict"):
-            snapshot_dict = getattr(snapshot, "to_dict")()
-            if isinstance(snapshot_dict, dict):
-                return {
-                    "start_time": snapshot_dict.get("start_time", 0),
-                    "time": snapshot_dict.get("time", 0),
-                    "total_line": int(snapshot_dict.get("total_line", 0) or 0),
-                    "line": int(snapshot_dict.get("line", 0) or 0),
-                    "processed_line": int(snapshot_dict.get("processed_line", 0) or 0),
-                    "error_line": int(snapshot_dict.get("error_line", 0) or 0),
-                    "total_tokens": int(snapshot_dict.get("total_tokens", 0) or 0),
-                    "total_input_tokens": int(
-                        snapshot_dict.get("total_input_tokens", 0) or 0
-                    ),
-                    "total_output_tokens": int(
-                        snapshot_dict.get("total_output_tokens", 0) or 0
-                    ),
-                    "added_glossary": int(snapshot_dict.get("added_glossary", 0) or 0),
-                }
-
-        return {
-            "start_time": getattr(snapshot, "start_time", 0),
-            "time": getattr(snapshot, "time", 0),
-            "total_line": int(getattr(snapshot, "total_line", 0) or 0),
-            "line": int(getattr(snapshot, "line", 0) or 0),
-            "processed_line": int(getattr(snapshot, "processed_line", 0) or 0),
-            "error_line": int(getattr(snapshot, "error_line", 0) or 0),
-            "total_tokens": int(getattr(snapshot, "total_tokens", 0) or 0),
-            "total_input_tokens": int(getattr(snapshot, "total_input_tokens", 0) or 0),
-            "total_output_tokens": int(
-                getattr(snapshot, "total_output_tokens", 0) or 0
-            ),
-            "added_glossary": int(getattr(snapshot, "added_glossary", 0) or 0),
-        }
 
     def run_task_context(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
         return self.pipeline.run_task_context(context)

@@ -11,6 +11,7 @@ from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Engine import Engine
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Localizer.Localizer import Localizer
 
 analysis_module = import_module("module.Engine.Analysis.Analysis")
@@ -40,24 +41,18 @@ def build_analysis_progress_snapshot(
     total_tokens: int = 0,
     total_input_tokens: int = 0,
     total_output_tokens: int = 0,
-    added_glossary: int = 0,
     start_time: float = 1.0,
-) -> SimpleNamespace:
-    snapshot = {
-        "start_time": start_time,
-        "time": time_value,
-        "total_line": total_line,
-        "line": line,
-        "processed_line": processed_line,
-        "error_line": error_line,
-        "total_tokens": total_tokens,
-        "total_input_tokens": total_input_tokens,
-        "total_output_tokens": total_output_tokens,
-        "added_glossary": added_glossary,
-    }
-    return SimpleNamespace(
-        to_dict=lambda: dict(snapshot),
+) -> TaskProgressSnapshot:
+    return TaskProgressSnapshot(
+        start_time=start_time,
+        time=time_value,
         total_line=total_line,
+        line=line,
+        processed_line=processed_line,
+        error_line=error_line,
+        total_tokens=total_tokens,
+        total_input_tokens=total_input_tokens,
+        total_output_tokens=total_output_tokens,
     )
 
 
@@ -295,7 +290,6 @@ def test_start_continue_only_executes_pending_tasks(
         "total_input_tokens": 5,
         "total_output_tokens": 8,
         "total_tokens": 13,
-        "added_glossary": 2,
     }
     fake_data_manager.items = [
         Item(id=1, src="A", file_path="story.txt"),
@@ -325,7 +319,6 @@ def test_start_continue_only_executes_pending_tasks(
             total_tokens=13,
             total_input_tokens=5,
             total_output_tokens=8,
-            added_glossary=2,
         ),
     )
 
@@ -373,7 +366,6 @@ def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_
             total_tokens=13,
             total_input_tokens=5,
             total_output_tokens=8,
-            added_glossary=2,
         ),
     )
 
@@ -412,7 +404,6 @@ def test_start_continue_without_pending_tasks_skips_auto_import_when_no_candidat
             total_tokens=13,
             total_input_tokens=5,
             total_output_tokens=8,
-            added_glossary=0,
         ),
     )
 
@@ -433,7 +424,6 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
         "total_input_tokens": 4,
         "total_output_tokens": 6,
         "total_tokens": 10,
-        "added_glossary": 3,
     }
     fake_data_manager.analysis_candidate_count = 5
     fake_data_manager.analysis_item_checkpoints = {
@@ -461,7 +451,6 @@ def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
             total_tokens=10,
             total_input_tokens=4,
             total_output_tokens=6,
-            added_glossary=3,
         ),
     )
 

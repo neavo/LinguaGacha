@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from collections import OrderedDict
 from collections import deque
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED
@@ -25,20 +24,19 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
-from module.Engine.Analysis.AnalysisModels import AnalysisProgressSnapshot
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Engine import Engine
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
+from module.Engine.TaskScheduler import TaskScheduler
 from module.Engine.TaskModeStrategy import TaskModeStrategy
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestExecutor import TaskRequestExecutor
 from module.Engine.TaskRequester import TaskRequester
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseCleaner import ResponseCleaner
-from module.Response.ResponseDecoder import ResponseDecoder
 from module.Text.TextHelper import TextHelper
 
 if TYPE_CHECKING:
@@ -203,30 +201,6 @@ class AnalysisPipeline:
 
         return all_items, pending_items, processed_line, error_line
 
-    def chunk_analysis_items(
-        self, items: list[AnalysisItemContext]
-    ) -> tuple[tuple[AnalysisItemContext, ...], ...]:
-        """按 token 阈值切任务块，并保留输入顺序稳定。"""
-        token_limit = self.get_input_token_threshold()
-        chunks: list[tuple[AnalysisItemContext, ...]] = []
-        current_chunk: list[AnalysisItemContext] = []
-        current_tokens = 0
-
-        for context in items:
-            token_count = max(1, Item(src=context.source_text).get_token_count())
-            if current_chunk and current_tokens + token_count > token_limit:
-                chunks.append(tuple(current_chunk))
-                current_chunk = [context]
-                current_tokens = token_count
-                continue
-
-            current_chunk.append(context)
-            current_tokens += token_count
-
-        if current_chunk:
-            chunks.append(tuple(current_chunk))
-        return tuple(chunks)
-
     def create_retry_task_context(
         self, task_context: AnalysisTaskContext
     ) -> AnalysisTaskContext | None:
@@ -247,29 +221,17 @@ class AnalysisPipeline:
             context = self.build_item_context(item, checkpoint_map)
             if context is not None:
                 pending_items.append(context)
-
-        grouped_items: OrderedDict[str, list[AnalysisItemContext]] = OrderedDict()
-        for item in pending_items:
-            grouped_items.setdefault(item.file_path, []).append(item)
-
-        task_contexts: list[AnalysisTaskContext] = []
-        for file_path, file_items in grouped_items.items():
-            for chunk in self.chunk_analysis_items(file_items):
-                task_contexts.append(
-                    AnalysisTaskContext(
-                        file_path=file_path,
-                        items=chunk,
-                    )
-                )
-
-        return task_contexts
+        return TaskScheduler.build_initial_analysis_contexts(
+            items=pending_items,
+            input_token_threshold=self.get_input_token_threshold(),
+        )
 
     def build_progress_snapshot(
         self,
         *,
         previous_extras: dict[str, Any],
         continue_mode: bool,
-    ) -> AnalysisProgressSnapshot:
+    ) -> TaskProgressSnapshot:
         """把覆盖率和累计统计合成当前快照，UI 和持久化都吃同一口径。"""
         all_items, _pending_items, processed_line, error_line = (
             self.collect_analysis_state()
@@ -283,16 +245,14 @@ class AnalysisPipeline:
             total_output_tokens = int(
                 previous_extras.get("total_output_tokens", 0) or 0
             )
-            added_glossary = int(previous_extras.get("added_glossary", 0) or 0)
         else:
             elapsed_time = 0.0
             start_time = time.time()
             total_tokens = 0
             total_input_tokens = 0
             total_output_tokens = 0
-            added_glossary = 0
 
-        return AnalysisProgressSnapshot(
+        return TaskProgressSnapshot(
             start_time=start_time,
             time=elapsed_time,
             total_line=total_line,
@@ -302,7 +262,6 @@ class AnalysisPipeline:
             total_tokens=total_tokens,
             total_input_tokens=total_input_tokens,
             total_output_tokens=total_output_tokens,
-            added_glossary=added_glossary,
         )
 
     def update_extras_after_result(self, result: AnalysisTaskResult) -> None:
@@ -324,35 +283,47 @@ class AnalysisPipeline:
             self.analysis.extras.get("processed_line", 0)
         ) + int(self.analysis.extras.get("error_line", 0))
 
-    def build_runtime_progress_snapshot(self) -> dict[str, Any]:
+    def build_runtime_progress_snapshot(self) -> TaskProgressSnapshot:
         """运行态快照直接取内存累计值，对齐翻译链路的热路径做法。"""
-        start_time = float(self.analysis.extras.get("start_time", time.time()) or 0.0)
-        snapshot = dict(self.analysis.extras)
-        snapshot["start_time"] = start_time
-        snapshot["time"] = max(0.0, time.time() - start_time)
-        snapshot["line"] = int(snapshot.get("processed_line", 0)) + int(
-            snapshot.get("error_line", 0)
+        snapshot = TaskProgressSnapshot.from_dict(self.analysis.extras)
+        start_time = snapshot.start_time if snapshot.start_time > 0 else time.time()
+        snapshot = TaskProgressSnapshot(
+            start_time=start_time,
+            time=snapshot.time,
+            total_line=snapshot.total_line,
+            line=snapshot.line,
+            processed_line=snapshot.processed_line,
+            error_line=snapshot.error_line,
+            total_tokens=snapshot.total_tokens,
+            total_input_tokens=snapshot.total_input_tokens,
+            total_output_tokens=snapshot.total_output_tokens,
         )
-        return DataManager.get().normalize_analysis_progress_snapshot(snapshot)
+        snapshot = snapshot.with_counts()
+        snapshot = snapshot.with_elapsed(now=time.time())
+        normalized = DataManager.get().normalize_analysis_progress_snapshot(
+            snapshot.to_dict()
+        )
+        return TaskProgressSnapshot.from_dict(normalized)
 
-    def reconcile_progress_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+    def reconcile_progress_snapshot(
+        self, snapshot: TaskProgressSnapshot
+    ) -> TaskProgressSnapshot:
         """只在边界阶段回库校准一次，保证最终快照和 checkpoint 口径一致。"""
         dm = DataManager.get()
         if not dm.is_loaded():
-            return dict(snapshot)
+            return snapshot
 
-        reconciled = dict(snapshot)
         status_summary = dm.get_analysis_status_summary()
-        reconciled["total_line"] = int(status_summary.get("total_line", 0) or 0)
-        reconciled["processed_line"] = int(
-            status_summary.get("processed_line", reconciled.get("processed_line", 0))
-            or 0
+        reconciled = snapshot.with_counts(
+            total_line=int(status_summary.get("total_line", 0) or 0),
+            processed_line=int(
+                status_summary.get("processed_line", snapshot.processed_line) or 0
+            ),
+            error_line=int(status_summary.get("error_line", snapshot.error_line) or 0),
+            line=int(status_summary.get("line", 0) or 0),
         )
-        reconciled["error_line"] = int(
-            status_summary.get("error_line", reconciled.get("error_line", 0)) or 0
-        )
-        reconciled["line"] = int(status_summary.get("line", 0) or 0)
-        return dm.normalize_analysis_progress_snapshot(reconciled)
+        normalized = dm.normalize_analysis_progress_snapshot(reconciled.to_dict())
+        return TaskProgressSnapshot.from_dict(normalized)
 
     def build_processed_checkpoints(
         self, context: AnalysisTaskContext
@@ -416,24 +387,17 @@ class AnalysisPipeline:
             )
         self.sync_runtime_line_stats()
 
-    def apply_success_result(self, result: AnalysisTaskResult) -> int:
+    def apply_success_result(self, result: AnalysisTaskResult) -> None:
         """成功立即原子提交，并把失败重跑成功的条目从 error 统计里扣掉。"""
         dm = DataManager.get()
         self.update_runtime_counts_after_success(result)
         checkpoints = self.build_processed_checkpoints(result.context)
-        progress_snapshot = self.build_runtime_progress_snapshot()
-        changed_count = int(
-            dm.commit_analysis_task_result(
-                checkpoints=checkpoints,
-                glossary_entries=list(result.glossary_entries),
-                progress_snapshot=progress_snapshot,
-            )
-            or 0
+        progress_snapshot = self.build_runtime_progress_snapshot().to_dict()
+        dm.commit_analysis_task_result(
+            checkpoints=checkpoints,
+            glossary_entries=list(result.glossary_entries),
+            progress_snapshot=progress_snapshot,
         )
-        self.analysis.extras["added_glossary"] = (
-            int(self.analysis.extras.get("added_glossary", 0)) + changed_count
-        )
-        return changed_count
 
     def apply_error_result(self, task_context: AnalysisTaskContext) -> None:
         """失败只记录 checkpoint，并避免重复累加已经失败过的条目数。"""
@@ -442,7 +406,7 @@ class AnalysisPipeline:
         self.update_runtime_counts_after_error(task_context)
         dm.update_analysis_task_error(
             checkpoints,
-            progress_snapshot=self.build_runtime_progress_snapshot(),
+            progress_snapshot=self.build_runtime_progress_snapshot().to_dict(),
         )
 
     def submit_pending_task_contexts(
@@ -567,41 +531,39 @@ class AnalysisPipeline:
             return AnalysisTaskResult(context=context, success=True, stopped=False)
 
         request_srcs, fake_name_injector = self.build_request_source_texts(srcs)
-        start_time = time.time()
         prompt_builder = PromptBuilder(
             self.analysis.config,
             quality_snapshot=self.analysis.quality_snapshot,
         )
         messages, _console_log = prompt_builder.generate_glossary_prompt(request_srcs)
 
-        requester = TaskRequester(self.analysis.config, self.analysis.model)
-        (
-            exception,
-            response_think,
-            response_result,
-            input_tokens,
-            output_tokens,
-        ) = requester.request(messages, stop_checker=self.analysis.should_stop)
+        request_response = TaskRequestExecutor.execute(
+            config=self.analysis.config,
+            model=self.analysis.model,
+            messages=messages,
+            requester_factory=TaskRequester,
+            stop_checker=self.analysis.should_stop,
+        )
 
-        if isinstance(exception, RequestCancelledError):
+        if request_response.is_cancelled():
             return AnalysisTaskResult(context=context, success=False, stopped=True)
         if self.analysis.should_stop():
             return AnalysisTaskResult(context=context, success=False, stopped=True)
 
-        if isinstance(exception, (RequestHardTimeoutError, StreamDegradationError)):
+        if request_response.is_recoverable_exception():
             status_text = (
                 Localizer.get().response_checker_fail_timeout
-                if isinstance(exception, RequestHardTimeoutError)
+                if isinstance(request_response.exception, RequestHardTimeoutError)
                 else Localizer.get().response_checker_fail_degradation
             )
             self.print_chunk_log(
-                start=start_time,
-                pt=input_tokens,
-                ct=output_tokens,
+                start=request_response.start_time,
+                pt=request_response.input_tokens,
+                ct=request_response.output_tokens,
                 srcs=srcs,
                 glossary_entries=[],
-                response_think=response_think,
-                response_result=response_result,
+                response_think=request_response.normalized_think,
+                response_result=request_response.cleaned_response_result,
                 status_text=status_text,
                 log_func=LogManager.get().warning,
                 style="yellow",
@@ -610,43 +572,36 @@ class AnalysisPipeline:
                 context=context,
                 success=False,
                 stopped=False,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=request_response.input_tokens,
+                output_tokens=request_response.output_tokens,
             )
 
-        if exception is not None:
-            LogManager.get().warning(Localizer.get().task_failed, exception)
+        if request_response.exception is not None:
+            LogManager.get().warning(
+                Localizer.get().task_failed,
+                request_response.exception,
+            )
             return AnalysisTaskResult(
                 context=context,
                 success=False,
                 stopped=False,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=request_response.input_tokens,
+                output_tokens=request_response.output_tokens,
             )
 
-        has_why_block = (
-            ResponseCleaner.WHY_TAG_PATTERN.search(response_result) is not None
-        )
-        response_result, why_text = ResponseCleaner.extract_why_from_response(
-            response_result
-        )
-        normalized_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
-        normalized_think = ResponseCleaner.merge_text_blocks(normalized_think, why_text)
-
-        _, decoded_entries = ResponseDecoder().decode(response_result)
         normalized_entries = self.normalize_glossary_entries(
-            decoded_entries,
+            list(request_response.decoded_glossary_entries),
             fake_name_injector=fake_name_injector,
         )
-        if not normalized_entries and not has_why_block:
+        if not normalized_entries and not request_response.has_why_block:
             self.print_chunk_log(
-                start=start_time,
-                pt=input_tokens,
-                ct=output_tokens,
+                start=request_response.start_time,
+                pt=request_response.input_tokens,
+                ct=request_response.output_tokens,
                 srcs=srcs,
                 glossary_entries=[],
-                response_think=normalized_think,
-                response_result=response_result,
+                response_think=request_response.normalized_think,
+                response_result=request_response.cleaned_response_result,
                 status_text=Localizer.get().response_checker_fail_data,
                 log_func=LogManager.get().warning,
                 style="yellow",
@@ -655,18 +610,18 @@ class AnalysisPipeline:
                 context=context,
                 success=False,
                 stopped=False,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=request_response.input_tokens,
+                output_tokens=request_response.output_tokens,
             )
 
         self.print_chunk_log(
-            start=start_time,
-            pt=input_tokens,
-            ct=output_tokens,
+            start=request_response.start_time,
+            pt=request_response.input_tokens,
+            ct=request_response.output_tokens,
             srcs=srcs,
             glossary_entries=normalized_entries,
-            response_think=normalized_think,
-            response_result=response_result,
+            response_think=request_response.normalized_think,
+            response_result=request_response.cleaned_response_result,
             status_text="",
             log_func=LogManager.get().info,
             style="green",
@@ -676,8 +631,8 @@ class AnalysisPipeline:
             context=context,
             success=True,
             stopped=False,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=request_response.input_tokens,
+            output_tokens=request_response.output_tokens,
             glossary_entries=tuple(normalized_entries),
         )
 
@@ -758,12 +713,14 @@ class AnalysisPipeline:
             dm = DataManager.get()
             snapshot = self.reconcile_progress_snapshot(snapshot)
             if dm.is_loaded():
-                snapshot = dict(dm.update_analysis_progress_snapshot(snapshot))
+                snapshot = TaskProgressSnapshot.from_dict(
+                    dm.update_analysis_progress_snapshot(snapshot.to_dict())
+                )
 
-        self.analysis.extras = dict(snapshot)
-        self.update_console_progress(snapshot)
-        self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot)
-        return snapshot
+        snapshot_dict = self.analysis.set_progress_snapshot(snapshot)
+        self.update_console_progress(snapshot_dict)
+        self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot_dict)
+        return snapshot_dict
 
     def log_analysis_start(self) -> None:
         """启动日志集中到这里，方便后面继续收口展示内容。"""
@@ -835,7 +792,9 @@ class AnalysisPipeline:
         normalized_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
         normalized_result = response_result.strip()
         if normalized_think != "":
-            think_log = Localizer.get().engine_task_response_think + "\n" + normalized_think
+            think_log = (
+                Localizer.get().engine_task_response_think + "\n" + normalized_think
+            )
             file_logs.append(think_log)
             console_logs.append(think_log)
         if normalized_result != "":

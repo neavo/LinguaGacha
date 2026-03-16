@@ -28,7 +28,6 @@ def build_analysis_runtime_extras(**overrides: object) -> dict[str, object]:
         "total_tokens": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
-        "added_glossary": 0,
     }
     extras.update(overrides)
     return extras
@@ -152,7 +151,6 @@ def test_build_progress_snapshot_counts_current_status_and_reuses_progress(
             "total_tokens": 13,
             "total_input_tokens": 5,
             "total_output_tokens": 8,
-            "added_glossary": 2,
         },
         continue_mode=True,
     )
@@ -165,7 +163,6 @@ def test_build_progress_snapshot_counts_current_status_and_reuses_progress(
     assert snapshot.total_tokens == 13
     assert snapshot.total_input_tokens == 5
     assert snapshot.total_output_tokens == 8
-    assert snapshot.added_glossary == 2
     assert float(snapshot.start_time) <= time.time()
 
 
@@ -196,6 +193,59 @@ def test_build_analysis_task_contexts_continue_only_schedules_none_items(
 
     assert [context.file_path for context in contexts] == ["scene.txt"]
     assert [item.item_id for item in contexts[0].items] == [4]
+
+
+def test_build_analysis_task_contexts_splits_when_file_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    pipeline = AnalysisPipeline(analysis)
+    fake_data_manager.items = [
+        build_item(1, "a1", file_path="a.txt"),
+        build_item(2, "a2", file_path="a.txt"),
+        build_item(3, "b1", file_path="b.txt"),
+    ]
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    contexts = pipeline.build_analysis_task_contexts(analysis.config)
+
+    assert [context.file_path for context in contexts] == ["a.txt", "b.txt"]
+    assert [[item.item_id for item in context.items] for context in contexts] == [
+        [1, 2],
+        [3],
+    ]
+
+
+def test_build_analysis_task_contexts_uses_shared_line_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    analysis.model = {"threshold": {"input_token_limit": 16}}
+    pipeline = AnalysisPipeline(analysis)
+    fake_data_manager.items = [
+        build_item(1, "\n".join([f"line-{i}" for i in range(8)])),
+        build_item(2, "line-9"),
+    ]
+
+    monkeypatch.setattr(
+        analysis_pipeline_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+
+    contexts = pipeline.build_analysis_task_contexts(analysis.config)
+
+    assert [[item.item_id for item in context.items] for context in contexts] == [
+        [1],
+        [2],
+    ]
 
 
 def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
@@ -255,7 +305,6 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     assert fake_data_manager.analysis_candidate_count == 1
     assert analysis.extras["processed_line"] == 2
     assert analysis.extras["error_line"] == 1
-    assert analysis.extras["added_glossary"] == 1
     assert (
         fake_data_manager.analysis_item_checkpoints[1]["status"]
         == Base.ProjectStatus.PROCESSED
@@ -556,7 +605,6 @@ def test_log_analysis_finish_success_logs_completion_and_added_terms(
         time=12.0,
         total_input_tokens=5,
         total_output_tokens=8,
-        added_glossary=2,
     )
 
     pipeline.log_analysis_finish("SUCCESS")
@@ -594,7 +642,6 @@ def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
         time=12.0,
         total_input_tokens=5,
         total_output_tokens=8,
-        added_glossary=2,
     )
 
     pipeline.log_analysis_finish(final_status)
@@ -625,7 +672,6 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
         total_tokens=7,
         total_input_tokens=3,
         total_output_tokens=4,
-        added_glossary=2,
     )
     emitted: list[tuple[Base.Event, dict[str, object]]] = []
     fake_data_manager.get_analysis_status_summary = lambda: (_ for _ in ()).throw(
@@ -707,7 +753,6 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
         total_tokens=7,
         total_input_tokens=3,
         total_output_tokens=4,
-        added_glossary=2,
     )
     emitted: list[tuple[Base.Event, dict[str, object]]] = []
     status_calls: list[bool] = []

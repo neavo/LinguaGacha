@@ -9,7 +9,7 @@ from module.Engine.APITest.APITestResult import APITestResult
 from module.Engine.APITest.APITestResult import KeyTestResult
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequester import TaskRequester
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
 from module.Localizer.Localizer import Localizer
 
 
@@ -227,14 +227,20 @@ class APITest(Base):
 
                 if response_think == "":
                     LogManager.get().info(
-                        Localizer.get().engine_task_response_result + "\n" + response_result
+                        Localizer.get().engine_task_response_result
+                        + "\n"
+                        + response_result
                     )
                 else:
                     LogManager.get().info(
-                        Localizer.get().engine_task_response_think + "\n" + response_think
+                        Localizer.get().engine_task_response_think
+                        + "\n"
+                        + response_think
                     )
                     LogManager.get().info(
-                        Localizer.get().engine_task_response_result + "\n" + response_result
+                        Localizer.get().engine_task_response_result
+                        + "\n"
+                        + response_result
                     )
 
                 # Token 信息放在回复之后，便于阅读。
