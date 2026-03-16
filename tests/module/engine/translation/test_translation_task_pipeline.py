@@ -246,27 +246,29 @@ def test_drain_context_queues_on_stop_clears_both_queues(
     assert pipeline.normal_queue.empty() is True
 
 
-def test_start_producer_thread_creates_named_daemon_thread(
+def test_start_producer_thread_runs_producer_until_generator_exhausted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline, _, _, _ = create_pipeline(monkeypatch)
-    thread_args: dict[str, Any] = {}
+    pipeline, translation, _, _ = create_pipeline(monkeypatch)
+    thread_state = {"started": False}
+
+    translation.scheduler.generate_initial_contexts_iter = lambda: iter(())
 
     class FakeThread:
         def __init__(self, **kwargs: Any) -> None:
-            thread_args.update(kwargs)
+            self.target = kwargs["target"]
 
         def start(self) -> None:
-            thread_args["started"] = True
+            thread_state["started"] = True
+            self.target()
 
     monkeypatch.setattr(pipeline_module.threading, "Thread", FakeThread)
 
     pipeline.start_producer_thread()
 
-    assert thread_args["target"] == pipeline.producer
-    assert thread_args["name"] == f"{pipeline_module.Engine.TASK_PREFIX}PRODUCER"
-    assert thread_args["daemon"] is True
-    assert thread_args["started"] is True
+    assert thread_state["started"] is True
+    assert pipeline.producer_done.is_set() is True
+    assert pipeline.normal_queue.empty() is True
 
 
 def test_producer_retries_when_queue_is_full(monkeypatch: pytest.MonkeyPatch) -> None:

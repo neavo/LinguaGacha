@@ -56,6 +56,22 @@ class TestGapToolIter:
         assert list(GapTool.iter([], sleep_seconds=0.1)) == []
         assert sleep_calls == []
 
+    def test_iter_uses_windows_default_sleep_when_value_is_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        perf = counter([0.0, 0.11, 0.12])
+        sleep_calls: list[float] = []
+
+        monkeypatch.setattr("module.Utils.GapTool.sys.platform", "win32")
+        monkeypatch.setattr(
+            "module.Utils.GapTool.time.perf_counter", lambda: next(perf)
+        )
+        monkeypatch.setattr("module.Utils.GapTool.time.sleep", sleep_calls.append)
+
+        assert list(GapTool.iter(["value"], sleep_seconds=None)) == ["value"]
+        assert sleep_calls == [GapTool.DEFAULT_SLEEP_SECONDS_WINDOWS]
+
 
 class TestGapToolResolveSleepSeconds:
     def test_resolve_returns_explicit_value(self) -> None:

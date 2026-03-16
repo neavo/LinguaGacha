@@ -141,21 +141,45 @@ def test_write_to_path_restores_original_workbook_when_asset_exists(
 def test_read_from_path_reads_files(
     fs,
     config: Config,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fs.pause()
-    try:
-        content = build_wolf_xlsx_bytes()
-    finally:
-        fs.resume()
     input_root = Path("/fake/input")
-    path = input_root / "wolf.xlsx"
+    path = input_root / "nested" / "wolf.xlsx"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
+    path.write_bytes(b"fake-wolf-xlsx")
+
+    captured: dict[str, object] = {}
+
+    def fake_read_from_stream(
+        self: WOLFXLSX,
+        content: bytes,
+        rel_path: str,
+    ) -> list[Item]:
+        del self
+        captured["content"] = content
+        captured["rel_path"] = rel_path
+        return [
+            Item.from_dict(
+                {
+                    "src": "原文",
+                    "dst": "译文",
+                    "row": 2,
+                    "file_type": Item.FileType.WOLFXLSX,
+                    "file_path": rel_path,
+                }
+            )
+        ]
+
+    monkeypatch.setattr(WOLFXLSX, "read_from_stream", fake_read_from_stream)
 
     items = WOLFXLSX(config).read_from_path([str(path)], str(input_root))
 
-    assert len(items) == 3
-    assert {item.get_file_path() for item in items} == {"wolf.xlsx"}
+    assert len(items) == 1
+    assert {item.get_file_path().replace("\\", "/") for item in items} == {
+        "nested/wolf.xlsx"
+    }
+    assert captured["content"] == b"fake-wolf-xlsx"
+    assert str(captured["rel_path"]).replace("\\", "/") == "nested/wolf.xlsx"
 
 
 def test_read_from_stream_returns_empty_when_active_sheet_not_worksheet(

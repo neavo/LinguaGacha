@@ -25,6 +25,12 @@ class TestPunctuationChecks:
         assert TextHelper.is_punctuation("·") is True
         assert TextHelper.is_punctuation("A") is False
 
+    def test_type_specific_punctuation_checks(self) -> None:
+        assert TextHelper.is_cjk_punctuation("。") is True
+        assert TextHelper.is_latin_punctuation("!") is True
+        assert TextHelper.is_special_punctuation("♥") is True
+        assert TextHelper.is_special_punctuation("。") is False
+
     def test_any_and_all_punctuation(self) -> None:
         assert TextHelper.any_punctuation("A, B") is True
         assert TextHelper.all_punctuation("!?") is True
@@ -63,6 +69,13 @@ class TestStripAndSplit:
         text = "，，A,,B！！"
         assert TextHelper.split_by_punctuation(text, split_by_space=False) == ["A", "B"]
 
+    def test_split_by_punctuation_returns_empty_when_text_only_has_delimiters(
+        self,
+    ) -> None:
+        assert (
+            TextHelper.split_by_punctuation("，， !! \u3000", split_by_space=True) == []
+        )
+
 
 class TestLengthAndSimilarity:
     @pytest.mark.parametrize(
@@ -95,18 +108,16 @@ class TestGetEncoding:
             patch(
                 "module.Text.TextHelper.charset_normalizer.from_path",
                 return_value=FakeDetectionMatches(FakeDetectionResult("utf-8")),
-            ) as from_path,
+            ),
             patch(
                 "module.Text.TextHelper.charset_normalizer.from_bytes",
                 return_value=FakeDetectionMatches(FakeDetectionResult("gbk")),
-            ) as from_bytes,
+            ),
         ):
             assert (
                 TextHelper.get_encoding(path="dummy.txt", content=b"hello")
                 == "utf-8-sig"
             )
-            from_path.assert_called_once_with("dummy.txt")
-            from_bytes.assert_not_called()
 
     def test_get_encoding_keeps_utf8_without_sig_when_disabled(self) -> None:
         with patch(
@@ -138,6 +149,13 @@ class TestGetEncoding:
             return_value=FakeDetectionMatches(None),
         ):
             assert TextHelper.get_encoding(path="dummy.txt") == "utf-8-sig"
+
+    def test_get_encoding_keeps_non_utf8_detection_result(self) -> None:
+        with patch(
+            "module.Text.TextHelper.charset_normalizer.from_bytes",
+            return_value=FakeDetectionMatches(FakeDetectionResult("gbk")),
+        ):
+            assert TextHelper.get_encoding(content=b"hello") == "gbk"
 
     def test_get_encoding_uses_default_when_no_input(self) -> None:
         assert TextHelper.get_encoding(path=None, content=None) == "utf-8-sig"

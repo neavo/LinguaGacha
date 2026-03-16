@@ -23,6 +23,7 @@ def make_config() -> SimpleNamespace:
 def build_service() -> tuple[ProjectPrefilterService, ProjectSession]:
     session = ProjectSession()
     session.db = SimpleNamespace(
+        update_batch=MagicMock(),
         delete_analysis_item_checkpoints=MagicMock(),
         clear_analysis_candidate_aggregates=MagicMock(),
     )
@@ -30,7 +31,6 @@ def build_service() -> tuple[ProjectPrefilterService, ProjectSession]:
     item_service = ItemService(session)
     item_service.clear_item_cache = MagicMock()
     batch_service = BatchService(session)
-    batch_service.update_batch = MagicMock()
     return ProjectPrefilterService(session, item_service, batch_service), session
 
 
@@ -123,8 +123,7 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
     )
 
     assert result == expected_result
-    service.batch_service.update_batch.assert_called_once()
+    assert session.meta_cache["prefilter_config"] == expected_result.prefilter_config
+    assert session.meta_cache["analysis_extras"] == {}
     session.db.delete_analysis_item_checkpoints.assert_called_once()
-
-    meta = service.batch_service.update_batch.call_args.kwargs["meta"]
-    assert "analysis_term_pool" not in meta
+    assert "analysis_term_pool" not in session.meta_cache

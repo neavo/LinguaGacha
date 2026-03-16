@@ -2,6 +2,7 @@ from collections.abc import Generator
 import contextlib
 from pathlib import Path
 import sqlite3
+import shutil
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -18,6 +19,24 @@ def database() -> Generator[LGDatabase, None, None]:
         yield db
     finally:
         db.close()
+
+
+@contextlib.contextmanager
+def real_db_path(fs, case_name: str) -> Generator[Path, None, None]:
+    """为需要真实 SQLite 文件的场景提供受控路径。"""
+
+    fs.pause()
+    root_path = Path.cwd() / ".tmp_pytest_lg_database"
+    case_path = root_path / case_name
+    db_path = case_path / f"{case_name}.lg"
+    try:
+        case_path.mkdir(parents=True, exist_ok=True)
+        yield db_path
+    finally:
+        shutil.rmtree(case_path, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            root_path.rmdir()
+        fs.resume()
 
 
 def test_memory_mode_supports_open_close_and_crud() -> None:
@@ -198,15 +217,16 @@ def test_get_project_summary_returns_zero_progress_when_no_items(
     assert summary["progress"] == 0.0
 
 
-def test_create_creates_persistent_db_file_and_sets_base_meta(tmp_path: Path) -> None:
-    db_path = tmp_path / "demo.lg"
-    db = LGDatabase.create(str(db_path), "Demo")
+def test_create_creates_persistent_db_file_and_sets_base_meta(fs) -> None:
+    with real_db_path(fs, "create") as db_path:
+        db = LGDatabase.create(str(db_path), "Demo")
 
-    assert db.is_open() is False
-    assert db.get_meta("name") == "Demo"
-    assert db.get_meta("schema_version") == LGDatabase.SCHEMA_VERSION
-    assert isinstance(db.get_meta("created_at"), str)
-    assert isinstance(db.get_meta("updated_at"), str)
+        assert db.is_open() is False
+        assert db_path.exists() is True
+        assert db.get_meta("name") == "Demo"
+        assert db.get_meta("schema_version") == LGDatabase.SCHEMA_VERSION
+        assert isinstance(db.get_meta("created_at"), str)
+        assert isinstance(db.get_meta("updated_at"), str)
 
 
 def test_add_asset_and_get_asset_roundtrip(database: LGDatabase) -> None:
@@ -247,21 +267,21 @@ def test_ensure_schema_noops_when_no_connection_available() -> None:
     db.ensure_schema()
 
 
-def test_short_connection_context_creates_schema_and_closes(tmp_path: Path) -> None:
-    db_path = tmp_path / "short_conn.lg"
-    db = LGDatabase(str(db_path))
+def test_short_connection_context_creates_schema_and_closes(fs) -> None:
+    with real_db_path(fs, "short_connection") as db_path:
+        db = LGDatabase(str(db_path))
 
-    with db.connection() as conn:
-        names = {
-            row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
-        assert {"meta", "assets", "items", "rules"}.issubset(names)
+        with db.connection() as conn:
+            names = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert {"meta", "assets", "items", "rules"}.issubset(names)
 
-    with pytest.raises(sqlite3.ProgrammingError):
-        conn.execute("SELECT 1")
+        with pytest.raises(sqlite3.ProgrammingError):
+            conn.execute("SELECT 1")
 
 
 def test_get_and_set_rule_text_roundtrip(database: LGDatabase) -> None:
@@ -453,28 +473,28 @@ def test_update_asset_replaces_data(database: LGDatabase) -> None:
 
 
 def test_update_asset_path_update_asset_delete_asset_and_insert_items_support_conn_param(
-    tmp_path: Path,
+    fs,
 ) -> None:
-    db_path = tmp_path / "conn_param.lg"
-    db = LGDatabase(str(db_path))
-    db.add_asset("a.bin", b"v1", 2)
+    with real_db_path(fs, "conn_param") as db_path:
+        db = LGDatabase(str(db_path))
+        db.add_asset("a.bin", b"v1", 2)
 
-    with db.connection() as conn:
-        db.update_asset("a.bin", b"v2", 2, conn=conn)
-        conn.commit()
-        assert db.get_asset("a.bin") == b"v2"
+        with db.connection() as conn:
+            db.update_asset("a.bin", b"v2", 2, conn=conn)
+            conn.commit()
+            assert db.get_asset("a.bin") == b"v2"
 
-        assert db.update_asset_path("a.bin", "b.bin", conn=conn) == 1
-        conn.commit()
-        assert db.get_asset("b.bin") == b"v2"
+            assert db.update_asset_path("a.bin", "b.bin", conn=conn) == 1
+            conn.commit()
+            assert db.get_asset("b.bin") == b"v2"
 
-        ids = db.insert_items([{"src": "A"}, {"src": "B"}], conn=conn)
-        conn.commit()
-        assert ids and all(isinstance(v, int) for v in ids)
+            ids = db.insert_items([{"src": "A"}, {"src": "B"}], conn=conn)
+            conn.commit()
+            assert ids and all(isinstance(v, int) for v in ids)
 
-        db.delete_asset("b.bin", conn=conn)
-        conn.commit()
-        assert db.get_asset("b.bin") is None
+            db.delete_asset("b.bin", conn=conn)
+            conn.commit()
+            assert db.get_asset("b.bin") is None
 
 
 def test_insert_items_appends_without_clearing(database: LGDatabase) -> None:

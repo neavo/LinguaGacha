@@ -28,7 +28,7 @@ from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from base.VersionManager import VersionManager
-from frontend.Analysis import AnalysisPage
+from frontend.Analysis.AnalysisPage import AnalysisPage
 from frontend.AppSettingsPage import AppSettingsPage
 from frontend.EmptyPage import EmptyPage
 from frontend.Extra.LaboratoryPage import LaboratoryPage
@@ -37,15 +37,15 @@ from frontend.Extra.ToolBoxPage import ToolBoxPage
 from frontend.Extra.TSConversionPage import TSConversionPage
 from frontend.Model.ModelPage import ModelPage
 from frontend.ProjectPage import ProjectPage
-from frontend.Proofreading import ProofreadingPage
+from frontend.Proofreading.ProofreadingPage import ProofreadingPage
 from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.GlossaryPage import GlossaryPage
 from frontend.Quality.TextPreservePage import TextPreservePage
 from frontend.Quality.TextReplacementPage import TextReplacementPage
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
-from frontend.Translation import TranslationPage
-from frontend.Workbench import WorkbenchPage
+from frontend.Translation.TranslationPage import TranslationPage
+from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine

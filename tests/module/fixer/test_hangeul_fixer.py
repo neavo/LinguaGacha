@@ -2,9 +2,6 @@ from module.Fixer.HangeulFixer import HangeulFixer
 
 
 class TestHangeulFixer:
-    def test_init_does_not_crash(self) -> None:
-        HangeulFixer()
-
     def test_keep_onomatopoeia_when_adjacent_to_hangeul(self) -> None:
         assert HangeulFixer.fix("가뿅나") == "가뿅나"
 
@@ -16,3 +13,6 @@ class TestHangeulFixer:
 
     def test_remove_onomatopoeia_at_end_when_prev_is_non_hangeul(self) -> None:
         assert HangeulFixer.fix("A뿅") == "A"
+
+    def test_keep_regular_hangeul_text_unchanged(self) -> None:
+        assert HangeulFixer.fix("안녕하세요") == "안녕하세요"

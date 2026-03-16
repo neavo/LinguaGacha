@@ -3,9 +3,6 @@ from module.Fixer.PunctuationFixer import PunctuationFixer
 
 
 class TestPunctuationFixer:
-    def test_init_does_not_crash(self) -> None:
-        PunctuationFixer()
-
     def test_fix_start_end_align_with_source_quotes(self) -> None:
         src = "「你好」"
         dst = '"你好"'

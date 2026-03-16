@@ -45,9 +45,9 @@ from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleReorder import QualityRuleReorder
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
-from widget.AppTable import AppTableModelBase
-from widget.AppTable import AppTableView
-from widget.AppTable import ColumnSpec
+from widget.AppTable.AppTableModelBase import AppTableModelBase
+from widget.AppTable.AppTableView import AppTableView
+from widget.AppTable.ColumnSpec import ColumnSpec
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 

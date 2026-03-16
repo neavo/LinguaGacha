@@ -48,6 +48,18 @@ def test_filter_blocks_database_value_when_source_in_block_text() -> None:
     ) == [True]
 
 
+def test_filter_keeps_unmatched_non_common_context_unblocked() -> None:
+    processor = WOLF(project={"files": {}})
+    processor.block_text = set()
+
+    assert processor.filter(
+        "plain_text",
+        "path",
+        [],
+        ["map/001.json/events/3/message"],
+    ) == [False]
+
+
 def test_pre_and_post_process_refresh_block_text() -> None:
     project = {
         "files": {

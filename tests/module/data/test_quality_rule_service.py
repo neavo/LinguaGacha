@@ -3,7 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from module.Data.DataManager import DataManager
+from base.Base import Base
+from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
@@ -83,8 +84,8 @@ def test_merge_glossary_incoming_returns_none_when_no_changes() -> None:
 def test_text_preserve_mode_normalizes_invalid_to_smart_or_off() -> None:
     service = build_service()
 
-    assert service.get_text_preserve_mode() == DataManager.TextPreserveMode.SMART
-    assert service.set_text_preserve_mode("invalid") == DataManager.TextPreserveMode.OFF
+    assert service.get_text_preserve_mode() == TextPreserveMode.SMART
+    assert service.set_text_preserve_mode("invalid") == TextPreserveMode.OFF
 
 
 def test_boolean_meta_helpers_roundtrip() -> None:
@@ -95,3 +96,32 @@ def test_boolean_meta_helpers_roundtrip() -> None:
 
     assert service.get_glossary_enable() is False
     assert service.get_pre_replacement_enable() is True
+
+
+def test_collect_rule_statistics_texts_filters_untracked_status_and_normalizes_text() -> (
+    None
+):
+    service = build_service()
+    service.item_service.get_all_item_dicts.return_value = [
+        {
+            "src": "Alpha",
+            "dst": "阿尔法",
+            "status": Base.ProjectStatus.PROCESSED,
+        },
+        {
+            "src": 123,
+            "dst": None,
+            "status": Base.ProjectStatus.ERROR.value,
+        },
+        {
+            "src": "Skip",
+            "dst": "跳过",
+            "status": Base.ProjectStatus.EXCLUDED,
+        },
+        "not-a-dict",
+    ]
+
+    src_texts, dst_texts = service.collect_rule_statistics_texts()
+
+    assert src_texts == ("Alpha", "123")
+    assert dst_texts == ("阿尔法", "")

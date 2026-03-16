@@ -11,11 +11,11 @@ from qfluentwidgets import RoundMenu
 
 from base.BaseIcon import BaseIcon
 from module.Localizer.Localizer import Localizer
-from widget.AppTable import AppTableModelBase
-from widget.AppTable import AppTableView
-from widget.AppTable import ColumnSpec
 from widget.AppTable.ActionMenuDelegate import ActionMenuDelegate
 from widget.AppTable.ActionMenuDelegate import ActionSpec
+from widget.AppTable.AppTableModelBase import AppTableModelBase
+from widget.AppTable.AppTableView import AppTableView
+from widget.AppTable.ColumnSpec import ColumnSpec
 
 ICON_MENU_UPDATE: BaseIcon = BaseIcon.REFRESH_CW
 ICON_MENU_RESET: BaseIcon = BaseIcon.ROTATE_CCW

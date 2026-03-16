@@ -6,15 +6,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from model.Item import Item
-from module.Data.Analysis.AnalysisCandidateService import AnalysisCandidateService
-from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.QualityRule.AnalysisGlossaryImportService import (
-    AnalysisGlossaryImportService,
-)
+from module.Data.Storage.LGDatabase import LGDatabase
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -214,76 +209,70 @@ def test_import_analysis_candidates_returns_zero_when_no_candidate() -> None:
     assert service.import_analysis_candidates() == 0
 
 
-def test_analysis_candidate_service_builds_glossary_entry_from_candidate() -> None:
-    candidate_service = AnalysisCandidateService()
+def test_import_analysis_candidates_returns_none_when_project_context_changed() -> None:
+    service, session = build_analysis_service()
 
-    glossary_entry = candidate_service.build_glossary_entry_from_candidate(
-        "Alice",
-        build_candidate_entry(
-            src="Alice",
-            dst_votes={"爱丽丝": 2, "艾丽斯": 1},
-            info_votes={"女性人名": 2},
-            observation_count=2,
-        ),
+    session.lg_path = "demo/other.lg"
+
+    assert service.import_analysis_candidates("demo/project.lg") is None
+
+
+def test_import_analysis_candidates_returns_zero_when_preview_filters_everything() -> (
+    None
+):
+    service, _session = build_analysis_service()
+    service.build_analysis_glossary_from_candidates = MagicMock(
+        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
+    )
+    service.build_analysis_glossary_import_preview = MagicMock(return_value="preview")
+    service.filter_analysis_glossary_import_candidates = MagicMock(return_value=[])
+
+    assert service.import_analysis_candidates() == 0
+
+
+def test_import_analysis_candidates_updates_glossary_batch_and_returns_report_count() -> (
+    None
+):
+    service, _session = build_analysis_service()
+    captured: dict[str, Any] = {}
+
+    def capture_batch(
+        *,
+        items: list[dict[str, Any]] | None = None,
+        rules: dict[object, object] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        captured["items"] = items
+        captured["rules"] = rules
+        captured["meta"] = meta
+
+    service.batch_service.update_batch = MagicMock(side_effect=capture_batch)
+    service.build_analysis_glossary_from_candidates = MagicMock(
+        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
+    )
+    service.build_analysis_glossary_import_preview = MagicMock(return_value="preview")
+    service.filter_analysis_glossary_import_candidates = MagicMock(
+        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
+    )
+    service.quality_rule_service.merge_glossary_incoming = MagicMock(
+        return_value=(
+            [{"src": "Alice", "dst": "爱丽丝"}],
+            QualityRuleMerger.Report(
+                added=1,
+                updated=0,
+                filled=2,
+                deduped=0,
+                skipped_empty_src=0,
+                conflicts=(),
+            ),
+        )
     )
 
-    assert glossary_entry == {
-        "src": "Alice",
-        "dst": "爱丽丝",
-        "info": "女性人名",
-        "case_sensitive": False,
+    imported = service.import_analysis_candidates()
+
+    assert imported == 3
+    assert captured["rules"] == {
+        LGDatabase.RuleType.GLOSSARY: [{"src": "Alice", "dst": "爱丽丝"}]
     }
-
-
-def test_analysis_progress_service_collects_pending_items() -> None:
-    progress_service = AnalysisProgressService()
-    done_item = Item(id=1, src="done")
-    failed_item = Item(id=2, src="failed")
-    pending_item = Item(id=3, src="pending")
-    name_only_item = Item(id=4, src="", name_src="Alice")
-
-    pending_items = progress_service.collect_pending_items(
-        [done_item, failed_item, pending_item, name_only_item],
-        {
-            1: {
-                "status": Base.ProjectStatus.PROCESSED,
-            },
-            2: {"status": Base.ProjectStatus.ERROR},
-        },
-    )
-
-    assert [item.get_id() for item in pending_items] == [3]
-
-
-def test_analysis_progress_service_normalizes_minimal_checkpoint_payload() -> None:
-    progress_service = AnalysisProgressService()
-
-    checkpoint = progress_service.normalize_item_checkpoint(
-        {
-            "item_id": 9,
-            "status": Base.ProjectStatus.PROCESSED.value,
-            "updated_at": ANALYSIS_TIME,
-            "error_count": 1,
-        }
-    )
-
-    assert checkpoint == {
-        "item_id": 9,
-        "status": Base.ProjectStatus.PROCESSED,
-        "updated_at": ANALYSIS_TIME,
-        "error_count": 1,
-    }
-
-
-def test_analysis_glossary_import_service_filters_low_value_candidates() -> None:
-    quality_rule_service = SimpleNamespace(
-        get_glossary=MagicMock(return_value=[]),
-        collect_rule_statistics_texts=MagicMock(return_value=((), ())),
-    )
-    import_service = AnalysisGlossaryImportService(quality_rule_service)
-    glossary_entries = [{"src": "Alice", "dst": "爱丽丝", "info": "女性人名"}]
-
-    preview = import_service.build_preview(glossary_entries)
-    filtered = import_service.filter_candidates(glossary_entries, preview)
-
-    assert isinstance(filtered, list)
+    assert captured["items"] is None
+    assert captured["meta"] is None

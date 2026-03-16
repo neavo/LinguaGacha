@@ -1,7 +1,7 @@
+from module.Engine.Analysis.AnalysisModels import AnalysisCandidateAggregate
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
-from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 
 def test_analysis_task_context_exposes_item_count_and_src_texts() -> None:
@@ -36,27 +36,21 @@ def test_analysis_task_result_defaults_stay_empty_and_zero() -> None:
     assert result.glossary_entries == tuple()
 
 
-def test_task_progress_snapshot_to_dict_keeps_expected_fields() -> None:
-    snapshot = TaskProgressSnapshot(
-        start_time=1.0,
-        time=2.0,
-        total_line=3,
-        line=2,
-        processed_line=1,
-        error_line=1,
-        total_tokens=9,
-        total_input_tokens=4,
-        total_output_tokens=5,
+def test_analysis_candidate_aggregate_keeps_vote_payloads_and_metadata() -> None:
+    aggregate = AnalysisCandidateAggregate(
+        src="Alice",
+        dst_votes={"爱丽丝": 3},
+        info_votes={"角色名": 2},
+        observation_count=5,
+        first_seen_at="chapter_01",
+        last_seen_at="chapter_09",
+        case_sensitive=True,
     )
 
-    assert snapshot.to_dict() == {
-        "start_time": 1.0,
-        "time": 2.0,
-        "total_line": 3,
-        "line": 2,
-        "processed_line": 1,
-        "error_line": 1,
-        "total_tokens": 9,
-        "total_input_tokens": 4,
-        "total_output_tokens": 5,
-    }
+    assert aggregate.src == "Alice"
+    assert aggregate.dst_votes == {"爱丽丝": 3}
+    assert aggregate.info_votes == {"角色名": 2}
+    assert aggregate.observation_count == 5
+    assert aggregate.first_seen_at == "chapter_01"
+    assert aggregate.last_seen_at == "chapter_09"
+    assert aggregate.case_sensitive is True

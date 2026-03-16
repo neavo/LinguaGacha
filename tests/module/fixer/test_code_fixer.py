@@ -37,9 +37,6 @@ def install_fake_text_processor(
 
 
 class TestCodeFixer:
-    def test_init_does_not_crash(self) -> None:
-        CodeFixer()
-
     def test_is_ordered_subset_returns_mismatch_indexes(self) -> None:
         flag, mismatch_indexes = CodeFixer.is_ordered_subset(
             ["<1>", "<3>"],
@@ -67,6 +64,16 @@ class TestCodeFixer:
         dst = "A<1>B<x><2>C"
 
         assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "A<1>B<2>C"
+
+    def test_fix_remove_all_destination_codes_when_source_has_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_fake_text_processor(monkeypatch, re.compile(r"<[^>]+>"))
+
+        src = "ABC"
+        dst = "A<1>B<2>C"
+
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "ABC"
 
     def test_fix_return_original_when_codes_match(
         self, monkeypatch: pytest.MonkeyPatch
@@ -129,35 +136,3 @@ class TestCodeFixer:
         dst = "A<1><x>B<3>C"
 
         assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == dst
-
-    def test_test_method_calls_fix_and_print(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        called: dict[str, object] = {}
-
-        def fake_fix(
-            cls: type[CodeFixer],
-            src: str,
-            dst: str,
-            text_type: Item.TextType,
-            config: Config,
-            quality_snapshot: object = None,
-        ) -> str:
-            called["src"] = src
-            called["dst"] = dst
-            called["text_type"] = text_type
-            called["config"] = config
-            called["quality_snapshot"] = quality_snapshot
-            return "patched"
-
-        monkeypatch.setattr(CodeFixer, "fix", classmethod(fake_fix))
-        monkeypatch.setattr(
-            "module.Fixer.CodeFixer.print", lambda *_args, **_kwargs: None
-        )
-
-        config = Config()
-        CodeFixer.test(config)
-
-        assert called["text_type"] == Item.TextType.RPGMAKER
-        assert called["config"] is config
-        assert called["quality_snapshot"] is None

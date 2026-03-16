@@ -54,6 +54,11 @@ class TestJSONToolDumps:
         assert isinstance(text, str)
         assert text == '{"id":1}'
 
+    def test_dumps_with_custom_indent_returns_pretty_text(self) -> None:
+        text = JSONTool.dumps({"id": 1}, indent=4)
+
+        assert text == '{\n    "id": 1\n}'
+
     def test_dumps_bytes_indent_zero_is_compact(self) -> None:
         data = JSONTool.dumps_bytes({"a": 1, "b": 2}, indent=0)
 
@@ -135,7 +140,6 @@ class TestJSONToolRepairLoads:
 
 class TestJSONToolFileIO:
     def test_save_then_load_file_roundtrip(self, fs) -> None:
-        del fs
         path = Path("/workspace/json_tool/data.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"name": "LG", "value": 3}
@@ -144,8 +148,15 @@ class TestJSONToolFileIO:
 
         assert JSONTool.load_file(path) == payload
 
+    def test_save_file_uses_pretty_indent_by_default(self, fs) -> None:
+        path = Path("/workspace/json_tool/default_indent.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        JSONTool.save_file(path, {"name": "LG"})
+
+        assert path.read_text(encoding="utf-8") == '{\n    "name": "LG"\n}'
+
     def test_load_file_with_utf8_bom(self, fs) -> None:
-        del fs
         path = Path("/workspace/json_tool/bom.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(codecs.BOM_UTF8 + b'{"x":1}')
@@ -157,7 +168,6 @@ class TestJSONToolFileIO:
         fs,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        del fs
         path = Path("/workspace/json_tool/atomic.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{"old":1}', encoding="utf-8")

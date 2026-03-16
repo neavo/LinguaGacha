@@ -10,7 +10,7 @@ from model.Project import Project
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.File.ASS import ASS
-from module.File.EPUB import EPUB
+from module.File.EPUB.EPUB import EPUB
 from module.File.KVJSON import KVJSON
 from module.File.MD import MD
 from module.File.MESSAGEJSON import MESSAGEJSON

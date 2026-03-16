@@ -321,6 +321,146 @@ def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:
     assert [len(chunk) for chunk in chunks] == [1, 1]
 
 
+def test_generate_item_chunks_skips_non_none_status_items() -> None:
+    items = [
+        create_item("line-1"),
+        create_item("line-2", Base.ProjectStatus.PROCESSED),
+        create_item("line-3"),
+    ]
+
+    chunks, _ = TaskScheduler.generate_item_chunks(
+        items=items,
+        input_token_threshold=1000,
+        preceding_lines_threshold=3,
+    )
+
+    flattened = [item.get_src() for chunk in chunks for item in chunk]
+    assert flattened == ["line-1", "line-3"]
+
+
+def test_generate_item_chunks_returns_empty_when_all_items_are_skipped() -> None:
+    items = [
+        create_item("line-1", Base.ProjectStatus.PROCESSED),
+        create_item("line-2", Base.ProjectStatus.PROCESSED_IN_PAST),
+    ]
+
+    chunks, preceding_chunks = TaskScheduler.generate_item_chunks(
+        items=items,
+        input_token_threshold=1000,
+        preceding_lines_threshold=2,
+    )
+
+    assert chunks == []
+    assert preceding_chunks == []
+
+
+def test_generate_item_chunks_splits_when_token_limit_exceeded() -> None:
+    items = [
+        create_item("first"),
+        create_item("second"),
+    ]
+
+    chunks, _ = TaskScheduler.generate_item_chunks(
+        items=items,
+        input_token_threshold=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert [len(chunk) for chunk in chunks] == [1, 1]
+
+
+def test_generate_preceding_chunk_obeys_punctuation_and_threshold() -> None:
+    items = [
+        create_item("first.", file_path="a.txt"),
+        create_item("second.", file_path="a.txt"),
+        create_item("third.", file_path="a.txt"),
+        create_item("target", file_path="a.txt"),
+    ]
+
+    preceding = TaskScheduler.generate_preceding_chunk(
+        items=items,
+        chunk=[items[3]],
+        start=4,
+        skip=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert [item.get_src() for item in preceding] == ["second.", "third."]
+
+
+def test_generate_preceding_chunk_skips_excluded_and_empty_items() -> None:
+    items = [
+        create_item("skip.", Base.ProjectStatus.EXCLUDED, file_path="a.txt"),
+        create_item("   ", file_path="a.txt"),
+        create_item("kept.", file_path="a.txt"),
+        create_item("target", file_path="a.txt"),
+    ]
+
+    preceding = TaskScheduler.generate_preceding_chunk(
+        items=items,
+        chunk=[items[3]],
+        start=4,
+        skip=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert [item.get_src() for item in preceding] == ["kept."]
+
+
+def test_generate_preceding_chunk_skips_rule_and_language_skipped() -> None:
+    items = [
+        create_item("skip.", Base.ProjectStatus.RULE_SKIPPED),
+        create_item("skip.", Base.ProjectStatus.LANGUAGE_SKIPPED),
+        create_item("kept."),
+        create_item("target"),
+    ]
+
+    preceding = TaskScheduler.generate_preceding_chunk(
+        items=items,
+        chunk=[items[3]],
+        start=4,
+        skip=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert [item.get_src() for item in preceding] == ["kept."]
+
+
+def test_generate_preceding_chunk_stops_when_sentence_has_no_end_punctuation() -> None:
+    items = [
+        create_item("valid."),
+        create_item("no-ending"),
+        create_item("target"),
+    ]
+
+    preceding = TaskScheduler.generate_preceding_chunk(
+        items=items,
+        chunk=[items[2]],
+        start=3,
+        skip=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert preceding == []
+
+
+def test_generate_preceding_chunk_stops_when_file_changes() -> None:
+    items = [
+        create_item("cross-file.", file_path="a.txt"),
+        create_item("target", file_path="b.txt"),
+    ]
+
+    preceding = TaskScheduler.generate_preceding_chunk(
+        items=items,
+        chunk=[items[1]],
+        start=2,
+        skip=0,
+        preceding_lines_threshold=2,
+    )
+
+    assert preceding == []
+
+
 def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
     items = [
         AnalysisItemContext(item_id=1, file_path="a.txt", src_text="a1"),
@@ -344,3 +484,41 @@ def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
         [3],
     ]
     assert contexts[1].items[0].previous_status == Base.ProjectStatus.ERROR
+
+
+def test_build_initial_analysis_contexts_returns_empty_for_empty_input() -> None:
+    assert TaskScheduler.build_initial_analysis_contexts([], 1000) == []
+
+
+def test_build_initial_analysis_contexts_skips_invalid_and_orphan_seed_items(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [
+        AnalysisItemContext(item_id=1, file_path="a.txt", src_text="a1"),
+    ]
+    invalid_id_item = Item(id="bad-id", src="bad", file_path="a.txt")
+    orphan_item = Item(id=999, src="orphan", file_path="a.txt")
+    valid_item = Item(id=1, src="a1", file_path="a.txt")
+
+    # 这里手动喂入异常 chunk，确保调度器只保留能映射回稳定快照的条目。
+    monkeypatch.setattr(
+        task_scheduler_module.TaskScheduler,
+        "generate_item_chunks_iter",
+        classmethod(
+            lambda cls, **kwargs: iter(
+                [
+                    ([invalid_id_item, orphan_item], []),
+                    ([valid_item, orphan_item], []),
+                ]
+            )
+        ),
+    )
+
+    contexts = TaskScheduler.build_initial_analysis_contexts(
+        items=items,
+        input_token_threshold=1000,
+    )
+
+    assert len(contexts) == 1
+    assert contexts[0].file_path == "a.txt"
+    assert [item.item_id for item in contexts[0].items] == [1]

@@ -33,6 +33,18 @@ def test_set_cell_value_handles_none_and_escapes_formula() -> None:
     assert sheet.cell(row=1, column=2).value == "'=SUM(A1:A2)"
 
 
+def test_set_cell_value_keeps_plain_text_and_default_font_size() -> None:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    assert isinstance(sheet, Worksheet)
+
+    SpreadsheetTool.set_cell_value(sheet, 2, 1, "plain text")
+    cell = sheet.cell(row=2, column=1)
+
+    assert cell.value == "plain text"
+    assert cell.font.size == 9
+
+
 def test_set_cell_value_applies_font_and_alignment() -> None:
     workbook = openpyxl.Workbook()
     sheet = workbook.active

@@ -55,3 +55,22 @@ def test_build_workbench_snapshot_ignores_structural_status() -> None:
     assert snapshot.total_items == 1
     assert snapshot.translated == 1
     assert snapshot.translated_in_past == 1
+
+
+def test_build_workbench_snapshot_normalizes_invalid_status_and_file_type() -> None:
+    service = WorkbenchService()
+
+    snapshot = service.build_snapshot(
+        ["a.txt"],
+        [
+            {
+                "file_path": "a.txt",
+                "status": "broken-status",
+                "file_type": "broken-type",
+            }
+        ],
+    )
+
+    assert snapshot.total_items == 1
+    assert snapshot.untranslated == 1
+    assert snapshot.entries[0].file_type == Item.FileType.NONE

@@ -2,7 +2,6 @@ import pytest
 
 from base.BaseLanguage import BaseLanguage
 from module.Filter.LanguageFilter import LanguageFilter
-from module.Text.TextHelper import TextHelper
 
 
 class TestLanguageFilterZH:
@@ -77,14 +76,22 @@ class TestLanguageFilterOtherLanguages:
         assert LanguageFilter.filter(text, lang) is False
 
 
-def test_filter_returns_false_when_any_is_not_callable(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("source_language", "text", "expected"),
+    [
+        ("EN", "Hello World", False),
+        ("ZH", "你好世界", False),
+        ("JA", "こんにちは", False),
+        ("ZH", "Hello World", True),
+    ],
+    ids=["EN_string", "ZH_string", "JA_string", "ZH_string_filtered"],
+)
+def test_filter_accepts_plain_string_language_code(
+    source_language: str,
+    text: str,
+    expected: bool,
 ) -> None:
-    class DummyLanguage:
-        any = 123
-
-    monkeypatch.setattr(TextHelper, "FAKE", DummyLanguage, raising=False)
-    assert LanguageFilter.filter("whatever", "FAKE") is False
+    assert LanguageFilter.filter(text, source_language) is expected
 
 
 def test_filter_returns_false_when_source_language_is_all() -> None:

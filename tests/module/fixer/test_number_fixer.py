@@ -2,9 +2,6 @@ from module.Fixer.NumberFixer import NumberFixer
 
 
 class TestNumberFixer:
-    def test_init_does_not_crash(self) -> None:
-        NumberFixer()
-
     def test_return_original_when_source_has_no_circled_number(self) -> None:
         src = "奖励1"
         dst = "Reward 1"
@@ -50,5 +47,11 @@ class TestNumberFixer:
     def test_safe_int_value_error_skips_restore(self) -> None:
         src = "①"
         dst = "㊿"
+
+        assert NumberFixer.fix(src, dst) == dst
+
+    def test_skip_when_digit_value_is_out_of_supported_range(self) -> None:
+        src = "奖励①"
+        dst = "Reward 99"
 
         assert NumberFixer.fix(src, dst) == dst

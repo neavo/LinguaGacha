@@ -3,7 +3,6 @@ from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Filter.ProjectPrefilter import (
     ProjectPrefilter,
-    ProjectPrefilterResult,
 )
 
 
@@ -140,7 +139,6 @@ class TestProjectPrefilterStats:
             target_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
-        assert isinstance(result, ProjectPrefilterResult)
         assert result.stats.rule_skipped == 2
         assert result.stats.language_skipped == 1
         assert result.stats.mtool_skipped == 0
@@ -173,16 +171,46 @@ class TestProjectPrefilterProgressCallback:
         assert progress_steps[0] == (0, 10)
         assert progress_steps[-1] == (10, 10)
 
-    def test_no_error_without_callback(self) -> None:
-        items = [make_item(src="Hello")]
-        # 不传 progress_cb 不应报错
-        result = ProjectPrefilter.apply(
+    def test_progress_every_limits_intermediate_reports(self) -> None:
+        items = [make_item(src="Hello") for _ in range(3)]
+        progress_steps: list[tuple[int, int]] = []
+
+        ProjectPrefilter.apply(
             items,
             source_language=BaseLanguage.Enum.EN,
             target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
+            progress_cb=lambda current, total: progress_steps.append((current, total)),
+            progress_every=4,
         )
-        assert isinstance(result, ProjectPrefilterResult)
+
+        assert progress_steps[0] == (0, 6)
+        assert (4, 6) in progress_steps
+        assert progress_steps[-1] == (6, 6)
+        assert (2, 6) not in progress_steps
+        assert (3, 6) not in progress_steps
+        assert (5, 6) not in progress_steps
+
+
+class TestProjectPrefilterInputContract:
+    """对外输入契约：允许直接传语言码字符串。"""
+
+    def test_apply_accepts_plain_string_language_code(self) -> None:
+        items = [make_item(src="你好世界"), make_item(src="Hello World")]
+        result = ProjectPrefilter.apply(
+            items,
+            source_language="ZH",
+            target_language="EN",
+            mtool_optimizer_enable=False,
+        )
+
+        assert items[0].get_status() == Base.ProjectStatus.NONE
+        assert items[1].get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
+        assert result.prefilter_config == {
+            "source_language": "ZH",
+            "target_language": "EN",
+            "mtool_optimizer_enable": False,
+        }
 
 
 class TestMToolOptimizerPreprocess:

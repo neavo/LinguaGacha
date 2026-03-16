@@ -26,7 +26,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
-from widget.AppTable import ColumnSpec
+from widget.AppTable.ColumnSpec import ColumnSpec
 from widget.SettingCard import SettingCard
 
 

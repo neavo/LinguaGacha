@@ -31,6 +31,16 @@ def test_get_app_language_returns_latest_set_value() -> None:
     assert Localizer.get_app_language() == BaseLanguage.Enum.EN
 
 
+def test_union_text_resolve_reads_latest_app_language() -> None:
+    text = Localizer.UnionText(zh="中文", en="English")
+
+    Localizer.set_app_language(BaseLanguage.Enum.ZH)
+    assert text.resolve() == "中文"
+
+    Localizer.set_app_language(BaseLanguage.Enum.EN)
+    assert text.resolve() == "English"
+
+
 @pytest.mark.parametrize(
     ("app_language", "text", "expected"),
     [

@@ -3,11 +3,19 @@ import pytest
 from module.Text import TextBase
 
 
-class TestTextBaseCommonBehavior:
-    def test_base_char_returns_none(self) -> None:
-        base = TextBase.TextBase()
+class UppercaseOnlyText(TextBase.TextBase):
+    def char(self, c: str) -> bool:
+        return c.isupper()
 
-        assert base.char("A") is None
+
+class TestTextBaseCommonBehavior:
+    def test_base_helper_methods_delegate_to_subclass_char_rule(self) -> None:
+        base = UppercaseOnlyText()
+
+        assert base.any("aB") is True
+        assert base.all("ABC") is True
+        assert base.all("Ab") is False
+        assert base.strip_non_target("..ABC??") == "ABC"
 
     def test_any_and_all_on_empty_text(self) -> None:
         cjk = TextBase.CJK()
