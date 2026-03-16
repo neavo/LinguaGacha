@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from module.Data.AssetService import AssetService
+from module.Data.Core.AssetService import AssetService
 
 
 def build_service(db: object | None) -> tuple[AssetService, SimpleNamespace]:
@@ -44,9 +44,11 @@ def test_get_asset_decompressed_uses_cache_and_lru(
     db = SimpleNamespace(get_asset=MagicMock(side_effect=[b"a", b"b", b"c"]))
     service, session = build_service(db)
 
-    monkeypatch.setattr("module.Data.AssetService.ASSET_DECOMPRESS_CACHE_MAX", 2)
     monkeypatch.setattr(
-        "module.Data.AssetService.ZstdCodec.decompress",
+        "module.Data.Core.AssetService.AssetService.ASSET_DECOMPRESS_CACHE_MAX", 2
+    )
+    monkeypatch.setattr(
+        "module.Data.Core.AssetService.ZstdTool.decompress",
         staticmethod(lambda data: b"dec-" + data),
     )
 
@@ -66,14 +68,14 @@ def test_get_asset_decompressed_logs_and_returns_none_on_error(
     service, _ = build_service(db)
 
     logger = MagicMock()
-    monkeypatch.setattr("module.Data.AssetService.LogManager.get", lambda: logger)
+    monkeypatch.setattr("module.Data.Core.AssetService.LogManager.get", lambda: logger)
 
     def fail_decompress(data: bytes) -> bytes:
         del data
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        "module.Data.AssetService.ZstdCodec.decompress",
+        "module.Data.Core.AssetService.ZstdTool.decompress",
         staticmethod(fail_decompress),
     )
 

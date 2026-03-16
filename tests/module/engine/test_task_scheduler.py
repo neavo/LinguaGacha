@@ -9,12 +9,18 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 import module.Engine.TaskScheduler as task_scheduler_module
+from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.TaskScheduler import TaskContext
 from module.Engine.TaskScheduler import TaskScheduler
 
 
-def create_item(src: str, status: Base.ProjectStatus = Base.ProjectStatus.NONE) -> Item:
-    item = Item(src=src)
+def create_item(
+    src: str,
+    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+    *,
+    file_path: str = "story.txt",
+) -> Item:
+    item = Item(src=src, file_path=file_path)
     item.set_status(status)
     return item
 
@@ -32,9 +38,9 @@ def test_generate_initial_contexts_iter_builds_task_contexts(
     )
 
     monkeypatch.setattr(
-        task_scheduler_module.ChunkGenerator,
+        task_scheduler_module.TaskScheduler,
         "generate_item_chunks_iter",
-        staticmethod(lambda **kwargs: iter(chunks)),
+        classmethod(lambda cls, **kwargs: iter(chunks)),
     )
 
     contexts = list(scheduler.generate_initial_contexts_iter())
@@ -62,6 +68,22 @@ def test_handle_failed_context_returns_empty_when_no_pending_items() -> None:
     assert new_contexts == []
 
 
+def test_handle_failed_context_skips_error_items_during_continue_semantics() -> None:
+    failed = create_item("failed", Base.ProjectStatus.ERROR)
+    context = TaskContext(
+        items=[failed],
+        precedings=[],
+        token_threshold=32,
+    )
+    scheduler = TaskScheduler(
+        Config(), {"threshold": {"input_token_limit": 64}}, [failed]
+    )
+
+    new_contexts = scheduler.handle_failed_context(context, {})
+
+    assert new_contexts == []
+
+
 def test_handle_failed_context_splits_items_when_threshold_above_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -80,9 +102,9 @@ def test_handle_failed_context_splits_items_when_threshold_above_one(
     )
 
     monkeypatch.setattr(
-        task_scheduler_module.ChunkGenerator,
+        task_scheduler_module.TaskScheduler,
         "generate_item_chunks",
-        staticmethod(lambda **kwargs: ([[first], [second]], [])),
+        classmethod(lambda cls, **kwargs: ([[first], [second]], [])),
     )
 
     new_contexts = scheduler.handle_failed_context(context, {})
@@ -163,14 +185,14 @@ def test_create_task_injects_split_retry_and_threshold(
 ) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeTranslatorTask:
+    class FakeTranslationTask:
         def __init__(self, **kwargs: Any) -> None:
             captured.update(kwargs)
             self.split_count = -1
             self.token_threshold = -1
             self.retry_count = -1
 
-    monkeypatch.setattr(task_scheduler_module, "TranslatorTask", FakeTranslatorTask)
+    monkeypatch.setattr(task_scheduler_module, "TranslationTask", FakeTranslationTask)
 
     item = create_item("line")
     scheduler = TaskScheduler(
@@ -231,3 +253,94 @@ def test_force_accept_does_not_override_processed_item() -> None:
 
     assert item.get_dst() == "translated"
     assert item.get_status() == Base.ProjectStatus.PROCESSED
+
+
+def test_generate_item_chunks_splits_when_file_changes() -> None:
+    items = [
+        create_item("a1", file_path="a.txt"),
+        create_item("a2", file_path="a.txt"),
+        create_item("b1", file_path="b.txt"),
+    ]
+
+    chunks, preceding_chunks = TaskScheduler.generate_item_chunks(
+        items=items,
+        input_token_threshold=1000,
+        preceding_lines_threshold=3,
+    )
+
+    assert [len(chunk) for chunk in chunks] == [2, 1]
+    assert preceding_chunks[1] == []
+
+
+def test_generate_item_chunks_iter_uses_gap_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [create_item("a1"), create_item("a2")]
+    observed: list[list[tuple[int, Item]]] = []
+
+    def fake_gap_iter(
+        iterable: list[tuple[int, Item]] | Any,
+        *,
+        sleep_seconds: float | None = None,
+    ) -> Any:
+        del sleep_seconds
+        captured = list(iterable)
+        observed.append(captured)
+        return iter(captured)
+
+    monkeypatch.setattr(
+        task_scheduler_module.GapTool,
+        "iter",
+        staticmethod(fake_gap_iter),
+    )
+
+    chunks = list(
+        TaskScheduler.generate_item_chunks_iter(
+            items=items,
+            input_token_threshold=1000,
+            preceding_lines_threshold=0,
+        )
+    )
+
+    assert observed == [[(0, items[0]), (1, items[1])]]
+    assert [chunk for chunk, _preceding in chunks] == [items]
+
+
+def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:
+    items = [
+        create_item("\n".join([f"line-{i}" for i in range(8)])),
+        create_item("line-9"),
+    ]
+
+    chunks, _ = TaskScheduler.generate_item_chunks(
+        items=items,
+        input_token_threshold=16,
+        preceding_lines_threshold=0,
+    )
+
+    assert [len(chunk) for chunk in chunks] == [1, 1]
+
+
+def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
+    items = [
+        AnalysisItemContext(item_id=1, file_path="a.txt", source_text="a1"),
+        AnalysisItemContext(item_id=2, file_path="a.txt", source_text="a2"),
+        AnalysisItemContext(
+            item_id=3,
+            file_path="b.txt",
+            source_text="b1",
+            previous_status=Base.ProjectStatus.ERROR,
+        ),
+    ]
+
+    contexts = TaskScheduler.build_initial_analysis_contexts(
+        items=items,
+        input_token_threshold=1000,
+    )
+
+    assert [context.file_path for context in contexts] == ["a.txt", "b.txt"]
+    assert [[item.item_id for item in context.items] for context in contexts] == [
+        [1, 2],
+        [3],
+    ]
+    assert contexts[1].items[0].previous_status == Base.ProjectStatus.ERROR

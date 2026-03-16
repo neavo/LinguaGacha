@@ -9,7 +9,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.SpreadsheetUtil import SpreadsheetUtil
+from module.Utils.SpreadsheetTool import SpreadsheetTool
 
 
 class WOLFXLSX(Base):
@@ -151,10 +151,10 @@ class WOLFXLSX(Base):
             # 将数据写入工作表
             for item in sorted_items:
                 row: int = item.get_row()
-                SpreadsheetUtil.set_cell_value(
+                SpreadsheetTool.set_cell_value(
                     sheet, row=row, column=self.COL_SRC_TEXT, value=item.get_src()
                 )
-                SpreadsheetUtil.set_cell_value(
+                SpreadsheetTool.set_cell_value(
                     sheet, row=row, column=self.COL_DST_TEXT, value=item.get_dst()
                 )
 

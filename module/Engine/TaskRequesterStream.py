@@ -4,8 +4,8 @@ from typing import Any
 from typing import Callable
 from typing import Protocol
 
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import RequestHardTimeoutError
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import RequestHardTimeoutError
 
 
 @dataclasses.dataclass(frozen=True)

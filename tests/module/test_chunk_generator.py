@@ -1,6 +1,6 @@
 from base.Base import Base
 from model.Item import Item
-from module.ChunkGenerator import ChunkGenerator
+from module.Engine.TaskScheduler import TaskScheduler
 
 
 def make_item(
@@ -12,7 +12,7 @@ def make_item(
     return Item(src=src, file_path=file_path, status=status)
 
 
-class TestChunkGenerator:
+class TestTaskSchedulerChunking:
     def test_generate_item_chunks_splits_when_file_changes(self) -> None:
         items = [
             make_item("a1", file_path="a.txt"),
@@ -20,7 +20,7 @@ class TestChunkGenerator:
             make_item("b1", file_path="b.txt"),
         ]
 
-        chunks, preceding_chunks = ChunkGenerator.generate_item_chunks(
+        chunks, preceding_chunks = TaskScheduler.generate_item_chunks(
             items=items,
             input_token_threshold=1000,
             preceding_lines_threshold=3,
@@ -36,7 +36,7 @@ class TestChunkGenerator:
             make_item("line-3"),
         ]
 
-        chunks, _ = ChunkGenerator.generate_item_chunks(
+        chunks, _ = TaskScheduler.generate_item_chunks(
             items=items,
             input_token_threshold=1000,
             preceding_lines_threshold=3,
@@ -51,7 +51,7 @@ class TestChunkGenerator:
             make_item("line-9"),
         ]
 
-        chunks, _ = ChunkGenerator.generate_item_chunks(
+        chunks, _ = TaskScheduler.generate_item_chunks(
             items=items,
             input_token_threshold=16,
             preceding_lines_threshold=2,
@@ -67,7 +67,7 @@ class TestChunkGenerator:
             make_item("line-2", status=Base.ProjectStatus.PROCESSED_IN_PAST),
         ]
 
-        chunks, preceding_chunks = ChunkGenerator.generate_item_chunks(
+        chunks, preceding_chunks = TaskScheduler.generate_item_chunks(
             items=items,
             input_token_threshold=1000,
             preceding_lines_threshold=2,
@@ -82,7 +82,7 @@ class TestChunkGenerator:
             make_item("second"),
         ]
 
-        chunks, _ = ChunkGenerator.generate_item_chunks(
+        chunks, _ = TaskScheduler.generate_item_chunks(
             items=items,
             input_token_threshold=0,
             preceding_lines_threshold=2,
@@ -98,7 +98,7 @@ class TestChunkGenerator:
             make_item("target", file_path="a.txt"),
         ]
 
-        preceding = ChunkGenerator.generate_preceding_chunk(
+        preceding = TaskScheduler.generate_preceding_chunk(
             items=items,
             chunk=[items[3]],
             start=4,
@@ -116,7 +116,7 @@ class TestChunkGenerator:
             make_item("target", file_path="a.txt"),
         ]
 
-        preceding = ChunkGenerator.generate_preceding_chunk(
+        preceding = TaskScheduler.generate_preceding_chunk(
             items=items,
             chunk=[items[3]],
             start=4,
@@ -134,7 +134,7 @@ class TestChunkGenerator:
             make_item("target"),
         ]
 
-        preceding = ChunkGenerator.generate_preceding_chunk(
+        preceding = TaskScheduler.generate_preceding_chunk(
             items=items,
             chunk=[items[3]],
             start=4,
@@ -153,7 +153,7 @@ class TestChunkGenerator:
             make_item("target"),
         ]
 
-        preceding = ChunkGenerator.generate_preceding_chunk(
+        preceding = TaskScheduler.generate_preceding_chunk(
             items=items,
             chunk=[items[2]],
             start=3,
@@ -169,7 +169,7 @@ class TestChunkGenerator:
             make_item("target", file_path="b.txt"),
         ]
 
-        preceding = ChunkGenerator.generate_preceding_chunk(
+        preceding = TaskScheduler.generate_preceding_chunk(
             items=items,
             chunk=[items[1]],
             start=2,

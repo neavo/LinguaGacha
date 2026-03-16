@@ -34,25 +34,13 @@ class TestModelManager:
         second = ModelManager.get()
         assert first is second
 
-    def test_get_returns_instance_when_inner_check_is_false(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        expected = ModelManager()
+    def test_reset_clears_singleton_instance(self) -> None:
+        first = ModelManager.get()
 
-        class LockThatInjectsInstance:
-            def __enter__(self) -> None:
-                ModelManager._instance = expected
+        ModelManager.reset()
 
-            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-                _ = (exc_type, exc, tb)
-                return False
-
-        monkeypatch.setattr(ModelManager, "_instance", None)
-        monkeypatch.setattr(ModelManager, "_lock", LockThatInjectsInstance())
-
-        manager = ModelManager.get()
-
-        assert manager is expected
+        second = ModelManager.get()
+        assert first is not second
 
     def test_get_preset_dir_uses_app_language(
         self, monkeypatch: pytest.MonkeyPatch

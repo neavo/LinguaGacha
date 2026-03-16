@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from module.Data.ExportPathService import ExportPathService
+from module.Data.Project.ExportPathService import ExportPathService
 from module.Localizer.Localizer import Localizer
 
 

@@ -24,8 +24,8 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Workbench.WorkbenchTableWidget import WorkbenchTableWidget
 from model.Item import Item
+from module.Data.Core.DataTypes import WorkbenchSnapshot
 from module.Data.DataManager import DataManager
-from module.Data.DataManager import WorkbenchSnapshot
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool

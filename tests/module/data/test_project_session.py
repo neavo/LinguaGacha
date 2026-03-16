@@ -1,5 +1,5 @@
-from module.Data.ProjectSession import ProjectSession
-from module.Data.LGDatabase import LGDatabase
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Storage.LGDatabase import LGDatabase
 
 
 def test_project_session_initial_state() -> None:

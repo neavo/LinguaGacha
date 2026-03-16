@@ -31,17 +31,17 @@ class Engine:
         return cls.__instance__
 
     def run(self) -> None:
-        from module.Engine.APITester.APITester import APITester
+        from module.Engine.APITest.APITest import APITest
 
-        self.api_test = APITester()
+        self.api_test = APITest()
 
-        from module.Engine.Analyzer.Analyzer import Analyzer
+        from module.Engine.Analysis.Analysis import Analysis
 
-        self.analyzer = Analyzer()
+        self.analysis = Analysis()
 
-        from module.Engine.Translator.Translator import Translator
+        from module.Engine.Translation.Translation import Translation
 
-        self.translator = Translator()
+        self.translation = Translation()
 
     def get_status(self) -> Base.TaskStatus:
         with self.lock:
@@ -69,7 +69,7 @@ class Engine:
         # UI 需要“实时请求数”时使用 get_request_in_flight_count()。
         count = 0
 
-        for worker_name in ("translator", "analyzer"):
+        for worker_name in ("translation", "analysis"):
             worker = getattr(self, worker_name, None)
             if worker is not None:
                 count += worker.get_concurrency_in_use()
@@ -83,7 +83,7 @@ class Engine:
     ) -> None:
         """
         对单个条目执行翻译，通过后台线程 + 回调异步返回结果。
-        复用 TranslatorTask 的完整翻译流程（预处理、响应校验、日志等）。
+        复用 TranslationTask 的完整翻译流程（预处理、响应校验、日志等）。
 
         Args:
             item: 待翻译的 Item 对象
@@ -91,6 +91,6 @@ class Engine:
             callback: 翻译完成后的回调函数，签名为 (item, success) -> None
         """
         # 延迟导入避免循环依赖
-        from module.Engine.Translator.TranslatorTask import TranslatorTask
+        from module.Engine.Translation.TranslationTask import TranslationTask
 
-        TranslatorTask.translate_single(item, config, callback)
+        TranslationTask.translate_single(item, config, callback)

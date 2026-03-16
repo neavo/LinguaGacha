@@ -8,8 +8,8 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
-from module.Data.ProjectSession import ProjectSession
-from module.Data.TranslationItemService import TranslationItemService
+from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Translation.TranslationItemService import TranslationItemService
 
 
 def build_service(db: object | None) -> TranslationItemService:
@@ -54,10 +54,10 @@ def test_get_items_for_translation_reset_reparses_assets(
             return [Item(src=f"{rel_path}:{content.decode()}")]
 
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.FileManager", FakeFileManager
+        "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
         staticmethod(lambda data: b"decoded-" + data),
     )
 
@@ -86,7 +86,7 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
             return [Item(src=f"{rel_path}:{content.decode()}")]
 
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.FileManager", FakeFileManager
+        "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
 
     def fake_decompress(data: bytes) -> bytes:
@@ -95,12 +95,12 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
         return b"decoded-" + data
 
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
         staticmethod(fake_decompress),
     )
     logger = MagicMock()
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.LogManager.get", lambda: logger
+        "module.Data.Translation.TranslationItemService.LogManager.get", lambda: logger
     )
 
     items = service.get_items_for_translation(Config(), Base.TranslationMode.RESET)
@@ -126,10 +126,10 @@ def test_get_items_for_translation_reset_skips_missing_asset_bytes(
             return [Item(src=f"{rel_path}:{content.decode()}")]
 
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.FileManager", FakeFileManager
+        "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
     monkeypatch.setattr(
-        "module.Data.TranslationItemService.ZstdCodec.decompress",
+        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
         staticmethod(lambda data: b"decoded-" + data),
     )
 

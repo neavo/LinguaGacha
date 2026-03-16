@@ -16,8 +16,8 @@ from model.Model import ThinkingLevel
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
-from module.Engine.TaskRequesterErrors import RequestCancelledError
-from module.Engine.TaskRequesterErrors import StreamDegradationError
+from module.Engine.TaskRequestErrors import RequestCancelledError
+from module.Engine.TaskRequestErrors import StreamDegradationError
 from module.Engine.TaskRequesterStream import StreamConsumer
 from module.Engine.TaskRequesterStream import StreamControl
 from module.Engine.TaskRequesterStream import StreamSession
@@ -95,7 +95,6 @@ class TaskRequester(Base):
     ANTHROPIC_AUTO_MAX_TOKENS_MIN: int = 8192
 
     def __init__(self, config: Config, model: dict) -> None:
-
         super().__init__()
         self.config = config
         self.model = model
@@ -159,7 +158,6 @@ class TaskRequester(Base):
         return max(self.ANTHROPIC_AUTO_MAX_TOKENS_MIN, self.input_token_threshold)
 
     def get_sdk_timeout_seconds(self) -> int:
-
         # 同步模式下无法像 asyncio 那样快速取消阻塞拉取，因此依赖 SDK 超时来兜底退出。
         hard_timeout_s = max(1, int(self.config.request_timeout))
         return hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
@@ -799,7 +797,9 @@ class TaskRequester(Base):
                     thinking_level=types.ThinkingLevel.HIGH,
                     include_thoughts=True,
                 )
-        elif any(v.search(self.model_id) is not None for v in __class__.RE_Gemini_3_1_PRO):
+        elif any(
+            v.search(self.model_id) is not None for v in __class__.RE_Gemini_3_1_PRO
+        ):
             if (
                 self.thinking_level == ThinkingLevel.OFF
                 or self.thinking_level == ThinkingLevel.LOW
