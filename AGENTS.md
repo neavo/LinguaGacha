@@ -70,48 +70,54 @@
 - 优先使用标准库内置方法，仅在标准库无法满足业务需求时允许自行实现或使用第三方库
 
 ## 5. 核心模块说明
-### 5.1 事件系统 `base/Base.py`
-应用通过 `EventManager` 实现组件解耦：
-```python
-# 发送事件
-self.emit(Base.Event.TRANSLATION_DONE, {"result": "success"})
-# 订阅事件
-self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
-```
+### 5.1 应用入口 `app.py`
+- 先看这里理解应用怎么启动、怎么在 GUI / CLI 之间分流，以及退出时怎么清理工程状态
 
-### 5.2 存储系统 `module/Data`
-- **DataManager**: 数据单例入口，负责 `load_project` / `unload_project` / `open_db` / `close_db`
-- **ProjectSession**: 会话状态的单一来源，禁止跨模块共享可变对象引用
-- **LGDatabase**: `.lg` 的 SQLite 访问类（schema + SQL + 序列化）
-- **批量写入**: 统一走 `DataManager.update_batch(…)`
+### 5.2 基础设施 `base`
+- `Base.py` 看事件、状态和基础能力
+- `EventManager.py` 看事件怎么传
+- `LogManager.py` 看日志怎么记
+- `CLIManager.py` / `VersionManager.py` 看命令行和更新相关入口
 
-### 5.3 文件处理 `module/File`
-- **FileManager**: 统一的文件读写入口
+### 5.3 前端层 `frontend`
+- `AppFluentWindow.py` 是总导航入口
+- 具体功能页按目录找：`Project`、`Model`、`Translation`、`Analysis`、`Proofreading`、`Workbench`、`Quality`、`Setting`、`Extra`
+- 看页面逻辑时，顺手确认工程加载态和引擎忙碌态会不会影响按钮、跳转和只读状态
 
-### 5.4 配置系统 `module/Config.py`
-- 应用配置的单一来源，通过 `Config.get()` 获取
+### 5.4 数据层 `module/Data`
+- 外部只认 `DataManager`
+- 读到 `DataManager` 后，再按领域继续找 `Project / Quality / Analysis / Translation`
+- 如果问题涉及缓存、会话状态或 SQL，再往 `Core / ProjectSession / LGDatabase` 深挖
+
+### 5.5 任务引擎 `module/Engine`
+- 先看 `Engine.py`，再按任务类型进 `APITest / Analysis / Translation`
+- 看到调度、限流、请求发送、生命周期问题时，再看 `Task*` 系列模块
+
+### 5.6 文件层 `module/File`
+- `FileManager.py` 是统一读写入口
+- 具体格式支持到对应实现里找
+- 工程内文件增删改优先看 `DataManager` 和 `ProjectFileService`，不要直接绕开数据层
+
+### 5.7 配置与本地化 `module/Config.py` / `module/Localizer`
+- `Config` 是配置单一来源
+- `Localizer` 是界面文案单一入口
+- 只要改了用户可见文本，就同步检查 `LocalizerZH.py` 和 `LocalizerEN.py`
 
 ## 6. 项目结构
 ```
-app.py              # 应用入口
-base/               # 核心基类、事件、日志管理
-  Base.py           # 事件枚举、状态枚举、基类方法
-  EventManager.py   # 事件总线实现
-  LogManager.py     # 日志管理
-frontend/           # UI 页面实现
-  AppFluentWindow.py
-  Translation/      # 翻译相关页面
-  Setting/          # 设置相关页面
-module/             # 业务模块
-  Config.py         # 配置管理
-  Data/             # 数据存储
-  Engine/           # 翻译引擎
-  File/             # 文件处理
-  Localizer/        # 多语言
-tests/              # 自动化测试
-widget/             # 自定义控件
-resource/           # 静态资源
-  preset/           # 内置翻译提示词、术语表等预设
+app.py                 # 应用入口
+base/                  # 事件、日志、版本、CLI 等基础设施
+frontend/              # 各页面 UI
+  Project / Model / Translation / Analysis / Proofreading
+  Workbench / Quality / Setting / Extra
+module/                # 业务主逻辑
+  Data / Engine / File / Localizer
+  Filter / Fixer / QualityRule / Response / Text / Utils
+model/                 # 数据模型
+widget/                # 通用控件
+resource/              # 图标、预设、提示词模板、更新脚本
+buildtools/            # 构建和辅助脚本
+tests/                 # 自动化测试
 ```
 
 ## 7. 工作流程
@@ -122,5 +128,5 @@ resource/           # 静态资源
 5. **测试验证**: 运行 `uv run pytest` 验证自动化测试，GUI 逻辑列出最小手动测试路径
 6. **格式与检查**（仅对有业务变更的文件）：
    - 使用 Ruff 检查和格式化代码
-   - 检查与修正函数、变量的命名规范
-   - 清理冗余的空行、代码、注释、本地化字段等
+   - 检查与修正函数、变量、常量命名
+   - 清理冗余空行、死代码、无效注释与未使用的本地化字段
