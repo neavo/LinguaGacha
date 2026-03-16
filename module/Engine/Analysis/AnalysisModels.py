@@ -13,7 +13,8 @@ class AnalysisItemContext:
 
     item_id: int
     file_path: str
-    source_text: str
+    src_text: str
+    first_name_src: str | None = None
     previous_status: Base.ProjectStatus | None = None
 
 
@@ -31,8 +32,8 @@ class AnalysisTaskContext:
         return len(self.items)
 
     @property
-    def source_texts(self) -> tuple[str, ...]:
-        return tuple(item.source_text for item in self.items)
+    def src_texts(self) -> tuple[str, ...]:
+        return tuple(item.src_text for item in self.items)
 
 
 # 任务结果单独建模后，调度层就只需要关心“成了没、停了没、提交什么”。

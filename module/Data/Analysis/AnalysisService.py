@@ -14,7 +14,7 @@ from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Storage.LGDatabase import LGDatabase
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.QualityRule.AnalysisGlossaryImportService import (
     AnalysisGlossaryImportService,
 )
@@ -61,22 +61,19 @@ class AnalysisService:
         )
 
     @staticmethod
-    def build_analysis_source_text(item: Item) -> str:
-        """统一生成分析输入文本。"""
-
-        return AnalysisTextPolicy.build_source_text(item)
-
-    @staticmethod
     def is_analysis_control_code_text(text: str) -> bool:
         """分析术语里只有纯控制码需要特殊放行。"""
 
-        return AnalysisTextPolicy.is_control_code_text(text)
+        return AnalysisFakeNameInjector.is_control_code_text(str(text).strip())
 
     @classmethod
     def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
         """纯控制码自映射代表占位符本体，不走普通自映射过滤。"""
 
-        return AnalysisTextPolicy.is_control_code_self_mapping(src, dst)
+        return AnalysisFakeNameInjector.is_control_code_self_mapping(
+            str(src).strip(),
+            str(dst).strip(),
+        )
 
     def get_analysis_extras(self) -> dict[str, Any]:
         extras = self.meta_service.get_meta("analysis_extras", {})

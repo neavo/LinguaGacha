@@ -323,12 +323,12 @@ def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:
 
 def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
     items = [
-        AnalysisItemContext(item_id=1, file_path="a.txt", source_text="a1"),
-        AnalysisItemContext(item_id=2, file_path="a.txt", source_text="a2"),
+        AnalysisItemContext(item_id=1, file_path="a.txt", src_text="a1"),
+        AnalysisItemContext(item_id=2, file_path="a.txt", src_text="a2"),
         AnalysisItemContext(
             item_id=3,
             file_path="b.txt",
-            source_text="b1",
+            src_text="b1",
             previous_status=Base.ProjectStatus.ERROR,
         ),
     ]

@@ -6,7 +6,6 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
-from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
@@ -47,7 +46,7 @@ def build_context(
         AnalysisItemContext(
             item_id=item_id,
             file_path=file_path,
-            source_text=f"src-{item_id}",
+            src_text=f"src-{item_id}",
         )
         for item_id in item_ids
     )
@@ -326,7 +325,7 @@ def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
-                source_text="Alice, Bob",
+                src_text="Alice, Bob",
             ),
         ),
     )
@@ -804,7 +803,7 @@ def build_single_item_context(source_text: str) -> AnalysisTaskContext:
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
-                source_text=source_text,
+                src_text=source_text,
             ),
         ),
     )
@@ -922,7 +921,29 @@ def test_execute_task_request_keeps_normal_terms_when_source_contains_control_co
     ]
 
 
-def test_build_analysis_source_text_keeps_original_source_text_unchanged() -> None:
-    item = Item(id=1, src=r"正文\n[7]", name_src="角色名")
+def test_build_prompt_source_texts_uses_translation_name_prefix() -> None:
+    pipeline = build_analysis_pipeline()
+    items = (
+        AnalysisItemContext(
+            item_id=1,
+            file_path="story.txt",
+            src_text=r"正文\n[7]",
+            first_name_src="角色名",
+        ),
+    )
 
-    assert DataManager.build_analysis_source_text(item) == "角色名\n正文\\n[7]"
+    assert pipeline.build_prompt_source_texts(items) == [r"【角色名】正文\n[7]"]
+
+
+def test_build_prompt_source_texts_skips_empty_source_even_when_name_exists() -> None:
+    pipeline = build_analysis_pipeline()
+    items = (
+        AnalysisItemContext(
+            item_id=1,
+            file_path="story.txt",
+            src_text="",
+            first_name_src="角色名",
+        ),
+    )
+
+    assert pipeline.build_prompt_source_texts(items) == []

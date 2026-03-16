@@ -3,7 +3,6 @@ from types import SimpleNamespace
 import pytest
 
 from base.Base import Base
-from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 
@@ -93,7 +92,7 @@ class FakeDataManager:
         return dict(self.analysis_extras)
 
     def get_analysis_status_summary(self) -> dict[str, object]:
-        total_line = len(self.items)
+        total_line = sum(1 for item in self.items if item.get_src().strip() != "")
         processed_line = 0
         error_line = 0
 
@@ -118,8 +117,7 @@ class FakeDataManager:
             if not isinstance(item_id, int):
                 continue
 
-            source_text = DataManager.build_analysis_source_text(item)
-            if source_text == "":
+            if item.get_src().strip() == "":
                 continue
 
             checkpoint = self.analysis_item_checkpoints.get(item_id)

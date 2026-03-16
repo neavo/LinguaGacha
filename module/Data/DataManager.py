@@ -28,7 +28,7 @@ from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Localizer.Localizer import Localizer
 
 if TYPE_CHECKING:
@@ -524,16 +524,15 @@ class DataManager(Base):
         return AnalysisService.is_skipped_analysis_status(status)
 
     @staticmethod
-    def build_analysis_source_text(item: Item) -> str:
-        return AnalysisTextPolicy.build_source_text(item)
-
-    @staticmethod
     def is_analysis_control_code_text(text: str) -> bool:
-        return AnalysisTextPolicy.is_control_code_text(text)
+        return AnalysisFakeNameInjector.is_control_code_text(str(text).strip())
 
     @classmethod
     def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
-        return AnalysisTextPolicy.is_control_code_self_mapping(src, dst)
+        return AnalysisFakeNameInjector.is_control_code_self_mapping(
+            str(src).strip(),
+            str(dst).strip(),
+        )
 
     def get_analysis_extras(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_extras()

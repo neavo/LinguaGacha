@@ -4,7 +4,7 @@ from typing import Any
 
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
@@ -101,7 +101,7 @@ class AnalysisGlossaryImportService:
             if not preview_entry.is_new:
                 continue
 
-            if AnalysisTextPolicy.is_control_code_self_mapping(
+            if AnalysisFakeNameInjector.is_control_code_self_mapping(
                 str(preview_entry.entry.get("src", "")).strip(),
                 str(preview_entry.entry.get("dst", "")).strip(),
             ):

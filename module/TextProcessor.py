@@ -297,13 +297,22 @@ class TextProcessor(Base):
         return dst
 
     # 注入姓名
-    def inject_name(self, srcs: list[str], item: Item | None) -> list[str]:
-        if item is None:
+    @classmethod
+    def inject_name(
+        cls, srcs: list[str], source: Item | str | None
+    ) -> list[str]:
+        """统一兼容 Item 和首个姓名文本两种输入，避免外部维护两套入口。"""
+        if source is None:
             return srcs
 
-        name: str | None = item.get_first_name_src()
-        if name is not None and len(srcs) > 0:
-            srcs[0] = f"【{name}】{srcs[0]}"
+        first_name_src: str | None = None
+        if isinstance(source, Item):
+            first_name_src = source.get_first_name_src()
+        elif isinstance(source, str):
+            first_name_src = source
+
+        if first_name_src is not None and len(srcs) > 0:
+            srcs[0] = f"【{first_name_src}】{srcs[0]}"
 
         return srcs
 

@@ -25,7 +25,7 @@ def build_context(file_path: str) -> AnalysisTaskContext:
             AnalysisItemContext(
                 item_id=1,
                 file_path=file_path,
-                source_text="src-1",
+                src_text="src-1",
             ),
         ),
     )

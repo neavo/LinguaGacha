@@ -4,25 +4,25 @@ from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 
-def test_analysis_task_context_exposes_item_count_and_source_texts() -> None:
+def test_analysis_task_context_exposes_item_count_and_src_texts() -> None:
     context = AnalysisTaskContext(
         file_path="story.txt",
         items=(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
-                source_text="A",
+                src_text="A",
             ),
             AnalysisItemContext(
                 item_id=2,
                 file_path="story.txt",
-                source_text="B",
+                src_text="B",
             ),
         ),
     )
 
     assert context.item_count == 2
-    assert context.source_texts == ("A", "B")
+    assert context.src_texts == ("A", "B")
     assert context.retry_count == 0
 
 

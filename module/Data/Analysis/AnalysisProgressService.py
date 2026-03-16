@@ -5,7 +5,6 @@ from typing import Any
 
 from base.Base import Base
 from model.Item import Item
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 
@@ -185,8 +184,7 @@ class AnalysisProgressService:
             if not isinstance(item_id, int):
                 continue
 
-            source_text = AnalysisTextPolicy.build_source_text(item)
-            if source_text == "":
+            if item.get_src().strip() == "":
                 continue
 
             total_line += 1
@@ -255,8 +253,7 @@ class AnalysisProgressService:
             if not isinstance(item_id, int):
                 continue
 
-            source_text = AnalysisTextPolicy.build_source_text(item)
-            if source_text == "":
+            if item.get_src().strip() == "":
                 continue
 
             checkpoint = checkpoints.get(item_id)

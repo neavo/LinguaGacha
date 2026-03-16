@@ -202,7 +202,7 @@ class TaskScheduler(Base):
         seed_items = [
             Item(
                 id=item.item_id,
-                src=item.source_text,
+                src=item.src_text,
                 file_path=item.file_path,
                 status=Base.ProjectStatus.NONE,
             )

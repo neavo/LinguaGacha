@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
+from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Utils.JSONTool import JSONTool
 
 
@@ -310,9 +310,11 @@ class AnalysisCandidateService:
         dst = self.pick_candidate_winner(entry.get("dst_votes", {}))
         info = self.pick_candidate_winner(entry.get("info_votes", {}))
         normalized_info = info.strip().lower()
-        is_control_code_self_mapping = AnalysisTextPolicy.is_control_code_self_mapping(
-            src,
-            dst,
+        is_control_code_self_mapping = (
+            AnalysisFakeNameInjector.is_control_code_self_mapping(
+                str(src).strip(),
+                str(dst).strip(),
+            )
         )
 
         if src == "" or dst == "" or normalized_info == "":

@@ -12,7 +12,6 @@ from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Engine.Analysis.AnalysisTextPolicy import AnalysisTextPolicy
 from module.QualityRule.AnalysisGlossaryImportService import (
     AnalysisGlossaryImportService,
 )
@@ -215,17 +214,6 @@ def test_import_analysis_candidates_returns_zero_when_no_candidate() -> None:
     assert service.import_analysis_candidates() == 0
 
 
-def test_analysis_text_policy_builds_source_text() -> None:
-    item = SimpleNamespace(
-        get_src=lambda: "hello",
-        get_name_src=lambda: ["Alice", "Alice", ""],
-    )
-
-    source_text = AnalysisTextPolicy.build_source_text(item)
-
-    assert source_text == "Alice\nhello"
-
-
 def test_analysis_candidate_service_builds_glossary_entry_from_candidate() -> None:
     candidate_service = AnalysisCandidateService()
 
@@ -252,9 +240,10 @@ def test_analysis_progress_service_collects_pending_items() -> None:
     done_item = Item(id=1, src="done")
     failed_item = Item(id=2, src="failed")
     pending_item = Item(id=3, src="pending")
+    name_only_item = Item(id=4, src="", name_src="Alice")
 
     pending_items = progress_service.collect_pending_items(
-        [done_item, failed_item, pending_item],
+        [done_item, failed_item, pending_item, name_only_item],
         {
             1: {
                 "status": Base.ProjectStatus.PROCESSED,

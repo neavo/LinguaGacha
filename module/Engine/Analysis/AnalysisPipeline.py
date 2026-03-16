@@ -37,6 +37,7 @@ from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 from module.Response.ResponseCleaner import ResponseCleaner
+from module.TextProcessor import TextProcessor
 from module.Text.TextHelper import TextHelper
 
 if TYPE_CHECKING:
@@ -83,11 +84,7 @@ class AnalysisPipeline:
         """分析只处理真正可能产出候选术语的条目。"""
         if self.is_skipped_analysis_status(item.get_status()):
             return False
-        return self.build_analysis_source_text(item) != ""
-
-    def build_analysis_source_text(self, item: Item) -> str:
-        """统一分析输入口径，保证姓名和正文在所有入口下拼法一致。"""
-        return DataManager.build_analysis_source_text(item)
+        return item.get_src().strip() != ""
 
     def get_input_token_threshold(self) -> int:
         """切块阈值跟当前模型能力走，避免任务计划和请求能力脱节。"""
@@ -142,8 +139,8 @@ class AnalysisPipeline:
         if not isinstance(item_id, int):
             return None
 
-        source_text = self.build_analysis_source_text(item)
-        if source_text == "":
+        src_text = item.get_src().strip()
+        if src_text == "":
             return None
 
         previous_status: Base.ProjectStatus | None = None
@@ -157,7 +154,8 @@ class AnalysisPipeline:
         return AnalysisItemContext(
             item_id=item_id,
             file_path=item.get_file_path(),
-            source_text=source_text,
+            src_text=src_text,
+            first_name_src=item.get_first_name_src(),
             previous_status=previous_status,
         )
 
@@ -526,11 +524,11 @@ class AnalysisPipeline:
         if self.analysis.model is None or self.analysis.quality_snapshot is None:
             return AnalysisTaskResult(context=context, success=False, stopped=False)
 
-        srcs = [text for text in context.source_texts if text.strip() != ""]
-        if not srcs:
+        prompt_srcs = self.build_prompt_source_texts(context.items)
+        if not prompt_srcs:
             return AnalysisTaskResult(context=context, success=True, stopped=False)
 
-        request_srcs, fake_name_injector = self.build_request_source_texts(srcs)
+        request_srcs, fake_name_injector = self.build_request_source_texts(prompt_srcs)
         prompt_builder = PromptBuilder(
             self.analysis.config,
             quality_snapshot=self.analysis.quality_snapshot,
@@ -560,7 +558,7 @@ class AnalysisPipeline:
                 start=request_response.start_time,
                 pt=request_response.input_tokens,
                 ct=request_response.output_tokens,
-                srcs=srcs,
+                srcs=prompt_srcs,
                 glossary_entries=[],
                 response_think=request_response.normalized_think,
                 response_result=request_response.cleaned_response_result,
@@ -598,7 +596,7 @@ class AnalysisPipeline:
                 start=request_response.start_time,
                 pt=request_response.input_tokens,
                 ct=request_response.output_tokens,
-                srcs=srcs,
+                srcs=prompt_srcs,
                 glossary_entries=[],
                 response_think=request_response.normalized_think,
                 response_result=request_response.cleaned_response_result,
@@ -618,7 +616,7 @@ class AnalysisPipeline:
             start=request_response.start_time,
             pt=request_response.input_tokens,
             ct=request_response.output_tokens,
-            srcs=srcs,
+            srcs=prompt_srcs,
             glossary_entries=normalized_entries,
             response_think=request_response.normalized_think,
             response_result=request_response.cleaned_response_result,
@@ -635,6 +633,19 @@ class AnalysisPipeline:
             output_tokens=request_response.output_tokens,
             glossary_entries=tuple(normalized_entries),
         )
+
+    def build_prompt_source_texts(
+        self, items: tuple[AnalysisItemContext, ...]
+    ) -> list[str]:
+        """分析请求前按翻译同口径注入说话人前缀，但不污染上下文快照。"""
+        prompt_srcs: list[str] = []
+        for item in items:
+            src_text = item.src_text.strip()
+            if src_text == "":
+                continue
+
+            prompt_srcs.extend(TextProcessor.inject_name([src_text], item.first_name_src))
+        return prompt_srcs
 
     def build_request_source_texts(
         self, srcs: list[str]

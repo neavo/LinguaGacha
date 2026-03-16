@@ -571,6 +571,11 @@ class TestTextProcessor:
 
         assert processor.inject_name(["hello"], None) == ["hello"]
 
+    def test_inject_name_accepts_first_name_text(self) -> None:
+        processor = TextProcessor(Config(), None)
+
+        assert processor.inject_name(["hello"], "Alice") == ["【Alice】hello"]
+
     def test_extract_name_without_match_keeps_source_and_destination(self) -> None:
         item = Item(name_src="Alice")
         processor = TextProcessor(Config(), item)

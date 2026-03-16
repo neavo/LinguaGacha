@@ -462,9 +462,6 @@ class Analysis(Base):
     def should_include_item(self, item: Item) -> bool:
         return self.pipeline.should_include_item(item)
 
-    def build_analysis_source_text(self, item: Item) -> str:
-        return self.pipeline.build_analysis_source_text(item)
-
     def get_input_token_threshold(self) -> int:
         return self.pipeline.get_input_token_threshold()
 
