@@ -1196,6 +1196,8 @@ def test_start_emits_warning_when_items_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
+    translation.finalize_translation_run = MagicMock()  # type: ignore[method-assign]
+    translation.cleanup_translation_run = MagicMock()  # type: ignore[method-assign]
     config = Config()
     config.get_active_model = lambda: {  # type: ignore[method-assign]
         "api_format": Base.APIFormat.OPENAI,
@@ -1224,6 +1226,14 @@ def test_start_emits_warning_when_items_are_empty(
             "message": "no_items",
         },
     )
+    assert not any(
+        event == Base.Event.TRANSLATION_TASK
+        and payload.get("sub_event") == Base.SubEvent.DONE
+        for event, payload in emitted_events(translation)
+    )
+    translation.finalize_translation_run.assert_not_called()
+    translation.cleanup_translation_run.assert_called_once_with()
+    dm.set_project_status.assert_not_called()
 
 
 def test_start_success_flow_triggers_auto_export(

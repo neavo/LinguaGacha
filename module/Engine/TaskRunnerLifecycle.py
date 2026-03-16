@@ -40,6 +40,7 @@ class TaskRunnerHooks:
     on_after_execute: Callable[[str], None]
     terminal_toast: Callable[[str], None]
     finalize: Callable[[str], None]
+    cleanup: Callable[[], None]
     after_done: Callable[[str], None]
 
 
@@ -322,6 +323,9 @@ class TaskRunnerLifecycle:
 
         flow_final_status = "FAILED"
         has_active_snapshot = False
+        should_finalize = True
+        should_emit_done = True
+        should_run_after_done = True
 
         try:
             if not hooks.prepare():
@@ -329,6 +333,10 @@ class TaskRunnerLifecycle:
 
             plan = hooks.build_plan()
             if plan.total_line == 0:
+                # “没有可处理条目”只是空跑，不应触发领域收尾或伪造 DONE 事件。
+                should_finalize = False
+                should_emit_done = False
+                should_run_after_done = False
                 cls.emit_no_items_warning(owner)
                 return
 
@@ -362,11 +370,15 @@ class TaskRunnerLifecycle:
             if has_active_snapshot:
                 hooks.persist_progress(save_state=True)
             hooks.clear_task_limiter()
-            hooks.finalize(flow_final_status)
+            if should_finalize:
+                hooks.finalize(flow_final_status)
+            hooks.cleanup()
             Engine.get().set_status(Base.TaskStatus.IDLE)
-            cls.emit_task_done(
-                owner,
-                task_event=task_event,
-                final_status=flow_final_status,
-            )
-            hooks.after_done(flow_final_status)
+            if should_emit_done:
+                cls.emit_task_done(
+                    owner,
+                    task_event=task_event,
+                    final_status=flow_final_status,
+                )
+            if should_run_after_done:
+                hooks.after_done(flow_final_status)

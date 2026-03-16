@@ -272,6 +272,40 @@ def test_generate_item_chunks_splits_when_file_changes() -> None:
     assert preceding_chunks[1] == []
 
 
+def test_generate_item_chunks_iter_uses_gap_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = [create_item("a1"), create_item("a2")]
+    observed: list[list[tuple[int, Item]]] = []
+
+    def fake_gap_iter(
+        iterable: list[tuple[int, Item]] | Any,
+        *,
+        sleep_seconds: float | None = None,
+    ) -> Any:
+        del sleep_seconds
+        captured = list(iterable)
+        observed.append(captured)
+        return iter(captured)
+
+    monkeypatch.setattr(
+        task_scheduler_module.GapTool,
+        "iter",
+        staticmethod(fake_gap_iter),
+    )
+
+    chunks = list(
+        TaskScheduler.generate_item_chunks_iter(
+            items=items,
+            input_token_threshold=1000,
+            preceding_lines_threshold=0,
+        )
+    )
+
+    assert observed == [[(0, items[0]), (1, items[1])]]
+    assert [chunk for chunk, _preceding in chunks] == [items]
+
+
 def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:
     items = [
         create_item("\n".join([f"line-{i}" for i in range(8)])),

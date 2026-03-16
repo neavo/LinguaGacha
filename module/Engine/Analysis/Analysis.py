@@ -426,7 +426,8 @@ class Analysis(Base):
                 execute=execute,
                 on_after_execute=self.log_analysis_finish,
                 terminal_toast=self.emit_analysis_terminal_toast,
-                finalize=lambda final_status: dm.close_db(),
+                finalize=lambda final_status: None,
+                cleanup=dm.close_db,
                 after_done=lambda final_status: self.after_analysis_done(
                     dm,
                     final_status,

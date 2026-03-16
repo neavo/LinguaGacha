@@ -9,6 +9,7 @@ from module.Config import Config
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Translation.TranslationTask import TranslationTask
+from module.Utils.GapTool import GapTool
 
 if TYPE_CHECKING:
     from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
@@ -80,7 +81,8 @@ class TaskScheduler(Base):
         token_length = 0
         chunk: list[Item] = []
 
-        for i, item in enumerate(items):
+        # 初次大批量切片时定期让出 GIL，避免后台线程把 UI 卡住。
+        for i, item in GapTool.iter(enumerate(items)):
             # 初次切片只调度待处理条目，避免不同任务线在入口阶段口径漂移。
             if item.get_status() != Base.ProjectStatus.NONE:
                 skip += 1

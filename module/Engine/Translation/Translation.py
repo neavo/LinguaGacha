@@ -510,6 +510,7 @@ class Translation(Base):
                 on_after_execute=self.log_translation_finish,
                 terminal_toast=self.emit_translation_terminal_toast,
                 finalize=self.finalize_translation_run,
+                cleanup=self.cleanup_translation_run,
                 after_done=lambda final_status: None,
             ),
         )
@@ -579,7 +580,6 @@ class Translation(Base):
             else Base.ProjectStatus.PROCESSING
         )
         self.save_translation_state(final_project_status)
-        self.close_db_connection()
 
         if (
             self.items_cache
@@ -591,9 +591,11 @@ class Translation(Base):
                 apply_mtool_postprocess=False,
             )
 
-        self.items_cache = None
+    def cleanup_translation_run(self) -> None:
+        """无论任务是否真正落地，都要把翻译期资源安全回收。"""
 
-    # ========== 辅助方法 ==========
+        self.close_db_connection()
+        self.items_cache = None
 
     def get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
         """按状态统计任务内存快照中的条目数量。"""
