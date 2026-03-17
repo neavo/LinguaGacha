@@ -243,6 +243,7 @@ AnalysisPage
 - 规则归一化
 - 各种 enable 开关与 prompt/meta 收口
 - 规则统计输入快照
+- `QualityRuleGlossaryImportService`：分析候选导入术语前的预演与过滤
 
 ### `Analysis`
 放分析业务，不承担项目生命周期管理。
@@ -251,7 +252,6 @@ AnalysisPage
 - `AnalysisRepository`：分析表读写、事务内 meta 同步
 - `AnalysisCandidateService`：observation 去重、aggregate 合并、候选转术语
 - `AnalysisProgressService`：checkpoint 规整、覆盖率汇总、待分析项筛选
-- 分析候选导入术语前的预演与过滤由 `module/QualityRule/AnalysisGlossaryImportService.py` 负责
 
 ### `Translation`
 只管“翻译前把什么条目交给翻译器”和“翻译失败条目的重置”。

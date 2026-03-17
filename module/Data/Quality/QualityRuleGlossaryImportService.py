@@ -9,7 +9,7 @@ from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
-class AnalysisGlossaryImportService:
+class QualityRuleGlossaryImportService:
     """负责把分析候选转成可导入术语的业务决策。"""
 
     def __init__(self, quality_rule_service: Any) -> None:

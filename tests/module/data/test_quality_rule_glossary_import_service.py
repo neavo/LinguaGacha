@@ -3,8 +3,8 @@ from typing import Any
 
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
-from module.QualityRule.AnalysisGlossaryImportService import (
-    AnalysisGlossaryImportService,
+from module.Data.Quality.QualityRuleGlossaryImportService import (
+    QualityRuleGlossaryImportService,
 )
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
@@ -15,12 +15,12 @@ def build_service(
     glossary: list[dict[str, Any]] | None = None,
     src_texts: tuple[str, ...] = (),
     dst_texts: tuple[str, ...] = (),
-) -> AnalysisGlossaryImportService:
+) -> QualityRuleGlossaryImportService:
     quality_rule_service = SimpleNamespace(
         get_glossary=lambda: [dict(entry) for entry in glossary or []],
         collect_rule_statistics_texts=lambda: (src_texts, dst_texts),
     )
-    return AnalysisGlossaryImportService(quality_rule_service)
+    return QualityRuleGlossaryImportService(quality_rule_service)
 
 
 def build_preview(

@@ -12,12 +12,12 @@ from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Quality.QualityRuleGlossaryImportService import (
+    QualityRuleGlossaryImportService,
+)
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
-from module.QualityRule.AnalysisGlossaryImportService import (
-    AnalysisGlossaryImportService,
-)
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -45,7 +45,7 @@ class AnalysisService:
             self.candidate_service,
             self.progress_service,
         )
-        self.glossary_import_service = AnalysisGlossaryImportService(
+        self.glossary_import_service = QualityRuleGlossaryImportService(
             quality_rule_service
         )
 
