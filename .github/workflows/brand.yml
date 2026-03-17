@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "要应用品牌层并回推的分支"
+        description: "目标分支/标签/提交"
         required: true
         default: "main"
 

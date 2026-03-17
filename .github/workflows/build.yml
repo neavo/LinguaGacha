@@ -4,14 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "要构建的 ref 或 tag"
+        description: "目标分支/标签/提交"
         required: true
         default: "main"
       create_release:
-        description: "是否创建 draft release"
+        description: "自动创建发布草稿"
         required: true
-        default: false
-        type: boolean
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 jobs:
   prepare:
@@ -309,7 +312,7 @@ jobs:
 
   create-release:
     needs: [prepare, build-windows, build-macos, build-linux]
-    if: ${{ inputs.create_release }}
+    if: ${{ inputs.create_release == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

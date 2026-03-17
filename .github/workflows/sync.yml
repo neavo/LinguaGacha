@@ -4,22 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "要同步到 KG 的 LG ref 或 tag"
+        description: "源分支/标签/提交"
         required: true
         default: "main"
       target_repo:
-        description: "KG 目标仓库"
+        description: "目标仓库"
         required: true
         default: "neavo/KeywordGacha"
       target_branch:
-        description: "KG 目标分支"
+        description: "目标分支/标签/提交"
         required: true
         default: "main"
       trigger_brand:
-        description: "同步成功后是否自动触发 KG 的 brand 工作流"
+        description: "是否自动触发后续工作流"
         required: true
-        default: false
-        type: boolean
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 jobs:
   sync-kg-main:
@@ -56,7 +59,7 @@ jobs:
           fi
 
       - name: Trigger KG Brand Workflow
-        if: ${{ inputs.trigger_brand }}
+        if: ${{ inputs.trigger_brand == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
           TARGET_REPO: ${{ inputs.target_repo }}
