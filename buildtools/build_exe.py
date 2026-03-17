@@ -96,13 +96,10 @@ def build_command(brand_id: str) -> list[str]:
 
 
 def main() -> int:
-    from base.BaseBrand import BaseBrand
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--brand", type=str, default="lg", choices=["lg", "kg"])
     args = parser.parse_args()
 
-    os.environ[BaseBrand.BRAND_ENV_KEY] = args.brand
     backup = patch_opencc_init()
     try:
         PyInstaller.__main__.run(build_command(args.brand))

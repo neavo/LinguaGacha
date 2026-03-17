@@ -39,11 +39,11 @@ QT_LOG_BLACKLIST: tuple[str, ...] = (
 )
 
 
-def parse_startup_args(argv: list[str]) -> tuple[str, list[str]]:
+def parse_startup_args(argv: list[str]) -> tuple[str | None, list[str]]:
     """只解析应用入口自己的启动参数，其余参数继续交给现有 CLI 流程。"""
 
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--brand", type=str, choices=["lg", "kg"], default="lg")
+    parser.add_argument("--brand", type=str, choices=["lg", "kg"], default=None)
     args, remaining_argv = parser.parse_known_args(argv[1:])
     return args.brand, [argv[0], *remaining_argv]
 
@@ -129,8 +129,16 @@ def qt_message_handler(
 
 if __name__ == "__main__":
     brand_id, sys.argv = parse_startup_args(sys.argv)
-    brand = BaseBrand.get(brand_id)
-    os.environ[BaseBrand.BRAND_ENV_KEY] = brand.brand_id
+    app_dir = resolve_app_dir()
+    # 先暴露应用目录，确保启动早期日志也能落到正确位置。
+    os.environ["LINGUAGACHA_APP_DIR"] = app_dir
+    resolved_brand_id = BaseBrand.resolve_runtime_brand_id(
+        brand_id,
+        app_dir,
+        getattr(sys, "frozen", False),
+    )
+    BaseBrand.set_current_brand_id(resolved_brand_id)
+    brand = BaseBrand.get()
 
     # 捕获全局异常
     sys.excepthook = excepthook
@@ -161,7 +169,6 @@ if __name__ == "__main__":
     )
 
     # 设置工作目录
-    app_dir = resolve_app_dir()
     sys.path.append(app_dir)
 
     # 检测只读环境（AppImage, macOS .app bundle）

@@ -48,7 +48,14 @@ jobs:
         id: resolve_brand
         shell: bash
         run: |
-          python ./buildtools/brand.py --brand auto >> "$GITHUB_OUTPUT"
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          repo_name="${repo_name,,}"
+          if [[ "$repo_name" == *"keywordgacha"* ]]; then
+            brand_id="kg"
+          else
+            brand_id="lg"
+          fi
+          python ./buildtools/brand.py --brand "$brand_id" >> "$GITHUB_OUTPUT"
 
   build-windows:
     needs: prepare
@@ -100,6 +107,12 @@ jobs:
           if (!(Test-Path $src)) { throw "Missing $src" }
           New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
           Copy-Item $src $dst -Force
+
+      - name: Write bundled brand file
+        shell: pwsh
+        run: |
+          $brandPath = ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\resource\brand.txt"
+          Set-Content -Path $brandPath -Value "${{ needs.prepare.outputs.brand_id }}" -Encoding ascii
 
       - name: Compress Archive
         shell: pwsh
@@ -165,6 +178,10 @@ jobs:
         run: |
           cp version.txt ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
           cp -r resource ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
+
+      - name: Write bundled brand file
+        run: |
+          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/resource/brand.txt
 
       - name: Install create-dmg
         run: |
@@ -237,6 +254,10 @@ jobs:
         run: |
           cp version.txt ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
           cp -r resource ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
+
+      - name: Write bundled brand file
+        run: |
+          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.dist_dir_name }}/resource/brand.txt
 
       - name: Create AppImage
         env:

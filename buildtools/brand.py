@@ -32,17 +32,11 @@ def build_output_lines(brand_id: str) -> list[str]:
 
 
 def main() -> int:
-    from base.BaseBrand import BaseBrand
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--brand", type=str, default="auto")
+    parser.add_argument("--brand", type=str, required=True, choices=["lg", "kg"])
     args = parser.parse_args()
 
-    brand_id = args.brand
-    if brand_id == "auto":
-        brand_id = BaseBrand.infer_brand_id()
-
-    for line in build_output_lines(brand_id):
+    for line in build_output_lines(args.brand):
         print(line)
 
     return 0

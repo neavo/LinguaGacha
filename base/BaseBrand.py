@@ -1,9 +1,9 @@
-import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 from typing import Self
+
+from base.LogManager import LogManager
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,9 @@ class BaseBrand:
     build_names: BrandBuildNames
     enable_app_update: bool = True
 
-    BRAND_ENV_KEY: ClassVar[str] = "LINGUAGACHA_BRAND"
     DEFAULT_BRAND_ID: ClassVar[str] = "lg"
+    CURRENT_BRAND_ID: ClassVar[str | None] = None
+    BUNDLED_BRAND_RELATIVE_PATH: ClassVar[Path] = Path("resource") / "brand.txt"
 
     @classmethod
     def normalize_brand_id(cls, brand_id: str | None) -> str | None:
@@ -71,41 +72,78 @@ class BaseBrand:
         return None
 
     @classmethod
-    def infer_brand_id(cls) -> str:
-        """按环境变量、仓库名和可执行名推断当前品牌。"""
+    def set_current_brand_id(cls, brand_id: str | None) -> None:
+        """把启动阶段已决的品牌写入进程内单一来源。"""
 
-        env_brand_id = cls.normalize_brand_id(os.environ.get(cls.BRAND_ENV_KEY))
-        if env_brand_id is not None:
-            return env_brand_id
+        normalized_brand_id = cls.normalize_brand_id(brand_id)
+        if normalized_brand_id is None:
+            normalized_brand_id = cls.DEFAULT_BRAND_ID
+        cls.CURRENT_BRAND_ID = normalized_brand_id
 
-        runtime_hints: list[str] = []
-        runtime_hints.extend(
-            [
-                str(os.environ.get("GITHUB_REPOSITORY", "")),
-                str(Path(sys.argv[0]).stem),
-                str(Path.cwd().name),
-            ]
-        )
+    @classmethod
+    def get_current_brand_id(cls) -> str:
+        """统一读取当前进程内品牌，未初始化时回退到默认值。"""
 
-        if getattr(sys, "frozen", False):
-            runtime_hints.append(str(Path(sys.executable).stem))
+        if cls.CURRENT_BRAND_ID is None:
+            return cls.DEFAULT_BRAND_ID
+        return cls.CURRENT_BRAND_ID
 
-        for hint in runtime_hints:
-            lowered = hint.lower()
-            if "keywordgacha" in lowered:
-                return "kg"
-            if "linguagacha" in lowered:
-                return "lg"
+    @classmethod
+    def read_bundled_brand_id(cls, app_dir: str) -> str | None:
+        """正式包只认随包分发的品牌文件，避免被目录名或参数误导。"""
 
+        bundled_brand_path = Path(app_dir) / cls.BUNDLED_BRAND_RELATIVE_PATH
+        try:
+            if not bundled_brand_path.is_file():
+                LogManager.get().warning(
+                    f"Bundled brand file missing: {bundled_brand_path}"
+                )
+                return None
+
+            bundled_brand_id = cls.normalize_brand_id(
+                bundled_brand_path.read_text(encoding="utf-8-sig").strip()
+            )
+            if bundled_brand_id is None:
+                LogManager.get().warning(
+                    f"Bundled brand file invalid: {bundled_brand_path}"
+                )
+                return None
+
+            return bundled_brand_id
+        except Exception as e:
+            LogManager.get().warning(
+                f"Failed to read bundled brand file: {bundled_brand_path}",
+                e,
+            )
+            return None
+
+    @classmethod
+    def resolve_runtime_brand_id(
+        cls,
+        explicit_brand_id: str | None,
+        app_dir: str,
+        is_frozen: bool,
+    ) -> str:
+        """启动时只解析一次品牌，保证后续模块读取同一个结果。"""
+
+        normalized_brand_id = cls.normalize_brand_id(explicit_brand_id)
+        if not is_frozen:
+            if normalized_brand_id is not None:
+                return normalized_brand_id
+            return cls.DEFAULT_BRAND_ID
+
+        bundled_brand_id = cls.read_bundled_brand_id(app_dir)
+        if bundled_brand_id is not None:
+            return bundled_brand_id
         return cls.DEFAULT_BRAND_ID
 
     @classmethod
     def get(cls, brand_id: str | None = None) -> Self:
-        """获取当前品牌档案；显式传参优先于运行时推断。"""
+        """获取当前品牌档案；显式传参优先，其余只读进程内已决状态。"""
 
         resolved_brand_id = cls.normalize_brand_id(brand_id)
         if resolved_brand_id is None:
-            resolved_brand_id = cls.infer_brand_id()
+            resolved_brand_id = cls.get_current_brand_id()
         return BRAND_PROFILES[resolved_brand_id]
 
     def is_page_enabled(self, page_name: str) -> bool:
