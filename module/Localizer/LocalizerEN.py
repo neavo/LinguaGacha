@@ -646,19 +646,11 @@ class LocalizerEN(LocalizerZH):
 
     # 译前替换
     pre_translation_replacement_page_head_title: str = "Pre-translation Replacement"
-    pre_translation_replacement_page_head_content: str = (
-        "Before translation, matched parts of the original text will be replaced by specified text, processed in top-down order"
-        "<br>"
-        "For <font color='darkgoldenrod'><b>RPGMaker MV/MZ</b></font> engine games:"
-        "<br>"
-        "• Importing <font color='darkgoldenrod'><b>actors.json</b></font> from <font color='darkgoldenrod'><b>data</b></font> or <font color='darkgoldenrod'><b>www\\data</b></font> in the game directory can improve translation quality"
-        "<br>"
-        "• Special handling is needed for games with custom names. Click the bottom-right button to see <font color='darkgoldenrod'><b>Wiki</b></font> instructions"
-    )
+    pre_translation_replacement_page_head_content: str = "Before translation, matched parts of the original text will be replaced by specified text, processed in top-down order"
 
     # 译后替换
     post_translation_replacement_page_head_title: str = "Post-translation Replacement"
-    post_translation_replacement_page_head_content: str = "After translation is completed, replace the matched parts in the translated text with the specified text, the execution order is from top to bottom"
+    post_translation_replacement_page_head_content: str = "After translation, matched parts of the original text will be replaced by specified text, processed in top-down order"
 
     # 自定义提示词 - 翻译
     translation_prompt_page_head: str = "Custom Translation Prompts (SakuraLLM model not supported)"

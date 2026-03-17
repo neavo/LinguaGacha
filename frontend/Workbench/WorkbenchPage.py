@@ -19,6 +19,7 @@ from qfluentwidgets import MessageBox
 from qfluentwidgets import ScrollArea
 from qfluentwidgets import SimpleCardWidget
 from qfluentwidgets import StrongBodyLabel
+from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -108,8 +109,9 @@ class WorkbenchPage(Base, ScrollArea):
 
         self.table_widget: WorkbenchTableWidget | None = None
         self.command_bar_card: CommandBarCard | None = None
-        self.btn_add_file = None
-        self.btn_export_translation = None
+        self.btn_add_file: CommandButton | None = None
+        self.btn_export_translation: CommandButton | None = None
+        self.btn_close_project: CommandButton | None = None
 
         # 完整快照包含文件列表聚合，可能很重，统一放到后台线程做。
         self.refresh_lock = threading.Lock()
@@ -267,6 +269,14 @@ class WorkbenchPage(Base, ScrollArea):
                 triggered=self.on_export_translation_clicked,
             )
         )
+        self.command_bar_card.add_separator()
+        self.btn_close_project = self.command_bar_card.add_action(
+            Action(
+                BaseIcon.SQUARE_POWER,
+                Localizer.get().app_close_project_btn,
+                triggered=self.on_close_project_clicked,
+            )
+        )
 
     def is_engine_busy(self) -> bool:
         return (
@@ -279,16 +289,29 @@ class WorkbenchPage(Base, ScrollArea):
         busy = self.is_engine_busy()
         file_op_running = DataManager.get().is_file_op_running()
         readonly = (not loaded) or busy or file_op_running
+        can_edit_files = not readonly
+        can_export_translation = loaded and (not file_op_running)
+        can_close_project = loaded and (not busy)
 
         if self.btn_add_file is not None:
-            self.btn_add_file.setEnabled(not readonly)
+            self.btn_add_file.setEnabled(can_edit_files)
 
         # 生成译文不依赖“引擎空闲”，允许翻译过程中导出；但需要工程已加载且不处于文件操作中。
         if self.btn_export_translation is not None:
-            self.btn_export_translation.setEnabled(loaded and (not file_op_running))
+            self.btn_export_translation.setEnabled(can_export_translation)
+
+        # 关闭项目统一走主窗口入口，这里只负责把工作台上的可点状态同步出来。
+        if self.btn_close_project is not None:
+            self.btn_close_project.setEnabled(can_close_project)
 
         if self.table_widget is not None:
             self.table_widget.set_readonly(readonly)
+
+    def on_close_project_clicked(self) -> None:
+        # 关闭工程的真实写入口只保留在主窗口，避免多个页面各自维护一套流程。
+        close_project = getattr(self.window(), "close_current_project", None)
+        if callable(close_project):
+            close_project()
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         del event

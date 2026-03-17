@@ -48,7 +48,6 @@ from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.PromptResourceResolver import PromptResourceResolver
 from widget.ProgressToast import ProgressToast
@@ -65,7 +64,6 @@ ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
 ICON_NAV_ANALYSIS: BaseIcon = BaseIcon.RADAR  # 侧边栏：术语分析任务
 ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
 ICON_NAV_WORKBENCH: BaseIcon = BaseIcon.LAYOUT_DASHBOARD  # 侧边栏：工作台
-ICON_NAV_CLOSE_PROJECT: BaseIcon = BaseIcon.SQUARE_POWER  # 侧边栏：关闭当前工程
 
 ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏：基础设置
 ICON_NAV_EXPERT_SETTINGS: BaseIcon = BaseIcon.GRADUATION_CAP  # 侧边栏：专家设置
@@ -157,33 +155,8 @@ class AppFluentWindow(Base, FluentWindow):
             0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists()
         )
 
-        # 监控运行任务，动态禁用关闭项目按钮
-        self.task_monitor_timer = QTimer(self)
-        self.task_monitor_timer.timeout.connect(self.check_running_tasks)
-        self.task_monitor_timer.start(500)
-
         # 记录用户在未加载工程时的页面跳转意图
         self.pending_target_interface: QWidget | None = None
-
-    def check_running_tasks(self) -> None:
-        """检查是否有后台任务运行，动态更新'关闭项目'按钮状态"""
-        # 如果没有加载项目，按钮本身就是隐藏的（由 update_navigation_status 控制），无需处理
-        if not DataManager.get().is_loaded():
-            return
-
-        btn_widget = self.navigationInterface.widget("close_project_button")
-        if not btn_widget:
-            return
-
-        # 检查是否繁忙：Engine 状态非 IDLE 或 有后台任务线程
-        is_busy = (
-            Engine.get().get_status() != Base.TaskStatus.IDLE
-            or Engine.get().get_running_task_count() > 0
-        )
-
-        # 状态变更时更新
-        if btn_widget.isEnabled() == is_busy:
-            btn_widget.setEnabled(not is_busy)
 
     def switchTo(self, interface: QWidget):
         """切换页面"""
@@ -230,12 +203,6 @@ class AppFluentWindow(Base, FluentWindow):
             widget = self.navigationInterface.widget(key)
             if widget:
                 widget.setEnabled(is_loaded)
-
-        # 设置关闭项目按钮的可见性
-        if self.navigationInterface.widget("close_project_button"):
-            self.navigationInterface.widget("close_project_button").setVisible(
-                is_loaded
-            )
 
     def is_project_dependent(self, interface: QWidget) -> bool:
         """判断页面是否依赖工程"""
@@ -439,25 +406,30 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 关闭当前项目
     def close_current_project(self) -> None:
-        if DataManager.get().is_loaded():
-            # 二次确认
-            box = MessageBox(
-                Localizer.get().warning,
-                Localizer.get().project_msg_close_confirm,
-                self,
-            )
-            box.yesButton.setText(Localizer.get().confirm)
-            box.cancelButton.setText(Localizer.get().cancel)
+        data_manager = DataManager.get()
+        if not data_manager.is_loaded():
+            return
 
-            if box.exec():
-                DataManager.get().unload_project()
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_project_closed_toast,
-                    },
-                )
+        # 二次确认
+        box = MessageBox(
+            Localizer.get().warning,
+            Localizer.get().project_msg_close_confirm,
+            self,
+        )
+        box.yesButton.setText(Localizer.get().confirm)
+        box.cancelButton.setText(Localizer.get().cancel)
+
+        if not box.exec():
+            return
+
+        data_manager.unload_project()
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().app_project_closed_toast,
+            },
+        )
 
     # 打开主页
     def open_project_page(self) -> None:
@@ -678,19 +650,6 @@ class AppFluentWindow(Base, FluentWindow):
             ICON_NAV_WORKBENCH.qicon(),
             Localizer.get().app_workbench_page,
             NavigationItemPosition.SCROLL,
-        )
-
-        # 关闭项目按钮
-        close_project_button = NavigationPushButton(
-            ICON_NAV_CLOSE_PROJECT.qicon(),
-            Localizer.get().app_close_project_btn,
-            False,
-        )
-        self.navigationInterface.addWidget(
-            routeKey="close_project_button",
-            widget=close_project_button,
-            onClick=self.close_current_project,
-            position=NavigationItemPosition.SCROLL,
         )
 
     # 添加设置类页面

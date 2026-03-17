@@ -321,6 +321,7 @@ class AnalysisPage(Base, QWidget):
         self.add_command_bar_action_stop(self.command_bar_card, window)
         self.command_bar_card.add_separator()
         self.add_command_bar_action_reset(self.command_bar_card, window)
+        self.command_bar_card.add_separator()
         self.add_command_bar_action_import(self.command_bar_card)
         self.command_bar_card.add_stretch(1)
 

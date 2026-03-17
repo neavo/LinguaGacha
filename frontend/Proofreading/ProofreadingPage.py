@@ -403,6 +403,7 @@ class ProofreadingPage(Base, QWidget):
         )
         self.btn_replace.setEnabled(False)
 
+        self.command_bar_card.add_separator()
         self.btn_filter = self.command_bar_card.add_action(
             Action(
                 ICON_ACTION_FILTER,
