@@ -9,9 +9,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
-from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -29,16 +29,15 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import qconfig
 
 from base.BaseIcon import BaseIcon
+from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from model.Item import Item
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
-from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
-from widget.StatusTag import StatusTagType
 from widget.StatusTag import StatusTag
-
+from widget.StatusTag import StatusTagType
 
 # ==================== 图标常量 ====================
 
@@ -46,7 +45,7 @@ ICON_FILE_INFO: BaseIcon = BaseIcon.FILE  # 文件信息卡片：提示当前条
 ICON_SAVE_ENTRY: BaseIcon = BaseIcon.SAVE  # 操作按钮：保存当前编辑结果
 ICON_MORE_ACTIONS: BaseIcon = BaseIcon.ELLIPSIS  # 操作按钮：更多操作菜单
 ICON_RETRANSLATE: BaseIcon = BaseIcon.REFRESH_CW  # 更多菜单：重翻当前条目
-ICON_RESET_TRANSLATION: BaseIcon = BaseIcon.ERASER  # 更多菜单：重置当前条目译文
+ICON_RESET_TRANSLATION: BaseIcon = BaseIcon.RECYCLE  # 更多菜单：重置当前条目译文
 
 
 class ProofreadingEditPanel(QWidget):

@@ -958,11 +958,11 @@ class DataManager(Base):
             f"Failed to add file: {file_path}",
         )
 
-    def schedule_update_file(self, rel_path: str, new_file_path: str) -> None:
+    def schedule_replace_file(self, rel_path: str, new_file_path: str) -> None:
         self.schedule_guarded_file_operation(
-            Localizer.get().workbench_progress_updating_file,
-            lambda: self.project_file_service.update_file(rel_path, new_file_path),
-            f"Failed to update file: {rel_path} -> {new_file_path}",
+            Localizer.get().toast_processing,
+            lambda: self.project_file_service.replace_file(rel_path, new_file_path),
+            f"Failed to replace file: {rel_path} -> {new_file_path}",
         )
 
     def schedule_reset_file(self, rel_path: str) -> None:
@@ -982,8 +982,8 @@ class DataManager(Base):
     def add_file(self, file_path: str) -> None:
         self.emit_project_file_update(self.project_file_service.add_file(file_path))
 
-    def update_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
-        result = self.project_file_service.update_file(rel_path, new_file_path)
+    def replace_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
+        result = self.project_file_service.replace_file(rel_path, new_file_path)
         self.emit_project_file_update(result)
         return {
             "matched": result.matched,

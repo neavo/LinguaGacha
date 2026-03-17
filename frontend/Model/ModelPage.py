@@ -24,7 +24,6 @@ from module.Localizer.Localizer import Localizer
 from module.ModelManager import ModelManager
 from widget.FlowCard import FlowCard
 
-
 # ==================== 图标常量 ====================
 
 ICON_ADD_MODEL: BaseIcon = BaseIcon.PLUS  # 添加模型按钮
@@ -32,7 +31,7 @@ ICON_ACTIVATE_MODEL: BaseIcon = BaseIcon.CHECK  # 模型操作：激活
 ICON_OPEN_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 模型操作：打开基础设置
 ICON_OPEN_TASK_SETTINGS: BaseIcon = BaseIcon.LIST_TODO  # 模型操作：打开任务设置
 ICON_OPEN_ADVANCED_SETTINGS: BaseIcon = BaseIcon.CODE  # 模型操作：打开高级设置
-ICON_RESET_MODEL: BaseIcon = BaseIcon.REFRESH_CW  # 预设模型操作：重置到初始状态
+ICON_RESET_MODEL: BaseIcon = BaseIcon.RECYCLE  # 预设模型操作：重置到初始状态
 ICON_DELETE_MODEL: BaseIcon = BaseIcon.TRASH_2  # 自定义模型操作：删除
 ICON_REORDER_MODEL: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 模型操作：排序
 ICON_MOVE_UP: BaseIcon = BaseIcon.CHEVRON_UP  # 模型操作：上移

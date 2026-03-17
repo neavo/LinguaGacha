@@ -39,7 +39,6 @@ from qfluentwidgets import isDarkTheme
 from qfluentwidgets import themeColor
 
 from base.Base import Base
-from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from base.EventManager import EventManager
 from base.LogManager import LogManager
@@ -629,12 +628,9 @@ class ProjectPage(Base, ScrollArea):
 
     @staticmethod
     def get_project_file_filter() -> str:
-        """共享工程扩展名不变，但显示名称要跟随产品切换。"""
+        """返回 .lg 工程文件的文件选择器筛选文本。"""
 
-        return Localizer.get().project_file_filter_lg.replace(
-            "{NAME}",
-            BaseBrand.get().project_display_name,
-        )
+        return Localizer.get().project_file_filter_lg
 
     def __init__(self, object_name: str, parent=None) -> None:
         super().__init__(parent)

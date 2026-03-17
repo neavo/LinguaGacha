@@ -56,18 +56,13 @@ from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
 # 这里统一抽取页面/导航用到的图标，便于按语义检查与后续替换。
-
-ICON_NAV_THEME: BaseIcon = BaseIcon.SUN_MOON  # 侧边栏：主题切换
-ICON_NAV_LANGUAGE: BaseIcon = BaseIcon.GLOBE  # 侧边栏：语言切换
-ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.COG  # 侧边栏底部：应用设置入口
-
 ICON_NAV_MODEL: BaseIcon = BaseIcon.SLACK  # 侧边栏：模型管理
-ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
+ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.SCAN_TEXT  # 侧边栏：翻译任务
 ICON_NAV_ANALYSIS: BaseIcon = BaseIcon.RADAR  # 侧边栏：术语分析任务
 ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
 ICON_NAV_WORKBENCH: BaseIcon = BaseIcon.LAYOUT_DASHBOARD  # 侧边栏：工作台
 
-ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏：基础设置
+ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SLIDERS_HORIZONTAL  # 侧边栏：基础设置
 ICON_NAV_EXPERT_SETTINGS: BaseIcon = BaseIcon.GRADUATION_CAP  # 侧边栏：专家设置
 
 ICON_NAV_GLOSSARY: BaseIcon = BaseIcon.BOOK_A  # 侧边栏：术语表
@@ -78,12 +73,15 @@ ICON_NAV_POST_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_END  # 侧边栏
 
 ICON_NAV_CUSTOM_PROMPT: BaseIcon = BaseIcon.BOOK_OPEN_CHECK  # 侧边栏：自定义提示词入口
 ICON_NAV_ANALYSIS_PROMPT: BaseIcon = BaseIcon.RADAR  # 自定义提示词：分析页
-ICON_NAV_TRANSLATION_PROMPT: BaseIcon = (
-    ICON_NAV_TRANSLATION  # 自定义提示词：翻译页，与主翻译页保持一致
-)
+ICON_NAV_TRANSLATION_PROMPT: BaseIcon = BaseIcon.SCAN_TEXT  # 自定义提示词：翻译页
 
 ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
 ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
+
+ICON_NAV_THEME: BaseIcon = BaseIcon.SUN_MOON  # 侧边栏：主题切换
+ICON_NAV_LANGUAGE: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：语言切换
+ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏底部：应用设置入口
+HOME_PAGE_ICON_PATH: str = "resource/icon.png"  # 当前所有品牌共享主页头像图标
 
 
 class AppFluentWindow(Base, FluentWindow):
@@ -91,6 +89,9 @@ class AppFluentWindow(Base, FluentWindow):
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
     HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
+    HOMEPAGE_AVATAR_RADIUS: int = 10
+    HOMEPAGE_AVATAR_X: int = 10
+    HOMEPAGE_AVATAR_Y: int = 8
 
     def __init__(self) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
@@ -601,7 +602,13 @@ class AppFluentWindow(Base, FluentWindow):
         # 项目主页按钮
         self.home_page_widget = NavigationAvatarWidget(
             __class__.HOMEPAGE,
-            self.brand.icon_paths.home_icon_path,
+            HOME_PAGE_ICON_PATH,
+        )
+        # 只缩小头像图标本体，不改导航项点击区域，避免底部入口布局抖动。
+        self.home_page_widget.avatar.setRadius(__class__.HOMEPAGE_AVATAR_RADIUS)
+        self.home_page_widget.avatar.move(
+            __class__.HOMEPAGE_AVATAR_X,
+            __class__.HOMEPAGE_AVATAR_Y,
         )
         self.navigationInterface.addWidget(
             routeKey="avatar_navigation_widget",

@@ -361,7 +361,7 @@ class LocalizerEN(LocalizerZH):
     project_info_translated: str = "Translated: {COUNT}"
     project_info_total: str = "Total: {COUNT}"
     project_recent_empty: str = "No recent projects"
-    project_file_filter_lg: str = "{NAME} Project (*.lg)"
+    project_file_filter_lg: str = "Project File (*.lg)"
     project_error_read_preview: str = "Failed to read project preview: {ERROR}"
 
     # 翻译
@@ -473,11 +473,9 @@ class LocalizerEN(LocalizerZH):
     proofreading_page_indeterminate_saving: str = "Saving data …"
     proofreading_page_retranslate: str = "Retranslate"
     proofreading_page_retranslate_confirm: str = "Retranslate this entry?"
-    proofreading_page_batch_retranslate: str = "Retranslate selected"
     proofreading_page_batch_retranslate_confirm: str = "Retranslate all {COUNT} entries?"
     proofreading_page_reset_translation: str = "Reset Translation"
     proofreading_page_reset_translation_confirm: str = "Reset translation for this entry?"
-    proofreading_page_batch_reset_translation: str = "Reset Selected"
     proofreading_page_batch_reset_translation_confirm: str = (
         "Reset translation for all {COUNT} entries?"
     )
@@ -494,16 +492,16 @@ class LocalizerEN(LocalizerZH):
     workbench_col_line_count: str = "Lines"
     workbench_col_actions: str = "Actions"
     workbench_btn_add_file: str = "Add File"
-    workbench_btn_update: str = "Update"
-    workbench_btn_reset: str = "Reset"
+    workbench_btn_replace: str = "Replace File"
+    workbench_btn_reset: str = "Reset Translation"
     workbench_btn_delete: str = "Delete"
     workbench_msg_delete_confirm: str = "Delete this file and all its translation items …?"
     workbench_msg_reset_confirm: str = "Reset translation status for this file …?"
-    workbench_msg_file_exists: str = "File already exists, please use Update"
+    workbench_msg_file_exists: str = "File already exists …"
     workbench_msg_unsupported_format: str = "Unsupported file format"
-    workbench_msg_update_format_mismatch: str = "File format mismatch, cannot update"
-    workbench_msg_update_confirm: str = "Update the current file with the selected file, current data will be preserved as possible"
-    workbench_msg_update_name_conflict: str = "{NAME} already exists …"
+    workbench_msg_replace_format_mismatch: str = "File format mismatch, cannot replace"
+    workbench_msg_replace_confirm: str = "Current translations will be preserved as much as possible"
+    workbench_msg_replace_name_conflict: str = "File already exists …"
     workbench_fmt_subtitle_file: str = "Subtitle File"
     workbench_fmt_text_file: str = "Plain Text"
     workbench_fmt_ebook: str = "EPUB"
@@ -515,10 +513,9 @@ class LocalizerEN(LocalizerZH):
     workbench_fmt_trans_export: str = "Translator++ XLSX"
     workbench_fmt_wolf: str = "WOLF Official Tool XLSX"
     workbench_update_stat: str = "Added {NEW}, kept {MATCHED} …"
-    workbench_progress_adding_file: str = "Adding file ..."
-    workbench_progress_updating_file: str = "Updating file ..."
-    workbench_progress_resetting_file: str = "Resetting file ..."
-    workbench_progress_deleting_file: str = "Deleting file ..."
+    workbench_progress_adding_file: str = "Adding file …"
+    workbench_progress_resetting_file: str = "Resetting file …"
+    workbench_progress_deleting_file: str = "Deleting file …"
     workbench_msg_file_not_found: str = "File not found"
 
     # 基础设置
@@ -627,7 +624,7 @@ class LocalizerEN(LocalizerZH):
     # 术语表
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_04: str = "Description"
-    glossary_page_kg: str = "One-Click Tools"
+    glossary_page_translation_tool: str = "One-Click Translation"
 
     # 文本保护
     text_preserve_page_head_content: str = (

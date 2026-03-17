@@ -8,7 +8,7 @@ if str(ROOT_DIR) not in sys.path:
 
 
 def build_output_lines(brand_id: str) -> list[str]:
-    """统一导出工作流和脚本需要的品牌元信息。"""
+    """统一导出工作流真正消费的品牌元信息，避免保留未使用字段。"""
 
     from base.BaseBrand import BaseBrand
 
@@ -28,8 +28,6 @@ def build_output_lines(brand_id: str) -> list[str]:
         f"linux_desktop_name={build_names.linux_desktop_name}",
         f"linux_icon_name={build_names.linux_icon_name}",
         f"bundle_identifier={build_names.bundle_identifier}",
-        f"windows_icon_path={brand.icon_paths.windows_icon_path}",
-        f"macos_icon_path={brand.icon_paths.macos_icon_path}",
     ]
 
 

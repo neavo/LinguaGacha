@@ -84,7 +84,7 @@ class ProjectFileService:
             total=len(item_dicts),
         )
 
-    def update_file(
+    def replace_file(
         self,
         rel_path: str,
         new_file_path: str,
@@ -92,7 +92,7 @@ class ProjectFileService:
         """更新工程内文件，只继承旧工程里的完成态译文成果。"""
 
         db = self.get_loaded_db()
-        target_rel_path = self.build_target_rel_path(rel_path, new_file_path)
+        target_rel_path = self.build_replace_target_rel_path(rel_path, new_file_path)
         if target_rel_path.casefold() == rel_path.casefold():
             target_rel_path = rel_path
 
@@ -111,11 +111,11 @@ class ProjectFileService:
         old_type = self.pick_file_type(old_items)
         new_type = self.pick_file_type(new_item_dicts)
         if old_type != new_type:
-            raise ValueError(Localizer.get().workbench_msg_update_format_mismatch)
+            raise ValueError(Localizer.get().workbench_msg_replace_format_mismatch)
         if not db.asset_path_exists(rel_path):
             raise ValueError(Localizer.get().workbench_msg_file_not_found)
         if target_rel_path.casefold() != rel_path.casefold():
-            self.ensure_target_path_not_conflict(
+            self.ensure_replace_target_path_not_conflict(
                 db.get_all_asset_paths(),
                 rel_path,
                 target_rel_path,
@@ -198,7 +198,9 @@ class ProjectFileService:
             raise RuntimeError("工程未加载")
         return db
 
-    def build_target_rel_path(self, old_rel_path: str, new_file_path: str) -> str:
+    def build_replace_target_rel_path(
+        self, old_rel_path: str, new_file_path: str
+    ) -> str:
         """更新文件时只替换文件名，保留原目录层级。"""
 
         new_name = os.path.basename(new_file_path)
@@ -225,7 +227,7 @@ class ProjectFileService:
                 return raw_type
         return str(Item.FileType.NONE)
 
-    def ensure_target_path_not_conflict(
+    def ensure_replace_target_path_not_conflict(
         self,
         existing_paths: list[str],
         old_rel_path: str,
@@ -239,12 +241,7 @@ class ProjectFileService:
             if existing.casefold() == old_rel_path.casefold():
                 continue
             if existing.casefold() == target_rel_path.casefold():
-                raise ValueError(
-                    Localizer.get().workbench_msg_update_name_conflict.replace(
-                        "{NAME}",
-                        existing,
-                    )
-                )
+                raise ValueError(Localizer.get().workbench_msg_replace_name_conflict)
 
     def inherit_completed_translations(
         self,

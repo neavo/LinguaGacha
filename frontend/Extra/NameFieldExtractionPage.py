@@ -3,8 +3,8 @@ import threading
 from typing import Any
 from typing import cast
 
-from PySide6.QtCore import QPoint
 from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHeaderView
@@ -31,14 +31,13 @@ from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 from widget.SettingCard import SettingCard
 
-
 # ==================== 图标常量 ====================
 
 ICON_ROW_DELETE: BaseIcon = BaseIcon.TRASH_2  # 表格右键：删除选中行
 ICON_ACTION_EXTRACT: BaseIcon = BaseIcon.FINGERPRINT_PATTERN  # 命令栏：提取姓名字段
-ICON_ACTION_TRANSLATE: BaseIcon = BaseIcon.LANGUAGES  # 命令栏：翻译提取结果
+ICON_ACTION_TRANSLATE: BaseIcon = BaseIcon.SCAN_TEXT  # 命令栏：翻译提取结果
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
-ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置/清空
+ICON_ACTION_RESET: BaseIcon = BaseIcon.RECYCLE  # 命令栏：重置/清空
 ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
 
 

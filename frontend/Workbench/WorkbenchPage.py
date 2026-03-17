@@ -240,8 +240,11 @@ class WorkbenchPage(Base, ScrollArea):
         self.main_layout.addWidget(stats_frame)
 
     def build_file_list_section(self) -> None:
-        self.table_widget = WorkbenchTableWidget(self.container)
-        self.table_widget.update_clicked.connect(self.on_update_file)
+        self.table_widget = WorkbenchTableWidget(
+            self.container,
+            show_translation_reset=self.brand.workbench_flags.show_translation_reset,
+        )
+        self.table_widget.replace_clicked.connect(self.on_replace_file)
         self.table_widget.reset_clicked.connect(self.on_reset_file)
         self.table_widget.delete_clicked.connect(self.on_delete_file)
         self.table_widget.itemSelectionChanged.connect(self.update_controls_enabled)
@@ -570,23 +573,23 @@ class WorkbenchPage(Base, ScrollArea):
 
         self.emit(Base.Event.TRANSLATION_EXPORT, {})
 
-    def on_update_file(self, rel_path: str) -> None:
+    def on_replace_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
             return
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            Localizer.get().workbench_btn_update,
+            Localizer.get().workbench_btn_replace,
             "",
             self.build_supported_file_filter(),
         )
         if not file_path:
             return
 
-        if not self.confirm_action(Localizer.get().workbench_msg_update_confirm):
+        if not self.confirm_action(Localizer.get().workbench_msg_replace_confirm):
             return
 
-        DataManager.get().schedule_update_file(rel_path, file_path)
+        DataManager.get().schedule_replace_file(rel_path, file_path)
 
     def on_reset_file(self, rel_path: str) -> None:
         if self.is_engine_busy():

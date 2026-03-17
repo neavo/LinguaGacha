@@ -22,16 +22,7 @@ class BrandWorkbenchFlags:
 
     show_translation_export: bool
     show_translation_stats: bool
-
-
-@dataclass(frozen=True)
-class BrandIconPaths:
-    """收口运行时与构建期会用到的品牌图标路径。"""
-
-    window_icon_path: str
-    home_icon_path: str
-    windows_icon_path: str
-    macos_icon_path: str
+    show_translation_reset: bool
 
 
 @dataclass(frozen=True)
@@ -61,7 +52,6 @@ class BaseBrand:
     enabled_pages: frozenset[str]
     workbench_flags: BrandWorkbenchFlags
     docs_routes: BrandDocsRoutes
-    icon_paths: BrandIconPaths
     build_names: BrandBuildNames
     enable_app_update: bool = True
 
@@ -161,18 +151,13 @@ BRAND_PROFILES: dict[str, BaseBrand] = {
         workbench_flags=BrandWorkbenchFlags(
             show_translation_export=True,
             show_translation_stats=True,
+            show_translation_reset=True,
         ),
         docs_routes=BrandDocsRoutes(
             quality_help_url="https://github.com/neavo/LinguaGacha/wiki",
             thinking_support_url_zh="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
             thinking_support_url_en="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
             glossary_tool_url="https://github.com/neavo/KeywordGacha",
-        ),
-        icon_paths=BrandIconPaths(
-            window_icon_path="resource/icon_no_bg.png",
-            home_icon_path="resource/icon_full.png",
-            windows_icon_path="./resource/icon.ico",
-            macos_icon_path="./resource/icon.icns",
         ),
         build_names=BrandBuildNames(
             app_name="LinguaGacha",
@@ -207,18 +192,13 @@ BRAND_PROFILES: dict[str, BaseBrand] = {
         workbench_flags=BrandWorkbenchFlags(
             show_translation_export=False,
             show_translation_stats=False,
+            show_translation_reset=False,
         ),
         docs_routes=BrandDocsRoutes(
             quality_help_url="https://github.com/neavo/KeywordGacha",
             thinking_support_url_zh="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
             thinking_support_url_en="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
             glossary_tool_url=None,
-        ),
-        icon_paths=BrandIconPaths(
-            window_icon_path="resource/icon_no_bg.png",
-            home_icon_path="resource/icon_full.png",
-            windows_icon_path="./resource/icon.ico",
-            macos_icon_path="./resource/icon.icns",
         ),
         build_names=BrandBuildNames(
             app_name="KeywordGacha",

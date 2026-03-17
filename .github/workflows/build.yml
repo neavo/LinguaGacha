@@ -262,8 +262,8 @@ jobs:
           EOF
           cp "AppDir/usr/share/applications/${DESKTOP_NAME}.desktop" AppDir/
 
-          cp ./resource/icon_full.png "AppDir/usr/share/icons/hicolor/256x256/apps/${ICON_NAME}.png"
-          cp ./resource/icon_full.png "AppDir/${ICON_NAME}.png"
+          cp ./resource/icon.png "AppDir/usr/share/icons/hicolor/256x256/apps/${ICON_NAME}.png"
+          cp ./resource/icon.png "AppDir/${ICON_NAME}.png"
 
           cat > AppDir/AppRun << EOF
           #!/bin/bash

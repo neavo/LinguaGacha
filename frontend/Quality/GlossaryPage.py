@@ -38,7 +38,7 @@ ICON_CASE_SENSITIVE: BaseIcon = BaseIcon.CASE_SENSITIVE  # 规则图标：大小
 ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2  # 右键菜单：删除条目
 ICON_MENU_ENABLE: BaseIcon = BaseIcon.CHECK  # 右键菜单：启用
 ICON_MENU_DISABLE: BaseIcon = BaseIcon.X  # 右键菜单：禁用
-ICON_KG_LINK: BaseIcon = BaseIcon.BOT  # 命令栏：跳转 KeywordGacha
+ICON_TRANSLATION_TOOL_LINK: BaseIcon = BaseIcon.BOT  # 命令栏：跳转一键翻译工具
 
 
 class GlossaryPage(QualityRulePageBase):
@@ -76,8 +76,9 @@ class GlossaryPage(QualityRulePageBase):
         self.setup_table_columns()
         self.setup_split_foot(self.root)
         extra_right_actions: tuple = ()
-        if self.brand.docs_routes.glossary_tool_url is not None:
-            extra_right_actions = (self.add_command_bar_action_kg,)
+        if self.brand.brand_id == "kg":
+            # KG 术语表页需要提供去 LG 首页的快捷入口，LG 自己则不显示这个按钮。
+            extra_right_actions = (self.add_command_bar_action_translation_tool,)
         self.add_standard_command_bar_actions(
             config,
             window,
@@ -341,16 +342,14 @@ class GlossaryPage(QualityRulePageBase):
     def set_case_sensitive_for_selection(self, enabled: bool) -> None:
         self.set_case_sensitive_for_rows(self.get_selected_entry_rows(), enabled)
 
-    def add_command_bar_action_kg(self) -> None:
+    def add_command_bar_action_translation_tool(self) -> None:
         def connect() -> None:
-            glossary_tool_url = self.brand.docs_routes.glossary_tool_url
-            if glossary_tool_url is None:
-                return
-            QDesktopServices.openUrl(QUrl(glossary_tool_url))
+            translation_tool_url = BaseBrand.get("lg").repo_url
+            QDesktopServices.openUrl(QUrl(translation_tool_url))
 
         push_button = TransparentPushButton(
-            ICON_KG_LINK,
-            Localizer.get().glossary_page_kg,
+            ICON_TRANSLATION_TOOL_LINK,
+            Localizer.get().glossary_page_translation_tool,
         )
         push_button.clicked.connect(connect)
         self.command_bar_card.add_widget(push_button)

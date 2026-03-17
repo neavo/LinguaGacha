@@ -10,6 +10,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+WINDOWS_BUILD_ICON_PATH: str = "./resource/icon.ico"
+MACOS_BUILD_ICON_PATH: str = "./resource/icon.icns"
+
 # 检测平台
 is_macos = sys.platform == "darwin"
 is_linux = sys.platform == "linux"
@@ -40,7 +43,7 @@ def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
 
 
 def build_command(brand_id: str) -> list[str]:
-    """构建参数统一从品牌档案读取，避免脚本里散落品牌字面量。"""
+    """品牌相关构建名仍从档案读取，共享图标路径则直接固定在构建脚本中。"""
 
     from base.BaseBrand import BaseBrand
 
@@ -56,7 +59,7 @@ def build_command(brand_id: str) -> list[str]:
     if is_macos:
         cmd = [
             "./app.py",
-            f"--icon={brand.icon_paths.macos_icon_path}",
+            f"--icon={MACOS_BUILD_ICON_PATH}",
             "--clean",
             "--onedir",
             "--windowed",
@@ -75,7 +78,7 @@ def build_command(brand_id: str) -> list[str]:
     else:
         cmd = [
             "./app.py",
-            f"--icon={brand.icon_paths.windows_icon_path}",
+            f"--icon={WINDOWS_BUILD_ICON_PATH}",
             "--clean",
             "--onefile",
             "--noconfirm",

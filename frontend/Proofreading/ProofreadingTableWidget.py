@@ -42,7 +42,7 @@ class ProofreadingTableWidget(TableView):
 
     # 右键菜单图标
     ICON_BATCH_RETRANSLATE: BaseIcon = BaseIcon.REFRESH_CW
-    ICON_BATCH_RESET_TRANSLATION: BaseIcon = BaseIcon.ERASER
+    ICON_BATCH_RESET_TRANSLATION: BaseIcon = BaseIcon.RECYCLE
 
     # 信号定义：对外仅暴露必要交互。批量操作覆盖“单选=批量(1)”场景，避免信号语义重复。
     itemSelectionChanged = Signal()
@@ -277,7 +277,7 @@ class ProofreadingTableWidget(TableView):
         menu.addAction(
             Action(
                 self.ICON_BATCH_RETRANSLATE,
-                Localizer.get().proofreading_page_batch_retranslate,
+                Localizer.get().proofreading_page_retranslate,
                 triggered=lambda checked: self.batch_retranslate_clicked.emit(
                     selected_items
                 ),
@@ -286,7 +286,7 @@ class ProofreadingTableWidget(TableView):
         menu.addAction(
             Action(
                 self.ICON_BATCH_RESET_TRANSLATION,
-                Localizer.get().proofreading_page_batch_reset_translation,
+                Localizer.get().proofreading_page_reset_translation,
                 triggered=lambda checked: self.batch_reset_translation_clicked.emit(
                     selected_items
                 ),

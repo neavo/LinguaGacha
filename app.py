@@ -30,6 +30,8 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.PromptResourceResolver import PromptResourceResolver
 
+APP_WINDOW_ICON_PATH: str = "resource/icon.png"
+
 # QT 日志黑名单
 QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
@@ -235,8 +237,8 @@ if __name__ == "__main__":
     # 固定事件中心的 QObject 线程亲和性在主线程，避免后台线程首次触发导致回调跑偏。
     EventManager.get()
 
-    # 设置应用图标
-    app.setWindowIcon(QIcon(brand.icon_paths.window_icon_path))
+    # 当前所有品牌共享同一套窗口图标，直接在入口固定资源路径更简单。
+    app.setWindowIcon(QIcon(APP_WINDOW_ICON_PATH))
 
     # 设置全局字体属性，解决狗牙问题。
     # 注意：不要用 QFont() 覆盖系统字体尺寸，否则 pointSize() 可能是 -1 并触发 Qt 警告。
