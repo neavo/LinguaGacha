@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
 
 
@@ -128,14 +129,32 @@ def test_parse_google_api_url_variants() -> None:
     )
 
 
-def test_get_default_headers_includes_version() -> None:
+def test_get_default_headers_includes_lg_brand_name() -> None:
     with patch(
         "module.Engine.TaskRequesterClientPool.VersionManager.get",
         return_value=FakeVersionManager("9.9.9"),
     ):
-        headers = TaskRequesterClientPool.get_default_headers()
+        with patch(
+            "module.Engine.TaskRequesterClientPool.BaseBrand.get",
+            return_value=BaseBrand.get("lg"),
+        ):
+            headers = TaskRequesterClientPool.get_default_headers()
     assert "User-Agent" in headers
     assert "LinguaGacha/9.9.9" in headers["User-Agent"]
+
+
+def test_get_default_headers_includes_kg_brand_name() -> None:
+    with patch(
+        "module.Engine.TaskRequesterClientPool.VersionManager.get",
+        return_value=FakeVersionManager("9.9.9"),
+    ):
+        with patch(
+            "module.Engine.TaskRequesterClientPool.BaseBrand.get",
+            return_value=BaseBrand.get("kg"),
+        ):
+            headers = TaskRequesterClientPool.get_default_headers()
+    assert "User-Agent" in headers
+    assert "KeywordGacha/9.9.9" in headers["User-Agent"]
 
 
 def test_get_client_returns_cached_instance() -> None:

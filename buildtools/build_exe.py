@@ -1,9 +1,14 @@
+import argparse
 import importlib.util
 import os
 import sys
 from pathlib import Path
 
 import PyInstaller.__main__
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 # 检测平台
 is_macos = sys.platform == "darwin"
@@ -34,56 +39,74 @@ def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
         backup[0].write_text(backup[1], encoding="utf-8")
 
 
-backup = patch_opencc_init()
+def build_command(brand_id: str) -> list[str]:
+    """构建参数统一从品牌档案读取，避免脚本里散落品牌字面量。"""
 
-# 公共配置
-common_args = [
-    "--collect-all=rich",
-    "--collect-all=opencc_pyo3",
-]
+    from base.BaseBrand import BaseBrand
 
-if is_macos:
-    # macOS：创建 .app 应用包
-    cmd = [
-        "./app.py",
-        "--name=LinguaGacha",
-        "--icon=./resource/icon.icns",
-        "--clean",
-        "--onedir",  # macOS 应用为目录包格式
-        "--windowed",  # 创建无控制台窗口的 .app 包
-        "--noconfirm",
-        "--distpath=./dist",
-        "--osx-bundle-identifier=me.neavo.linguagacha",
-    ] + common_args
-elif is_linux:
-    # Linux：创建用于 AppImage 的目录包
-    cmd = [
-        "./app.py",
-        "--name=LinguaGacha",
-        "--clean",
-        "--onedir",
-        "--noconfirm",
-        "--distpath=./dist",
-    ] + common_args
-else:
-    # Windows：创建单文件可执行程序
-    cmd = [
-        "./app.py",
-        "--icon=./resource/icon.ico",
-        "--clean",
-        "--onefile",
-        "--noconfirm",
-        "--distpath=./dist/LinguaGacha",
-    ] + common_args
+    brand = BaseBrand.get(brand_id)
+    build_names = brand.build_names
 
-# 从 requirements.txt 添加隐式依赖
-if os.path.exists("./requirements.txt"):
-    with open("./requirements.txt", "r", encoding="utf-8") as reader:
-        for line in reader:
-            line = line.strip()
-            if line and "#" not in line:
-                cmd.append("--hidden-import=" + line)
+    common_args = [
+        "--collect-all=rich",
+        "--collect-all=opencc_pyo3",
+        f"--name={build_names.app_name}",
+    ]
 
-PyInstaller.__main__.run(cmd)
+    if is_macos:
+        cmd = [
+            "./app.py",
+            f"--icon={brand.icon_paths.macos_icon_path}",
+            "--clean",
+            "--onedir",
+            "--windowed",
+            "--noconfirm",
+            "--distpath=./dist",
+            f"--osx-bundle-identifier={build_names.bundle_identifier}",
+        ] + common_args
+    elif is_linux:
+        cmd = [
+            "./app.py",
+            "--clean",
+            "--onedir",
+            "--noconfirm",
+            "--distpath=./dist",
+        ] + common_args
+    else:
+        cmd = [
+            "./app.py",
+            f"--icon={brand.icon_paths.windows_icon_path}",
+            "--clean",
+            "--onefile",
+            "--noconfirm",
+            f"--distpath=./dist/{build_names.dist_dir_name}",
+        ] + common_args
 
-restore_opencc_init(backup)
+    if os.path.exists("./requirements.txt"):
+        with open("./requirements.txt", "r", encoding="utf-8") as reader:
+            for line in reader:
+                line = line.strip()
+                if line and "#" not in line:
+                    cmd.append("--hidden-import=" + line)
+
+    return cmd
+
+
+def main() -> int:
+    from base.BaseBrand import BaseBrand
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--brand", type=str, default="lg", choices=["lg", "kg"])
+    args = parser.parse_args()
+
+    os.environ[BaseBrand.BRAND_ENV_KEY] = args.brand
+    backup = patch_opencc_init()
+    try:
+        PyInstaller.__main__.run(build_command(args.brand))
+    finally:
+        restore_opencc_init(backup)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

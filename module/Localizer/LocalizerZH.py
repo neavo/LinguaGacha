@@ -361,7 +361,7 @@ class LocalizerZH:
     project_info_translated: str = "已翻译: {COUNT} 行"
     project_info_total: str = "总计: {COUNT} 行"
     project_recent_empty: str = "暂无最近打开的工程"
-    project_file_filter_lg: str = "LinguaGacha 工程 (*.lg)"
+    project_file_filter_lg: str = "{NAME} 工程 (*.lg)"
     project_error_read_preview: str = "读取工程预览失败: {ERROR}"
 
     # 翻译

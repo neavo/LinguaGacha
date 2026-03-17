@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import os
 import signal
@@ -17,6 +18,7 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
+from base.BaseBrand import BaseBrand
 from base.CLIManager import CLIManager
 from base.EventManager import EventManager
 from base.LogManager import LogManager
@@ -33,6 +35,15 @@ QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
     "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
 )
+
+
+def parse_startup_args(argv: list[str]) -> tuple[str, list[str]]:
+    """只解析应用入口自己的启动参数，其余参数继续交给现有 CLI 流程。"""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--brand", type=str, choices=["lg", "kg"], default="lg")
+    args, remaining_argv = parser.parse_known_args(argv[1:])
+    return args.brand, [argv[0], *remaining_argv]
 
 
 def resolve_app_dir() -> str:
@@ -115,6 +126,10 @@ def qt_message_handler(
 
 
 if __name__ == "__main__":
+    brand_id, sys.argv = parse_startup_args(sys.argv)
+    brand = BaseBrand.get(brand_id)
+    os.environ[BaseBrand.BRAND_ENV_KEY] = brand.brand_id
+
     # 捕获全局异常
     sys.excepthook = excepthook
     sys.unraisablehook = unraisable_hook
@@ -153,7 +168,10 @@ if __name__ == "__main__":
 
     if is_appimage or is_macos_app:
         # 便携式环境使用用户主目录存储数据
-        data_dir = os.path.join(os.path.expanduser("~"), "LinguaGacha")
+        data_dir = os.path.join(
+            os.path.expanduser("~"),
+            brand.data_dir_name,
+        )
     else:
         # Windows 和直接执行时使用应用目录
         data_dir = app_dir
@@ -185,7 +203,7 @@ if __name__ == "__main__":
     PromptResourceResolver.migrate_legacy_translation_user_presets()
 
     # 打印日志
-    LogManager.get().info(f"LinguaGacha {version}")
+    LogManager.get().info(f"{brand.app_name} {version}")
     if LogManager.get().is_expert_mode():
         LogManager.get().info(Localizer.get().log_expert_mode)
     LogManager.get().print("")
@@ -218,7 +236,7 @@ if __name__ == "__main__":
     EventManager.get()
 
     # 设置应用图标
-    app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
+    app.setWindowIcon(QIcon(brand.icon_paths.window_icon_path))
 
     # 设置全局字体属性，解决狗牙问题。
     # 注意：不要用 QFont() 覆盖系统字体尺寸，否则 pointSize() 可能是 -1 并触发 Qt 警告。

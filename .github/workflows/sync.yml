@@ -1,0 +1,65 @@
+name: Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "要同步到 KG 的 LG ref 或 tag"
+        required: true
+        default: "main"
+      target_repo:
+        description: "KG 目标仓库"
+        required: true
+        default: "neavo/KeywordGacha"
+      target_branch:
+        description: "KG 目标分支"
+        required: true
+        default: "main"
+      trigger_brand:
+        description: "同步成功后是否自动触发 KG 的 brand 工作流"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  sync-kg-main:
+    if: github.repository == 'neavo/LinguaGacha'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Requested Ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Configure GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
+        run: |
+          gh auth status
+          gh auth setup-git
+
+      - name: Push Source Tree To KG With Force-With-Lease
+        env:
+          GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          OLD_SHA=$(git ls-remote "https://github.com/${TARGET_REPO}.git" "refs/heads/${TARGET_BRANCH}" | cut -f1)
+          if [ -n "${OLD_SHA}" ]; then
+            git push "https://github.com/${TARGET_REPO}.git" "HEAD:refs/heads/${TARGET_BRANCH}" --force-with-lease="refs/heads/${TARGET_BRANCH}:${OLD_SHA}"
+          else
+            git push "https://github.com/${TARGET_REPO}.git" "HEAD:refs/heads/${TARGET_BRANCH}"
+          fi
+
+      - name: Trigger KG Brand Workflow
+        if: ${{ inputs.trigger_brand }}
+        env:
+          GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          gh workflow run brand.yml --repo "${TARGET_REPO}" --ref "${TARGET_BRANCH}" -f branch="${TARGET_BRANCH}"

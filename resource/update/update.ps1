@@ -299,8 +299,10 @@ try {
     Expand-PackageToStage -PackagePath $ZipPath -DestinationPath $StageDir
     Write-Log "Archive extracted to stage."
 
-    $sourceRoot = Join-Path $StageDir "LinguaGacha"
-    if (!(Test-Path $sourceRoot)) {
+    $topLevelItems = @(Get-ChildItem -Path $StageDir -Force)
+    if ($topLevelItems.Count -eq 1 -and $topLevelItems[0].PSIsContainer) {
+        $sourceRoot = $topLevelItems[0].FullName
+    } else {
         $sourceRoot = $StageDir
     }
 

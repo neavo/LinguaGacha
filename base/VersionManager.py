@@ -15,6 +15,7 @@ from typing import Self
 import httpx
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
@@ -41,9 +42,6 @@ class VersionManager(Base):
     TEMP_PACKAGE_EXPIRE_SECONDS: int = 24 * 60 * 60
     STARTUP_PENDING_APPLY_FAILURE_LOG_PATH: str | None = None
 
-    # URL 地址
-    API_URL: str = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest"
-    RELEASE_URL: str = "https://github.com/neavo/LinguaGacha/releases/latest"
     # 命令名按优先级排列，保证优先使用 PowerShell 7。
     POWERSHELL_7_COMMAND_NAMES: tuple[str, str] = ("pwsh", "pwsh.exe")
     POWERSHELL_5_COMMAND_NAMES: tuple[str, str] = ("powershell", "powershell.exe")
@@ -135,7 +133,9 @@ class VersionManager(Base):
             LogManager.get().warning("Failed to parse updater lock file", e)
 
         if pid > 0 and cls.is_process_running(pid):
-            LogManager.get().info(f"Updater is still running, skip startup cleanup (pid={pid})")
+            LogManager.get().info(
+                f"Updater is still running, skip startup cleanup (pid={pid})"
+            )
             return True
 
         try:
@@ -207,6 +207,18 @@ class VersionManager(Base):
             return
 
         self.emit_apply_failure(None, pending_log_path)
+
+    @classmethod
+    def get_release_api_url(cls) -> str:
+        """更新源随产品切换，避免 KG 拉到 LG 的发布资产。"""
+
+        return BaseBrand.get().release_api_url
+
+    @classmethod
+    def get_release_url(cls) -> str:
+        """统一暴露当前产品的发布页地址。"""
+
+        return BaseBrand.get().release_url
 
     # 应用更新（仅 Windows）
     def app_update_extract(self, event: Base.Event, data: dict) -> None:
@@ -296,11 +308,15 @@ class VersionManager(Base):
                 self.extracting = False
 
     # 按约定从 release 资产中提取 Windows 更新包和哈希文件
-    def find_windows_update_assets(self, assets: list[dict[str, object]]) -> tuple[str, str]:
+    def find_windows_update_assets(
+        self, assets: list[dict[str, object]]
+    ) -> tuple[str, str]:
         asset_records: list[tuple[str, str, str]] = []
         for asset in assets:
             name = str(asset.get("name", ""))
-            asset_records.append((name, name.lower(), str(asset.get("browser_download_url", ""))))
+            asset_records.append(
+                (name, name.lower(), str(asset.get("browser_download_url", "")))
+            )
 
         zip_asset_name = ""
         zip_asset_name_lower = ""
@@ -326,7 +342,10 @@ class VersionManager(Base):
 
         if hash_asset_url == "":
             for _, name_lower, url in asset_records:
-                if name_lower.endswith(".sha256") and zip_asset_name_lower in name_lower:
+                if (
+                    name_lower.endswith(".sha256")
+                    and zip_asset_name_lower in name_lower
+                ):
                     hash_asset_url = url
                     break
 
@@ -440,12 +459,16 @@ class VersionManager(Base):
 
         try:
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout=60)
+            response = httpx.get(__class__.get_release_api_url(), timeout=60)
             response.raise_for_status()
 
             result: dict = response.json()
-            a, b, c = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version())[-1]
-            x, y, z = re.findall(r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0"))[-1]
+            a, b, c = re.findall(
+                r"v(\d+)\.(\d+)\.(\d+)$", VersionManager.get().get_version()
+            )[-1]
+            x, y, z = re.findall(
+                r"v(\d+)\.(\d+)\.(\d+)$", result.get("tag_name", "v0.0.0")
+            )[-1]
 
             # 使用元组比较简化版本号判断
             if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
@@ -454,7 +477,9 @@ class VersionManager(Base):
                     Base.Event.TOAST,
                     {
                         "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_toast.replace("{VERSION}", f"v{x}.{y}.{z}"),
+                        "message": Localizer.get().app_new_version_toast.replace(
+                            "{VERSION}", f"v{x}.{y}.{z}"
+                        ),
                         "duration": 60 * 1000,
                     },
                 )
@@ -491,7 +516,7 @@ class VersionManager(Base):
         try:
             # 非 Windows 保持手动更新策略：仅打开发布页，不走自动覆盖
             if sys.platform != "win32":
-                webbrowser.open(__class__.RELEASE_URL)
+                webbrowser.open(__class__.get_release_url())
                 self.emit(
                     Base.Event.APP_UPDATE_DOWNLOAD,
                     {
@@ -505,15 +530,19 @@ class VersionManager(Base):
             self.set_status(VersionManager.Status.UPDATING)
 
             # 获取更新信息
-            response = httpx.get(__class__.API_URL, timeout=60)
+            response = httpx.get(__class__.get_release_api_url(), timeout=60)
             response.raise_for_status()
 
             # 根据平台选择正确的资源文件
             assets = response.json().get("assets", [])
-            browser_download_url, hash_asset_url = self.find_windows_update_assets(assets)
+            browser_download_url, hash_asset_url = self.find_windows_update_assets(
+                assets
+            )
             self.set_expected_sha256(self.fetch_expected_sha256(hash_asset_url))
 
-            with httpx.stream("GET", browser_download_url, timeout=60, follow_redirects=True) as response:
+            with httpx.stream(
+                "GET", browser_download_url, timeout=60, follow_redirects=True
+            ) as response:
                 response.raise_for_status()
 
                 # 获取文件总大小

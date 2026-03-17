@@ -14,6 +14,7 @@ from qfluentwidgets import RoundMenu
 from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import qconfig
 
+from base.BaseBrand import BaseBrand
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Quality.GlossaryEditPanel import GlossaryEditPanel
@@ -57,6 +58,7 @@ class GlossaryPage(QualityRulePageBase):
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(text, window)
+        self.brand = BaseBrand.get()
 
         self.rule_icon_renderer = QualityRuleIconRenderer(
             icon_size=self.CASE_ICON_SIZE,
@@ -73,10 +75,13 @@ class GlossaryPage(QualityRulePageBase):
         self.setup_split_body(self.root)
         self.setup_table_columns()
         self.setup_split_foot(self.root)
+        extra_right_actions: tuple = ()
+        if self.brand.docs_routes.glossary_tool_url is not None:
+            extra_right_actions = (self.add_command_bar_action_kg,)
         self.add_standard_command_bar_actions(
             config,
             window,
-            extra_right_actions=(self.add_command_bar_action_kg,),
+            extra_right_actions=extra_right_actions,
         )
 
         qconfig.themeChanged.connect(self.on_theme_changed)
@@ -338,7 +343,10 @@ class GlossaryPage(QualityRulePageBase):
 
     def add_command_bar_action_kg(self) -> None:
         def connect() -> None:
-            QDesktopServices.openUrl(QUrl("https://github.com/neavo/KeywordGacha"))
+            glossary_tool_url = self.brand.docs_routes.glossary_tool_url
+            if glossary_tool_url is None:
+                return
+            QDesktopServices.openUrl(QUrl(glossary_tool_url))
 
         push_button = TransparentPushButton(
             ICON_KG_LINK,

@@ -1,0 +1,76 @@
+name: Brand
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "要应用品牌层并回推的分支"
+        required: true
+        default: "main"
+
+jobs:
+  brand:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      brand_id: ${{ steps.resolve_brand.outputs.brand_id }}
+      brand_applied: ${{ steps.apply_brand.outputs.brand_applied }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Resolve Brand
+        id: resolve_brand
+        shell: bash
+        run: |
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          repo_name="${repo_name,,}"
+          if [[ "$repo_name" == *"keywordgacha"* ]]; then
+            echo "brand_id=kg" >> "$GITHUB_OUTPUT"
+          else
+            echo "brand_id=lg" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply Brand Files
+        id: apply_brand
+        shell: bash
+        env:
+          BRAND_ID: ${{ steps.resolve_brand.outputs.brand_id }}
+        run: |
+          overlay_dir="brands/${BRAND_ID}"
+          if [[ ! -d "$overlay_dir" ]]; then
+            echo "brand_applied=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          rsync -a "${overlay_dir}/" ./
+
+          if git diff --quiet --exit-code; then
+            echo "brand_applied=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "brand_applied=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit And Push Brand Result
+        if: ${{ steps.apply_brand.outputs.brand_applied == 'true' }}
+        shell: bash
+        env:
+          BRAND_ID: ${{ steps.resolve_brand.outputs.brand_id }}
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply ${BRAND_ID} brand"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+      - name: Print Brand Summary
+        shell: bash
+        run: |
+          echo "brand_id=${{ steps.resolve_brand.outputs.brand_id }}"
+          echo "brand_applied=${{ steps.apply_brand.outputs.brand_applied }}"

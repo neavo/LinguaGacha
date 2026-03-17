@@ -33,6 +33,7 @@ from qfluentwidgets import qconfig
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from frontend.Quality.QualityRuleEditPanelBase import QualityRuleEditPanelBase
@@ -1854,7 +1855,7 @@ class QualityRulePageBase(Base, QWidget):
 
     def add_command_bar_action_wiki(self) -> None:
         def connect() -> None:
-            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
+            QDesktopServices.openUrl(QUrl(BaseBrand.get().docs_routes.quality_help_url))
 
         push_button = TransparentPushButton(
             ICON_ACTION_WIKI,

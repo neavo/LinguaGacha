@@ -22,6 +22,7 @@ from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from frontend.Workbench.WorkbenchTableWidget import WorkbenchTableWidget
 from model.Item import Item
@@ -94,6 +95,7 @@ class WorkbenchPage(Base, ScrollArea):
 
     def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.brand = BaseBrand.get()
         self.setObjectName(object_name)
         self.setWidgetResizable(True)
         self.enableTransparentBackground()
@@ -212,23 +214,27 @@ class WorkbenchPage(Base, ScrollArea):
             Localizer.get().workbench_stat_total_lines,
             unit_line,
         )
-        self.card_translated = StatCard(
-            Localizer.get().workbench_stat_translated,
-            unit_line,
-            accent_color="#22c55e",
-        )
-        self.card_untranslated = StatCard(
-            Localizer.get().workbench_stat_untranslated,
-            unit_line,
-            accent_color="#f59e0b",
-        )
+        self.card_translated: StatCard | None = None
+        self.card_untranslated: StatCard | None = None
+        if self.brand.workbench_flags.show_translation_stats:
+            self.card_translated = StatCard(
+                Localizer.get().workbench_stat_translated,
+                unit_line,
+                accent_color="#22c55e",
+            )
+            self.card_untranslated = StatCard(
+                Localizer.get().workbench_stat_untranslated,
+                unit_line,
+                accent_color="#f59e0b",
+            )
 
-        for card in (
-            self.card_file_count,
-            self.card_total_items,
-            self.card_translated,
-            self.card_untranslated,
-        ):
+        cards: list[StatCard] = [self.card_file_count, self.card_total_items]
+        if self.card_translated is not None:
+            cards.append(self.card_translated)
+        if self.card_untranslated is not None:
+            cards.append(self.card_untranslated)
+
+        for card in cards:
             stats_layout.addWidget(card)
 
         self.main_layout.addWidget(stats_frame)
@@ -261,14 +267,15 @@ class WorkbenchPage(Base, ScrollArea):
             )
         )
 
-        self.command_bar_card.add_separator()
-        self.btn_export_translation = self.command_bar_card.add_action(
-            Action(
-                BaseIcon.FILE_INPUT,
-                Localizer.get().export_translation,
-                triggered=self.on_export_translation_clicked,
+        if self.brand.workbench_flags.show_translation_export:
+            self.command_bar_card.add_separator()
+            self.btn_export_translation = self.command_bar_card.add_action(
+                Action(
+                    BaseIcon.FILE_INPUT,
+                    Localizer.get().export_translation,
+                    triggered=self.on_export_translation_clicked,
+                )
             )
-        )
         self.command_bar_card.add_separator()
         self.btn_close_project = self.command_bar_card.add_action(
             Action(
@@ -438,8 +445,10 @@ class WorkbenchPage(Base, ScrollArea):
     def apply_stats_snapshot(self, stats: dict[str, int]) -> None:
         self.card_file_count.set_value(int(stats.get("file_count", 0) or 0))
         self.card_total_items.set_value(int(stats.get("total_items", 0) or 0))
-        self.card_translated.set_value(int(stats.get("translated", 0) or 0))
-        self.card_untranslated.set_value(int(stats.get("untranslated", 0) or 0))
+        if self.card_translated is not None:
+            self.card_translated.set_value(int(stats.get("translated", 0) or 0))
+        if self.card_untranslated is not None:
+            self.card_untranslated.set_value(int(stats.get("untranslated", 0) or 0))
 
     def build_stats_payload(
         self,

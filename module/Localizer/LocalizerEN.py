@@ -361,7 +361,7 @@ class LocalizerEN(LocalizerZH):
     project_info_translated: str = "Translated: {COUNT}"
     project_info_total: str = "Total: {COUNT}"
     project_recent_empty: str = "No recent projects"
-    project_file_filter_lg: str = "LinguaGacha Project (*.lg)"
+    project_file_filter_lg: str = "{NAME} Project (*.lg)"
     project_error_read_preview: str = "Failed to read project preview: {ERROR}"
 
     # 翻译
