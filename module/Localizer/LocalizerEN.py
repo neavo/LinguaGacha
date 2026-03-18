@@ -45,7 +45,6 @@ class LocalizerEN(LocalizerZH):
     confirm: str = "Confirm"
     cancel: str = "Cancel"
     auto: str = "Auto"
-    wiki: str = "Wiki"
     view_more_info: str = "View more info"
     filter: str = "Filter"
     search: str = "Search"

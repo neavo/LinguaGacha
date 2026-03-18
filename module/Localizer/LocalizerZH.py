@@ -45,7 +45,6 @@ class LocalizerZH:
     confirm: str = "确认"
     cancel: str = "取消"
     auto: str = "自动"
-    wiki: str = "功能说明"
     view_more_info: str = "查看更多信息"
     filter: str = "过滤"
     search: str = "搜索"

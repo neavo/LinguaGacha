@@ -10,54 +10,60 @@ from base.LogManager import LogManager
 class BrandDocsRoutes:
     """收口品牌相关帮助与跳转链接，避免页面各自写死仓库地址。"""
 
-    quality_help_url: str
-    thinking_support_url_zh: str
-    thinking_support_url_en: str
-    glossary_tool_url: str | None = None
+    thinking_support_url_zh: str  # 中文环境下的 Thinking 能力支持说明页。
+    thinking_support_url_en: str  # 英文环境下的 Thinking 能力支持说明页。
 
 
 @dataclass(frozen=True)
 class BrandWorkbenchFlags:
     """统一描述工作台在不同品牌中的显隐差异。"""
 
-    show_translation_export: bool
-    show_translation_stats: bool
-    show_translation_reset: bool
+    show_translation_export: bool  # 是否显示翻译导出功能，避免不支持的品牌误露入口。
+    show_translation_stats: bool  # 是否显示翻译统计信息，用来控制工作台信息密度。
+    show_translation_reset: bool  # 是否显示翻译结果重置按钮，避免无对应流程时误操作。
 
 
 @dataclass(frozen=True)
 class BrandBuildNames:
     """统一管理不同平台下的品牌应用名与打包命名。"""
 
-    app_name: str
-    dist_dir_name: str
-    macos_bundle_name: str
-    linux_desktop_name: str
-    linux_icon_name: str
-    bundle_identifier: str
+    app_name: str  # 应用展示名，用于窗口标题和打包元信息。
+    dist_dir_name: str  # 构建产物目录名，给打包脚本和发布流程复用。
+    macos_bundle_name: str  # macOS 下的应用包名，需要和 .app 实际产物一致。
+    linux_desktop_name: str  # Linux 桌面启动器名，用于 .desktop 等系统集成。
+    linux_icon_name: str  # Linux 图标资源名，保证桌面环境能找到正确图标。
+    bundle_identifier: str  # 应用包标识符，给安装、签名和系统识别使用。
 
 
 @dataclass(frozen=True)
 class BaseBrand:
     """统一定义 LG/KG 两个品牌的稳定元信息。"""
 
-    brand_id: str
-    app_name: str
-    repo_url: str
-    release_api_url: str
-    release_url: str
-    user_agent_name: str
-    project_display_name: str
-    data_dir_name: str
-    enabled_pages: frozenset[str]
-    workbench_flags: BrandWorkbenchFlags
-    docs_routes: BrandDocsRoutes
-    build_names: BrandBuildNames
-    enable_app_update: bool = True
+    brand_id: str  # 品牌唯一标识，只允许使用受支持的短 ID。
+    app_name: str  # 应用主名称，用于界面展示和部分运行时文案。
+    repo_url: str  # 仓库主页地址，给帮助页和关于页跳转使用。
+    release_api_url: str  # 最新发行版查询接口，给更新检查统一读取。
+    release_url: str  # 发行页地址，给用户查看更新详情和手动下载。
+    user_agent_name: str  # 请求外部服务时使用的 User-Agent 名称。
+    project_display_name: str  # 工程或产品展示名，用于项目级文案显示。
+    data_dir_name: str  # 本地数据目录名，保证不同品牌的数据彼此隔离。
+    enabled_pages: frozenset[str]  # 当前品牌允许展示的页面集合，作为页面显隐单一来源。
+    workbench_flags: (
+        BrandWorkbenchFlags  # 工作台功能开关集合，控制同一页面内的局部差异。
+    )
+    docs_routes: BrandDocsRoutes  # 品牌相关文档与外链配置，避免各处散落 URL。
+    build_names: BrandBuildNames  # 各平台构建命名配置，统一给打包与发布脚本读取。
+    enable_app_update: bool = (
+        True  # 是否启用应用内更新能力，给不支持更新的品牌关闭入口。
+    )
 
-    DEFAULT_BRAND_ID: ClassVar[str] = "lg"
-    CURRENT_BRAND_ID: ClassVar[str | None] = None
-    BUNDLED_BRAND_RELATIVE_PATH: ClassVar[Path] = Path("resource") / "brand.txt"
+    DEFAULT_BRAND_ID: ClassVar[str] = "lg"  # 默认品牌 ID，在未显式指定时作为兜底值。
+    CURRENT_BRAND_ID: ClassVar[str | None] = (
+        None  # 进程内当前品牌 ID，作为运行时品牌的单一来源。
+    )
+    BUNDLED_BRAND_RELATIVE_PATH: ClassVar[Path] = (
+        Path("resource") / "brand.txt"
+    )  # 随安装包分发的品牌文件相对路径，正式包启动时只认它。
 
     @classmethod
     def normalize_brand_id(cls, brand_id: str | None) -> str | None:
@@ -192,10 +198,8 @@ BRAND_PROFILES: dict[str, BaseBrand] = {
             show_translation_reset=True,
         ),
         docs_routes=BrandDocsRoutes(
-            quality_help_url="https://github.com/neavo/LinguaGacha/wiki",
             thinking_support_url_zh="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
             thinking_support_url_en="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
-            glossary_tool_url="https://github.com/neavo/KeywordGacha",
         ),
         build_names=BrandBuildNames(
             app_name="LinguaGacha",
@@ -233,10 +237,8 @@ BRAND_PROFILES: dict[str, BaseBrand] = {
             show_translation_reset=False,
         ),
         docs_routes=BrandDocsRoutes(
-            quality_help_url="https://github.com/neavo/KeywordGacha",
             thinking_support_url_zh="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
             thinking_support_url_en="https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
-            glossary_tool_url=None,
         ),
         build_names=BrandBuildNames(
             app_name="KeywordGacha",
