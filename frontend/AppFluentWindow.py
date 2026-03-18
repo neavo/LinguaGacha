@@ -22,8 +22,10 @@ from qfluentwidgets import Theme
 from qfluentwidgets import isDarkTheme
 from qfluentwidgets import setTheme
 from qfluentwidgets import setThemeColor
+from qfluentwidgets.components.navigation.navigation_panel import RouteKeyError
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
@@ -54,18 +56,13 @@ from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
 # 这里统一抽取页面/导航用到的图标，便于按语义检查与后续替换。
-
-ICON_NAV_THEME: BaseIcon = BaseIcon.SUN_MOON  # 侧边栏：主题切换
-ICON_NAV_LANGUAGE: BaseIcon = BaseIcon.GLOBE  # 侧边栏：语言切换
-ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.COG  # 侧边栏底部：应用设置入口
-
 ICON_NAV_MODEL: BaseIcon = BaseIcon.SLACK  # 侧边栏：模型管理
-ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：翻译任务
+ICON_NAV_TRANSLATION: BaseIcon = BaseIcon.SCAN_TEXT  # 侧边栏：翻译任务
 ICON_NAV_ANALYSIS: BaseIcon = BaseIcon.RADAR  # 侧边栏：术语分析任务
 ICON_NAV_PROOFREADING: BaseIcon = BaseIcon.GRID_2X2_CHECK  # 侧边栏：校对任务
 ICON_NAV_WORKBENCH: BaseIcon = BaseIcon.LAYOUT_DASHBOARD  # 侧边栏：工作台
 
-ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏：基础设置
+ICON_NAV_BASIC_SETTINGS: BaseIcon = BaseIcon.SLIDERS_HORIZONTAL  # 侧边栏：基础设置
 ICON_NAV_EXPERT_SETTINGS: BaseIcon = BaseIcon.GRADUATION_CAP  # 侧边栏：专家设置
 
 ICON_NAV_GLOSSARY: BaseIcon = BaseIcon.BOOK_A  # 侧边栏：术语表
@@ -76,12 +73,15 @@ ICON_NAV_POST_REPLACEMENT: BaseIcon = BaseIcon.BETWEEN_VERTICAL_END  # 侧边栏
 
 ICON_NAV_CUSTOM_PROMPT: BaseIcon = BaseIcon.BOOK_OPEN_CHECK  # 侧边栏：自定义提示词入口
 ICON_NAV_ANALYSIS_PROMPT: BaseIcon = BaseIcon.RADAR  # 自定义提示词：分析页
-ICON_NAV_TRANSLATION_PROMPT: BaseIcon = (
-    ICON_NAV_TRANSLATION  # 自定义提示词：翻译页，与主翻译页保持一致
-)
+ICON_NAV_TRANSLATION_PROMPT: BaseIcon = BaseIcon.SCAN_TEXT  # 自定义提示词：翻译页
 
 ICON_NAV_LABORATORY: BaseIcon = BaseIcon.FLASK_CONICAL  # 侧边栏：实验室
 ICON_NAV_TOOLBOX: BaseIcon = BaseIcon.SPARKLES  # 侧边栏：百宝箱
+
+ICON_NAV_THEME: BaseIcon = BaseIcon.SUN_MOON  # 侧边栏：主题切换
+ICON_NAV_LANGUAGE: BaseIcon = BaseIcon.LANGUAGES  # 侧边栏：语言切换
+ICON_NAV_APP_SETTINGS: BaseIcon = BaseIcon.SETTINGS  # 侧边栏底部：应用设置入口
+HOME_PAGE_ICON_PATH: str = "resource/icon.png"  # 当前所有品牌共享主页头像图标
 
 
 class AppFluentWindow(Base, FluentWindow):
@@ -89,10 +89,14 @@ class AppFluentWindow(Base, FluentWindow):
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
     HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
+    HOMEPAGE_AVATAR_RADIUS: int = 10
+    HOMEPAGE_AVATAR_X: int = 10
+    HOMEPAGE_AVATAR_Y: int = 8
 
     def __init__(self) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
         self.progress_toast: ProgressToast | None = None
+        self.brand = BaseBrand.get()
 
         super().__init__()
 
@@ -102,7 +106,9 @@ class AppFluentWindow(Base, FluentWindow):
         # 设置窗口属性
         self.resize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
         self.setMinimumSize(AppFluentWindow.APP_WIDTH, AppFluentWindow.APP_HEIGHT)
-        self.setWindowTitle(f"LinguaGacha {VersionManager.get().get_version()}")
+        self.setWindowTitle(
+            f"{self.brand.app_name} {VersionManager.get().get_version()}"
+        )
         self.titleBar.iconLabel.hide()
 
         # 设置启动位置
@@ -144,13 +150,14 @@ class AppFluentWindow(Base, FluentWindow):
         self.progress_hide_timer: QTimer | None = None  # 延迟隐藏的 timer
 
         # 检查更新
-        QTimer.singleShot(
-            3000,
-            lambda: self.emit(
-                Base.Event.APP_UPDATE_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            ),
-        )
+        if self.brand.enable_app_update:
+            QTimer.singleShot(
+                3000,
+                lambda: self.emit(
+                    Base.Event.APP_UPDATE_CHECK,
+                    {"sub_event": Base.SubEvent.REQUEST},
+                ),
+            )
         QTimer.singleShot(
             0, lambda: VersionManager.get().emit_pending_apply_failure_if_exists()
         )
@@ -200,9 +207,18 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 遍历设置状态
         for key in disable_names:
-            widget = self.navigationInterface.widget(key)
+            widget = self.get_navigation_widget(key)
             if widget:
                 widget.setEnabled(is_loaded)
+
+    def get_navigation_widget(self, key: str) -> QWidget | None:
+        """安全获取导航项；当前品牌未注册的路由直接跳过。"""
+
+        try:
+            return self.navigationInterface.widget(key)
+        except RouteKeyError:
+            # KG 会裁掉部分 LG 页面，这些路由不存在时不应视为异常。
+            return None
 
     def is_project_dependent(self, interface: QWidget) -> bool:
         """判断页面是否依赖工程"""
@@ -472,7 +488,7 @@ class AppFluentWindow(Base, FluentWindow):
                 {"sub_event": Base.SubEvent.REQUEST},
             )
         else:
-            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha"))
+            QDesktopServices.openUrl(QUrl(self.brand.repo_url))
 
     # 更新 - 检查完成
     def app_update_check_done(self, event: Base.Event, data: dict) -> None:
@@ -586,7 +602,13 @@ class AppFluentWindow(Base, FluentWindow):
         # 项目主页按钮
         self.home_page_widget = NavigationAvatarWidget(
             __class__.HOMEPAGE,
-            "resource/icon_full.png",
+            HOME_PAGE_ICON_PATH,
+        )
+        # 只缩小头像图标本体，不改导航项点击区域，避免底部入口布局抖动。
+        self.home_page_widget.avatar.setRadius(__class__.HOMEPAGE_AVATAR_RADIUS)
+        self.home_page_widget.avatar.move(
+            __class__.HOMEPAGE_AVATAR_X,
+            __class__.HOMEPAGE_AVATAR_Y,
         )
         self.navigationInterface.addWidget(
             routeKey="avatar_navigation_widget",
@@ -607,63 +629,72 @@ class AppFluentWindow(Base, FluentWindow):
     # 添加项目类页面
     def add_project_pages(self) -> None:
         # 模型管理
-        self.addSubInterface(
-            ModelPage("model_page", self),
-            ICON_NAV_MODEL.qicon(),
-            Localizer.get().app_model_page,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("model_page"):
+            self.addSubInterface(
+                ModelPage("model_page", self),
+                ICON_NAV_MODEL.qicon(),
+                Localizer.get().app_model_page,
+                NavigationItemPosition.SCROLL,
+            )
 
     # 添加任务类页面
     def add_task_pages(self) -> None:
         # 翻译任务
-        self.translation_page = TranslationPage("translation_page", self)
-        self.addSubInterface(
-            self.translation_page,
-            ICON_NAV_TRANSLATION.qicon(),
-            Localizer.get().app_translation_page,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("translation_page"):
+            self.translation_page = TranslationPage("translation_page", self)
+            self.addSubInterface(
+                self.translation_page,
+                ICON_NAV_TRANSLATION.qicon(),
+                Localizer.get().app_translation_page,
+                NavigationItemPosition.SCROLL,
+            )
 
         # 术语分析任务
-        self.analysis_page = AnalysisPage("analysis_page", self)
-        self.addSubInterface(
-            self.analysis_page,
-            ICON_NAV_ANALYSIS.qicon(),
-            Localizer.get().app_analysis_page,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("analysis_page"):
+            self.analysis_page = AnalysisPage("analysis_page", self)
+            self.addSubInterface(
+                self.analysis_page,
+                ICON_NAV_ANALYSIS.qicon(),
+                Localizer.get().app_analysis_page,
+                NavigationItemPosition.SCROLL,
+            )
 
         # 校对任务
-        self.proofreading_page = ProofreadingPage("proofreading_page", self)
-        self.addSubInterface(
-            self.proofreading_page,
-            ICON_NAV_PROOFREADING.qicon(),
-            Localizer.get().app_proofreading_page,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("proofreading_page"):
+            self.proofreading_page = ProofreadingPage("proofreading_page", self)
+            self.addSubInterface(
+                self.proofreading_page,
+                ICON_NAV_PROOFREADING.qicon(),
+                Localizer.get().app_proofreading_page,
+                NavigationItemPosition.SCROLL,
+            )
 
         # 工作台（文件管理）
-        self.workbench_page = WorkbenchPage("workbench_page", self)
-        self.addSubInterface(
-            self.workbench_page,
-            ICON_NAV_WORKBENCH.qicon(),
-            Localizer.get().app_workbench_page,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("workbench_page"):
+            self.workbench_page = WorkbenchPage("workbench_page", self)
+            self.addSubInterface(
+                self.workbench_page,
+                ICON_NAV_WORKBENCH.qicon(),
+                Localizer.get().app_workbench_page,
+                NavigationItemPosition.SCROLL,
+            )
 
     # 添加设置类页面
     def add_setting_pages(self) -> None:
         # 基础设置
-        self.addSubInterface(
-            BasicSettingsPage("basic_settings_page", self),
-            ICON_NAV_BASIC_SETTINGS.qicon(),
-            Localizer.get().basic_settings,
-            NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("basic_settings_page"):
+            self.addSubInterface(
+                BasicSettingsPage("basic_settings_page", self),
+                ICON_NAV_BASIC_SETTINGS.qicon(),
+                Localizer.get().basic_settings,
+                NavigationItemPosition.SCROLL,
+            )
 
         # 专家设置
-        if LogManager.get().is_expert_mode():
+        if (
+            self.brand.is_page_enabled("expert_settings_page")
+            and LogManager.get().is_expert_mode()
+        ):
             self.addSubInterface(
                 ExpertSettingsPage("expert_settings_page", self),
                 ICON_NAV_EXPERT_SETTINGS.qicon(),
@@ -674,15 +705,19 @@ class AppFluentWindow(Base, FluentWindow):
     # 添加质量类页面
     def add_quality_pages(self) -> None:
         # 术语表
-        self.glossary_page = GlossaryPage("glossary_page", self)
-        self.addSubInterface(
-            interface=self.glossary_page,
-            icon=ICON_NAV_GLOSSARY.qicon(),
-            text=Localizer.get().app_glossary_page,
-            position=NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("glossary_page"):
+            self.glossary_page = GlossaryPage("glossary_page", self)
+            self.addSubInterface(
+                interface=self.glossary_page,
+                icon=ICON_NAV_GLOSSARY.qicon(),
+                text=Localizer.get().app_glossary_page,
+                position=NavigationItemPosition.SCROLL,
+            )
 
-        if LogManager.get().is_expert_mode():
+        if (
+            self.brand.is_page_enabled("text_preserve_page")
+            and LogManager.get().is_expert_mode()
+        ):
             # 文本保护
             self.addSubInterface(
                 interface=TextPreservePage("text_preserve_page", self),
@@ -692,92 +727,102 @@ class AppFluentWindow(Base, FluentWindow):
             )
 
         # 文本替换
-        self.text_replacement_page = EmptyPage("replacement_page", self)
-        self.addSubInterface(
-            interface=self.text_replacement_page,
-            icon=ICON_NAV_TEXT_REPLACEMENT.qicon(),
-            text=Localizer.get().app_text_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-        )
-        self.addSubInterface(
-            interface=TextReplacementPage(
-                "pre_translation_replacement_page",
-                self,
-                "pre_translation_replacement",
-            ),
-            icon=ICON_NAV_PRE_REPLACEMENT.qicon(),
-            text=Localizer.get().app_pre_translation_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-            parent=self.text_replacement_page,
-        )
-        self.addSubInterface(
-            interface=TextReplacementPage(
-                "post_translation_replacement_page",
-                self,
-                "post_translation_replacement",
-            ),
-            icon=ICON_NAV_POST_REPLACEMENT.qicon(),
-            text=Localizer.get().app_post_translation_replacement_page,
-            position=NavigationItemPosition.SCROLL,
-            parent=self.text_replacement_page,
-        )
+        if self.brand.is_page_enabled("replacement_page"):
+            self.text_replacement_page = EmptyPage("replacement_page", self)
+            self.addSubInterface(
+                interface=self.text_replacement_page,
+                icon=ICON_NAV_TEXT_REPLACEMENT.qicon(),
+                text=Localizer.get().app_text_replacement_page,
+                position=NavigationItemPosition.SCROLL,
+            )
+            if self.brand.is_page_enabled("pre_translation_replacement_page"):
+                self.addSubInterface(
+                    interface=TextReplacementPage(
+                        "pre_translation_replacement_page",
+                        self,
+                        "pre_translation_replacement",
+                    ),
+                    icon=ICON_NAV_PRE_REPLACEMENT.qicon(),
+                    text=Localizer.get().app_pre_translation_replacement_page,
+                    position=NavigationItemPosition.SCROLL,
+                    parent=self.text_replacement_page,
+                )
+            if self.brand.is_page_enabled("post_translation_replacement_page"):
+                self.addSubInterface(
+                    interface=TextReplacementPage(
+                        "post_translation_replacement_page",
+                        self,
+                        "post_translation_replacement",
+                    ),
+                    icon=ICON_NAV_POST_REPLACEMENT.qicon(),
+                    text=Localizer.get().app_post_translation_replacement_page,
+                    position=NavigationItemPosition.SCROLL,
+                    parent=self.text_replacement_page,
+                )
 
         # 自定义提示词
-        self.custom_prompt_page = EmptyPage("custom_prompt_page", self)
-        self.addSubInterface(
-            self.custom_prompt_page,
-            ICON_NAV_CUSTOM_PROMPT.qicon(),
-            Localizer.get().app_custom_prompt_navigation_item,
-            NavigationItemPosition.SCROLL,
-        )
-        self.addSubInterface(
-            CustomPromptPage(
-                "translation_prompt_page",
-                self,
-                PromptResourceResolver.TaskType.TRANSLATION,
-            ),
-            ICON_NAV_TRANSLATION_PROMPT.qicon(),
-            Localizer.get().app_translation_prompt_page,
-            parent=self.custom_prompt_page,
-        )
-        self.addSubInterface(
-            CustomPromptPage(
-                "analysis_prompt_page",
-                self,
-                PromptResourceResolver.TaskType.ANALYSIS,
-            ),
-            ICON_NAV_ANALYSIS_PROMPT.qicon(),
-            Localizer.get().app_analysis_prompt_page,
-            parent=self.custom_prompt_page,
-        )
+        if self.brand.is_page_enabled("custom_prompt_page"):
+            self.custom_prompt_page = EmptyPage("custom_prompt_page", self)
+            self.addSubInterface(
+                self.custom_prompt_page,
+                ICON_NAV_CUSTOM_PROMPT.qicon(),
+                Localizer.get().app_custom_prompt_navigation_item,
+                NavigationItemPosition.SCROLL,
+            )
+            if self.brand.is_page_enabled("translation_prompt_page"):
+                self.addSubInterface(
+                    CustomPromptPage(
+                        "translation_prompt_page",
+                        self,
+                        PromptResourceResolver.TaskType.TRANSLATION,
+                    ),
+                    ICON_NAV_TRANSLATION_PROMPT.qicon(),
+                    Localizer.get().app_translation_prompt_page,
+                    parent=self.custom_prompt_page,
+                )
+            if self.brand.is_page_enabled("analysis_prompt_page"):
+                self.addSubInterface(
+                    CustomPromptPage(
+                        "analysis_prompt_page",
+                        self,
+                        PromptResourceResolver.TaskType.ANALYSIS,
+                    ),
+                    ICON_NAV_ANALYSIS_PROMPT.qicon(),
+                    Localizer.get().app_analysis_prompt_page,
+                    parent=self.custom_prompt_page,
+                )
 
     # 添加额外页面
     def add_extra_pages(self) -> None:
         # 实验室
-        self.addSubInterface(
-            interface=LaboratoryPage("laboratory_page", self),
-            icon=ICON_NAV_LABORATORY.qicon(),
-            text=Localizer.get().app_laboratory_page,
-            position=NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("laboratory_page"):
+            self.addSubInterface(
+                interface=LaboratoryPage("laboratory_page", self),
+                icon=ICON_NAV_LABORATORY.qicon(),
+                text=Localizer.get().app_laboratory_page,
+                position=NavigationItemPosition.SCROLL,
+            )
 
         # 百宝箱
-        self.addSubInterface(
-            interface=ToolBoxPage("tool_box_page", self),
-            icon=ICON_NAV_TOOLBOX.qicon(),
-            text=Localizer.get().app_treasure_chest_page,
-            position=NavigationItemPosition.SCROLL,
-        )
+        if self.brand.is_page_enabled("tool_box_page"):
+            self.addSubInterface(
+                interface=ToolBoxPage("tool_box_page", self),
+                icon=ICON_NAV_TOOLBOX.qicon(),
+                text=Localizer.get().app_treasure_chest_page,
+                position=NavigationItemPosition.SCROLL,
+            )
 
         # 百宝箱 - 姓名字段注入
-        self.name_field_extraction_page = NameFieldExtractionPage(
-            "name_field_extraction_page", self
-        )
-        self.stackedWidget.addWidget(self.name_field_extraction_page)
+        if self.brand.is_page_enabled("name_field_extraction_page"):
+            self.name_field_extraction_page = NameFieldExtractionPage(
+                "name_field_extraction_page", self
+            )
+            self.stackedWidget.addWidget(self.name_field_extraction_page)
 
         # 百宝箱 - 繁简转换
-        self.ts_conversion_page = TSConversionPage("ts_conversion_page", self)
-        self.stackedWidget.addWidget(self.ts_conversion_page)
+        if self.brand.is_page_enabled("ts_conversion_page"):
+            self.ts_conversion_page = TSConversionPage("ts_conversion_page", self)
+            self.stackedWidget.addWidget(self.ts_conversion_page)
 
     # 工程加载后的处理
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:

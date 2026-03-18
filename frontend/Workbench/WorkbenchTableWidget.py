@@ -17,19 +17,17 @@ from widget.AppTable.AppTableModelBase import AppTableModelBase
 from widget.AppTable.AppTableView import AppTableView
 from widget.AppTable.ColumnSpec import ColumnSpec
 
-ICON_MENU_UPDATE: BaseIcon = BaseIcon.REFRESH_CW
-ICON_MENU_RESET: BaseIcon = BaseIcon.ROTATE_CCW
-ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2
-
 
 class WorkbenchTableWidget(AppTableView):
     """工作台文件列表专用表格（AppTable）。"""
 
+    # 列索引常量
     COL_FILE = 0
     COL_FORMAT = 1
     COL_LINES = 2
     COL_ACTIONS = 3
 
+    # 布局常量
     FONT_SIZE = 12
     ROW_HEIGHT = 40
     COL_FORMAT_WIDTH = 180
@@ -37,12 +35,25 @@ class WorkbenchTableWidget(AppTableView):
     COL_ACTIONS_WIDTH = 60
     ROW_NUMBER_MIN_WIDTH = 40
 
-    update_clicked = Signal(str)
+    # 右键菜单图标
+    ICON_MENU_REPLACE: BaseIcon = BaseIcon.REPLACE
+    ICON_MENU_RESET: BaseIcon = BaseIcon.RECYCLE
+    ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2
+
+    # 信号定义
+    replace_clicked = Signal(str)
     reset_clicked = Signal(str)
     delete_clicked = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        show_translation_reset: bool = True,
+    ) -> None:
         super().__init__(parent)
+        # KG 的“重置”没有独立业务意义，它实际是在重置翻译状态，所以这里直接按品牌隐藏。
+        self.show_translation_reset: bool = show_translation_reset
 
         self.column_specs: list[ColumnSpec[dict[str, Any]]] = [
             ColumnSpec(
@@ -129,24 +140,32 @@ class WorkbenchTableWidget(AppTableView):
         rel_path = self.get_rel_path_at_row(index.row())
         if not rel_path:
             return []
-        return [
+        action_specs: list[ActionSpec] = [
             ActionSpec(
-                text=Localizer.get().workbench_btn_update,
-                icon=ICON_MENU_UPDATE,
-                triggered=lambda: self.update_clicked.emit(rel_path),
-            ),
-            ActionSpec(
-                text=Localizer.get().workbench_btn_reset,
-                icon=ICON_MENU_RESET,
-                triggered=lambda: self.reset_clicked.emit(rel_path),
-            ),
-            ActionSpec(separator=True),
-            ActionSpec(
-                text=Localizer.get().workbench_btn_delete,
-                icon=ICON_MENU_DELETE,
-                triggered=lambda: self.delete_clicked.emit(rel_path),
+                text=Localizer.get().workbench_btn_replace,
+                icon=self.ICON_MENU_REPLACE,
+                triggered=lambda: self.replace_clicked.emit(rel_path),
             ),
         ]
+        if self.show_translation_reset:
+            action_specs.append(
+                ActionSpec(
+                    text=Localizer.get().workbench_btn_reset,
+                    icon=self.ICON_MENU_RESET,
+                    triggered=lambda: self.reset_clicked.emit(rel_path),
+                )
+            )
+        action_specs.extend(
+            [
+                ActionSpec(separator=True),
+                ActionSpec(
+                    text=Localizer.get().workbench_btn_delete,
+                    icon=self.ICON_MENU_DELETE,
+                    triggered=lambda: self.delete_clicked.emit(rel_path),
+                ),
+            ]
+        )
+        return action_specs
 
     def contextMenuEvent(self, a0: QContextMenuEvent | None) -> None:  # noqa: N802
         if a0 is None:
@@ -165,22 +184,24 @@ class WorkbenchTableWidget(AppTableView):
         menu = RoundMenu(parent=self)
         menu.addAction(
             Action(
-                ICON_MENU_UPDATE,
-                Localizer.get().workbench_btn_update,
-                triggered=lambda checked: self.update_clicked.emit(rel_path),
+                self.ICON_MENU_REPLACE,
+                Localizer.get().workbench_btn_replace,
+                triggered=lambda checked: self.replace_clicked.emit(rel_path),
             )
         )
-        menu.addAction(
-            Action(
-                ICON_MENU_RESET,
-                Localizer.get().workbench_btn_reset,
-                triggered=lambda checked: self.reset_clicked.emit(rel_path),
+
+        if self.show_translation_reset:
+            menu.addAction(
+                Action(
+                    self.ICON_MENU_RESET,
+                    Localizer.get().workbench_btn_reset,
+                    triggered=lambda checked: self.reset_clicked.emit(rel_path),
+                )
             )
-        )
         menu.addSeparator()
         menu.addAction(
             Action(
-                ICON_MENU_DELETE,
+                self.ICON_MENU_DELETE,
                 Localizer.get().workbench_btn_delete,
                 triggered=lambda checked: self.delete_clicked.emit(rel_path),
             )

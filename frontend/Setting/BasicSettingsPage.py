@@ -10,6 +10,7 @@ from qfluentwidgets import SpinBox
 from qfluentwidgets import SwitchButton
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Engine.Engine import Engine
@@ -21,6 +22,7 @@ class BasicSettingsPage(Base, QWidget):
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
+        self.brand = BaseBrand.get()
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -63,7 +65,11 @@ class BasicSettingsPage(Base, QWidget):
         self.add_widget_source_language(scroll_area_vbox, config, window)
         self.add_widget_target_language(scroll_area_vbox, config, window)
         self.add_widget_project_save_mode(scroll_area_vbox, config, window)
-        self.add_widget_output_folder_open_on_finish(scroll_area_vbox, config, window)
+        # KG 没有翻译导出流程，这个选项保留只会增加理解成本。
+        if self.brand.brand_id != "kg":
+            self.add_widget_output_folder_open_on_finish(
+                scroll_area_vbox, config, window
+            )
         self.add_widget_request_timeout(scroll_area_vbox, config, window)
 
         # 填充

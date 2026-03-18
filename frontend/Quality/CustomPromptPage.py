@@ -35,7 +35,7 @@ ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入
 ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出
 ICON_PRESET_MENU_ROOT: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单入口
 
-ICON_PRESET_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置为当前 UI 模板
+ICON_PRESET_RESET: BaseIcon = BaseIcon.RECYCLE  # 预设菜单：重置为当前 UI 模板
 ICON_PRESET_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
 ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
 ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用
@@ -650,10 +650,12 @@ class CustomPromptPage(Base, QWidget):
                     triggered=save_preset,
                 )
             )
-            menu.addSeparator()
-
             builtin_presets, user_presets = get_preset_paths()
             key = self.get_default_preset_config_key()
+
+            if builtin_presets or user_presets:
+                # 只有后面真有预设分组时，才需要把固定动作和预设列表隔开。
+                menu.addSeparator()
 
             for item in builtin_presets:
                 sub_menu = RoundMenu(item["name"], menu)

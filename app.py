@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import os
 import signal
@@ -17,6 +18,7 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
+from base.BaseBrand import BaseBrand
 from base.CLIManager import CLIManager
 from base.EventManager import EventManager
 from base.LogManager import LogManager
@@ -28,11 +30,22 @@ from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.PromptResourceResolver import PromptResourceResolver
 
+APP_WINDOW_ICON_PATH: str = "resource/icon.png"
+
 # QT 日志黑名单
 QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
     "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
 )
+
+
+def parse_startup_args(argv: list[str]) -> tuple[str | None, list[str]]:
+    """只解析应用入口自己的启动参数，其余参数继续交给现有 CLI 流程。"""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--brand", type=str, choices=["lg", "kg"], default=None)
+    args, remaining_argv = parser.parse_known_args(argv[1:])
+    return args.brand, [argv[0], *remaining_argv]
 
 
 def resolve_app_dir() -> str:
@@ -115,6 +128,18 @@ def qt_message_handler(
 
 
 if __name__ == "__main__":
+    brand_id, sys.argv = parse_startup_args(sys.argv)
+    app_dir = resolve_app_dir()
+    # 先暴露应用目录，确保启动早期日志也能落到正确位置。
+    os.environ["LINGUAGACHA_APP_DIR"] = app_dir
+    resolved_brand_id = BaseBrand.resolve_runtime_brand_id(
+        brand_id,
+        app_dir,
+        getattr(sys, "frozen", False),
+    )
+    BaseBrand.set_current_brand_id(resolved_brand_id)
+    brand = BaseBrand.get()
+
     # 捕获全局异常
     sys.excepthook = excepthook
     sys.unraisablehook = unraisable_hook
@@ -144,7 +169,6 @@ if __name__ == "__main__":
     )
 
     # 设置工作目录
-    app_dir = resolve_app_dir()
     sys.path.append(app_dir)
 
     # 检测只读环境（AppImage, macOS .app bundle）
@@ -153,7 +177,10 @@ if __name__ == "__main__":
 
     if is_appimage or is_macos_app:
         # 便携式环境使用用户主目录存储数据
-        data_dir = os.path.join(os.path.expanduser("~"), "LinguaGacha")
+        data_dir = os.path.join(
+            os.path.expanduser("~"),
+            brand.data_dir_name,
+        )
     else:
         # Windows 和直接执行时使用应用目录
         data_dir = app_dir
@@ -185,7 +212,7 @@ if __name__ == "__main__":
     PromptResourceResolver.migrate_legacy_translation_user_presets()
 
     # 打印日志
-    LogManager.get().info(f"LinguaGacha {version}")
+    LogManager.get().info(f"{brand.app_name} {version}")
     if LogManager.get().is_expert_mode():
         LogManager.get().info(Localizer.get().log_expert_mode)
     LogManager.get().print("")
@@ -217,8 +244,8 @@ if __name__ == "__main__":
     # 固定事件中心的 QObject 线程亲和性在主线程，避免后台线程首次触发导致回调跑偏。
     EventManager.get()
 
-    # 设置应用图标
-    app.setWindowIcon(QIcon("resource/icon_no_bg.png"))
+    # 当前所有品牌共享同一套窗口图标，直接在入口固定资源路径更简单。
+    app.setWindowIcon(QIcon(APP_WINDOW_ICON_PATH))
 
     # 设置全局字体属性，解决狗牙问题。
     # 注意：不要用 QFont() 覆盖系统字体尺寸，否则 pointSize() 可能是 -1 并触发 Qt 警告。

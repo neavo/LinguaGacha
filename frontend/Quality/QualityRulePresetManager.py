@@ -17,10 +17,9 @@ from module.Localizer.Localizer import Localizer
 from module.Utils.JSONTool import JSONTool
 from widget.LineEditMessageBox import LineEditMessageBox
 
-
 # ==================== 图标常量 ====================
 
-ICON_RULE_RESET: BaseIcon = BaseIcon.ERASER  # 预设菜单：重置（清空规则）
+ICON_RULE_RESET: BaseIcon = BaseIcon.RECYCLE  # 预设菜单：重置
 ICON_RULE_SAVE_PRESET: BaseIcon = BaseIcon.SAVE  # 预设菜单：保存为预设
 ICON_PRESET_FOLDER: BaseIcon = BaseIcon.FOLDER  # 预设子菜单：目录/分组
 ICON_PRESET_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 预设子菜单：导入/应用

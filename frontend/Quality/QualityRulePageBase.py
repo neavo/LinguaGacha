@@ -9,9 +9,7 @@ from typing import cast
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
-from PySide6.QtCore import QUrl
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QPixmap
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QAbstractItemView
@@ -27,7 +25,6 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import MenuAnimationType
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
-from qfluentwidgets import TransparentPushButton
 from qfluentwidgets import setCustomStyleSheet
 from qfluentwidgets import qconfig
 from qfluentwidgets.components.widgets.command_bar import CommandButton
@@ -57,7 +54,6 @@ ICON_ACTION_IMPORT: BaseIcon = BaseIcon.FILE_DOWN  # 命令栏：导入规则
 ICON_ACTION_EXPORT: BaseIcon = BaseIcon.FILE_UP  # 命令栏：导出规则
 ICON_ACTION_SEARCH: BaseIcon = BaseIcon.SEARCH  # 命令栏：搜索
 ICON_ACTION_PRESET: BaseIcon = BaseIcon.FOLDER_OPEN  # 命令栏：预设菜单
-ICON_ACTION_WIKI: BaseIcon = BaseIcon.CIRCLE_QUESTION_MARK  # 命令栏：打开 Wiki
 ICON_ACTION_STATISTICS: BaseIcon = BaseIcon.CHART_BAR  # 命令栏：规则统计
 ICON_ACTION_REORDER: BaseIcon = BaseIcon.ARROW_DOWN_UP  # 右键菜单：排序
 ICON_ACTION_MOVE_UP: BaseIcon = BaseIcon.CHEVRON_UP  # 右键菜单：上移
@@ -1852,17 +1848,6 @@ class QualityRulePageBase(Base, QWidget):
         )
         return widget
 
-    def add_command_bar_action_wiki(self) -> None:
-        def connect() -> None:
-            QDesktopServices.openUrl(QUrl("https://github.com/neavo/LinguaGacha/wiki"))
-
-        push_button = TransparentPushButton(
-            ICON_ACTION_WIKI,
-            Localizer.get().wiki,
-        )
-        push_button.clicked.connect(connect)
-        self.command_bar_card.add_widget(push_button)
-
     def add_standard_command_bar_actions(
         self,
         config: Config,
@@ -1885,5 +1870,3 @@ class QualityRulePageBase(Base, QWidget):
 
         for action in extra_right_actions:
             action()
-
-        self.add_command_bar_action_wiki()

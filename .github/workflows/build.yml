@@ -1,0 +1,343 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "目标分支/标签/提交"
+        required: true
+        default: "main"
+      create_release:
+        description: "自动创建发布草稿"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check_version.outputs.version }}
+      brand_id: ${{ steps.resolve_brand.outputs.brand_id }}
+      app_name: ${{ steps.resolve_brand.outputs.app_name }}
+      dist_dir_name: ${{ steps.resolve_brand.outputs.dist_dir_name }}
+      macos_bundle_name: ${{ steps.resolve_brand.outputs.macos_bundle_name }}
+      linux_desktop_name: ${{ steps.resolve_brand.outputs.linux_desktop_name }}
+      linux_icon_name: ${{ steps.resolve_brand.outputs.linux_icon_name }}
+      bundle_identifier: ${{ steps.resolve_brand.outputs.bundle_identifier }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Check Version
+        id: check_version
+        shell: bash
+        run: |
+          version=$(cat version.txt)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Brand Meta
+        id: resolve_brand
+        shell: bash
+        run: |
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          repo_name="${repo_name,,}"
+          if [[ "$repo_name" == *"keywordgacha"* ]]; then
+            brand_id="kg"
+          else
+            brand_id="lg"
+          fi
+          python ./buildtools/brand.py --brand "$brand_id" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Generate requirements.txt
+        shell: cmd
+        run: |
+          python .\buildtools\generate_deps.py
+
+      - name: Install Requirements
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build EXE
+        shell: cmd
+        run: |
+          python .\buildtools\build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+
+      - name: Copy Files
+        shell: cmd
+        run: |
+          xcopy ".\version.txt" ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\" /Q /Y
+          xcopy ".\resource\" ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\resource\" /E /I /Q /H /Y
+
+      - name: Ensure update.ps1 in package
+        shell: pwsh
+        run: |
+          $src = ".\resource\update\update.ps1"
+          $dst = ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\resource\update\update.ps1"
+          if (!(Test-Path $src)) { throw "Missing $src" }
+          New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
+          Copy-Item $src $dst -Force
+
+      - name: Write bundled brand file
+        shell: pwsh
+        run: |
+          $brandPath = ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\resource\brand.txt"
+          Set-Content -Path $brandPath -Value "${{ needs.prepare.outputs.brand_id }}" -Encoding ascii
+
+      - name: Compress Archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\dist\* -DestinationPath "${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip" -CompressionLevel Optimal -Force
+
+      - name: Generate Windows ZIP SHA256
+        shell: pwsh
+        run: |
+          $zip = "${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+          "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows
+          path: |
+            ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip
+            ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip.sha256
+
+  build-macos:
+    needs: prepare
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Generate requirements.txt
+        run: |
+          python ./buildtools/generate_deps.py
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build App Bundle
+        run: |
+          python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+
+      - name: Copy Resources
+        run: |
+          cp version.txt ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
+          cp -r resource ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
+
+      - name: Write bundled brand file
+        run: |
+          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/resource/brand.txt
+
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "${{ needs.prepare.outputs.app_name }}" \
+            --volicon "./resource/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "${{ needs.prepare.outputs.macos_bundle_name }}" 150 190 \
+            --hide-extension "${{ needs.prepare.outputs.macos_bundle_name }}" \
+            --app-drop-link 450 185 \
+            "${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}.dmg" \
+            "./dist/${{ needs.prepare.outputs.macos_bundle_name }}" || true
+          DMG_FILE="${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}.dmg"
+          if [ ! -f "$DMG_FILE" ]; then
+            echo "ERROR: DMG file not created: $DMG_FILE"
+            exit 1
+          fi
+          ls -la "$DMG_FILE"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}
+          path: "*.dmg"
+
+  build-linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0
+
+      - name: Generate requirements.txt
+        run: |
+          python ./buildtools/generate_deps.py
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pyinstaller
+          python -m pip install -U -r requirements.txt
+          python -m pip cache purge
+
+      - name: Build Executable
+        run: |
+          python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+
+      - name: Copy Resources
+        run: |
+          cp version.txt ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
+          cp -r resource ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
+
+      - name: Write bundled brand file
+        run: |
+          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.dist_dir_name }}/resource/brand.txt
+
+      - name: Create AppImage
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          APP_NAME: ${{ needs.prepare.outputs.app_name }}
+          DIST_DIR_NAME: ${{ needs.prepare.outputs.dist_dir_name }}
+          DESKTOP_NAME: ${{ needs.prepare.outputs.linux_desktop_name }}
+          ICON_NAME: ${{ needs.prepare.outputs.linux_icon_name }}
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp -r "./dist/${DIST_DIR_NAME}/"* AppDir/usr/bin/
+
+          cat > "AppDir/usr/share/applications/${DESKTOP_NAME}.desktop" << EOF
+          [Desktop Entry]
+          Name=${APP_NAME}
+          Exec=${APP_NAME}
+          Icon=${ICON_NAME}
+          Type=Application
+          Categories=Utility;
+          EOF
+          cp "AppDir/usr/share/applications/${DESKTOP_NAME}.desktop" AppDir/
+
+          cp ./resource/icon.png "AppDir/usr/share/icons/hicolor/256x256/apps/${ICON_NAME}.png"
+          cp ./resource/icon.png "AppDir/${ICON_NAME}.png"
+
+          cat > AppDir/AppRun << EOF
+          #!/bin/bash
+          SELF=\$(readlink -f "\$0")
+          HERE=\${SELF%/*}
+          export PATH="\${HERE}/usr/bin:\${PATH}"
+          export LD_LIBRARY_PATH="\${HERE}/usr/bin:\${LD_LIBRARY_PATH}"
+          cd "\${HERE}/usr/bin"
+          exec "\${HERE}/usr/bin/${APP_NAME}" "\$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run AppDir "${APP_NAME}_${VERSION}_Linux_x86_64.AppImage"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x86_64
+          path: "${{ needs.prepare.outputs.app_name }}_*.AppImage"
+
+  create-release:
+    needs: [prepare, build-windows, build-macos, build-linux]
+    if: ${{ inputs.create_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: List Artifacts
+        run: |
+          find artifacts -type f
+
+      - name: Create Release And Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: MANUAL_BUILD_${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}
+          draft: true
+          prerelease: false
+          files: |
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}.zip.sha256
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x86_64/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x86_64.dmg
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64.dmg
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x86_64/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage

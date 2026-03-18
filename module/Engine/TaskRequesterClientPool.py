@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 
 from base.Base import Base
+from base.BaseBrand import BaseBrand
 from base.VersionManager import VersionManager
 
 
@@ -73,8 +74,12 @@ class TaskRequesterClientPool:
 
     @staticmethod
     def get_default_headers() -> dict:
+        brand = BaseBrand.get()
         return {
-            "User-Agent": f"LinguaGacha/{VersionManager.get().get_version()} (https://github.com/neavo/LinguaGacha)"
+            "User-Agent": (
+                f"{brand.user_agent_name}/{VersionManager.get().get_version()} "
+                f"({brand.repo_url})"
+            )
         }
 
     @classmethod

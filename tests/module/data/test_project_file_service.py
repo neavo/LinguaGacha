@@ -97,7 +97,7 @@ def test_delete_file_removes_asset_and_items() -> None:
     session.db.delete_asset.assert_called_once()
 
 
-def test_update_file_returns_mutation_stats(fs, monkeypatch) -> None:
+def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:
     service, session = build_service()
     session.db.asset_path_exists = MagicMock(return_value=True)
     session.db.get_items_by_file_path = MagicMock(
@@ -129,19 +129,57 @@ def test_update_file_returns_mutation_stats(fs, monkeypatch) -> None:
     file_path = "C:/workspace/a.txt"
     with open(file_path, "wb") as f:
         f.write(b"data")
-    result = service.update_file("a.txt", file_path)
+    result = service.replace_file("a.txt", file_path)
 
     assert result.matched == 1
     assert result.total == 1
 
 
-def test_build_target_rel_path_keeps_parent_folder() -> None:
+def test_replace_file_rejects_format_mismatch(fs, monkeypatch) -> None:
+    service, session = build_service()
+    session.db.asset_path_exists = MagicMock(return_value=True)
+    session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "旧译文",
+                "status": Base.ProjectStatus.PROCESSED,
+                "file_type": "TXT",
+            }
+        ]
+    )
+    file_manager_module = importlib.import_module("module.File.FileManager")
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del rel_path
+            del content
+            return [
+                Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "MD"})
+            ]
+
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+    fs.create_dir("C:/workspace")
+    file_path = "C:/workspace/a.txt"
+    with open(file_path, "wb") as f:
+        f.write(b"data")
+
+    with pytest.raises(ValueError, match="mismatch|格式|replace"):
+        service.replace_file("a.txt", file_path)
+
+
+def test_build_replace_target_rel_path_keeps_parent_folder() -> None:
     service, _session = build_service()
 
-    assert service.build_target_rel_path("chapter/a.txt", "C:/drop/b.txt") == (
+    assert service.build_replace_target_rel_path("chapter/a.txt", "C:/drop/b.txt") == (
         "chapter\\b.txt"
     )
-    assert service.build_target_rel_path("a.txt", "") == "a.txt"
+    assert service.build_replace_target_rel_path("a.txt", "") == "a.txt"
 
 
 def test_get_loaded_db_raises_when_project_not_loaded() -> None:
@@ -165,19 +203,19 @@ def test_try_begin_file_operation_blocks_until_finish() -> None:
     assert service.try_begin_file_operation() is True
 
 
-def test_ensure_target_path_not_conflict_ignores_self_but_rejects_other_duplicate() -> (
+def test_ensure_replace_target_path_not_conflict_ignores_self_but_rejects_other_duplicate() -> (
     None
 ):
     service, _session = build_service()
 
-    service.ensure_target_path_not_conflict(
+    service.ensure_replace_target_path_not_conflict(
         ["folder/a.txt", "folder/c.txt"],
         "folder/a.txt",
         "folder/A.txt",
     )
 
     with pytest.raises(ValueError, match="exist|exists|已存在|冲突|名称"):
-        service.ensure_target_path_not_conflict(
+        service.ensure_replace_target_path_not_conflict(
             ["folder/a.txt", "folder/b.txt"],
             "folder/a.txt",
             "folder/B.txt",

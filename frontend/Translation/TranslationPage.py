@@ -35,7 +35,7 @@ from widget.WaveformWidget import WaveformWidget
 ICON_ACTION_START: BaseIcon = BaseIcon.PLAY  # 命令栏：开始翻译
 ICON_ACTION_CONTINUE: BaseIcon = BaseIcon.ROTATE_CW  # 命令栏：继续/重新启动翻译
 ICON_ACTION_STOP: BaseIcon = BaseIcon.CIRCLE_STOP  # 命令栏：停止翻译
-ICON_ACTION_RESET: BaseIcon = BaseIcon.ERASER  # 命令栏：重置
+ICON_ACTION_RESET: BaseIcon = BaseIcon.RECYCLE  # 命令栏：重置
 ICON_ACTION_RESET_FAILED: BaseIcon = BaseIcon.PAINTBRUSH  # 更多菜单：重置失败项
 ICON_ACTION_RESET_ALL: BaseIcon = BaseIcon.BRUSH_CLEANING  # 更多菜单：重置全部
 ICON_ACTION_TIMER: BaseIcon = BaseIcon.TIMER  # 命令栏：定时器
