@@ -419,10 +419,10 @@ class VersionManager(Base):
             raise FileNotFoundError(updater_template_path)
 
         os.makedirs(__class__.get_update_runtime_dir(), exist_ok=True)
-        # 统一用 utf-8-sig 兼容模板可能带 BOM，避免把 BOM 字符写入脚本内容。
+        # 模板文件必须保持 ASCII-only；这里继续用 utf-8-sig 吃掉潜在 BOM，避免把标记字符写进脚本正文。
         with open(updater_template_path, "r", encoding="utf-8-sig") as reader:
             content = reader.read()
-        # Windows PowerShell 5.1 对“无 BOM 的 UTF-8 + 中文”兼容性不稳定，带 BOM 可避免解析错乱。
+        # 运行时脚本继续写成 utf-8-sig，专门兼容 PowerShell 5.1 对 UTF-8 的读取差异。
         with open(updater_runtime_path, "w", encoding="utf-8-sig") as writer:
             writer.write(content)
 
@@ -461,7 +461,7 @@ class VersionManager(Base):
             expected_sha256,
         ]
 
-        # 需要给用户展示双语简报并等待下一步操作，更新脚本必须可见运行。
+        # 需要给用户展示更新摘要并等待下一步操作，更新脚本必须可见运行。
         creation_flags = 0
         subprocess.Popen(
             command,
