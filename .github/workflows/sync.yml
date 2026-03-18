@@ -37,6 +37,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
+          persist-credentials: false  # 禁用默认 GITHUB_TOKEN，避免后续跨仓库推送时误用 github-actions[bot] 身份
 
       - name: Configure GitHub CLI
         env:
