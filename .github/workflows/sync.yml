@@ -11,10 +11,6 @@ on:
         description: "源分支/标签/提交"
         required: true
         default: "main"
-      target_repo:
-        description: "目标仓库"
-        required: true
-        default: "neavo/KeywordGacha"
       target_branch:
         description: "目标分支/标签/提交"
         required: true
@@ -24,22 +20,14 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
-      - name: Configure GitHub CLI
-        env:
-          GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
-        run: |
-          gh auth status
-          gh auth setup-git
-
       - name: Resolve Sync Meta
         id: resolve_meta
         shell: bash
         env:
-          SOURCE_REPO: ${{ inputs.source_repo }}
-          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -53,24 +41,18 @@ jobs:
                 ;;
               *)
                 return 1
-                ;;
+              ;;
             esac
           }
 
-          source_brand_id="$(resolve_brand_id "$SOURCE_REPO")" || {
-            echo "::error::Unsupported source_repo: $SOURCE_REPO"
-            exit 1
-          }
           target_brand_id="$(resolve_brand_id "$TARGET_REPO")" || {
             echo "::error::Unsupported target_repo: $TARGET_REPO"
             exit 1
           }
 
-          echo "source_brand_id=${source_brand_id}" >> "$GITHUB_OUTPUT"
           echo "target_brand_id=${target_brand_id}" >> "$GITHUB_OUTPUT"
+          echo "target_repo=${TARGET_REPO}" >> "$GITHUB_OUTPUT"
 
-          echo "source_repo=${SOURCE_REPO}"
-          echo "source_brand_id=${source_brand_id}"
           echo "target_repo=${TARGET_REPO}"
           echo "target_brand_id=${target_brand_id}"
 
@@ -78,97 +60,60 @@ jobs:
         id: prepare_tree
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
+          # 使用自定义 PAT，避免 github.token 无法跨仓库更新工作流文件。
+          GITHUB_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
-          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_REPO: ${{ steps.resolve_meta.outputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
-          SOURCE_BRAND_ID: ${{ steps.resolve_meta.outputs.source_brand_id }}
           TARGET_BRAND_ID: ${{ steps.resolve_meta.outputs.target_brand_id }}
         run: |
           set -euo pipefail
 
           work_root="$(mktemp -d)"
           source_dir="${work_root}/source"
-          target_base_dir="${work_root}/target-base"
-          source_overlay_dir=""
           target_overlay_dir=""
-          old_sha=""
-          baseline_ready="false"
           brand_applied="false"
-          strip_applied="false"
+          target_remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_REPO}.git"
+          old_sha=""
 
-          gh repo clone "$SOURCE_REPO" "$source_dir"
+          git clone "https://github.com/${SOURCE_REPO}.git" "$source_dir"
 
           cd "$source_dir"
           git checkout "$SOURCE_REF"
+          old_sha="$(git ls-remote "$target_remote" "refs/heads/${TARGET_BRANCH}" | cut -f1)"
 
-          source_overlay_dir="brands/${SOURCE_BRAND_ID}"
           target_overlay_dir="brands/${TARGET_BRAND_ID}"
-          old_sha="$(git ls-remote "https://github.com/${TARGET_REPO}.git" "refs/heads/${TARGET_BRANCH}" | cut -f1)"
 
-          # 当源品牌和目标品牌不同，且源品牌存在覆盖层时，需要先拿目标分支做基线回填。
-          if [[ "$SOURCE_BRAND_ID" != "$TARGET_BRAND_ID" && -d "$source_overlay_dir" ]]; then
-            if [[ -z "$old_sha" ]]; then
-              echo "::error::Target branch ${TARGET_REPO}:${TARGET_BRANCH} is missing, cannot strip source overlay ${source_overlay_dir}."
-              exit 1
-            fi
-
-            gh repo clone "$TARGET_REPO" "$target_base_dir"
-            cd "$target_base_dir"
-            git checkout "$TARGET_BRANCH"
-            baseline_ready="true"
-
-            cd "$source_dir"
-            while IFS= read -r -d '' overlay_path; do
-              rel_path="${overlay_path#${source_overlay_dir}/}"
-              worktree_path="${source_dir}/${rel_path}"
-              baseline_path="${target_base_dir}/${rel_path}"
-
-              if [[ -e "$baseline_path" || -L "$baseline_path" ]]; then
-                mkdir -p "$(dirname "$worktree_path")"
-                rm -rf "$worktree_path"
-                cp -a "$baseline_path" "$worktree_path"
-              else
-                rm -rf "$worktree_path"
-              fi
-            done < <(find "$source_overlay_dir" \( -type f -o -type l \) -print0)
-            strip_applied="true"
-          fi
-
-          # 目标品牌存在覆盖层时，总是在最终推送前重新覆盖一次。
+          # 根目录是默认资源；目标品牌目录里存在的文件才覆盖进去。
           if [[ -d "$target_overlay_dir" ]]; then
             rsync -a "${target_overlay_dir}/" ./
             brand_applied="true"
           fi
 
-          if git diff --quiet --exit-code; then
-            echo "brand_commit_created=false" >> "$GITHUB_OUTPUT"
-          else
+          git add -A
+          if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "Apply ${TARGET_BRAND_ID} brand"
-            echo "brand_commit_created=true" >> "$GITHUB_OUTPUT"
+            git commit -m "apply ${TARGET_BRAND_ID} brand"
           fi
 
           echo "work_root=${work_root}" >> "$GITHUB_OUTPUT"
           echo "source_dir=${source_dir}" >> "$GITHUB_OUTPUT"
           echo "old_sha=${old_sha}" >> "$GITHUB_OUTPUT"
-          echo "baseline_ready=${baseline_ready}" >> "$GITHUB_OUTPUT"
-          echo "strip_applied=${strip_applied}" >> "$GITHUB_OUTPUT"
           echo "brand_applied=${brand_applied}" >> "$GITHUB_OUTPUT"
 
           echo "source_ref=${SOURCE_REF}"
           echo "target_branch=${TARGET_BRANCH}"
-          echo "baseline_ready=${baseline_ready}"
-          echo "strip_applied=${strip_applied}"
+          echo "old_sha=${old_sha}"
           echo "brand_applied=${brand_applied}"
 
-      - name: Push Prepared Tree With Force-With-Lease
+      - name: Push Prepared Tree
         shell: bash
         env:
-          TARGET_REPO: ${{ inputs.target_repo }}
+          # 使用自定义 PAT，避免 github.token 无法跨仓库更新工作流文件。
+          GITHUB_TOKEN: ${{ secrets.CI_SYNC_TOKEN }}
+          TARGET_REPO: ${{ steps.resolve_meta.outputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
           SOURCE_DIR: ${{ steps.prepare_tree.outputs.source_dir }}
           OLD_SHA: ${{ steps.prepare_tree.outputs.old_sha }}
@@ -176,9 +121,10 @@ jobs:
           set -euo pipefail
 
           cd "$SOURCE_DIR"
+          target_remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_REPO}.git"
 
           if [[ -n "$OLD_SHA" ]]; then
-            git push "https://github.com/${TARGET_REPO}.git" "HEAD:refs/heads/${TARGET_BRANCH}" --force-with-lease="refs/heads/${TARGET_BRANCH}:${OLD_SHA}"
+            git push "$target_remote" "HEAD:refs/heads/${TARGET_BRANCH}" --force-with-lease="refs/heads/${TARGET_BRANCH}:${OLD_SHA}"
           else
-            git push "https://github.com/${TARGET_REPO}.git" "HEAD:refs/heads/${TARGET_BRANCH}"
+            git push "$target_remote" "HEAD:refs/heads/${TARGET_BRANCH}"
           fi

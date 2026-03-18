@@ -111,11 +111,28 @@ class Config:
     def get_legacy_default_paths(cls) -> list[str]:
         """收口旧版默认配置位置，便于启动时做一次性迁移。"""
 
-        candidate_paths: list[str] = [
-            os.path.join(BasePath.get_data_dir(), cls.CONFIG_FILE_NAME),
-            os.path.join(BasePath.get_app_dir(), cls.CONFIG_FILE_NAME),
-            os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
-        ]
+        data_dir = BasePath.get_data_dir()
+        app_dir = BasePath.get_app_dir()
+
+        # 迁移优先级必须与 main 分支旧默认读取规则一致：
+        # 1. 便携/只读安装场景优先沿用 data_dir/config.json。
+        # 2. 普通桌面场景优先沿用 resource/config.json。
+        # 3. app_dir/config.json 仅作为更早历史残留的兜底来源。
+        if os.path.normcase(os.path.normpath(data_dir)) != os.path.normcase(
+            os.path.normpath(app_dir)
+        ):
+            candidate_paths: list[str] = [
+                os.path.join(data_dir, cls.CONFIG_FILE_NAME),
+                os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
+                os.path.join(app_dir, cls.CONFIG_FILE_NAME),
+            ]
+        else:
+            candidate_paths = [
+                os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
+                os.path.join(data_dir, cls.CONFIG_FILE_NAME),
+                os.path.join(app_dir, cls.CONFIG_FILE_NAME),
+            ]
+
         unique_paths: list[str] = []
         seen_paths: set[str] = set()
 

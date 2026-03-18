@@ -12,6 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 WINDOWS_BUILD_ICON_PATH: str = "./resource/icon.ico"
 MACOS_BUILD_ICON_PATH: str = "./resource/icon.icns"
+WINDOWS_EXECUTABLE_NAME: str = "app"
 
 # 检测平台
 is_macos = sys.platform == "darwin"
@@ -19,9 +20,9 @@ is_linux = sys.platform == "linux"
 is_windows = sys.platform == "win32" or os.name == "nt"
 
 
-# Patch opencc_pyo3 before PyInstaller packages it (must modify source before build)
-# The library unconditionally imports pdfium_helper which fails if pdfium is missing
 def patch_opencc_init() -> tuple[Path, str] | None:
+    """打包前临时修补 opencc_pyo3，避免缺少 pdfium 时导入失败。"""
+
     spec = importlib.util.find_spec("opencc_pyo3")
     if spec is None or spec.origin is None:
         return None
@@ -38,6 +39,8 @@ def patch_opencc_init() -> tuple[Path, str] | None:
 
 
 def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
+    """打包结束后恢复 opencc_pyo3 原始文件，避免污染环境。"""
+
     if backup:
         backup[0].write_text(backup[1], encoding="utf-8")
 
@@ -53,12 +56,12 @@ def build_command(brand_id: str) -> list[str]:
     common_args = [
         "--collect-all=rich",
         "--collect-all=opencc_pyo3",
-        f"--name={build_names.app_name}",
     ]
 
     if is_macos:
         cmd = [
             "./app.py",
+            f"--name={build_names.app_name}",
             f"--icon={MACOS_BUILD_ICON_PATH}",
             "--clean",
             "--onedir",
@@ -70,6 +73,7 @@ def build_command(brand_id: str) -> list[str]:
     elif is_linux:
         cmd = [
             "./app.py",
+            f"--name={build_names.app_name}",
             "--clean",
             "--onedir",
             "--noconfirm",
@@ -78,19 +82,13 @@ def build_command(brand_id: str) -> list[str]:
     else:
         cmd = [
             "./app.py",
+            f"--name={WINDOWS_EXECUTABLE_NAME}",
             f"--icon={WINDOWS_BUILD_ICON_PATH}",
             "--clean",
             "--onefile",
             "--noconfirm",
             f"--distpath=./dist/{build_names.dist_dir_name}",
         ] + common_args
-
-    if os.path.exists("./requirements.txt"):
-        with open("./requirements.txt", "r", encoding="utf-8") as reader:
-            for line in reader:
-                line = line.strip()
-                if line and "#" not in line:
-                    cmd.append("--hidden-import=" + line)
 
     return cmd
 

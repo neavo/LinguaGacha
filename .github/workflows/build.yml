@@ -35,10 +35,11 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
+          enable-cache: true
 
       - name: Check Version
         id: check_version
@@ -46,6 +47,11 @@ jobs:
         run: |
           version=$(cat version.txt)
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Sync Dependencies
+        shell: bash
+        run: |
+          uv sync
 
       - name: Resolve Brand Meta
         id: resolve_brand
@@ -58,7 +64,7 @@ jobs:
           else
             brand_id="lg"
           fi
-          python ./buildtools/brand.py --brand "$brand_id" >> "$GITHUB_OUTPUT"
+          uv run python ./buildtools/brand.py --brand "$brand_id" >> "$GITHUB_OUTPUT"
 
   build-windows:
     needs: prepare
@@ -67,34 +73,26 @@ jobs:
       contents: write
 
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Generate requirements.txt
-        shell: cmd
-        run: |
-          python .\buildtools\generate_deps.py
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
 
-      - name: Install Requirements
+      - name: Sync Dependencies
         shell: cmd
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade setuptools
-          python -m pip install pyinstaller
-          python -m pip install -U -r requirements.txt
-          python -m pip cache purge
+          uv sync
 
       - name: Build EXE
         shell: cmd
         run: |
-          python .\buildtools\build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python .\buildtools\build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
 
       - name: Copy Files
         shell: cmd
@@ -152,30 +150,24 @@ jobs:
       contents: write
 
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Generate requirements.txt
-        run: |
-          python ./buildtools/generate_deps.py
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
 
-      - name: Install Requirements
+      - name: Sync Dependencies
         run: |
-          python -m pip install --upgrade pip setuptools
-          python -m pip install pyinstaller
-          python -m pip install -U -r requirements.txt
-          python -m pip cache purge
+          uv sync
 
       - name: Build App Bundle
         run: |
-          python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
 
       - name: Copy Resources
         run: |
@@ -223,35 +215,29 @@ jobs:
       contents: write
 
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
 
       - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0
 
-      - name: Generate requirements.txt
+      - name: Sync Dependencies
         run: |
-          python ./buildtools/generate_deps.py
-
-      - name: Install Requirements
-        run: |
-          python -m pip install --upgrade pip setuptools
-          python -m pip install pyinstaller
-          python -m pip install -U -r requirements.txt
-          python -m pip cache purge
+          uv sync
 
       - name: Build Executable
         run: |
-          python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
 
       - name: Copy Resources
         run: |

@@ -1,6 +1,6 @@
 ---
 name: pytest-ruler
-description: 基于 pytest 的 TDD 测试工作流技能。用于编写、补充、重构和审查测试，尤其是在用户提到 `pytest`、`TDD`、`add tests`、`write tests`、`unit tests`、`test coverage`、`test-driven development`、测试覆盖率或测试重构时使用。
+description: 基于 pytest 的 TDD 测试工作流技能，用于编写、补充、重构和审查测试。
 ---
 
 # Pytest Ruler

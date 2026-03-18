@@ -3,7 +3,6 @@ param (
     [int]$AppPid,
     [Parameter(Mandatory = $true)]
     [string]$InstallDir,
-    [Parameter(Mandatory = $true)]
     [string]$UpdateDir,
     [Parameter(Mandatory = $true)]
     [string]$ZipPath,
@@ -12,6 +11,10 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($UpdateDir)) {
+    $UpdateDir = Join-Path $InstallDir "resource\update"
+}
 
 $StageDir = Join-Path $UpdateDir "stage"
 $BackupDir = Join-Path $UpdateDir "backup"
@@ -196,6 +199,41 @@ function Expand-PackageToStage {
     [System.IO.Compression.ZipFile]::ExtractToDirectory($PackagePath, $DestinationPath)
 }
 
+function Get-UpdateBackupExcludedNames {
+    return @(
+        "app.zip.temp",
+        "update.log",
+        ".lock",
+        "result.json",
+        "update.runtime.ps1",
+        "stage",
+        "backup"
+    )
+}
+
+function Copy-DirectoryItems {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDir,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationDir,
+        [string[]]$ExcludedNames = @()
+    )
+
+    New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
+    if (!(Test-Path $SourceDir)) {
+        return
+    }
+
+    $sourceItems = Get-ChildItem -Path $SourceDir -Force
+    foreach ($sourceItem in $sourceItems) {
+        if ($ExcludedNames -contains $sourceItem.Name) {
+            continue
+        }
+        Copy-Item -Path $sourceItem.FullName -Destination $DestinationDir -Recurse -Force
+    }
+}
+
 function Backup-Targets {
     Remove-IfExists $BackupDir
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
@@ -215,7 +253,8 @@ function Backup-Targets {
     if (Test-Path $ResourcePath) {
         $resourceItems = Get-ChildItem -Path $ResourcePath -Force
         foreach ($item in $resourceItems) {
-            if ($item.Name -eq "update") {
+            if ($item.PSIsContainer -and $item.FullName -eq $UpdateDir) {
+                Copy-DirectoryItems -SourceDir $item.FullName -DestinationDir (Join-Path $backupResourcePath $item.Name) -ExcludedNames (Get-UpdateBackupExcludedNames)
                 continue
             }
             Copy-Item -Path $item.FullName -Destination $backupResourcePath -Recurse -Force
@@ -241,9 +280,6 @@ function Restore-Targets {
 
     $resourceItems = Get-ChildItem -Path $ResourcePath -Force
     foreach ($item in $resourceItems) {
-        if ($item.Name -eq "update") {
-            continue
-        }
         Remove-IfExists $item.FullName
     }
 
@@ -294,6 +330,10 @@ try {
 
     Write-Log "Apply staged files to install directory."
     Copy-Item -Path (Join-Path $sourceRoot "*") -Destination $InstallDir -Recurse -Force
+
+    if ($env:LINGUAGACHA_UPDATER_TEST_FAIL_AFTER_COPY -eq "1") {
+        throw "Test requested failure after copy."
+    }
 
     Write-Log "Update applied successfully."
     Write-Result -Status "success" -Message "Update applied."

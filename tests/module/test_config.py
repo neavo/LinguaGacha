@@ -313,15 +313,45 @@ class TestConfigModels:
         assert migrated_path.exists() is True
         assert legacy_path.exists() is True
 
-    def test_load_copies_first_legacy_config_when_multiple_exist(self, fs) -> None:
+    def test_load_prefers_legacy_resource_config_in_desktop_upgrade(self, fs) -> None:
+        del fs
+        BasePath.reset_for_test()
+        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        root_legacy_path = Path("/workspace/app/config.json")
+        resource_legacy_path = Path("/workspace/app/resource/config.json")
+        root_legacy_path.write_text(
+            json.dumps({"expert_mode": False}),
+            encoding="utf-8",
+        )
+        resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        resource_legacy_path.write_text(
+            json.dumps({"expert_mode": True}),
+            encoding="utf-8",
+        )
+
+        UserDataMigrationService.run_startup_migrations()
+        config = Config().load()
+        migrated_path = Path("/workspace/app/userdata/config.json")
+
+        assert config.expert_mode is True
+        assert migrated_path.exists() is True
+        assert root_legacy_path.exists() is True
+        assert resource_legacy_path.exists() is True
+
+    def test_load_prefers_legacy_data_config_in_portable_upgrade(self, fs) -> None:
         del fs
         BasePath.reset_for_test()
         BasePath.APP_DIR = "/workspace/app"
         BasePath.DATA_DIR = "/workspace/data"
         data_legacy_path = Path("/workspace/data/config.json")
         resource_legacy_path = Path("/workspace/app/resource/config.json")
+        root_legacy_path = Path("/workspace/app/config.json")
         data_legacy_path.parent.mkdir(parents=True, exist_ok=True)
         resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        root_legacy_path.write_text(
+            json.dumps({"expert_mode": False}),
+            encoding="utf-8",
+        )
         resource_legacy_path.write_text(
             json.dumps({"expert_mode": False}),
             encoding="utf-8",
@@ -339,6 +369,7 @@ class TestConfigModels:
         assert migrated_path.exists() is True
         assert data_legacy_path.exists() is True
         assert resource_legacy_path.exists() is True
+        assert root_legacy_path.exists() is True
 
     def test_load_prefers_new_config_when_new_and_legacy_both_exist(self, fs) -> None:
         del fs
