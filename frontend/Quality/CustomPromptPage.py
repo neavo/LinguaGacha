@@ -22,7 +22,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.PromptResourceResolver import PromptResourceResolver
+from module.PromptPathResolver import PromptPathResolver
 from widget.CommandBarCard import CommandBarCard
 from widget.CustomTextEdit import CustomTextEdit
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -60,7 +60,7 @@ class CustomPromptPage(Base, QWidget):
         self,
         text: str,
         window: FluentWindow,
-        task_type: PromptResourceResolver.TaskType,
+        task_type: PromptPathResolver.TaskType,
     ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
@@ -81,7 +81,7 @@ class CustomPromptPage(Base, QWidget):
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
     def is_translation_task(self) -> bool:
-        return self.task_type == PromptResourceResolver.TaskType.TRANSLATION
+        return self.task_type == PromptPathResolver.TaskType.TRANSLATION
 
     def get_prompt_data(self) -> str:
         if self.is_translation_task():
@@ -369,7 +369,7 @@ class CustomPromptPage(Base, QWidget):
         widget: CommandButton = None
 
         def get_preset_paths() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-            return PromptResourceResolver.list_presets(self.task_type)
+            return PromptPathResolver.list_presets(self.task_type)
 
         def set_default_preset(item: dict[str, str], checked: bool = False) -> None:
             del checked
@@ -429,7 +429,7 @@ class CustomPromptPage(Base, QWidget):
         def apply_preset(item: dict[str, str], checked: bool = False) -> None:
             del checked
             try:
-                prompt = PromptResourceResolver.read_preset(
+                prompt = PromptPathResolver.read_preset(
                     self.task_type, item["virtual_id"]
                 )
             except Exception as e:
@@ -464,11 +464,11 @@ class CustomPromptPage(Base, QWidget):
                 if not normalized_name:
                     return
 
-                target_virtual_id = PromptResourceResolver.build_virtual_id(
-                    PromptResourceResolver.PresetSource.USER,
+                target_virtual_id = PromptPathResolver.build_virtual_id(
+                    PromptPathResolver.PresetSource.USER,
                     f"{normalized_name}.txt",
                 )
-                target_path = PromptResourceResolver.resolve_virtual_id_path(
+                target_path = PromptPathResolver.resolve_virtual_id_path(
                     self.task_type, target_virtual_id
                 )
                 if os.path.exists(target_path):
@@ -484,7 +484,7 @@ class CustomPromptPage(Base, QWidget):
                         return
 
                 try:
-                    PromptResourceResolver.save_user_preset(
+                    PromptPathResolver.save_user_preset(
                         self.task_type,
                         normalized_name,
                         self.main_text.toPlainText(),
@@ -523,11 +523,11 @@ class CustomPromptPage(Base, QWidget):
                 if not normalized_name:
                     return
 
-                new_virtual_id = PromptResourceResolver.build_virtual_id(
-                    PromptResourceResolver.PresetSource.USER,
+                new_virtual_id = PromptPathResolver.build_virtual_id(
+                    PromptPathResolver.PresetSource.USER,
                     f"{normalized_name}.txt",
                 )
-                new_path = PromptResourceResolver.resolve_virtual_id_path(
+                new_path = PromptPathResolver.resolve_virtual_id_path(
                     self.task_type, new_virtual_id
                 )
                 if os.path.exists(new_path):
@@ -541,7 +541,7 @@ class CustomPromptPage(Base, QWidget):
                     return
 
                 try:
-                    renamed_item = PromptResourceResolver.rename_user_preset(
+                    renamed_item = PromptPathResolver.rename_user_preset(
                         self.task_type, item["virtual_id"], normalized_name
                     )
                     current_default = getattr(
@@ -602,7 +602,7 @@ class CustomPromptPage(Base, QWidget):
                 return
 
             try:
-                PromptResourceResolver.delete_user_preset(
+                PromptPathResolver.delete_user_preset(
                     self.task_type, item["virtual_id"]
                 )
 

@@ -4,6 +4,8 @@ param (
     [Parameter(Mandatory = $true)]
     [string]$InstallDir,
     [Parameter(Mandatory = $true)]
+    [string]$UpdateDir,
+    [Parameter(Mandatory = $true)]
     [string]$ZipPath,
     [Parameter(Mandatory = $true)]
     [string]$ExpectedSha256
@@ -11,7 +13,6 @@ param (
 
 $ErrorActionPreference = "Stop"
 
-$UpdateDir = Join-Path $InstallDir "resource\update"
 $StageDir = Join-Path $UpdateDir "stage"
 $BackupDir = Join-Path $UpdateDir "backup"
 $LockPath = Join-Path $UpdateDir ".lock"

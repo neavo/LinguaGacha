@@ -14,7 +14,7 @@ from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.Utils.JSONTool import JSONTool
+from module.QualityRulePathResolver import QualityRulePathResolver
 from widget.LineEditMessageBox import LineEditMessageBox
 
 # ==================== 图标常量 ====================
@@ -38,9 +38,6 @@ if TYPE_CHECKING:
 class QualityRulePresetManager:
     """质量规则预设管理器。"""
 
-    PRESET_EXTENSION: str = ".json"
-    USER_DIR_NAME: str = "user"
-
     def __init__(
         self,
         preset_dir_name: str,
@@ -56,48 +53,9 @@ class QualityRulePresetManager:
         self.window: FluentWindow = window
 
     def get_preset_paths(self) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-        builtin_dir = os.path.join(
-            "resource",
-            "preset",
+        return QualityRulePathResolver.list_presets(
             self.preset_dir_name,
-            Localizer.get_app_language().lower(),
         )
-        user_dir = os.path.join(
-            "resource", "preset", self.preset_dir_name, self.USER_DIR_NAME
-        )
-
-        builtin_presets: list[dict[str, str]] = []
-        user_presets: list[dict[str, str]] = []
-
-        if os.path.exists(builtin_dir):
-            for file_name in os.listdir(builtin_dir):
-                if not file_name.lower().endswith(self.PRESET_EXTENSION):
-                    continue
-                path = os.path.join(builtin_dir, file_name).replace("\\", "/")
-                builtin_presets.append(
-                    {
-                        "name": file_name[: -len(self.PRESET_EXTENSION)],
-                        "path": path,
-                        "type": "builtin",
-                    }
-                )
-
-        if not os.path.exists(user_dir):
-            os.makedirs(user_dir)
-
-        for file_name in os.listdir(user_dir):
-            if not file_name.lower().endswith(self.PRESET_EXTENSION):
-                continue
-            path = os.path.join(user_dir, file_name).replace("\\", "/")
-            user_presets.append(
-                {
-                    "name": file_name[: -len(self.PRESET_EXTENSION)],
-                    "path": path,
-                    "type": "user",
-                }
-            )
-
-        return builtin_presets, user_presets
 
     def apply_preset(self, path: str) -> None:
         self.page.import_rules_from_path(path)
@@ -107,16 +65,14 @@ class QualityRulePresetManager:
         if not name:
             return False
 
-        path = os.path.join(
-            "resource",
-            "preset",
-            self.preset_dir_name,
-            self.USER_DIR_NAME,
-            f"{name}{self.PRESET_EXTENSION}",
+        virtual_id = QualityRulePathResolver.build_virtual_id(
+            QualityRulePathResolver.PresetSource.USER,
+            f"{name}{QualityRulePathResolver.PRESET_EXTENSION}",
         )
-        user_dir = os.path.dirname(path)
-        if not os.path.exists(user_dir):
-            os.makedirs(user_dir)
+        path = QualityRulePathResolver.resolve_virtual_id_path(
+            self.preset_dir_name,
+            virtual_id,
+        )
 
         if os.path.exists(path):
             message_box = MessageBox(
@@ -131,7 +87,7 @@ class QualityRulePresetManager:
 
         try:
             data = [v for v in self.page.entries if str(v.get("src", "")).strip()]
-            JSONTool.save_file(path, data, indent=4)
+            QualityRulePathResolver.save_user_preset(self.preset_dir_name, name, data)
             self.show_toast(
                 Base.ToastType.SUCCESS, Localizer.get().quality_save_preset_success
             )
@@ -145,8 +101,12 @@ class QualityRulePresetManager:
         if not new_name:
             return False
 
-        new_path = os.path.join(
-            os.path.dirname(item["path"]), f"{new_name}{self.PRESET_EXTENSION}"
+        new_path = QualityRulePathResolver.resolve_virtual_id_path(
+            self.preset_dir_name,
+            QualityRulePathResolver.build_virtual_id(
+                QualityRulePathResolver.PresetSource.USER,
+                f"{new_name}{QualityRulePathResolver.PRESET_EXTENSION}",
+            ),
         )
         if os.path.exists(new_path):
             self.show_toast(
@@ -155,7 +115,29 @@ class QualityRulePresetManager:
             return False
 
         try:
-            os.rename(item["path"], new_path)
+            renamed_item = QualityRulePathResolver.rename_user_preset(
+                self.preset_dir_name,
+                item["virtual_id"],
+                new_name,
+            )
+
+            current_config = Config().load()
+            if (
+                getattr(current_config, self.default_preset_config_key, "")
+                == item["virtual_id"]
+            ):
+                setattr(
+                    current_config,
+                    self.default_preset_config_key,
+                    renamed_item["virtual_id"],
+                )
+                current_config.save()
+                setattr(
+                    self.config,
+                    self.default_preset_config_key,
+                    renamed_item["virtual_id"],
+                )
+
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
             return True
         except Exception as e:
@@ -174,12 +156,15 @@ class QualityRulePresetManager:
             return
 
         try:
-            os.remove(item["path"])
+            QualityRulePathResolver.delete_user_preset(
+                self.preset_dir_name,
+                item["virtual_id"],
+            )
 
             current_config = Config().load()
             if (
                 getattr(current_config, self.default_preset_config_key, "")
-                == item["path"]
+                == item["virtual_id"]
             ):
                 setattr(current_config, self.default_preset_config_key, "")
                 current_config.save()
@@ -191,9 +176,9 @@ class QualityRulePresetManager:
 
     def set_default_preset(self, item: dict[str, str], checked: bool = False) -> None:
         current_config = Config().load()
-        setattr(current_config, self.default_preset_config_key, item["path"])
+        setattr(current_config, self.default_preset_config_key, item["virtual_id"])
         current_config.save()
-        setattr(self.config, self.default_preset_config_key, item["path"])
+        setattr(self.config, self.default_preset_config_key, item["virtual_id"])
         self.show_toast(
             Base.ToastType.SUCCESS, Localizer.get().quality_set_default_preset_success
         )
@@ -374,7 +359,10 @@ class QualityRulePresetManager:
         dialog.exec()
 
     def is_default_preset(self, item: dict[str, str]) -> bool:
-        return getattr(self.config, self.default_preset_config_key, "") == item["path"]
+        return (
+            getattr(self.config, self.default_preset_config_key, "")
+            == item["virtual_id"]
+        )
 
     def show_toast(self, toast_type: Base.ToastType, message: str) -> None:
         self.page.emit(Base.Event.TOAST, {"type": toast_type, "message": message})

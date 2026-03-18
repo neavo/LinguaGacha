@@ -4,26 +4,32 @@ from pathlib import Path
 
 import pytest
 
+from base.BaseBrand import BaseBrand
 from base.BaseLanguage import BaseLanguage
+from base.BasePath import BasePath
 from module.Config import Config
+from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 
 class TestConfigPaths:
-    def test_get_config_path_prefers_data_dir_in_portable_mode(
+    def test_base_path_get_user_data_root_dir_prefers_userdata_root_in_portable_mode(
         self, monkeypatch
     ) -> None:
-        monkeypatch.setenv("LINGUAGACHA_DATA_DIR", "/tmp/data")
-        monkeypatch.setenv("LINGUAGACHA_APP_DIR", "/tmp/app")
+        BasePath.reset_for_test()
+        BasePath.APP_DIR = "/tmp/app"
+        BasePath.DATA_DIR = "/tmp/data"
 
-        assert Config.get_config_path() == os.path.join("/tmp/data", "config.json")
-
-    def test_get_config_path_uses_app_resource_by_default(self, monkeypatch) -> None:
-        monkeypatch.delenv("LINGUAGACHA_DATA_DIR", raising=False)
-        monkeypatch.setenv("LINGUAGACHA_APP_DIR", "/tmp/app")
-
-        assert Config.get_config_path() == os.path.join(
-            "/tmp/app", "resource", "config.json"
+        assert BasePath.get_user_data_root_dir() == os.path.join(
+            "/tmp/data", "userdata"
         )
+
+    def test_base_path_get_user_data_root_dir_uses_userdata_root_by_default(
+        self, monkeypatch
+    ) -> None:
+        BasePath.reset_for_test()
+        BasePath.initialize("/tmp/app", BaseBrand.get("lg"), False)
+
+        assert BasePath.get_user_data_root_dir() == os.path.join("/tmp/app", "userdata")
 
 
 class TestConfigBehavior:
@@ -101,6 +107,42 @@ class TestConfigBehavior:
         assert config.expert_mode is False
         assert config.theme == Config.Theme.LIGHT
         assert config.force_thinking_enable is True
+
+    def test_load_reads_normalized_quality_preset_virtual_ids(self, fs) -> None:
+        del fs
+        path = Path("/workspace/config/config.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "glossary_default_preset": "builtin:demo.json",
+                    "text_preserve_default_preset": "user:custom.json",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        config = Config().load(str(path))
+
+        assert config.glossary_default_preset == "builtin:demo.json"
+        assert config.text_preserve_default_preset == "user:custom.json"
+
+    def test_load_keeps_unknown_quality_preset_value_as_is(self, fs) -> None:
+        del fs
+        path = Path("/workspace/config/config.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "post_translation_replacement_default_preset": "unknown.txt",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        config = Config().load(str(path))
+
+        assert config.post_translation_replacement_default_preset == "unknown.txt"
 
     def test_save_sorts_models_before_dumping(self, fs) -> None:
         del fs
@@ -225,14 +267,101 @@ class TestConfigModels:
 
     def test_save_uses_default_path_when_path_is_none(self, fs, monkeypatch) -> None:
         del fs
-        monkeypatch.delenv("LINGUAGACHA_DATA_DIR", raising=False)
-        monkeypatch.setenv("LINGUAGACHA_APP_DIR", "/workspace/app")
+        BasePath.reset_for_test()
+        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
 
         Config(expert_mode=True).save()
 
-        saved_path = Path("/workspace/app/resource/config.json")
+        saved_path = Path("/workspace/app/userdata/config.json")
         assert saved_path.exists() is True
         assert json.loads(saved_path.read_text(encoding="utf-8"))["expert_mode"] is True
+
+    def test_load_copies_legacy_resource_config_to_userdata(self, fs) -> None:
+        del fs
+        BasePath.reset_for_test()
+        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        legacy_path = Path("/workspace/app/resource/config.json")
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.write_text(
+            json.dumps({"expert_mode": True}),
+            encoding="utf-8",
+        )
+
+        UserDataMigrationService.run_startup_migrations()
+        config = Config().load()
+        migrated_path = Path("/workspace/app/userdata/config.json")
+
+        assert config.expert_mode is True
+        assert migrated_path.exists() is True
+        assert legacy_path.exists() is True
+
+    def test_load_copies_legacy_root_config_to_userdata(self, fs) -> None:
+        del fs
+        BasePath.reset_for_test()
+        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        legacy_path = Path("/workspace/app/config.json")
+        legacy_path.write_text(
+            json.dumps({"proxy_enable": True}),
+            encoding="utf-8",
+        )
+
+        UserDataMigrationService.run_startup_migrations()
+        config = Config().load()
+        migrated_path = Path("/workspace/app/userdata/config.json")
+
+        assert config.proxy_enable is True
+        assert migrated_path.exists() is True
+        assert legacy_path.exists() is True
+
+    def test_load_copies_first_legacy_config_when_multiple_exist(self, fs) -> None:
+        del fs
+        BasePath.reset_for_test()
+        BasePath.APP_DIR = "/workspace/app"
+        BasePath.DATA_DIR = "/workspace/data"
+        data_legacy_path = Path("/workspace/data/config.json")
+        resource_legacy_path = Path("/workspace/app/resource/config.json")
+        data_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        resource_legacy_path.write_text(
+            json.dumps({"expert_mode": False}),
+            encoding="utf-8",
+        )
+        data_legacy_path.write_text(
+            json.dumps({"expert_mode": True}),
+            encoding="utf-8",
+        )
+
+        UserDataMigrationService.run_startup_migrations()
+        config = Config().load()
+        migrated_path = Path("/workspace/data/userdata/config.json")
+
+        assert config.expert_mode is True
+        assert migrated_path.exists() is True
+        assert data_legacy_path.exists() is True
+        assert resource_legacy_path.exists() is True
+
+    def test_load_prefers_new_config_when_new_and_legacy_both_exist(self, fs) -> None:
+        del fs
+        BasePath.reset_for_test()
+        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        new_path = Path("/workspace/app/userdata/config.json")
+        legacy_path = Path("/workspace/app/resource/config.json")
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_text(
+            json.dumps({"expert_mode": False}),
+            encoding="utf-8",
+        )
+        legacy_path.write_text(
+            json.dumps({"expert_mode": True}),
+            encoding="utf-8",
+        )
+
+        config = Config().load()
+
+        assert config.expert_mode is False
+        assert json.loads(new_path.read_text(encoding="utf-8"))["expert_mode"] is False
+        assert legacy_path.exists() is True
 
     def test_save_skips_model_sort_when_models_is_none(self, fs) -> None:
         del fs

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import ClassVar
 from typing import Self
 
+from base.BasePath import BasePath
 from base.LogManager import LogManager
 
 
@@ -62,7 +63,7 @@ class BaseBrand:
         None  # 进程内当前品牌 ID，作为运行时品牌的单一来源。
     )
     BUNDLED_BRAND_RELATIVE_PATH: ClassVar[Path] = (
-        Path("resource") / "brand.txt"
+        Path(BasePath.RESOURCE_DIR_NAME) / "brand.txt"
     )  # 随安装包分发的品牌文件相对路径，正式包启动时只认它。
 
     @classmethod

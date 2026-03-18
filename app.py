@@ -19,6 +19,7 @@ from qfluentwidgets import setTheme
 from rich.console import Console
 
 from base.BaseBrand import BaseBrand
+from base.BasePath import BasePath
 from base.CLIManager import CLIManager
 from base.EventManager import EventManager
 from base.LogManager import LogManager
@@ -28,15 +29,15 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.PromptResourceResolver import PromptResourceResolver
-
-APP_WINDOW_ICON_PATH: str = "resource/icon.png"
+from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 # QT 日志黑名单
 QT_LOG_BLACKLIST: tuple[str, ...] = (
     "Error calling Python override of QDialog::eventFilter()",
     "QFont::setPointSize: Point size <= 0 (-1), must be greater than 0",
 )
+APP_VERSION_FILE_NAME: str = "version.txt"
+APP_ICON_FILE_NAME: str = "icon.png"
 
 
 def parse_startup_args(argv: list[str]) -> tuple[str | None, list[str]]:
@@ -46,14 +47,6 @@ def parse_startup_args(argv: list[str]) -> tuple[str | None, list[str]]:
     parser.add_argument("--brand", type=str, choices=["lg", "kg"], default=None)
     args, remaining_argv = parser.parse_known_args(argv[1:])
     return args.brand, [argv[0], *remaining_argv]
-
-
-def resolve_app_dir() -> str:
-    """统一解析应用根目录，避免不同启动方式下 sys.argv[0] 漂移。"""
-
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.dirname(os.path.abspath(__file__))
 
 
 def excepthook(
@@ -128,17 +121,20 @@ def qt_message_handler(
 
 
 if __name__ == "__main__":
+    # 解析启动参数
+    app_dir = BasePath.resolve_app_dir()
+    is_frozen = getattr(sys, "frozen", False)
     brand_id, sys.argv = parse_startup_args(sys.argv)
-    app_dir = resolve_app_dir()
-    # 先暴露应用目录，确保启动早期日志也能落到正确位置。
-    os.environ["LINGUAGACHA_APP_DIR"] = app_dir
     resolved_brand_id = BaseBrand.resolve_runtime_brand_id(
         brand_id,
         app_dir,
-        getattr(sys, "frozen", False),
+        is_frozen,
     )
     BaseBrand.set_current_brand_id(resolved_brand_id)
     brand = BaseBrand.get()
+
+    # 启动早期先固定运行时路径单一来源，后续配置/日志/用户数据都依赖这里。
+    BasePath.initialize(app_dir, brand, is_frozen)
 
     # 捕获全局异常
     sys.excepthook = excepthook
@@ -171,32 +167,21 @@ if __name__ == "__main__":
     # 设置工作目录
     sys.path.append(app_dir)
 
-    # 检测只读环境（AppImage, macOS .app bundle）
-    is_appimage = os.environ.get("APPIMAGE") is not None
-    is_macos_app = sys.platform == "darwin" and ".app/Contents/MacOS" in app_dir
-
-    if is_appimage or is_macos_app:
-        # 便携式环境使用用户主目录存储数据
-        data_dir = os.path.join(
-            os.path.expanduser("~"),
-            brand.data_dir_name,
-        )
-    else:
-        # Windows 和直接执行时使用应用目录
-        data_dir = app_dir
-
-    # 设置环境变量供其他模块使用
-    os.environ["LINGUAGACHA_APP_DIR"] = app_dir
-    os.environ["LINGUAGACHA_DATA_DIR"] = data_dir
-
     # 工作目录保持在 app_dir 以便访问资源文件（version.txt, resource/ 等）
     os.chdir(app_dir)
+
+    # 启动早期先做更新残留清理，确保脚本异常中断后仍可自愈
+    VersionManager.cleanup_update_temp_on_startup()
+
+    # 启动期统一执行 userdata 迁移，避免各模块分散保留过渡逻辑。
+    UserDataMigrationService.run_startup_migrations()
 
     # 载入并保存默认配置
     config = Config().load()
 
     # 加载版本号
-    with open("version.txt", "r", encoding="utf-8-sig") as reader:
+    version_path = os.path.join(BasePath.get_app_dir(), APP_VERSION_FILE_NAME)
+    with open(version_path, "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
     # 设置主题
@@ -204,12 +189,6 @@ if __name__ == "__main__":
 
     # 设置应用语言
     Localizer.set_app_language(config.app_language)
-
-    # 启动早期先做更新残留清理，确保脚本异常中断后仍可自愈
-    VersionManager.cleanup_update_temp_on_startup()
-
-    # 旧版用户提示词预设只迁移一次；目录不存在时直接跳过，保持启动幂等。
-    PromptResourceResolver.migrate_legacy_translation_user_presets()
 
     # 打印日志
     LogManager.get().info(f"{brand.app_name} {version}")
@@ -244,8 +223,8 @@ if __name__ == "__main__":
     # 固定事件中心的 QObject 线程亲和性在主线程，避免后台线程首次触发导致回调跑偏。
     EventManager.get()
 
-    # 当前所有品牌共享同一套窗口图标，直接在入口固定资源路径更简单。
-    app.setWindowIcon(QIcon(APP_WINDOW_ICON_PATH))
+    icon_path = os.path.join(BasePath.get_resource_dir(), APP_ICON_FILE_NAME)
+    app.setWindowIcon(QIcon(icon_path))
 
     # 设置全局字体属性，解决狗牙问题。
     # 注意：不要用 QFont() 覆盖系统字体尺寸，否则 pointSize() 可能是 -1 并触发 Qt 警告。

@@ -75,6 +75,7 @@
 
 ### 5.2 基础设施 `base`
 - `Base.py` 看事件、状态和基础能力
+- `BasePath.py` 负责解析运行时路径
 - `EventManager.py` 看事件怎么传
 - `LogManager.py` 看日志怎么记
 - `CLIManager.py` / `VersionManager.py` 看命令行和更新相关入口

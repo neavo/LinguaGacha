@@ -11,7 +11,7 @@ from module.Config import Config
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Core.RuleService import RuleService
-from module.PromptResourceResolver import PromptResourceResolver
+from module.PromptPathResolver import PromptPathResolver
 
 
 def build_service(db: object | None) -> tuple[RuleService, SimpleNamespace]:
@@ -137,10 +137,10 @@ def test_initialize_project_rules_loads_all_available_presets(
     post_replace.write_text(json.dumps([{"src": "B", "dst": "A"}]), encoding="utf-8")
 
     config = Config(
-        glossary_default_preset=str(glossary),
-        text_preserve_default_preset=str(text_preserve),
-        pre_translation_replacement_default_preset=str(pre_replace),
-        post_translation_replacement_default_preset=str(post_replace),
+        glossary_default_preset="user:glossary.json",
+        text_preserve_default_preset="user:preserve.json",
+        pre_translation_replacement_default_preset="user:pre.json",
+        post_translation_replacement_default_preset="user:post.json",
         translation_custom_prompt_default_preset="builtin:translation.txt",
         analysis_custom_prompt_default_preset="user:analysis.txt",
     )
@@ -157,11 +157,23 @@ def test_initialize_project_rules_loads_all_available_presets(
         ),
     )
     monkeypatch.setattr(
-        "module.Data.Core.RuleService.PromptResourceResolver.get_default_preset_text",
+        "module.Data.Core.RuleService.PromptPathResolver.get_default_preset_text",
         lambda task_type, virtual_id: (
             "翻译提示词正文"
-            if task_type == PromptResourceResolver.TaskType.TRANSLATION
+            if task_type == PromptPathResolver.TaskType.TRANSLATION
             else "分析提示词正文"
+        ),
+    )
+    monkeypatch.setattr(
+        "module.Data.Core.RuleService.QualityRulePathResolver.read_preset",
+        lambda preset_dir_name, virtual_id: (
+            json.loads(glossary.read_text(encoding="utf-8"))
+            if virtual_id == "user:glossary.json"
+            else json.loads(text_preserve.read_text(encoding="utf-8"))
+            if virtual_id == "user:preserve.json"
+            else json.loads(pre_replace.read_text(encoding="utf-8"))
+            if virtual_id == "user:pre.json"
+            else json.loads(post_replace.read_text(encoding="utf-8"))
         ),
     )
 
@@ -202,8 +214,8 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
     broken.write_text("not-json", encoding="utf-8")
 
     config = Config(
-        glossary_default_preset=str(valid),
-        text_preserve_default_preset=str(broken),
+        glossary_default_preset="user:valid.json",
+        text_preserve_default_preset="user:broken.json",
     )
     monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
@@ -220,6 +232,14 @@ def test_initialize_project_rules_skips_invalid_preset_and_continues(
 
     logger = MagicMock()
     monkeypatch.setattr("module.Data.Core.RuleService.LogManager.get", lambda: logger)
+    monkeypatch.setattr(
+        "module.Data.Core.RuleService.QualityRulePathResolver.read_preset",
+        lambda preset_dir_name, virtual_id: (
+            json.loads(valid.read_text(encoding="utf-8"))
+            if virtual_id == "user:valid.json"
+            else (_ for _ in ()).throw(ValueError("bad"))
+        ),
+    )
 
     db = MagicMock()
     service, _ = build_service(db)
@@ -244,11 +264,21 @@ def test_initialize_project_rules_skips_non_list_json_presets(
     post_replace.write_text(json.dumps({"src": "B", "dst": "A"}), encoding="utf-8")
 
     config = Config(
-        glossary_default_preset=str(glossary),
-        pre_translation_replacement_default_preset=str(pre_replace),
-        post_translation_replacement_default_preset=str(post_replace),
+        glossary_default_preset="user:glossary.json",
+        pre_translation_replacement_default_preset="user:pre.json",
+        post_translation_replacement_default_preset="user:post.json",
     )
     monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
+    monkeypatch.setattr(
+        "module.Data.Core.RuleService.QualityRulePathResolver.read_preset",
+        lambda preset_dir_name, virtual_id: (
+            json.loads(glossary.read_text(encoding="utf-8"))
+            if virtual_id == "user:glossary.json"
+            else json.loads(pre_replace.read_text(encoding="utf-8"))
+            if virtual_id == "user:pre.json"
+            else json.loads(post_replace.read_text(encoding="utf-8"))
+        ),
+    )
 
     db = MagicMock()
     service, _ = build_service(db)
@@ -270,7 +300,7 @@ def test_initialize_project_rules_logs_and_skips_custom_prompts_when_open_fails(
     )
     monkeypatch.setattr("module.Data.Core.RuleService.Config.load", lambda self: config)
     monkeypatch.setattr(
-        "module.Data.Core.RuleService.PromptResourceResolver.get_default_preset_text",
+        "module.Data.Core.RuleService.PromptPathResolver.get_default_preset_text",
         lambda task_type, virtual_id: (_ for _ in ()).throw(OSError("boom")),
     )
 

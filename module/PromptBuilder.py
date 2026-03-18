@@ -8,7 +8,7 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.PromptResourceResolver import PromptResourceResolver
+from module.PromptPathResolver import PromptPathResolver
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Utils.JSONTool import JSONTool
 
@@ -44,66 +44,66 @@ class PromptBuilder(Base):
     @classmethod
     def read_prompt_text(
         cls,
-        task_type: PromptResourceResolver.TaskType,
+        task_type: PromptPathResolver.TaskType,
         language: BaseLanguage.Enum,
         file_name: str,
     ) -> str:
-        return PromptResourceResolver.read_template(task_type, file_name, language)
+        return PromptPathResolver.read_template(task_type, file_name, language)
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_base(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.TRANSLATION, language, "base.txt"
+            PromptPathResolver.TaskType.TRANSLATION, language, "base.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_prefix(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.TRANSLATION, language, "prefix.txt"
+            PromptPathResolver.TaskType.TRANSLATION, language, "prefix.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_suffix(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.TRANSLATION, language, "suffix.txt"
+            PromptPathResolver.TaskType.TRANSLATION, language, "suffix.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_suffix_thinking(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.TRANSLATION, language, "thinking.txt"
+            PromptPathResolver.TaskType.TRANSLATION, language, "thinking.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_base(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.ANALYSIS, language, "base.txt"
+            PromptPathResolver.TaskType.ANALYSIS, language, "base.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_prefix(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.ANALYSIS, language, "prefix.txt"
+            PromptPathResolver.TaskType.ANALYSIS, language, "prefix.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_thinking(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.ANALYSIS, language, "thinking.txt"
+            PromptPathResolver.TaskType.ANALYSIS, language, "thinking.txt"
         )
 
     @classmethod
     @lru_cache(maxsize=None)
     def get_analysis_suffix(cls, language: BaseLanguage.Enum) -> str:
         return cls.read_prompt_text(
-            PromptResourceResolver.TaskType.ANALYSIS, language, "suffix.txt"
+            PromptPathResolver.TaskType.ANALYSIS, language, "suffix.txt"
         )
 
     def get_prompt_ui_language(self) -> BaseLanguage.Enum:
@@ -148,28 +148,26 @@ class PromptBuilder(Base):
         return prompt_language, source_placeholder, source_language, target_language
 
     # 获取自定义提示词数据
-    def get_custom_prompt_data(self, task_type: PromptResourceResolver.TaskType) -> str:
+    def get_custom_prompt_data(self, task_type: PromptPathResolver.TaskType) -> str:
         snapshot = self.quality_snapshot
         if snapshot is not None:
-            if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+            if task_type == PromptPathResolver.TaskType.TRANSLATION:
                 return snapshot.translation_prompt
             return snapshot.analysis_prompt
 
-        if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+        if task_type == PromptPathResolver.TaskType.TRANSLATION:
             return DataManager.get().get_translation_prompt()
         return DataManager.get().get_analysis_prompt()
 
     # 获取自定义提示词启用状态
-    def get_custom_prompt_enable(
-        self, task_type: PromptResourceResolver.TaskType
-    ) -> bool:
+    def get_custom_prompt_enable(self, task_type: PromptPathResolver.TaskType) -> bool:
         snapshot = self.quality_snapshot
         if snapshot is not None:
-            if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+            if task_type == PromptPathResolver.TaskType.TRANSLATION:
                 return snapshot.translation_prompt_enable
             return snapshot.analysis_prompt_enable
 
-        if task_type == PromptResourceResolver.TaskType.TRANSLATION:
+        if task_type == PromptPathResolver.TaskType.TRANSLATION:
             return DataManager.get().get_translation_prompt_enable()
         return DataManager.get().get_analysis_prompt_enable()
 
@@ -177,16 +175,14 @@ class PromptBuilder(Base):
         self, prompt_language: BaseLanguage.Enum
     ) -> str:
         """翻译任务只看翻译提示词开关与正文。"""
-        if self.get_custom_prompt_enable(PromptResourceResolver.TaskType.TRANSLATION):
-            return self.get_custom_prompt_data(
-                PromptResourceResolver.TaskType.TRANSLATION
-            )
+        if self.get_custom_prompt_enable(PromptPathResolver.TaskType.TRANSLATION):
+            return self.get_custom_prompt_data(PromptPathResolver.TaskType.TRANSLATION)
         return __class__.get_base(prompt_language)
 
     def resolve_analysis_prompt_base(self, prompt_language: BaseLanguage.Enum) -> str:
         """分析任务只看分析提示词开关与正文。"""
-        if self.get_custom_prompt_enable(PromptResourceResolver.TaskType.ANALYSIS):
-            return self.get_custom_prompt_data(PromptResourceResolver.TaskType.ANALYSIS)
+        if self.get_custom_prompt_enable(PromptPathResolver.TaskType.ANALYSIS):
+            return self.get_custom_prompt_data(PromptPathResolver.TaskType.ANALYSIS)
         return __class__.get_analysis_base(prompt_language)
 
     @staticmethod

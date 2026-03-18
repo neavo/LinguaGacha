@@ -3,6 +3,7 @@ import threading
 from enum import StrEnum
 from typing import ClassVar
 
+from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from model.Model import Model
@@ -24,6 +25,11 @@ class ModelManager:
     PRESET_CUSTOM_GOOGLE_FILENAME: str = "preset_model_custom_google.json"
     PRESET_CUSTOM_OPENAI_FILENAME: str = "preset_model_custom_openai.json"
     PRESET_CUSTOM_ANTHROPIC_FILENAME: str = "preset_model_custom_anthropic.json"
+    TEMPLATE_FILENAME_BY_TYPE: ClassVar[dict[ModelType, str]] = {
+        ModelType.CUSTOM_GOOGLE: PRESET_CUSTOM_GOOGLE_FILENAME,
+        ModelType.CUSTOM_OPENAI: PRESET_CUSTOM_OPENAI_FILENAME,
+        ModelType.CUSTOM_ANTHROPIC: PRESET_CUSTOM_ANTHROPIC_FILENAME,
+    }
 
     class ReorderOperation(StrEnum):
         """模型组内排序操作类型。"""
@@ -59,15 +65,38 @@ class ModelManager:
         self.app_language = language
 
     def get_preset_dir(self) -> str:
-        """根据 UI 语言获取预设目录路径"""
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
-        # 中文用户使用 zh 目录，其他语言使用 en 目录
-        lang_dir = "zh" if self.app_language == BaseLanguage.Enum.ZH else "en"
-        return os.path.join(app_dir, "resource", "preset", "model", lang_dir)
+        """统一返回当前语言对应的模型预设目录，避免多处重复取 BasePath。"""
+
+        return BasePath.get_model_preset_dir(self.app_language)
+
+    def get_template_path(self, model_type: ModelType) -> str | None:
+        """根据模型类型返回模板文件路径，未知类型直接返回 None。"""
+
+        file_name = self.TEMPLATE_FILENAME_BY_TYPE.get(model_type)
+        if file_name is None:
+            return None
+        return os.path.join(self.get_preset_dir(), file_name)
+
+    def resolve_custom_model_type(self, api_format: str) -> ModelType:
+        """旧预设模型迁移时统一按 api_format 归类，避免散落在循环里。"""
+
+        if api_format == "Google":
+            return ModelType.CUSTOM_GOOGLE
+        if api_format == "Anthropic":
+            return ModelType.CUSTOM_ANTHROPIC
+        return ModelType.CUSTOM_OPENAI
+
+    def has_model_type(self, models: list[dict], model_type: ModelType) -> bool:
+        """补默认模型前先走同一判断入口，避免各处自己扫列表。"""
+
+        return any(model.get("type") == model_type.value for model in models)
 
     def load_preset_models(self) -> list[dict]:
         """从 preset_models.json 加载预设模型数据"""
-        preset_path = os.path.join(self.get_preset_dir(), self.PRESET_BUILTIN_FILENAME)
+        preset_path = os.path.join(
+            self.get_preset_dir(),
+            self.PRESET_BUILTIN_FILENAME,
+        )
         try:
             data = JSONTool.load_file(preset_path)
             return data if isinstance(data, list) else []
@@ -77,17 +106,8 @@ class ModelManager:
 
     def load_template(self, model_type: ModelType) -> dict:
         """根据模型类型加载对应模板"""
-        preset_dir = self.get_preset_dir()
-
-        if model_type == ModelType.CUSTOM_GOOGLE:
-            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_GOOGLE_FILENAME)
-        elif model_type == ModelType.CUSTOM_OPENAI:
-            template_path = os.path.join(preset_dir, self.PRESET_CUSTOM_OPENAI_FILENAME)
-        elif model_type == ModelType.CUSTOM_ANTHROPIC:
-            template_path = os.path.join(
-                preset_dir, self.PRESET_CUSTOM_ANTHROPIC_FILENAME
-            )
-        else:
+        template_path = self.get_template_path(model_type)
+        if template_path is None:
             return {}
 
         try:
@@ -118,16 +138,10 @@ class ModelManager:
                     model.get("type") == ModelType.PRESET.value
                     and model.get("id") not in preset_ids
                 ):
-                    api_format = model.get("api_format", "")
-
-                    if api_format == "Google":
-                        model["type"] = ModelType.CUSTOM_GOOGLE.value
-                    elif api_format == "Anthropic":
-                        model["type"] = ModelType.CUSTOM_ANTHROPIC.value
-                    else:
-                        # 默认为 OpenAI (包括 OpenAI, SakuraLLM, DeepSeek 等等)
-                        model["type"] = ModelType.CUSTOM_OPENAI.value
-
+                    migrated_type = self.resolve_custom_model_type(
+                        str(model.get("api_format", ""))
+                    )
+                    model["type"] = migrated_type.value
                     migrated_count += 1
 
         # 2. 初始预设加载 / 补充
@@ -148,14 +162,7 @@ class ModelManager:
         ]
 
         for model_type in custom_types:
-            # 检查列表中是否已存在该类型的模型
-            has_type = False
-            for model in existing_models:
-                if model.get("type") == model_type.value:
-                    has_type = True
-                    break
-
-            if not has_type:
+            if not self.has_model_type(existing_models, model_type):
                 # 生成默认模型
                 template = self.load_template(model_type)
                 template["id"] = Model.generate_id()

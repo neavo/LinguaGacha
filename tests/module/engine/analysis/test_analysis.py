@@ -228,6 +228,7 @@ def patch_start_runtime(
         "build_progress_snapshot",
         lambda previous_extras, continue_mode: progress_snapshot,
     )
+    monkeypatch.setattr(analysis, "log_analysis_start", lambda: None)
 
 
 def test_analysis_require_stop_marks_engine_as_stopping(

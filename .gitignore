@@ -12,5 +12,3 @@ __pycache__
 *.lg
 /*.xlsx
 /*.json
-/resource/config.json
-/resource/preset/*/user/

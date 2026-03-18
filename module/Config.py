@@ -1,11 +1,13 @@
 import dataclasses
 import os
+import shutil
 import threading
 from enum import StrEnum
 from typing import Any
 from typing import ClassVar
 from typing import Self
 
+from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
@@ -15,6 +17,14 @@ from module.Utils.JSONTool import JSONTool
 
 @dataclasses.dataclass
 class Config:
+    CONFIG_FILE_NAME: ClassVar[str] = "config.json"
+    MODEL_TYPE_SORT_ORDER: ClassVar[dict[str, int]] = {
+        "PRESET": 0,
+        "CUSTOM_GOOGLE": 1,
+        "CUSTOM_OPENAI": 2,
+        "CUSTOM_ANTHROPIC": 3,
+    }
+
     class Theme(StrEnum):
         DARK = "DARK"
         LIGHT = "LIGHT"
@@ -83,20 +93,60 @@ class Config:
     # 类属性
     CONFIG_LOCK: ClassVar[threading.Lock] = threading.Lock()
 
-    @staticmethod
-    def get_config_path() -> str:
-        """根据环境获取配置文件路径。"""
-        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR")
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR")
-        # 便携式环境（AppImage, macOS .app）使用 data_dir/config.json
-        if data_dir and app_dir and data_dir != app_dir:
-            return os.path.join(data_dir, "config.json")
-        # 默认：使用应用目录下的 resource/config.json
-        return os.path.join(app_dir or ".", "resource", "config.json")
+    @classmethod
+    def get_default_path(cls) -> str:
+        """统一返回默认配置文件路径，避免读写两边各自拼接。"""
+
+        return os.path.join(BasePath.get_user_data_root_dir(), cls.CONFIG_FILE_NAME)
+
+    @classmethod
+    def resolve_path(cls, path: str | None) -> str:
+        """把外部可选路径统一收口，减少 load/save 各自处理默认值。"""
+
+        if path is None:
+            return cls.get_default_path()
+        return path
+
+    @classmethod
+    def get_legacy_default_paths(cls) -> list[str]:
+        """收口旧版默认配置位置，便于启动时做一次性迁移。"""
+
+        candidate_paths: list[str] = [
+            os.path.join(BasePath.get_data_dir(), cls.CONFIG_FILE_NAME),
+            os.path.join(BasePath.get_app_dir(), cls.CONFIG_FILE_NAME),
+            os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
+        ]
+        unique_paths: list[str] = []
+        seen_paths: set[str] = set()
+
+        for path in candidate_paths:
+            normalized_path = os.path.normcase(os.path.normpath(path))
+            if normalized_path in seen_paths:
+                continue
+
+            seen_paths.add(normalized_path)
+            unique_paths.append(path)
+
+        return unique_paths
+
+    @classmethod
+    def migrate_default_config_if_needed(cls, target_path: str) -> None:
+        """把旧默认位置的配置复制到 userdata，后续优先读取新位置。"""
+
+        if os.path.isfile(target_path):
+            return
+
+        target_dir = os.path.dirname(target_path)
+        os.makedirs(target_dir, exist_ok=True)
+        for source_path in cls.get_legacy_default_paths():
+            if not os.path.isfile(source_path):
+                continue
+
+            shutil.copyfile(source_path, target_path)
+            return
 
     def load(self, path: str | None = None) -> Self:
-        if path is None:
-            path = __class__.get_config_path()
+        path = __class__.resolve_path(path)
 
         with __class__.CONFIG_LOCK:
             try:
@@ -113,23 +163,13 @@ class Config:
         return self
 
     def save(self, path: str | None = None) -> Self:
-        if path is None:
-            path = __class__.get_config_path()
+        path = __class__.resolve_path(path)
 
         # 按分类排序: 预设 - Google - OpenAI - Claude
         if self.models:
 
             def get_sort_key(model: dict[str, Any]) -> int:
-                type_str = model.get("type", "")
-                if type_str == "PRESET":
-                    return 0
-                elif type_str == "CUSTOM_GOOGLE":
-                    return 1
-                elif type_str == "CUSTOM_OPENAI":
-                    return 2
-                elif type_str == "CUSTOM_ANTHROPIC":
-                    return 3
-                return 99
+                return __class__.MODEL_TYPE_SORT_ORDER.get(model.get("type", ""), 99)
 
             self.models.sort(key=get_sort_key)
 

@@ -51,7 +51,7 @@ from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.PromptResourceResolver import PromptResourceResolver
+from module.PromptPathResolver import PromptPathResolver
 from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
@@ -774,7 +774,7 @@ class AppFluentWindow(Base, FluentWindow):
                     CustomPromptPage(
                         "translation_prompt_page",
                         self,
-                        PromptResourceResolver.TaskType.TRANSLATION,
+                        PromptPathResolver.TaskType.TRANSLATION,
                     ),
                     ICON_NAV_TRANSLATION_PROMPT.qicon(),
                     Localizer.get().app_translation_prompt_page,
@@ -785,7 +785,7 @@ class AppFluentWindow(Base, FluentWindow):
                     CustomPromptPage(
                         "analysis_prompt_page",
                         self,
-                        PromptResourceResolver.TaskType.ANALYSIS,
+                        PromptPathResolver.TaskType.ANALYSIS,
                     ),
                     ICON_NAV_ANALYSIS_PROMPT.qicon(),
                     Localizer.get().app_analysis_prompt_page,

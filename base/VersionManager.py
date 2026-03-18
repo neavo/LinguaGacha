@@ -16,6 +16,7 @@ import httpx
 
 from base.Base import Base
 from base.BaseBrand import BaseBrand
+from base.BasePath import BasePath
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
@@ -30,15 +31,14 @@ class VersionManager(Base):
         FAILED = "FAILED"
 
     # 更新时的临时文件
-    TEMP_PATH: str = "./resource/update/app.zip.temp"
-    UPDATE_DIR: str = "./resource/update"
-    UPDATE_LOG_PATH: str = "./resource/update/update.log"
-    UPDATE_LOCK_PATH: str = "./resource/update/.lock"
-    UPDATE_RESULT_PATH: str = "./resource/update/result.json"
-    UPDATE_STAGE_PATH: str = "./resource/update/stage"
-    UPDATE_BACKUP_PATH: str = "./resource/update/backup"
-    UPDATER_TEMPLATE_PATH: str = "./resource/update/update.ps1"
-    UPDATER_RUNTIME_PATH: str = "./resource/update/update.runtime.ps1"
+    TEMP_PACKAGE_FILE_NAME: str = "app.zip.temp"
+    UPDATE_LOG_FILE_NAME: str = "update.log"
+    UPDATE_LOCK_FILE_NAME: str = ".lock"
+    UPDATE_RESULT_FILE_NAME: str = "result.json"
+    UPDATE_STAGE_DIR_NAME: str = "stage"
+    UPDATE_BACKUP_DIR_NAME: str = "backup"
+    UPDATER_TEMPLATE_FILE_NAME: str = "update.ps1"
+    UPDATER_RUNTIME_FILE_NAME: str = "update.runtime.ps1"
     TEMP_PACKAGE_EXPIRE_SECONDS: int = 24 * 60 * 60
     STARTUP_PENDING_APPLY_FAILURE_LOG_PATH: str | None = None
 
@@ -78,12 +78,35 @@ class VersionManager(Base):
             if cls.is_updater_running():
                 return
 
-            cls.cleanup_update_path(cls.UPDATE_STAGE_PATH)
-            cls.cleanup_update_path(cls.UPDATE_BACKUP_PATH)
+            for update_dir in cls.get_update_runtime_search_dirs():
+                cls.cleanup_update_path(
+                    os.path.join(update_dir, cls.UPDATE_STAGE_DIR_NAME)
+                )
+                cls.cleanup_update_path(
+                    os.path.join(update_dir, cls.UPDATE_BACKUP_DIR_NAME)
+                )
             cls.cleanup_runtime_scripts()
             cls.cleanup_expired_temp_package()
         except Exception as e:
             LogManager.get().warning("Failed to cleanup update temp on startup", e)
+
+    @classmethod
+    def get_update_runtime_dir(cls) -> str:
+        """返回新的更新器运行时目录。"""
+
+        return BasePath.get_update_runtime_dir()
+
+    @classmethod
+    def get_update_runtime_search_dirs(cls) -> tuple[str, ...]:
+        """返回启动期需要兼容读取的更新目录列表。"""
+
+        runtime_dir = BasePath.get_update_runtime_dir()
+        legacy_dir = BasePath.get_update_legacy_runtime_dir()
+        if os.path.normcase(os.path.normpath(runtime_dir)) == os.path.normcase(
+            os.path.normpath(legacy_dir)
+        ):
+            return (runtime_dir,)
+        return runtime_dir, legacy_dir
 
     # 统一读取更新脚本写出的 JSON，兼容 PowerShell 5.1 生成的 UTF-8 BOM
     @staticmethod
@@ -99,51 +122,59 @@ class VersionManager(Base):
     # 读取上次脚本结果，延迟到 UI 就绪后再统一提示
     @classmethod
     def load_pending_apply_result(cls) -> None:
-        if not os.path.isfile(cls.UPDATE_RESULT_PATH):
-            return
+        for update_dir in cls.get_update_runtime_search_dirs():
+            update_result_path = os.path.join(update_dir, cls.UPDATE_RESULT_FILE_NAME)
+            update_log_path = os.path.join(update_dir, cls.UPDATE_LOG_FILE_NAME)
+            if not os.path.isfile(update_result_path):
+                continue
 
-        try:
-            result = cls.read_update_json(cls.UPDATE_RESULT_PATH)
-
-            status = str(result.get("status", "")).lower()
-            log_path = str(result.get("logPath", cls.UPDATE_LOG_PATH))
-            if status == "failed":
-                cls.STARTUP_PENDING_APPLY_FAILURE_LOG_PATH = os.path.abspath(log_path)
-        except Exception as e:
-            LogManager.get().warning("Failed to parse update result file", e)
-        finally:
             try:
-                os.remove(cls.UPDATE_RESULT_PATH)
-            except FileNotFoundError:
-                pass  # 结果文件可能已经被并发清理
-            except OSError as e:
-                LogManager.get().warning("Failed to remove update result file", e)
+                result = cls.read_update_json(update_result_path)
+
+                status = str(result.get("status", "")).lower()
+                log_path = str(result.get("logPath", update_log_path))
+                if status == "failed":
+                    cls.STARTUP_PENDING_APPLY_FAILURE_LOG_PATH = os.path.abspath(
+                        log_path
+                    )
+            except Exception as e:
+                LogManager.get().warning("Failed to parse update result file", e)
+            finally:
+                try:
+                    os.remove(update_result_path)
+                except FileNotFoundError:
+                    pass  # 结果文件可能已经被并发清理
+                except OSError as e:
+                    LogManager.get().warning("Failed to remove update result file", e)
+            return
 
     # 判断更新脚本是否仍在运行；若锁已陈旧则移除
     @classmethod
     def is_updater_running(cls) -> bool:
-        if not os.path.isfile(cls.UPDATE_LOCK_PATH):
-            return False
+        for update_dir in cls.get_update_runtime_search_dirs():
+            update_lock_path = os.path.join(update_dir, cls.UPDATE_LOCK_FILE_NAME)
+            if not os.path.isfile(update_lock_path):
+                continue
 
-        pid = 0
-        try:
-            lock_data = cls.read_update_json(cls.UPDATE_LOCK_PATH)
-            pid = int(lock_data.get("pid", 0))
-        except Exception as e:
-            LogManager.get().warning("Failed to parse updater lock file", e)
+            pid = 0
+            try:
+                lock_data = cls.read_update_json(update_lock_path)
+                pid = int(lock_data.get("pid", 0))
+            except Exception as e:
+                LogManager.get().warning("Failed to parse updater lock file", e)
 
-        if pid > 0 and cls.is_process_running(pid):
-            LogManager.get().info(
-                f"Updater is still running, skip startup cleanup (pid={pid})"
-            )
-            return True
+            if pid > 0 and cls.is_process_running(pid):
+                LogManager.get().info(
+                    f"Updater is still running, skip startup cleanup (pid={pid})"
+                )
+                return True
 
-        try:
-            os.remove(cls.UPDATE_LOCK_PATH)
-        except FileNotFoundError:
-            pass  # 锁可能被其他路径先一步清理
-        except OSError as e:
-            LogManager.get().warning("Failed to remove stale updater lock file", e)
+            try:
+                os.remove(update_lock_path)
+            except FileNotFoundError:
+                pass  # 锁可能被其他路径先一步清理
+            except OSError as e:
+                LogManager.get().warning("Failed to remove stale updater lock file", e)
         return False
 
     # 统一清理目录/文件，确保失败不会阻塞应用启动
@@ -167,22 +198,25 @@ class VersionManager(Base):
     # 只清理运行时脚本，保留模板脚本供下一次更新使用
     @classmethod
     def cleanup_runtime_scripts(cls) -> None:
-        runtime_scripts = glob.glob(f"{cls.UPDATE_DIR}/update.runtime*.ps1")
-        for script_path in runtime_scripts:
-            cls.cleanup_update_path(script_path)
+        for update_dir in cls.get_update_runtime_search_dirs():
+            runtime_scripts = glob.glob(os.path.join(update_dir, "update.runtime*.ps1"))
+            for script_path in runtime_scripts:
+                cls.cleanup_update_path(script_path)
 
     # 仅清理过期下载包，避免误删刚下载完成但尚未应用的文件
     @classmethod
     def cleanup_expired_temp_package(cls) -> None:
-        if not os.path.isfile(cls.TEMP_PATH):
-            return
+        for update_dir in cls.get_update_runtime_search_dirs():
+            temp_path = os.path.join(update_dir, cls.TEMP_PACKAGE_FILE_NAME)
+            if not os.path.isfile(temp_path):
+                continue
 
-        try:
-            file_age = time.time() - os.path.getmtime(cls.TEMP_PATH)
-            if file_age >= cls.TEMP_PACKAGE_EXPIRE_SECONDS:
-                os.remove(cls.TEMP_PATH)
-        except OSError as e:
-            LogManager.get().warning("Failed to cleanup expired update package", e)
+            try:
+                file_age = time.time() - os.path.getmtime(temp_path)
+                if file_age >= cls.TEMP_PACKAGE_EXPIRE_SECONDS:
+                    os.remove(temp_path)
+            except OSError as e:
+                LogManager.get().warning("Failed to cleanup expired update package", e)
 
     # 用跨平台方式判断 PID 是否存活，避免误清理进行中的更新
     @staticmethod
@@ -302,7 +336,15 @@ class VersionManager(Base):
             time.sleep(0.2)
             os.kill(os.getpid(), signal.SIGTERM)
         except Exception as e:
-            self.emit_apply_failure(e, os.path.abspath(__class__.UPDATE_LOG_PATH))
+            self.emit_apply_failure(
+                e,
+                os.path.abspath(
+                    os.path.join(
+                        __class__.get_update_runtime_dir(),
+                        __class__.UPDATE_LOG_FILE_NAME,
+                    )
+                ),
+            )
         finally:
             with self.lock:
                 self.extracting = False
@@ -365,18 +407,26 @@ class VersionManager(Base):
 
     # 运行时生成独立脚本，避免直接修改模板文件
     def generate_runtime_updater_script(self) -> str:
-        if not os.path.isfile(__class__.UPDATER_TEMPLATE_PATH):
-            raise FileNotFoundError(__class__.UPDATER_TEMPLATE_PATH)
+        updater_template_path = os.path.join(
+            BasePath.get_update_template_dir(),
+            __class__.UPDATER_TEMPLATE_FILE_NAME,
+        )
+        updater_runtime_path = os.path.join(
+            __class__.get_update_runtime_dir(),
+            __class__.UPDATER_RUNTIME_FILE_NAME,
+        )
+        if not os.path.isfile(updater_template_path):
+            raise FileNotFoundError(updater_template_path)
 
-        os.makedirs(__class__.UPDATE_DIR, exist_ok=True)
+        os.makedirs(__class__.get_update_runtime_dir(), exist_ok=True)
         # 统一用 utf-8-sig 兼容模板可能带 BOM，避免把 BOM 字符写入脚本内容。
-        with open(__class__.UPDATER_TEMPLATE_PATH, "r", encoding="utf-8-sig") as reader:
+        with open(updater_template_path, "r", encoding="utf-8-sig") as reader:
             content = reader.read()
         # Windows PowerShell 5.1 对“无 BOM 的 UTF-8 + 中文”兼容性不稳定，带 BOM 可避免解析错乱。
-        with open(__class__.UPDATER_RUNTIME_PATH, "w", encoding="utf-8-sig") as writer:
+        with open(updater_runtime_path, "w", encoding="utf-8-sig") as writer:
             writer.write(content)
 
-        return os.path.abspath(__class__.UPDATER_RUNTIME_PATH)
+        return os.path.abspath(updater_runtime_path)
 
     # 用显式参数启动脚本，确保安装路径和哈希值来源单一且可追踪
     def start_updater_process(self, runtime_script_path: str) -> None:
@@ -384,6 +434,8 @@ class VersionManager(Base):
         if expected_sha256 == "":
             raise Exception("expected sha256 is empty")
 
+        app_dir = BasePath.get_app_dir()
+        update_runtime_dir = __class__.get_update_runtime_dir()
         powershell_executable = self.find_powershell_executable()
         command = [
             powershell_executable,
@@ -395,9 +447,16 @@ class VersionManager(Base):
             "-AppPid",
             str(os.getpid()),
             "-InstallDir",
-            os.path.abspath("."),
+            app_dir,
+            "-UpdateDir",
+            os.path.abspath(update_runtime_dir),
             "-ZipPath",
-            os.path.abspath(__class__.TEMP_PATH),
+            os.path.abspath(
+                os.path.join(
+                    update_runtime_dir,
+                    __class__.TEMP_PACKAGE_FILE_NAME,
+                )
+            ),
             "-ExpectedSha256",
             expected_sha256,
         ]
@@ -406,7 +465,7 @@ class VersionManager(Base):
         creation_flags = 0
         subprocess.Popen(
             command,
-            cwd=os.path.abspath("."),
+            cwd=app_dir,
             creationflags=creation_flags,
         )
 
@@ -554,14 +613,18 @@ class VersionManager(Base):
                     raise Exception("Content-Length is 0 ...")
 
                 # 写入文件并更新进度
-                if os.path.isfile(__class__.TEMP_PATH):
-                    os.remove(__class__.TEMP_PATH)
+                temp_path = os.path.join(
+                    __class__.get_update_runtime_dir(),
+                    __class__.TEMP_PACKAGE_FILE_NAME,
+                )
+                if os.path.isfile(temp_path):
+                    os.remove(temp_path)
 
-                temp_dir = os.path.dirname(__class__.TEMP_PATH)
+                temp_dir = os.path.dirname(temp_path)
                 if temp_dir != "":
                     os.makedirs(temp_dir, exist_ok=True)
 
-                with open(__class__.TEMP_PATH, "wb") as writer:
+                with open(temp_path, "wb") as writer:
                     for chunk in response.iter_bytes(chunk_size=1024 * 1024):
                         if chunk is None:
                             continue

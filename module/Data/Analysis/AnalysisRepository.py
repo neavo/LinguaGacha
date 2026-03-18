@@ -194,6 +194,7 @@ class AnalysisRepository:
             with db.connection() as conn:
                 db.delete_analysis_item_checkpoints(conn=conn)
                 db.clear_analysis_candidate_aggregates(conn=conn)
+                self.persist_progress_snapshot_with_db(db, conn, {})
                 conn.commit()
 
     def reset_failed_checkpoints(self) -> int:

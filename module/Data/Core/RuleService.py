@@ -1,13 +1,13 @@
-import os
 from typing import Any
 
+from base.BasePath import BasePath
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
-from module.PromptResourceResolver import PromptResourceResolver
-from module.Utils.JSONTool import JSONTool
+from module.PromptPathResolver import PromptPathResolver
+from module.QualityRulePathResolver import QualityRulePathResolver
 
 
 class RuleService:
@@ -81,70 +81,84 @@ class RuleService:
         # 新工程默认使用智能文本保护（SMART）。
         db.set_meta("text_preserve_mode", "smart")
 
-        def load_json(path: str) -> list[dict[str, Any]] | None:
+        def load_quality_rule_preset(
+            preset_dir_name: str,
+            virtual_id: str,
+        ) -> list[dict[str, Any]] | None:
             try:
-                data = JSONTool.load_file(path)
-                return data if isinstance(data, list) else None
+                data = QualityRulePathResolver.read_preset(preset_dir_name, virtual_id)
+                if not isinstance(data, list):
+                    return None
+                return [entry for entry in data if isinstance(entry, dict)]
             except Exception as e:
-                LogManager.get().error(f"Failed to load preset: {path}", e)
+                LogManager.get().error(
+                    f"Failed to load quality preset: {preset_dir_name} -> {virtual_id}",
+                    e,
+                )
                 return None
 
-        # 1. 术语表
-        if config.glossary_default_preset and os.path.exists(
-            config.glossary_default_preset
-        ):
-            data = load_json(config.glossary_default_preset)
-            if data is not None:
-                db.set_rules(LGDatabase.RuleType.GLOSSARY, data)
-                db.set_meta("glossary_enable", True)
-                loaded_presets.append(Localizer.get().app_glossary_page)
+        default_rule_specs = [
+            (
+                BasePath.GLOSSARY_DIR_NAME,
+                config.glossary_default_preset,
+                LGDatabase.RuleType.GLOSSARY,
+                "glossary_enable",
+                Localizer.get().app_glossary_page,
+            ),
+            (
+                BasePath.TEXT_PRESERVE_DIR_NAME,
+                config.text_preserve_default_preset,
+                LGDatabase.RuleType.TEXT_PRESERVE,
+                "text_preserve_mode",
+                Localizer.get().app_text_preserve_page,
+            ),
+            (
+                BasePath.PRE_TRANSLATION_REPLACEMENT_DIR_NAME,
+                config.pre_translation_replacement_default_preset,
+                LGDatabase.RuleType.PRE_REPLACEMENT,
+                "pre_translation_replacement_enable",
+                Localizer.get().app_pre_translation_replacement_page,
+            ),
+            (
+                BasePath.POST_TRANSLATION_REPLACEMENT_DIR_NAME,
+                config.post_translation_replacement_default_preset,
+                LGDatabase.RuleType.POST_REPLACEMENT,
+                "post_translation_replacement_enable",
+                Localizer.get().app_post_translation_replacement_page,
+            ),
+        ]
 
-        # 2. 文本保护
-        if config.text_preserve_default_preset and os.path.exists(
-            config.text_preserve_default_preset
-        ):
-            data = load_json(config.text_preserve_default_preset)
-            if data is not None:
-                db.set_rules(LGDatabase.RuleType.TEXT_PRESERVE, data)
-                # 这里加载的是“自定义规则预设”，必须切到 CUSTOM，
-                # 否则仍处于 SMART 模式会忽略这些规则。
-                db.set_meta("text_preserve_mode", "custom")
-                loaded_presets.append(Localizer.get().app_text_preserve_page)
+        for (
+            preset_dir_name,
+            virtual_id,
+            rule_type,
+            meta_key,
+            page_name,
+        ) in default_rule_specs:
+            if not virtual_id:
+                continue
 
-        # 3. 译前替换
-        if config.pre_translation_replacement_default_preset and os.path.exists(
-            config.pre_translation_replacement_default_preset
-        ):
-            data = load_json(config.pre_translation_replacement_default_preset)
-            if data is not None:
-                db.set_rules(LGDatabase.RuleType.PRE_REPLACEMENT, data)
-                db.set_meta("pre_translation_replacement_enable", True)
-                loaded_presets.append(
-                    Localizer.get().app_pre_translation_replacement_page
-                )
+            data = load_quality_rule_preset(preset_dir_name, virtual_id)
+            if data is None:
+                continue
 
-        # 4. 译后替换
-        if config.post_translation_replacement_default_preset and os.path.exists(
-            config.post_translation_replacement_default_preset
-        ):
-            data = load_json(config.post_translation_replacement_default_preset)
-            if data is not None:
-                db.set_rules(LGDatabase.RuleType.POST_REPLACEMENT, data)
-                db.set_meta("post_translation_replacement_enable", True)
-                loaded_presets.append(
-                    Localizer.get().app_post_translation_replacement_page
-                )
+            db.set_rules(rule_type, data)
+            if meta_key == "text_preserve_mode":
+                db.set_meta(meta_key, "custom")
+            else:
+                db.set_meta(meta_key, True)
+            loaded_presets.append(page_name)
 
         prompt_defaults = [
             (
-                PromptResourceResolver.TaskType.TRANSLATION,
+                PromptPathResolver.TaskType.TRANSLATION,
                 config.translation_custom_prompt_default_preset,
                 LGDatabase.RuleType.TRANSLATION_PROMPT,
                 "translation_prompt_enable",
                 Localizer.get().app_translation_prompt_page,
             ),
             (
-                PromptResourceResolver.TaskType.ANALYSIS,
+                PromptPathResolver.TaskType.ANALYSIS,
                 config.analysis_custom_prompt_default_preset,
                 LGDatabase.RuleType.ANALYSIS_PROMPT,
                 "analysis_prompt_enable",
@@ -157,9 +171,7 @@ class RuleService:
                 continue
 
             try:
-                text = PromptResourceResolver.get_default_preset_text(
-                    task_type, virtual_id
-                )
+                text = PromptPathResolver.get_default_preset_text(task_type, virtual_id)
                 db.set_rule_text(rule_type, text)
                 db.set_meta(meta_key, True)
                 loaded_presets.append(page_name)

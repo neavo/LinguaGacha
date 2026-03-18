@@ -1,9 +1,9 @@
 import logging
-import os
 import traceback
 from logging.handlers import TimedRotatingFileHandler
 from typing import Self
 
+from base.BasePath import BasePath
 from rich.console import Console
 from rich.logging import RichHandler
 
@@ -15,15 +15,11 @@ class LogManager:
         # 控制台实例
         self.console = Console()
 
-        # 便携式环境（AppImage, macOS .app）使用 data_dir/log，否则使用应用目录下的 ./log
-        app_dir = os.environ.get("LINGUAGACHA_APP_DIR", ".")
-        data_dir = os.environ.get("LINGUAGACHA_DATA_DIR", ".")
-        if data_dir and app_dir and data_dir != app_dir:
-            log_path = os.path.join(data_dir, "log")
-        else:
-            log_path = os.path.join(app_dir or ".", "log")
+        log_path = BasePath.get_log_dir()
 
         # 文件日志实例
+        import os
+
         os.makedirs(log_path, exist_ok=True)
         self.file_handler = TimedRotatingFileHandler(
             f"{log_path}/app.log",

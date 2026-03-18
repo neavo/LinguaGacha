@@ -2,14 +2,14 @@
     {
         "src": "<br>",
         "dst": "",
-        "info": "Line break - <br>",
+        "info": "换行符 Line break",
         "regex": false,
         "case_sensitive": false
     },
     {
         "src": "\\s",
         "dst": "",
-        "info": "Whitespace - \\t \\n \\r \\f \\v",
+        "info": "空白符 Whitespace",
         "regex": false,
         "case_sensitive": false
     }

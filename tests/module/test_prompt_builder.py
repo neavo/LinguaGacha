@@ -5,12 +5,13 @@ from typing import cast
 
 import pytest
 
+from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from model.Item import Item
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
-from module.PromptResourceResolver import PromptResourceResolver
+from module.PromptPathResolver import PromptPathResolver
 
 
 @dataclass
@@ -29,8 +30,10 @@ class FakeQualitySnapshot:
 @pytest.fixture(autouse=True)
 def reset_prompt_builder_cache(request: pytest.FixtureRequest) -> None:
     PromptBuilder.reset()
+    BasePath.reset_for_test()
     Localizer.set_app_language(BaseLanguage.Enum.ZH)
     request.addfinalizer(PromptBuilder.reset)
+    request.addfinalizer(BasePath.reset_for_test)
     request.addfinalizer(lambda: Localizer.set_app_language(BaseLanguage.Enum.ZH))
 
 
@@ -379,6 +382,8 @@ class TestPromptBuilder:
         (en_dir / "thinking.txt").write_text("THINKING_SUFFIX_EN", encoding="utf-8-sig")
 
         monkeypatch.chdir(str(root))
+        BasePath.APP_DIR = str(root)
+        BasePath.DATA_DIR = str(root)
 
         assert PromptBuilder.get_base(BaseLanguage.Enum.ZH) == "BASE"
         assert PromptBuilder.get_prefix(BaseLanguage.Enum.ZH) == "PREFIX"
@@ -432,6 +437,8 @@ class TestPromptBuilder:
         )
 
         monkeypatch.chdir(str(root))
+        BasePath.APP_DIR = str(root)
+        BasePath.DATA_DIR = str(root)
 
         builder = PromptBuilder(
             config=Config(
@@ -581,6 +588,8 @@ class TestPromptBuilder:
         )
 
         monkeypatch.chdir(str(root))
+        BasePath.APP_DIR = str(root)
+        BasePath.DATA_DIR = str(root)
 
         assert PromptBuilder.get_analysis_base(BaseLanguage.Enum.ZH) == "ANALYSIS_BASE"
         assert (
@@ -631,21 +640,19 @@ class TestPromptBuilder:
         builder = PromptBuilder(config=Config(), quality_snapshot=None)
 
         assert (
-            builder.get_custom_prompt_data(PromptResourceResolver.TaskType.TRANSLATION)
+            builder.get_custom_prompt_data(PromptPathResolver.TaskType.TRANSLATION)
             == "TRANSLATION_PROMPT"
         )
         assert (
-            builder.get_custom_prompt_data(PromptResourceResolver.TaskType.ANALYSIS)
+            builder.get_custom_prompt_data(PromptPathResolver.TaskType.ANALYSIS)
             == "ANALYSIS_PROMPT"
         )
         assert (
-            builder.get_custom_prompt_enable(
-                PromptResourceResolver.TaskType.TRANSLATION
-            )
+            builder.get_custom_prompt_enable(PromptPathResolver.TaskType.TRANSLATION)
             is True
         )
         assert (
-            builder.get_custom_prompt_enable(PromptResourceResolver.TaskType.ANALYSIS)
+            builder.get_custom_prompt_enable(PromptPathResolver.TaskType.ANALYSIS)
             is False
         )
 
@@ -780,7 +787,7 @@ class TestPromptBuilder:
         )
 
         assert (
-            builder.get_custom_prompt_data(PromptResourceResolver.TaskType.TRANSLATION)
+            builder.get_custom_prompt_data(PromptPathResolver.TaskType.TRANSLATION)
             == "TRANSLATION_RULE"
         )
 

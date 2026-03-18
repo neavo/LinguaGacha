@@ -1,3 +1,4 @@
+import os
 import re
 import threading
 from enum import StrEnum
@@ -6,6 +7,7 @@ from typing import Any
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.BasePath import BasePath
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
@@ -104,7 +106,10 @@ class TextProcessor(Base):
             if custom_data:
                 data = [v for v in custom_data if isinstance(v, str) and v.strip()]
         else:
-            path: str = f"resource/preset/text_preserve/{language.lower()}/{text_type.lower()}.json"
+            path = os.path.join(
+                BasePath.get_text_preserve_preset_dir(),
+                f"{str(text_type).lower()}.json",
+            )
             try:
                 raw = JSONTool.load_file(path)
                 if isinstance(raw, list):
@@ -298,9 +303,7 @@ class TextProcessor(Base):
 
     # 注入姓名
     @classmethod
-    def inject_name(
-        cls, srcs: list[str], source: Item | str | None
-    ) -> list[str]:
+    def inject_name(cls, srcs: list[str], source: Item | str | None) -> list[str]:
         """统一兼容 Item 和首个姓名文本两种输入，避免外部维护两套入口。"""
         if source is None:
             return srcs
