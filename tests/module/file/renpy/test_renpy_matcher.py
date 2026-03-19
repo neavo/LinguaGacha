@@ -5,8 +5,10 @@ from module.File.RenPy.RenPyAst import StatementNode
 from module.File.RenPy.RenPyAst import StmtKind
 from module.File.RenPy.RenPyAst import TranslateBlock
 from module.File.RenPy.RenPyMatcher import drop_normalized_speaker
+from module.File.RenPy.RenPyMatcher import get_statement_speaker_token
 from module.File.RenPy.RenPyMatcher import match_template_to_target
 from module.File.RenPy.RenPyMatcher import pair_old_new
+from module.File.RenPy.RenPyMatcher import speakers_are_compatible
 from module.File.RenPy.RenPyMatcher import statements_equal
 
 
@@ -79,6 +81,31 @@ def test_drop_normalized_speaker_removes_prefix_only_when_present() -> None:
     assert drop_normalized_speaker('"a"') == '"a"'
 
 
+def test_get_statement_speaker_token_distinguishes_identifier_and_plain_string() -> (
+    None
+):
+    assert (
+        get_statement_speaker_token(
+            build_stmt(1, StmtKind.TEMPLATE, 'n "{}"', "", 'n ""')
+        )
+        == "n"
+    )
+    assert (
+        get_statement_speaker_token(build_stmt(2, StmtKind.TEMPLATE, '"{}"', "", '""'))
+        is None
+    )
+
+
+def test_speakers_are_compatible_requires_same_identifier_speaker() -> None:
+    narrator = build_stmt(1, StmtKind.TEMPLATE, 'n "{}"', "", 'n ""')
+    reporter = build_stmt(2, StmtKind.TARGET, 'r "{}"', "", 'r ""')
+    plain = build_stmt(3, StmtKind.TARGET, '"{}"', "", '""')
+
+    assert speakers_are_compatible(narrator, narrator) is True
+    assert speakers_are_compatible(narrator, reporter) is False
+    assert speakers_are_compatible(narrator, plain) is False
+
+
 def test_statements_equal_covers_all_matching_strategies() -> None:
     assert (
         statements_equal(
@@ -90,26 +117,54 @@ def test_statements_equal_covers_all_matching_strategies() -> None:
 
     assert (
         statements_equal(
-            build_stmt(1, StmtKind.TEMPLATE, "a", "r", string_count=1),
-            build_stmt(2, StmtKind.TARGET, "b", "r", string_count=1),
+            build_stmt(1, StmtKind.TEMPLATE, '"a"', "r", '"a"', string_count=1),
+            build_stmt(2, StmtKind.TARGET, '"b"', "r", '"b"', string_count=1),
         )
         is True
     )
 
     assert (
         statements_equal(
-            build_stmt(1, StmtKind.TEMPLATE, '"{}"', "x", string_count=1),
-            build_stmt(2, StmtKind.TARGET, "y", '<SPEAKER> "{}"', string_count=1),
+            build_stmt(
+                1,
+                StmtKind.TEMPLATE,
+                'e "{}"',
+                '<SPEAKER> "{}"',
+                'e ""',
+                string_count=1,
+            ),
+            build_stmt(
+                2,
+                StmtKind.TARGET,
+                'e "{}"',
+                '<SPEAKER> "{}"',
+                'e ""',
+                string_count=1,
+            ),
         )
         is True
     )
 
     assert (
         statements_equal(
-            build_stmt(1, StmtKind.TEMPLATE, "x", '<SPEAKER> "{}"', string_count=1),
-            build_stmt(2, StmtKind.TARGET, '"{}"', "y", string_count=1),
+            build_stmt(
+                1,
+                StmtKind.TEMPLATE,
+                '"{}"',
+                '"{}"',
+                '""',
+                string_count=1,
+            ),
+            build_stmt(
+                2,
+                StmtKind.TARGET,
+                'n "{}"',
+                '<SPEAKER> "{}"',
+                'n ""',
+                string_count=1,
+            ),
         )
-        is True
+        is False
     )
 
     assert (
@@ -185,6 +240,23 @@ def test_match_template_to_target_can_skip_template_first_using_dp_i_branch() ->
     mapping = match_template_to_target(block)
 
     assert mapping == {3: 10}
+
+
+def test_match_template_to_target_does_not_cross_match_plain_and_named_speaker() -> (
+    None
+):
+    text = """translate schinese start_b2fba8d0:
+
+    # "[player_name]"
+    n ""
+    # r "Hello"
+    r ""
+""".splitlines()
+    from module.File.RenPy.RenPyParser import parse_document
+
+    doc = parse_document(text)
+
+    assert match_template_to_target(doc.blocks[0]) == {5: 6}
 
 
 def test_pair_old_new_ignores_non_new_targets() -> None:

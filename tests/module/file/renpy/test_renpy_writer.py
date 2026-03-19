@@ -33,35 +33,55 @@ def test_build_replacements_and_replace_literals() -> None:
 def test_apply_item_updates_target_line_for_label_kind() -> None:
     writer = RenPyWriter()
     lines = ['    # e "old"', '    e "old"']
-    template_raw = lines[0]
-    target_raw = lines[1]
-    target_rest = target_raw.lstrip()
-    target_literals = scan_double_quoted_literals(target_rest)
-    target_skeleton = build_skeleton(target_rest, target_literals)
-
-    item = Item.from_dict(
-        {
-            "src": "old",
-            "dst": "new",
-            "extra_field": {
-                "renpy": {
-                    "pair": {"template_line": 1, "target_line": 2},
-                    "digest": {
-                        "template_raw_sha1": sha1_hex(template_raw),
-                        "target_skeleton_sha1": sha1_hex(target_skeleton),
-                        "target_string_count": 1,
-                    },
-                    "slots": [{"role": "DIALOGUE", "lit_index": 0}],
-                    "block": {"kind": "LABEL"},
-                }
-            },
-        }
+    item = build_apply_item(
+        lines,
+        slots=[{"role": "DIALOGUE", "lit_index": 0}],
     )
 
     ok = writer.apply_item(lines, item)
 
     assert ok is True
     assert lines[1] == '    e "new"'
+
+
+def test_apply_item_updates_only_dialogue_for_cb_name_suffix() -> None:
+    writer = RenPyWriter()
+    lines = [
+        '    # "old text" (cb_name="mr")',
+        '    "old text" (cb_name="mr")',
+    ]
+    item = build_apply_item(
+        lines,
+        src="old text",
+        dst="new text",
+        slots=[{"role": "DIALOGUE", "lit_index": 0}],
+    )
+
+    ok = writer.apply_item(lines, item)
+
+    assert ok is True
+    assert lines[1] == '    "new text" (cb_name="mr")'
+
+
+def test_apply_item_preserves_trailing_function_argument_string() -> None:
+    writer = RenPyWriter()
+    lines = [
+        '    # "Man" "old" with PushMove("x")',
+        '    "Man" "old" with PushMove("x")',
+    ]
+    item = build_apply_item(
+        lines,
+        name_dst="",
+        slots=[
+            {"role": "NAME", "lit_index": 0},
+            {"role": "DIALOGUE", "lit_index": 1},
+        ],
+    )
+
+    ok = writer.apply_item(lines, item)
+
+    assert ok is True
+    assert lines[1] == '    "Man" "new" with PushMove("x")'
 
 
 def test_apply_item_rejects_when_digest_mismatch() -> None:
@@ -94,31 +114,45 @@ def build_valid_case(kind: str = "LABEL") -> tuple[list[str], Item]:
     else:
         lines = ['    # e "old"', '    e "old"']
 
-    template_raw = lines[0]
+    item = build_apply_item(
+        lines,
+        slots=[{"role": "DIALOGUE", "lit_index": 0}],
+        kind=kind,
+    )
+    return lines, item
+
+
+def build_apply_item(
+    lines: list[str],
+    slots: list[dict[str, object]],
+    src: str = "old",
+    dst: str = "new",
+    name_dst: str = "新名字",
+    kind: str = "LABEL",
+) -> Item:
     target_rest = lines[1].lstrip()
     target_literals = scan_double_quoted_literals(target_rest)
     target_skeleton = build_skeleton(target_rest, target_literals)
 
-    item = Item.from_dict(
+    return Item.from_dict(
         {
-            "src": "old",
-            "dst": "new",
-            "name_dst": "新名字",
+            "src": src,
+            "dst": dst,
+            "name_dst": name_dst,
             "extra_field": {
                 "renpy": {
                     "pair": {"template_line": 1, "target_line": 2},
                     "digest": {
-                        "template_raw_sha1": sha1_hex(template_raw),
+                        "template_raw_sha1": sha1_hex(lines[0]),
                         "target_skeleton_sha1": sha1_hex(target_skeleton),
                         "target_string_count": len(target_literals),
                     },
-                    "slots": [{"role": "DIALOGUE", "lit_index": 0}],
+                    "slots": slots,
                     "block": {"kind": kind},
                 }
             },
         }
     )
-    return lines, item
 
 
 def get_renpy_extra(item: Item) -> dict[str, Any]:
@@ -258,26 +292,9 @@ def test_build_replacements_and_replace_literals_cover_guards() -> None:
 def test_apply_item_rejects_label_when_template_line_is_not_comment() -> None:
     writer = RenPyWriter()
     lines = ['    e "old"', '    e "old"']
-    target_rest = lines[1].lstrip()
-    target_literals = scan_double_quoted_literals(target_rest)
-    target_skeleton = build_skeleton(target_rest, target_literals)
-    item = Item.from_dict(
-        {
-            "src": "old",
-            "dst": "new",
-            "extra_field": {
-                "renpy": {
-                    "pair": {"template_line": 1, "target_line": 2},
-                    "digest": {
-                        "template_raw_sha1": sha1_hex(lines[0]),
-                        "target_skeleton_sha1": sha1_hex(target_skeleton),
-                        "target_string_count": len(target_literals),
-                    },
-                    "slots": [{"role": "DIALOGUE", "lit_index": 0}],
-                    "block": {"kind": "LABEL"},
-                }
-            },
-        }
+    item = build_apply_item(
+        lines,
+        slots=[{"role": "DIALOGUE", "lit_index": 0}],
     )
 
     assert writer.apply_item(lines, item) is False
