@@ -623,7 +623,6 @@ class LocalizerZH:
     # 术语表
     glossary_page_head_content: str = "通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能"
     glossary_page_table_row_04: str = "描述"
-    glossary_page_translation_tool: str = "一键翻译工具"
 
     # 文本保护
     text_preserve_page_head_content: str = (
@@ -708,7 +707,7 @@ class LocalizerZH:
     name_field_extraction_page_desc: str = (
         "将从 <font color='darkgoldenrod'><b>输入文件夹</b></font> 中所有符合条件的文件中提取角色姓名字段，自动生成对应的术语表数据"
         "<br>"
-        "请注意：此功能 <font color='darkgoldenrod'><b>不能提取正文内的术语</b></font>，不能代替 <font color='darkgoldenrod'><b>KeywordGacha</b></font> 工具"
+        "请注意：此功能 <font color='darkgoldenrod'><b>不能提取正文内的术语</b></font>"
         "<br>"
         "支持格式："
         "<br>"

@@ -22,7 +22,6 @@ from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets.components.widgets.command_bar import CommandButton
 
 from base.Base import Base
-from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from frontend.Workbench.WorkbenchTableWidget import WorkbenchTableWidget
 from model.Item import Item
@@ -95,7 +94,6 @@ class WorkbenchPage(Base, ScrollArea):
 
     def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.brand = BaseBrand.get()
         self.setObjectName(object_name)
         self.setWidgetResizable(True)
         self.enableTransparentBackground()
@@ -216,17 +214,16 @@ class WorkbenchPage(Base, ScrollArea):
         )
         self.card_translated: StatCard | None = None
         self.card_untranslated: StatCard | None = None
-        if self.brand.workbench_flags.show_translation_stats:
-            self.card_translated = StatCard(
-                Localizer.get().workbench_stat_translated,
-                unit_line,
-                accent_color="#22c55e",
-            )
-            self.card_untranslated = StatCard(
-                Localizer.get().workbench_stat_untranslated,
-                unit_line,
-                accent_color="#f59e0b",
-            )
+        self.card_translated = StatCard(
+            Localizer.get().workbench_stat_translated,
+            unit_line,
+            accent_color="#22c55e",
+        )
+        self.card_untranslated = StatCard(
+            Localizer.get().workbench_stat_untranslated,
+            unit_line,
+            accent_color="#f59e0b",
+        )
 
         cards: list[StatCard] = [self.card_file_count, self.card_total_items]
         if self.card_translated is not None:
@@ -242,7 +239,7 @@ class WorkbenchPage(Base, ScrollArea):
     def build_file_list_section(self) -> None:
         self.table_widget = WorkbenchTableWidget(
             self.container,
-            show_translation_reset=self.brand.workbench_flags.show_translation_reset,
+            show_translation_reset=True,
         )
         self.table_widget.replace_clicked.connect(self.on_replace_file)
         self.table_widget.reset_clicked.connect(self.on_reset_file)
@@ -270,15 +267,14 @@ class WorkbenchPage(Base, ScrollArea):
             )
         )
 
-        if self.brand.workbench_flags.show_translation_export:
-            self.command_bar_card.add_separator()
-            self.btn_export_translation = self.command_bar_card.add_action(
-                Action(
-                    BaseIcon.FILE_INPUT,
-                    Localizer.get().export_translation,
-                    triggered=self.on_export_translation_clicked,
-                )
+        self.command_bar_card.add_separator()
+        self.btn_export_translation = self.command_bar_card.add_action(
+            Action(
+                BaseIcon.FILE_INPUT,
+                Localizer.get().export_translation,
+                triggered=self.on_export_translation_clicked,
             )
+        )
         self.command_bar_card.add_separator()
         self.btn_close_project = self.command_bar_card.add_action(
             Action(

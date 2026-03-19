@@ -1,4 +1,3 @@
-import argparse
 import ctypes
 import os
 import signal
@@ -18,7 +17,7 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
-from base.BaseBrand import BaseBrand
+from base.Base import Base
 from base.BasePath import BasePath
 from base.CLIManager import CLIManager
 from base.EventManager import EventManager
@@ -38,15 +37,6 @@ QT_LOG_BLACKLIST: tuple[str, ...] = (
 )
 APP_VERSION_FILE_NAME: str = "version.txt"
 APP_ICON_FILE_NAME: str = "icon.png"
-
-
-def parse_startup_args(argv: list[str]) -> tuple[str | None, list[str]]:
-    """只解析应用入口自己的启动参数，其余参数继续交给现有 CLI 流程。"""
-
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--brand", type=str, choices=["lg", "kg"], default=None)
-    args, remaining_argv = parser.parse_known_args(argv[1:])
-    return args.brand, [argv[0], *remaining_argv]
 
 
 def excepthook(
@@ -121,20 +111,11 @@ def qt_message_handler(
 
 
 if __name__ == "__main__":
-    # 解析启动参数
     app_dir = BasePath.resolve_app_dir()
     is_frozen = getattr(sys, "frozen", False)
-    brand_id, sys.argv = parse_startup_args(sys.argv)
-    resolved_brand_id = BaseBrand.resolve_runtime_brand_id(
-        brand_id,
-        app_dir,
-        is_frozen,
-    )
-    BaseBrand.set_current_brand_id(resolved_brand_id)
-    brand = BaseBrand.get()
 
     # 启动早期先固定运行时路径单一来源，后续配置/日志/用户数据都依赖这里。
-    BasePath.initialize(app_dir, brand, is_frozen)
+    BasePath.initialize(app_dir, is_frozen)
 
     # 捕获全局异常
     sys.excepthook = excepthook
@@ -191,7 +172,7 @@ if __name__ == "__main__":
     Localizer.set_app_language(config.app_language)
 
     # 打印日志
-    LogManager.get().info(f"{brand.app_name} {version}")
+    LogManager.get().info(f"{Base.APP_NAME} {version}")
     if LogManager.get().is_expert_mode():
         LogManager.get().info(Localizer.get().log_expert_mode)
     LogManager.get().print("")

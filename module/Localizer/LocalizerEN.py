@@ -623,7 +623,6 @@ class LocalizerEN(LocalizerZH):
     # 术语表
     glossary_page_head_content: str = "By building a glossary in the prompt to guide model translation, unified translation and correction of personal pronouns can be achieved"
     glossary_page_table_row_04: str = "Description"
-    glossary_page_translation_tool: str = "One-Click Translation"
 
     # 文本保护
     text_preserve_page_head_content: str = (
@@ -708,7 +707,7 @@ class LocalizerEN(LocalizerZH):
     name_field_extraction_page_desc: str = (
         "Extract character name fields from all eligible files in the <font color='darkgoldenrod'><b>input folder</b></font> and automatically generate corresponding glossary data"
         "<br>"
-        "Please note: This function <font color='darkgoldenrod'><b>cannot extract terms from the main text</b></font>, and cannot replace the <font color='darkgoldenrod'><b>KeywordGacha</b></font> tool"
+        "Please note: This function <font color='darkgoldenrod'><b>cannot extract terms from the main text</b></font>"
         "<br>"
         "Supported formats:"
         "<br>"

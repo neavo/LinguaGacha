@@ -5,6 +5,10 @@ from base.EventManager import EventManager
 
 
 class Base:
+    APP_NAME: str = "LinguaGacha"
+    REPO_URL: str = "https://github.com/neavo/LinguaGacha"
+    USER_AGENT_NAME: str = "LinguaGacha"
+
     # 翻译/分析事件速查表（优先看这里）：
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
     # | 事件名                        | sub_event                     | 语义                                           | 常见字段                                                  |

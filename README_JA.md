@@ -33,7 +33,6 @@
 
 ## システム要件 🖥️
 - `OpenAI`、`Google`、`Anthropic`、`SakuraLLM` 標準に準拠したAIモデルインターフェースに対応
-- [KeywordGacha](https://github.com/neavo/KeywordGacha) と互換性あり　`👈👈 AIを活用して用語集をワンクリックで生成する次世代ツール`
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード

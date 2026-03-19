@@ -15,13 +15,17 @@ from typing import Self
 import httpx
 
 from base.Base import Base
-from base.BaseBrand import BaseBrand
 from base.BasePath import BasePath
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
 
 
 class VersionManager(Base):
+    RELEASE_URL: str = "https://github.com/neavo/LinguaGacha/releases/latest"
+    RELEASE_API_URL: str = (
+        "https://api.github.com/repos/neavo/LinguaGacha/releases/latest"
+    )
+
     class Status(StrEnum):
         NONE = "NONE"
         NEW_VERSION = "NEW_VERSION"
@@ -244,15 +248,15 @@ class VersionManager(Base):
 
     @classmethod
     def get_release_api_url(cls) -> str:
-        """更新源随产品切换，避免 KG 拉到 LG 的发布资产。"""
+        """统一返回 LinguaGacha 的发布接口地址。"""
 
-        return BaseBrand.get().release_api_url
+        return cls.RELEASE_API_URL
 
     @classmethod
     def get_release_url(cls) -> str:
-        """统一暴露当前产品的发布页地址。"""
+        """统一返回 LinguaGacha 的发布页地址。"""
 
-        return BaseBrand.get().release_url
+        return cls.RELEASE_URL
 
     # 应用更新（仅 Windows）
     def app_update_extract(self, event: Base.Event, data: dict) -> None:

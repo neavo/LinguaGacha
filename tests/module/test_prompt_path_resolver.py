@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from base.BaseBrand import BaseBrand
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
 from module.Localizer.Localizer import Localizer
@@ -21,7 +20,7 @@ def resolver_root(fs, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = Path("/workspace/prompt_resolver")
     root.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(str(root))
-    BasePath.initialize(str(root), BaseBrand.get("lg"), False)
+    BasePath.initialize(str(root), False)
     return root
 
 
