@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -8,10 +9,13 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
-import module.Engine.TaskScheduler as task_scheduler_module
+import module.Engine.TaskScheduler as shared_scheduler_module
+import module.Engine.Translation.TranslationScheduler as translation_scheduler_module
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
-from module.Engine.TaskScheduler import TaskContext
+from module.Engine.Analysis.AnalysisScheduler import AnalysisScheduler
 from module.Engine.TaskScheduler import TaskScheduler
+from module.Engine.Translation.TranslationScheduler import TaskContext
+from module.Engine.Translation.TranslationScheduler import TranslationScheduler
 
 
 def create_item(
@@ -25,20 +29,35 @@ def create_item(
     return item
 
 
-def test_generate_initial_contexts_iter_builds_task_contexts(
+def create_translation_scheduler(items: list[Item]) -> TranslationScheduler:
+    return TranslationScheduler(
+        config=Config(preceding_lines_threshold=2),
+        model={"threshold": {"input_token_limit": 64}},
+        items=items,
+    )
+
+
+def create_analysis_scheduler(
+    *,
+    model: dict[str, Any] | None = None,
+) -> AnalysisScheduler:
+    analysis = SimpleNamespace(
+        model=model or {"threshold": {"input_token_limit": 64}},
+        config=Config(),
+    )
+    return AnalysisScheduler(analysis)
+
+
+def test_translation_scheduler_generate_initial_contexts_iter_builds_task_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = create_item("first")
     second = create_item("second")
     chunks = [([first], [second])]
-    scheduler = TaskScheduler(
-        config=Config(preceding_lines_threshold=2),
-        model={"threshold": {"input_token_limit": 64}},
-        items=[first, second],
-    )
+    scheduler = create_translation_scheduler([first, second])
 
     monkeypatch.setattr(
-        task_scheduler_module.TaskScheduler,
+        translation_scheduler_module.TaskScheduler,
         "generate_item_chunks_iter",
         classmethod(lambda cls, **kwargs: iter(chunks)),
     )
@@ -52,39 +71,39 @@ def test_generate_initial_contexts_iter_builds_task_contexts(
     assert contexts[0].is_initial is True
 
 
-def test_handle_failed_context_returns_empty_when_no_pending_items() -> None:
+def test_translation_scheduler_handle_failed_context_returns_empty_when_no_pending_items() -> (
+    None
+):
     processed = create_item("done", Base.ProjectStatus.PROCESSED)
     context = TaskContext(
         items=[processed],
         precedings=[],
         token_threshold=32,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [processed]
-    )
+    scheduler = create_translation_scheduler([processed])
 
     new_contexts = scheduler.handle_failed_context(context, {})
 
     assert new_contexts == []
 
 
-def test_handle_failed_context_skips_error_items_during_continue_semantics() -> None:
+def test_translation_scheduler_handle_failed_context_skips_error_items_during_continue_semantics() -> (
+    None
+):
     failed = create_item("failed", Base.ProjectStatus.ERROR)
     context = TaskContext(
         items=[failed],
         precedings=[],
         token_threshold=32,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [failed]
-    )
+    scheduler = create_translation_scheduler([failed])
 
     new_contexts = scheduler.handle_failed_context(context, {})
 
     assert new_contexts == []
 
 
-def test_handle_failed_context_splits_items_when_threshold_above_one(
+def test_translation_scheduler_handle_failed_context_splits_items_when_threshold_above_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = create_item("a")
@@ -97,12 +116,10 @@ def test_handle_failed_context_splits_items_when_threshold_above_one(
         retry_count=0,
         is_initial=False,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [first, second]
-    )
+    scheduler = create_translation_scheduler([first, second])
 
     monkeypatch.setattr(
-        task_scheduler_module.TaskScheduler,
+        translation_scheduler_module.TaskScheduler,
         "generate_item_chunks",
         classmethod(lambda cls, **kwargs: ([[first], [second]], [])),
     )
@@ -118,7 +135,9 @@ def test_handle_failed_context_splits_items_when_threshold_above_one(
     assert all(ctx.token_threshold == expected_threshold for ctx in new_contexts)
 
 
-def test_handle_failed_context_splits_to_single_items_when_threshold_is_one() -> None:
+def test_translation_scheduler_handle_failed_context_splits_to_single_items_when_threshold_is_one() -> (
+    None
+):
     first = create_item("a")
     second = create_item("b")
     context = TaskContext(
@@ -127,9 +146,7 @@ def test_handle_failed_context_splits_to_single_items_when_threshold_is_one() ->
         token_threshold=1,
         split_count=2,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [first, second]
-    )
+    scheduler = create_translation_scheduler([first, second])
 
     new_contexts = scheduler.handle_failed_context(context, {})
 
@@ -138,7 +155,9 @@ def test_handle_failed_context_splits_to_single_items_when_threshold_is_one() ->
     assert all(ctx.split_count == 3 for ctx in new_contexts)
 
 
-def test_handle_failed_context_retries_single_item_until_limit() -> None:
+def test_translation_scheduler_handle_failed_context_retries_single_item_until_limit() -> (
+    None
+):
     item = create_item("single")
     context = TaskContext(
         items=[item],
@@ -146,9 +165,7 @@ def test_handle_failed_context_retries_single_item_until_limit() -> None:
         token_threshold=16,
         retry_count=2,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
 
     new_contexts = scheduler.handle_failed_context(context, {})
 
@@ -158,7 +175,7 @@ def test_handle_failed_context_retries_single_item_until_limit() -> None:
     assert new_contexts[0].split_count == context.split_count
 
 
-def test_handle_failed_context_force_accepts_after_retry_limit(
+def test_translation_scheduler_handle_failed_context_force_accepts_after_retry_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     item = create_item("single")
@@ -168,9 +185,7 @@ def test_handle_failed_context_force_accepts_after_retry_limit(
         token_threshold=16,
         retry_count=3,
     )
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
     calls: list[Item] = []
     monkeypatch.setattr(scheduler, "force_accept", lambda obj: calls.append(obj))
 
@@ -180,7 +195,7 @@ def test_handle_failed_context_force_accepts_after_retry_limit(
     assert calls == [item]
 
 
-def test_create_task_injects_split_retry_and_threshold(
+def test_translation_scheduler_create_task_injects_split_retry_and_threshold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, Any] = {}
@@ -192,12 +207,14 @@ def test_create_task_injects_split_retry_and_threshold(
             self.token_threshold = -1
             self.retry_count = -1
 
-    monkeypatch.setattr(task_scheduler_module, "TranslationTask", FakeTranslationTask)
+    monkeypatch.setattr(
+        translation_scheduler_module,
+        "TranslationTask",
+        FakeTranslationTask,
+    )
 
     item = create_item("line")
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
     context = TaskContext(
         items=[item],
         precedings=[],
@@ -217,11 +234,9 @@ def test_create_task_injects_split_retry_and_threshold(
     assert task.retry_count == 2
 
 
-def test_force_accept_sets_src_to_dst_and_error_status() -> None:
+def test_translation_scheduler_force_accept_sets_src_to_dst_and_error_status() -> None:
     item = create_item("origin")
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
 
     scheduler.force_accept(item)
 
@@ -229,12 +244,12 @@ def test_force_accept_sets_src_to_dst_and_error_status() -> None:
     assert item.get_status() == Base.ProjectStatus.ERROR
 
 
-def test_force_accept_keeps_existing_dst_when_status_is_none() -> None:
+def test_translation_scheduler_force_accept_keeps_existing_dst_when_status_is_none() -> (
+    None
+):
     item = create_item("origin", Base.ProjectStatus.NONE)
     item.set_dst("translated")
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
 
     scheduler.force_accept(item)
 
@@ -242,12 +257,10 @@ def test_force_accept_keeps_existing_dst_when_status_is_none() -> None:
     assert item.get_status() == Base.ProjectStatus.ERROR
 
 
-def test_force_accept_does_not_override_processed_item() -> None:
+def test_translation_scheduler_force_accept_does_not_override_processed_item() -> None:
     item = create_item("origin", Base.ProjectStatus.PROCESSED)
     item.set_dst("translated")
-    scheduler = TaskScheduler(
-        Config(), {"threshold": {"input_token_limit": 64}}, [item]
-    )
+    scheduler = create_translation_scheduler([item])
 
     scheduler.force_accept(item)
 
@@ -289,7 +302,7 @@ def test_generate_item_chunks_iter_uses_gap_tool(
         return iter(captured)
 
     monkeypatch.setattr(
-        task_scheduler_module.GapTool,
+        shared_scheduler_module.GapTool,
         "iter",
         staticmethod(fake_gap_iter),
     )
@@ -461,7 +474,9 @@ def test_generate_preceding_chunk_stops_when_file_changes() -> None:
     assert preceding == []
 
 
-def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
+def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries() -> (
+    None
+):
     items = [
         AnalysisItemContext(item_id=1, file_path="a.txt", src_text="a1"),
         AnalysisItemContext(item_id=2, file_path="a.txt", src_text="a2"),
@@ -472,9 +487,10 @@ def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
             previous_status=Base.ProjectStatus.ERROR,
         ),
     ]
+    scheduler = create_analysis_scheduler()
 
-    contexts = TaskScheduler.build_initial_analysis_contexts(
-        items=items,
+    contexts = scheduler.build_initial_analysis_contexts(
+        items,
         input_token_threshold=1000,
     )
 
@@ -486,11 +502,16 @@ def test_build_initial_analysis_contexts_uses_shared_file_boundaries() -> None:
     assert contexts[1].items[0].previous_status == Base.ProjectStatus.ERROR
 
 
-def test_build_initial_analysis_contexts_returns_empty_for_empty_input() -> None:
-    assert TaskScheduler.build_initial_analysis_contexts([], 1000) == []
+def test_analysis_scheduler_build_initial_contexts_returns_empty_for_empty_input() -> (
+    None
+):
+    scheduler = create_analysis_scheduler()
+    assert (
+        scheduler.build_initial_analysis_contexts([], input_token_threshold=1000) == []
+    )
 
 
-def test_build_initial_analysis_contexts_skips_invalid_and_orphan_seed_items(
+def test_analysis_scheduler_build_initial_contexts_skips_invalid_and_orphan_seed_items(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     items = [
@@ -499,10 +520,10 @@ def test_build_initial_analysis_contexts_skips_invalid_and_orphan_seed_items(
     invalid_id_item = Item(id="bad-id", src="bad", file_path="a.txt")
     orphan_item = Item(id=999, src="orphan", file_path="a.txt")
     valid_item = Item(id=1, src="a1", file_path="a.txt")
+    scheduler = create_analysis_scheduler()
 
-    # 这里手动喂入异常 chunk，确保调度器只保留能映射回稳定快照的条目。
     monkeypatch.setattr(
-        task_scheduler_module.TaskScheduler,
+        shared_scheduler_module.TaskScheduler,
         "generate_item_chunks_iter",
         classmethod(
             lambda cls, **kwargs: iter(
@@ -514,8 +535,8 @@ def test_build_initial_analysis_contexts_skips_invalid_and_orphan_seed_items(
         ),
     )
 
-    contexts = TaskScheduler.build_initial_analysis_contexts(
-        items=items,
+    contexts = scheduler.build_initial_analysis_contexts(
+        items,
         input_token_threshold=1000,
     )
 

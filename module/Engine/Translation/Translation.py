@@ -5,7 +5,6 @@ import webbrowser
 from enum import StrEnum
 from itertools import zip_longest
 from typing import Any
-from typing import Optional
 
 from rich.progress import TaskID
 
@@ -17,12 +16,16 @@ from module.Data.DataManager import DataManager
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
+from module.Engine.TaskPipeline import TaskPipeline
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
-from module.Engine.TaskScheduler import TaskScheduler
-from module.Engine.Translation.TranslationTaskPipeline import TranslationTaskPipeline
+from module.Engine.Translation.TranslationProgressTracker import (
+    TranslationProgressTracker,
+)
+from module.Engine.Translation.TranslationScheduler import TranslationScheduler
+from module.Engine.Translation.TranslationTaskHooks import TranslationTaskHooks
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
@@ -39,10 +42,10 @@ class Translation(Base):
         super().__init__()
 
         # 翻译过程中的 items 内存快照（仅用于本次任务，避免频繁读写数据库）
-        self.items_cache: Optional[list[Item]] = None
+        self.items_cache: list[Item] | None = None
 
         # 翻译进度额外数据
-        self.extras: dict = {}
+        self.extras: dict[str, Any] = {}
 
         # 当前翻译任务的限流器（用于 UI 展示真实并发）
         self.task_limiter: TaskLimiter | None = None
@@ -52,12 +55,16 @@ class Translation(Base):
 
         # 配置
         self.config = Config().load()
+        self.dm: DataManager = DataManager.get()
 
         # 翻译期间使用的质量规则快照（开始/继续时捕获）
         self.quality_snapshot: QualityRuleSnapshot | None = None
 
         # 是否允许把质量规则写回工程（GUI 为 True；CLI 可传 False 仅本次生效）。
         self.persist_quality_rules: bool = True
+        self.scheduler: TranslationScheduler | None = None
+        self.progress_tracker = TranslationProgressTracker(self)
+        self.task_hooks: TranslationTaskHooks | None = None
 
         # 注册事件
         self.subscribe(Base.Event.PROJECT_CHECK, self.project_check_run)
@@ -82,14 +89,19 @@ class Translation(Base):
             return 0
         return limiter.get_concurrency_limit()
 
+    def should_stop(self) -> bool:
+        """翻译停止判断统一收口，避免 hooks 和控制器口径漂移。"""
+        return (
+            Engine.get().get_status() == Base.TaskStatus.STOPPING or self.stop_requested
+        )
+
     def get_progress_snapshot(self) -> TaskProgressSnapshot:
         """把翻译运行态字典统一映射到共享快照，便于公共层复用。"""
-        return TaskProgressSnapshot.from_dict(self.extras)
+        return self.progress_tracker.get_progress_snapshot()
 
     def set_progress_snapshot(self, snapshot: TaskProgressSnapshot) -> dict[str, Any]:
         """翻译域内部统一经由快照对象回写字典，避免字段漏同步。"""
-        self.extras = snapshot.to_dict()
-        return dict(self.extras)
+        return self.progress_tracker.set_progress_snapshot(snapshot)
 
     def update_extras_snapshot(
         self,
@@ -100,17 +112,12 @@ class Translation(Base):
         output_tokens: int,
     ) -> dict[str, Any]:
         """更新翻译进度统计并返回不可变快照。"""
-        snapshot = self.get_progress_snapshot()
-        snapshot = snapshot.with_counts(
-            processed_line=snapshot.processed_line + processed_count,
-            error_line=snapshot.error_line + error_count,
-        )
-        snapshot = snapshot.add_tokens(
+        return self.progress_tracker.update_extras_snapshot(
+            processed_count=processed_count,
+            error_count=error_count,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
-        snapshot = snapshot.with_elapsed(now=time.time())
-        return self.set_progress_snapshot(snapshot)
 
     def sync_extras_line_stats(self) -> None:
         """以 items_cache 为权威来源，重算行数统计。
@@ -118,29 +125,7 @@ class Translation(Base):
         在高并发 + 动态拆分/重试的情况下，增量计数可能出现极小漂移；
         最终以实际 Item 状态回填，保证 UI/元数据一致。
         """
-        if self.items_cache is None:
-            return
-
-        processed_line = 0
-        error_line = 0
-        remaining_line = 0
-        for item in self.items_cache:
-            status = item.get_status()
-            if status == Base.ProjectStatus.PROCESSED:
-                processed_line += 1
-            elif status == Base.ProjectStatus.ERROR:
-                error_line += 1
-            elif status == Base.ProjectStatus.NONE:
-                remaining_line += 1
-
-        snapshot = self.get_progress_snapshot()
-        snapshot = snapshot.with_counts(
-            processed_line=processed_line,
-            error_line=error_line,
-            total_line=processed_line + error_line + remaining_line,
-        )
-        snapshot = snapshot.with_elapsed(now=time.time())
-        self.set_progress_snapshot(snapshot)
+        self.progress_tracker.sync_extras_line_stats()
 
     def build_project_check_payload(self, dm: DataManager) -> dict[str, Any]:
         """统一收敛工程检查返回值，避免线程任务里重复拼装字典。"""
@@ -154,14 +139,12 @@ class Translation(Base):
 
         analysis_candidate_count = int(dm.get_analysis_candidate_count())
         analysis_extras = dm.get_analysis_progress_snapshot()
-
-        payload = {
+        return {
             "status": dm.get_project_status(),
             "extras": dm.get_translation_extras(),
             "analysis_extras": analysis_extras,
             "analysis_candidate_count": analysis_candidate_count,
         }
-        return payload
 
     # 翻译状态检查事件
     def project_check_run(self, event: Base.Event, data: dict) -> None:
@@ -277,10 +260,7 @@ class Translation(Base):
 
     def should_emit_export_result_toast(self, source: ExportSource) -> bool:
         """根据导出来源决定是否展示导出结果提示。"""
-        if source == self.ExportSource.MANUAL:
-            return True
-        else:
-            return False
+        return source == self.ExportSource.MANUAL
 
     def resolve_export_items(self) -> list[Item]:
         """统一导出数据来源，确保手动/自动导出读取口径一致。"""
@@ -374,6 +354,7 @@ class Translation(Base):
     # 实际的翻译流程
     def start(self, data: dict) -> None:
         dm = DataManager.get()
+        self.dm = dm
         run_state: dict[str, Any] = {
             "mode": Base.TranslationMode.NEW,
         }
@@ -417,27 +398,12 @@ class Translation(Base):
             if self.items_cache is None:
                 self.items_cache = []
 
-            if mode == Base.TranslationMode.CONTINUE:
-                snapshot = TaskProgressSnapshot.from_dict(dm.get_translation_extras())
-                snapshot = TaskProgressSnapshot(
-                    start_time=time.time() - snapshot.time,
-                    time=snapshot.time,
-                    total_line=snapshot.total_line,
-                    line=snapshot.line,
-                    processed_line=self.get_item_count_by_status(
-                        Base.ProjectStatus.PROCESSED
-                    ),
-                    error_line=self.get_item_count_by_status(Base.ProjectStatus.ERROR),
-                    total_tokens=snapshot.total_tokens,
-                    total_input_tokens=snapshot.total_input_tokens,
-                    total_output_tokens=snapshot.total_output_tokens,
-                ).with_counts()
-            else:
-                snapshot = TaskProgressSnapshot.empty(start_time=time.time())
-
+            snapshot = self.progress_tracker.build_plan_snapshot(
+                continue_mode=mode == Base.TranslationMode.CONTINUE
+            )
             self.set_progress_snapshot(snapshot)
             self.emit(Base.Event.TRANSLATION_PROGRESS, self.extras)
-            self.scheduler = TaskScheduler(
+            self.scheduler = TranslationScheduler(
                 self.config,
                 self.model,
                 self.items_cache,
@@ -499,7 +465,7 @@ class Translation(Base):
             hooks=TaskRunnerHooks(
                 prepare=prepare,
                 build_plan=build_plan,
-                persist_progress=self.persist_translation_progress,
+                persist_progress=self.progress_tracker.persist_progress_snapshot,
                 get_model=lambda: self.model if isinstance(self.model, dict) else None,
                 bind_task_limiter=bind_task_limiter,
                 clear_task_limiter=lambda: setattr(self, "task_limiter", None),
@@ -512,13 +478,6 @@ class Translation(Base):
                 after_done=lambda final_status: None,
             ),
         )
-
-    def persist_translation_progress(self, save_state: bool) -> dict[str, Any]:
-        """共享骨架需要统一入口回写翻译快照，避免起止阶段各写一套。"""
-
-        if save_state and self.items_cache is not None:
-            self.save_translation_state(Base.ProjectStatus.PROCESSING)
-        return dict(self.extras)
 
     def log_translation_start(self) -> None:
         """启动日志单独收口，方便共享骨架在开始阶段统一调用。"""
@@ -563,6 +522,10 @@ class Translation(Base):
 
         TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
 
+    def update_pipeline_progress(self, extras_snapshot: dict[str, Any]) -> None:
+        """提交阶段统一从这里同步控制台进度和 UI 事件。"""
+        self.progress_tracker.update_pipeline_progress(extras_snapshot)
+
     def finalize_translation_run(self, final_status: str) -> None:
         """共享骨架只负责调度，翻译域自己的落库和导出留在这里。"""
 
@@ -599,7 +562,7 @@ class Translation(Base):
         """按状态统计任务内存快照中的条目数量。"""
         if self.items_cache is None:
             return 0
-        return len([item for item in self.items_cache if item.get_status() == status])
+        return sum(1 for item in self.items_cache if item.get_status() == status)
 
     def copy_items(self) -> list[Item]:
         """深拷贝任务内存快照中的条目列表。"""
@@ -668,16 +631,29 @@ class Translation(Base):
         """
         同步翻译调度入口。
 
-        具体的生产者/消费者/提交逻辑封装在 TranslationTaskPipeline 中，避免本方法过长。
+        具体的生产者/消费者/提交逻辑封装在通用 TaskPipeline + TranslationTaskHooks 中。
         """
-        pipeline = TranslationTaskPipeline(
+        del task_limiter
+        hooks = TranslationTaskHooks(
             translation=self,
             progress=progress,
             pid=pid,
-            task_limiter=task_limiter,
             max_workers=max_workers,
         )
-        pipeline.run()
+        normal_queue_size, high_queue_size, commit_queue_size = (
+            hooks.build_pipeline_sizes()
+        )
+        self.task_hooks = hooks
+        try:
+            TaskPipeline(
+                hooks=hooks,
+                max_workers=max_workers,
+                normal_queue_size=normal_queue_size,
+                high_queue_size=high_queue_size,
+                commit_queue_size=commit_queue_size,
+            ).run()
+        finally:
+            self.task_hooks = None
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:

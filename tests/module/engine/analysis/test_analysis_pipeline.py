@@ -1,19 +1,24 @@
-from types import SimpleNamespace
+from __future__ import annotations
+
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from base.Base import Base
 from model.Item import Item
 from module.Localizer.Localizer import Localizer
+from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
-from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
-from module.Engine.Analysis.Analysis import Analysis
+from module.Engine.Analysis.AnalysisScheduler import AnalysisScheduler
+from module.Engine.Analysis.AnalysisTask import AnalysisTask
 
-from tests.module.engine.analysis.support import analysis_pipeline_module
-from tests.module.engine.analysis.support import build_request_pipeline
+from tests.module.engine.analysis.support import analysis_progress_module
+from tests.module.engine.analysis.support import analysis_scheduler_module
+from tests.module.engine.analysis.support import analysis_task_module
+from tests.module.engine.analysis.support import build_request_task
 from tests.module.engine.analysis.support import capture_chunk_log
 from tests.module.engine.analysis.support import stub_glossary_request
 
@@ -88,9 +93,13 @@ class FakeConsoleProgress:
         self.updates.append({"task_id": task_id, **kwargs})
 
 
-def build_analysis_pipeline() -> AnalysisPipeline:
+def build_analysis_task(
+    context: AnalysisTaskContext | None = None,
+) -> AnalysisTask:
     analysis = Analysis()
-    return AnalysisPipeline(analysis)
+    analysis.model = {"name": "demo-model"}
+    analysis.quality_snapshot = SimpleNamespace()
+    return AnalysisTask(analysis, context or build_context())
 
 
 def install_print_chunk_log_runtime(
@@ -101,50 +110,45 @@ def install_print_chunk_log_runtime(
     logger = FakePipelineLogger()
     console_outputs: list[object] = []
     monkeypatch.setattr(
-        analysis_pipeline_module.LogManager,
+        analysis_task_module.LogManager,
         "get",
         lambda: logger,
     )
     monkeypatch.setattr(
-        analysis_pipeline_module.rich,
+        analysis_task_module.rich,
         "get_console",
         lambda: SimpleNamespace(print=lambda obj: console_outputs.append(obj)),
     )
     monkeypatch.setattr(
-        analysis_pipeline_module.Engine,
+        analysis_task_module.Engine,
         "get",
         lambda: SimpleNamespace(get_running_task_count=lambda: running_task_count),
     )
     return logger, console_outputs
 
 
-def test_build_progress_snapshot_counts_current_status_and_reuses_progress(
+def test_analysis_scheduler_build_progress_snapshot_counts_current_status_and_reuses_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     fake_data_manager.items = [
         build_item(1, "A"),
         build_item(2, "B"),
         build_item(3, "C"),
     ]
-    checkpoint_map = {}
-    for item in fake_data_manager.items[:2]:
-        checkpoint_map[item.get_id()] = {
-            "status": Base.ProjectStatus.PROCESSED
-            if item.get_id() == 1
-            else Base.ProjectStatus.ERROR,
-        }
-    fake_data_manager.analysis_item_checkpoints = checkpoint_map
+    fake_data_manager.analysis_item_checkpoints = {
+        1: {"status": Base.ProjectStatus.PROCESSED},
+        2: {"status": Base.ProjectStatus.ERROR},
+    }
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_scheduler_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
 
-    snapshot = pipeline.build_progress_snapshot(
+    snapshot = analysis.scheduler.build_progress_snapshot(
         previous_extras={
             "time": 12.0,
             "total_tokens": 13,
@@ -165,41 +169,37 @@ def test_build_progress_snapshot_counts_current_status_and_reuses_progress(
     assert float(snapshot.start_time) <= time.time()
 
 
-def test_build_analysis_task_contexts_continue_only_schedules_none_items(
+def test_analysis_scheduler_build_task_contexts_continue_only_schedules_none_items(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     done_item = build_item(1, "done")
-    changed_item = build_item(2, "changed")
     error_item = build_item(3, "error", file_path="scene.txt")
     pending_item = build_item(4, "pending", file_path="scene.txt")
-    fake_data_manager.items = [done_item, changed_item, error_item, pending_item]
+    fake_data_manager.items = [done_item, error_item, pending_item]
     fake_data_manager.analysis_item_checkpoints = {
         1: {"status": Base.ProjectStatus.PROCESSED},
-        2: {"status": Base.ProjectStatus.PROCESSED},
         3: {"status": Base.ProjectStatus.ERROR},
     }
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_scheduler_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
 
-    contexts = pipeline.build_analysis_task_contexts(analysis.config)
+    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
 
     assert [context.file_path for context in contexts] == ["scene.txt"]
     assert [item.item_id for item in contexts[0].items] == [4]
 
 
-def test_build_analysis_task_contexts_splits_when_file_changes(
+def test_analysis_scheduler_build_task_contexts_splits_when_file_changes(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     fake_data_manager.items = [
         build_item(1, "a1", file_path="a.txt"),
         build_item(2, "a2", file_path="a.txt"),
@@ -207,12 +207,12 @@ def test_build_analysis_task_contexts_splits_when_file_changes(
     ]
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_scheduler_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
 
-    contexts = pipeline.build_analysis_task_contexts(analysis.config)
+    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
 
     assert [context.file_path for context in contexts] == ["a.txt", "b.txt"]
     assert [[item.item_id for item in context.items] for context in contexts] == [
@@ -221,25 +221,24 @@ def test_build_analysis_task_contexts_splits_when_file_changes(
     ]
 
 
-def test_build_analysis_task_contexts_uses_shared_line_limit(
+def test_analysis_scheduler_build_task_contexts_uses_shared_line_limit(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
     analysis.model = {"threshold": {"input_token_limit": 16}}
-    pipeline = AnalysisPipeline(analysis)
     fake_data_manager.items = [
         build_item(1, "\n".join([f"line-{i}" for i in range(8)])),
         build_item(2, "line-9"),
     ]
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_scheduler_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
 
-    contexts = pipeline.build_analysis_task_contexts(analysis.config)
+    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
 
     assert [[item.item_id for item in context.items] for context in contexts] == [
         [1],
@@ -251,21 +250,13 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     analysis.extras = build_analysis_runtime_extras(start_time=time.time())
     analysis.task_limiter = None
-
     success_context = build_context(item_ids=(1, 2))
     fail_context = build_context(item_ids=(3,))
     results = {
-        (1, 2): AnalysisTaskResult(
+        (1, 2, 0): AnalysisTaskResult(
             context=success_context,
             success=True,
             stopped=False,
@@ -280,8 +271,30 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
                 },
             ),
         ),
-        (3,): AnalysisTaskResult(
+        (3, 0): AnalysisTaskResult(
             context=fail_context,
+            success=False,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=0,
+        ),
+        (3, 1): AnalysisTaskResult(
+            context=AnalysisTaskContext(
+                file_path="story.txt",
+                items=fail_context.items,
+                retry_count=1,
+            ),
+            success=False,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=0,
+        ),
+        (3, 2): AnalysisTaskResult(
+            context=AnalysisTaskContext(
+                file_path="story.txt",
+                items=fail_context.items,
+                retry_count=2,
+            ),
             success=False,
             stopped=False,
             input_tokens=1,
@@ -290,14 +303,19 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     }
 
     monkeypatch.setattr(
-        analysis,
-        "run_task_context",
-        lambda context: results[tuple(item.item_id for item in context.items)],
+        analysis_progress_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
     )
 
-    status = pipeline.execute_task_contexts(
-        [success_context, fail_context],
-        max_workers=1,
+    analysis.scheduler.create_task = lambda context: SimpleNamespace(
+        start=lambda: results[
+            tuple([item.item_id for item in context.items] + [context.retry_count])
+        ]
+    )
+
+    status = analysis.execute_task_contexts(
+        [success_context, fail_context], max_workers=1
     )
 
     assert status == "FAILED"
@@ -314,11 +332,103 @@ def test_execute_task_contexts_commits_success_immediately_and_marks_failures(
     )
 
 
-def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
+def test_execute_task_contexts_retries_same_context_until_limit_then_marks_error(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
+    analysis.task_limiter = None
+    context = build_context(item_ids=(1, 2))
+    seen_retry_counts: list[int] = []
+
+    def build_result(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
+        seen_retry_counts.append(task_context.retry_count)
+        return AnalysisTaskResult(
+            context=task_context,
+            success=False,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=0,
+        )
+
+    monkeypatch.setattr(
+        analysis_progress_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    analysis.scheduler.create_task = lambda context: SimpleNamespace(
+        start=lambda: build_result(context)
+    )
+
+    status = analysis.execute_task_contexts([context], max_workers=1)
+
+    assert status == "FAILED"
+    assert seen_retry_counts == [0, 1, 2]
+    assert analysis.extras["error_line"] == 2
+    assert (
+        fake_data_manager.analysis_item_checkpoints[1]["status"]
+        == Base.ProjectStatus.ERROR
+    )
+    assert (
+        fake_data_manager.analysis_item_checkpoints[2]["status"]
+        == Base.ProjectStatus.ERROR
+    )
+
+
+def test_execute_task_contexts_stops_retrying_after_successful_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
+    analysis.task_limiter = None
+    context = build_context(item_ids=(5,))
+    seen_retry_counts: list[int] = []
+
+    def build_result(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
+        seen_retry_counts.append(task_context.retry_count)
+        if task_context.retry_count < AnalysisScheduler.RETRY_LIMIT:
+            return AnalysisTaskResult(
+                context=task_context,
+                success=False,
+                stopped=False,
+                input_tokens=1,
+                output_tokens=0,
+            )
+        return AnalysisTaskResult(
+            context=task_context,
+            success=True,
+            stopped=False,
+            input_tokens=1,
+            output_tokens=1,
+            glossary_entries=tuple(),
+        )
+
+    monkeypatch.setattr(
+        analysis_progress_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    analysis.scheduler.create_task = lambda context: SimpleNamespace(
+        start=lambda: build_result(context)
+    )
+
+    status = analysis.execute_task_contexts([context], max_workers=1)
+
+    assert status == "SUCCESS"
+    assert seen_retry_counts == [0, 1, 2]
+    assert analysis.extras["processed_line"] == 1
+    assert analysis.extras["error_line"] == 0
+    assert (
+        fake_data_manager.analysis_item_checkpoints[5]["status"]
+        == Base.ProjectStatus.PROCESSED
+    )
+
+
+def test_analysis_task_execute_request_uses_shared_response_decoder_glossary_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline = build_request_pipeline()
-
     context = AnalysisTaskContext(
         file_path="story.txt",
         items=(
@@ -329,7 +439,7 @@ def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
             ),
         ),
     )
-
+    task = build_analysis_task(context)
     stub_glossary_request(
         monkeypatch,
         response_result='{"src":"Alice, Bob","dst":"爱丽丝, 鲍勃","type":"女性人名"}',
@@ -337,7 +447,7 @@ def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
         output_tokens=4,
     )
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is True
     assert result.stopped is False
@@ -359,33 +469,29 @@ def test_execute_task_request_uses_shared_response_decoder_glossary_flow(
     ]
 
 
-def test_execute_task_request_returns_failure_when_response_shape_is_invalid(
+def test_analysis_task_returns_failure_when_response_shape_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline = build_request_pipeline()
-    context = build_context()
-
+    task = build_request_task()
     stub_glossary_request(monkeypatch, response_result='{"bad":[]}')
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is False
     assert result.stopped is False
 
 
-def test_execute_task_request_returns_failure_when_glossary_is_filtered_empty(
+def test_analysis_task_returns_failure_when_glossary_is_filtered_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline = build_request_pipeline()
-    context = build_context()
-    captured = capture_chunk_log(monkeypatch, pipeline)
-
+    task = build_request_task()
+    captured = capture_chunk_log(monkeypatch, task)
     stub_glossary_request(
         monkeypatch,
         response_result='{"src":"Alice","dst":1,"type":"女性人名"}',
     )
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is False
     assert result.stopped is False
@@ -393,20 +499,18 @@ def test_execute_task_request_returns_failure_when_glossary_is_filtered_empty(
     assert captured["glossary_entries"] == []
 
 
-def test_execute_task_request_treats_empty_jsonline_as_success(
+def test_analysis_task_treats_empty_jsonline_as_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline = build_request_pipeline()
-    context = build_context()
-    captured = capture_chunk_log(monkeypatch, pipeline)
-
+    task = build_request_task()
+    captured = capture_chunk_log(monkeypatch, task)
     stub_glossary_request(
         monkeypatch,
         response_result="<why>当前文本没有稳定术语</why>\n```jsonline\n\n```",
         output_tokens=2,
     )
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is True
     assert result.stopped is False
@@ -415,20 +519,18 @@ def test_execute_task_request_treats_empty_jsonline_as_success(
     assert captured["glossary_entries"] == []
 
 
-def test_execute_task_request_returns_failure_when_empty_result_has_no_why(
+def test_analysis_task_returns_failure_when_empty_result_has_no_why(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pipeline = build_request_pipeline()
-    context = build_context()
-    captured = capture_chunk_log(monkeypatch, pipeline)
-
+    task = build_request_task()
+    captured = capture_chunk_log(monkeypatch, task)
     stub_glossary_request(
         monkeypatch,
         response_result="```jsonline\n```",
         output_tokens=2,
     )
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is False
     assert result.stopped is False
@@ -436,108 +538,12 @@ def test_execute_task_request_returns_failure_when_empty_result_has_no_why(
     assert captured["glossary_entries"] == []
 
 
-def test_execute_task_contexts_retries_same_context_until_limit_then_marks_error(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
-    analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
-    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
-    analysis.task_limiter = None
-
-    context = build_context(item_ids=(1, 2))
-    seen_retry_counts: list[int] = []
-
-    def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
-        seen_retry_counts.append(task_context.retry_count)
-        return AnalysisTaskResult(
-            context=task_context,
-            success=False,
-            stopped=False,
-            input_tokens=1,
-            output_tokens=0,
-        )
-
-    monkeypatch.setattr(analysis, "run_task_context", fake_run)
-
-    status = pipeline.execute_task_contexts([context], max_workers=1)
-
-    assert status == "FAILED"
-    assert seen_retry_counts == [0, 1, 2]
-    assert analysis.extras["error_line"] == 2
-    assert (
-        fake_data_manager.analysis_item_checkpoints[1]["status"]
-        == Base.ProjectStatus.ERROR
-    )
-    assert (
-        fake_data_manager.analysis_item_checkpoints[2]["status"]
-        == Base.ProjectStatus.ERROR
-    )
-
-
-def test_execute_task_contexts_stops_retrying_after_successful_retry(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
-    analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
-    analysis.extras = build_analysis_runtime_extras(start_time=time.time())
-    analysis.task_limiter = None
-
-    context = build_context(item_ids=(5,))
-    seen_retry_counts: list[int] = []
-
-    def fake_run(task_context: AnalysisTaskContext) -> AnalysisTaskResult:
-        seen_retry_counts.append(task_context.retry_count)
-        if task_context.retry_count < AnalysisPipeline.RETRY_LIMIT:
-            return AnalysisTaskResult(
-                context=task_context,
-                success=False,
-                stopped=False,
-                input_tokens=1,
-                output_tokens=0,
-            )
-        return AnalysisTaskResult(
-            context=task_context,
-            success=True,
-            stopped=False,
-            input_tokens=1,
-            output_tokens=1,
-            glossary_entries=tuple(),
-        )
-
-    monkeypatch.setattr(analysis, "run_task_context", fake_run)
-
-    status = pipeline.execute_task_contexts([context], max_workers=1)
-
-    assert status == "SUCCESS"
-    assert seen_retry_counts == [0, 1, 2]
-    assert analysis.extras["processed_line"] == 1
-    assert analysis.extras["error_line"] == 0
-    assert (
-        fake_data_manager.analysis_item_checkpoints[5]["status"]
-        == Base.ProjectStatus.PROCESSED
-    )
-
-
-def test_print_chunk_log_writes_source_and_extracted_terms(
+def test_analysis_task_print_chunk_log_writes_source_and_extracted_terms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     logger, console_objects = install_print_chunk_log_runtime(monkeypatch)
-    pipeline = build_analysis_pipeline()
-    pipeline.print_chunk_log(
+    task = build_request_task()
+    task.print_chunk_log(
         start=time.time() - 1.0,
         pt=12,
         ct=34,
@@ -556,19 +562,18 @@ def test_print_chunk_log_writes_source_and_extracted_terms(
     assert Localizer.get().analysis_task_source_texts in combined
     assert Localizer.get().analysis_task_extracted_terms in combined
     assert "圣女艾琳 -> Saint Eileen #女性人名" in combined
-    assert "候选术语" not in combined
     assert console_objects != []
 
 
-def test_print_chunk_log_summary_mode_omits_candidate_count(
+def test_analysis_task_print_chunk_log_summary_mode_omits_candidate_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     logger, console_outputs = install_print_chunk_log_runtime(
         monkeypatch,
         running_task_count=33,
     )
-    pipeline = build_analysis_pipeline()
-    pipeline.print_chunk_log(
+    task = build_request_task()
+    task.print_chunk_log(
         start=time.time() - 1.0,
         pt=12,
         ct=34,
@@ -588,41 +593,15 @@ def test_print_chunk_log_summary_mode_omits_candidate_count(
     assert "候选术语" not in combined
 
 
-def test_log_analysis_finish_success_logs_completion_and_added_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    logger = FakePipelineLogger()
-    monkeypatch.setattr(
-        analysis_pipeline_module.LogManager,
-        "get",
-        lambda: logger,
-    )
-
-    pipeline = build_analysis_pipeline()
-    pipeline.analysis.extras = build_analysis_runtime_extras(
-        line=3,
-        time=12.0,
-        total_input_tokens=5,
-        total_output_tokens=8,
-    )
-
-    pipeline.log_analysis_finish("SUCCESS")
-
-    assert logger.info_messages == [
-        Localizer.get().engine_task_done,
-    ]
-    assert logger.warning_messages == []
-    assert logger.print_messages == ["", ""]
-
-
 @pytest.mark.parametrize(
     ("final_status", "expected_info", "expected_warning"),
     [
+        ("SUCCESS", "engine_task_done", None),
         ("STOPPED", "engine_task_stop", None),
         ("FAILED", None, "engine_task_fail"),
     ],
 )
-def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
+def test_analysis_task_log_run_finish_keeps_existing_terminal_message(
     monkeypatch: pytest.MonkeyPatch,
     final_status: str,
     expected_info: str | None,
@@ -630,20 +609,12 @@ def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
 ) -> None:
     logger = FakePipelineLogger()
     monkeypatch.setattr(
-        analysis_pipeline_module.LogManager,
+        analysis_task_module.LogManager,
         "get",
         lambda: logger,
     )
 
-    pipeline = build_analysis_pipeline()
-    pipeline.analysis.extras = build_analysis_runtime_extras(
-        line=3,
-        time=12.0,
-        total_input_tokens=5,
-        total_output_tokens=8,
-    )
-
-    pipeline.log_analysis_finish(final_status)
+    AnalysisTask.log_run_finish(final_status)
 
     if expected_info is None:
         assert logger.info_messages == []
@@ -658,12 +629,11 @@ def test_log_analysis_finish_non_success_keeps_existing_terminal_message(
     assert logger.print_messages == ["", ""]
 
 
-def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
+def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=3,
@@ -681,18 +651,18 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
     ).throw(AssertionError("运行态不该单独写库"))
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_progress_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
-    monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
         analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
 
-    snapshot = pipeline.persist_progress_snapshot(save_state=False)
+    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
 
     assert snapshot["time"] == pytest.approx(12.0)
     assert snapshot["line"] == 4
@@ -701,12 +671,11 @@ def test_persist_progress_snapshot_runtime_uses_memory_snapshot_only(
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
-def test_persist_progress_snapshot_updates_bound_console_progress(
+def test_analysis_progress_tracker_updates_bound_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=3,
@@ -716,36 +685,29 @@ def test_persist_progress_snapshot_updates_bound_console_progress(
     progress = FakeConsoleProgress()
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_progress_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
-    monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
         analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
 
-    pipeline.bind_console_progress(progress, 7)
-    snapshot = pipeline.persist_progress_snapshot(save_state=False)
+    analysis.progress_tracker.bind_console_progress(progress, 7)
+    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
 
-    assert progress.updates == [
-        {
-            "task_id": 7,
-            "completed": 4,
-            "total": 9,
-        }
-    ]
+    assert progress.updates == [{"task_id": 7, "completed": 4, "total": 9}]
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
-def test_persist_progress_snapshot_save_state_reconciles_before_persist(
+def test_analysis_progress_tracker_save_state_reconciles_before_persist(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     analysis = Analysis()
-    pipeline = AnalysisPipeline(analysis)
     analysis.extras = build_analysis_runtime_extras(
         total_line=9,
         processed_line=1,
@@ -775,18 +737,18 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
     fake_data_manager.update_analysis_progress_snapshot = fake_persist
 
     monkeypatch.setattr(
-        analysis_pipeline_module.DataManager,
+        analysis_progress_module.DataManager,
         "get",
         lambda: fake_data_manager,
     )
-    monkeypatch.setattr(analysis_pipeline_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
     monkeypatch.setattr(
         analysis,
         "emit",
         lambda event, data: emitted.append((event, data)),
     )
 
-    snapshot = pipeline.persist_progress_snapshot(save_state=True)
+    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=True)
 
     assert status_calls == [True]
     assert persisted_snapshots[0]["processed_line"] == 2
@@ -796,26 +758,22 @@ def test_persist_progress_snapshot_save_state_reconciles_before_persist(
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
-def build_single_item_context(source_text: str) -> AnalysisTaskContext:
-    return AnalysisTaskContext(
+def test_analysis_task_injects_fake_name_only_for_model_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = AnalysisTaskContext(
         file_path="story.txt",
         items=(
             AnalysisItemContext(
                 item_id=1,
                 file_path="story.txt",
-                src_text=source_text,
+                src_text=r"村长\n[7]来了",
             ),
         ),
     )
-
-
-def test_execute_task_request_injects_fake_name_only_for_model_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pipeline = build_request_pipeline()
-    context = build_single_item_context(r"村长\n[7]来了")
+    task = build_analysis_task(context)
     captured_request_srcs: dict[str, list[str]] = {}
-    captured_chunk_log = capture_chunk_log(monkeypatch, pipeline)
+    captured_chunk_log = capture_chunk_log(monkeypatch, task)
 
     stub_glossary_request(
         monkeypatch,
@@ -823,7 +781,7 @@ def test_execute_task_request_injects_fake_name_only_for_model_request(
         on_generate=lambda srcs: captured_request_srcs.update({"srcs": srcs}),
     )
 
-    result = pipeline.execute_task_request(context)
+    result = task.start()
 
     assert result.success is True
     assert captured_request_srcs["srcs"] == ["村长蓝霁云来了"]
@@ -831,98 +789,8 @@ def test_execute_task_request_injects_fake_name_only_for_model_request(
     assert captured_chunk_log["glossary_entries"] == []
 
 
-def test_execute_task_request_restores_fake_name_only_terms_to_control_code_self_mapping(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pipeline = build_request_pipeline()
-    context = build_single_item_context(r"村长\n[7]来了")
-    captured_chunk_log = capture_chunk_log(monkeypatch, pipeline)
-
-    stub_glossary_request(
-        monkeypatch,
-        response_result='{"src":"蓝霁云","dst":"爱丽丝","type":"女性人名"}',
-    )
-
-    result = pipeline.execute_task_request(context)
-
-    assert result.success is True
-    assert list(result.glossary_entries) == [
-        {
-            "src": r"\n[7]",
-            "dst": r"\n[7]",
-            "info": "女性人名",
-            "case_sensitive": False,
-        }
-    ]
-    assert captured_chunk_log["status_text"] == ""
-    assert captured_chunk_log["glossary_entries"] == [
-        {
-            "src": r"\n[7]",
-            "dst": r"\n[7]",
-            "info": "女性人名",
-            "case_sensitive": False,
-        }
-    ]
-    assert captured_chunk_log["srcs"] == [r"村长\n[7]来了"]
-
-
-def test_execute_task_request_still_filters_fake_name_mixed_terms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pipeline = build_request_pipeline()
-    context = build_single_item_context(r"村长\n[7]来了")
-    captured_chunk_log = capture_chunk_log(monkeypatch, pipeline)
-
-    stub_glossary_request(
-        monkeypatch,
-        response_result='{"src":"村长蓝霁云","dst":"村长爱丽丝","type":"女性人名"}',
-    )
-
-    result = pipeline.execute_task_request(context)
-
-    assert result.success is False
-    assert result.glossary_entries == tuple()
-    assert captured_chunk_log["glossary_entries"] == []
-    assert captured_chunk_log["srcs"] == [r"村长\n[7]来了"]
-
-
-def test_execute_task_request_keeps_normal_terms_when_source_contains_control_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pipeline = build_request_pipeline()
-    context = build_single_item_context(r"村长\n[7]在教堂祈祷")
-    captured_chunk_log = capture_chunk_log(monkeypatch, pipeline)
-
-    stub_glossary_request(
-        monkeypatch,
-        response_result='{"src":"教堂","dst":"Church","type":"地名"}',
-        input_tokens=3,
-        output_tokens=4,
-    )
-
-    result = pipeline.execute_task_request(context)
-
-    assert result.success is True
-    assert list(result.glossary_entries) == [
-        {
-            "src": "教堂",
-            "dst": "Church",
-            "info": "地名",
-            "case_sensitive": False,
-        }
-    ]
-    assert captured_chunk_log["glossary_entries"] == [
-        {
-            "src": "教堂",
-            "dst": "Church",
-            "info": "地名",
-            "case_sensitive": False,
-        }
-    ]
-
-
-def test_build_prompt_source_texts_uses_translation_name_prefix() -> None:
-    pipeline = build_analysis_pipeline()
+def test_analysis_task_build_prompt_source_texts_uses_translation_name_prefix() -> None:
+    task = build_request_task()
     items = (
         AnalysisItemContext(
             item_id=1,
@@ -932,11 +800,13 @@ def test_build_prompt_source_texts_uses_translation_name_prefix() -> None:
         ),
     )
 
-    assert pipeline.build_prompt_source_texts(items) == [r"【角色名】正文\n[7]"]
+    assert task.build_prompt_source_texts(items) == [r"【角色名】正文\n[7]"]
 
 
-def test_build_prompt_source_texts_skips_empty_source_even_when_name_exists() -> None:
-    pipeline = build_analysis_pipeline()
+def test_analysis_task_build_prompt_source_texts_skips_empty_source_even_when_name_exists() -> (
+    None
+):
+    task = build_request_task()
     items = (
         AnalysisItemContext(
             item_id=1,
@@ -946,4 +816,4 @@ def test_build_prompt_source_texts_skips_empty_source_even_when_name_exists() ->
         ),
     )
 
-    assert pipeline.build_prompt_source_texts(items) == []
+    assert task.build_prompt_source_texts(items) == []
