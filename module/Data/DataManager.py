@@ -655,11 +655,6 @@ class DataManager(Base):
 
         return self.translation_reset_service.reset_failed_translation_items_sync()
 
-    def reset_failed_items_sync(self) -> dict[str, Any] | None:
-        """兼容旧入口，内部已切到翻译域服务。"""
-
-        return self.reset_failed_translation_items_sync()
-
     def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
         return self.quality_rule_service.get_rules_cached(rule_type)
 

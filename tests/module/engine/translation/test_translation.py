@@ -1313,6 +1313,13 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
     translation = create_translation_stub()
     called: dict[str, Any] = {}
 
+    class FakeHooks:
+        def __init__(self, **kwargs: Any) -> None:
+            called.update(kwargs)
+
+        def build_pipeline_sizes(self) -> tuple[int, int, int]:
+            return 4, 8, 4
+
     class FakePipeline:
         def __init__(self, **kwargs: Any) -> None:
             called.update(kwargs)
@@ -1320,7 +1327,8 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
         def run(self) -> None:
             called["ran"] = True
 
-    monkeypatch.setattr(translation_module, "TranslationTaskPipeline", FakePipeline)
+    monkeypatch.setattr(translation_module, "TranslationTaskHooks", FakeHooks)
+    monkeypatch.setattr(translation_module, "TaskPipeline", FakePipeline)
 
     Translation.start_translation_pipeline(
         translation,
@@ -1332,6 +1340,8 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
 
     assert called["translation"] is translation
     assert called["max_workers"] == 2
+    assert isinstance(called["hooks"], FakeHooks)
+    assert translation.task_hooks is None
     assert called["ran"] is True
 
 

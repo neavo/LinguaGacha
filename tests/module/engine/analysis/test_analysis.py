@@ -257,16 +257,15 @@ def patch_start_runtime(
 ) -> None:
     # 启动路径只关心任务列表和进度快照，统一在这里替身，减少测试样板。
     monkeypatch.setattr(
-        analysis,
+        analysis.scheduler,
         "build_analysis_task_contexts",
         lambda config: task_contexts,
     )
     monkeypatch.setattr(
-        analysis,
+        analysis.scheduler,
         "build_progress_snapshot",
         lambda previous_extras, continue_mode: progress_snapshot,
     )
-    monkeypatch.setattr(analysis, "log_analysis_start", lambda: None)
 
 
 def test_analysis_require_stop_marks_engine_as_stopping(
@@ -575,15 +574,21 @@ def test_start_creates_progress_bar_for_pending_tasks(
             max_concurrency=max_concurrency,
         ),
     )
-    monkeypatch.setattr(analysis, "log_analysis_start", lambda: None)
-    monkeypatch.setattr(analysis, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(
+        analysis_module.AnalysisTask, "log_run_start", lambda owner: None
+    )
+    monkeypatch.setattr(
+        analysis_module.AnalysisTask,
+        "log_run_finish",
+        lambda final_status: None,
+    )
     monkeypatch.setattr(
         analysis,
         "emit_analysis_terminal_toast",
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analysis,
+        analysis.progress_tracker,
         "persist_progress_snapshot",
         lambda save_state: dict(analysis.extras),
     )
@@ -591,8 +596,10 @@ def test_start_creates_progress_bar_for_pending_tasks(
     def fake_execute(task_contexts, max_workers: int) -> str:
         del task_contexts, max_workers
         assert len(FakeProgressBar.instances) == 1
-        assert analysis.pipeline.console_progress is FakeProgressBar.instances[0]
-        assert analysis.pipeline.console_progress_task_id == 11
+        assert (
+            analysis.progress_tracker.console_progress is FakeProgressBar.instances[0]
+        )
+        assert analysis.progress_tracker.console_progress_task_id == 11
         return "SUCCESS"
 
     monkeypatch.setattr(analysis, "execute_task_contexts", fake_execute)
@@ -602,8 +609,8 @@ def test_start_creates_progress_bar_for_pending_tasks(
     assert len(FakeProgressBar.instances) == 1
     assert FakeProgressBar.instances[0].transient is True
     assert FakeProgressBar.instances[0].new_calls == [{"total": 5, "completed": 2}]
-    assert analysis.pipeline.console_progress is None
-    assert analysis.pipeline.console_progress_task_id is None
+    assert analysis.progress_tracker.console_progress is None
+    assert analysis.progress_tracker.console_progress_task_id is None
 
 
 def test_start_without_pending_tasks_skips_progress_bar(
@@ -637,14 +644,18 @@ def test_start_without_pending_tasks_skips_progress_bar(
         raise AssertionError("没有待执行任务时不该创建进度条")
 
     monkeypatch.setattr(analysis_module, "ProgressBar", fail_progress_bar)
-    monkeypatch.setattr(analysis, "log_analysis_finish", lambda final_status: None)
+    monkeypatch.setattr(
+        analysis_module.AnalysisTask,
+        "log_run_finish",
+        lambda final_status: None,
+    )
     monkeypatch.setattr(
         analysis,
         "emit_analysis_terminal_toast",
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analysis,
+        analysis.progress_tracker,
         "persist_progress_snapshot",
         lambda save_state: dict(analysis.extras),
     )

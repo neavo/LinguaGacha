@@ -6,10 +6,15 @@ from typing import Any
 
 from base.Base import Base
 from base.LogManager import LogManager
-from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
+from module.Engine.Analysis.AnalysisProgressTracker import AnalysisProgressTracker
+from module.Engine.Analysis.AnalysisScheduler import AnalysisScheduler
+from module.Engine.Analysis.AnalysisTask import AnalysisTask
+from module.Engine.Analysis.AnalysisTaskHooks import AnalysisTaskHooks
 from module.Engine.Engine import Engine
+from module.Engine.TaskPipeline import TaskPipeline
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
@@ -20,12 +25,8 @@ from module.ProgressBar import ProgressBar
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
-from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
-from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
-from module.Engine.Analysis.AnalysisPipeline import AnalysisPipeline
 
-
-# 主控制器只保留事件生命周期和任务总控，分析细节统一下沉到流水线类。
+# 主控制器只保留事件生命周期和任务总控，分析细节统一下沉到 hooks。
 class Analysis(Base):
     def __init__(self) -> None:
         super().__init__()
@@ -37,7 +38,9 @@ class Analysis(Base):
         self.extras: dict[str, Any] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
         self.cli_auto_export_glossary: bool = False
-        self.pipeline = AnalysisPipeline(self)
+        self.current_task_contexts: list[AnalysisTaskContext] = []
+        self.scheduler = AnalysisScheduler(self)
+        self.progress_tracker = AnalysisProgressTracker(self)
 
         self.subscribe(Base.Event.ANALYSIS_TASK, self.analysis_run_event)
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.analysis_stop_event)
@@ -559,11 +562,11 @@ class Analysis(Base):
 
         def build_plan() -> TaskRunnerExecutionPlan:
             mode: Base.AnalysisMode = run_state["mode"]
-            progress_snapshot = self.build_progress_snapshot(
+            progress_snapshot = self.scheduler.build_progress_snapshot(
                 previous_extras=self.extras,
                 continue_mode=mode == Base.AnalysisMode.CONTINUE,
             )
-            task_contexts = self.build_analysis_task_contexts(self.config)
+            task_contexts = self.scheduler.build_analysis_task_contexts(self.config)
             run_state["task_contexts"] = task_contexts
 
             progress_snapshot_dict = self.set_progress_snapshot(progress_snapshot)
@@ -601,14 +604,14 @@ class Analysis(Base):
                     total=int(self.extras.get("total_line", 0) or 0),
                     completed=int(self.extras.get("line", 0) or 0),
                 )
-                self.pipeline.bind_console_progress(progress, task_id)
+                self.progress_tracker.bind_console_progress(progress, task_id)
                 try:
                     return self.execute_task_contexts(
                         task_contexts,
                         max_workers=max_workers,
                     )
                 finally:
-                    self.pipeline.clear_console_progress()
+                    self.progress_tracker.clear_console_progress()
 
         TaskRunnerLifecycle.run_task_flow(
             self,
@@ -616,13 +619,13 @@ class Analysis(Base):
             hooks=TaskRunnerHooks(
                 prepare=prepare,
                 build_plan=build_plan,
-                persist_progress=self.persist_progress_snapshot,
+                persist_progress=self.progress_tracker.persist_progress_snapshot,
                 get_model=lambda: self.model,
                 bind_task_limiter=bind_task_limiter,
                 clear_task_limiter=lambda: setattr(self, "task_limiter", None),
-                on_before_execute=self.log_analysis_start,
+                on_before_execute=lambda: AnalysisTask.log_run_start(self),
                 execute=execute,
-                on_after_execute=self.log_analysis_finish,
+                on_after_execute=AnalysisTask.log_run_finish,
                 terminal_toast=self.emit_analysis_terminal_toast,
                 finalize=lambda final_status: None,
                 cleanup=dm.close_db,
@@ -659,23 +662,14 @@ class Analysis(Base):
             Engine.get().get_status() == Base.TaskStatus.STOPPING or self.stop_requested
         )
 
-    # 公开方法统一委托给流水线，避免总控类再次堆积实现细节。
-    def should_include_item(self, item: Item) -> bool:
-        return self.pipeline.should_include_item(item)
-
-    def get_input_token_threshold(self) -> int:
-        return self.pipeline.get_input_token_threshold()
-
-    def build_analysis_task_contexts(self, config: Config) -> list[AnalysisTaskContext]:
-        return self.pipeline.build_analysis_task_contexts(config)
-
     def build_progress_snapshot(
         self,
         *,
         previous_extras: dict[str, Any],
         continue_mode: bool,
     ) -> TaskProgressSnapshot:
-        return self.pipeline.build_progress_snapshot(
+        """保留控制器公开入口，避免重置流程和测试直接依赖调度器实例。"""
+        return self.scheduler.build_progress_snapshot(
             previous_extras=previous_extras,
             continue_mode=continue_mode,
         )
@@ -683,19 +677,33 @@ class Analysis(Base):
     def execute_task_contexts(
         self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
     ) -> str:
-        return self.pipeline.execute_task_contexts(
-            task_contexts,
+        self.current_task_contexts = list(task_contexts)
+        self.progress_tracker.reset_run_state()
+        hooks = AnalysisTaskHooks(
+            analysis=self,
+            initial_contexts=task_contexts,
             max_workers=max_workers,
         )
+        normal_queue_size, high_queue_size, commit_queue_size = (
+            hooks.build_pipeline_sizes()
+        )
+        run_result = TaskPipeline[
+            AnalysisTaskContext,
+            object,
+        ](
+            hooks=hooks,
+            max_workers=max_workers,
+            normal_queue_size=normal_queue_size,
+            high_queue_size=high_queue_size,
+            commit_queue_size=commit_queue_size,
+        ).run()
+        self.progress_tracker.sync_progress_snapshot_after_commit(force=True)
 
-    def run_task_context(self, context: AnalysisTaskContext) -> AnalysisTaskResult:
-        return self.pipeline.run_task_context(context)
+        if run_result.stopped:
+            return "STOPPED"
+        if run_result.failed:
+            return "FAILED"
+        return "SUCCESS"
 
     def persist_progress_snapshot(self, *, save_state: bool) -> dict[str, Any]:
-        return self.pipeline.persist_progress_snapshot(save_state=save_state)
-
-    def log_analysis_start(self) -> None:
-        self.pipeline.log_analysis_start()
-
-    def log_analysis_finish(self, final_status: str) -> None:
-        self.pipeline.log_analysis_finish(final_status)
+        return self.progress_tracker.persist_progress_snapshot(save_state)
