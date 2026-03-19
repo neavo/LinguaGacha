@@ -11,6 +11,10 @@ from module.File.RenPy.RenPyLexer import looks_like_resource_path
 from module.File.RenPy.RenPyLexer import sha1_hex
 from module.File.RenPy.RenPyMatcher import match_template_to_target
 from module.File.RenPy.RenPyMatcher import pair_old_new
+from module.File.RenPy.RenPyStatementHelper import find_character_name_lit_index
+from module.File.RenPy.RenPyStatementHelper import find_dialogue_string_group
+from module.File.RenPy.RenPyStatementHelper import find_first_string_after_col
+from module.File.RenPy.RenPyStatementHelper import find_matching_paren
 
 
 class RenPyExtractor(Base):
@@ -173,14 +177,14 @@ class RenPyExtractor(Base):
             return []
 
         name_index = self.find_character_name_lit_index(stmt)
-        tail_group = self.find_tail_string_group(stmt)
-        if not tail_group:
+        dialogue_group = self.find_dialogue_string_group(stmt, name_index)
+        if not dialogue_group:
             return []
 
-        dialogue_index = tail_group[-1]
-        tail_name_index: int | None = None
-        if len(tail_group) >= 2:
-            tail_name_index = tail_group[-2]
+        dialogue_index = dialogue_group[-1]
+        dialogue_name_index: int | None = None
+        if len(dialogue_group) >= 2:
+            dialogue_name_index = dialogue_group[-2]
 
         dialogue_value = stmt.literals[dialogue_index].value
         if looks_like_resource_path(dialogue_value):
@@ -189,8 +193,8 @@ class RenPyExtractor(Base):
             return []
 
         slots: list[Slot] = []
-        if name_index is None and tail_name_index is not None:
-            name_index = tail_name_index
+        if name_index is None and dialogue_name_index is not None:
+            name_index = dialogue_name_index
 
         if name_index is not None:
             name_value = stmt.literals[name_index].value
@@ -202,60 +206,18 @@ class RenPyExtractor(Base):
         slots.append(Slot(role=SlotRole.DIALOGUE, lit_index=dialogue_index))
         return slots
 
-    def find_tail_string_group(self, stmt: StatementNode) -> list[int]:
-        if not stmt.literals:
-            return []
+    def find_dialogue_string_group(
+        self, stmt: StatementNode, name_index: int | None = None
+    ) -> list[int]:
+        return find_dialogue_string_group(stmt, name_index)
 
-        indices = [len(stmt.literals) - 1]
-        for idx in range(len(stmt.literals) - 2, -1, -1):
-            prev_lit = stmt.literals[idx]
-            next_lit = stmt.literals[idx + 1]
-            between = stmt.code[prev_lit.end_col : next_lit.start_col]
-            if between.strip() == "":
-                indices.append(idx)
-                continue
-            break
-
-        indices.reverse()
-        return indices
+    def find_first_string_after_col(
+        self, stmt: StatementNode, start_col: int
+    ) -> int | None:
+        return find_first_string_after_col(stmt, start_col)
 
     def find_character_name_lit_index(self, stmt: StatementNode) -> int | None:
-        code = stmt.code.lstrip()
-        if not code.startswith("Character("):
-            return None
-
-        open_pos = stmt.code.find("(")
-        if open_pos < 0:
-            return None
-
-        close_pos = self.find_matching_paren(stmt, open_pos)
-        if close_pos is None:
-            return None
-
-        for i, lit in enumerate(stmt.literals):
-            if open_pos < lit.start_col < close_pos:
-                return i
-
-        return None
+        return find_character_name_lit_index(stmt)
 
     def find_matching_paren(self, stmt: StatementNode, open_pos: int) -> int | None:
-        ranges = [(lit.start_col, lit.end_col) for lit in stmt.literals]
-        range_index = 0
-        depth = 0
-        i = open_pos
-        while i < len(stmt.code):
-            if range_index < len(ranges) and i == ranges[range_index][0]:
-                i = ranges[range_index][1]
-                range_index += 1
-                continue
-
-            ch = stmt.code[i]
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    return i
-            i += 1
-
-        return None
+        return find_matching_paren(stmt, open_pos)
