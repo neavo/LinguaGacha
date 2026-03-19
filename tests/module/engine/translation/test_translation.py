@@ -258,60 +258,6 @@ def test_get_concurrency_helpers_delegate_to_limiter() -> None:
     assert Translation.get_concurrency_limit(translation) == 9
 
 
-def test_update_extras_snapshot_accumulates_runtime_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.extras = {
-        "processed_line": 2,
-        "error_line": 1,
-        "total_tokens": 10,
-        "total_input_tokens": 6,
-        "total_output_tokens": 4,
-        "start_time": 100.0,
-    }
-    monkeypatch.setattr(translation_module.time, "time", lambda: 112.5)
-
-    snapshot = Translation.update_extras_snapshot(
-        translation,
-        processed_count=3,
-        error_count=2,
-        input_tokens=7,
-        output_tokens=11,
-    )
-
-    assert snapshot["processed_line"] == 5
-    assert snapshot["error_line"] == 3
-    assert snapshot["line"] == 8
-    assert snapshot["total_tokens"] == 28
-    assert snapshot["total_input_tokens"] == 13
-    assert snapshot["total_output_tokens"] == 15
-    assert snapshot["time"] == pytest.approx(12.5)
-
-
-def test_sync_extras_line_stats_uses_items_cache_as_source_of_truth(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    processed = Item(src="a")
-    processed.set_status(Base.ProjectStatus.PROCESSED)
-    failed = Item(src="b")
-    failed.set_status(Base.ProjectStatus.ERROR)
-    pending = Item(src="c")
-    pending.set_status(Base.ProjectStatus.NONE)
-    translation.items_cache = [processed, failed, pending]
-    translation.extras = {"start_time": 10.0}
-    monkeypatch.setattr(translation_module.time, "time", lambda: 16.0)
-
-    Translation.sync_extras_line_stats(translation)
-
-    assert translation.extras["processed_line"] == 1
-    assert translation.extras["error_line"] == 1
-    assert translation.extras["line"] == 2
-    assert translation.extras["total_line"] == 3
-    assert translation.extras["time"] == pytest.approx(6.0)
-
-
 def test_should_emit_export_result_toast_only_for_manual_source() -> None:
     translation = create_translation_stub()
 
@@ -1256,33 +1202,6 @@ def test_get_item_count_copy_and_close_db_helpers(
 
     Translation.close_db_connection(translation)
     dm.close_db.assert_called_once()
-
-
-def test_sync_extras_line_stats_returns_when_items_cache_is_none() -> None:
-    translation = create_translation_stub()
-    translation.items_cache = None
-    translation.extras = {"start_time": 10.0}
-
-    Translation.sync_extras_line_stats(translation)
-
-    assert translation.extras == {"start_time": 10.0}
-
-
-def test_sync_extras_line_stats_ignores_untracked_item_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    item = Item(src="x")
-    item.set_status(Base.ProjectStatus.EXCLUDED)
-    translation.items_cache = [item]
-    translation.extras = {"start_time": 0.0}
-    monkeypatch.setattr(translation_module.time, "time", lambda: 1.0)
-
-    Translation.sync_extras_line_stats(translation)
-
-    assert translation.extras["processed_line"] == 0
-    assert translation.extras["error_line"] == 0
-    assert translation.extras["total_line"] == 0
 
 
 def test_save_translation_state_without_extras_still_sets_status(

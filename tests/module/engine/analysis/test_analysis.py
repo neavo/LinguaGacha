@@ -229,7 +229,7 @@ def install_analysis_start_runtime(
     fake_data_manager: object,
     quality_snapshot: object,
 ) -> None:
-    # 启动类测试都依赖同一套 DataManager 和质量快照补丁，这里集中收口。
+    # 启动类测试只验证生命周期行为，不该依赖真实提示词文件路径。
     monkeypatch.setattr(
         analysis_module.DataManager,
         "get",
@@ -239,6 +239,11 @@ def install_analysis_start_runtime(
         analysis_module.QualityRuleSnapshot,
         "capture",
         lambda: quality_snapshot,
+    )
+    monkeypatch.setattr(
+        analysis_module.AnalysisTask,
+        "log_run_start",
+        lambda owner: None,
     )
 
 
