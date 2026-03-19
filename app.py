@@ -232,5 +232,7 @@ if __name__ == "__main__":
         app_fluent_window = AppFluentWindow()
         app_fluent_window.show()
 
-    # 进入事件循环，等待用户操作
-    sys.exit(app.exec())
+    # 进入事件循环，等待用户操作；CLI 模式额外以 CLIManager 记录的退出码为准。
+    app_exit_code = app.exec()
+    cli_exit_code = CLIManager.get().get_exit_code()
+    sys.exit(cli_exit_code if cli_exit_code is not None else app_exit_code)

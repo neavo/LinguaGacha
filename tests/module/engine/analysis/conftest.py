@@ -16,6 +16,7 @@ class FakeDataManager:
         self.analysis_extras: dict[str, object] = {}
         self.analysis_item_checkpoints: dict[int, dict[str, object]] = {}
         self.analysis_candidate_count = 0
+        self.glossary_entries: list[dict[str, object]] = []
         self.updated_rules: list[dict] = []
         self.clear_calls = 0
         self.open_calls = 0
@@ -195,6 +196,9 @@ class FakeDataManager:
 
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
+
+    def get_glossary(self) -> list[dict[str, object]]:
+        return [dict(entry) for entry in self.glossary_entries]
 
     def get_all_items(self):
         return list(self.items)

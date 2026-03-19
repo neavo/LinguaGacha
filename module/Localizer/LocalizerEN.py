@@ -180,6 +180,21 @@ class LocalizerEN(LocalizerZH):
         "\n"
         "Note: mode=custom requires --text_preserve; providing --text_preserve requires mode=custom"
     )
+    log_cli_analysis_export_start: str = "Exporting glossary files …"
+    log_cli_analysis_export_success: str = (
+        "Glossary export completed …"
+        "\n"
+        "Directory: {DIR}"
+        "\n"
+        "JSON: {JSON}"
+        "\n"
+        "XLSX: {XLSX}"
+        "\n"
+        "Glossary Entries: {COUNT}"
+        "\n"
+        "Imported This Run: {IMPORTED}"
+    )
+    log_cli_analysis_export_failed: str = "Glossary export failed …"
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"
