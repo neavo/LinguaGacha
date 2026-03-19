@@ -1,4 +1,3 @@
-import argparse
 import importlib.util
 import os
 import sys
@@ -13,6 +12,8 @@ if str(ROOT_DIR) not in sys.path:
 WINDOWS_BUILD_ICON_PATH: str = "./resource/icon.ico"
 MACOS_BUILD_ICON_PATH: str = "./resource/icon.icns"
 WINDOWS_EXECUTABLE_NAME: str = "app"
+DIST_DIR_NAME: str = "LinguaGacha"
+BUNDLE_IDENTIFIER: str = "me.neavo.linguagacha"
 
 # 检测平台
 is_macos = sys.platform == "darwin"
@@ -45,13 +46,10 @@ def restore_opencc_init(backup: tuple[Path, str] | None) -> None:
         backup[0].write_text(backup[1], encoding="utf-8")
 
 
-def build_command(brand_id: str) -> list[str]:
-    """品牌相关构建名仍从档案读取，共享图标路径则直接固定在构建脚本中。"""
+def build_command() -> list[str]:
+    """统一生成 LinguaGacha 的打包参数，避免保留未使用的多品牌分支。"""
 
-    from base.BaseBrand import BaseBrand
-
-    brand = BaseBrand.get(brand_id)
-    build_names = brand.build_names
+    from base.Base import Base
 
     common_args = [
         "--collect-all=rich",
@@ -61,19 +59,19 @@ def build_command(brand_id: str) -> list[str]:
     if is_macos:
         cmd = [
             "./app.py",
-            f"--name={build_names.app_name}",
+            f"--name={Base.APP_NAME}",
             f"--icon={MACOS_BUILD_ICON_PATH}",
             "--clean",
             "--onedir",
             "--windowed",
             "--noconfirm",
             "--distpath=./dist",
-            f"--osx-bundle-identifier={build_names.bundle_identifier}",
+            f"--osx-bundle-identifier={BUNDLE_IDENTIFIER}",
         ] + common_args
     elif is_linux:
         cmd = [
             "./app.py",
-            f"--name={build_names.app_name}",
+            f"--name={Base.APP_NAME}",
             "--clean",
             "--onedir",
             "--noconfirm",
@@ -87,20 +85,16 @@ def build_command(brand_id: str) -> list[str]:
             "--clean",
             "--onefile",
             "--noconfirm",
-            f"--distpath=./dist/{build_names.dist_dir_name}",
+            f"--distpath=./dist/{DIST_DIR_NAME}",
         ] + common_args
 
     return cmd
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--brand", type=str, default="lg", choices=["lg", "kg"])
-    args = parser.parse_args()
-
     backup = patch_opencc_init()
     try:
-        PyInstaller.__main__.run(build_command(args.brand))
+        PyInstaller.__main__.run(build_command())
     finally:
         restore_opencc_init(backup)
     return 0

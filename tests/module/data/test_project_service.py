@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from base.BaseBrand import BaseBrand
 from base.BasePath import BasePath
 from model.Item import Item
 from module.Data.Project.ProjectService import ProjectService
@@ -148,7 +147,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
 ) -> None:
     del fs
     BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+    BasePath.initialize("/workspace/app", False)
 
     service = ProjectService()
     progress: list[tuple[int, int, str]] = []
@@ -255,7 +254,7 @@ def test_create_skips_read_failures_and_continues(
 ) -> None:
     del fs
     BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+    BasePath.initialize("/workspace/app", False)
 
     service = ProjectService()
     src_dir = Path("/workspace/project_service/src")
@@ -323,7 +322,7 @@ def test_create_logs_parse_errors_but_keeps_asset(
 ) -> None:
     del fs
     BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+    BasePath.initialize("/workspace/app", False)
 
     service = ProjectService()
     src_dir = Path("/workspace/project_service/src")
@@ -375,7 +374,7 @@ def test_create_logs_mtool_prefilter_count_when_optimizer_enabled(
 ) -> None:
     del fs
     BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+    BasePath.initialize("/workspace/app", False)
 
     service = ProjectService()
     src_dir = Path("/workspace/project_service/src")

@@ -10,7 +10,6 @@ from qfluentwidgets import PushButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
-from base.BaseBrand import BaseBrand
 from base.BaseIcon import BaseIcon
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from module.Config import Config
@@ -32,9 +31,15 @@ MODEL_ID_ACTION_BUTTON_WIDTH: int = 80  # 模型标识：操作按钮宽度
 
 
 class ModelBasicSettingPage(Base, MessageBoxBase):
+    THINKING_SUPPORT_URL_ZH: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport"
+    )
+    THINKING_SUPPORT_URL_EN: str = (
+        "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN"
+    )
+
     def __init__(self, model_id: str, window: FluentWindow) -> None:
         super().__init__(window)
-        self.brand = BaseBrand.get()
 
         # 载入并保存默认配置
         config = Config().load().save()
@@ -296,8 +301,8 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
     ) -> None:
         help_spec = CardHelpSpec(
             url_localized=Localizer.UnionText(
-                zh=self.brand.docs_routes.thinking_support_url_zh,
-                en=self.brand.docs_routes.thinking_support_url_en,
+                zh=self.THINKING_SUPPORT_URL_ZH,
+                en=self.THINKING_SUPPORT_URL_EN,
             )
         )
         card = SettingCard(

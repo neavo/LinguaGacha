@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from base.BaseBrand import BaseBrand
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
 from module.Config import Config
@@ -27,7 +26,7 @@ class TestConfigPaths:
         self, monkeypatch
     ) -> None:
         BasePath.reset_for_test()
-        BasePath.initialize("/tmp/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/tmp/app", False)
 
         assert BasePath.get_user_data_root_dir() == os.path.join("/tmp/app", "userdata")
 
@@ -268,7 +267,7 @@ class TestConfigModels:
     def test_save_uses_default_path_when_path_is_none(self, fs, monkeypatch) -> None:
         del fs
         BasePath.reset_for_test()
-        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/workspace/app", False)
 
         Config(expert_mode=True).save()
 
@@ -279,7 +278,7 @@ class TestConfigModels:
     def test_load_copies_legacy_resource_config_to_userdata(self, fs) -> None:
         del fs
         BasePath.reset_for_test()
-        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/workspace/app", False)
         legacy_path = Path("/workspace/app/resource/config.json")
         legacy_path.parent.mkdir(parents=True, exist_ok=True)
         legacy_path.write_text(
@@ -298,7 +297,7 @@ class TestConfigModels:
     def test_load_copies_legacy_root_config_to_userdata(self, fs) -> None:
         del fs
         BasePath.reset_for_test()
-        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/workspace/app", False)
         legacy_path = Path("/workspace/app/config.json")
         legacy_path.write_text(
             json.dumps({"proxy_enable": True}),
@@ -316,7 +315,7 @@ class TestConfigModels:
     def test_load_prefers_legacy_resource_config_in_desktop_upgrade(self, fs) -> None:
         del fs
         BasePath.reset_for_test()
-        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/workspace/app", False)
         root_legacy_path = Path("/workspace/app/config.json")
         resource_legacy_path = Path("/workspace/app/resource/config.json")
         root_legacy_path.write_text(
@@ -374,7 +373,7 @@ class TestConfigModels:
     def test_load_prefers_new_config_when_new_and_legacy_both_exist(self, fs) -> None:
         del fs
         BasePath.reset_for_test()
-        BasePath.initialize("/workspace/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/workspace/app", False)
         new_path = Path("/workspace/app/userdata/config.json")
         legacy_path = Path("/workspace/app/resource/config.json")
         new_path.parent.mkdir(parents=True, exist_ok=True)

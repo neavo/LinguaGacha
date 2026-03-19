@@ -28,7 +28,6 @@
 
 ## 配置要求 🖥️
 - 兼容 `OpenAI` `Google` `Anthropic` `SakuraLLM` 标准的 AI 大模型接口
-- 兼容 [KeywordGacha](https://github.com/neavo/KeywordGacha)　`👈👈 使用 AI 能力一键生成术语表的次世代工具`
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用

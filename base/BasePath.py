@@ -11,6 +11,7 @@ class BasePath:
     """统一管理运行时路径，避免各模块重复实现路径判定逻辑。"""
 
     MODULE_ROOT: ClassVar[Path] = Path(__file__).resolve().parents[1]
+    DATA_DIR_NAME: ClassVar[str] = "LinguaGacha"
     RESOURCE_DIR_NAME: ClassVar[str] = "resource"
     USER_DATA_DIR_NAME: ClassVar[str] = "userdata"
     UPDATE_DIR_NAME: ClassVar[str] = "update"
@@ -33,7 +34,6 @@ class BasePath:
     def initialize(
         cls,
         app_dir: str,
-        brand: object,
         is_frozen: bool,
     ) -> str | None:
         """启动期统一决定 app_dir/data_dir，并作为进程内单一来源缓存。"""
@@ -44,7 +44,7 @@ class BasePath:
         # 1. resource/ 下的是随应用分发的内置资源，始终跟随 app_dir。
         # 2. config、log、userdata 等用户可写内容始终跟随 data_dir。
         # 3. 后续新增任何运行时路径规则，都必须先扩展 BasePath，再接入业务模块。
-        data_dir, reason = cls.resolve_data_dir(app_dir, brand, is_frozen)
+        data_dir, reason = cls.resolve_data_dir(app_dir, is_frozen)
         cls.DATA_DIR = data_dir
         return reason
 
@@ -92,21 +92,20 @@ class BasePath:
             return False
 
     @classmethod
-    def get_home_data_dir(cls, brand: object) -> str:
-        """统一构造各品牌的主目录数据路径。"""
+    def get_home_data_dir(cls) -> str:
+        """统一构造 LinguaGacha 的主目录数据路径。"""
 
-        return os.path.join(os.path.expanduser("~"), getattr(brand, "data_dir_name"))
+        return os.path.join(os.path.expanduser("~"), cls.DATA_DIR_NAME)
 
     @classmethod
     def resolve_data_dir(
         cls,
         app_dir: str,
-        brand: object,
         is_frozen: bool,
     ) -> tuple[str, str | None]:
         """统一决定用户可写数据落点，避免只读安装目录导致启动期写入崩溃。"""
 
-        home_data_dir = cls.get_home_data_dir(brand)
+        home_data_dir = cls.get_home_data_dir()
         if is_frozen and cls.is_appimage_runtime():
             return home_data_dir, "appimage"
         if is_frozen and cls.is_macos_app_bundle(app_dir):

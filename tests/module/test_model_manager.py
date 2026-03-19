@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-from base.BaseBrand import BaseBrand
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
 from model.Model import Model
@@ -50,7 +49,7 @@ class TestModelManager:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         manager = ModelManager()
-        BasePath.initialize("/tmp/app", BaseBrand.get("lg"), False)
+        BasePath.initialize("/tmp/app", False)
 
         manager.set_app_language(BaseLanguage.Enum.ZH)
         zh_path = BasePath.get_model_preset_dir(manager.app_language)

@@ -21,13 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check_version.outputs.version }}
-      brand_id: ${{ steps.resolve_brand.outputs.brand_id }}
-      app_name: ${{ steps.resolve_brand.outputs.app_name }}
-      dist_dir_name: ${{ steps.resolve_brand.outputs.dist_dir_name }}
-      macos_bundle_name: ${{ steps.resolve_brand.outputs.macos_bundle_name }}
-      linux_desktop_name: ${{ steps.resolve_brand.outputs.linux_desktop_name }}
-      linux_icon_name: ${{ steps.resolve_brand.outputs.linux_icon_name }}
-      bundle_identifier: ${{ steps.resolve_brand.outputs.bundle_identifier }}
+      app_name: ${{ steps.app_meta.outputs.app_name }}
+      dist_dir_name: ${{ steps.app_meta.outputs.dist_dir_name }}
+      macos_bundle_name: ${{ steps.app_meta.outputs.macos_bundle_name }}
+      linux_desktop_name: ${{ steps.app_meta.outputs.linux_desktop_name }}
+      linux_icon_name: ${{ steps.app_meta.outputs.linux_icon_name }}
 
     steps:
       - name: Checkout Repository
@@ -53,18 +51,15 @@ jobs:
         run: |
           uv sync
 
-      - name: Resolve Brand Meta
-        id: resolve_brand
+      - name: Resolve App Meta
+        id: app_meta
         shell: bash
         run: |
-          repo_name="${GITHUB_REPOSITORY##*/}"
-          repo_name="${repo_name,,}"
-          if [[ "$repo_name" == *"keywordgacha"* ]]; then
-            brand_id="kg"
-          else
-            brand_id="lg"
-          fi
-          uv run python ./buildtools/brand.py --brand "$brand_id" >> "$GITHUB_OUTPUT"
+          echo "app_name=LinguaGacha" >> "$GITHUB_OUTPUT"
+          echo "dist_dir_name=LinguaGacha" >> "$GITHUB_OUTPUT"
+          echo "macos_bundle_name=LinguaGacha.app" >> "$GITHUB_OUTPUT"
+          echo "linux_desktop_name=linguagacha" >> "$GITHUB_OUTPUT"
+          echo "linux_icon_name=linguagacha" >> "$GITHUB_OUTPUT"
 
   build-windows:
     needs: prepare
@@ -92,7 +87,7 @@ jobs:
       - name: Build EXE
         shell: cmd
         run: |
-          uv run --with pyinstaller python .\buildtools\build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python .\buildtools\build_exe.py
 
       - name: Copy Files
         shell: cmd
@@ -108,12 +103,6 @@ jobs:
           if (!(Test-Path $src)) { throw "Missing $src" }
           New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
           Copy-Item $src $dst -Force
-
-      - name: Write bundled brand file
-        shell: pwsh
-        run: |
-          $brandPath = ".\dist\${{ needs.prepare.outputs.dist_dir_name }}\resource\brand.txt"
-          Set-Content -Path $brandPath -Value "${{ needs.prepare.outputs.brand_id }}" -Encoding ascii
 
       - name: Compress Archive
         shell: pwsh
@@ -167,16 +156,12 @@ jobs:
 
       - name: Build App Bundle
         run: |
-          uv run --with pyinstaller python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python ./buildtools/build_exe.py
 
       - name: Copy Resources
         run: |
           cp version.txt ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
           cp -r resource ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/
-
-      - name: Write bundled brand file
-        run: |
-          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.macos_bundle_name }}/Contents/MacOS/resource/brand.txt
 
       - name: Install create-dmg
         run: |
@@ -237,16 +222,12 @@ jobs:
 
       - name: Build Executable
         run: |
-          uv run --with pyinstaller python ./buildtools/build_exe.py --brand ${{ needs.prepare.outputs.brand_id }}
+          uv run --with pyinstaller python ./buildtools/build_exe.py
 
       - name: Copy Resources
         run: |
           cp version.txt ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
           cp -r resource ./dist/${{ needs.prepare.outputs.dist_dir_name }}/
-
-      - name: Write bundled brand file
-        run: |
-          printf '%s\n' "${{ needs.prepare.outputs.brand_id }}" > ./dist/${{ needs.prepare.outputs.dist_dir_name }}/resource/brand.txt
 
       - name: Create AppImage
         env:

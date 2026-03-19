@@ -52,7 +52,7 @@ class WorkbenchTableWidget(AppTableView):
         show_translation_reset: bool = True,
     ) -> None:
         super().__init__(parent)
-        # KG 的“重置”没有独立业务意义，它实际是在重置翻译状态，所以这里直接按品牌隐藏。
+        # 某些只读场景不需要展示重置入口，这里保留显式开关，避免表格内部写死行为。
         self.show_translation_reset: bool = show_translation_reset
 
         self.column_specs: list[ColumnSpec[dict[str, Any]]] = [
