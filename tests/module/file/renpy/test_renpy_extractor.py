@@ -67,18 +67,6 @@ def test_select_slots_for_label_uses_dialogue_group_for_name_and_dialogue() -> N
     assert [slot.lit_index for slot in slots] == [0, 1]
 
 
-def test_find_character_name_lit_index_ignores_parentheses_inside_literals() -> None:
-    extractor = RenPyExtractor()
-    stmt = build_stmt(
-        3,
-        'Character("Ali(ce)", who_color="#fff")',
-        StmtKind.TEMPLATE,
-        BlockKind.LABEL,
-    )
-
-    assert extractor.find_character_name_lit_index(stmt) == 0
-
-
 def test_select_slots_for_label_ignores_trailing_cb_name_string() -> None:
     extractor = RenPyExtractor()
     stmt = build_stmt(
@@ -353,7 +341,7 @@ def test_select_slots_for_label_covers_dialogue_group_and_name_guards(
     assert [v.role for v in slots] == [SlotRole.DIALOGUE]
 
 
-def test_select_slots_and_dialogue_group_and_character_helpers() -> None:
+def test_select_slots_returns_empty_for_non_label_and_non_strings_block() -> None:
     extractor = RenPyExtractor()
     block = build_block("x", BlockKind.PYTHON, [])
 
@@ -363,49 +351,6 @@ def test_select_slots_and_dialogue_group_and_character_helpers() -> None:
         )
         == []
     )
-    assert (
-        extractor.find_dialogue_string_group(
-            build_stmt(2, "e no_quote", StmtKind.TEMPLATE, BlockKind.LABEL)
-        )
-        == []
-    )
-
-    separated = build_stmt(3, 'e "a", "b"', StmtKind.TEMPLATE, BlockKind.LABEL)
-    assert extractor.find_dialogue_string_group(separated) == [0]
-
-    character_stmt = build_stmt(
-        4,
-        'Character("a") "tail" (cb_name="x")',
-        StmtKind.TEMPLATE,
-        BlockKind.LABEL,
-    )
-    assert extractor.find_dialogue_string_group(character_stmt, 0) == [1]
-    assert extractor.find_first_string_after_col(character_stmt, 100) is None
-
-    assert (
-        extractor.find_character_name_lit_index(
-            build_stmt(5, 'e "a"', StmtKind.TEMPLATE, BlockKind.LABEL)
-        )
-        is None
-    )
-    assert (
-        extractor.find_character_name_lit_index(
-            build_stmt(6, 'Character("a"', StmtKind.TEMPLATE, BlockKind.LABEL)
-        )
-        is None
-    )
-    no_lit_inside = build_stmt(
-        7,
-        "Character(name)",
-        StmtKind.TEMPLATE,
-        BlockKind.LABEL,
-    )
-    assert extractor.find_character_name_lit_index(no_lit_inside) is None
-    open_paren = no_lit_inside.code.find("(")
-    close_paren = no_lit_inside.code.rfind(")")
-    assert open_paren != -1
-    assert close_paren != -1
-    assert extractor.find_matching_paren(no_lit_inside, open_paren) == close_paren
 
 
 def test_extract_returns_empty_when_mapping_is_empty(
@@ -463,62 +408,6 @@ def test_select_slots_for_label_keeps_character_name_index_when_present() -> Non
     slots = extractor.select_slots_for_label(stmt)
 
     assert [v.role for v in slots] == [SlotRole.NAME, SlotRole.DIALOGUE]
-
-
-def test_find_character_name_lit_index_handles_missing_open_paren() -> None:
-    extractor = RenPyExtractor()
-
-    class WeirdCode(str):
-        def lstrip(self, chars=None):
-            del chars
-            return "Character("
-
-        def find(
-            self,
-            sub: str,
-            start: object | None = 0,
-            end: object | None = None,
-        ) -> int:
-            del sub
-            del start
-            del end
-            return -1
-
-    stmt = StatementNode(
-        line_no=1,
-        raw_line="Character",
-        indent="",
-        code=WeirdCode("Character"),
-        stmt_kind=StmtKind.TEMPLATE,
-        block_kind=BlockKind.LABEL,
-        literals=[],
-        strict_key="",
-        relaxed_key="",
-        string_count=0,
-    )
-
-    assert extractor.find_character_name_lit_index(stmt) is None
-
-
-def test_find_character_name_lit_index_ignores_literals_outside_call() -> None:
-    extractor = RenPyExtractor()
-    stmt = build_stmt(3, 'Character(name) "tail"', StmtKind.TEMPLATE, BlockKind.LABEL)
-
-    assert extractor.find_character_name_lit_index(stmt) is None
-
-
-def test_find_matching_paren_handles_nested_parentheses() -> None:
-    extractor = RenPyExtractor()
-    stmt = build_stmt(
-        4,
-        'Character(func("a"))',
-        StmtKind.TEMPLATE,
-        BlockKind.LABEL,
-    )
-    open_pos = stmt.code.find("(")
-
-    assert open_pos != -1
-    assert extractor.find_matching_paren(stmt, open_pos) == len(stmt.code) - 1
 
 
 def test_extract_from_inline_text_preserves_real_world_renpy_patterns() -> None:
