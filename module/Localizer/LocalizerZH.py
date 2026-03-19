@@ -180,6 +180,21 @@ class LocalizerZH:
         "\n"
         "说明：mode=custom 时必须提供 --text_preserve；提供 --text_preserve 时 mode 必须为 custom"
     )
+    log_cli_analysis_export_start: str = "正在导出术语表文件 …"
+    log_cli_analysis_export_success: str = (
+        "术语表导出完成 …"
+        "\n"
+        "目录：{DIR}"
+        "\n"
+        "JSON：{JSON}"
+        "\n"
+        "XLSX：{XLSX}"
+        "\n"
+        "术语条数：{COUNT}"
+        "\n"
+        "本轮导入：{IMPORTED}"
+    )
+    log_cli_analysis_export_failed: str = "术语表导出失败 …"
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"
