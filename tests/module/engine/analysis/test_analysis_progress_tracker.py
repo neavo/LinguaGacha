@@ -105,7 +105,7 @@ def test_analysis_progress_tracker_updates_bound_console_progress(
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
-def test_analysis_progress_tracker_save_state_reconciles_before_persist(
+def test_analysis_progress_tracker_save_state_only_persists_runtime_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
@@ -118,25 +118,17 @@ def test_analysis_progress_tracker_save_state_reconciles_before_persist(
         total_output_tokens=4,
     )
     emitted: list[tuple[Base.Event, dict[str, object]]] = []
-    status_calls: list[bool] = []
     persisted_snapshots: list[dict[str, object]] = []
-
-    def fake_status_summary() -> dict[str, object]:
-        status_calls.append(True)
-        return {
-            "total_line": 6,
-            "processed_line": 2,
-            "error_line": 1,
-            "line": 3,
-        }
 
     def fake_persist(snapshot: dict[str, object]) -> dict[str, object]:
         persisted_snapshots.append(dict(snapshot))
         fake_data_manager.analysis_extras = dict(snapshot)
         return dict(snapshot)
 
-    fake_data_manager.get_analysis_status_summary = fake_status_summary
     fake_data_manager.update_analysis_progress_snapshot = fake_persist
+    fake_data_manager.refresh_analysis_progress_snapshot_cache = lambda: (
+        _ for _ in ()
+    ).throw(AssertionError("普通持久化不该全量校准"))
 
     monkeypatch.setattr(
         analysis_progress_module.DataManager,
@@ -152,11 +144,65 @@ def test_analysis_progress_tracker_save_state_reconciles_before_persist(
 
     snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=True)
 
-    assert status_calls == [True]
-    assert persisted_snapshots[0]["processed_line"] == 2
-    assert persisted_snapshots[0]["error_line"] == 1
-    assert persisted_snapshots[0]["line"] == 3
-    assert snapshot["total_line"] == 6
+    assert persisted_snapshots[0]["processed_line"] == 1
+    assert persisted_snapshots[0]["error_line"] == 0
+    assert persisted_snapshots[0]["line"] == 1
+    assert snapshot["total_line"] == 9
+    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+
+
+def test_analysis_progress_tracker_force_sync_refreshes_cache_after_persist(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    analysis.extras = build_analysis_runtime_extras(
+        total_line=9,
+        processed_line=1,
+        total_tokens=7,
+        total_input_tokens=3,
+        total_output_tokens=4,
+    )
+    emitted: list[tuple[Base.Event, dict[str, object]]] = []
+    persisted_snapshots: list[dict[str, object]] = []
+
+    def fake_persist(snapshot: dict[str, object]) -> dict[str, object]:
+        persisted_snapshots.append(dict(snapshot))
+        fake_data_manager.analysis_extras = dict(snapshot)
+        return dict(snapshot)
+
+    def fake_refresh() -> dict[str, object]:
+        fake_data_manager.analysis_extras = {
+            **fake_data_manager.analysis_extras,
+            "total_line": 6,
+            "processed_line": 2,
+            "error_line": 1,
+            "line": 3,
+        }
+        return dict(fake_data_manager.analysis_extras)
+
+    fake_data_manager.update_analysis_progress_snapshot = fake_persist
+    fake_data_manager.refresh_analysis_progress_snapshot_cache = fake_refresh
+
+    monkeypatch.setattr(
+        analysis_progress_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(
+        analysis,
+        "emit",
+        lambda event, data: emitted.append((event, data)),
+    )
+
+    snapshot = analysis.progress_tracker.sync_progress_snapshot_after_commit(force=True)
+
+    assert persisted_snapshots[0]["processed_line"] == 1
+    assert persisted_snapshots[0]["line"] == 1
+    assert snapshot["processed_line"] == 2
+    assert snapshot["error_line"] == 1
+    assert snapshot["line"] == 3
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 

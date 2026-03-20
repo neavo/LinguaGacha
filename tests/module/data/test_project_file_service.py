@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -55,13 +56,71 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
     return service, session
 
 
+def install_stub_file_manager(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    items: list[Item],
+) -> None:
+    """把文件解析边界替换成稳定的桩，避免测试依赖真实格式解析。"""
+
+    file_manager_module = importlib.import_module("module.File.FileManager")
+
+    class StubFileManager:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
+            del rel_path
+            del content
+            return items
+
+    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
+
+
+def create_virtual_file(fs, file_path: str, content: bytes = b"data") -> None:
+    """在 pyfakefs 里创建输入文件，统一掉重复的准备步骤。"""
+
+    fs.create_dir(str(Path(file_path).parent))
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+
 def test_add_file_rejects_unsupported_extension() -> None:
     service, _session = build_service()
 
-    import pytest
-
     with pytest.raises(ValueError, match="unsupported|格式|format"):
         service.add_file("a.md")
+
+
+def test_add_file_imports_asset_and_items_and_clears_caches(
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, session = build_service()
+    install_stub_file_manager(
+        monkeypatch,
+        items=[
+            Item.from_dict(
+                {"src": "a", "file_path": "a.txt", "file_type": Item.FileType.TXT}
+            )
+        ],
+    )
+    create_virtual_file(fs, "C:/workspace/a.txt")
+
+    result = service.add_file("C:/workspace/a.txt")
+
+    assert result.rel_path == "a.txt"
+    assert result.new == 1
+    assert result.total == 1
+    session.db.add_asset.assert_called_once()
+    session.db.insert_items.assert_called_once()
+    inserted_items = session.db.insert_items.call_args.args[0]
+    assert len(inserted_items) == 1
+    assert inserted_items[0]["src"] == "a"
+    assert inserted_items[0]["file_path"] == "a.txt"
+    assert inserted_items[0]["file_type"] == Item.FileType.TXT
+    service.item_service.clear_item_cache.assert_called_once()
+    service.analysis_service.clear_analysis_progress.assert_called_once()
 
 
 def test_reset_file_clears_translation_fields() -> None:
@@ -85,16 +144,22 @@ def test_reset_file_clears_translation_fields() -> None:
     updated = session.captured_batch["items"]
     assert updated[0]["dst"] == ""
     assert updated[0]["status"] == Base.ProjectStatus.NONE
+    service.item_service.clear_item_cache.assert_called_once()
+    service.analysis_service.clear_analysis_progress.assert_called_once()
 
 
 def test_delete_file_removes_asset_and_items() -> None:
     service, session = build_service()
+    session.asset_decompress_cache["a.txt"] = b"cached"
 
     result = service.delete_file("a.txt")
 
     assert result.rel_path == "a.txt"
     session.db.delete_items_by_file_path.assert_called_once()
     session.db.delete_asset.assert_called_once()
+    assert "a.txt" not in session.asset_decompress_cache
+    service.item_service.clear_item_cache.assert_called_once()
+    service.analysis_service.clear_analysis_progress.assert_called_once()
 
 
 def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:
@@ -111,28 +176,22 @@ def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:
             }
         ]
     )
-    file_manager_module = importlib.import_module("module.File.FileManager")
+    session.asset_decompress_cache["a.txt"] = b"cached"
+    install_stub_file_manager(
+        monkeypatch,
+        items=[Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "TXT"})],
+    )
 
-    class StubFileManager:
-        def __init__(self, _config: object) -> None:
-            pass
-
-        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
-            del content
-            return [
-                Item.from_dict({"src": "a", "file_path": rel_path, "file_type": "TXT"})
-            ]
-
-    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
-
-    fs.create_dir("C:/workspace")
     file_path = "C:/workspace/a.txt"
-    with open(file_path, "wb") as f:
-        f.write(b"data")
+    create_virtual_file(fs, file_path)
     result = service.replace_file("a.txt", file_path)
 
     assert result.matched == 1
     assert result.total == 1
+    assert result.old_rel_path is None
+    assert "a.txt" not in session.asset_decompress_cache
+    service.item_service.clear_item_cache.assert_called_once()
+    service.analysis_service.clear_analysis_progress.assert_called_once()
 
 
 def test_replace_file_rejects_format_mismatch(fs, monkeypatch) -> None:
@@ -149,28 +208,60 @@ def test_replace_file_rejects_format_mismatch(fs, monkeypatch) -> None:
             }
         ]
     )
-    file_manager_module = importlib.import_module("module.File.FileManager")
+    install_stub_file_manager(
+        monkeypatch,
+        items=[Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "MD"})],
+    )
 
-    class StubFileManager:
-        def __init__(self, _config: object) -> None:
-            pass
-
-        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
-            del rel_path
-            del content
-            return [
-                Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "MD"})
-            ]
-
-    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
-
-    fs.create_dir("C:/workspace")
     file_path = "C:/workspace/a.txt"
-    with open(file_path, "wb") as f:
-        f.write(b"data")
+    create_virtual_file(fs, file_path)
 
     with pytest.raises(ValueError, match="mismatch|格式|replace"):
         service.replace_file("a.txt", file_path)
+
+
+def test_replace_file_renames_asset_and_clears_old_and_new_cache_entries(
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, session = build_service()
+    session.db.asset_path_exists = MagicMock(return_value=True)
+    session.db.get_items_by_file_path = MagicMock(
+        return_value=[
+            {
+                "id": 1,
+                "src": "a",
+                "dst": "旧译文",
+                "status": Base.ProjectStatus.PROCESSED,
+                "file_type": "TXT",
+            }
+        ]
+    )
+    session.db.get_all_asset_paths = MagicMock(return_value=["chapter/a.txt"])
+    session.asset_decompress_cache["chapter/a.txt"] = b"old"
+    session.asset_decompress_cache["chapter\\b.txt"] = b"new"
+    install_stub_file_manager(
+        monkeypatch,
+        items=[
+            Item.from_dict(
+                {
+                    "src": "a",
+                    "file_path": "chapter\\b.txt",
+                    "file_type": "TXT",
+                }
+            )
+        ],
+    )
+
+    file_path = "C:/workspace/b.txt"
+    create_virtual_file(fs, file_path)
+    result = service.replace_file("chapter/a.txt", file_path)
+
+    assert result.rel_path == "chapter\\b.txt"
+    assert result.old_rel_path == "chapter/a.txt"
+    session.db.update_asset_path.assert_called_once()
+    assert "chapter/a.txt" not in session.asset_decompress_cache
+    assert "chapter\\b.txt" not in session.asset_decompress_cache
 
 
 def test_build_replace_target_rel_path_keeps_parent_folder() -> None:

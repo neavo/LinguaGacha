@@ -97,7 +97,9 @@ def test_reset_failed_translation_items_sync_marks_project_processed_when_no_pen
 ):
     service, session = build_service()
     service.meta_service.get_meta.return_value = []
-    processed_item = Item(id=2, src="B", dst="保留", status=Base.ProjectStatus.PROCESSED)
+    processed_item = Item(
+        id=2, src="B", dst="保留", status=Base.ProjectStatus.PROCESSED
+    )
     processed_in_past_item = Item(
         id=3,
         src="C",

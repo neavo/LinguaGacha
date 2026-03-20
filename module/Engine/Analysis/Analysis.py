@@ -487,16 +487,14 @@ class Analysis(Base):
         def run_reset_worker() -> None:
             if is_reset_all:
                 dm.clear_analysis_candidates_and_progress()
-                self.extras = {}
-                self.emit(Base.Event.ANALYSIS_PROGRESS, {})
+                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
+                self.extras = dict(refreshed_snapshot)
+                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
             else:
                 dm.reset_failed_analysis_checkpoints()
-                snapshot = self.build_progress_snapshot(
-                    previous_extras=dm.get_analysis_progress_snapshot(),
-                    continue_mode=True,
-                )
-                self.set_progress_snapshot(snapshot)
-                self.persist_progress_snapshot(save_state=True)
+                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
+                self.extras = dict(refreshed_snapshot)
+                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
 
             self.emit(
                 Base.Event.PROJECT_CHECK,

@@ -114,6 +114,16 @@ class FakeLogManager:
         self.error_exceptions.append(e)
 
 
+def install_analysis_logger(
+    monkeypatch: pytest.MonkeyPatch,
+    logger: FakeLogManager | None = None,
+) -> FakeLogManager:
+    # 这些测试只关心事件和状态变化，不该把真实控制台日志带进来。
+    fake_logger = logger or FakeLogManager()
+    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: fake_logger)
+    return fake_logger
+
+
 class ImmediateThread:
     def __init__(self, target, args=(), daemon=None) -> None:
         self.target = target
@@ -160,7 +170,7 @@ def install_analysis_import_glossary_runtime(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_module.threading, "Thread", thread_type)
-    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: logger)
+    install_analysis_logger(monkeypatch, logger)
 
 
 def capture_emitted_events(
@@ -245,6 +255,12 @@ def install_analysis_start_runtime(
         "log_run_start",
         lambda owner: None,
     )
+    monkeypatch.setattr(
+        analysis_module.AnalysisTask,
+        "log_run_finish",
+        lambda final_status: None,
+    )
+    install_analysis_logger(monkeypatch)
 
 
 def build_start_config() -> Config:
@@ -923,6 +939,7 @@ def test_after_analysis_done_cli_exports_glossary_files(
     fake_data_manager,
 ) -> None:
     fake_data_manager.glossary_entries = [{"src": "A", "dst": "甲"}]
+    install_analysis_logger(monkeypatch)
     analysis = Analysis()
     analysis.cli_auto_export_glossary = True
     emitted = capture_emitted_events(monkeypatch, analysis)
@@ -956,6 +973,7 @@ def test_after_analysis_done_cli_success_with_zero_import_still_exports(
     fake_data_manager,
 ) -> None:
     fake_data_manager.glossary_entries = []
+    install_analysis_logger(monkeypatch)
     analysis = Analysis()
     analysis.cli_auto_export_glossary = True
     emitted = capture_emitted_events(monkeypatch, analysis)
@@ -984,6 +1002,7 @@ def test_after_analysis_done_cli_stopped_skips_export(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
+    install_analysis_logger(monkeypatch)
     analysis = Analysis()
     analysis.cli_auto_export_glossary = True
     emitted = capture_emitted_events(monkeypatch, analysis)

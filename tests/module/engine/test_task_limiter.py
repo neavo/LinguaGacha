@@ -50,7 +50,7 @@ def test_acquire_without_semaphore_respects_stop_checker() -> None:
 def test_acquire_with_semaphore_retries_until_success() -> None:
     limiter = TaskLimiter(rps=1, rpm=60, max_concurrency=1)
     fake_semaphore = FakeSemaphore([False, True])
-    limiter.semaphore = fake_semaphore  # type: ignore[assignment]
+    setattr(limiter, "semaphore", fake_semaphore)
 
     acquired = limiter.acquire()
 

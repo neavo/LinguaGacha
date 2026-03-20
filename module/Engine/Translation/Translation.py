@@ -137,13 +137,11 @@ class Translation(Base):
                 "analysis_candidate_count": 0,
             }
 
-        analysis_candidate_count = int(dm.get_analysis_candidate_count())
-        analysis_extras = dm.get_analysis_progress_snapshot()
         return {
             "status": dm.get_project_status(),
             "extras": dm.get_translation_extras(),
-            "analysis_extras": analysis_extras,
-            "analysis_candidate_count": analysis_candidate_count,
+            "analysis_extras": dm.get_analysis_extras(),
+            "analysis_candidate_count": int(dm.get_analysis_candidate_count()),
         }
 
     # 翻译状态检查事件

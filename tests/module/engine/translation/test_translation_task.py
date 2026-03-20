@@ -1149,7 +1149,7 @@ class TestTranslationTaskTranslateSingle:
             ImmediateThread,
         )
 
-        TranslationTask.translate_single(item, config, None)  # type: ignore[arg-type]
+        TranslationTask.translate_single(item, config, lambda *_: None)
 
         assert created_threads == ["ENGINE_SINGLE"]
 

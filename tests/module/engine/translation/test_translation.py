@@ -52,8 +52,8 @@ def create_translation_stub() -> Translation:
         mtool_optimizer_enable=False,
         output_folder_open_on_finish=False,
     )
-    translation.emit = recorder.emit  # type: ignore[method-assign]
-    translation.emitted_events = recorder.events  # type: ignore[attr-defined]
+    setattr(translation, "emit", recorder.emit)
+    setattr(translation, "emitted_events", recorder.events)
     return translation
 
 
@@ -200,6 +200,7 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         close_db=MagicMock(),
         get_project_status=MagicMock(return_value=Base.ProjectStatus.PROCESSING),
         get_translation_extras=MagicMock(return_value={"line": 9, "time": 3}),
+        get_analysis_extras=MagicMock(return_value={"line": 5, "time": 2}),
         get_analysis_progress_snapshot=MagicMock(return_value={"line": 5, "time": 2}),
         get_analysis_candidate_count=MagicMock(return_value=1),
         get_items_for_translation=MagicMock(return_value=item_list),
@@ -583,6 +584,8 @@ def test_project_check_run_emits_done_with_loaded_project(
             },
         )
     ]
+    dm.get_analysis_progress_snapshot.assert_not_called()
+    dm.get_analysis_extras.assert_called_once()
 
 
 def test_project_check_run_emits_none_payload_when_project_unloaded(
@@ -993,7 +996,7 @@ def test_start_handles_no_active_model(
 ) -> None:
     translation = create_translation_stub()
     config = Config()
-    config.get_active_model = lambda: None  # type: ignore[method-assign]
+    setattr(config, "get_active_model", lambda: None)
     engine = create_engine()
     dm = create_data_manager(loaded=True, items=[Item(src="a")])
     logger = FakeLogManager()
@@ -1023,13 +1026,17 @@ def test_start_emits_warning_when_items_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.finalize_translation_run = MagicMock()  # type: ignore[method-assign]
-    translation.cleanup_translation_run = MagicMock()  # type: ignore[method-assign]
+    setattr(translation, "finalize_translation_run", MagicMock())
+    setattr(translation, "cleanup_translation_run", MagicMock())
     config = Config()
-    config.get_active_model = lambda: {  # type: ignore[method-assign]
-        "api_format": Base.APIFormat.OPENAI,
-        "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
-    }
+    setattr(
+        config,
+        "get_active_model",
+        lambda: {
+            "api_format": Base.APIFormat.OPENAI,
+            "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
+        },
+    )
     dm = create_data_manager(loaded=True, items=[])
     engine = create_engine()
     logger = FakeLogManager()
@@ -1081,13 +1088,17 @@ def test_start_success_flow_triggers_auto_export(
         staticmethod(lambda: object()),
     )
     config = Config()
-    config.get_active_model = lambda: {
-        "api_format": Base.APIFormat.OPENAI,
-        "name": "model",
-        "api_url": "url",
-        "model_id": "id",
-        "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
-    }  # type: ignore[method-assign]
+    setattr(
+        config,
+        "get_active_model",
+        lambda: {
+            "api_format": Base.APIFormat.OPENAI,
+            "name": "model",
+            "api_url": "url",
+            "model_id": "id",
+            "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
+        },
+    )
 
     def fake_pipeline(**kwargs: Any) -> None:
         del kwargs
@@ -1140,13 +1151,17 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         staticmethod(lambda: object()),
     )
     config = Config()
-    config.get_active_model = lambda: {
-        "api_format": Base.APIFormat.SAKURALLM,
-        "name": "model",
-        "api_url": "url",
-        "model_id": "id",
-        "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
-    }  # type: ignore[method-assign]
+    setattr(
+        config,
+        "get_active_model",
+        lambda: {
+            "api_format": Base.APIFormat.SAKURALLM,
+            "name": "model",
+            "api_url": "url",
+            "model_id": "id",
+            "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
+        },
+    )
     translation.start_translation_pipeline = lambda **kwargs: None
     translation.run_translation_export = MagicMock()
 
@@ -1167,9 +1182,13 @@ def test_start_emits_error_toast_when_exception_occurs(
 ) -> None:
     translation = create_translation_stub()
     config = Config()
-    config.get_active_model = lambda: {
-        "threshold": {"concurrency_limit": 1, "rpm_limit": 0}
-    }  # type: ignore[method-assign]
+    setattr(
+        config,
+        "get_active_model",
+        lambda: {
+            "threshold": {"concurrency_limit": 1, "rpm_limit": 0},
+        },
+    )
     dm = create_data_manager(loaded=True, items=[Item(src="line")])
     dm.open_db = MagicMock(side_effect=RuntimeError("open failed"))
     engine = create_engine()

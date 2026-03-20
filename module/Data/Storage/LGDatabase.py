@@ -215,6 +215,34 @@ class LGDatabase(Base):
             self.upsert_meta_entries(meta, conn=local_conn)
             local_conn.commit()
 
+    def prepare_meta_upsert_params(
+        self, meta: dict[str, Any] | None
+    ) -> list[tuple[str, str]]:
+        """把 meta 预序列化成 SQL 参数，供锁外准备阶段复用。"""
+        if not meta:
+            return []
+        return [(str(key), JSONTool.dumps(value)) for key, value in meta.items()]
+
+    def upsert_meta_entries_prepared(
+        self,
+        params: list[tuple[str, str]],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """接受预序列化 meta 参数，避免热点路径在事务锁内做 JSON dumps。"""
+        if not params:
+            return
+
+        if conn is not None:
+            conn.executemany(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                params,
+            )
+            return
+
+        with self.connection() as local_conn:
+            self.upsert_meta_entries_prepared(params, conn=local_conn)
+            local_conn.commit()
+
     def get_all_meta(self) -> dict[str, Any]:
         """获取所有元数据"""
         with self.connection() as conn:
@@ -397,7 +425,25 @@ class LGDatabase(Base):
         if not aggregates:
             return
 
-        params = [
+        params = self.prepare_analysis_candidate_aggregate_upsert_params(aggregates)
+
+        if conn is not None:
+            self.upsert_analysis_candidate_aggregates_prepared(params, conn=conn)
+            return
+
+        with self.connection() as local_conn:
+            self.upsert_analysis_candidate_aggregates_prepared(params, conn=local_conn)
+            local_conn.commit()
+
+    def prepare_analysis_candidate_aggregate_upsert_params(
+        self,
+        aggregates: list[dict[str, Any]] | None,
+    ) -> list[tuple[str, str, str, int, str, str, int]]:
+        """把候选池聚合预序列化成 SQL 参数，减少事务内 JSON 开销。"""
+        if not aggregates:
+            return []
+
+        return [
             (
                 str(aggregate["src"]),
                 JSONTool.dumps(aggregate["dst_votes"]),
@@ -409,6 +455,15 @@ class LGDatabase(Base):
             )
             for aggregate in aggregates
         ]
+
+    def upsert_analysis_candidate_aggregates_prepared(
+        self,
+        params: list[tuple[str, str, str, int, str, str, int]],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """接受预序列化候选池参数，缩短热点事务的锁持有时间。"""
+        if not params:
+            return
 
         if conn is not None:
             conn.executemany(
@@ -435,7 +490,10 @@ class LGDatabase(Base):
             return
 
         with self.connection() as local_conn:
-            self.upsert_analysis_candidate_aggregates(aggregates, conn=local_conn)
+            self.upsert_analysis_candidate_aggregates_prepared(
+                params,
+                conn=local_conn,
+            )
             local_conn.commit()
 
     def clear_analysis_candidate_aggregates(
@@ -742,34 +800,82 @@ class LGDatabase(Base):
         if not items and not rules and not meta:
             return
 
+        self.update_batch_prepared(
+            item_params=self.prepare_item_update_params(items),
+            rule_delete_params=self.prepare_rule_delete_params(rules),
+            rule_insert_params=self.prepare_rule_insert_params(rules),
+            meta_params=self.prepare_meta_upsert_params(meta),
+        )
+
+    def prepare_item_update_params(
+        self,
+        items: list[dict[str, Any]] | None,
+    ) -> list[tuple[str, int]]:
+        """把 item 更新参数预序列化，避免在状态锁内重复调用 JSON.dumps。"""
+        if not items:
+            return []
+
+        return [
+            (
+                JSONTool.dumps({k: v for k, v in item.items() if k != "id"}),
+                int(item["id"]),
+            )
+            for item in items
+            if isinstance(item.get("id"), int)
+        ]
+
+    def prepare_rule_delete_params(
+        self,
+        rules: dict[RuleType, Any] | None,
+    ) -> list[tuple[str]]:
+        """规则替换前的 delete 参数同样提前准备，缩短事务内分支时间。"""
+        if not rules:
+            return []
+        return [(str(rule_type),) for rule_type in rules]
+
+    def prepare_rule_insert_params(
+        self,
+        rules: dict[RuleType, Any] | None,
+    ) -> list[tuple[str, str]]:
+        """把规则载荷预序列化，避免高频批次在锁内做 JSON dumps。"""
+        if not rules:
+            return []
+        return [
+            (str(rule_type), JSONTool.dumps(rule_data))
+            for rule_type, rule_data in rules.items()
+        ]
+
+    def update_batch_prepared(
+        self,
+        *,
+        item_params: list[tuple[str, int]] | None = None,
+        rule_delete_params: list[tuple[str]] | None = None,
+        rule_insert_params: list[tuple[str, str]] | None = None,
+        meta_params: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """接受预序列化批量参数，让调用方把重活提前到锁外完成。"""
+        if (
+            not item_params
+            and not rule_delete_params
+            and not rule_insert_params
+            and not meta_params
+        ):
+            return
+
         with self.connection() as conn:
-            # 1. 更新条目
-            if items:
-                params = [
-                    (
-                        JSONTool.dumps(
-                            {k: v for k, v in item.items() if k != "id"},
-                        ),
-                        item["id"],
-                    )
-                    for item in items
-                    if "id" in item
-                ]
-                if params:
-                    conn.executemany("UPDATE items SET data = ? WHERE id = ?", params)
+            if item_params:
+                conn.executemany("UPDATE items SET data = ? WHERE id = ?", item_params)
 
-            # 2. 更新规则
-            if rules:
-                for rule_type, rule_data in rules.items():
-                    conn.execute("DELETE FROM rules WHERE type = ?", (rule_type,))
-                    conn.execute(
-                        "INSERT INTO rules (type, data) VALUES (?, ?)",
-                        (rule_type, JSONTool.dumps(rule_data)),
-                    )
+            if rule_delete_params:
+                for delete_param in rule_delete_params:
+                    conn.execute("DELETE FROM rules WHERE type = ?", delete_param)
+            if rule_insert_params:
+                conn.executemany(
+                    "INSERT INTO rules (type, data) VALUES (?, ?)",
+                    rule_insert_params,
+                )
 
-            # 3. 更新元数据
-            if meta:
-                meta_params = [(k, JSONTool.dumps(v)) for k, v in meta.items()]
+            if meta_params:
                 conn.executemany(
                     "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                     meta_params,

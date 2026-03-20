@@ -5,12 +5,27 @@ import pytest
 
 from base.BasePath import BasePath
 from module.Config import Config
+import module.Migration.UserDataMigrationService as migration_service_module
 from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 
+class FakeLogManager:
+    def __init__(self) -> None:
+        self.warning_messages: list[str] = []
+        self.warning_exceptions: list[BaseException | None] = []
+
+    def warning(self, msg: str, e: BaseException | None = None) -> None:
+        self.warning_messages.append(msg)
+        self.warning_exceptions.append(e)
+
+
 @pytest.fixture(autouse=True)
-def reset_migration_service() -> None:
+def reset_migration_service(monkeypatch: pytest.MonkeyPatch) -> FakeLogManager:
     BasePath.reset_for_test()
+    # 迁移测试只验证文件与配置结果，不需要真实日志线程向控制台写输出。
+    logger = FakeLogManager()
+    monkeypatch.setattr(migration_service_module.LogManager, "get", lambda: logger)
+    return logger
 
 
 @pytest.fixture

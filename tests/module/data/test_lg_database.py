@@ -8,7 +8,28 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import module.Data.Storage.LGDatabase as lg_database_module
 from module.Data.Storage.LGDatabase import LGDatabase
+
+
+class FakeLogManager:
+    def __init__(self) -> None:
+        self.warning_messages: list[str] = []
+        self.warning_exceptions: list[BaseException | None] = []
+
+    def warning(self, msg: str, e: BaseException | None = None) -> None:
+        self.warning_messages.append(msg)
+        self.warning_exceptions.append(e)
+
+
+@pytest.fixture(autouse=True)
+def install_fake_log_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[FakeLogManager, None, None]:
+    # 这个文件会主动覆盖坏数据与兼容路径，测试时不需要真实 Rich 日志刷到控制台。
+    logger = FakeLogManager()
+    monkeypatch.setattr(lg_database_module.LogManager, "get", lambda: logger)
+    yield logger
 
 
 @pytest.fixture

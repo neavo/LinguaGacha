@@ -57,4 +57,4 @@ def test_api_test_result_dataclass_is_frozen() -> None:
     )
 
     with pytest.raises(dataclasses.FrozenInstanceError):
-        result.result_msg = "changed"  # type: ignore[misc]
+        setattr(result, "result_msg", "changed")

@@ -58,6 +58,9 @@ def build_data_manager(
         get_project_preview=MagicMock(return_value={"name": "demo"}),
     )
     dm.translation_item_service = SimpleNamespace(get_items_for_translation=MagicMock())
+    dm.analysis_service = SimpleNamespace(
+        refresh_analysis_progress_snapshot_cache=MagicMock(return_value={"line": 1})
+    )
     emitted_events: list[tuple[Base.Event, dict]] = []
 
     def capture_emit(event: Base.Event, data: dict) -> None:
@@ -141,6 +144,92 @@ def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
     ]
 
 
+def test_load_project_runs_post_actions_before_emitting_loaded_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.session.db = None
+    dm.session.lg_path = None
+    call_order: list[tuple[str, str] | str] = []
+    dm.lifecycle_service = SimpleNamespace(
+        load_project=MagicMock(
+            side_effect=lambda lg_path: call_order.append(("load", lg_path))
+        ),
+        unload_project=MagicMock(return_value=None),
+    )
+    dm.schedule_prefilter_if_needed = MagicMock(
+        side_effect=lambda reason: call_order.append(("prefilter", reason)) or False
+    )
+    dm.analysis_service.refresh_analysis_progress_snapshot_cache = MagicMock(
+        side_effect=lambda: call_order.append("refresh") or {"line": 1}
+    )
+
+    def capture_emit(event: Base.Event, data: dict) -> None:
+        call_order.append("emit")
+        emitted_events.append((event, data))
+
+    dm.emit = capture_emit
+    dm.load_project("demo/project.lg")
+
+    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="project_loaded")
+    dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
+    assert call_order == [
+        ("load", "demo/project.lg"),
+        ("prefilter", "project_loaded"),
+        "refresh",
+        "emit",
+    ]
+    assert emitted_events == [(Base.Event.PROJECT_LOADED, {"path": "demo/project.lg"})]
+
+
+def test_load_project_skips_analysis_refresh_when_prefilter_is_needed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.session.db = None
+    dm.session.lg_path = None
+    dm.lifecycle_service = SimpleNamespace(
+        load_project=MagicMock(),
+        unload_project=MagicMock(return_value=None),
+    )
+    dm.schedule_prefilter_if_needed = MagicMock(return_value=True)
+
+    dm.load_project("demo/project.lg")
+
+    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="project_loaded")
+    dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_not_called()
+    assert emitted_events == [(Base.Event.PROJECT_LOADED, {"path": "demo/project.lg"})]
+
+
+def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    request = SimpleNamespace(reason="file_op", lg_path="demo/project.lg", token=7)
+    dm.prefilter_service = SimpleNamespace(
+        pop_pending_request=MagicMock(side_effect=[request, None]),
+        mark_request_handled=MagicMock(),
+        finish_worker=MagicMock(),
+    )
+    dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
+    dm.log_prefilter_result = MagicMock()
+
+    dm.project_prefilter_worker(token=7)
+
+    dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
+    dm.prefilter_service.mark_request_handled.assert_called_once_with(request)
+    dm.prefilter_service.finish_worker.assert_called_once()
+    assert (
+        Base.Event.PROJECT_PREFILTER,
+        {
+            "sub_event": Base.ProjectPrefilterSubEvent.UPDATED,
+            "reason": "file_op",
+            "token": 7,
+            "lg_path": "demo/project.lg",
+        },
+    ) in emitted_events
+
+
 def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -161,6 +250,50 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
             Base.Event.QUALITY_RULE_UPDATE,
             {"meta_keys": ["glossary_enable"]},
         ),
+    ]
+
+
+def test_on_config_updated_schedules_prefilter_for_relevant_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    dm.schedule_prefilter_if_needed = MagicMock()
+
+    dm.on_config_updated(
+        Base.Event.CONFIG_UPDATED,
+        {"keys": ["source_language", "unrelated_key"]},
+    )
+
+    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="config_updated")
+
+
+def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    dm.schedule_prefilter_if_needed = MagicMock()
+
+    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["theme"]})
+    dm.session.db = None
+    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
+
+    dm.schedule_prefilter_if_needed.assert_not_called()
+
+
+def test_import_analysis_candidates_emits_quality_rule_update_only_when_imported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.analysis_service.import_analysis_candidates = MagicMock(side_effect=[2, 0, None])
+
+    assert dm.import_analysis_candidates() == 2
+    assert dm.import_analysis_candidates() == 0
+    assert dm.import_analysis_candidates() is None
+    assert emitted_events == [
+        (
+            Base.Event.QUALITY_RULE_UPDATE,
+            {"rule_types": [LGDatabase.RuleType.GLOSSARY.value]},
+        )
     ]
 
 

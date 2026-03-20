@@ -99,7 +99,7 @@ def build_localizer() -> Any:
 def create_api_test() -> tuple[APITest, EventRecorder]:
     api_test = APITest()
     recorder = EventRecorder()
-    api_test.emit = recorder.emit  # type: ignore[method-assign]
+    setattr(api_test, "emit", recorder.emit)
     return api_test, recorder
 
 
