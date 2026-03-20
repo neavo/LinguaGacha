@@ -8,6 +8,8 @@ from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
+from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QShortcut
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QAbstractItemView
@@ -17,6 +19,8 @@ from PySide6.QtWidgets import QWidget
 from qfluentwidgets import Action
 from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
+from qfluentwidgets import ToolTipFilter
+from qfluentwidgets import ToolTipPosition
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
@@ -393,6 +397,10 @@ class ProofreadingPage(Base, QWidget):
             )
         )
         self.btn_search.setEnabled(False)
+        self.install_shortcut_tooltip(
+            self.btn_search,
+            Localizer.get().shortcut_ctrl_f,
+        )
 
         self.btn_replace = self.command_bar_card.add_action(
             Action(
@@ -402,6 +410,10 @@ class ProofreadingPage(Base, QWidget):
             )
         )
         self.btn_replace.setEnabled(False)
+        self.install_shortcut_tooltip(
+            self.btn_replace,
+            Localizer.get().shortcut_ctrl_h,
+        )
 
         self.command_bar_card.add_separator()
         self.btn_filter = self.command_bar_card.add_action(
@@ -415,6 +427,18 @@ class ProofreadingPage(Base, QWidget):
 
         # 右侧留白：保持命令栏布局稳定（分页已迁移为无限滚动）。
         self.command_bar_card.add_stretch(1)
+
+        self.search_shortcut = QShortcut(
+            QKeySequence(Localizer.get().shortcut_ctrl_f),
+            self,
+        )
+        self.search_shortcut.activated.connect(self.on_search_shortcut)
+
+        self.replace_shortcut = QShortcut(
+            QKeySequence(Localizer.get().shortcut_ctrl_h),
+            self,
+        )
+        self.replace_shortcut.activated.connect(self.on_replace_shortcut)
 
     # ========== 自动载入 / 同步 ==========
 
@@ -719,6 +743,32 @@ class ProofreadingPage(Base, QWidget):
     def on_replace_clicked(self) -> None:
         """替换按钮点击"""
         self.show_search_panel(replace_mode=True)
+
+    def install_shortcut_tooltip(self, widget: QWidget, shortcut: str) -> None:
+        """命令栏按钮统一显示仅含快捷键的 qfluent Tooltip。"""
+        widget.setToolTip(shortcut)
+        widget.installEventFilter(ToolTipFilter(widget, 300, ToolTipPosition.TOP))
+
+    def on_search_shortcut(self) -> None:
+        """Ctrl+F：打开搜索栏，或在已展开时聚焦搜索输入框。"""
+        if not self.btn_search.isEnabled():
+            return
+        if not self.search_card.isVisible():
+            self.on_search_clicked()
+            return
+        self.search_card.get_line_edit().setFocus()
+
+    def on_replace_shortcut(self) -> None:
+        """Ctrl+H：优先执行单步替换，否则切换到替换模式。"""
+        if self.search_card.isVisible() and self.search_card.is_replace_mode():
+            # 复用同一快捷键：搜索栏已处于 Replace 模式时，直接触发当前替换动作。
+            if self.search_card.replace_btn.isEnabled():
+                self.on_replace_once_clicked()
+            return
+        if not self.btn_replace.isEnabled():
+            return
+        self.on_replace_clicked()
+        self.search_card.get_line_edit().setFocus()
 
     def on_search_back_clicked(self) -> None:
         """搜索栏返回点击，清除搜索状态"""
