@@ -27,7 +27,7 @@ class FakeConsoleProgress:
     def __init__(self) -> None:
         self.updates: list[dict[str, int]] = []
 
-    def update(self, task_id: int, **kwargs: int) -> None:
+    def update_task(self, task_id: int, **kwargs: int) -> None:
         self.updates.append({"task_id": task_id, **kwargs})
 
 

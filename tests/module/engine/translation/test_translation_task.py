@@ -90,6 +90,7 @@ class FakeLogManager:
     def __init__(self, *, expert_mode: bool = False) -> None:
         self.expert_mode = expert_mode
         self.calls: list[dict[str, Any]] = []
+        self.rich_messages: list[Any] = []
 
     def is_expert_mode(self) -> bool:
         return self.expert_mode
@@ -145,13 +146,8 @@ class FakeLogManager:
             }
         )
 
-
-class FakeConsole:
-    def __init__(self) -> None:
-        self.messages: list[Any] = []
-
-    def print(self, msg: Any) -> None:
-        self.messages.append(msg)
+    def print_rich(self, renderable: object) -> None:
+        self.rich_messages.append(renderable)
 
 
 def create_task(
@@ -804,8 +800,8 @@ class TestTranslationTaskRequestAndStart:
         monkeypatch.setattr(
             task,
             "apply_response_data",
-            lambda prepared, request_response: (
-                captured.setdefault("args", (prepared, request_response))
+            lambda prepared, request_response: captured.setdefault(
+                "args", (prepared, request_response)
             ),
         )
 
@@ -934,8 +930,6 @@ class TestTranslationTaskPrintLogTable:
     ) -> None:
         task = create_task()
         fake_log = FakeLogManager()
-        fake_console = FakeConsole()
-
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
@@ -943,10 +937,6 @@ class TestTranslationTaskPrintLogTable:
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 1),
-        )
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.rich.get_console",
-            lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
         monkeypatch.setattr(
@@ -967,7 +957,7 @@ class TestTranslationTaskPrintLogTable:
         )
 
         assert fake_log.calls[0]["level"] == expected_level
-        assert fake_console.messages[0]["rows"] == ["ROW"]
+        assert fake_log.rich_messages[0]["rows"] == ["ROW"]
 
     def test_print_log_table_force_accept_uses_warning_and_simple_mode(
         self, monkeypatch: pytest.MonkeyPatch
@@ -979,8 +969,6 @@ class TestTranslationTaskPrintLogTable:
         task.token_threshold = 2
 
         fake_log = FakeLogManager()
-        fake_console = FakeConsole()
-
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
@@ -988,10 +976,6 @@ class TestTranslationTaskPrintLogTable:
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 64),
-        )
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.rich.get_console",
-            lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
 
@@ -1007,7 +991,7 @@ class TestTranslationTaskPrintLogTable:
         )
 
         assert fake_log.calls[0]["level"] == "warning"
-        assert len(fake_console.messages) == 1
+        assert len(fake_log.rich_messages) == 1
 
     def test_print_log_table_subtask_without_force_accept_uses_normal_flow(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1019,8 +1003,6 @@ class TestTranslationTaskPrintLogTable:
         task.token_threshold = 2
 
         fake_log = FakeLogManager()
-        fake_console = FakeConsole()
-
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
@@ -1028,10 +1010,6 @@ class TestTranslationTaskPrintLogTable:
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 1),
-        )
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.rich.get_console",
-            lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
         monkeypatch.setattr(
@@ -1052,15 +1030,13 @@ class TestTranslationTaskPrintLogTable:
         )
 
         assert fake_log.calls[0]["level"] == "info"
-        assert fake_console.messages[0]["style"] == "green"
+        assert fake_log.rich_messages[0]["style"] == "green"
 
     def test_print_log_table_simple_mode_without_sub_info(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         task = create_task()
         fake_log = FakeLogManager()
-        fake_console = FakeConsole()
-
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
@@ -1068,10 +1044,6 @@ class TestTranslationTaskPrintLogTable:
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.Engine.get",
             lambda: SimpleNamespace(get_running_task_count=lambda: 64),
-        )
-        monkeypatch.setattr(
-            "module.Engine.Translation.TranslationTask.rich.get_console",
-            lambda: fake_console,
         )
         monkeypatch.setattr(task, "generate_log_rows", lambda *args, **kwargs: ["ROW"])
 
@@ -1087,7 +1059,7 @@ class TestTranslationTaskPrintLogTable:
         )
 
         assert fake_log.calls[0]["level"] == "info"
-        assert fake_console.messages[0].count("\n") == 3
+        assert str(fake_log.rich_messages[0]).count("\n") == 3
 
 
 class TestTranslationTaskTranslateSingle:

@@ -11,7 +11,7 @@ from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
-from module.ProgressBar import ProgressBar
+from base.LogManager import LogManager
 
 if TYPE_CHECKING:
     from module.Engine.Analysis.Analysis import Analysis
@@ -25,7 +25,7 @@ class AnalysisProgressTracker:
 
     def __init__(self, analysis: Analysis) -> None:
         self.analysis = analysis
-        self.console_progress: ProgressBar | None = None
+        self.console_progress: LogManager.ProgressSession | None = None
         self.console_progress_task_id: TaskID | None = None
         self.progress_dirty: bool = False
         self.pending_progress_commit_count: int = 0
@@ -37,7 +37,11 @@ class AnalysisProgressTracker:
         self.pending_progress_commit_count = 0
         self.last_progress_persist_at = 0.0
 
-    def bind_console_progress(self, progress: ProgressBar, task_id: TaskID) -> None:
+    def bind_console_progress(
+        self,
+        progress: LogManager.ProgressSession,
+        task_id: TaskID,
+    ) -> None:
         """控制台进度条统一绑定在 tracker，后续所有更新都走同一入口。"""
         self.console_progress = progress
         self.console_progress_task_id = task_id
@@ -62,7 +66,7 @@ class AnalysisProgressTracker:
         if progress is None or task_id is None:
             return
 
-        progress.update(
+        progress.update_task(
             task_id,
             completed=int(snapshot.get("line", 0) or 0),
             total=int(snapshot.get("total_line", 0) or 0),

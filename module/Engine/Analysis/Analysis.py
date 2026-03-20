@@ -21,7 +21,6 @@ from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
 from module.Localizer.Localizer import Localizer
-from module.ProgressBar import ProgressBar
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
@@ -597,8 +596,8 @@ class Analysis(Base):
             if not isinstance(task_contexts, list):
                 return "FAILED"
 
-            with ProgressBar(transient=True) as progress:
-                task_id = progress.new(
+            with LogManager.get().progress(transient=True) as progress:
+                task_id = progress.new_task(
                     total=int(self.extras.get("total_line", 0) or 0),
                     completed=int(self.extras.get("line", 0) or 0),
                 )

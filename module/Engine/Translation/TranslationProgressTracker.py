@@ -96,7 +96,7 @@ class TranslationProgressTracker:
         """提交后统一同步控制台进度和 UI 事件，避免 hooks 直接碰控制器细节。"""
         hooks = self.translation.task_hooks
         if hooks is not None:
-            hooks.progress.update(
+            hooks.progress.update_task(
                 hooks.pid,
                 completed=int(extras_snapshot.get("line", 0) or 0),
                 total=int(extras_snapshot.get("total_line", 0) or 0),
