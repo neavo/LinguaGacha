@@ -41,6 +41,25 @@ def test_user_rejects_invalid_email():
     assert not user.is_valid()
 ```
 
+## 凑数用例
+
+```python
+# ❌ 只是为了让测试文件看起来更满
+def test_misc_1():
+    result = process_order("abc")
+    assert result is not None
+
+# ❌ 孤儿用例：名字和数据都看不出它在证明什么
+def test_misc_2():
+    payload = {"x": 1, "y": 2}
+    assert handler(payload) is True
+
+# ✅ 场景清楚，直接对应业务边界
+def test_rejects_order_without_customer_id():
+    result = process_order({"items": ["book"]})
+    assert result.error_code == "missing_customer_id"
+```
+
 ## 无意义断言
 
 ```python
@@ -56,6 +75,24 @@ def test_returns_zero_for_empty_list():
 def test_handles_negative_values():
     assert calculate_total([-5, 10]) == 5
 ```
+
+## 控制台噪声
+
+```python
+# ❌ 用 print 代替真正的断言
+def test_parse_config():
+    result = parse_config("app.toml")
+    print(result)
+    assert result is not None
+
+# ✅ 如果输出本身就是被测行为，就把它当作明确结果断言
+def test_cli_prints_summary(capsys):
+    run_cli(["--summary"])
+    captured = capsys.readouterr()
+    assert "summary" in captured.out
+```
+
+测试默认不应该向控制台打印文本。只有当输出本身就是需求，或者确实需要临时定位问题时，才允许留下输出验证。
 
 ## 盯内部实现
 
@@ -226,7 +263,7 @@ def test_process_invalid_raises():
 
 ## 旧白盒测试整改顺序
 
-1. 先扫：`rg -n "__new__|call_args|call_args_list|tmp_path|mock_open" tests`
+1. 先扫：`rg -n "__new__|call_args|call_args_list|tmp_path|mock_open|print\(" tests`
 2. 说清这个测试到底要证明什么业务行为
 3. 把内部调用断言换成结果快照、事件序列或持久化断言
 4. 把重复准备逻辑收进最近的 `conftest.py`
