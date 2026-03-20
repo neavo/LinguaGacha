@@ -1,4 +1,5 @@
 import ctypes
+import logging
 import os
 import signal
 import sys
@@ -37,6 +38,14 @@ QT_LOG_BLACKLIST: tuple[str, ...] = (
 )
 APP_VERSION_FILE_NAME: str = "version.txt"
 APP_ICON_FILE_NAME: str = "icon.png"
+PROXY_ENV_NAMES: tuple[str, ...] = ("http_proxy", "https_proxy")
+QT_SCALE_FACTOR_ENV_NAME: str = "QT_SCALE_FACTOR"
+QT_SCALE_FACTOR_MAP: dict[str, str] = {
+    "50%": "0.50",
+    "75%": "0.75",
+    "150%": "1.50",
+    "200%": "2.00",
+}
 
 
 def excepthook(
@@ -46,7 +55,9 @@ def excepthook(
 ) -> None:
     del exc_type
     del exc_traceback
-    LogManager.get().error(Localizer.get().log_crash, exc_value)
+    logger = LogManager.get()
+    logger.fatal(Localizer.get().log_crash, exc_value)
+    logger.shutdown()
 
     if not isinstance(exc_value, KeyboardInterrupt):
         print("")
@@ -65,7 +76,7 @@ def thread_excepthook(args: threading.ExceptHookArgs) -> None:
 
     try:
         thread_name = getattr(getattr(args, "thread", None), "name", "<unknown>")
-        LogManager.get().error(
+        LogManager.get().fatal(
             f"Uncaught exception in thread: {thread_name}",
             getattr(args, "exc_value", None),
         )
@@ -83,9 +94,10 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
     try:
         obj_repr = repr(getattr(unraisable, "object", None))
         err_msg = getattr(unraisable, "err_msg", "") or ""
-        LogManager.get().warning(
+        LogManager.get().fatal(
             f"Unraisable exception: {err_msg} object={obj_repr}",
             getattr(unraisable, "exc_value", None),
+            level=logging.WARNING,
         )
     except Exception:
         # 兜底：异常处理路径中再抛异常只会让排障更困难。
@@ -105,9 +117,31 @@ def qt_message_handler(
     del msg_type, context
 
     if any(v in msg for v in QT_LOG_BLACKLIST):
-        pass
-    else:
-        print(msg)
+        return
+
+    print(msg)
+
+
+def configure_proxy_environment(config: Config, logger: LogManager) -> None:
+    """统一维护代理环境变量，避免启动流程里散落重复的赋值逻辑。"""
+    if not config.proxy_enable or config.proxy_url == "":
+        for proxy_env_name in PROXY_ENV_NAMES:
+            os.environ.pop(proxy_env_name, None)
+        return
+
+    logger.info(Localizer.get().log_proxy)
+    for proxy_env_name in PROXY_ENV_NAMES:
+        os.environ[proxy_env_name] = config.proxy_url
+
+
+def configure_qt_scale_factor(config: Config) -> None:
+    """把缩放配置集中到一个映射表里，后续增减档位时更容易维护。"""
+    scale_factor_value = QT_SCALE_FACTOR_MAP.get(config.scale_factor)
+    if scale_factor_value is None:
+        os.environ.pop(QT_SCALE_FACTOR_ENV_NAME, None)
+        return
+
+    os.environ[QT_SCALE_FACTOR_ENV_NAME] = scale_factor_value
 
 
 if __name__ == "__main__":
@@ -170,33 +204,19 @@ if __name__ == "__main__":
 
     # 设置应用语言
     Localizer.set_app_language(config.app_language)
+    logger = LogManager.get()
 
     # 打印日志
-    LogManager.get().info(f"{Base.APP_NAME} {version}")
-    if LogManager.get().is_expert_mode():
-        LogManager.get().info(Localizer.get().log_expert_mode)
-    LogManager.get().print("")
+    logger.info(f"{Base.APP_NAME} {version}")
+    if logger.is_expert_mode():
+        logger.info(Localizer.get().log_expert_mode)
+    logger.print("")
 
     # 网络代理
-    if not config.proxy_enable or config.proxy_url == "":
-        os.environ.pop("http_proxy", None)
-        os.environ.pop("https_proxy", None)
-    else:
-        LogManager.get().info(Localizer.get().log_proxy)
-        os.environ["http_proxy"] = config.proxy_url
-        os.environ["https_proxy"] = config.proxy_url
+    configure_proxy_environment(config, logger)
 
     # 设置全局缩放比例
-    if config.scale_factor == "50%":
-        os.environ["QT_SCALE_FACTOR"] = "0.50"
-    elif config.scale_factor == "75%":
-        os.environ["QT_SCALE_FACTOR"] = "0.75"
-    elif config.scale_factor == "150%":
-        os.environ["QT_SCALE_FACTOR"] = "1.50"
-    elif config.scale_factor == "200%":
-        os.environ["QT_SCALE_FACTOR"] = "2.00"
-    else:
-        os.environ.pop("QT_SCALE_FACTOR", None)
+    configure_qt_scale_factor(config)
 
     # 创建全局应用对象
     app = QApplication(sys.argv)
@@ -224,6 +244,7 @@ if __name__ == "__main__":
         dm = DataManager.get()
         if dm.is_loaded():
             dm.unload_project()
+        logger.shutdown()
 
     app.aboutToQuit.connect(cleanup_on_exit)
 
@@ -235,4 +256,5 @@ if __name__ == "__main__":
     # 进入事件循环，等待用户操作；CLI 模式额外以 CLIManager 记录的退出码为准。
     app_exit_code = app.exec()
     cli_exit_code = CLIManager.get().get_exit_code()
+    logger.shutdown()
     sys.exit(cli_exit_code if cli_exit_code is not None else app_exit_code)
