@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import base.LogManager as log_manager_module
+from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest import MonkeyPatch
 
 
@@ -41,7 +42,7 @@ class CapturingPlainHandler(logging.Handler):
 
 def build_log_manager(
     monkeypatch: MonkeyPatch,
-    tmp_path: Path,
+    log_dir: Path,
 ) -> tuple[
     log_manager_module.LogManager,
     CapturingStructuredHandler,
@@ -54,7 +55,7 @@ def build_log_manager(
     monkeypatch.setattr(
         log_manager_module.BasePath,
         "get_log_dir",
-        staticmethod(lambda: str(tmp_path)),
+        staticmethod(lambda: str(log_dir)),
     )
     monkeypatch.setattr(
         log_manager_module,
@@ -74,23 +75,31 @@ def build_log_manager(
     return manager, structured_handler, plain_handler
 
 
-def read_log_text(tmp_path: Path) -> str:
-    """统一从临时日志文件读取文本，避免每个测试重复拼路径。"""
-    return (tmp_path / "app.log").read_text(encoding="utf-8")
+def create_log_dir(fs: FakeFilesystem) -> Path:
+    """日志测试统一走 pyfakefs，避免真实文件系统状态影响断言。"""
+    log_dir = Path("C:/logs")
+    fs.create_dir(str(log_dir))
+    return log_dir
+
+
+def read_log_text(log_dir: Path) -> str:
+    """统一从虚拟日志文件读取文本，避免每个测试重复拼路径。"""
+    return (log_dir / "app.log").read_text(encoding="utf-8")
 
 
 def test_error_flushes_async_file_log(
+    fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     """普通错误日志应先异步入队，并在 shutdown 时稳定落盘。"""
-    manager, _, _ = build_log_manager(monkeypatch, tmp_path)
+    log_dir = create_log_dir(fs)
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
 
     try:
         manager.error("任务失败", RuntimeError("boom"), console=False)
         manager.shutdown()
 
-        text = read_log_text(tmp_path)
+        text = read_log_text(log_dir)
         assert "任务失败" in text
         assert "RuntimeError: boom" in text
     finally:
@@ -98,16 +107,17 @@ def test_error_flushes_async_file_log(
 
 
 def test_fatal_writes_file_immediately(
+    fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     """fatal 应该同步直写，不能等监听线程慢慢刷盘。"""
-    manager, _, _ = build_log_manager(monkeypatch, tmp_path)
+    log_dir = create_log_dir(fs)
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
 
     try:
         manager.fatal("应用崩溃", RuntimeError("fatal"), console=False)
 
-        text = read_log_text(tmp_path)
+        text = read_log_text(log_dir)
         assert "应用崩溃" in text
         assert "RuntimeError: fatal" in text
     finally:
@@ -115,13 +125,14 @@ def test_fatal_writes_file_immediately(
 
 
 def test_print_routes_to_plain_console_only(
+    fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     """print 应该走裸控制台通道，别混进结构化控制台日志里。"""
+    log_dir = create_log_dir(fs)
     manager, structured_handler, plain_handler = build_log_manager(
         monkeypatch,
-        tmp_path,
+        log_dir,
     )
 
     try:
@@ -133,5 +144,51 @@ def test_print_routes_to_plain_console_only(
             "结构化日志"
         ]
         assert [record.getMessage() for record in plain_handler.records] == ["普通输出"]
+    finally:
+        manager.shutdown()
+
+
+def test_rich_handler_uses_shared_console_and_print_rich_reuses_it(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """rich handler 和手动 rich 输出必须共用一个 Console，避免 live 进度分裂。"""
+    log_dir = create_log_dir(fs)
+    manager, structured_handler, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        assert structured_handler is manager.structured_console_handler
+        assert (
+            getattr(structured_handler, "console", manager.get_console())
+            is manager.get_console()
+        )
+
+        messages: list[object] = []
+        monkeypatch.setattr(
+            manager.get_console(),
+            "print",
+            lambda renderable: messages.append(renderable),
+        )
+
+        manager.print_rich({"table": "demo"})
+
+        assert messages == [{"table": "demo"}]
+    finally:
+        manager.shutdown()
+
+
+def test_progress_returns_progress_session(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """公开 progress() 入口应该直接返回可用的进度会话对象。"""
+    log_dir = create_log_dir(fs)
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        session = manager.progress(transient=True)
+        assert isinstance(session, log_manager_module.LogManager.ProgressSession)
+        assert session.transient is True
+        assert session.manager is manager
     finally:
         manager.shutdown()

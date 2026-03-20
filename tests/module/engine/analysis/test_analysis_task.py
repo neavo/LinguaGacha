@@ -23,6 +23,7 @@ class FakePipelineLogger:
         self.info_messages: list[str] = []
         self.warning_messages: list[str] = []
         self.print_messages: list[str] = []
+        self.rich_messages: list[object] = []
 
     def is_expert_mode(self) -> bool:
         return self.expert_mode
@@ -38,6 +39,9 @@ class FakePipelineLogger:
     def print(self, msg: str, *args, **kwargs) -> None:
         del args, kwargs
         self.print_messages.append(msg)
+
+    def print_rich(self, renderable: object) -> None:
+        self.rich_messages.append(renderable)
 
 
 def build_analysis_task(
@@ -68,23 +72,17 @@ def install_print_chunk_log_runtime(
     running_task_count: int = 0,
 ) -> tuple[FakePipelineLogger, list[object]]:
     logger = FakePipelineLogger()
-    console_outputs: list[object] = []
     monkeypatch.setattr(
         analysis_task_module.LogManager,
         "get",
         lambda: logger,
     )
     monkeypatch.setattr(
-        analysis_task_module.rich,
-        "get_console",
-        lambda: SimpleNamespace(print=lambda obj: console_outputs.append(obj)),
-    )
-    monkeypatch.setattr(
         analysis_task_module.Engine,
         "get",
         lambda: SimpleNamespace(get_running_task_count=lambda: running_task_count),
     )
-    return logger, console_outputs
+    return logger, logger.rich_messages
 
 
 def test_analysis_task_execute_request_uses_shared_response_decoder_glossary_flow(

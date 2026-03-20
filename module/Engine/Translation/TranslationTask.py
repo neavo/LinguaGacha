@@ -4,7 +4,6 @@ import time
 from functools import lru_cache
 from typing import Callable
 
-import rich
 from rich import box
 from rich import markup
 from rich.table import Table
@@ -473,9 +472,9 @@ class TranslationTask(Base):
                 # 第三行：子任务信息
                 display_msg += "\n" + sub_info
 
-            rich.get_console().print("\n" + display_msg + "\n")
+            LogManager.get().print_rich("\n" + display_msg + "\n")
         else:
-            rich.get_console().print(
+            LogManager.get().print_rich(
                 self.generate_log_table(
                     self.generate_log_rows(srcs, dsts, console_log, console=True),
                     style,

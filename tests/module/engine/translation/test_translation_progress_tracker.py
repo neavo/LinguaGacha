@@ -159,7 +159,7 @@ def test_update_pipeline_progress_updates_bound_progress_and_emits_event() -> No
 
     tracker.update_pipeline_progress(snapshot)
 
-    progress.update.assert_called_once_with(7, completed=3, total=8)
+    progress.update_task.assert_called_once_with(7, completed=3, total=8)
     assert translation.emitted_events == [(Base.Event.TRANSLATION_PROGRESS, snapshot)]
 
 

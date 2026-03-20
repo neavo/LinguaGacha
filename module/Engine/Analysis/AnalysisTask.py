@@ -5,7 +5,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
 
-import rich
 from rich import box
 from rich import markup
 from rich.table import Table
@@ -350,7 +349,7 @@ class AnalysisTask:
                 f"[{style}][{Localizer.get().engine_task_simple_log_prefix}][/{style}]"
             )
             display_msg = "\n".join([prefix + " " + summary_text, stats_info])
-            rich.get_console().print("\n" + display_msg + "\n")
+            LogManager.get().print_rich("\n" + display_msg + "\n")
             return
 
         table = self.generate_log_table(
@@ -362,7 +361,7 @@ class AnalysisTask:
             ),
             style,
         )
-        rich.get_console().print(table)
+        LogManager.get().print_rich(table)
 
     def generate_log_rows(
         self,

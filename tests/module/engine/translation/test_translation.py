@@ -81,6 +81,8 @@ class FakeLogManager:
         self.info_messages: list[str] = []
         self.warning_messages: list[str] = []
         self.error_messages: list[str] = []
+        self.rich_messages: list[object] = []
+        self.progress_sessions: list["FakeProgressSession"] = []
 
     def print(self, msg: str = "") -> None:
         del msg
@@ -97,6 +99,14 @@ class FakeLogManager:
         del e
         self.error_messages.append(msg)
 
+    def print_rich(self, renderable: object) -> None:
+        self.rich_messages.append(renderable)
+
+    def progress(self, *, transient: bool) -> "FakeProgressSession":
+        session = FakeProgressSession(transient=transient)
+        self.progress_sessions.append(session)
+        return session
+
 
 class InlineThread:
     def __init__(self, target: Any, args: tuple[Any, ...] = (), **kwargs: Any) -> None:
@@ -108,24 +118,24 @@ class InlineThread:
         self.target(*self.args)
 
 
-class FakeProgressBar:
+class FakeProgressSession:
     def __init__(self, *, transient: bool = False) -> None:
         self.transient = transient
         self.last_new: dict[str, int] = {}
         self.updates: list[tuple[int, dict[str, int]]] = []
 
-    def __enter__(self) -> "FakeProgressBar":
+    def __enter__(self) -> "FakeProgressSession":
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         del exc_type, exc, tb
         return False
 
-    def new(self, total: int = 0, completed: int = 0) -> int:
+    def new_task(self, total: int = 0, completed: int = 0) -> int:
         self.last_new = {"total": total, "completed": completed}
         return 1
 
-    def update(self, pid: int, **kwargs: int) -> None:
+    def update_task(self, pid: int, **kwargs: int) -> None:
         self.updates.append((pid, kwargs))
 
 
@@ -1079,7 +1089,6 @@ def test_start_success_flow_triggers_auto_export(
     engine = create_engine()
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(translation_module, "TaskLimiter", FakeTaskLimiter)
     monkeypatch.setattr(translation_module, "PromptBuilder", FakePromptBuilder)
     monkeypatch.setattr(
@@ -1112,6 +1121,8 @@ def test_start_success_flow_triggers_auto_export(
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
+    assert len(logger.progress_sessions) == 1
+    assert logger.progress_sessions[0].transient is True
     translation.run_translation_export.assert_called_once_with(
         source=Translation.ExportSource.AUTO_ON_FINISH,
         apply_mtool_postprocess=False,
@@ -1142,7 +1153,6 @@ def test_start_continue_mode_handles_stop_and_failed_states(
     engine = create_engine(engine_status)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(translation_module, "TaskLimiter", FakeTaskLimiter)
     monkeypatch.setattr(translation_module, "PromptBuilder", FakePromptBuilder)
     monkeypatch.setattr(
@@ -1170,6 +1180,8 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         {"config": config, "mode": Base.TranslationMode.CONTINUE},
     )
 
+    assert len(logger.progress_sessions) == 1
+    assert logger.progress_sessions[0].transient is True
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == expected_final_status
@@ -1270,7 +1282,7 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
 
     Translation.start_translation_pipeline(
         translation,
-        progress=FakeProgressBar(),
+        progress=FakeProgressSession(),
         pid=3,
         task_limiter=FakeTaskLimiter(rps=1, rpm=0, max_concurrency=1),
         max_workers=2,
@@ -1289,7 +1301,6 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     translation = create_translation_stub()
     translation.config.mtool_optimizer_enable = True
     logger = FakeLogManager()
-    monkeypatch.setattr(translation_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(
         translation_module.LogManager, "get", staticmethod(lambda: logger)
     )
@@ -1311,6 +1322,9 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     Translation.mtool_optimizer_postprocess(translation, items)
 
     assert len(items) == 5
+    assert len(logger.progress_sessions) == 1
+    assert logger.progress_sessions[0].transient is True
+    assert len(logger.progress_sessions[0].updates) == 3
     assert any(value.get_src() == "a" for value in items[3:])
     assert any(value.get_src() == "b" for value in items[3:])
     assert logger.info_messages[-1] == "mtool_done"

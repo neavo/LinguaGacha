@@ -28,7 +28,6 @@ from module.Engine.Translation.TranslationScheduler import TranslationScheduler
 from module.Engine.Translation.TranslationTaskHooks import TranslationTaskHooks
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
 
 
@@ -437,8 +436,8 @@ class Translation(Base):
             if task_limiter is None:
                 return "FAILED"
 
-            with ProgressBar(transient=True) as progress:
-                pid = progress.new(
+            with LogManager.get().progress(transient=True) as progress:
+                pid = progress.new_task(
                     total=int(self.extras.get("total_line", 0) or 0),
                     completed=int(self.extras.get("line", 0) or 0),
                 )
@@ -621,7 +620,7 @@ class Translation(Base):
     def start_translation_pipeline(
         self,
         *,
-        progress: ProgressBar,
+        progress: LogManager.ProgressSession,
         pid: TaskID,
         task_limiter: TaskLimiter,
         max_workers: int,
@@ -661,10 +660,10 @@ class Translation(Base):
         # 筛选
         LogManager.get().print("")
         items_kvjson: list[Item] = []
-        with ProgressBar(transient=True) as progress:
-            pid = progress.new()
+        with LogManager.get().progress(transient=True) as progress:
+            pid = progress.new_task()
             for item in items:
-                progress.update(pid, advance=1, total=len(items))
+                progress.update_task(pid, advance=1, total=len(items))
                 if item.get_file_type() == Item.FileType.KVJSON:
                     items_kvjson.append(item)
 

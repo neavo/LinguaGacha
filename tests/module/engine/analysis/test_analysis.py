@@ -100,6 +100,8 @@ class FakeLogManager:
         self.error_messages: list[str] = []
         self.error_exceptions: list[BaseException | None] = []
         self.print_messages: list[str] = []
+        self.rich_messages: list[object] = []
+        self.progress_sessions: list["FakeProgressSession"] = []
 
     def info(self, msg: str, e: BaseException | None = None) -> None:
         del e
@@ -112,6 +114,14 @@ class FakeLogManager:
     def error(self, msg: str, e: BaseException | None = None) -> None:
         self.error_messages.append(msg)
         self.error_exceptions.append(e)
+
+    def print_rich(self, renderable: object) -> None:
+        self.rich_messages.append(renderable)
+
+    def progress(self, *, transient: bool) -> "FakeProgressSession":
+        session = FakeProgressSession(transient=transient)
+        self.progress_sessions.append(session)
+        return session
 
 
 def install_analysis_logger(
@@ -134,26 +144,23 @@ class ImmediateThread:
         self.target(*self.args)
 
 
-class FakeProgressBar:
-    instances: list["FakeProgressBar"] = []
-
+class FakeProgressSession:
     def __init__(self, transient: bool) -> None:
         self.transient = transient
         self.new_calls: list[dict[str, int]] = []
-        FakeProgressBar.instances.append(self)
 
-    def __enter__(self) -> "FakeProgressBar":
+    def __enter__(self) -> "FakeProgressSession":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         del exc_type, exc, tb
         return False
 
-    def new(self, total: int = 0, completed: int = 0) -> int:
+    def new_task(self, total: int = 0, completed: int = 0) -> int:
         self.new_calls.append({"total": total, "completed": completed})
         return 11
 
-    def update(self, task_id: int, **kwargs: int) -> None:
+    def update_task(self, task_id: int, **kwargs: int) -> None:
         del task_id, kwargs
 
 
@@ -572,7 +579,7 @@ def test_start_creates_progress_bar_for_pending_tasks(
 
     analysis = Analysis()
     config = build_start_config()
-    FakeProgressBar.instances = []
+    fake_logger = install_analysis_logger(monkeypatch)
     patch_start_runtime(
         monkeypatch,
         analysis,
@@ -585,7 +592,6 @@ def test_start_creates_progress_bar_for_pending_tasks(
             time_value=12.0,
         ),
     )
-    monkeypatch.setattr(analysis_module, "ProgressBar", FakeProgressBar)
     monkeypatch.setattr(
         analysis_module,
         "TaskLimiter",
@@ -616,9 +622,10 @@ def test_start_creates_progress_bar_for_pending_tasks(
 
     def fake_execute(task_contexts, max_workers: int) -> str:
         del task_contexts, max_workers
-        assert len(FakeProgressBar.instances) == 1
+        assert len(fake_logger.progress_sessions) == 1
         assert (
-            analysis.progress_tracker.console_progress is FakeProgressBar.instances[0]
+            analysis.progress_tracker.console_progress
+            is fake_logger.progress_sessions[0]
         )
         assert analysis.progress_tracker.console_progress_task_id == 11
         return "SUCCESS"
@@ -627,9 +634,9 @@ def test_start_creates_progress_bar_for_pending_tasks(
 
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
-    assert len(FakeProgressBar.instances) == 1
-    assert FakeProgressBar.instances[0].transient is True
-    assert FakeProgressBar.instances[0].new_calls == [{"total": 5, "completed": 2}]
+    assert len(fake_logger.progress_sessions) == 1
+    assert fake_logger.progress_sessions[0].transient is True
+    assert fake_logger.progress_sessions[0].new_calls == [{"total": 5, "completed": 2}]
     assert analysis.progress_tracker.console_progress is None
     assert analysis.progress_tracker.console_progress_task_id is None
 
@@ -660,11 +667,13 @@ def test_start_without_pending_tasks_skips_progress_bar(
         ),
     )
 
-    def fail_progress_bar(*args, **kwargs) -> FakeProgressBar:
+    def fail_progress(*args, **kwargs) -> FakeProgressSession:
         del args, kwargs
         raise AssertionError("没有待执行任务时不该创建进度条")
 
-    monkeypatch.setattr(analysis_module, "ProgressBar", fail_progress_bar)
+    fake_logger = FakeLogManager()
+    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: fake_logger)
+    fake_logger.progress = fail_progress
     monkeypatch.setattr(
         analysis_module.AnalysisTask,
         "log_run_finish",
