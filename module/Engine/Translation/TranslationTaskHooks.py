@@ -147,21 +147,32 @@ class TranslationTaskHooks:
             1 for item in task.items if item.get_status() == Base.ProjectStatus.ERROR
         )
 
-    def handle_commit_payload(
+    def handle_commit_payloads(
         self,
-        payload: TranslationCommitPayload,
+        payloads: tuple[TranslationCommitPayload, ...],
     ) -> TaskPipelineCommitResult[TaskContext]:
-        """翻译提交阶段继续沿用原有落库和进度更新语义。"""
-        retry_contexts = self.build_retry_contexts(
-            payload.context,
-            payload.task,
-            payload.result,
-        )
-        finalized_items = self.build_finalized_items(payload.task)
-        processed_count = self.build_processed_count(payload.task)
-        error_count = self.build_error_count(payload.task)
-        input_tokens = int(payload.result.get("input_tokens", 0) or 0)
-        output_tokens = int(payload.result.get("output_tokens", 0) or 0)
+        """翻译提交阶段按批次落库和发进度，减少热路径事务与事件频率。"""
+        retry_contexts: list[TaskContext] = []
+        finalized_items: list[dict[str, Any]] = []
+        processed_count = 0
+        error_count = 0
+        input_tokens = 0
+        output_tokens = 0
+
+        for payload in payloads:
+            retry_contexts.extend(
+                self.build_retry_contexts(
+                    payload.context,
+                    payload.task,
+                    payload.result,
+                )
+            )
+            finalized_items.extend(self.build_finalized_items(payload.task))
+            processed_count += self.build_processed_count(payload.task)
+            error_count += self.build_error_count(payload.task)
+            input_tokens += int(payload.result.get("input_tokens", 0) or 0)
+            output_tokens += int(payload.result.get("output_tokens", 0) or 0)
+
         extras_snapshot = self.translation.update_extras_snapshot(
             processed_count=processed_count,
             error_count=error_count,
@@ -174,7 +185,7 @@ class TranslationTaskHooks:
             extras_snapshot,
         )
         self.translation.update_pipeline_progress(extras_snapshot)
-        return TaskPipelineCommitResult(retry_contexts=retry_contexts)
+        return TaskPipelineCommitResult(retry_contexts=tuple(retry_contexts))
 
     def stop_engine_after_error(self, e: Exception) -> None:
         """框架级异常统一走同一收口，避免每个回调都重复停机逻辑。"""
@@ -190,9 +201,13 @@ class TranslationTaskHooks:
         del context
         self.stop_engine_after_error(e)
 
-    def on_commit_error(self, payload: TranslationCommitPayload, e: Exception) -> None:
+    def on_commit_error(
+        self,
+        payloads: tuple[TranslationCommitPayload, ...],
+        e: Exception,
+    ) -> None:
         """提交阶段异常会影响一致性，这里直接切到停止态。"""
-        del payload
+        del payloads
         self.stop_engine_after_error(e)
 
     def on_worker_loop_error(self, e: Exception) -> None:

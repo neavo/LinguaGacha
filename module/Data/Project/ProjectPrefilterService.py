@@ -203,6 +203,7 @@ class ProjectPrefilterService:
             "source_language": request.source_language,
             "target_language": request.target_language,
             "analysis_extras": {},
+            "analysis_candidate_count": 0,
         }
 
         with self.session.state_lock:

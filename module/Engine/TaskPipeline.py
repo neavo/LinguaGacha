@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import queue
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Generic
@@ -46,22 +47,28 @@ class TaskPipelineHooks(Protocol[ContextT, CommitPayloadT]):
 
     def run_context(self, context: ContextT) -> CommitPayloadT | None: ...
 
-    def handle_commit_payload(
+    def handle_commit_payloads(
         self,
-        payload: CommitPayloadT,
+        payloads: tuple[CommitPayloadT, ...],
     ) -> TaskPipelineCommitResult[ContextT]: ...
 
     def on_producer_error(self, e: Exception) -> None: ...
 
     def on_worker_error(self, context: ContextT, e: Exception) -> None: ...
 
-    def on_commit_error(self, payload: CommitPayloadT, e: Exception) -> None: ...
+    def on_commit_error(
+        self,
+        payloads: tuple[CommitPayloadT, ...],
+        e: Exception,
+    ) -> None: ...
 
     def on_worker_loop_error(self, e: Exception) -> None: ...
 
 
 class TaskPipeline(Generic[ContextT, CommitPayloadT]):
     """统一处理初始生产、优先队列调度、worker pool 和 commit loop。"""
+
+    MAX_COMMIT_BATCH_WAIT_MS: int = 250
 
     def __init__(
         self,
@@ -263,6 +270,28 @@ class TaskPipeline(Generic[ContextT, CommitPayloadT]):
             commit_queue_peak_length=self.commit_queue_peak_length,
         )
 
+    def collect_commit_batch(
+        self,
+        first_payload: CommitPayloadT,
+    ) -> tuple[CommitPayloadT, ...]:
+        """在轻微延迟窗口内聚合同批结果，降低提交侧事务频率。"""
+        payloads = [first_payload]
+        deadline = time.monotonic() + (self.MAX_COMMIT_BATCH_WAIT_MS / 1000)
+
+        while True:
+            try:
+                payloads.append(self.commit_queue.get_nowait())
+                continue
+            except queue.Empty:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return tuple(payloads)
+
+            try:
+                payloads.append(self.commit_queue.get(timeout=min(0.05, remaining)))
+            except queue.Empty:
+                return tuple(payloads)
+
     def commit_loop(self) -> TaskPipelineRunResult:
         """串行提交 worker 结果，并负责生成重试任务。"""
         committed_payload_count = 0
@@ -296,17 +325,19 @@ class TaskPipeline(Generic[ContextT, CommitPayloadT]):
                         )
                 continue
 
+            payload_batch = self.collect_commit_batch(payload)
             try:
-                commit_result = self.hooks.handle_commit_payload(payload)
-                committed_payload_count += 1
+                commit_result = self.hooks.handle_commit_payloads(payload_batch)
+                committed_payload_count += len(payload_batch)
                 failed = failed or commit_result.failed
                 stopped = stopped or commit_result.stopped
                 self.enqueue_retry_contexts(commit_result.retry_contexts)
             except Exception as e:
                 failed = True
-                self.hooks.on_commit_error(payload, e)
+                self.hooks.on_commit_error(payload_batch, e)
             finally:
-                self.dec_pending_commit()
+                for _ in payload_batch:
+                    self.dec_pending_commit()
 
     def drain_context_queues_on_stop(self) -> None:
         """停止时丢弃尚未执行的上下文，避免 commit loop 被队列卡住。"""

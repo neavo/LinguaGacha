@@ -101,6 +101,26 @@ class CreateProjectThread(QThread):
             self.finished_signal.emit(False, str(e))
 
 
+class OpenProjectThread(QThread):
+    """打开旧工程后台线程。"""
+
+    # 信号：(是否成功, 结果数据/错误信息)
+    finished_signal = Signal(bool, object)
+
+    def __init__(self, lg_path: str) -> None:
+        super().__init__()
+        self.lg_path = lg_path
+
+    def run(self) -> None:
+        try:
+            # 旧工程打开期间没有可复用的细粒度进度，只需要保证整段加载脱离 UI 线程。
+            DataManager.get().load_project(self.lg_path)
+            self.finished_signal.emit(True, None)
+        except Exception as e:
+            LogManager.get().error(f"Failed to open project: {self.lg_path}", e)
+            self.finished_signal.emit(False, str(e))
+
+
 class FileDisplayCard(CardWidget):
     """文件展示卡片基类"""
 
@@ -642,6 +662,7 @@ class ProjectPage(Base, ScrollArea):
         self.selected_source_path: str | None = None  # 新建工程时选中的源文件/目录
         self.selected_lg_path: str | None = None  # 打开工程时选中的 .lg 文件
         self.create_thread: CreateProjectThread | None = None  # 创建工程线程
+        self.open_thread: OpenProjectThread | None = None  # 打开工程线程
 
         # 主容器
         self.container = QWidget()
@@ -1040,34 +1061,8 @@ class ProjectPage(Base, ScrollArea):
         if path:
             self.on_lg_dropped(path)
 
-    def on_lg_dropped(self, path: str) -> None:
-        """lg 文件拖入"""
-        if not path.endswith(".lg"):
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().project_toast_invalid_lg,
-                },
-            )
-            return
-
-        if not os.path.exists(path):
-            # 文件不存在，提示移除
-            box = MessageBox(
-                Localizer.get().project_msg_file_not_found_title,
-                Localizer.get().project_msg_file_not_found_content.replace(
-                    "{PATH}", path
-                ),
-                self,
-            )
-            if box.exec():
-                config = Config().load()
-                config.remove_recent_project(path)
-                config.save()
-                self.refresh_recent_list()
-            return
-
+    def update_open_project_selection(self, path: str) -> None:
+        """更新打开工程卡片的选中态与预览信息。"""
         self.selected_lg_path = path
         self.open_btn.setEnabled(True)
 
@@ -1097,14 +1092,43 @@ class ProjectPage(Base, ScrollArea):
             1, self.selected_file_display
         )  # 插入到 drop_zone 位置 (index 1 after header)
 
-        # 显示项目详情
+        info = DataManager.get().get_project_preview(path)
+        self.project_info_panel = ProjectInfoPanel(self.open_project_card)
+        self.project_info_panel.set_info(info)
+        self.open_project_card.layout().insertWidget(
+            2, self.project_info_panel
+        )  # 插入到 selected_file_display 下方
+
+    def on_lg_dropped(self, path: str) -> None:
+        """lg 文件拖入"""
+        if not path.endswith(".lg"):
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().project_toast_invalid_lg,
+                },
+            )
+            return
+
+        if not os.path.exists(path):
+            # 文件不存在，提示移除
+            box = MessageBox(
+                Localizer.get().project_msg_file_not_found_title,
+                Localizer.get().project_msg_file_not_found_content.replace(
+                    "{PATH}", path
+                ),
+                self,
+            )
+            if box.exec():
+                config = Config().load()
+                config.remove_recent_project(path)
+                config.save()
+                self.refresh_recent_list()
+            return
+
         try:
-            info = DataManager.get().get_project_preview(path)
-            self.project_info_panel = ProjectInfoPanel(self.open_project_card)
-            self.project_info_panel.set_info(info)
-            self.open_project_card.layout().insertWidget(
-                2, self.project_info_panel
-            )  # 插入到 selected_file_display 下方
+            self.update_open_project_selection(path)
         except Exception as e:
             message = Localizer.get().project_error_read_preview.replace(
                 "{ERROR}", str(e)
@@ -1254,40 +1278,52 @@ class ProjectPage(Base, ScrollArea):
         if not self.selected_lg_path:
             return
 
-        try:
-            # 显示进度 Toast
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": Localizer.get().project_progress_loading,
-                    "indeterminate": True,
-                },
+        selected_lg_path = self.selected_lg_path
+        self.open_btn.setEnabled(False)
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "message": Localizer.get().project_progress_loading,
+                "indeterminate": True,
+            },
+        )
+
+        self.open_thread = OpenProjectThread(selected_lg_path)
+        self.open_thread.finished_signal.connect(
+            lambda success, result: self.on_open_finished(
+                selected_lg_path,
+                success,
+                result,
             )
+        )
+        # 确保线程完全退出后再由 Qt 回收对象，避免 QThread: Destroyed while thread is still running
+        self.open_thread.finished.connect(self.open_thread.deleteLater)
+        self.open_thread.start()
 
-            # 加载工程
-            DataManager.get().load_project(self.selected_lg_path)
+    def on_open_finished(self, path: str, success: bool, result: object) -> None:
+        """旧工程打开完成回调。"""
+        self.emit(
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.DONE},
+        )
+        self.open_thread = None
 
-            # 更新最近打开列表
+        if success:
+            # 打开成功后再更新最近项目，避免失败路径污染最近列表。
             config = Config().load()
-            name = Path(self.selected_lg_path).stem
-            config.add_recent_project(self.selected_lg_path, name)
+            name = Path(path).stem
+            config.add_recent_project(path, name)
             config.save()
-        except Exception as e:
-            LogManager.get().error(
-                f"Failed to load project: {self.selected_lg_path}", e
-            )
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().project_toast_load_fail.replace(
-                        "{ERROR}", str(e)
-                    ),
-                },
-            )
-        finally:
-            self.emit(
-                Base.Event.PROGRESS_TOAST,
-                {"sub_event": Base.SubEvent.DONE},
-            )
+            return
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.ERROR,
+                "message": Localizer.get().project_toast_load_fail.replace(
+                    "{ERROR}", str(result)
+                ),
+            },
+        )
+        self.open_btn.setEnabled(True)

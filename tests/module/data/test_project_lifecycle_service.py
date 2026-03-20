@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from base.BaseLanguage import BaseLanguage
+from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
@@ -97,9 +99,108 @@ def test_unload_project_closes_db_and_returns_old_path() -> None:
     session = ProjectSession()
     session.db = SimpleNamespace(close=MagicMock())
     session.lg_path = "demo.lg"
+    session.clear_all_caches = MagicMock()
     service = build_service(session)
 
     old_path = service.unload_project()
 
     assert old_path == "demo.lg"
-    session.db is None
+    assert session.db is None
+    assert session.lg_path is None
+    session.clear_all_caches.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("raw_mode", "legacy_enable", "expected"),
+    [
+        (None, False, TextPreserveMode.SMART.value),
+        ("invalid-mode", True, TextPreserveMode.CUSTOM.value),
+    ],
+)
+def test_migrate_text_preserve_mode_uses_legacy_switch_when_mode_invalid(
+    raw_mode: object,
+    legacy_enable: bool,
+    expected: str,
+) -> None:
+    session = ProjectSession()
+    session.db = build_fake_db()
+    session.meta_cache = {
+        "text_preserve_mode": raw_mode,
+        "text_preserve_enable": legacy_enable,
+    }
+    service = build_service(session)
+
+    service.migrate_text_preserve_mode_if_needed()
+
+    session.db.set_meta.assert_called_once_with("text_preserve_mode", expected)
+    assert session.meta_cache["text_preserve_mode"] == expected
+
+
+def test_migrate_text_preserve_mode_skips_when_mode_already_valid() -> None:
+    session = ProjectSession()
+    session.db = build_fake_db()
+    session.meta_cache = {"text_preserve_mode": TextPreserveMode.SMART.value}
+    service = build_service(session)
+
+    service.migrate_text_preserve_mode_if_needed()
+
+    session.db.set_meta.assert_not_called()
+
+
+def test_migrate_legacy_translation_prompt_marks_only_when_current_prompt_exists() -> (
+    None
+):
+    session = ProjectSession()
+    session.db = build_fake_db(current_translation_prompt="  现有提示词  ")
+    service = build_service(session)
+
+    service.migrate_legacy_translation_prompt_text_once()
+
+    session.db.set_rule_text.assert_not_called()
+    session.db.set_meta.assert_called_once_with(
+        LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
+        True,
+    )
+    assert session.meta_cache[LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY] is True
+
+
+def test_get_first_available_legacy_translation_prompt_prefers_current_ui_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = ProjectSession()
+    service = build_service(session)
+    db = build_fake_db(
+        legacy_prompt_zh="旧中文提示词",
+        legacy_prompt_en="Old English Prompt",
+    )
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectLifecycleService.Localizer.get_app_language",
+        lambda: BaseLanguage.Enum.EN,
+    )
+
+    prompt = service.get_first_available_legacy_translation_prompt(db)
+
+    assert prompt == "Old English Prompt"
+
+
+def test_migrate_legacy_translation_prompt_uses_fallback_and_marks_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = ProjectSession()
+    session.db = build_fake_db(legacy_prompt_zh="旧中文提示词")
+    service = build_service(session)
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectLifecycleService.Localizer.get_app_language",
+        lambda: BaseLanguage.Enum.ZH,
+    )
+
+    service.migrate_legacy_translation_prompt_text_once()
+
+    session.db.set_rule_text.assert_called_once_with(
+        LGDatabase.RuleType.TRANSLATION_PROMPT,
+        "旧中文提示词",
+    )
+    session.db.set_meta.assert_called_once_with(
+        LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
+        True,
+    )

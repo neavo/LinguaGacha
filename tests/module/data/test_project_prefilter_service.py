@@ -150,6 +150,7 @@ def test_pop_pending_request_mark_handled_and_finish_worker_reset_runtime_flags(
 def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> None:
     service, session = build_service()
     items = [Item(id=1, src="A"), Item(id=2, src="B")]
+    session.meta_cache["analysis_candidate_count"] = 7
 
     expected_result = ProjectPrefilterResult(
         stats=ProjectPrefilterStats(
@@ -181,6 +182,7 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
     assert result == expected_result
     assert session.meta_cache["prefilter_config"] == expected_result.prefilter_config
     assert session.meta_cache["analysis_extras"] == {}
+    assert session.meta_cache["analysis_candidate_count"] == 0
     session.db.delete_analysis_item_checkpoints.assert_called_once()
     assert "analysis_term_pool" not in session.meta_cache
 

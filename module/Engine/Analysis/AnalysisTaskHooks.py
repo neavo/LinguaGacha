@@ -91,47 +91,71 @@ class AnalysisTaskHooks:
 
         return self.start_task(context)
 
-    def handle_commit_payload(
+    def handle_commit_payloads(
         self,
-        payload: AnalysisCommitPayload,
+        payloads: tuple[AnalysisCommitPayload, ...],
     ) -> TaskPipelineCommitResult[AnalysisTaskContext]:
-        """分析提交阶段统一负责落库、重试和进度节流。"""
+        """分析提交阶段统一按批次落库、重试和触发进度节流。"""
         scheduler = self.analysis.scheduler
         if scheduler is None:
             return TaskPipelineCommitResult(failed=True)
 
         tracker = self.analysis.progress_tracker
-        result = payload.result
-        tracker.update_extras_after_result(result)
-        tracker.mark_progress_dirty()
-        commit_result: TaskPipelineCommitResult[AnalysisTaskContext]
+        retry_contexts: list[AnalysisTaskContext] = []
+        success_checkpoints: list[dict[str, object]] = []
+        error_checkpoints: list[dict[str, object]] = []
+        glossary_entries: list[dict[str, object]] = []
+        failed = False
+        stopped = False
+        total_input_tokens = 0
+        total_output_tokens = 0
 
-        if result.success:
-            tracker.update_runtime_counts_after_success(result)
-            DataManager.get().commit_analysis_task_result(
-                checkpoints=scheduler.build_processed_checkpoints(result.context),
-                glossary_entries=list(result.glossary_entries),
-                progress_snapshot=None,
-            )
-            commit_result = TaskPipelineCommitResult()
-        elif result.stopped:
-            commit_result = TaskPipelineCommitResult(stopped=True)
-        else:
+        for payload in payloads:
+            result = payload.result
+            total_input_tokens += result.input_tokens
+            total_output_tokens += result.output_tokens
+
+            if result.success:
+                tracker.update_runtime_counts_after_success(result)
+                success_checkpoints.extend(
+                    scheduler.build_processed_checkpoints(result.context)
+                )
+                glossary_entries.extend(list(result.glossary_entries))
+                continue
+
+            if result.stopped:
+                stopped = True
+                continue
+
             retry_context = scheduler.create_retry_task_context(result.context)
             if retry_context is not None:
-                commit_result = TaskPipelineCommitResult(
-                    retry_contexts=(retry_context,)
-                )
-            else:
-                tracker.update_runtime_counts_after_error(result.context)
-                DataManager.get().update_analysis_task_error(
-                    scheduler.build_error_checkpoints(result.context),
-                    progress_snapshot=None,
-                )
-                commit_result = TaskPipelineCommitResult(failed=True)
+                retry_contexts.append(retry_context)
+                continue
+
+            tracker.update_runtime_counts_after_error(result.context)
+            error_checkpoints.extend(scheduler.build_error_checkpoints(result.context))
+            failed = True
+
+        tracker.update_extras_after_batch(
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+        )
+        tracker.mark_progress_dirty(commit_count=len(payloads))
+
+        if success_checkpoints or error_checkpoints or glossary_entries:
+            DataManager.get().commit_analysis_task_batch(
+                success_checkpoints=success_checkpoints,
+                error_checkpoints=error_checkpoints,
+                glossary_entries=glossary_entries,
+                progress_snapshot=None,
+            )
 
         tracker.sync_progress_snapshot_after_commit(force=False)
-        return commit_result
+        return TaskPipelineCommitResult(
+            retry_contexts=tuple(retry_contexts),
+            failed=failed,
+            stopped=stopped,
+        )
 
     def stop_engine_after_error(self, e: Exception) -> None:
         """框架级异常统一走同一收口，避免每个回调都重复停机逻辑。"""
@@ -147,9 +171,13 @@ class AnalysisTaskHooks:
         del context
         self.stop_engine_after_error(e)
 
-    def on_commit_error(self, payload: AnalysisCommitPayload, e: Exception) -> None:
+    def on_commit_error(
+        self,
+        payloads: tuple[AnalysisCommitPayload, ...],
+        e: Exception,
+    ) -> None:
         """提交阶段异常会影响一致性，这里直接切到停止态。"""
-        del payload
+        del payloads
         self.stop_engine_after_error(e)
 
     def on_worker_loop_error(self, e: Exception) -> None:

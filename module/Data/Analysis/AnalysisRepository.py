@@ -14,6 +14,8 @@ from module.Data.Storage.LGDatabase import LGDatabase
 class AnalysisRepository:
     """承接分析专用表读写和事务内 meta 同步。"""
 
+    ANALYSIS_CANDIDATE_COUNT_META_KEY: str = "analysis_candidate_count"
+
     def __init__(
         self,
         session: ProjectSession,
@@ -39,6 +41,75 @@ class AnalysisRepository:
         db.upsert_meta_entries({"analysis_extras": persisted_snapshot}, conn=conn)
         self.session.meta_cache["analysis_extras"] = dict(persisted_snapshot)
         return persisted_snapshot
+
+    def persist_analysis_candidate_count_with_db(
+        self,
+        db: LGDatabase,
+        conn: sqlite3.Connection,
+        count: int,
+    ) -> int:
+        """候选术语数缓存和候选池提交同事务写回，避免项目检查读到旧值。"""
+        normalized_count = max(0, int(count))
+        db.upsert_meta_entries(
+            {self.ANALYSIS_CANDIDATE_COUNT_META_KEY: normalized_count},
+            conn=conn,
+        )
+        self.session.meta_cache[self.ANALYSIS_CANDIDATE_COUNT_META_KEY] = (
+            normalized_count
+        )
+        return normalized_count
+
+    def get_cached_analysis_candidate_count_or_none(self) -> int | None:
+        """区分缓存缺失和真实 0，避免旧工程首轮增量提交丢掉历史候选数。"""
+        if self.ANALYSIS_CANDIDATE_COUNT_META_KEY not in self.session.meta_cache:
+            return None
+
+        raw_value = self.session.meta_cache.get(self.ANALYSIS_CANDIDATE_COUNT_META_KEY)
+        try:
+            return max(0, int(raw_value))
+        except (TypeError, ValueError):
+            return None
+
+    def count_candidate_entries(
+        self,
+        aggregate_map: dict[str, dict[str, Any]],
+    ) -> int:
+        """只统计可导出的候选项，保持和 UI 展示口径一致。"""
+        return sum(
+            1
+            for src, entry in aggregate_map.items()
+            if self.candidate_service.build_glossary_entry_from_candidate(src, entry)
+        )
+
+    def clone_candidate_aggregate_map(
+        self,
+        aggregate_map: dict[str, dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """事务内合并前先复制一份可变聚合，避免意外改脏原快照。"""
+        return {
+            src: {
+                "src": entry["src"],
+                "dst_votes": dict(entry["dst_votes"]),
+                "info_votes": dict(entry["info_votes"]),
+                "observation_count": int(entry["observation_count"]),
+                "first_seen_at": entry["first_seen_at"],
+                "last_seen_at": entry["last_seen_at"],
+                "case_sensitive": bool(entry["case_sensitive"]),
+                "first_seen_index": int(entry.get("first_seen_index", 0)),
+            }
+            for src, entry in aggregate_map.items()
+        }
+
+    def build_full_candidate_count_with_db(
+        self,
+        db: LGDatabase,
+        conn: sqlite3.Connection,
+    ) -> int:
+        """候选数缓存缺失时回表重建一次真实基线，保证后续增量修正有依据。"""
+        aggregate_map = self.candidate_service.normalize_candidate_aggregate_rows(
+            db.get_analysis_candidate_aggregates(conn=conn)
+        )
+        return self.count_candidate_entries(aggregate_map)
 
     def get_item_checkpoints(self) -> dict[int, dict[str, Any]]:
         """返回条目级检查点快照。"""
@@ -118,14 +189,15 @@ class AnalysisRepository:
 
         return self.get_candidate_aggregate()
 
-    def commit_task_result(
+    def commit_task_batch(
         self,
         *,
-        checkpoints: list[dict[str, Any]],
+        success_checkpoints: list[dict[str, Any]],
+        error_checkpoints: list[dict[str, Any]],
         glossary_entries: list[dict[str, Any]],
         progress_snapshot: dict[str, Any] | None,
     ) -> int:
-        """原子提交单个分析任务结果。"""
+        """原子提交一批分析任务结果，并同步候选计数缓存。"""
 
         now = datetime.now().isoformat()
         normalized_glossary_entries = (
@@ -134,8 +206,10 @@ class AnalysisRepository:
                 created_at=now,
             )
         )
-        normalized_checkpoints = (
-            self.progress_service.normalize_item_checkpoint_upsert_rows(checkpoints)
+        normalized_success_checkpoints = (
+            self.progress_service.normalize_item_checkpoint_upsert_rows(
+                success_checkpoints
+            )
         )
 
         with self.session.state_lock:
@@ -145,17 +219,28 @@ class AnalysisRepository:
 
             with db.connection() as conn:
                 inserted_count = len(normalized_glossary_entries)
+                cached_candidate_count = (
+                    self.get_cached_analysis_candidate_count_or_none()
+                )
+                next_candidate_count = (
+                    cached_candidate_count
+                    if cached_candidate_count is not None
+                    else self.build_full_candidate_count_with_db(db, conn)
+                )
                 touched_srcs = sorted(
                     {entry["src"] for entry in normalized_glossary_entries}
                 )
                 if touched_srcs:
-                    aggregate_map = (
+                    existing_aggregate_map = (
                         self.candidate_service.normalize_candidate_aggregate_rows(
                             db.get_analysis_candidate_aggregates_by_srcs(
                                 touched_srcs,
                                 conn=conn,
                             )
                         )
+                    )
+                    aggregate_map = self.clone_candidate_aggregate_map(
+                        existing_aggregate_map
                     )
                     self.candidate_service.merge_glossary_entries_into_candidate_aggregates(
                         normalized_glossary_entries,
@@ -168,21 +253,63 @@ class AnalysisRepository:
                         ),
                         conn=conn,
                     )
+                    next_candidate_count = max(
+                        0,
+                        next_candidate_count
+                        - self.count_candidate_entries(existing_aggregate_map)
+                        + self.count_candidate_entries(aggregate_map),
+                    )
 
-                if normalized_checkpoints:
+                if normalized_success_checkpoints:
                     db.upsert_analysis_item_checkpoints(
-                        normalized_checkpoints,
+                        normalized_success_checkpoints,
                         conn=conn,
                     )
+
+                if error_checkpoints:
+                    existing_checkpoints = (
+                        self.progress_service.normalize_item_checkpoint_rows(
+                            db.get_analysis_item_checkpoints(conn=conn)
+                        )
+                    )
+                    error_rows, _updated_checkpoints = (
+                        self.progress_service.build_error_checkpoint_rows(
+                            error_checkpoints,
+                            existing_checkpoints,
+                            updated_at=now,
+                        )
+                    )
+                    if error_rows:
+                        db.upsert_analysis_item_checkpoints(error_rows, conn=conn)
 
                 self.persist_progress_snapshot_with_db(
                     db,
                     conn,
                     progress_snapshot,
                 )
+                self.persist_analysis_candidate_count_with_db(
+                    db,
+                    conn,
+                    next_candidate_count,
+                )
                 conn.commit()
 
         return inserted_count
+
+    def commit_task_result(
+        self,
+        *,
+        checkpoints: list[dict[str, Any]],
+        glossary_entries: list[dict[str, Any]],
+        progress_snapshot: dict[str, Any] | None,
+    ) -> int:
+        """兼容旧入口，内部统一转到新的批量提交实现。"""
+        return self.commit_task_batch(
+            success_checkpoints=checkpoints,
+            error_checkpoints=[],
+            glossary_entries=glossary_entries,
+            progress_snapshot=progress_snapshot,
+        )
 
     def clear_progress(self) -> None:
         """清空分析快照、检查点和候选池。"""
@@ -195,6 +322,7 @@ class AnalysisRepository:
                 db.delete_analysis_item_checkpoints(conn=conn)
                 db.clear_analysis_candidate_aggregates(conn=conn)
                 self.persist_progress_snapshot_with_db(db, conn, {})
+                self.persist_analysis_candidate_count_with_db(db, conn, 0)
                 conn.commit()
 
     def reset_failed_checkpoints(self) -> int:

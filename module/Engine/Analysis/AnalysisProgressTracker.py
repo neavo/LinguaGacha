@@ -70,11 +70,23 @@ class AnalysisProgressTracker:
 
     def update_extras_after_result(self, result: AnalysisTaskResult) -> None:
         """token 统计统一在这里累加，避免成功和失败分支各写一遍。"""
-        total_input_tokens = (
-            self.get_extra_int("total_input_tokens") + result.input_tokens
+        self.update_extras_after_batch(
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
         )
-        total_output_tokens = (
-            self.get_extra_int("total_output_tokens") + result.output_tokens
+
+    def update_extras_after_batch(
+        self,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> None:
+        """批次提交时一次性累计 token，降低热路径重复读写 extras。"""
+        total_input_tokens = self.get_extra_int("total_input_tokens") + int(
+            input_tokens
+        )
+        total_output_tokens = self.get_extra_int("total_output_tokens") + int(
+            output_tokens
         )
         self.set_extra_int("total_input_tokens", total_input_tokens)
         self.set_extra_int("total_output_tokens", total_output_tokens)
@@ -109,26 +121,17 @@ class AnalysisProgressTracker:
         )
         return TaskProgressSnapshot.from_dict(normalized)
 
-    def reconcile_progress_snapshot(
-        self,
-        snapshot: TaskProgressSnapshot,
-    ) -> TaskProgressSnapshot:
-        """只在边界阶段回库校准一次，保证最终快照和 checkpoint 口径一致。"""
+    def refresh_progress_snapshot_cache(self) -> TaskProgressSnapshot:
+        """在低频边界显式全量校准，并把最新快照回收到控制器。"""
         dm = DataManager.get()
         if not dm.is_loaded():
-            return snapshot
+            return self.build_runtime_progress_snapshot()
 
-        status_summary = dm.get_analysis_status_summary()
-        reconciled = snapshot.with_counts(
-            total_line=int(status_summary.get("total_line", 0) or 0),
-            processed_line=int(
-                status_summary.get("processed_line", snapshot.processed_line) or 0
-            ),
-            error_line=int(status_summary.get("error_line", snapshot.error_line) or 0),
-            line=int(status_summary.get("line", 0) or 0),
+        refreshed_snapshot = TaskProgressSnapshot.from_dict(
+            dm.refresh_analysis_progress_snapshot_cache()
         )
-        normalized = dm.normalize_analysis_progress_snapshot(reconciled.to_dict())
-        return TaskProgressSnapshot.from_dict(normalized)
+        self.analysis.set_progress_snapshot(refreshed_snapshot)
+        return refreshed_snapshot
 
     def update_runtime_counts_after_success(self, result: AnalysisTaskResult) -> None:
         """成功后先更新内存计数，再把一致快照交给数据层提交。"""
@@ -166,10 +169,10 @@ class AnalysisProgressTracker:
             )
         self.sync_runtime_line_stats()
 
-    def mark_progress_dirty(self) -> None:
+    def mark_progress_dirty(self, *, commit_count: int = 1) -> None:
         """有新结果进入提交环节后标记脏状态，供节流持久化判断。"""
         self.progress_dirty = True
-        self.pending_progress_commit_count += 1
+        self.pending_progress_commit_count += max(1, int(commit_count))
 
     def should_persist_progress_now(self) -> bool:
         """按批次或时间片持久化运行态快照，减少热路径写库频率。"""
@@ -193,21 +196,30 @@ class AnalysisProgressTracker:
     def sync_progress_snapshot_after_commit(self, *, force: bool) -> dict[str, Any]:
         """运行中默认只发事件，命中节流条件或收尾时再真正写库。"""
         save_state = force or self.should_persist_progress_now()
-        snapshot = self.persist_progress_snapshot(save_state=save_state)
+        snapshot = self.persist_progress_snapshot(
+            save_state=save_state,
+            refresh_cache=force,
+        )
         if save_state:
             self.clear_progress_dirty_state()
         return snapshot
 
-    def persist_progress_snapshot(self, save_state: bool) -> dict[str, Any]:
-        """分析进度统一经由这个入口发事件；只有边界阶段才真正回库校准。"""
+    def persist_progress_snapshot(
+        self,
+        save_state: bool,
+        *,
+        refresh_cache: bool = False,
+    ) -> dict[str, Any]:
+        """分析进度统一经由这个入口发事件；普通保存只写缓存，边界阶段再显式校准。"""
         snapshot = self.build_runtime_progress_snapshot()
         if save_state:
             dm = DataManager.get()
-            snapshot = self.reconcile_progress_snapshot(snapshot)
             if dm.is_loaded():
                 snapshot = TaskProgressSnapshot.from_dict(
                     dm.update_analysis_progress_snapshot(snapshot.to_dict())
                 )
+        if refresh_cache:
+            snapshot = self.refresh_progress_snapshot_cache()
 
         snapshot_dict = self.analysis.set_progress_snapshot(snapshot)
         self.update_console_progress(snapshot_dict)

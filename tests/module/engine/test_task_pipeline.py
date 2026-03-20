@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Iterator
 
 from module.Engine.TaskPipeline import TaskPipeline
@@ -29,15 +31,17 @@ class FakeHooks:
     def run_context(self, context: int) -> int | None:
         return context
 
-    def handle_commit_payload(
+    def handle_commit_payloads(
         self,
-        payload: int,
+        payloads: tuple[int, ...],
     ) -> TaskPipelineCommitResult[int]:
-        self.committed_payloads.append(payload)
-        if payload in self.retry_once_payloads:
-            self.retry_once_payloads.remove(payload)
-            return TaskPipelineCommitResult(retry_contexts=(payload + 100,))
-        return TaskPipelineCommitResult()
+        retry_contexts: list[int] = []
+        for payload in payloads:
+            self.committed_payloads.append(payload)
+            if payload in self.retry_once_payloads:
+                self.retry_once_payloads.remove(payload)
+                retry_contexts.append(payload + 100)
+        return TaskPipelineCommitResult(retry_contexts=tuple(retry_contexts))
 
     def on_producer_error(self, e: Exception) -> None:
         raise e
@@ -45,7 +49,8 @@ class FakeHooks:
     def on_worker_error(self, context: int, e: Exception) -> None:
         self.worker_errors.append((context, e))
 
-    def on_commit_error(self, payload: int, e: Exception) -> None:
+    def on_commit_error(self, payloads: tuple[int, ...], e: Exception) -> None:
+        del payloads
         raise e
 
     def on_worker_loop_error(self, e: Exception) -> None:
@@ -96,6 +101,26 @@ def test_task_pipeline_run_end_to_end_requeues_high_priority_retry() -> None:
     assert result.stopped is False
     assert result.committed_payload_count == 2
     assert result.commit_queue_peak_length >= 1
+
+
+def test_task_pipeline_collect_commit_batch_waits_for_following_payloads() -> None:
+    hooks = FakeHooks()
+    pipeline = build_task_pipeline(hooks)
+    pipeline.commit_queue.put(1)
+
+    def enqueue_later() -> None:
+        time.sleep(0.02)
+        pipeline.commit_queue.put(2)
+
+    thread = threading.Thread(target=enqueue_later)
+    thread.start()
+    try:
+        first_payload = pipeline.commit_queue.get(timeout=0.1)
+        batch = pipeline.collect_commit_batch(first_payload)
+    finally:
+        thread.join()
+
+    assert batch == (1, 2)
 
 
 def test_task_pipeline_commit_loop_drains_contexts_when_stopping() -> None:
