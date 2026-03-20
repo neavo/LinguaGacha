@@ -94,7 +94,10 @@ class LocalizerEN(LocalizerZH):
     search_regex_btn: str = "Regex"
     search_match_info: str = "Item {current} of {total}"
     search_no_result: str = "No results"
+    shortcut_ctrl_f: str = "Ctrl+F"
+    shortcut_ctrl_h: str = "Ctrl+H"
     shortcut_ctrl_s: str = "Ctrl+S"
+    shortcut_enter: str = "Enter"
 
     # 主页面
     app_close_message_box: str = "Are you sure you want to exit the application …?"

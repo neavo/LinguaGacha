@@ -178,6 +178,10 @@ class SearchCard(CardWidget):
         self.line_edit.setPlaceholderText(Localizer.get().placeholder)
         self.line_edit.setClearButtonEnabled(True)
         self.line_edit.textChanged.connect(self.update_replace_action_state)
+        self.install_shortcut_tooltip(
+            self.get_search_line_button(),
+            Localizer.get().shortcut_enter,
+        )
         self.root.addWidget(self.line_edit)
 
         # 4. 导航按钮
@@ -246,6 +250,10 @@ class SearchCard(CardWidget):
             self,
         )
         self.replace_btn.setIcon(ICON_REPLACE)
+        self.install_shortcut_tooltip(
+            self.replace_btn,
+            Localizer.get().shortcut_ctrl_h,
+        )
 
         self.replace_all_btn = TransparentPushButton(
             Localizer.get().proofreading_page_replace_all_btn,
@@ -272,6 +280,22 @@ class SearchCard(CardWidget):
         # 除信息文本外，其余控件都贴左布局；仅把信息文本推到最右侧。
         self.root.addStretch(1)
         self.root.addWidget(self.match_label)
+
+    def install_shortcut_tooltip(self, widget: QWidget | None, shortcut: str) -> None:
+        """统一给搜索栏内部按钮安装 qfluent 风格快捷键提示。"""
+        if widget is None:
+            return
+        widget.setToolTip(shortcut)
+        widget.installEventFilter(ToolTipFilter(widget, 300, ToolTipPosition.TOP))
+
+    def get_search_line_button(self) -> QWidget | None:
+        """兼容 SearchLineEdit 不同版本的 searchButton 访问方式。"""
+        search_button = getattr(self.line_edit, "searchButton", None)
+        if callable(search_button):
+            search_button = search_button()
+        if isinstance(search_button, QWidget):
+            return search_button
+        return None
 
     def add_right_widget(self, widget: QWidget) -> None:
         self.right_layout.addWidget(widget)
