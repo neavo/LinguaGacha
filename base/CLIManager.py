@@ -322,8 +322,6 @@ class CLIManager(Base):
             analysis_prompt_enable = True
             analysis_prompt = selected_analysis_prompt
 
-        glossary_src_set = {str(v.get("src", "")).strip() for v in glossary_entries}
-
         return QualityRuleSnapshot(
             glossary_enable=glossary_enable,
             text_preserve_mode=text_preserve_mode,
@@ -337,7 +335,6 @@ class CLIManager(Base):
             analysis_prompt_enable=analysis_prompt_enable,
             analysis_prompt=analysis_prompt,
             glossary_entries=glossary_entries,
-            glossary_src_set=glossary_src_set,
         )
 
     def build_parser(self) -> argparse.ArgumentParser:
