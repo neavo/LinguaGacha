@@ -10,9 +10,15 @@
 - GET /health
 
 请求行为（与 LinguaGacha 的提示词结构匹配）
-- 从请求 JSON 的 messages 中取“最后一个 role=user”的 content 文本。
-- 在该文本中提取“最后一个” ```jsonline 代码块（避免命中提示词里“输出格式示例”的代码块）。
-- 按输入 JSONLINE 的行数/序号，返回同等行数的随机文本 JSONLINE（放在 assistant.content 内）。
+- `--task translation`（默认）：
+  - 从请求 JSON 的 messages 中取“最后一个 role=user”的 content 文本。
+  - 在该文本中提取“最后一个” ```jsonline 代码块（避免命中提示词里“输出格式示例”的代码块）。
+  - 按输入 JSONLINE 的行数/序号，返回同等行数的随机文本 JSONLINE（放在 assistant.content 内）。
+- `--task analysis`：
+  - 从请求 JSON 的 messages 中取“最后一个 role=user”的 content 文本。
+  - 提取 `输入：` / `Input:` 之后的纯文本原文。
+  - 为每行原文最多生成 1 条模拟术语，返回分析任务使用的 JSONLINE。
+  - 若没有可提取术语，则返回 `<why>当前文本没有稳定术语</why>` + 空 JSONLINE。
 
 网络抖动
 - 每个请求模拟抖动（默认 2~20 秒，可通过 --min-jitter/--max-jitter 调整）；
@@ -36,6 +42,16 @@
      -H "Content-Type: application/json" \
      -d '{"model":"mock-llm","stream":true,"messages":[{"role":"user","content":"Input:\n```jsonline\n{\"0\":\"a\"}\n{\"1\":\"b\"}\n```\n"}]}'
 
+5) curl 验证（分析任务，非流式）
+   curl -s http://127.0.0.1:8000/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model":"mock-llm","messages":[{"role":"user","content":"输入：\n圣女艾琳在教堂祈祷。\n霜之哀伤正在发光。"}]}'
+
+6) curl 验证（分析任务，流式）
+   curl -N http://127.0.0.1:8000/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model":"mock-llm","stream":true,"messages":[{"role":"user","content":"输入：\n圣女艾琳在教堂祈祷。\n霜之哀伤正在发光。"}]}'
+
 并发提示
 - 需要更高并发（比如 2000+）时：优先调大 --backlog。
 - 流式场景可调大 --stream-chunk-lines（每个 SSE chunk 携带更多 JSONLINE 行），降低消息数量与开销。
@@ -47,6 +63,8 @@
    uv run python buildtools/mock_llm_api_server.py --min-jitter 0.2 --max-jitter 1.0
 - 固定随机种子（输出可复现）
    uv run python buildtools/mock_llm_api_server.py --seed 12345
+- 切到分析任务模式
+   uv run python buildtools/mock_llm_api_server.py --task analysis
 - 调整日志级别（排查协议/边界问题）
    uv run python buildtools/mock_llm_api_server.py --log-level DEBUG
 
@@ -65,6 +83,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -114,6 +133,26 @@ STATUS_REASON: dict[int, str] = {
     431: "Request Header Fields Too Large",
     500: "Internal Server Error",
 }
+
+TASK_TRANSLATION: str = "translation"
+TASK_ANALYSIS: str = "analysis"
+ANALYSIS_EMPTY_RESULT: str = "<why>当前文本没有稳定术语</why>\n```jsonline\n\n```\n"
+ANALYSIS_INPUT_PREFIXES: tuple[str, ...] = ("输入：", "Input:")
+ANALYSIS_TERM_TYPES: tuple[str, ...] = (
+    "男性人名",
+    "女性人名",
+    "未知性别人名",
+    "地名",
+    "组织",
+    "特殊物品",
+    "特殊技能",
+    "特殊生物",
+    "其他",
+)
+ANALYSIS_LATIN_TERM_PATTERN: re.Pattern[str] = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+ANALYSIS_CJK_TERM_PATTERN: re.Pattern[str] = re.compile(
+    r"[A-Za-z0-9\u3040-\u30ff\u4e00-\u9fff]{2,}"
+)
 
 
 def build_openai_error(
@@ -224,6 +263,44 @@ def parse_jsonline_keys(jsonline_payload: str) -> list[str]:
     return keys
 
 
+def extract_analysis_input_text(text: str) -> str:
+    """提取分析任务的输入正文。
+
+    为什么用最后一个前缀：
+    - system/user 拼接后的提示词里可能多次出现 “输入：/Input:”
+    - 真正的任务正文通常在最后一个标记之后
+    """
+
+    last_index = -1
+    selected_prefix = ""
+    for prefix in ANALYSIS_INPUT_PREFIXES:
+        current_index = text.rfind(prefix)
+        if current_index > last_index:
+            last_index = current_index
+            selected_prefix = prefix
+
+    if last_index < 0:
+        return text.strip()
+
+    payload = text[last_index + len(selected_prefix) :]
+    return payload.lstrip("\r\n").strip()
+
+
+def parse_analysis_input_lines(text: str) -> list[str]:
+    """按行规整分析输入，避免空白和代码块标记污染 mock 结果。"""
+
+    payload = extract_analysis_input_text(text)
+    normalized_lines: list[str] = []
+    for raw_line in payload.splitlines():
+        line = raw_line.strip()
+        if line == "":
+            continue
+        if line.startswith("```"):
+            continue
+        normalized_lines.append(line)
+    return normalized_lines
+
+
 def generate_random_text(
     rng: random.Random, *, min_words: int = 4, max_words: int = 10
 ) -> str:
@@ -276,12 +353,112 @@ def generate_random_text(
     return " ".join(rng.choice(vocabulary) for _ in range(word_count))
 
 
+def choose_analysis_term_type(src_text: str) -> str:
+    """分析术语类型按文本哈希稳定映射，保证相同输入可复现。"""
+
+    digest = hashlib.blake2b(src_text.encode("utf-8"), digest_size=2).digest()
+    index = int.from_bytes(digest, byteorder="big", signed=False)
+    return ANALYSIS_TERM_TYPES[index % len(ANALYSIS_TERM_TYPES)]
+
+
+def extract_analysis_term_source(line: str) -> str | None:
+    """从原文行中取第一个较长连续词段，模拟术语抽取结果。"""
+
+    for pattern in (ANALYSIS_LATIN_TERM_PATTERN, ANALYSIS_CJK_TERM_PATTERN):
+        match = pattern.search(line)
+        if match is None:
+            continue
+
+        candidate = match.group(0).strip("【】「」『』（）()[]<>")
+        if len(candidate) < 2:
+            continue
+        if len(candidate) > 6:
+            candidate = candidate[:6]
+        if candidate.isdigit():
+            continue
+        return candidate
+
+    return None
+
+
+def build_analysis_term_target(src_text: str, rng: random.Random) -> str:
+    """目标术语需要稳定且与原文不同，避免被分析链路当作无效同形词。"""
+
+    if src_text.isascii():
+        return "Mock-" + src_text.title()
+    return "译" + src_text + "-" + rng.choice(("A", "B", "C"))
+
+
 def build_jsonline_response(keys: list[str], rng: random.Random) -> str:
     lines: list[str] = ["```jsonline"]
     for key in keys:
         text = generate_random_text(rng)
         lines.append(json.dumps({key: text}, ensure_ascii=False, separators=(",", ":")))
     lines.append("```")
+    return "\n".join(lines) + "\n"
+
+
+def resolve_translation_response_keys(request_text: str) -> list[str]:
+    """翻译模式统一解析输入 key，避免流式与非流式逻辑各维护一份。"""
+
+    jsonline_payload = extract_jsonline_block(request_text)
+    keys = parse_jsonline_keys(jsonline_payload)
+    if not keys:
+        non_empty_lines = [v for v in jsonline_payload.splitlines() if v.strip()]
+        if non_empty_lines:
+            keys = [str(i) for i in range(len(non_empty_lines))]
+        else:
+            # 兜底：没有解析到输入 JSONLINE 时，仍然返回 1 行，避免调用方卡死。
+            keys = ["0"]
+
+    return keys
+
+
+def build_translation_response_content(request_text: str, rng: random.Random) -> str:
+    """翻译模式继续沿用按输入 key 数量回填随机 JSONLINE 的旧语义。"""
+
+    keys = resolve_translation_response_keys(request_text)
+    return build_jsonline_response(keys, rng)
+
+
+def build_translation_stream_chunks(
+    request_text: str,
+    rng: random.Random,
+    chunk_lines: int,
+) -> list[str]:
+    """流式翻译模式保留原有按 JSONLINE 行分块的行为。"""
+
+    keys = resolve_translation_response_keys(request_text)
+    return build_stream_content_chunks(keys, rng, chunk_lines)
+
+
+def build_analysis_response_content(request_text: str, rng: random.Random) -> str:
+    """分析模式只模拟数据形状，不试图复刻真实术语抽取能力。"""
+
+    lines = parse_analysis_input_lines(request_text)
+    glossary_lines: list[str] = []
+
+    for line in lines:
+        src_text = extract_analysis_term_source(line)
+        if src_text is None:
+            continue
+
+        glossary_lines.append(
+            json.dumps(
+                {
+                    "src": src_text,
+                    "dst": build_analysis_term_target(src_text, rng),
+                    "type": choose_analysis_term_type(src_text),
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+
+    if not glossary_lines:
+        return ANALYSIS_EMPTY_RESULT
+
+    lines = ["```jsonline", *glossary_lines, "```"]
     return "\n".join(lines) + "\n"
 
 
@@ -503,6 +680,105 @@ def build_stream_content_chunks(
     return chunks
 
 
+def build_text_stream_chunks(text: str, chunk_lines: int) -> list[str]:
+    """把任意多行文本切成若干块，供流式分析模式复用。"""
+
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return [text]
+
+    chunks: list[str] = []
+    current_lines: list[str] = []
+    current_count = 0
+    effective_chunk_lines = max(1, chunk_lines)
+
+    for line in lines:
+        current_lines.append(line)
+        current_count += 1
+        if current_count < effective_chunk_lines:
+            continue
+
+        chunks.append("".join(current_lines))
+        current_lines = []
+        current_count = 0
+
+    if current_lines:
+        chunks.append("".join(current_lines))
+    return chunks
+
+
+def build_sse_messages(
+    *,
+    completion_id: str,
+    created: int,
+    model: str,
+    content_chunks: list[str],
+    finish_usage: dict[str, int] | None,
+) -> list[str]:
+    """把 role/content/stop/usage/DONE 统一转成 SSE 文本，便于测试和复用。"""
+
+    sse_messages: list[str] = []
+    sse_messages.append(
+        "data: "
+        + json.dumps(
+            build_chat_completion_chunk(
+                completion_id=completion_id,
+                created=created,
+                model=model,
+                delta={"role": "assistant"},
+                finish_reason=None,
+            ),
+            ensure_ascii=False,
+        )
+        + "\n\n"
+    )
+
+    for chunk in content_chunks:
+        sse_messages.append(
+            "data: "
+            + json.dumps(
+                build_chat_completion_chunk(
+                    completion_id=completion_id,
+                    created=created,
+                    model=model,
+                    delta={"content": chunk},
+                    finish_reason=None,
+                ),
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
+
+    sse_messages.append(
+        "data: "
+        + json.dumps(
+            build_chat_completion_chunk(
+                completion_id=completion_id,
+                created=created,
+                model=model,
+                delta={},
+                finish_reason="stop",
+            ),
+            ensure_ascii=False,
+        )
+        + "\n\n"
+    )
+
+    if finish_usage is not None:
+        payload = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [],
+            "usage": finish_usage,
+        }
+        sse_messages.append("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n")
+
+    sse_messages.append("data: [DONE]\n\n")
+    return sse_messages
+
+
 async def handle_chat_completions(
     request: HttpRequest,
     writer: asyncio.StreamWriter,
@@ -511,6 +787,7 @@ async def handle_chat_completions(
     max_jitter_s: float,
     stream_chunk_lines: int,
     seed: int | None,
+    task: str,
 ) -> None:
     if request.method != "POST":
         raise HttpError(405, "Only POST is supported")
@@ -531,16 +808,6 @@ async def handle_chat_completions(
     messages = data.get("messages")
     request_text = pick_user_prompt_text(messages)
 
-    jsonline_payload = extract_jsonline_block(request_text)
-    keys = parse_jsonline_keys(jsonline_payload)
-    if not keys:
-        non_empty_lines = [v for v in jsonline_payload.splitlines() if v.strip()]
-        if non_empty_lines:
-            keys = [str(i) for i in range(len(non_empty_lines))]
-        else:
-            # 兜底：没有解析到输入 JSONLINE 时，仍然返回 1 行，避免调用方卡死。
-            keys = ["0"]
-
     stream = bool(data.get("stream", False))
     stream_options = data.get("stream_options")
     include_usage = False
@@ -550,7 +817,10 @@ async def handle_chat_completions(
     total_delay_s = rng.uniform(min_jitter_s, max_jitter_s)
 
     if not stream:
-        response_content = build_jsonline_response(keys, rng)
+        if task == TASK_ANALYSIS:
+            response_content = build_analysis_response_content(request_text, rng)
+        else:
+            response_content = build_translation_response_content(request_text, rng)
         payload = build_chat_completion_response(
             model=model,
             content=response_content,
@@ -570,77 +840,30 @@ async def handle_chat_completions(
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
 
-    content_chunks = build_stream_content_chunks(keys, rng, stream_chunk_lines)
-
-    sse_messages: list[str] = []
-
-    # role
-    sse_messages.append(
-        "data: "
-        + json.dumps(
-            build_chat_completion_chunk(
-                completion_id=completion_id,
-                created=created,
-                model=model,
-                delta={"role": "assistant"},
-                finish_reason=None,
-            ),
-            ensure_ascii=False,
-        )
-        + "\n\n"
-    )
-
-    # content
-    for chunk in content_chunks:
-        sse_messages.append(
-            "data: "
-            + json.dumps(
-                build_chat_completion_chunk(
-                    completion_id=completion_id,
-                    created=created,
-                    model=model,
-                    delta={"content": chunk},
-                    finish_reason=None,
-                ),
-                ensure_ascii=False,
-            )
-            + "\n\n"
+    if task == TASK_ANALYSIS:
+        response_content = build_analysis_response_content(request_text, rng)
+        content_chunks = build_text_stream_chunks(response_content, stream_chunk_lines)
+    else:
+        content_chunks = build_translation_stream_chunks(
+            request_text,
+            rng,
+            stream_chunk_lines,
         )
 
-    # stop
-    sse_messages.append(
-        "data: "
-        + json.dumps(
-            build_chat_completion_chunk(
-                completion_id=completion_id,
-                created=created,
-                model=model,
-                delta={},
-                finish_reason="stop",
-            ),
-            ensure_ascii=False,
-        )
-        + "\n\n"
-    )
-
+    usage: dict[str, int] | None = None
     if include_usage:
-        response_text = "".join(content_chunks)
         usage = build_final_usage(
-            request_text=request_text, response_text=response_text
+            request_text=request_text,
+            response_text="".join(content_chunks),
         )
 
-        # OpenAI 约定：include_usage 会在 stream 中额外带一次 usage。
-        payload = {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [],
-            "usage": usage,
-        }
-        sse_messages.append("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n")
-
-    sse_messages.append("data: [DONE]\n\n")
+    sse_messages = build_sse_messages(
+        completion_id=completion_id,
+        created=created,
+        model=model,
+        content_chunks=content_chunks,
+        finish_usage=usage,
+    )
 
     delays = split_total_delay(total_delay_s, len(sse_messages), rng)
 
@@ -828,6 +1051,7 @@ async def handle_connection(
     max_jitter_s: float,
     stream_chunk_lines: int,
     seed: int | None,
+    task: str,
 ) -> None:
     peer = writer.get_extra_info("peername")
 
@@ -864,6 +1088,7 @@ async def handle_connection(
                 max_jitter_s=max_jitter_s,
                 stream_chunk_lines=stream_chunk_lines,
                 seed=seed,
+                task=task,
             )
             return
 
@@ -928,6 +1153,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-jitter", type=float, default=2.0)
     parser.add_argument("--max-jitter", type=float, default=20.0)
     parser.add_argument(
+        "--task",
+        default=TASK_TRANSLATION,
+        choices=[TASK_TRANSLATION, TASK_ANALYSIS],
+        help="Mock task mode: translation keeps old numbered JSONLINE, analysis returns glossary JSONLINE",
+    )
+    parser.add_argument(
         "--stream-chunk-lines",
         type=int,
         default=10,
@@ -967,6 +1198,7 @@ async def run_server(args: argparse.Namespace) -> None:
             max_jitter_s=float(args.max_jitter),
             stream_chunk_lines=int(args.stream_chunk_lines),
             seed=args.seed,
+            task=str(args.task),
         ),
         host=args.host,
         port=args.port,
@@ -978,6 +1210,7 @@ async def run_server(args: argparse.Namespace) -> None:
     logging.getLogger(__name__).info(
         "Endpoints: POST /v1/chat/completions, GET /v1/models, GET /health"
     )
+    logging.getLogger(__name__).info("Task mode: %s", args.task)
 
     async with server:
         await server.serve_forever()
