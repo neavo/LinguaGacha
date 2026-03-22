@@ -151,6 +151,8 @@ class LocalizerEN(LocalizerZH):
     log_unknown_reason: str = "Unknown Reason"
     log_cli_verify_language: str = "parameter error: invalid language …"
     log_cli_target_language_all_unsupported: str = "ALL is not supported …"
+    log_cli_create_deprecated: str = "CLI argument --create is deprecated, project creation is now decided only by --input …"
+    log_cli_continue_deprecated: str = "CLI argument --continue is deprecated, task mode is now inferred automatically from current progress …"
     log_cli_quality_rule_file_not_found: str = (
         "parameter error: rule file not found …"
         "\n"

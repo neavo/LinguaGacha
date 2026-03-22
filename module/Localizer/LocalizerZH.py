@@ -151,6 +151,8 @@ class LocalizerZH:
     log_unknown_reason: str = "未知原因"
     log_cli_verify_language: str = "参数发生错误：无效的语言 …"
     log_cli_target_language_all_unsupported: str = "译文语言不支持 ALL …"
+    log_cli_create_deprecated: str = "命令行参数 --create 已弃用，是否建项现在仅由 --input 决定 …"
+    log_cli_continue_deprecated: str = "命令行参数 --continue 已弃用，任务模式现在会根据当前进度自动判定 …"
     log_cli_quality_rule_file_not_found: str = (
         "参数发生错误：规则文件不存在 …"
         "\n"
