@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from pyfakefs.fake_filesystem import FakeFilesystem
 
 from base.Base import Base
 from model.Item import Item
@@ -77,12 +77,13 @@ def install_stub_file_manager(
     monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
 
 
-def create_virtual_file(fs, file_path: str, content: bytes = b"data") -> None:
+def create_virtual_file(
+    fs: FakeFilesystem,
+    file_path: str,
+    content: bytes = b"data",
+) -> None:
     """在 pyfakefs 里创建输入文件，统一掉重复的准备步骤。"""
-
-    fs.create_dir(str(Path(file_path).parent))
-    with open(file_path, "wb") as f:
-        f.write(content)
+    fs.create_file(file_path, contents=content, create_missing_dirs=True)
 
 
 def test_add_file_rejects_unsupported_extension() -> None:
