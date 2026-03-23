@@ -62,7 +62,6 @@ def test_load_project_sets_session_and_migrates_legacy_values(
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    del fs
     session = ProjectSession()
     service = build_service(session)
     service.meta_service.refresh_cache_from_db = lambda: session.meta_cache.update(
@@ -70,8 +69,7 @@ def test_load_project_sets_session_and_migrates_legacy_values(
     )
 
     lg_path = Path("/workspace/project/demo.lg")
-    lg_path.parent.mkdir(parents=True, exist_ok=True)
-    lg_path.write_bytes(b"db")
+    fs.create_file(str(lg_path), contents=b"db", create_missing_dirs=True)
 
     fake_db = build_fake_db(legacy_prompt_zh="旧中文提示词")
     monkeypatch.setattr(
