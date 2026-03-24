@@ -2,6 +2,7 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.TaskRoutes import TaskRoutes
+from model.Api.TaskModels import TaskSnapshot
 
 
 class TaskApiClient:
@@ -10,20 +11,25 @@ class TaskApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def start_translation(self, request: dict[str, Any]) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.START_TRANSLATION_PATH, request)
+    def start_translation(self, request: dict[str, Any]) -> TaskSnapshot:
+        response = self.api_client.post(TaskRoutes.START_TRANSLATION_PATH, request)
+        return TaskSnapshot.from_dict(response.get("task", {}))
 
-    def stop_translation(self) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.STOP_TRANSLATION_PATH, {})
+    def stop_translation(self) -> TaskSnapshot:
+        response = self.api_client.post(TaskRoutes.STOP_TRANSLATION_PATH, {})
+        return TaskSnapshot.from_dict(response.get("task", {}))
 
-    def start_analysis(self, request: dict[str, Any]) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.START_ANALYSIS_PATH, request)
+    def start_analysis(self, request: dict[str, Any]) -> TaskSnapshot:
+        response = self.api_client.post(TaskRoutes.START_ANALYSIS_PATH, request)
+        return TaskSnapshot.from_dict(response.get("task", {}))
 
-    def stop_analysis(self) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.STOP_ANALYSIS_PATH, {})
+    def stop_analysis(self) -> TaskSnapshot:
+        response = self.api_client.post(TaskRoutes.STOP_ANALYSIS_PATH, {})
+        return TaskSnapshot.from_dict(response.get("task", {}))
 
     def get_task_snapshot(
         self,
         request: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.SNAPSHOT_PATH, request or {})
+    ) -> TaskSnapshot:
+        response = self.api_client.post(TaskRoutes.SNAPSHOT_PATH, request or {})
+        return TaskSnapshot.from_dict(response.get("task", {}))

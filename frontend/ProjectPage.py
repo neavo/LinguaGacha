@@ -1275,7 +1275,7 @@ class ProjectPage(Base, ScrollArea):
         if success:
             try:
                 if isinstance(result, ProjectSnapshot):
-                    self.api_state_store.hydrate_project(result.to_dict())
+                    self.api_state_store.hydrate_project(result)
 
                 name = Path(path).stem
                 self.settings_api_client.add_recent_project(path, name)
@@ -1348,7 +1348,7 @@ class ProjectPage(Base, ScrollArea):
 
         if success:
             if isinstance(result, ProjectSnapshot):
-                self.api_state_store.hydrate_project(result.to_dict())
+                self.api_state_store.hydrate_project(result)
             # 打开成功后再更新最近项目，避免失败路径污染最近列表。
             name = Path(path).stem
             self.settings_api_client.add_recent_project(path, name)

@@ -25,6 +25,7 @@ from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
+from model.Api.TaskModels import TaskSnapshot
 from model.Api.WorkbenchModels import WorkbenchFileEntry
 from model.Api.WorkbenchModels import WorkbenchSnapshot
 
@@ -163,8 +164,9 @@ def test_task_api_client_get_task_snapshot_supports_requested_task_type(
 
         result = task_client.get_task_snapshot({"task_type": "analysis"})
 
-        assert result["task"]["task_type"] == "analysis"
-        assert result["task"]["analysis_candidate_count"] == 3
+        assert isinstance(result, TaskSnapshot)
+        assert result.task_type == "analysis"
+        assert result.analysis_candidate_count == 3
     finally:
         shutdown()
 
@@ -192,7 +194,9 @@ def test_workbench_page_apply_snapshot_consumes_snapshot_model() -> None:
     workbench_client = Mock()
     workbench_client.get_snapshot.return_value = WorkbenchSnapshot()
     api_state_store = ApiStateStore()
-    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+    api_state_store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
 
     page = WorkbenchPage(
         "workbench_page",
@@ -297,7 +301,9 @@ def test_basic_settings_page_uses_api_state_store_busy_state() -> None:
         request_timeout=120,
     )
     api_state_store = ApiStateStore()
-    api_state_store.hydrate_task({"task_type": "translation", "busy": True})
+    api_state_store.hydrate_task(
+        TaskSnapshot.from_dict({"task_type": "translation", "busy": True})
+    )
 
     page = BasicSettingsPage(
         "basic_settings_page",
@@ -333,9 +339,11 @@ def test_expert_settings_page_reads_initial_snapshot_from_settings_api_client() 
 def test_translation_page_uses_task_api_client() -> None:
     ensure_qt_application()
     task_client = Mock()
-    task_client.start_translation.return_value = {
-        "task": {"task_type": "translation", "status": "REQUEST", "busy": True}
-    }
+    task_client.start_translation.return_value = TaskSnapshot(
+        task_type="translation",
+        status="REQUEST",
+        busy=True,
+    )
     api_state_store = ApiStateStore()
 
     page = TranslationPage(
@@ -348,17 +356,21 @@ def test_translation_page_uses_task_api_client() -> None:
     page.request_start_translation()
 
     task_client.start_translation.assert_called_once_with({"mode": "NEW"})
-    assert api_state_store.get_task_snapshot()["task_type"] == "translation"
+    assert api_state_store.get_task_snapshot().task_type == "translation"
 
 
 def test_translation_page_keeps_stop_enabled_during_own_request_state() -> None:
     ensure_qt_application()
     task_client = Mock()
-    task_client.start_translation.return_value = {
-        "task": {"task_type": "translation", "status": "REQUEST", "busy": True}
-    }
+    task_client.start_translation.return_value = TaskSnapshot(
+        task_type="translation",
+        status="REQUEST",
+        busy=True,
+    )
     api_state_store = ApiStateStore()
-    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+    api_state_store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
 
     page = TranslationPage(
         "translation_page",
@@ -379,17 +391,17 @@ def test_translation_page_keeps_stop_enabled_during_own_request_state() -> None:
 def test_analysis_page_uses_task_api_client() -> None:
     ensure_qt_application()
     task_client = Mock()
-    task_client.start_analysis.return_value = {
-        "task": {"task_type": "analysis", "status": "REQUEST", "busy": True}
-    }
-    task_client.get_task_snapshot.return_value = {
-        "task": {
-            "task_type": "analysis",
-            "status": "IDLE",
-            "busy": False,
-            "analysis_candidate_count": 0,
-        }
-    }
+    task_client.start_analysis.return_value = TaskSnapshot(
+        task_type="analysis",
+        status="REQUEST",
+        busy=True,
+    )
+    task_client.get_task_snapshot.return_value = TaskSnapshot(
+        task_type="analysis",
+        status="IDLE",
+        busy=False,
+        analysis_candidate_count=0,
+    )
     api_state_store = ApiStateStore()
 
     page = AnalysisPage(
@@ -402,17 +414,21 @@ def test_analysis_page_uses_task_api_client() -> None:
     page.request_start_analysis()
 
     task_client.start_analysis.assert_called_once_with({"mode": "NEW"})
-    assert api_state_store.get_task_snapshot()["task_type"] == "analysis"
+    assert api_state_store.get_task_snapshot().task_type == "analysis"
 
 
 def test_analysis_page_keeps_stop_enabled_during_own_request_state() -> None:
     ensure_qt_application()
     task_client = Mock()
-    task_client.start_analysis.return_value = {
-        "task": {"task_type": "analysis", "status": "REQUEST", "busy": True}
-    }
+    task_client.start_analysis.return_value = TaskSnapshot(
+        task_type="analysis",
+        status="REQUEST",
+        busy=True,
+    )
     api_state_store = ApiStateStore()
-    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+    api_state_store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
 
     page = AnalysisPage(
         "analysis_page",
@@ -435,7 +451,9 @@ def test_workbench_page_uses_workbench_api_client() -> None:
     workbench_client = Mock()
     workbench_client.add_file.return_value = {"accepted": True}
     api_state_store = ApiStateStore()
-    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+    api_state_store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
 
     page = WorkbenchPage(
         "workbench_page",

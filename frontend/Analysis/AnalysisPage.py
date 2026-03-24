@@ -23,6 +23,7 @@ from qfluentwidgets import ToolTipPosition
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
+from model.Api.TaskModels import TaskSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
@@ -59,7 +60,7 @@ class AnalysisPage(Base, QWidget):
         self.task_api_client = task_api_client
         self.api_state_store = api_state_store
 
-        self.data: dict = {}
+        self.data: TaskSnapshot | None = None
         self.is_stopping_toast_active: bool = False
         self.is_importing_glossary: bool = False
         self.analysis_candidate_count: int = 0
@@ -95,32 +96,33 @@ class AnalysisPage(Base, QWidget):
 
     def has_progress(self) -> bool:
         """分析页和翻译页统一口径：只要存在历史进度，就保留“继续”语义。"""
-        if not isinstance(self.data, dict):
-            return False
-        return int(self.data.get("line", 0) or 0) > 0
+        return self.get_display_snapshot().line > 0
 
     def refresh_analysis_snapshot(self) -> None:
         """分析页显式拉取分析快照，避免首屏被其他任务历史进度挤占。"""
 
-        result = self.task_api_client.get_task_snapshot({"task_type": "analysis"})
-        task_snapshot = result.get("task", {})
-        if isinstance(task_snapshot, dict):
-            self.analysis_candidate_count = int(
-                task_snapshot.get("analysis_candidate_count", 0) or 0
-            )
-            self.data = dict(task_snapshot)
+        task_snapshot = self.task_api_client.get_task_snapshot(
+            {"task_type": "analysis"}
+        )
+        self.analysis_candidate_count = task_snapshot.analysis_candidate_count
+        self.data = task_snapshot
 
     def sync_task_snapshot(self) -> None:
         """优先消费状态仓库中的实时任务快照，分析空闲时回退到本地快照。"""
 
         task_snapshot = self.api_state_store.get_task_snapshot()
-        task_type = str(task_snapshot.get("task_type", ""))
-        if task_type == "analysis":
+        if task_snapshot.task_type == "analysis":
             self.data = task_snapshot
-            self.analysis_candidate_count = int(
-                task_snapshot.get("analysis_candidate_count", 0)
-                or self.analysis_candidate_count
+            self.analysis_candidate_count = (
+                task_snapshot.analysis_candidate_count or self.analysis_candidate_count
             )
+
+    def get_display_snapshot(self) -> TaskSnapshot:
+        """统一返回当前展示快照，避免页面散落空值判断。"""
+
+        if self.data is None:
+            return TaskSnapshot.from_dict({})
+        return self.data
 
     def set_action_enabled(
         self, *, start: bool, stop: bool, reset: bool, import_glossary: bool
@@ -131,23 +133,26 @@ class AnalysisPage(Base, QWidget):
         self.action_import.setEnabled(import_glossary)
 
     def set_progress_ring(self, status_text: str) -> None:
-        percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
+        snapshot = self.get_display_snapshot()
+        percent = snapshot.line / max(1, snapshot.total_line)
         self.ring.setValue(int(percent * 10000))
         self.ring.setFormat(f"{status_text}\n{percent * 100:.2f}%")
 
     def get_total_time(self) -> int:
-        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
-        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        status = task_snapshot.status
+        task_type = task_snapshot.task_type
+        snapshot = self.get_display_snapshot()
         if (
             status in ("ANALYZING", "STOPPING", "RUN", "REQUEST")
             and task_type == "analysis"
         ):
-            start_time = float(self.data.get("start_time", 0) or 0)
+            start_time = snapshot.start_time
             if start_time == 0:
                 return 0
             return int(time.time() - start_time)
 
-        return int(self.data.get("time", 0))
+        return int(snapshot.time)
 
     def reset_card(self, card: DashboardCard, value: str, unit: str) -> None:
         card.set_value(value)
@@ -157,9 +162,9 @@ class AnalysisPage(Base, QWidget):
         del event
         del data
         task_snapshot = self.api_state_store.get_task_snapshot()
-        status = str(task_snapshot.get("status", "IDLE"))
-        is_busy = bool(task_snapshot.get("busy", False))
-        task_type = str(task_snapshot.get("task_type", ""))
+        status = task_snapshot.status
+        is_busy = task_snapshot.busy
+        task_type = task_snapshot.task_type
         is_project_loaded = self.api_state_store.is_project_loaded()
 
         if self.has_progress():
@@ -173,7 +178,7 @@ class AnalysisPage(Base, QWidget):
             self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
             self.is_stopping_toast_active = False
 
-        if not self.data and not is_busy:
+        if self.data is None and not is_busy:
             self.clear_ui_cards()
 
         if not is_project_loaded:
@@ -544,11 +549,12 @@ class AnalysisPage(Base, QWidget):
 
     def update_time(self) -> None:
         total_time = self.get_total_time()
+        snapshot = self.get_display_snapshot()
 
         remaining_time = int(
             total_time
-            / max(1, self.data.get("line", 0))
-            * max(0, self.data.get("total_line", 0) - self.data.get("line", 0))
+            / max(1, snapshot.line)
+            * max(0, snapshot.total_line - snapshot.line)
         )
         display_value = remaining_time
         if self.time_display_mode == self.TimeDisplayMode.ELAPSED:
@@ -565,26 +571,28 @@ class AnalysisPage(Base, QWidget):
             self.time.set_value(f"{(display_value / 60 / 60):.2f}")
 
     def update_line(self) -> None:
-        processed_line = int(self.data.get("processed_line", 0) or 0)
-        error_line = int(self.data.get("error_line", 0) or 0)
+        snapshot = self.get_display_snapshot()
+        processed_line = snapshot.processed_line
+        error_line = snapshot.error_line
         remaining_line = max(
             0,
-            int(self.data.get("total_line", 0) or 0)
-            - int(self.data.get("line", 0) or 0),
+            snapshot.total_line - snapshot.line,
         )
         self.set_scaled_card_value(self.processed_line_card, processed_line, "Line")
         self.set_scaled_card_value(self.error_line_card, error_line, "Line")
         self.set_scaled_card_value(self.remaining_line, remaining_line, "Line")
 
     def update_speed(self) -> None:
-        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
-        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        status = task_snapshot.status
+        task_type = task_snapshot.task_type
         if (
             status in ("ANALYZING", "STOPPING", "RUN", "REQUEST")
             and task_type == "analysis"
         ):
-            speed = int(self.data.get("total_output_tokens", 0) or 0) / max(
-                1, time.time() - float(self.data.get("start_time", 0) or 0)
+            snapshot = self.get_display_snapshot()
+            speed = snapshot.total_output_tokens / max(
+                1, time.time() - snapshot.start_time
             )
             self.waveform.add_value(speed)
             if speed < 1000:
@@ -595,36 +603,36 @@ class AnalysisPage(Base, QWidget):
                 self.speed.set_value(f"{(speed / 1000):.2f}")
 
     def update_token(self) -> None:
+        snapshot = self.get_display_snapshot()
         if self.token_display_mode == self.TokenDisplayMode.OUTPUT:
-            token = int(self.data.get("total_output_tokens", 0) or 0)
+            token = snapshot.total_output_tokens
         else:
-            token = int(self.data.get("total_input_tokens", 0) or 0)
+            token = snapshot.total_input_tokens
             if token == 0:
-                token = int(self.data.get("total_tokens", 0) or 0) - int(
-                    self.data.get("total_output_tokens", 0) or 0
-                )
+                token = snapshot.total_tokens - snapshot.total_output_tokens
 
         self.set_scaled_card_value(self.token, token, "Token")
 
     def update_task(self) -> None:
-        task = int(self.data.get("request_in_flight_count", 0) or 0)
+        task = self.get_display_snapshot().request_in_flight_count
         self.set_scaled_card_value(self.task, task, "Task")
 
     def update_status(self) -> None:
-        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
-        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        status = task_snapshot.status
+        task_type = task_snapshot.task_type
         if status == "STOPPING" and task_type == "analysis":
             self.set_progress_ring(Localizer.get().analysis_page_status_stopping)
         elif status in ("ANALYZING", "RUN", "REQUEST") and task_type == "analysis":
             self.set_progress_ring(Localizer.get().analysis_page_status_analyzing)
-        elif self.data:
+        elif self.data is not None:
             self.set_progress_ring(Localizer.get().analysis_page_status_idle)
         else:
             self.ring.setValue(0)
             self.ring.setFormat(Localizer.get().analysis_page_status_idle)
 
     def clear_ui_cards(self) -> None:
-        self.data = {}
+        self.data = None
         self.waveform.clear()
         self.ring.setValue(0)
         self.ring.setFormat(Localizer.get().analysis_page_status_idle)
@@ -650,14 +658,10 @@ class AnalysisPage(Base, QWidget):
 
         mode = "CONTINUE" if self.has_progress() else "NEW"
         result = self.task_api_client.start_analysis({"mode": mode})
-        task_snapshot = result.get("task", {})
-        if isinstance(task_snapshot, dict):
-            self.api_state_store.hydrate_task(task_snapshot)
+        self.api_state_store.hydrate_task(result)
 
     def request_stop_analysis(self) -> None:
         """通过 TaskApiClient 发起停止命令，并把回执写入状态仓库。"""
 
         result = self.task_api_client.stop_analysis()
-        task_snapshot = result.get("task", {})
-        if isinstance(task_snapshot, dict):
-            self.api_state_store.hydrate_task(task_snapshot)
+        self.api_state_store.hydrate_task(result)

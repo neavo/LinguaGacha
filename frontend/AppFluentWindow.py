@@ -109,9 +109,9 @@ class AppFluentWindow(Base, FluentWindow):
         super().__init__()
 
         project_snapshot = self.project_api_client.get_project_snapshot()
-        self.api_state_store.hydrate_project(project_snapshot["project"])
+        self.api_state_store.hydrate_project(project_snapshot)
         task_snapshot = self.task_api_client.get_task_snapshot()
-        self.api_state_store.hydrate_task(task_snapshot["task"])
+        self.api_state_store.hydrate_task(task_snapshot)
         self.sse_client = SseClient(
             self.task_api_client.api_client.base_url,
             self.api_state_store,
@@ -457,7 +457,7 @@ class AppFluentWindow(Base, FluentWindow):
             return
 
         project_result = self.project_api_client.unload_project()
-        self.api_state_store.hydrate_project(project_result["project"])
+        self.api_state_store.hydrate_project(project_result)
         self.emit(
             Base.Event.TOAST,
             {
@@ -856,7 +856,7 @@ class AppFluentWindow(Base, FluentWindow):
         del event
         del data
         project_snapshot = self.project_api_client.get_project_snapshot()
-        self.api_state_store.hydrate_project(project_snapshot["project"])
+        self.api_state_store.hydrate_project(project_snapshot)
 
         # 更新侧边栏状态
         self.update_navigation_status()

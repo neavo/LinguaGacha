@@ -452,9 +452,9 @@ class WorkbenchPage(Base, ScrollArea):
         if self.last_workbench_snapshot is None:
             return False
         task_snapshot = self.api_state_store.get_task_snapshot()
-        if str(task_snapshot.get("task_type", "")) != "translation":
+        if task_snapshot.task_type != "translation":
             return False
-        return str(task_snapshot.get("status", "IDLE")) in (
+        return task_snapshot.status in (
             "TRANSLATING",
             "STOPPING",
             "RUN",
@@ -470,7 +470,7 @@ class WorkbenchPage(Base, ScrollArea):
             return
 
         task_snapshot = self.api_state_store.get_task_snapshot()
-        processed_line = int(task_snapshot.get("processed_line", 0) or 0)
+        processed_line = task_snapshot.processed_line
         translated_in_past = snapshot.translated_in_past
         self.apply_stats_snapshot(
             self.build_stats_payload(

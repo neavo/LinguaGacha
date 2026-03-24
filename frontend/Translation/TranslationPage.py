@@ -25,6 +25,7 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
 from frontend.Translation.TimerMessageBox import TimerMessageBox
+from model.Api.TaskModels import TaskSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
@@ -65,7 +66,7 @@ class TranslationPage(Base, QWidget):
         self.api_state_store = api_state_store
 
         # 初始化
-        self.data = {}
+        self.data: TaskSnapshot | None = None
         self.timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
         self.is_prefiltering = False
         # 仅用于避免误关其他模块触发的进度 Toast。
@@ -114,14 +115,20 @@ class TranslationPage(Base, QWidget):
         """定时从状态仓库同步翻译任务快照，避免页面直连核心单例。"""
 
         task_snapshot = self.api_state_store.get_task_snapshot()
-        task_type = str(task_snapshot.get("task_type", ""))
-        if task_type == "translation":
+        if task_snapshot.task_type == "translation":
             self.data = task_snapshot
         elif not self.api_state_store.is_busy():
-            self.data = {}
+            self.data = None
+
+    def get_display_snapshot(self) -> TaskSnapshot:
+        """统一返回当前展示快照，避免页面散落空值判断。"""
+
+        if self.data is None:
+            return TaskSnapshot.from_dict({})
+        return self.data
 
     def has_progress(self) -> bool:
-        return self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+        return self.get_display_snapshot().line > 0
 
     def set_scaled_card_value(
         self, card: DashboardCard, value: int | float, base_unit: str
@@ -137,7 +144,8 @@ class TranslationPage(Base, QWidget):
             card.set_value(f"{(value / 1000 / 1000):.2f}")
 
     def set_progress_ring(self, status_text: str) -> None:
-        percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
+        snapshot = self.get_display_snapshot()
+        percent = snapshot.line / max(1, snapshot.total_line)
         self.ring.setValue(int(percent * 10000))
         self.ring.setFormat(f"{status_text}\n{percent * 100:.2f}%")
 
@@ -145,12 +153,12 @@ class TranslationPage(Base, QWidget):
         del event
         del data
         task_snapshot = self.api_state_store.get_task_snapshot()
-        status = str(task_snapshot.get("status", "IDLE"))
-        is_busy = bool(task_snapshot.get("busy", False))
-        task_type = str(task_snapshot.get("task_type", ""))
+        status = task_snapshot.status
+        is_busy = task_snapshot.busy
+        task_type = task_snapshot.task_type
         is_project_loaded = self.api_state_store.is_project_loaded()
 
-        if not self.data and not is_busy:
+        if self.data is None and not is_busy:
             self.clear_ui_cards()
 
         # 判定是否有进度
@@ -228,23 +236,22 @@ class TranslationPage(Base, QWidget):
 
     # 更新时间
     def update_time(self, data: dict) -> None:
+        snapshot = self.get_display_snapshot()
         # 如果正在翻译，计算实时耗时；否则使用最后保存的累计耗时
-        if str(self.api_state_store.get_task_snapshot().get("status", "IDLE")) in (
+        if self.api_state_store.get_task_snapshot().status in (
             "STOPPING",
             "TRANSLATING",
             "RUN",
         ):
-            if self.data.get("start_time", 0) == 0:
+            if snapshot.start_time == 0:
                 total_time = 0
             else:
-                total_time = int(time.time() - self.data.get("start_time", 0))
+                total_time = int(time.time() - snapshot.start_time)
         else:
-            total_time = int(self.data.get("time", 0))
+            total_time = int(snapshot.time)
 
         remaining_time = int(
-            total_time
-            / max(1, self.data.get("line", 0))
-            * (self.data.get("total_line", 0) - self.data.get("line", 0))
+            total_time / max(1, snapshot.line) * (snapshot.total_line - snapshot.line)
         )
 
         display_mode = getattr(
@@ -267,11 +274,12 @@ class TranslationPage(Base, QWidget):
     # 更新行数
     def update_line(self, data: dict) -> None:
         del data
-        processed_line = int(self.data.get("processed_line", self.data.get("line", 0)))
-        error_line = int(self.data.get("error_line", 0))
-        remaining_line = max(
-            0, self.data.get("total_line", 0) - self.data.get("line", 0)
+        snapshot = self.get_display_snapshot()
+        processed_line = (
+            snapshot.processed_line if snapshot.processed_line > 0 else snapshot.line
         )
+        error_line = snapshot.error_line
+        remaining_line = max(0, snapshot.total_line - snapshot.line)
 
         self.set_scaled_card_value(self.processed_line_card, processed_line, "Line")
         self.set_scaled_card_value(self.error_line_card, error_line, "Line")
@@ -281,35 +289,37 @@ class TranslationPage(Base, QWidget):
     def update_task(self, data: dict) -> None:
         # UI 上的“实时任务数”仅展示正在发送请求的数量（不包含限速等待）。
         del data
-        task = int(self.data.get("request_in_flight_count", 0) or 0)
-        self.set_scaled_card_value(self.task, task, "Task")
+        self.set_scaled_card_value(
+            self.task,
+            self.get_display_snapshot().request_in_flight_count,
+            "Task",
+        )
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
         # 根据显示模式选择要展示的 Token 数量
         del data
+        snapshot = self.get_display_snapshot()
         display_mode = getattr(self, "token_display_mode", self.TokenDisplayMode.OUTPUT)
 
         if display_mode == self.TokenDisplayMode.OUTPUT:
-            token = self.data.get("total_output_tokens", 0)
+            token = snapshot.total_output_tokens
         else:
             # 兼容旧版本进度字段：若无 total_input_tokens，则用 total_tokens - total_output_tokens 估算
-            token = self.data.get("total_input_tokens", 0)
+            token = snapshot.total_input_tokens
             if token == 0:
-                token = self.data.get("total_tokens", 0) - self.data.get(
-                    "total_output_tokens", 0
-                )
+                token = snapshot.total_tokens - snapshot.total_output_tokens
 
         self.set_scaled_card_value(self.token, token, "Token")
 
         # 速度计算仅在翻译/停止状态下更新，避免空闲时干扰波形图
-        if str(self.api_state_store.get_task_snapshot().get("status", "IDLE")) in (
+        if self.api_state_store.get_task_snapshot().status in (
             "STOPPING",
             "TRANSLATING",
             "RUN",
         ):
-            speed = self.data.get("total_output_tokens", 0) / max(
-                1, time.time() - self.data.get("start_time", 0)
+            speed = snapshot.total_output_tokens / max(
+                1, time.time() - snapshot.start_time
             )
             self.waveform.add_value(speed)
             if speed < 1000:
@@ -322,12 +332,12 @@ class TranslationPage(Base, QWidget):
     # 更新进度环
     def update_status(self, data: dict) -> None:
         del data
-        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
+        status = self.api_state_store.get_task_snapshot().status
         if status == "STOPPING":
             self.set_progress_ring(Localizer.get().translation_page_status_stopping)
         elif status in ("TRANSLATING", "RUN", "REQUEST"):
             self.set_progress_ring(Localizer.get().translation_page_status_translating)
-        elif self.data:
+        elif self.data is not None:
             # 即使在空闲状态，如果存在进度数据，也要显示最终的进度百分比
             self.set_progress_ring(Localizer.get().translation_page_status_idle)
         else:
@@ -713,7 +723,7 @@ class TranslationPage(Base, QWidget):
 
     def clear_ui_cards(self) -> None:
         """清理所有 UI 卡片和进度显示"""
-        self.data = {}
+        self.data = None
         self.waveform.clear()
         self.ring.setValue(0)
         self.ring.setFormat(Localizer.get().translation_page_status_idle)
@@ -753,14 +763,10 @@ class TranslationPage(Base, QWidget):
 
         mode = "CONTINUE" if self.has_progress() else "NEW"
         result = self.task_api_client.start_translation({"mode": mode})
-        task_snapshot = result.get("task", {})
-        if isinstance(task_snapshot, dict):
-            self.api_state_store.hydrate_task(task_snapshot)
+        self.api_state_store.hydrate_task(result)
 
     def request_stop_translation(self) -> None:
         """通过 TaskApiClient 发起停止命令，并把回执写入状态仓库。"""
 
         result = self.task_api_client.stop_translation()
-        task_snapshot = result.get("task", {})
-        if isinstance(task_snapshot, dict):
-            self.api_state_store.hydrate_task(task_snapshot)
+        self.api_state_store.hydrate_task(result)
