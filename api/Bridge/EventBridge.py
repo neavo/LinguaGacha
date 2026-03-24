@@ -19,10 +19,30 @@ class EventBridge:
                 EventTopic.TASK_PROGRESS_CHANGED.value,
                 self.build_task_progress_payload("translation", data),
             )
+        elif event == Base.Event.TRANSLATION_TASK:
+            return (
+                EventTopic.TASK_STATUS_CHANGED.value,
+                self.build_task_status_payload("translation", data),
+            )
+        elif event == Base.Event.TRANSLATION_REQUEST_STOP:
+            return (
+                EventTopic.TASK_STATUS_CHANGED.value,
+                self.build_task_status_payload("translation", data, stopping=True),
+            )
         elif event == Base.Event.ANALYSIS_PROGRESS:
             return (
                 EventTopic.TASK_PROGRESS_CHANGED.value,
                 self.build_task_progress_payload("analysis", data),
+            )
+        elif event == Base.Event.ANALYSIS_TASK:
+            return (
+                EventTopic.TASK_STATUS_CHANGED.value,
+                self.build_task_status_payload("analysis", data),
+            )
+        elif event == Base.Event.ANALYSIS_REQUEST_STOP:
+            return (
+                EventTopic.TASK_STATUS_CHANGED.value,
+                self.build_task_status_payload("analysis", data, stopping=True),
             )
         elif event == Base.Event.PROJECT_LOADED:
             return (
@@ -71,4 +91,20 @@ class EventBridge:
             "error_line": int(data.get("error_line", 0) or 0),
             "total_tokens": int(data.get("total_tokens", 0) or 0),
             "time": float(data.get("time", 0.0) or 0.0),
+        }
+
+    def build_task_status_payload(
+        self,
+        task_type: str,
+        data: dict[str, Any],
+        stopping: bool = False,
+    ) -> dict[str, Any]:
+        """任务生命周期事件对外统一为状态变更通知。"""
+
+        sub_event = str(getattr(data.get("sub_event"), "value", data.get("sub_event", "")))
+        status = "STOPPING" if stopping else sub_event
+        return {
+            "task_type": task_type,
+            "status": status,
+            "busy": status not in ("DONE", "ERROR", "IDLE"),
         }

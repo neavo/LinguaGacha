@@ -9,6 +9,12 @@ class ApiStateStore:
             "loaded": False,
             "path": "",
         }
+        self.task_snapshot: dict[str, Any] = {
+            "task_type": "",
+            "status": "IDLE",
+            "busy": False,
+            "line": 0,
+        }
 
     def hydrate_project(self, snapshot: dict[str, Any]) -> None:
         """用服务端快照覆盖本地工程状态，保持单一缓存入口。"""
@@ -40,3 +46,61 @@ class ApiStateStore:
         """返回快照副本，避免外部持有内部可变引用。"""
 
         return dict(self.project_snapshot)
+
+    def hydrate_task(self, snapshot: dict[str, Any]) -> None:
+        """用任务快照覆盖本地状态，供页面首屏 hydration 使用。"""
+
+        self.task_snapshot = {
+            "task_type": str(snapshot.get("task_type", "")),
+            "status": str(snapshot.get("status", "IDLE")),
+            "busy": bool(snapshot.get("busy", False)),
+            "line": int(snapshot.get("line", 0) or 0),
+            "total_line": int(snapshot.get("total_line", 0) or 0),
+            "processed_line": int(snapshot.get("processed_line", 0) or 0),
+            "error_line": int(snapshot.get("error_line", 0) or 0),
+            "total_tokens": int(snapshot.get("total_tokens", 0) or 0),
+            "time": float(snapshot.get("time", 0.0) or 0.0),
+        }
+
+    def merge_task_progress(self, snapshot: dict[str, Any]) -> None:
+        """SSE 进度增量只覆盖任务快照中的进度字段。"""
+
+        next_snapshot = dict(self.task_snapshot)
+        next_snapshot.update(
+            {
+                "task_type": str(snapshot.get("task_type", next_snapshot["task_type"])),
+                "line": int(snapshot.get("line", next_snapshot.get("line", 0)) or 0),
+                "total_line": int(
+                    snapshot.get("total_line", next_snapshot.get("total_line", 0)) or 0
+                ),
+                "processed_line": int(
+                    snapshot.get(
+                        "processed_line",
+                        next_snapshot.get("processed_line", 0),
+                    )
+                    or 0
+                ),
+                "error_line": int(
+                    snapshot.get("error_line", next_snapshot.get("error_line", 0)) or 0
+                ),
+                "total_tokens": int(
+                    snapshot.get(
+                        "total_tokens",
+                        next_snapshot.get("total_tokens", 0),
+                    )
+                    or 0
+                ),
+                "time": float(snapshot.get("time", next_snapshot.get("time", 0.0)) or 0.0),
+            }
+        )
+        self.task_snapshot = next_snapshot
+
+    def get_task_snapshot(self) -> dict[str, Any]:
+        """返回任务快照副本，避免外部误改内部缓存。"""
+
+        return dict(self.task_snapshot)
+
+    def is_busy(self) -> bool:
+        """统一提供忙碌态布尔值。"""
+
+        return bool(self.task_snapshot.get("busy", False))

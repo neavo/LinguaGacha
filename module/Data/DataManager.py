@@ -647,6 +647,13 @@ class DataManager(Base):
     def get_analysis_progress_snapshot(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_progress_snapshot()
 
+    def get_task_progress_snapshot(self, task_type: str) -> dict[str, Any]:
+        """任务 API 统一从这里读取进度快照，避免调用方自己分支。"""
+
+        if task_type == "analysis":
+            return self.get_analysis_progress_snapshot()
+        return self.get_translation_extras()
+
     def refresh_analysis_progress_snapshot_cache(self) -> dict[str, Any]:
         return self.analysis_service.refresh_analysis_progress_snapshot_cache()
 

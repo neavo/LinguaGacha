@@ -22,6 +22,7 @@ from api.Application.AppContext import AppContext
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.TaskApiClient import TaskApiClient
 from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
@@ -266,6 +267,7 @@ if __name__ == "__main__":
         api_client = ApiClient(local_api_server_runtime.base_url)
         app_context = AppContext(
             project_api_client=ProjectApiClient(api_client),
+            task_api_client=TaskApiClient(api_client),
             api_state_store=ApiStateStore(),
         )
 

@@ -64,6 +64,21 @@ class Engine:
         with self.request_in_flight_lock:
             return self.request_in_flight_count
 
+    def is_busy(self) -> bool:
+        """统一暴露引擎忙碌态，避免上层重复判断枚举。"""
+
+        return Base.is_engine_busy(self.get_status())
+
+    def get_active_task_type(self) -> str:
+        """把引擎运行状态映射为当前活跃任务类型。"""
+
+        status = self.get_status()
+        if status == Base.TaskStatus.TRANSLATING:
+            return "translation"
+        if status == Base.TaskStatus.ANALYZING:
+            return "analysis"
+        return "idle"
+
     def get_running_task_count(self) -> int:
         # 后台任务数（用于 busy 判断）：包含占用 limiter 的并发与单条翻译线程。
         # UI 需要“实时请求数”时使用 get_request_in_flight_count()。

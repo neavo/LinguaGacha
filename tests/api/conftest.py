@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 
 from api.Application.ProjectAppService import ProjectAppService
+from api.Application.TaskAppService import TaskAppService
+from base.Base import Base
 
 
 class FakeProjectManager:
@@ -49,6 +51,40 @@ class FakeProjectManager:
         }
 
 
+class FakeEngine:
+    """任务 API 测试使用的最小引擎桩。"""
+
+    def __init__(self) -> None:
+        self.status = Base.TaskStatus.IDLE
+
+    def get_status(self) -> Base.TaskStatus:
+        return self.status
+
+
+class FakeTaskDataManager:
+    """提供任务快照所需的最小数据桩。"""
+
+    def __init__(self) -> None:
+        self.translation_extras = {
+            "line": 0,
+            "total_line": 0,
+            "processed_line": 0,
+            "error_line": 0,
+        }
+        self.analysis_snapshot = {
+            "line": 0,
+            "total_line": 0,
+            "processed_line": 0,
+            "error_line": 0,
+        }
+
+    def get_translation_extras(self) -> dict[str, int]:
+        return dict(self.translation_extras)
+
+    def get_analysis_progress_snapshot(self) -> dict[str, int]:
+        return dict(self.analysis_snapshot)
+
+
 @pytest.fixture
 def fake_project_manager() -> FakeProjectManager:
     return FakeProjectManager()
@@ -57,6 +93,35 @@ def fake_project_manager() -> FakeProjectManager:
 @pytest.fixture
 def project_app_service(fake_project_manager: FakeProjectManager) -> ProjectAppService:
     return ProjectAppService(fake_project_manager)
+
+
+@pytest.fixture
+def fake_task_data_manager() -> FakeTaskDataManager:
+    return FakeTaskDataManager()
+
+
+@pytest.fixture
+def fake_engine() -> FakeEngine:
+    return FakeEngine()
+
+
+@pytest.fixture
+def task_app_service(
+    fake_task_data_manager: FakeTaskDataManager,
+    fake_engine: FakeEngine,
+) -> TaskAppService:
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+
+    def capture_emit(event: Base.Event, data: dict[str, object]) -> None:
+        emitted_events.append((event, data))
+
+    service = TaskAppService(
+        data_manager=fake_task_data_manager,
+        engine=fake_engine,
+        event_emitter=capture_emit,
+    )
+    service.emitted_events = emitted_events
+    return service
 
 
 @pytest.fixture

@@ -160,7 +160,11 @@ class Base:
     API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
         Event.PROJECT_LOADED,
         Event.PROJECT_UNLOADED,
+        Event.TRANSLATION_TASK,
+        Event.TRANSLATION_REQUEST_STOP,
         Event.TRANSLATION_PROGRESS,
+        Event.ANALYSIS_TASK,
+        Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
         Event.WORKBENCH_SNAPSHOT,
         Event.CONFIG_UPDATED,

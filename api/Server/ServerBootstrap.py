@@ -1,22 +1,56 @@
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from api.Application.EventStreamService import EventStreamService
+from api.Application.ProjectAppService import ProjectAppService
+from api.Application.TaskAppService import TaskAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.Routes.EventRoutes import EventRoutes
+from api.Server.Routes.ProjectRoutes import ProjectRoutes
+from api.Server.Routes.TaskRoutes import TaskRoutes
 
 
 class ServerBootstrap:
     """统一维护本地 HTTP 服务的启动与关闭入口。"""
 
+    @dataclass(frozen=True)
+    class ServerRuntime:
+        """聚合运行期对象，避免启动方自己拼凑散乱返回值。"""
+
+        base_url: str
+        shutdown: Callable[[], None]
+
     @classmethod
-    def start_for_test(cls) -> tuple[str, Callable[[], None]]:
+    def start(cls) -> ServerRuntime:
+        """应用 UI 模式使用的默认启动入口。"""
+
+        project_app_service = ProjectAppService()
+        task_app_service = TaskAppService()
+        return cls.start_for_test(
+            project_app_service=project_app_service,
+            task_app_service=task_app_service,
+            as_runtime=True,
+        )
+
+    @classmethod
+    def start_for_test(
+        cls,
+        *,
+        project_app_service: ProjectAppService | None = None,
+        task_app_service: TaskAppService | None = None,
+        as_runtime: bool = False,
+    ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
         core_api_server = CoreApiServer()
         event_stream_service = EventStreamService()
         core_api_server.register_routes()
         EventRoutes.register(core_api_server, event_stream_service)
+        if project_app_service is not None:
+            ProjectRoutes.register(core_api_server, project_app_service)
+        if task_app_service is not None:
+            TaskRoutes.register(core_api_server, task_app_service)
         http_server = core_api_server.create_http_server()
         serve_thread = threading.Thread(
             target=http_server.serve_forever,
@@ -34,4 +68,6 @@ class ServerBootstrap:
             http_server.server_close()
             serve_thread.join(timeout=1)
 
+        if as_runtime:
+            return cls.ServerRuntime(base_url=base_url, shutdown=shutdown)
         return base_url, shutdown
