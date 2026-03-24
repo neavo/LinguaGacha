@@ -22,6 +22,7 @@ from api.Application.AppContext import AppContext
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Server.ServerBootstrap import ServerBootstrap
@@ -270,6 +271,7 @@ if __name__ == "__main__":
             project_api_client=ProjectApiClient(api_client),
             task_api_client=TaskApiClient(api_client),
             workbench_api_client=WorkbenchApiClient(api_client),
+            settings_api_client=SettingsApiClient(api_client),
             api_state_store=ApiStateStore(),
         )
 

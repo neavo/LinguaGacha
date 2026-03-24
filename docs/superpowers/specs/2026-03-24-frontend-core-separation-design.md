@@ -15,7 +15,7 @@ LinguaGacha 当前采用单进程桌面应用架构，`QApplication`、`frontend
 
 本设计基于以下已确认前提：
 
-- 第一阶段采用本地单机双进程架构。
+- 第一阶段建立本地 HTTP/SSE 边界，当前已落地形态为同进程内本地 HTTP 服务线程。
 - UI 与 Core 通过 `127.0.0.1` 本地接口通信。
 - Core 独占工程、数据库、文件系统与任务引擎的权威状态。
 - 现有 PySide6 UI 第一阶段继续保留，但要逐步改造为 `api.client` 消费者。
@@ -24,6 +24,33 @@ LinguaGacha 当前采用单进程桌面应用架构，`QApplication`、`frontend
 - `SSE` 流入口保留为 `GET`，其余业务接口不要求使用 `GET`。
 - 新边界统一落在 `api/` 包下。
 - 后续实现阶段除代码外，必须额外产出 `api/SPEC.md` 作为简明接口契约文档。
+
+## 2.1 当前落地状态（2026-03-24）
+
+截至 2026-03-24，第一阶段已经完成首批页面边界迁移，以下内容以当前代码为准：
+
+- UI 模式会在 `app.py` 中启动 `ServerBootstrap.start()`，以同进程线程形式提供本地 HTTP 服务
+- CLI 模式不启动本地 API 服务，仍保留原有内部入口
+- 第一阶段已迁移页面：
+  - `frontend/AppFluentWindow.py`
+  - `frontend/ProjectPage.py`
+  - `frontend/Translation/TranslationPage.py`
+  - `frontend/Analysis/AnalysisPage.py`
+  - `frontend/Workbench/WorkbenchPage.py`
+  - `frontend/AppSettingsPage.py`
+  - `frontend/Setting/BasicSettingsPage.py`
+  - `frontend/Setting/ExpertSettingsPage.py`
+- 实际接口路径、请求体与 SSE topic 以 [api/SPEC.md](/E:/Project/LinguaGacha/api/SPEC.md) 为准
+
+```mermaid
+flowchart LR
+    UI["PySide6 UI"] --> CLIENT["api/Client"]
+    CLIENT --> HTTP["CoreApiServer (线程内本地 HTTP)"]
+    HTTP --> APP["api/Application"]
+    APP --> CORE["module/ + base/"]
+    CORE --> SSE["EventBridge + EventStreamService"]
+    SSE --> CLIENT
+```
 
 ## 3. 改造目标
 
@@ -178,16 +205,14 @@ GET  /api/health         -> 可选健康检查
 
 内部仍可继续使用 `Base.Event` 作为短期实现机制，但对 UI 的外部事件必须经过 `api/bridge/EventBridge.py` 统一映射，禁止直接透传内部事件名与内部 payload。
 
-### 9.2 建议的 SSE 主题
+### 9.2 第一阶段实际 SSE 主题
 
 | 主题 | 语义 | 典型内部来源 |
 | --- | --- | --- |
-| `app.toast` | 弹窗/提示信息 | `TOAST` |
-| `project.state_changed` | 工程加载、卸载、切换 | `PROJECT_LOADED`、`PROJECT_UNLOADED` |
-| `project.file_changed` | 工程文件增删改 | `PROJECT_FILE_UPDATE` |
+| `project.changed` | 工程加载、卸载变化 | `PROJECT_LOADED`、`PROJECT_UNLOADED` |
 | `task.status_changed` | 任务开始、停止、完成、失败 | `TRANSLATION_TASK`、`ANALYSIS_TASK` |
 | `task.progress_changed` | 翻译/分析进度快照 | `TRANSLATION_PROGRESS`、`ANALYSIS_PROGRESS` |
-| `workbench.snapshot_changed` | 工作台刷新或快照变化 | `WORKBENCH_REFRESH`、`WORKBENCH_SNAPSHOT` |
+| `workbench.snapshot_changed` | 工作台快照变化 | `WORKBENCH_SNAPSHOT` |
 | `settings.changed` | 配置更新 | `CONFIG_UPDATED` |
 
 ### 9.3 统一事件包格式
@@ -226,31 +251,34 @@ GET  /api/health         -> 可选健康检查
 - `rules`
 - `events`
 
-### 10.2 第一阶段最小闭环接口
+### 10.2 第一阶段实际闭环接口
 
 ```text
-POST /api/project/current
-POST /api/project/preview
-POST /api/project/create
 POST /api/project/load
+POST /api/project/create
+POST /api/project/snapshot
 POST /api/project/unload
+POST /api/project/extensions
+POST /api/project/source-files
+POST /api/project/preview
 
-POST /api/tasks/status
-POST /api/tasks/translation/start
-POST /api/tasks/translation/stop
-POST /api/tasks/analysis/start
-POST /api/tasks/analysis/stop
-POST /api/tasks/translation/reset_failed
-POST /api/tasks/analysis/reset_failed
+POST /api/tasks/start-translation
+POST /api/tasks/stop-translation
+POST /api/tasks/start-analysis
+POST /api/tasks/stop-analysis
+POST /api/tasks/snapshot
 
 POST /api/workbench/snapshot
-POST /api/workbench/file/add
-POST /api/workbench/file/replace
-POST /api/workbench/file/reset
-POST /api/workbench/file/delete
+POST /api/workbench/add-file
+POST /api/workbench/replace-file
+POST /api/workbench/reset-file
+POST /api/workbench/delete-file
+POST /api/workbench/extensions
 
 POST /api/settings/app
-POST /api/settings/app/save
+POST /api/settings/update
+POST /api/settings/recent-projects/add
+POST /api/settings/recent-projects/remove
 
 GET  /api/events/stream
 ```
@@ -284,15 +312,15 @@ flowchart TD
 
 ## 12. 启动与进程模型
 
-第一阶段需要重新规划启动方式：
+第一阶段启动模型当前已经落地为：
 
-- UI 模式下，由桌面入口先确保本地 Core 服务已启动。
-- Core 服务绑定本地回环地址，避免暴露到局域网。
-- UI 通过端口探测或握手方式连接 Core。
-- Core 未启动或启动失败时，UI 需要给出明确提示。
-- 需要明确多开实例策略，避免多个 UI 进程争夺同一 Core 状态。
+- UI 模式下，由 `app.py` 直接调用 `ServerBootstrap.start()` 启动本地 Core 服务线程
+- Core 服务绑定 `127.0.0.1` 回环地址，不对局域网暴露
+- UI 通过 `ApiClient` 连接启动后返回的本地地址
+- CLI 模式不启动本地 API 服务
+- 退出时由 `aboutToQuit` 回调统一执行服务关闭与工程清理
 
-建议后续实现时，在 `api/server/ServerBootstrap.py` 中集中处理启动、端口、健康检查与退出协作。
+后续若演进为独立进程，再以 `ServerBootstrap` 为收口点扩展端口协商、健康检查与多实例策略。
 
 ## 13. 迁移分期
 

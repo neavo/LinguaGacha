@@ -62,7 +62,7 @@ class EventStreamService:
                 except Empty:
                     handler.wfile.write(self.KEEPALIVE_BYTES)
                 handler.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
+        except BrokenPipeError, ConnectionResetError:
             # 客户端主动断开是预期行为，无需额外记录噪音日志。
             pass
         finally:

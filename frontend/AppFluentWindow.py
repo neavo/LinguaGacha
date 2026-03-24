@@ -49,7 +49,6 @@ from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
-from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.PromptPathResolver import PromptPathResolver
 from widget.ProgressToast import ProgressToast
@@ -88,6 +87,8 @@ class AppFluentWindow(Base, FluentWindow):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
+    APP_THEME_DARK: str = "DARK"
+    APP_THEME_LIGHT: str = "LIGHT"
     HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
     HOMEPAGE_AVATAR_RADIUS: int = 10
     HOMEPAGE_AVATAR_X: int = 10
@@ -102,6 +103,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.project_api_client = app_context.project_api_client
         self.task_api_client = app_context.task_api_client
         self.workbench_api_client = app_context.workbench_api_client
+        self.settings_api_client = app_context.settings_api_client
         self.api_state_store = app_context.api_state_store
 
         super().__init__()
@@ -403,14 +405,14 @@ class AppFluentWindow(Base, FluentWindow):
         # 避免 qfluentwidgets styleSheetManager 遍历时字典大小变化
         QApplication.processEvents()
 
-        config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)
-            config.theme = Config.Theme.DARK
+            self.settings_api_client.update_app_settings({"theme": self.APP_THEME_DARK})
         else:
             setTheme(Theme.LIGHT)
-            config.theme = Config.Theme.LIGHT
-        config.save()
+            self.settings_api_client.update_app_settings(
+                {"theme": self.APP_THEME_LIGHT}
+            )
 
     # 切换语言
     def switch_language(self) -> None:
@@ -421,13 +423,13 @@ class AppFluentWindow(Base, FluentWindow):
         message_box.cancelButton.setText("English")
 
         if message_box.exec():
-            config = Config().load()
-            config.app_language = BaseLanguage.Enum.ZH
-            config.save()
+            self.settings_api_client.update_app_settings(
+                {"app_language": BaseLanguage.Enum.ZH}
+            )
         else:
-            config = Config().load()
-            config.app_language = BaseLanguage.Enum.EN
-            config.save()
+            self.settings_api_client.update_app_settings(
+                {"app_language": BaseLanguage.Enum.EN}
+            )
 
         self.emit(
             Base.Event.TOAST,
@@ -569,6 +571,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.project_page = ProjectPage(
             "project_page",
             self.project_api_client,
+            self.settings_api_client,
             self.api_state_store,
             self,
         )
@@ -615,7 +618,7 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 应用设置按钮
         self.addSubInterface(
-            AppSettingsPage("app_settings_page", self),
+            AppSettingsPage("app_settings_page", self.settings_api_client, self),
             ICON_NAV_APP_SETTINGS.qicon(),
             Localizer.get().app_settings_page,
             NavigationItemPosition.BOTTOM,
@@ -715,7 +718,12 @@ class AppFluentWindow(Base, FluentWindow):
     def add_setting_pages(self) -> None:
         # 基础设置
         self.addSubInterface(
-            BasicSettingsPage("basic_settings_page", self),
+            BasicSettingsPage(
+                "basic_settings_page",
+                self.settings_api_client,
+                self.api_state_store,
+                self,
+            ),
             ICON_NAV_BASIC_SETTINGS.qicon(),
             Localizer.get().basic_settings,
             NavigationItemPosition.SCROLL,
@@ -724,7 +732,11 @@ class AppFluentWindow(Base, FluentWindow):
         # 专家设置
         if LogManager.get().is_expert_mode():
             self.addSubInterface(
-                ExpertSettingsPage("expert_settings_page", self),
+                ExpertSettingsPage(
+                    "expert_settings_page",
+                    self.settings_api_client,
+                    self,
+                ),
                 ICON_NAV_EXPERT_SETTINGS.qicon(),
                 Localizer.get().app_expert_settings_page,
                 NavigationItemPosition.SCROLL,

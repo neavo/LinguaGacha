@@ -25,7 +25,6 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
 from frontend.Translation.TimerMessageBox import TimerMessageBox
-from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
@@ -72,18 +71,15 @@ class TranslationPage(Base, QWidget):
         # 仅用于避免误关其他模块触发的进度 Toast。
         self.is_stopping_toast_active: bool = False
 
-        # 载入并保存默认配置
-        config = Config().load().save()
-
         # 设置主容器
         self.container = QVBoxLayout(self)
         self.container.setSpacing(8)
         self.container.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 添加控件
-        self.add_widget_head(self.container, config, window)
-        self.add_widget_body(self.container, config, window)
-        self.add_widget_foot(self.container, config, window)
+        self.add_widget_head(self.container, window)
+        self.add_widget_body(self.container, window)
+        self.add_widget_foot(self.container, window)
 
         # 注册事件
         self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
@@ -337,9 +333,8 @@ class TranslationPage(Base, QWidget):
             self.ring.setFormat(Localizer.get().translation_page_status_idle)
 
     # 头部
-    def add_widget_head(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_head(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.head_hbox_container = QWidget(self)
         self.head_hbox = QHBoxLayout(self.head_hbox_container)
         parent.addWidget(self.head_hbox_container)
@@ -375,45 +370,40 @@ class TranslationPage(Base, QWidget):
         self.head_hbox.addStretch(1)
 
     # 中部
-    def add_widget_body(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
         self.flow_container = QWidget(self)
         self.flow_layout = FlowLayout(self.flow_container, needAni=False)
         self.flow_layout.setSpacing(8)
         self.flow_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.add_time_card(self.flow_layout, config, window)
-        self.add_line_card(self.flow_layout, config, window)
-        self.add_remaining_line_card(self.flow_layout, config, window)
-        self.add_speed_card(self.flow_layout, config, window)
-        self.add_token_card(self.flow_layout, config, window)
-        self.add_task_card(self.flow_layout, config, window)
+        self.add_time_card(self.flow_layout, window)
+        self.add_line_card(self.flow_layout, window)
+        self.add_remaining_line_card(self.flow_layout, window)
+        self.add_speed_card(self.flow_layout, window)
+        self.add_token_card(self.flow_layout, window)
+        self.add_task_card(self.flow_layout, window)
 
         self.container.addWidget(self.flow_container, 1)
 
     # 底部
-    def add_widget_foot(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_foot(self, parent: QLayout, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
         self.command_bar_card.set_minimum_width(640)
-        self.add_command_bar_action_start(self.command_bar_card, config, window)
-        self.add_command_bar_action_stop(self.command_bar_card, config, window)
+        self.add_command_bar_action_start(self.command_bar_card, window)
+        self.add_command_bar_action_stop(self.command_bar_card, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_reset(self.command_bar_card, config, window)
+        self.add_command_bar_action_reset(self.command_bar_card, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_timer(self.command_bar_card, config, window)
+        self.add_command_bar_action_timer(self.command_bar_card, window)
 
         self.command_bar_card.add_stretch(1)
 
     # 累计时间
-    def add_time_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_time_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.time_display_mode = self.TimeDisplayMode.REMAINING
 
         def on_time_card_clicked(card: DashboardCard) -> None:
@@ -442,9 +432,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.time)
 
     # 翻译行数
-    def add_line_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_line_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.processed_line_card = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_line_processed,
@@ -470,9 +459,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.error_line_card)
 
     # 剩余行数
-    def add_remaining_line_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_remaining_line_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.remaining_line = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_remaining_line,
@@ -483,9 +471,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.remaining_line)
 
     # 平均速度
-    def add_speed_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_speed_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.speed = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_speed,
@@ -496,9 +483,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.speed)
 
     # 累计消耗
-    def add_token_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_token_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         # 默认显示输出 Token
         self.token_display_mode = self.TokenDisplayMode.OUTPUT
 
@@ -533,9 +519,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.token)
 
     # 并行任务
-    def add_task_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_task_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.task = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_task,
@@ -547,8 +532,10 @@ class TranslationPage(Base, QWidget):
 
     # 开始
     def add_command_bar_action_start(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
+        del window
+
         def triggered() -> None:
             # 根据是否有进度决定模式：有进度则 CONTINUE，无进度则 NEW
             self.request_start_translation()
@@ -561,7 +548,7 @@ class TranslationPage(Base, QWidget):
 
     # 停止
     def add_command_bar_action_stop(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         def triggered() -> None:
             message_box = MessageBox(
@@ -597,7 +584,7 @@ class TranslationPage(Base, QWidget):
 
     # 重置翻译进度
     def add_command_bar_action_reset(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         def triggered() -> None:
             def confirm_and_emit(message: str, reset_event: Base.Event) -> None:
@@ -661,7 +648,7 @@ class TranslationPage(Base, QWidget):
 
     # 定时器
     def add_command_bar_action_timer(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         interval = 1
 

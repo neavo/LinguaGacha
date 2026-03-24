@@ -3,18 +3,22 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication
 
 from api.Application.ProjectAppService import ProjectAppService
+from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Server.ServerBootstrap import ServerBootstrap
+from frontend.AppSettingsPage import AppSettingsPage
 import frontend.ProjectPage as project_page_module
-import frontend.Translation.TranslationPage as translation_page_module
 from frontend.Analysis.AnalysisPage import AnalysisPage
 from frontend.ProjectPage import ProjectPage
+from frontend.Setting.BasicSettingsPage import BasicSettingsPage
+from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
 
@@ -69,6 +73,14 @@ def test_project_page_uses_project_api_client(
 ) -> None:
     ensure_qt_application()
     project_client = Mock()
+    settings_client = Mock()
+    settings_client.get_app_settings.return_value = {
+        "settings": {
+            "recent_projects": [],
+            "project_save_mode": "MANUAL",
+            "project_fixed_path": "",
+        }
+    }
     project_client.load_project.return_value = {
         "project": {"loaded": True, "path": "demo.lg"}
     }
@@ -84,12 +96,14 @@ def test_project_page_uses_project_api_client(
         page = ProjectPage(
             "project_page",
             project_client,
+            settings_client,
             api_state_store,
         )
         page.selected_lg_path = "demo.lg"
 
         page.on_open_project()
 
+        settings_client.get_app_settings.assert_called()
         project_client.load_project.assert_called_once_with({"path": "demo.lg"})
         assert api_state_store.is_project_loaded() is True
     finally:
@@ -141,16 +155,120 @@ def test_workbench_api_client_get_snapshot_returns_serializable_snapshot(
         shutdown()
 
 
-def test_translation_page_uses_task_api_client(monkeypatch) -> None:
+def test_settings_api_client_get_app_settings_returns_snapshot(
+    fake_settings_config,
+) -> None:
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        settings_app_service=SettingsAppService(
+            config_loader=lambda: fake_settings_config
+        )
+    )
+    try:
+        api_client = ApiClient(base_url)
+        settings_client = SettingsApiClient(api_client)
+
+        result = settings_client.get_app_settings()
+
+        assert result["settings"]["request_timeout"] == 120
+        assert result["settings"]["target_language"] == "ZH"
+    finally:
+        shutdown()
+
+
+def test_settings_api_client_add_recent_project_returns_snapshot(
+    fake_settings_config,
+) -> None:
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        settings_app_service=SettingsAppService(
+            config_loader=lambda: fake_settings_config
+        )
+    )
+    try:
+        api_client = ApiClient(base_url)
+        settings_client = SettingsApiClient(api_client)
+
+        result = settings_client.add_recent_project("demo.lg", "demo")
+
+        assert result["settings"]["recent_projects"] == [
+            {"path": "demo.lg", "name": "demo"}
+        ]
+    finally:
+        shutdown()
+
+
+def test_app_settings_page_reads_initial_snapshot_from_settings_api_client() -> None:
+    ensure_qt_application()
+    settings_client = Mock()
+    settings_client.get_app_settings.return_value = {
+        "settings": {
+            "expert_mode": False,
+            "proxy_url": "",
+            "proxy_enable": False,
+            "scale_factor": "",
+        }
+    }
+
+    AppSettingsPage("app_settings_page", settings_client, None)
+
+    settings_client.get_app_settings.assert_called_once_with()
+
+
+def test_basic_settings_page_uses_api_state_store_busy_state() -> None:
+    ensure_qt_application()
+    settings_client = Mock()
+    settings_client.get_app_settings.return_value = {
+        "settings": {
+            "source_language": "JA",
+            "target_language": "ZH",
+            "project_save_mode": "MANUAL",
+            "project_fixed_path": "",
+            "output_folder_open_on_finish": False,
+            "request_timeout": 120,
+        }
+    }
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_task({"task_type": "translation", "busy": True})
+
+    page = BasicSettingsPage(
+        "basic_settings_page",
+        settings_client,
+        api_state_store,
+        None,
+    )
+
+    assert page.source_language_combo.isEnabled() is False
+    assert page.target_language_combo.isEnabled() is False
+
+
+def test_expert_settings_page_reads_initial_snapshot_from_settings_api_client() -> None:
+    ensure_qt_application()
+    settings_client = Mock()
+    settings_client.get_app_settings.return_value = {
+        "settings": {
+            "preceding_lines_threshold": 0,
+            "clean_ruby": False,
+            "deduplication_in_trans": True,
+            "deduplication_in_bilingual": True,
+            "check_kana_residue": True,
+            "check_hangeul_residue": True,
+            "check_similarity": True,
+            "write_translated_name_fields_to_file": True,
+            "auto_process_prefix_suffix_preserved_text": True,
+        }
+    }
+
+    ExpertSettingsPage("expert_settings_page", settings_client, None)
+
+    settings_client.get_app_settings.assert_called_once_with()
+
+
+def test_translation_page_uses_task_api_client() -> None:
     ensure_qt_application()
     task_client = Mock()
     task_client.start_translation.return_value = {
         "task": {"task_type": "translation", "status": "REQUEST", "busy": True}
     }
     api_state_store = ApiStateStore()
-
-    monkeypatch.setattr(translation_page_module.Config, "load", lambda self: self)
-    monkeypatch.setattr(translation_page_module.Config, "save", lambda self: self)
 
     page = TranslationPage(
         "translation_page",

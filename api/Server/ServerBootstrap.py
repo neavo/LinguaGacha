@@ -4,11 +4,13 @@ from dataclasses import dataclass
 
 from api.Application.EventStreamService import EventStreamService
 from api.Application.ProjectAppService import ProjectAppService
+from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
+from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
 
@@ -30,10 +32,12 @@ class ServerBootstrap:
         project_app_service = ProjectAppService()
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
+        settings_app_service = SettingsAppService()
         return cls.start_for_test(
             project_app_service=project_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
+            settings_app_service=settings_app_service,
             as_runtime=True,
         )
 
@@ -44,6 +48,7 @@ class ServerBootstrap:
         project_app_service: ProjectAppService | None = None,
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
+        settings_app_service: SettingsAppService | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
@@ -58,6 +63,8 @@ class ServerBootstrap:
             TaskRoutes.register(core_api_server, task_app_service)
         if workbench_app_service is not None:
             WorkbenchRoutes.register(core_api_server, workbench_app_service)
+        if settings_app_service is not None:
+            SettingsRoutes.register(core_api_server, settings_app_service)
         http_server = core_api_server.create_http_server()
         serve_thread = threading.Thread(
             target=http_server.serve_forever,
