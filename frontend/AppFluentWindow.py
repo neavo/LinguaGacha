@@ -101,6 +101,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.app_context = app_context
         self.project_api_client = app_context.project_api_client
         self.task_api_client = app_context.task_api_client
+        self.workbench_api_client = app_context.workbench_api_client
         self.api_state_store = app_context.api_state_store
 
         super().__init__()
@@ -697,7 +698,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 工作台（文件管理）
-        self.workbench_page = WorkbenchPage("workbench_page", self)
+        self.workbench_page = WorkbenchPage(
+            "workbench_page",
+            self.workbench_api_client,
+            self.api_state_store,
+            self,
+        )
         self.addSubInterface(
             self.workbench_page,
             ICON_NAV_WORKBENCH.qicon(),

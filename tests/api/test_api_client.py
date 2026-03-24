@@ -4,16 +4,19 @@ from PySide6.QtWidgets import QApplication
 
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.TaskAppService import TaskAppService
+from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.TaskApiClient import TaskApiClient
+from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Server.ServerBootstrap import ServerBootstrap
 import frontend.ProjectPage as project_page_module
 import frontend.Translation.TranslationPage as translation_page_module
 from frontend.Analysis.AnalysisPage import AnalysisPage
 from frontend.ProjectPage import ProjectPage
 from frontend.Translation.TranslationPage import TranslationPage
+from frontend.Workbench.WorkbenchPage import WorkbenchPage
 
 
 def ensure_qt_application() -> QApplication:
@@ -121,6 +124,23 @@ def test_task_api_client_get_task_snapshot_supports_requested_task_type(
         shutdown()
 
 
+def test_workbench_api_client_get_snapshot_returns_serializable_snapshot(
+    fake_workbench_manager,
+) -> None:
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        workbench_app_service=WorkbenchAppService(fake_workbench_manager)
+    )
+    try:
+        api_client = ApiClient(base_url)
+        workbench_client = WorkbenchApiClient(api_client)
+
+        result = workbench_client.get_snapshot()
+
+        assert result["snapshot"]["entries"][0]["rel_path"] == "script/a.txt"
+    finally:
+        shutdown()
+
+
 def test_translation_page_uses_task_api_client(monkeypatch) -> None:
     ensure_qt_application()
     task_client = Mock()
@@ -172,3 +192,21 @@ def test_analysis_page_uses_task_api_client() -> None:
 
     task_client.start_analysis.assert_called_once_with({"mode": "NEW"})
     assert api_state_store.get_task_snapshot()["task_type"] == "analysis"
+
+
+def test_workbench_page_uses_workbench_api_client() -> None:
+    ensure_qt_application()
+    workbench_client = Mock()
+    workbench_client.add_file.return_value = {"accepted": True}
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+
+    page = WorkbenchPage(
+        "workbench_page",
+        workbench_client,
+        api_state_store,
+    )
+
+    page.request_add_file("script/b.txt")
+
+    workbench_client.add_file.assert_called_once_with("script/b.txt")

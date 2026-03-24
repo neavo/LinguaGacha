@@ -2,6 +2,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from PySide6.QtCore import QSize
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -24,10 +26,6 @@ from qfluentwidgets.components.widgets.command_bar import CommandButton
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Workbench.WorkbenchTableWidget import WorkbenchTableWidget
-from model.Item import Item
-from module.Data.Core.DataTypes import WorkbenchSnapshot
-from module.Data.DataManager import DataManager
-from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Utils.GapTool import GapTool
 from widget.CommandBarCard import CommandBarCard
@@ -90,16 +88,23 @@ class WorkbenchPage(Base, ScrollArea):
 
     FONT_SIZE: int = 12
     ICON_SIZE: int = 16
-    TRANSLATION_REFRESH_THROTTLE_MS: int = 500
 
-    def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        object_name: str,
+        workbench_api_client: WorkbenchApiClient,
+        api_state_store: ApiStateStore,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName(object_name)
+        self.workbench_api_client = workbench_api_client
+        self.api_state_store = api_state_store
         self.setWidgetResizable(True)
         self.enableTransparentBackground()
         self.file_entries: list[dict[str, Any]] = []
-        self.last_workbench_snapshot: WorkbenchSnapshot | None = None
-        self.translation_progress_data: dict[str, Any] = {}
+        self.last_workbench_snapshot: dict[str, Any] | None = None
+        self.file_op_running: bool = False
         # 刷新后希望聚焦/保持选中的文件（例如“更新文件”重命名后）。
         self.pending_focus_rel_path: str | None = None
         # 页面隐藏时收到完整刷新请求，等再次显示后再补刷新。
@@ -132,15 +137,8 @@ class WorkbenchPage(Base, ScrollArea):
         self.build_footer_section()
 
         self.busy_timer = QTimer(self)
-        self.busy_timer.timeout.connect(self.update_controls_enabled)
+        self.busy_timer.timeout.connect(self.on_busy_timer_tick)
         self.busy_timer.start(500)
-
-        # 翻译进度更新可能很高频：用节流合并刷新请求，避免后台线程高频重算快照。
-        self.translation_refresh_timer = QTimer(self)
-        self.translation_refresh_timer.setSingleShot(True)
-        self.translation_refresh_timer.timeout.connect(
-            self.on_translation_refresh_timeout
-        )
 
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
@@ -148,7 +146,6 @@ class WorkbenchPage(Base, ScrollArea):
         self.subscribe(Base.Event.PROJECT_PREFILTER, self.on_project_prefilter)
         self.subscribe(Base.Event.WORKBENCH_REFRESH, self.on_workbench_refresh)
         self.subscribe(Base.Event.WORKBENCH_SNAPSHOT, self.on_workbench_snapshot)
-        self.subscribe(Base.Event.TRANSLATION_PROGRESS, self.on_translation_update)
 
         self.refresh_all()
 
@@ -164,36 +161,18 @@ class WorkbenchPage(Base, ScrollArea):
 
     def reset_live_refresh_state(self, *, clear_snapshot: bool) -> None:
         # 工程切换后必须丢掉旧的实时状态，避免把上一个工程的统计叠到当前页面上。
-        self.translation_progress_data = {}
+        self.file_op_running = False
         self.pending_file_op_refresh = False
         self.pending_visible_full_refresh = False
         if clear_snapshot:
             self.last_workbench_snapshot = None
 
-    def on_translation_update(self, event: Base.Event, data: dict) -> None:
-        del event
-        self.translation_progress_data = dict(data) if isinstance(data, dict) else {}
+    def on_busy_timer_tick(self) -> None:
+        """统一按固定节奏同步可操作状态和翻译实时统计。"""
 
-        # 仅页面可见时刷新 UI：隐藏页仍保留最新进度，等 showEvent 再补显示。
-        if not self.isVisible():
-            return
-        if not DataManager.get().is_loaded():
-            return
-        if self.last_workbench_snapshot is None:
-            return
-
-        # 500ms throttle：持续有进度更新时，只按固定节奏刷新顶部统计卡片。
-        if self.translation_refresh_timer.isActive():
-            return
-        self.translation_refresh_timer.start(self.TRANSLATION_REFRESH_THROTTLE_MS)
-
-    def on_translation_refresh_timeout(self) -> None:
-        # timeout 触发时再做一次保护：避免用户刚切走页面仍触发 UI 更新。
-        if not self.isVisible():
-            return
-        if not DataManager.get().is_loaded():
-            return
-        self.apply_live_translation_stats()
+        self.update_controls_enabled()
+        if self.isVisible():
+            self.apply_live_translation_stats()
 
     def build_stats_section(self) -> None:
         stats_frame = QFrame(self.container)
@@ -285,15 +264,12 @@ class WorkbenchPage(Base, ScrollArea):
         )
 
     def is_engine_busy(self) -> bool:
-        return (
-            Engine.get().get_status() != Base.TaskStatus.IDLE
-            or Engine.get().get_running_task_count() > 0
-        )
+        return self.api_state_store.is_busy()
 
     def update_controls_enabled(self) -> None:
-        loaded = DataManager.get().is_loaded()
+        loaded = self.api_state_store.is_project_loaded()
         busy = self.is_engine_busy()
-        file_op_running = DataManager.get().is_file_op_running()
+        file_op_running = self.file_op_running
         readonly = (not loaded) or busy or file_op_running
         can_edit_files = not readonly
         can_export_translation = loaded and (not file_op_running)
@@ -338,7 +314,7 @@ class WorkbenchPage(Base, ScrollArea):
             # 后台更新完成后刷新列表，并尽量将焦点保持在更新后的文件上。
             self.pending_focus_rel_path = rel_path
 
-        if DataManager.get().is_file_op_running():
+        if self.file_op_running:
             self.pending_file_op_refresh = True
             return
 
@@ -358,6 +334,7 @@ class WorkbenchPage(Base, ScrollArea):
         ):
             return
 
+        self.file_op_running = False
         self.pending_file_op_refresh = False
         self.refresh_all()
 
@@ -369,7 +346,7 @@ class WorkbenchPage(Base, ScrollArea):
     def on_workbench_snapshot(self, event: Base.Event, data: dict) -> None:
         del event
         snapshot = data.get("snapshot")
-        if not isinstance(snapshot, WorkbenchSnapshot):
+        if not isinstance(snapshot, dict):
             return
         self.apply_snapshot(snapshot)
 
@@ -403,24 +380,31 @@ class WorkbenchPage(Base, ScrollArea):
                     return
                 self.refresh_pending = False
 
-            snapshot = DataManager.get().build_workbench_snapshot()
+            response = self.workbench_api_client.get_snapshot()
+            snapshot = response.get("snapshot", {})
             self.emit(Base.Event.WORKBENCH_SNAPSHOT, {"snapshot": snapshot})
 
-    def apply_snapshot(self, snapshot: WorkbenchSnapshot) -> None:
-        self.last_workbench_snapshot = snapshot
+    def apply_snapshot(self, snapshot: dict[str, Any]) -> None:
+        self.last_workbench_snapshot = dict(snapshot)
+        self.file_op_running = bool(snapshot.get("file_op_running", False))
         table_widget = self.table_widget
         selected_rel_path = table_widget.get_selected_rel_path() if table_widget else ""
 
         self.apply_stats_snapshot(self.build_stats_payload(snapshot))
 
         entries: list[dict[str, Any]] = []
-        for entry in GapTool.iter(snapshot.entries):
-            fmt = self.get_format_label(entry.file_type, entry.rel_path)
+        snapshot_entries = snapshot.get("entries", [])
+        iterable_entries = (
+            snapshot_entries if isinstance(snapshot_entries, list) else []
+        )
+        for entry in GapTool.iter(iterable_entries):
+            rel_path = str(entry.get("rel_path", ""))
+            fmt = self.get_format_label(str(entry.get("file_type", "")), rel_path)
             entries.append(
                 {
-                    "rel_path": entry.rel_path,
+                    "rel_path": rel_path,
                     "format": fmt,
-                    "item_count": entry.item_count,
+                    "item_count": int(entry.get("item_count", 0) or 0),
                 }
             )
 
@@ -451,27 +435,32 @@ class WorkbenchPage(Base, ScrollArea):
 
     def build_stats_payload(
         self,
-        snapshot: WorkbenchSnapshot,
+        snapshot: dict[str, Any],
         *,
         translated: int | None = None,
     ) -> dict[str, int]:
-        translated_count = snapshot.translated if translated is None else translated
-        translated_count = max(0, min(snapshot.total_items, translated_count))
+        total_items = int(snapshot.get("total_items", 0) or 0)
+        translated_base = int(snapshot.get("translated", 0) or 0)
+        translated_count = translated_base if translated is None else translated
+        translated_count = max(0, min(total_items, translated_count))
         return {
-            "file_count": snapshot.file_count,
-            "total_items": snapshot.total_items,
+            "file_count": int(snapshot.get("file_count", 0) or 0),
+            "total_items": total_items,
             "translated": translated_count,
-            "untranslated": max(0, snapshot.total_items - translated_count),
+            "untranslated": max(0, total_items - translated_count),
         }
 
     def should_apply_live_translation_stats(self) -> bool:
         if self.last_workbench_snapshot is None:
             return False
-        if not self.translation_progress_data:
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        if str(task_snapshot.get("task_type", "")) != "translation":
             return False
-        return Engine.get().get_status() in (
-            Base.TaskStatus.TRANSLATING,
-            Base.TaskStatus.STOPPING,
+        return str(task_snapshot.get("status", "IDLE")) in (
+            "TRANSLATING",
+            "STOPPING",
+            "RUN",
+            "REQUEST",
         )
 
     def apply_live_translation_stats(self) -> None:
@@ -482,33 +471,33 @@ class WorkbenchPage(Base, ScrollArea):
         if snapshot is None:
             return
 
-        processed_line = int(
-            self.translation_progress_data.get("processed_line", 0) or 0
-        )
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        processed_line = int(task_snapshot.get("processed_line", 0) or 0)
+        translated_in_past = int(snapshot.get("translated_in_past", 0) or 0)
         self.apply_stats_snapshot(
             self.build_stats_payload(
                 snapshot,
-                translated=snapshot.translated_in_past + processed_line,
+                translated=translated_in_past + processed_line,
             )
         )
 
-    def get_format_label(self, file_type: Item.FileType | None, rel_path: str) -> str:
-        if file_type == Item.FileType.MD:
+    def get_format_label(self, file_type: str, rel_path: str) -> str:
+        if file_type == "MD":
             return Localizer.get().workbench_fmt_markdown
-        if file_type == Item.FileType.RENPY:
+        if file_type == "RENPY":
             return Localizer.get().workbench_fmt_renpy
-        if file_type == Item.FileType.KVJSON:
+        if file_type == "KVJSON":
             return Localizer.get().workbench_fmt_mtool
-        if file_type == Item.FileType.MESSAGEJSON:
+        if file_type == "MESSAGEJSON":
             return Localizer.get().workbench_fmt_sextractor
-        if file_type == Item.FileType.TRANS:
+        if file_type == "TRANS":
             return Localizer.get().workbench_fmt_trans_proj
-        if file_type == Item.FileType.WOLFXLSX:
+        if file_type == "WOLFXLSX":
             return Localizer.get().workbench_fmt_wolf
-        if file_type == Item.FileType.XLSX:
+        if file_type == "XLSX":
             # 这里不区分导出源，按大类展示。
             return Localizer.get().workbench_fmt_trans_export
-        if file_type == Item.FileType.EPUB:
+        if file_type == "EPUB":
             return Localizer.get().workbench_fmt_ebook
 
         suffix = Path(rel_path).suffix.lower()
@@ -523,7 +512,7 @@ class WorkbenchPage(Base, ScrollArea):
     def build_supported_file_filter(self) -> str:
         exts = [
             f"*{ext}"
-            for ext in sorted(DataManager.get().get_supported_extensions())
+            for ext in sorted(self.workbench_api_client.get_supported_extensions())
             if isinstance(ext, str)
         ]
         return f"{Localizer.get().supported_files} ({' '.join(exts)})"
@@ -551,10 +540,10 @@ class WorkbenchPage(Base, ScrollArea):
         if not file_path:
             return
 
-        DataManager.get().schedule_add_file(file_path)
+        self.request_add_file(file_path)
 
     def on_export_translation_clicked(self) -> None:
-        if not DataManager.get().is_loaded():
+        if not self.api_state_store.is_project_loaded():
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -585,7 +574,7 @@ class WorkbenchPage(Base, ScrollArea):
         if not self.confirm_action(Localizer.get().workbench_msg_replace_confirm):
             return
 
-        DataManager.get().schedule_replace_file(rel_path, file_path)
+        self.request_replace_file(rel_path, file_path)
 
     def on_reset_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
@@ -594,7 +583,7 @@ class WorkbenchPage(Base, ScrollArea):
         if not self.confirm_action(Localizer.get().workbench_msg_reset_confirm):
             return
 
-        DataManager.get().schedule_reset_file(rel_path)
+        self.request_reset_file(rel_path)
 
     def on_delete_file(self, rel_path: str) -> None:
         if self.is_engine_busy():
@@ -603,4 +592,32 @@ class WorkbenchPage(Base, ScrollArea):
         if not self.confirm_action(Localizer.get().workbench_msg_delete_confirm):
             return
 
-        DataManager.get().schedule_delete_file(rel_path)
+        self.request_delete_file(rel_path)
+
+    def request_add_file(self, file_path: str) -> None:
+        """通过 WorkbenchApiClient 调度新增文件，并锁住工作台直到后续刷新落稳。"""
+
+        result = self.workbench_api_client.add_file(file_path)
+        self.file_op_running = bool(result.get("accepted", False))
+        self.update_controls_enabled()
+
+    def request_replace_file(self, rel_path: str, file_path: str) -> None:
+        """通过 WorkbenchApiClient 调度替换文件。"""
+
+        result = self.workbench_api_client.replace_file(rel_path, file_path)
+        self.file_op_running = bool(result.get("accepted", False))
+        self.update_controls_enabled()
+
+    def request_reset_file(self, rel_path: str) -> None:
+        """通过 WorkbenchApiClient 调度重置文件。"""
+
+        result = self.workbench_api_client.reset_file(rel_path)
+        self.file_op_running = bool(result.get("accepted", False))
+        self.update_controls_enabled()
+
+    def request_delete_file(self, rel_path: str) -> None:
+        """通过 WorkbenchApiClient 调度删除文件。"""
+
+        result = self.workbench_api_client.delete_file(rel_path)
+        self.file_op_running = bool(result.get("accepted", False))
+        self.update_controls_enabled()

@@ -5,10 +5,12 @@ from dataclasses import dataclass
 from api.Application.EventStreamService import EventStreamService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.TaskAppService import TaskAppService
+from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
+from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
 
 
 class ServerBootstrap:
@@ -27,9 +29,11 @@ class ServerBootstrap:
 
         project_app_service = ProjectAppService()
         task_app_service = TaskAppService()
+        workbench_app_service = WorkbenchAppService()
         return cls.start_for_test(
             project_app_service=project_app_service,
             task_app_service=task_app_service,
+            workbench_app_service=workbench_app_service,
             as_runtime=True,
         )
 
@@ -39,6 +43,7 @@ class ServerBootstrap:
         *,
         project_app_service: ProjectAppService | None = None,
         task_app_service: TaskAppService | None = None,
+        workbench_app_service: WorkbenchAppService | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
@@ -51,6 +56,8 @@ class ServerBootstrap:
             ProjectRoutes.register(core_api_server, project_app_service)
         if task_app_service is not None:
             TaskRoutes.register(core_api_server, task_app_service)
+        if workbench_app_service is not None:
+            WorkbenchRoutes.register(core_api_server, workbench_app_service)
         http_server = core_api_server.create_http_server()
         serve_thread = threading.Thread(
             target=http_server.serve_forever,

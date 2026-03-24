@@ -4,6 +4,7 @@ import pytest
 
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.TaskAppService import TaskAppService
+from api.Application.WorkbenchAppService import WorkbenchAppService
 from base.Base import Base
 
 
@@ -119,6 +120,70 @@ class FakeTaskDataManager:
         return self.analysis_candidate_count
 
 
+class FakeWorkbenchManager:
+    """提供工作台快照与文件操作所需的最小数据桩。"""
+
+    def __init__(self) -> None:
+        self.file_op_running: bool = False
+        self.supported_extensions: set[str] = {".txt", ".json"}
+        self.snapshot = {
+            "file_count": 1,
+            "total_items": 2,
+            "translated": 1,
+            "translated_in_past": 0,
+            "untranslated": 1,
+            "entries": (
+                {
+                    "rel_path": "script/a.txt",
+                    "item_count": 2,
+                    "file_type": "TXT",
+                },
+            ),
+        }
+        self.add_calls: list[str] = []
+        self.replace_calls: list[tuple[str, str]] = []
+        self.reset_calls: list[str] = []
+        self.delete_calls: list[str] = []
+
+    def build_workbench_snapshot(self):
+        from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
+        from module.Data.Core.DataTypes import WorkbenchSnapshot
+        from model.Item import Item
+
+        entry_dict = self.snapshot["entries"][0]
+        entry = WorkbenchFileEntrySnapshot(
+            rel_path=str(entry_dict["rel_path"]),
+            item_count=int(entry_dict["item_count"]),
+            file_type=Item.FileType(str(entry_dict["file_type"])),
+        )
+        return WorkbenchSnapshot(
+            file_count=int(self.snapshot["file_count"]),
+            total_items=int(self.snapshot["total_items"]),
+            translated=int(self.snapshot["translated"]),
+            translated_in_past=int(self.snapshot["translated_in_past"]),
+            untranslated=int(self.snapshot["untranslated"]),
+            entries=(entry,),
+        )
+
+    def is_file_op_running(self) -> bool:
+        return self.file_op_running
+
+    def get_supported_extensions(self) -> set[str]:
+        return set(self.supported_extensions)
+
+    def schedule_add_file(self, path: str) -> None:
+        self.add_calls.append(path)
+
+    def schedule_replace_file(self, rel_path: str, path: str) -> None:
+        self.replace_calls.append((rel_path, path))
+
+    def schedule_reset_file(self, rel_path: str) -> None:
+        self.reset_calls.append(rel_path)
+
+    def schedule_delete_file(self, rel_path: str) -> None:
+        self.delete_calls.append(rel_path)
+
+
 @pytest.fixture
 def fake_project_manager() -> FakeProjectManager:
     return FakeProjectManager()
@@ -156,6 +221,18 @@ def task_app_service(
     )
     service.emitted_events = emitted_events
     return service
+
+
+@pytest.fixture
+def fake_workbench_manager() -> FakeWorkbenchManager:
+    return FakeWorkbenchManager()
+
+
+@pytest.fixture
+def workbench_app_service(
+    fake_workbench_manager: FakeWorkbenchManager,
+) -> WorkbenchAppService:
+    return WorkbenchAppService(fake_workbench_manager)
 
 
 @pytest.fixture
