@@ -8,6 +8,7 @@
 - CLI 模式：不启动本地 API 服务
 - 调用风格：除事件流与健康检查外，统一使用 `POST + JSON body`
 - 统一响应：`{"ok": true, "data": {...}}`
+- 客户端边界：`api.Client` 在收到 HTTP JSON 后，会立即反序列化为 `model/Api/` 下的冻结对象；`ApiStateStore` 只缓存对象，不再缓存 `dict`
 
 ## 2. 基础接口
 
@@ -150,7 +151,43 @@
 }
 ```
 
-## 8. 第一阶段 UI 边界
+## 8. 客户端对象边界
+
+本地 HTTP API 仍然以 JSON / `dict` 作为边界协议，但客户端内部已经统一切换到对象化响应。
+
+### 8.1 模型目录
+
+客户端内部新增以下冻结对象：
+
+- `model/Api/SettingsModels.py`
+  - `AppSettingsSnapshot`
+  - `RecentProjectEntry`
+- `model/Api/ProjectModels.py`
+  - `ProjectSnapshot`
+  - `ProjectPreview`
+- `model/Api/WorkbenchModels.py`
+  - `WorkbenchSnapshot`
+  - `WorkbenchFileEntry`
+- `model/Api/TaskModels.py`
+  - `TaskSnapshot`
+  - `TaskStatusUpdate`
+  - `TaskProgressUpdate`
+
+### 8.2 客户端返回值约定
+
+- `SettingsApiClient` 对外返回 `AppSettingsSnapshot`
+- `ProjectApiClient` 对外返回 `ProjectSnapshot` / `ProjectPreview`
+- `WorkbenchApiClient` 对外返回 `WorkbenchSnapshot`
+- `TaskApiClient` 对外返回 `TaskSnapshot`
+
+### 8.3 状态仓库约定
+
+- `ApiStateStore.project_snapshot` 只缓存 `ProjectSnapshot`
+- `ApiStateStore.task_snapshot` 只缓存 `TaskSnapshot`
+- SSE 增量事件进入 `ApiStateStore` 后，会先解码为 `TaskStatusUpdate` / `TaskProgressUpdate` 再合并
+- 页面层不得再直接依赖 `response.get(...)`、`snapshot.get(...)` 读取 API 响应
+
+## 9. UI 边界
 
 以下页面已要求只通过 `api.Client` 与 `ApiStateStore` 访问 Core：
 
