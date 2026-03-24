@@ -3,15 +3,15 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class WorkbenchFileEntryDto:
-    """工作台文件行 DTO，避免直接外泄内部冻结快照对象。"""
+class WorkbenchFileEntryPayload:
+    """工作台文件行载荷，避免直接外泄内部冻结快照对象。"""
 
     rel_path: str
     item_count: int
     file_type: str
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为稳定 JSON 结构，供 HTTP 与客户端共用。"""
+        """转换为稳定 JSON 结构，供 HTTP 响应载荷使用。"""
 
         return {
             "rel_path": self.rel_path,
@@ -21,8 +21,8 @@ class WorkbenchFileEntryDto:
 
 
 @dataclass(frozen=True)
-class WorkbenchSnapshotDto:
-    """工作台整体快照 DTO。"""
+class WorkbenchSnapshotPayload:
+    """工作台整体快照载荷。"""
 
     file_count: int
     total_items: int
@@ -30,10 +30,10 @@ class WorkbenchSnapshotDto:
     translated_in_past: int
     untranslated: int
     file_op_running: bool
-    entries: tuple[WorkbenchFileEntryDto, ...]
+    entries: tuple[WorkbenchFileEntryPayload, ...]
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为稳定 JSON 结构，供 HTTP 与客户端共用。"""
+        """转换为稳定 JSON 结构，供 HTTP 响应载荷使用。"""
 
         return {
             "file_count": self.file_count,

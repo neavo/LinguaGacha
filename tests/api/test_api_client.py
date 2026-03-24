@@ -80,6 +80,31 @@ def test_project_api_client_get_project_snapshot_returns_snapshot(
         shutdown()
 
 
+def test_project_api_client_get_project_preview_returns_preview(
+    fake_project_manager,
+    lg_path: str,
+) -> None:
+    project_app_service = ProjectAppService(fake_project_manager)
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        project_app_service=project_app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        project_client = ProjectApiClient(api_client)
+
+        result = project_client.get_project_preview(lg_path)
+
+        assert isinstance(result, ProjectPreview)
+        assert result.path == lg_path
+        assert result.source_language == "JA"
+        assert result.target_language == "ZH"
+        assert result.total_items == 8
+        assert result.translated_items == 3
+        assert result.progress == 0.375
+    finally:
+        shutdown()
+
+
 def test_project_page_uses_project_api_client(
     monkeypatch,
 ) -> None:

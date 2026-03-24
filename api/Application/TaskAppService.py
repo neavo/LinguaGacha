@@ -3,7 +3,7 @@ from typing import Any
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
-from api.Contract.TaskDtos import TaskDto
+from api.Contract.TaskPayloads import TaskSnapshotPayload
 
 
 class TaskAppService:
@@ -111,7 +111,7 @@ class TaskAppService:
 
         status = self.normalize_status()
         busy = bool(getattr(self.engine, "is_busy", lambda: False)())
-        task_snapshot = TaskDto(
+        task_snapshot = TaskSnapshotPayload(
             task_type=task_type,
             status=status,
             busy=busy,

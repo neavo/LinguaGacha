@@ -3,8 +3,8 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class TaskDto:
-    """统一描述任务快照，避免 UI 自己拼装忙碌态与进度字段。"""
+class TaskSnapshotPayload:
+    """统一描述任务快照载荷，避免 UI 自己拼装忙碌态与进度字段。"""
 
     task_type: str
     status: str
@@ -21,7 +21,7 @@ class TaskDto:
     start_time: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为 JSON 结构，供 HTTP 与状态仓库共用。"""
+        """转换为 JSON 结构，供 HTTP 响应载荷使用。"""
 
         return {
             "task_type": self.task_type,

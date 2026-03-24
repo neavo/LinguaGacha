@@ -1,11 +1,12 @@
 from typing import Any
 
 from module.Data.DataManager import DataManager
-from api.Contract.ProjectDtos import ProjectDto
+from api.Contract.ProjectPayloads import ProjectPreviewPayload
+from api.Contract.ProjectPayloads import ProjectSnapshotPayload
 
 
 class ProjectAppService:
-    """工程用例层，负责把数据层调用收口为稳定 DTO。"""
+    """工程用例层，负责把数据层调用收口为稳定响应载荷。"""
 
     def __init__(self, project_manager: Any | None = None) -> None:
         self.project_manager = (
@@ -39,7 +40,7 @@ class ProjectAppService:
 
         del request
         self.project_manager.unload_project()
-        return {"project": ProjectDto(path="", loaded=False).to_dict()}
+        return {"project": ProjectSnapshotPayload(path="", loaded=False).to_dict()}
 
     def get_supported_extensions(self, request: dict[str, str]) -> dict[str, object]:
         """提供源文件选择器需要的支持格式列表。"""
@@ -60,7 +61,7 @@ class ProjectAppService:
 
         path = str(request.get("path", ""))
         preview = self.project_manager.get_project_preview(path)
-        return {"preview": dict(preview)}
+        return {"preview": ProjectPreviewPayload.from_dict(preview).to_dict()}
 
     def build_project_snapshot(self, fallback_path: str = "") -> dict[str, object]:
         """所有工程类响应都通过这里生成，保持字段来源单一。"""
@@ -73,4 +74,4 @@ class ProjectAppService:
             project_path = fallback_path
 
         is_loaded = bool(self.project_manager.is_loaded())
-        return ProjectDto(path=project_path, loaded=is_loaded).to_dict()
+        return ProjectSnapshotPayload(path=project_path, loaded=is_loaded).to_dict()

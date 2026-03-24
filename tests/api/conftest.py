@@ -47,11 +47,16 @@ class FakeProjectManager:
 
     def get_project_preview(self, path: str) -> dict[str, object]:
         return {
+            "path": path,
             "name": Path(path).stem,
+            "source_language": "JA",
+            "target_language": "ZH",
             "file_count": 1,
             "created_at": "",
             "updated_at": "",
-            "progress": 0,
+            "total_items": 8,
+            "translated_items": 3,
+            "progress": 0.375,
         }
 
 

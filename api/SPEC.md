@@ -155,6 +155,8 @@
 
 本地 HTTP API 仍然以 JSON / `dict` 作为边界协议，但客户端内部已经统一切换到对象化响应。
 
+服务端 `api/Application` 层负责把内部状态收口为 `api/Contract/*Payloads.py` 中的响应载荷对象，再经 `ApiResponse` 序列化为 JSON。
+
 ### 8.1 模型目录
 
 客户端内部新增以下冻结对象：
@@ -180,6 +182,16 @@
 - `WorkbenchApiClient` 对外返回 `WorkbenchSnapshot`
 - `TaskApiClient` 对外返回 `TaskSnapshot`
 - `ProjectPreview` 需要显式建模当前摘要字段：`path`、`name`、`source_language`、`target_language`、`file_count`、`created_at`、`updated_at`、`total_items`、`translated_items`、`progress`
+
+### 8.2.1 服务端载荷命名约定
+
+- `api/Contract` 中面向 HTTP `data` 载荷的对象统一使用 `*Payload` 命名，避免继续使用语义过泛的 `*Dto`
+- 当前服务端载荷对象包括：
+  - `ProjectSnapshotPayload`
+  - `ProjectPreviewPayload`
+  - `TaskSnapshotPayload`
+  - `WorkbenchSnapshotPayload`
+  - `WorkbenchFileEntryPayload`
 
 ### 8.3 状态仓库约定
 

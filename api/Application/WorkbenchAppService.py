@@ -1,12 +1,12 @@
 from typing import Any
 
-from api.Contract.WorkbenchDtos import WorkbenchFileEntryDto
-from api.Contract.WorkbenchDtos import WorkbenchSnapshotDto
+from api.Contract.WorkbenchPayloads import WorkbenchFileEntryPayload
+from api.Contract.WorkbenchPayloads import WorkbenchSnapshotPayload
 from module.Data.DataManager import DataManager
 
 
 class WorkbenchAppService:
-    """工作台用例层，负责把文件操作与快照查询收口为稳定 DTO。"""
+    """工作台用例层，负责把文件操作与快照查询收口为稳定响应载荷。"""
 
     def __init__(self, data_manager: Any | None = None) -> None:
         self.data_manager = (
@@ -56,18 +56,18 @@ class WorkbenchAppService:
         return {"extensions": sorted(str(extension) for extension in extensions)}
 
     def build_snapshot(self) -> dict[str, object]:
-        """把内部冻结快照转换为纯 JSON DTO。"""
+        """把内部冻结快照转换为纯 JSON 响应载荷。"""
 
         snapshot = self.data_manager.build_workbench_snapshot()
         entries = tuple(
-            WorkbenchFileEntryDto(
+            WorkbenchFileEntryPayload(
                 rel_path=str(entry.rel_path),
                 item_count=int(entry.item_count),
                 file_type=str(entry.file_type.value),
             )
             for entry in snapshot.entries
         )
-        return WorkbenchSnapshotDto(
+        return WorkbenchSnapshotPayload(
             file_count=int(snapshot.file_count),
             total_items=int(snapshot.total_items),
             translated=int(snapshot.translated),
