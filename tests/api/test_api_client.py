@@ -22,8 +22,11 @@ from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
+from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
+from model.Api.WorkbenchModels import WorkbenchFileEntry
+from model.Api.WorkbenchModels import WorkbenchSnapshot
 
 
 def ensure_qt_application() -> QApplication:
@@ -47,8 +50,9 @@ def test_project_api_client_load_project_returns_project_snapshot(
 
         result = project_client.load_project({"path": lg_path})
 
-        assert result["project"]["path"] == lg_path
-        assert result["project"]["loaded"] is True
+        assert isinstance(result, ProjectSnapshot)
+        assert result.path == lg_path
+        assert result.loaded is True
     finally:
         shutdown()
 
@@ -66,7 +70,8 @@ def test_project_api_client_get_project_snapshot_returns_snapshot(
 
         result = project_client.get_project_snapshot()
 
-        assert result["project"]["loaded"] is False
+        assert isinstance(result, ProjectSnapshot)
+        assert result.loaded is False
     finally:
         shutdown()
 
@@ -82,9 +87,9 @@ def test_project_page_uses_project_api_client(
         project_save_mode="MANUAL",
         project_fixed_path="",
     )
-    project_client.load_project.return_value = {
-        "project": {"loaded": True, "path": "demo.lg"}
-    }
+    project_client.load_project.return_value = ProjectSnapshot(
+        loaded=True, path="demo.lg"
+    )
     api_state_store = ApiStateStore()
 
     original_start = project_page_module.OpenProjectThread.start
@@ -164,7 +169,7 @@ def test_task_api_client_get_task_snapshot_supports_requested_task_type(
         shutdown()
 
 
-def test_workbench_api_client_get_snapshot_returns_serializable_snapshot(
+def test_workbench_api_client_get_snapshot_returns_snapshot(
     fake_workbench_manager,
 ) -> None:
     base_url, shutdown = ServerBootstrap.start_for_test(
@@ -176,9 +181,50 @@ def test_workbench_api_client_get_snapshot_returns_serializable_snapshot(
 
         result = workbench_client.get_snapshot()
 
-        assert result["snapshot"]["entries"][0]["rel_path"] == "script/a.txt"
+        assert isinstance(result, WorkbenchSnapshot)
+        assert result.entries[0].rel_path == "script/a.txt"
     finally:
         shutdown()
+
+
+def test_workbench_page_apply_snapshot_consumes_snapshot_model() -> None:
+    ensure_qt_application()
+    workbench_client = Mock()
+    workbench_client.get_snapshot.return_value = WorkbenchSnapshot()
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+
+    page = WorkbenchPage(
+        "workbench_page",
+        workbench_client,
+        api_state_store,
+    )
+
+    page.apply_snapshot(
+        WorkbenchSnapshot(
+            file_count=1,
+            total_items=3,
+            translated=1,
+            translated_in_past=0,
+            untranslated=2,
+            file_op_running=True,
+            entries=(
+                WorkbenchFileEntry(
+                    rel_path="script/a.txt",
+                    item_count=3,
+                    file_type="TXT",
+                ),
+            ),
+        )
+    )
+
+    assert page.file_entries == [
+        {
+            "rel_path": "script/a.txt",
+            "format": page.get_format_label("TXT", "script/a.txt"),
+            "item_count": 3,
+        }
+    ]
 
 
 def test_settings_api_client_get_app_settings_returns_snapshot(

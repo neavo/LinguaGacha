@@ -44,6 +44,8 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
+from model.Api.ProjectModels import ProjectPreview
+from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 
@@ -490,7 +492,7 @@ class ProjectInfoPanel(SimpleCardWidget):
         # 信息行容器
         self.rows: dict[str, QLabel] = {}
 
-    def set_info(self, info: dict) -> None:
+    def set_info(self, info: ProjectPreview) -> None:
         """设置项目信息"""
         # 清空现有内容
         layout = self.layout()
@@ -516,7 +518,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             row_layout.addWidget(label_widget)
 
             # 格式化时间
-            value = str(info.get(key, ""))
+            value = str(info.to_dict().get(key, ""))
             if key in ["created_at", "updated_at"] and value:
                 value = self.format_time(value)
 
@@ -528,7 +530,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             layout.addWidget(row)
 
         # 添加进度条（如果有）
-        if "progress" in info:
+        if "progress" in info.to_dict():
             layout.addStretch()
 
             progress_header = QFrame(self)
@@ -540,7 +542,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             )
             progress_header_layout.addWidget(progress_label)
 
-            percent = int(info["progress"] * 100)
+            percent = int(info.progress * 100)
             percent_label = QLabel(f"{percent}%", progress_header)
             color = "#ffffff" if isDarkTheme() else "#000000"
             percent_label.setStyleSheet(
@@ -1272,10 +1274,8 @@ class ProjectPage(Base, ScrollArea):
 
         if success:
             try:
-                if isinstance(result, dict):
-                    project_snapshot = result.get("project", {})
-                    if isinstance(project_snapshot, dict):
-                        self.api_state_store.hydrate_project(project_snapshot)
+                if isinstance(result, ProjectSnapshot):
+                    self.api_state_store.hydrate_project(result.to_dict())
 
                 name = Path(path).stem
                 self.settings_api_client.add_recent_project(path, name)
@@ -1347,10 +1347,8 @@ class ProjectPage(Base, ScrollArea):
         self.open_thread = None
 
         if success:
-            if isinstance(result, dict):
-                project_snapshot = result.get("project", {})
-                if isinstance(project_snapshot, dict):
-                    self.api_state_store.hydrate_project(project_snapshot)
+            if isinstance(result, ProjectSnapshot):
+                self.api_state_store.hydrate_project(result.to_dict())
             # 打开成功后再更新最近项目，避免失败路径污染最近列表。
             name = Path(path).stem
             self.settings_api_client.add_recent_project(path, name)

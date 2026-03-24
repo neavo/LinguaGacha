@@ -2,6 +2,7 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
+from model.Api.WorkbenchModels import WorkbenchSnapshot
 
 
 class WorkbenchApiClient:
@@ -10,10 +11,11 @@ class WorkbenchApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def get_snapshot(self) -> dict[str, Any]:
+    def get_snapshot(self) -> WorkbenchSnapshot:
         """读取工作台快照，供页面首屏和主动刷新共用。"""
 
-        return self.api_client.post(WorkbenchRoutes.SNAPSHOT_PATH, {})
+        response = self.api_client.post(WorkbenchRoutes.SNAPSHOT_PATH, {})
+        return WorkbenchSnapshot.from_dict(response.get("snapshot", {}))
 
     def add_file(self, path: str) -> dict[str, Any]:
         """调度新增文件操作。"""

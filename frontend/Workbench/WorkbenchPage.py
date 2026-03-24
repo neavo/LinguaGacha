@@ -4,6 +4,7 @@ from typing import Any
 
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
+from model.Api.WorkbenchModels import WorkbenchSnapshot
 from PySide6.QtCore import QSize
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -103,7 +104,7 @@ class WorkbenchPage(Base, ScrollArea):
         self.setWidgetResizable(True)
         self.enableTransparentBackground()
         self.file_entries: list[dict[str, Any]] = []
-        self.last_workbench_snapshot: dict[str, Any] | None = None
+        self.last_workbench_snapshot: WorkbenchSnapshot | None = None
         self.file_op_running: bool = False
         # 刷新后希望聚焦/保持选中的文件（例如“更新文件”重命名后）。
         self.pending_focus_rel_path: str | None = None
@@ -346,7 +347,9 @@ class WorkbenchPage(Base, ScrollArea):
     def on_workbench_snapshot(self, event: Base.Event, data: dict) -> None:
         del event
         snapshot = data.get("snapshot")
-        if not isinstance(snapshot, dict):
+        if isinstance(snapshot, dict):
+            snapshot = WorkbenchSnapshot.from_dict(snapshot)
+        if not isinstance(snapshot, WorkbenchSnapshot):
             return
         self.apply_snapshot(snapshot)
 
@@ -380,31 +383,26 @@ class WorkbenchPage(Base, ScrollArea):
                     return
                 self.refresh_pending = False
 
-            response = self.workbench_api_client.get_snapshot()
-            snapshot = response.get("snapshot", {})
+            snapshot = self.workbench_api_client.get_snapshot()
             self.emit(Base.Event.WORKBENCH_SNAPSHOT, {"snapshot": snapshot})
 
-    def apply_snapshot(self, snapshot: dict[str, Any]) -> None:
-        self.last_workbench_snapshot = dict(snapshot)
-        self.file_op_running = bool(snapshot.get("file_op_running", False))
+    def apply_snapshot(self, snapshot: WorkbenchSnapshot) -> None:
+        self.last_workbench_snapshot = snapshot
+        self.file_op_running = snapshot.file_op_running
         table_widget = self.table_widget
         selected_rel_path = table_widget.get_selected_rel_path() if table_widget else ""
 
         self.apply_stats_snapshot(self.build_stats_payload(snapshot))
 
         entries: list[dict[str, Any]] = []
-        snapshot_entries = snapshot.get("entries", [])
-        iterable_entries = (
-            snapshot_entries if isinstance(snapshot_entries, list) else []
-        )
-        for entry in GapTool.iter(iterable_entries):
-            rel_path = str(entry.get("rel_path", ""))
-            fmt = self.get_format_label(str(entry.get("file_type", "")), rel_path)
+        for entry in GapTool.iter(snapshot.entries):
+            rel_path = entry.rel_path
+            fmt = self.get_format_label(entry.file_type, rel_path)
             entries.append(
                 {
                     "rel_path": rel_path,
                     "format": fmt,
-                    "item_count": int(entry.get("item_count", 0) or 0),
+                    "item_count": entry.item_count,
                 }
             )
 
@@ -435,16 +433,16 @@ class WorkbenchPage(Base, ScrollArea):
 
     def build_stats_payload(
         self,
-        snapshot: dict[str, Any],
+        snapshot: WorkbenchSnapshot,
         *,
         translated: int | None = None,
     ) -> dict[str, int]:
-        total_items = int(snapshot.get("total_items", 0) or 0)
-        translated_base = int(snapshot.get("translated", 0) or 0)
+        total_items = snapshot.total_items
+        translated_base = snapshot.translated
         translated_count = translated_base if translated is None else translated
         translated_count = max(0, min(total_items, translated_count))
         return {
-            "file_count": int(snapshot.get("file_count", 0) or 0),
+            "file_count": snapshot.file_count,
             "total_items": total_items,
             "translated": translated_count,
             "untranslated": max(0, total_items - translated_count),
@@ -473,7 +471,7 @@ class WorkbenchPage(Base, ScrollArea):
 
         task_snapshot = self.api_state_store.get_task_snapshot()
         processed_line = int(task_snapshot.get("processed_line", 0) or 0)
-        translated_in_past = int(snapshot.get("translated_in_past", 0) or 0)
+        translated_in_past = snapshot.translated_in_past
         self.apply_stats_snapshot(
             self.build_stats_payload(
                 snapshot,
