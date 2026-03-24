@@ -18,8 +18,8 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
-from api.Application.AppContext import AppContext
 from api.Client.ApiClient import ApiClient
+from api.Client.AppClientContext import AppClientContext
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
@@ -264,10 +264,10 @@ if __name__ == "__main__":
         is_cli_mode=cli_requested,
         server_bootstrap=ServerBootstrap,
     )
-    app_context: AppContext | None = None
+    app_client_context: AppClientContext | None = None
     if local_api_server_runtime is not None:
         api_client = ApiClient(local_api_server_runtime.base_url)
-        app_context = AppContext(
+        app_client_context = AppClientContext(
             project_api_client=ProjectApiClient(api_client),
             task_api_client=TaskApiClient(api_client),
             workbench_api_client=WorkbenchApiClient(api_client),
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     # 处理启动参数
     is_cli_mode = CLIManager.get().run()
     if not is_cli_mode:
-        app_fluent_window = AppFluentWindow(app_context)
+        app_fluent_window = AppFluentWindow(app_client_context)
         app_fluent_window.show()
 
     # 进入事件循环，等待用户操作；CLI 模式额外以 CLIManager 记录的退出码为准。

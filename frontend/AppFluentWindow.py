@@ -2,7 +2,7 @@ import os
 import signal
 import time
 
-from api.Application.AppContext import AppContext
+from api.Client.AppClientContext import AppClientContext
 from api.Client.SseClient import SseClient
 from PySide6.QtCore import QEvent
 from PySide6.QtCore import Qt
@@ -94,17 +94,17 @@ class AppFluentWindow(Base, FluentWindow):
     HOMEPAGE_AVATAR_X: int = 10
     HOMEPAGE_AVATAR_Y: int = 8
 
-    def __init__(self, app_context: AppContext | None) -> None:
+    def __init__(self, app_client_context: AppClientContext | None) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
         self.progress_toast: ProgressToast | None = None
-        if app_context is None:
-            raise ValueError("UI 模式必须提供 AppContext")
-        self.app_context = app_context
-        self.project_api_client = app_context.project_api_client
-        self.task_api_client = app_context.task_api_client
-        self.workbench_api_client = app_context.workbench_api_client
-        self.settings_api_client = app_context.settings_api_client
-        self.api_state_store = app_context.api_state_store
+        if app_client_context is None:
+            raise ValueError("UI 模式必须提供 AppClientContext")
+        self.app_client_context = app_client_context
+        self.project_api_client = app_client_context.project_api_client
+        self.task_api_client = app_client_context.task_api_client
+        self.workbench_api_client = app_client_context.workbench_api_client
+        self.settings_api_client = app_client_context.settings_api_client
+        self.api_state_store = app_client_context.api_state_store
 
         super().__init__()
 

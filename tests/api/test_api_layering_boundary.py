@@ -28,3 +28,16 @@ def test_api_application_layer_does_not_import_client() -> None:
         content = file_path.read_text(encoding="utf-8")
         assert "from api.Client" not in content
         assert "import api.Client" not in content
+
+
+def test_ui_bootstrap_imports_app_client_context() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    app_content = (root_dir / "app.py").read_text(encoding="utf-8")
+    window_content = (root_dir / "frontend" / "AppFluentWindow.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from api.Client.AppClientContext import AppClientContext" in app_content
+    assert "from api.Client.AppClientContext import AppClientContext" in window_content
+    assert "from api.Application.AppContext import AppContext" not in app_content
+    assert "from api.Application.AppContext import AppContext" not in window_content
