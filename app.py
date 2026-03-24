@@ -48,6 +48,19 @@ QT_SCALE_FACTOR_MAP: dict[str, str] = {
 }
 
 
+def start_local_api_server_if_needed(
+    *,
+    is_cli_mode: bool,
+    server_bootstrap: object,
+) -> object | None:
+    """本地 Core 服务只属于 UI 边界，CLI 仍维持内部入口语义。"""
+
+    if is_cli_mode:
+        return None
+    start = getattr(server_bootstrap, "start")
+    return start()
+
+
 def excepthook(
     exc_type: type[BaseException],
     exc_value: BaseException,
@@ -239,8 +252,16 @@ if __name__ == "__main__":
     # 创建版本管理器
     VersionManager.get().set_version(version)
 
+    local_api_server_runtime = start_local_api_server_if_needed(
+        is_cli_mode=CLIManager.get().build_parser().parse_args().cli,
+        server_bootstrap=__import__("api.Server.ServerBootstrap", fromlist=["ServerBootstrap"]).ServerBootstrap,
+    )
+
     # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
     def cleanup_on_exit() -> None:
+        runtime_shutdown = getattr(local_api_server_runtime, "shutdown", None)
+        if callable(runtime_shutdown):
+            runtime_shutdown()
         dm = DataManager.get()
         if dm.is_loaded():
             dm.unload_project()
@@ -249,7 +270,8 @@ if __name__ == "__main__":
     app.aboutToQuit.connect(cleanup_on_exit)
 
     # 处理启动参数
-    if not CLIManager.get().run():
+    is_cli_mode = CLIManager.get().run()
+    if not is_cli_mode:
         app_fluent_window = AppFluentWindow()
         app_fluent_window.show()
 
