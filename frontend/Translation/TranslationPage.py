@@ -184,13 +184,15 @@ class TranslationPage(Base, QWidget):
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
-        elif status in ("TRANSLATING", "RUN") and task_type == "translation":
+        # 命令回执的 REQUEST 已经代表“本页任务已受理”，这里先切到可停止态，
+        # 避免等待下一帧 SSE 期间按钮全部置灰，造成交互回退。
+        elif status in ("TRANSLATING", "RUN", "REQUEST") and task_type == "translation":
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
             self.reset_timer()  # 翻译开始后自动取消定时器
-        elif status in ("REQUEST", "STOPPING"):
+        elif status == "STOPPING":
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(False)

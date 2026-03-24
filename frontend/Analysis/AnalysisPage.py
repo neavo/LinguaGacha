@@ -192,7 +192,9 @@ class AnalysisPage(Base, QWidget):
                     not self.is_importing_glossary and self.analysis_candidate_count > 0
                 ),
             )
-        elif status in ("ANALYZING", "RUN") and task_type == "analysis":
+        # 命令回执的 REQUEST 已经代表“本页任务已受理”，这里先切到可停止态，
+        # 避免等待下一帧 SSE 期间按钮全部置灰，造成交互回退。
+        elif status in ("ANALYZING", "RUN", "REQUEST") and task_type == "analysis":
             self.set_action_enabled(
                 start=False,
                 stop=True,

@@ -13,6 +13,7 @@ from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Server.ServerBootstrap import ServerBootstrap
+from base.Base import Base
 from frontend.AppSettingsPage import AppSettingsPage
 import frontend.ProjectPage as project_page_module
 from frontend.Analysis.AnalysisPage import AnalysisPage
@@ -283,6 +284,31 @@ def test_translation_page_uses_task_api_client() -> None:
     assert api_state_store.get_task_snapshot()["task_type"] == "translation"
 
 
+def test_translation_page_keeps_stop_enabled_during_own_request_state() -> None:
+    ensure_qt_application()
+    task_client = Mock()
+    task_client.start_translation.return_value = {
+        "task": {"task_type": "translation", "status": "REQUEST", "busy": True}
+    }
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+
+    page = TranslationPage(
+        "translation_page",
+        None,
+        task_client,
+        api_state_store,
+    )
+
+    page.request_start_translation()
+    page.update_button_status(Base.Event.PROJECT_UNLOADED, {})
+
+    assert page.action_start.isEnabled() is False
+    assert page.action_stop.isEnabled() is True
+    assert page.action_reset.isEnabled() is False
+    assert page.action_timer.isEnabled() is False
+
+
 def test_analysis_page_uses_task_api_client() -> None:
     ensure_qt_application()
     task_client = Mock()
@@ -310,6 +336,31 @@ def test_analysis_page_uses_task_api_client() -> None:
 
     task_client.start_analysis.assert_called_once_with({"mode": "NEW"})
     assert api_state_store.get_task_snapshot()["task_type"] == "analysis"
+
+
+def test_analysis_page_keeps_stop_enabled_during_own_request_state() -> None:
+    ensure_qt_application()
+    task_client = Mock()
+    task_client.start_analysis.return_value = {
+        "task": {"task_type": "analysis", "status": "REQUEST", "busy": True}
+    }
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_project({"loaded": True, "path": "demo.lg"})
+
+    page = AnalysisPage(
+        "analysis_page",
+        None,
+        task_client,
+        api_state_store,
+    )
+
+    page.request_start_analysis()
+    page.update_button_status(Base.Event.PROJECT_UNLOADED, {})
+
+    assert page.action_start.isEnabled() is False
+    assert page.action_stop.isEnabled() is True
+    assert page.action_reset.isEnabled() is False
+    assert page.action_import.isEnabled() is False
 
 
 def test_workbench_page_uses_workbench_api_client() -> None:
