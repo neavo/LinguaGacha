@@ -7,6 +7,7 @@ class ProjectRoutes:
 
     LOAD_PATH: str = "/api/project/load"
     CREATE_PATH: str = "/api/project/create"
+    SNAPSHOT_PATH: str = "/api/project/snapshot"
 
     @classmethod
     def register(
@@ -30,5 +31,13 @@ class ProjectRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=project_app_service.create_project(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.SNAPSHOT_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=project_app_service.get_project_snapshot(request),
             ),
         )

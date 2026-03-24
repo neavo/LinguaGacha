@@ -28,6 +28,12 @@ class ProjectAppService:
         self.project_manager.load_project(output_path)
         return {"project": self.build_project_snapshot(output_path)}
 
+    def get_project_snapshot(self, request: dict[str, str]) -> dict[str, object]:
+        """提供显式查询接口，供 UI 首屏 hydration 使用。"""
+
+        del request
+        return {"project": self.build_project_snapshot()}
+
     def build_project_snapshot(self, fallback_path: str = "") -> dict[str, object]:
         """所有工程类响应都通过这里生成，保持字段来源单一。"""
 

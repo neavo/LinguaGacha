@@ -19,3 +19,8 @@ class ProjectApiClient:
         """创建工程并返回项目快照。"""
 
         return self.api_client.post(ProjectRoutes.CREATE_PATH, request)
+
+    def get_project_snapshot(self) -> dict[str, Any]:
+        """查询工程快照，供 UI 首屏 hydration 使用。"""
+
+        return self.api_client.post(ProjectRoutes.SNAPSHOT_PATH, {})
