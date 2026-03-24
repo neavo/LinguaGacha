@@ -13,6 +13,7 @@ from qfluentwidgets import SwitchButton
 from qfluentwidgets import SingleDirectionScrollArea
 
 from base.Base import Base
+from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomLineEdit
 from widget.SettingCard import SettingCard
@@ -59,23 +60,15 @@ class AppSettingsPage(Base, QWidget):
         # 填充
         scroll_area_vbox.addStretch(1)
 
-    def get_settings_snapshot(self) -> dict[str, object]:
-        """读取设置快照副本，避免控件直接依赖 HTTP 返回结构。"""
+    def get_settings_snapshot(self) -> AppSettingsSnapshot:
+        """读取设置快照对象，避免控件继续依赖协议字典。"""
 
-        response = self.settings_api_client.get_app_settings()
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.get_app_settings()
 
-    def update_settings(self, request: dict[str, object]) -> dict[str, object]:
+    def update_settings(self, request: dict[str, object]) -> AppSettingsSnapshot:
         """统一通过 API 更新设置，并返回服务端确认后的最新快照。"""
 
-        response = self.settings_api_client.update_app_settings(request)
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.update_app_settings(request)
 
     # 专家模式
     def add_widget_expert_mode(
@@ -107,7 +100,7 @@ class AppSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(bool(settings_snapshot.get("expert_mode", False)))
+        switch_button.setChecked(settings_snapshot.expert_mode)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -144,7 +137,7 @@ class AppSettingsPage(Base, QWidget):
         combo_box = ComboBox(card)
         combo_box.addItems((Localizer.get().auto, "50%", "75%", "150%", "200%"))
         combo_box.setCurrentIndex(
-            max(0, combo_box.findText(str(settings_snapshot.get("scale_factor", ""))))
+            max(0, combo_box.findText(settings_snapshot.scale_factor))
         )
         combo_box.currentIndexChanged.connect(lambda index: current_changed(combo_box))
         card.add_right_widget(combo_box)
@@ -182,7 +175,7 @@ class AppSettingsPage(Base, QWidget):
             parent=self,
         )
         line_edit = CustomLineEdit(card)
-        line_edit.setText(str(settings_snapshot.get("proxy_url", "")))
+        line_edit.setText(settings_snapshot.proxy_url)
         line_edit.setFixedWidth(256)
         line_edit.setClearButtonEnabled(True)
         line_edit.setPlaceholderText(Localizer.get().app_settings_page_proxy_url)
@@ -191,7 +184,7 @@ class AppSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(bool(settings_snapshot.get("proxy_enable", False)))
+        switch_button.setChecked(settings_snapshot.proxy_enable)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button, checked)
         )

@@ -15,6 +15,7 @@ from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
+from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.SettingCard import SettingCard
 
@@ -76,23 +77,15 @@ class ExpertSettingsPage(Base, QWidget):
         # 填充
         scroll_area_vbox.addStretch(1)
 
-    def get_settings_snapshot(self) -> dict[str, object]:
-        """读取专家设置快照副本，避免控件散落解析返回结构。"""
+    def get_settings_snapshot(self) -> AppSettingsSnapshot:
+        """读取专家设置快照对象，避免控件散落解析返回结构。"""
 
-        response = self.settings_api_client.get_app_settings()
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.get_app_settings()
 
-    def update_settings(self, request: dict[str, object]) -> dict[str, object]:
+    def update_settings(self, request: dict[str, object]) -> AppSettingsSnapshot:
         """统一通过 API 更新专家设置，并返回最新确认快照。"""
 
-        response = self.settings_api_client.update_app_settings(request)
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.update_app_settings(request)
 
     # 结果检查规则设置
     def add_widget_response_check_settings(
@@ -102,6 +95,9 @@ class ExpertSettingsPage(Base, QWidget):
         window: FluentWindow | None,
     ) -> None:
         menu = RoundMenu(parent=window)
+        settings_snapshot_state: dict[str, AppSettingsSnapshot] = {
+            "value": settings_snapshot
+        }
 
         action_check_similarity = Action(
             Localizer.get().expert_settings_page_response_check_similarity, self
@@ -121,56 +117,46 @@ class ExpertSettingsPage(Base, QWidget):
         action_check_hangeul.setCheckable(True)
         menu.addAction(action_check_hangeul)
 
-        def sync_action_checked(snapshot: dict[str, object]) -> None:
-            action_check_kana.setChecked(bool(snapshot.get("check_kana_residue", True)))
-            action_check_hangeul.setChecked(
-                bool(snapshot.get("check_hangeul_residue", True))
-            )
-            action_check_similarity.setChecked(
-                bool(snapshot.get("check_similarity", True))
-            )
+        def sync_action_checked(snapshot: AppSettingsSnapshot) -> None:
+            action_check_kana.setChecked(snapshot.check_kana_residue)
+            action_check_hangeul.setChecked(snapshot.check_hangeul_residue)
+            action_check_similarity.setChecked(snapshot.check_similarity)
 
             action_check_kana.setIcon(
                 BaseIcon.CIRCLE_CHECK
-                if bool(snapshot.get("check_kana_residue", True))
+                if snapshot.check_kana_residue
                 else BaseIcon.CIRCLE
             )
             action_check_hangeul.setIcon(
                 BaseIcon.CIRCLE_CHECK
-                if bool(snapshot.get("check_hangeul_residue", True))
+                if snapshot.check_hangeul_residue
                 else BaseIcon.CIRCLE
             )
             action_check_similarity.setIcon(
-                BaseIcon.CIRCLE_CHECK
-                if bool(snapshot.get("check_similarity", True))
-                else BaseIcon.CIRCLE
+                BaseIcon.CIRCLE_CHECK if snapshot.check_similarity else BaseIcon.CIRCLE
             )
 
         def on_check_kana_triggered() -> None:
-            latest_settings = self.update_settings(
+            settings_snapshot_state["value"] = self.update_settings(
                 {"check_kana_residue": action_check_kana.isChecked()}
             )
-            settings_snapshot.update(latest_settings)
-            sync_action_checked(settings_snapshot)
+            sync_action_checked(settings_snapshot_state["value"])
 
         def on_check_hangeul_triggered() -> None:
-            latest_settings = self.update_settings(
+            settings_snapshot_state["value"] = self.update_settings(
                 {"check_hangeul_residue": action_check_hangeul.isChecked()}
             )
-            settings_snapshot.update(latest_settings)
-            sync_action_checked(settings_snapshot)
+            sync_action_checked(settings_snapshot_state["value"])
 
         def on_check_similarity_triggered() -> None:
-            latest_settings = self.update_settings(
+            settings_snapshot_state["value"] = self.update_settings(
                 {"check_similarity": action_check_similarity.isChecked()}
             )
-            settings_snapshot.update(latest_settings)
-            sync_action_checked(settings_snapshot)
+            sync_action_checked(settings_snapshot_state["value"])
 
         def before_show_menu() -> None:
-            latest_settings = self.get_settings_snapshot()
-            settings_snapshot.update(latest_settings)
-            sync_action_checked(settings_snapshot)
+            settings_snapshot_state["value"] = self.get_settings_snapshot()
+            sync_action_checked(settings_snapshot_state["value"])
 
         action_check_kana.triggered.connect(lambda checked: on_check_kana_triggered())
         action_check_hangeul.triggered.connect(
@@ -217,9 +203,7 @@ class ExpertSettingsPage(Base, QWidget):
         )
         spin_box = SpinBox(card)
         spin_box.setRange(0, 9999999)
-        spin_box.setValue(
-            int(settings_snapshot.get("preceding_lines_threshold", 0) or 0)
-        )
+        spin_box.setValue(settings_snapshot.preceding_lines_threshold)
         spin_box.valueChanged.connect(lambda value: value_changed(spin_box))
         card.add_right_widget(spin_box)
         parent.addWidget(card)
@@ -244,7 +228,7 @@ class ExpertSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(bool(settings_snapshot.get("clean_ruby", False)))
+        switch_button.setChecked(settings_snapshot.clean_ruby)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -271,9 +255,7 @@ class ExpertSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(
-            bool(settings_snapshot.get("deduplication_in_trans", True))
-        )
+        switch_button.setChecked(settings_snapshot.deduplication_in_trans)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -300,9 +282,7 @@ class ExpertSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(
-            bool(settings_snapshot.get("deduplication_in_bilingual", True))
-        )
+        switch_button.setChecked(settings_snapshot.deduplication_in_bilingual)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -331,9 +311,7 @@ class ExpertSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(
-            bool(settings_snapshot.get("write_translated_name_fields_to_file", True))
-        )
+        switch_button.setChecked(settings_snapshot.write_translated_name_fields_to_file)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -363,12 +341,7 @@ class ExpertSettingsPage(Base, QWidget):
         switch_button.setOnText("")
         switch_button.setOffText("")
         switch_button.setChecked(
-            bool(
-                settings_snapshot.get(
-                    "auto_process_prefix_suffix_preserved_text",
-                    True,
-                )
-            )
+            settings_snapshot.auto_process_prefix_suffix_preserved_text
         )
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)

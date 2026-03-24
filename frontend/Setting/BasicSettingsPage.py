@@ -13,6 +13,7 @@ from qfluentwidgets import SwitchButton
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.SettingCard import SettingCard
 
@@ -87,23 +88,15 @@ class BasicSettingsPage(Base, QWidget):
         self.subscribe_busy_state_events(self.on_translation_status_changed)
         self.update_language_combo_enabled(self.api_state_store.is_busy())
 
-    def get_settings_snapshot(self) -> dict[str, object]:
-        """读取基础设置快照副本，避免控件散落解析返回结构。"""
+    def get_settings_snapshot(self) -> AppSettingsSnapshot:
+        """读取基础设置快照对象，避免控件散落解析返回结构。"""
 
-        response = self.settings_api_client.get_app_settings()
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.get_app_settings()
 
-    def update_settings(self, request: dict[str, object]) -> dict[str, object]:
+    def update_settings(self, request: dict[str, object]) -> AppSettingsSnapshot:
         """统一通过 API 更新基础设置，并返回最新确认快照。"""
 
-        response = self.settings_api_client.update_app_settings(request)
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.update_app_settings(request)
 
     def on_translation_status_changed(self, event: Base.Event, data: dict) -> None:
         locked = self.resolve_locked_state(event, data)
@@ -163,7 +156,7 @@ class BasicSettingsPage(Base, QWidget):
         combo_box.addItems(self.source_languages)
 
         languages = BaseLanguage.get_languages()
-        source_language = settings_snapshot.get("source_language", BaseLanguage.Enum.JA)
+        source_language = settings_snapshot.source_language
         if source_language == BaseLanguage.ALL:
             combo_box.setCurrentIndex(0)
         elif source_language in languages:
@@ -200,7 +193,7 @@ class BasicSettingsPage(Base, QWidget):
         )
         combo_box = ComboBox(card)
         combo_box.addItems(self.languages)
-        target_language = settings_snapshot.get("target_language", BaseLanguage.Enum.ZH)
+        target_language = settings_snapshot.target_language
         if target_language in BaseLanguage.get_languages():
             combo_box.setCurrentIndex(
                 BaseLanguage.get_languages().index(target_language)
@@ -233,10 +226,15 @@ class BasicSettingsPage(Base, QWidget):
                 )
             return Localizer.get().basic_settings_page_project_save_mode_content
 
+        settings_snapshot_state: dict[str, AppSettingsSnapshot] = {
+            "value": settings_snapshot
+        }
+
         def current_changed(combo_box: ComboBox, card: SettingCard) -> None:
             index = combo_box.currentIndex()
-            old_mode = str(settings_snapshot.get("project_save_mode", ""))
-            fixed_path = str(settings_snapshot.get("project_fixed_path", ""))
+            current_settings_snapshot = settings_snapshot_state["value"]
+            old_mode = current_settings_snapshot.project_save_mode
+            fixed_path = current_settings_snapshot.project_fixed_path
 
             # 索引映射：0=MANUAL, 1=FIXED, 2=SOURCE
             new_mode = self.PROJECT_SAVE_MODE_MANUAL
@@ -266,14 +264,14 @@ class BasicSettingsPage(Base, QWidget):
                 new_mode = self.PROJECT_SAVE_MODE_SOURCE
 
             request["project_save_mode"] = new_mode
-            latest_settings = self.update_settings(request)
-            settings_snapshot.update(latest_settings)
+            settings_snapshot_state["value"] = self.update_settings(request)
+            latest_settings = settings_snapshot_state["value"]
 
             # 更新描述
             card.set_description(
                 get_description(
-                    str(settings_snapshot.get("project_save_mode", "")),
-                    str(settings_snapshot.get("project_fixed_path", "")),
+                    latest_settings.project_save_mode,
+                    latest_settings.project_fixed_path,
                 )
             )
 
@@ -287,7 +285,7 @@ class BasicSettingsPage(Base, QWidget):
 
         # 查找当前索引：0=MANUAL, 1=FIXED, 2=SOURCE
         index = 0
-        project_save_mode = str(settings_snapshot.get("project_save_mode", ""))
+        project_save_mode = settings_snapshot.project_save_mode
         if project_save_mode == self.PROJECT_SAVE_MODE_FIXED:
             index = 1
         elif project_save_mode == self.PROJECT_SAVE_MODE_SOURCE:
@@ -296,7 +294,7 @@ class BasicSettingsPage(Base, QWidget):
         card.set_description(
             get_description(
                 project_save_mode,
-                str(settings_snapshot.get("project_fixed_path", "")),
+                settings_snapshot.project_fixed_path,
             )
         )
 
@@ -326,9 +324,7 @@ class BasicSettingsPage(Base, QWidget):
         switch_button = SwitchButton(card)
         switch_button.setOnText("")
         switch_button.setOffText("")
-        switch_button.setChecked(
-            bool(settings_snapshot.get("output_folder_open_on_finish", False))
-        )
+        switch_button.setChecked(settings_snapshot.output_folder_open_on_finish)
         switch_button.checkedChanged.connect(
             lambda checked: checked_changed(switch_button)
         )
@@ -354,7 +350,7 @@ class BasicSettingsPage(Base, QWidget):
         )
         spin_box = SpinBox(card)
         spin_box.setRange(0, 9999999)
-        spin_box.setValue(int(settings_snapshot.get("request_timeout", 120) or 120))
+        spin_box.setValue(settings_snapshot.request_timeout)
         spin_box.valueChanged.connect(lambda value: value_changed(spin_box))
         card.add_right_widget(spin_box)
         parent.addWidget(card)

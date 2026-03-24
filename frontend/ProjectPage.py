@@ -44,6 +44,7 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
+from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 
 # ==================== 图标常量 ====================
@@ -701,31 +702,21 @@ class ProjectPage(Base, ScrollArea):
         # 订阅事件
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
 
-    def get_settings_snapshot(self) -> dict[str, object]:
-        """统一读取当前设置快照，避免工程页继续直连 Config。"""
+    def get_settings_snapshot(self) -> AppSettingsSnapshot:
+        """统一读取当前设置快照对象，避免工程页继续直连 Config。"""
 
-        response = self.settings_api_client.get_app_settings()
-        settings = response.get("settings", {})
-        if isinstance(settings, dict):
-            return dict(settings)
-        return {}
+        return self.settings_api_client.get_app_settings()
 
     def get_recent_projects(self) -> list[dict[str, str]]:
         """返回最近项目列表副本，避免外部持有内部可变引用。"""
 
         settings_snapshot = self.get_settings_snapshot()
-        recent_projects = settings_snapshot.get("recent_projects", [])
-        if not isinstance(recent_projects, list):
-            return []
-
         normalized_projects: list[dict[str, str]] = []
-        for project in recent_projects:
-            if not isinstance(project, dict):
-                continue
+        for project in settings_snapshot.recent_projects:
             normalized_projects.append(
                 {
-                    "path": str(project.get("path", "")),
-                    "name": str(project.get("name", "")),
+                    "path": project.path,
+                    "name": project.name,
                 }
             )
         return normalized_projects
@@ -1192,12 +1183,7 @@ class ProjectPage(Base, ScrollArea):
             return
 
         settings_snapshot = self.get_settings_snapshot()
-        mode = str(
-            settings_snapshot.get(
-                "project_save_mode",
-                self.PROJECT_SAVE_MODE_MANUAL,
-            )
-        )
+        mode = settings_snapshot.project_save_mode
         path = ""
 
         if mode == self.PROJECT_SAVE_MODE_MANUAL:
@@ -1226,7 +1212,7 @@ class ProjectPage(Base, ScrollArea):
             if mode == self.PROJECT_SAVE_MODE_SOURCE:
                 target_dir = parent_dir
             elif mode == self.PROJECT_SAVE_MODE_FIXED:
-                target_dir = str(settings_snapshot.get("project_fixed_path", ""))
+                target_dir = settings_snapshot.project_fixed_path
                 # 如果固定目录无效，回退到手动选择或提示
                 if not target_dir or not os.path.exists(target_dir):
                     # 尝试请求用户选择

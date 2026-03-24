@@ -22,6 +22,8 @@ from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
+from model.Api.SettingsModels import AppSettingsSnapshot
+from model.Api.SettingsModels import RecentProjectEntry
 
 
 def ensure_qt_application() -> QApplication:
@@ -75,13 +77,11 @@ def test_project_page_uses_project_api_client(
     ensure_qt_application()
     project_client = Mock()
     settings_client = Mock()
-    settings_client.get_app_settings.return_value = {
-        "settings": {
-            "recent_projects": [],
-            "project_save_mode": "MANUAL",
-            "project_fixed_path": "",
-        }
-    }
+    settings_client.get_app_settings.return_value = AppSettingsSnapshot(
+        recent_projects=(),
+        project_save_mode="MANUAL",
+        project_fixed_path="",
+    )
     project_client.load_project.return_value = {
         "project": {"loaded": True, "path": "demo.lg"}
     }
@@ -113,6 +113,31 @@ def test_project_page_uses_project_api_client(
             "start",
             original_start,
         )
+
+
+def test_project_page_get_recent_projects_projects_entries() -> None:
+    ensure_qt_application()
+    project_client = Mock()
+    settings_client = Mock()
+    settings_client.get_app_settings.return_value = AppSettingsSnapshot(
+        recent_projects=(
+            RecentProjectEntry(path="demo.lg", name="Demo"),
+            RecentProjectEntry(path="", name=""),
+        )
+    )
+    api_state_store = ApiStateStore()
+
+    page = ProjectPage(
+        "project_page",
+        project_client,
+        settings_client,
+        api_state_store,
+    )
+
+    assert page.get_recent_projects() == [
+        {"path": "demo.lg", "name": "Demo"},
+        {"path": "", "name": ""},
+    ]
 
 
 def test_task_api_client_get_task_snapshot_supports_requested_task_type(
@@ -170,8 +195,9 @@ def test_settings_api_client_get_app_settings_returns_snapshot(
 
         result = settings_client.get_app_settings()
 
-        assert result["settings"]["request_timeout"] == 120
-        assert result["settings"]["target_language"] == "ZH"
+        assert isinstance(result, AppSettingsSnapshot)
+        assert result.request_timeout == 120
+        assert result.target_language == "ZH"
     finally:
         shutdown()
 
@@ -190,9 +216,10 @@ def test_settings_api_client_add_recent_project_returns_snapshot(
 
         result = settings_client.add_recent_project("demo.lg", "demo")
 
-        assert result["settings"]["recent_projects"] == [
-            {"path": "demo.lg", "name": "demo"}
-        ]
+        assert isinstance(result, AppSettingsSnapshot)
+        assert result.recent_projects == (
+            RecentProjectEntry(path="demo.lg", name="demo"),
+        )
     finally:
         shutdown()
 
@@ -200,14 +227,12 @@ def test_settings_api_client_add_recent_project_returns_snapshot(
 def test_app_settings_page_reads_initial_snapshot_from_settings_api_client() -> None:
     ensure_qt_application()
     settings_client = Mock()
-    settings_client.get_app_settings.return_value = {
-        "settings": {
-            "expert_mode": False,
-            "proxy_url": "",
-            "proxy_enable": False,
-            "scale_factor": "",
-        }
-    }
+    settings_client.get_app_settings.return_value = AppSettingsSnapshot(
+        expert_mode=False,
+        proxy_url="",
+        proxy_enable=False,
+        scale_factor="",
+    )
 
     AppSettingsPage("app_settings_page", settings_client, None)
 
@@ -217,16 +242,14 @@ def test_app_settings_page_reads_initial_snapshot_from_settings_api_client() -> 
 def test_basic_settings_page_uses_api_state_store_busy_state() -> None:
     ensure_qt_application()
     settings_client = Mock()
-    settings_client.get_app_settings.return_value = {
-        "settings": {
-            "source_language": "JA",
-            "target_language": "ZH",
-            "project_save_mode": "MANUAL",
-            "project_fixed_path": "",
-            "output_folder_open_on_finish": False,
-            "request_timeout": 120,
-        }
-    }
+    settings_client.get_app_settings.return_value = AppSettingsSnapshot(
+        source_language="JA",
+        target_language="ZH",
+        project_save_mode="MANUAL",
+        project_fixed_path="",
+        output_folder_open_on_finish=False,
+        request_timeout=120,
+    )
     api_state_store = ApiStateStore()
     api_state_store.hydrate_task({"task_type": "translation", "busy": True})
 
@@ -244,19 +267,17 @@ def test_basic_settings_page_uses_api_state_store_busy_state() -> None:
 def test_expert_settings_page_reads_initial_snapshot_from_settings_api_client() -> None:
     ensure_qt_application()
     settings_client = Mock()
-    settings_client.get_app_settings.return_value = {
-        "settings": {
-            "preceding_lines_threshold": 0,
-            "clean_ruby": False,
-            "deduplication_in_trans": True,
-            "deduplication_in_bilingual": True,
-            "check_kana_residue": True,
-            "check_hangeul_residue": True,
-            "check_similarity": True,
-            "write_translated_name_fields_to_file": True,
-            "auto_process_prefix_suffix_preserved_text": True,
-        }
-    }
+    settings_client.get_app_settings.return_value = AppSettingsSnapshot(
+        preceding_lines_threshold=0,
+        clean_ruby=False,
+        deduplication_in_trans=True,
+        deduplication_in_bilingual=True,
+        check_kana_residue=True,
+        check_hangeul_residue=True,
+        check_similarity=True,
+        write_translated_name_fields_to_file=True,
+        auto_process_prefix_suffix_preserved_text=True,
+    )
 
     ExpertSettingsPage("expert_settings_page", settings_client, None)
 
