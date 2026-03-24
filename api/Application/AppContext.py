@@ -1,18 +1,13 @@
 from dataclasses import dataclass
-
-from api.Client.ApiStateStore import ApiStateStore
-from api.Client.ProjectApiClient import ProjectApiClient
-from api.Client.SettingsApiClient import SettingsApiClient
-from api.Client.TaskApiClient import TaskApiClient
-from api.Client.WorkbenchApiClient import WorkbenchApiClient
+from typing import Any
 
 
 @dataclass(frozen=True)
 class AppContext:
-    """UI 侧 API 依赖容器，后续页面统一从这里拿边界对象。"""
+    """旧 UI 启动上下文占位类型，后续迁移到 Client 层后会删除。"""
 
-    project_api_client: ProjectApiClient
-    task_api_client: TaskApiClient
-    workbench_api_client: WorkbenchApiClient
-    settings_api_client: SettingsApiClient
-    api_state_store: ApiStateStore
+    project_api_client: Any
+    task_api_client: Any
+    workbench_api_client: Any
+    settings_api_client: Any
+    api_state_store: Any
