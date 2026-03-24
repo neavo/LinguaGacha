@@ -23,11 +23,30 @@ class FakeProjectManager:
         self.create_calls.append((source_path, output_path))
         self.project_path = output_path
 
+    def unload_project(self) -> None:
+        self.loaded = False
+        self.project_path = ""
+
     def is_loaded(self) -> bool:
         return self.loaded
 
     def get_lg_path(self) -> str:
         return self.project_path
+
+    def get_supported_extensions(self) -> set[str]:
+        return {".txt", ".json"}
+
+    def collect_source_files(self, path: str) -> list[str]:
+        return [path]
+
+    def get_project_preview(self, path: str) -> dict[str, object]:
+        return {
+            "name": Path(path).stem,
+            "file_count": 1,
+            "created_at": "",
+            "updated_at": "",
+            "progress": 0,
+        }
 
 
 @pytest.fixture

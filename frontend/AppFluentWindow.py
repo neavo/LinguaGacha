@@ -2,6 +2,7 @@ import os
 import signal
 import time
 
+from api.Application.AppContext import AppContext
 from PySide6.QtCore import QEvent
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -48,7 +49,6 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.PromptPathResolver import PromptPathResolver
 from widget.ProgressToast import ProgressToast
@@ -92,11 +92,19 @@ class AppFluentWindow(Base, FluentWindow):
     HOMEPAGE_AVATAR_X: int = 10
     HOMEPAGE_AVATAR_Y: int = 8
 
-    def __init__(self) -> None:
+    def __init__(self, app_context: AppContext | None) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
         self.progress_toast: ProgressToast | None = None
+        if app_context is None:
+            raise ValueError("UI 模式必须提供 AppContext")
+        self.app_context = app_context
+        self.project_api_client = app_context.project_api_client
+        self.api_state_store = app_context.api_state_store
 
         super().__init__()
+
+        project_snapshot = self.project_api_client.get_project_snapshot()
+        self.api_state_store.hydrate_project(project_snapshot["project"])
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.APP_THEME_COLOR)
@@ -163,7 +171,7 @@ class AppFluentWindow(Base, FluentWindow):
     def switchTo(self, interface: QWidget):
         """切换页面"""
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工程页
-        if not DataManager.get().is_loaded() and interface != self.project_page:
+        if not self.api_state_store.is_project_loaded() and interface != self.project_page:
             if self.is_project_dependent(interface):
                 # 记录用户的原始意图，以便加载后跳转
                 self.pending_target_interface = interface
@@ -178,7 +186,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     def update_navigation_status(self) -> None:
         """根据工程加载状态更新侧边栏导航项的可点击状态"""
-        is_loaded = DataManager.get().is_loaded()
+        is_loaded = self.api_state_store.is_project_loaded()
 
         # 只有这些页面在未加载工程时需要彻底禁用
         disable_names = [
@@ -417,8 +425,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 关闭当前项目
     def close_current_project(self) -> None:
-        data_manager = DataManager.get()
-        if not data_manager.is_loaded():
+        if not self.api_state_store.is_project_loaded():
             return
 
         # 二次确认
@@ -433,7 +440,8 @@ class AppFluentWindow(Base, FluentWindow):
         if not box.exec():
             return
 
-        data_manager.unload_project()
+        project_result = self.project_api_client.unload_project()
+        self.api_state_store.hydrate_project(project_result["project"])
         self.emit(
             Base.Event.TOAST,
             {
@@ -544,7 +552,12 @@ class AppFluentWindow(Base, FluentWindow):
     # 开始添加页面
     def add_pages(self) -> None:
         # 创建工程页（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
-        self.project_page = ProjectPage("project_page", self)
+        self.project_page = ProjectPage(
+            "project_page",
+            self.project_api_client,
+            self.api_state_store,
+            self,
+        )
 
         # 重要：不要在这里把 project_page 先塞进 stackedWidget。
         # QFluentWidgets 只有在添加第一个 SubInterface（stackedWidget.count() == 1）时
@@ -799,6 +812,11 @@ class AppFluentWindow(Base, FluentWindow):
     # 工程加载后的处理
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         """工程加载后切换到默认页面"""
+        del event
+        del data
+        project_snapshot = self.project_api_client.get_project_snapshot()
+        self.api_state_store.hydrate_project(project_snapshot["project"])
+
         # 更新侧边栏状态
         self.update_navigation_status()
 
@@ -815,6 +833,10 @@ class AppFluentWindow(Base, FluentWindow):
     # 工程卸载后的处理
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后返回工程页"""
+        del event
+        del data
+        self.api_state_store.reset_project()
+
         # 更新侧边栏状态
         self.update_navigation_status()
         self.switchTo(self.project_page)

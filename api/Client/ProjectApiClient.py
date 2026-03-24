@@ -24,3 +24,28 @@ class ProjectApiClient:
         """查询工程快照，供 UI 首屏 hydration 使用。"""
 
         return self.api_client.post(ProjectRoutes.SNAPSHOT_PATH, {})
+
+    def unload_project(self) -> dict[str, Any]:
+        """关闭当前工程并返回最新快照。"""
+
+        return self.api_client.post(ProjectRoutes.UNLOAD_PATH, {})
+
+    def get_supported_extensions(self) -> list[str]:
+        """读取源文件选择器支持的扩展名。"""
+
+        response = self.api_client.post(ProjectRoutes.EXTENSIONS_PATH, {})
+        extensions = response.get("extensions", [])
+        return [str(extension) for extension in extensions]
+
+    def collect_source_files(self, path: str) -> list[str]:
+        """探测给定路径下可导入的源文件列表。"""
+
+        response = self.api_client.post(ProjectRoutes.SOURCE_FILES_PATH, {"path": path})
+        source_files = response.get("source_files", [])
+        return [str(file_path) for file_path in source_files]
+
+    def get_project_preview(self, path: str) -> dict[str, Any]:
+        """读取指定工程的预览摘要。"""
+
+        response = self.api_client.post(ProjectRoutes.PREVIEW_PATH, {"path": path})
+        return dict(response.get("preview", {}))
