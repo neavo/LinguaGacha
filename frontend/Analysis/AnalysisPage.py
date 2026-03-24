@@ -254,6 +254,8 @@ class AnalysisPage(Base, QWidget):
         self.update_token()
         self.update_task()
         self.update_status()
+        # 按翻译页同样的节奏同步按钮可用态，避免状态仓库已更新后命令栏仍停留在旧帧。
+        self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
 
     def set_scaled_card_value(
         self, card: DashboardCard, value: int, base_unit: str

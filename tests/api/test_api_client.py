@@ -502,6 +502,61 @@ def test_analysis_page_keeps_stop_enabled_during_own_request_state() -> None:
     assert page.action_import.isEnabled() is False
 
 
+def test_analysis_page_tick_refreshes_buttons_after_stop_done() -> None:
+    ensure_qt_application()
+    task_client = Mock()
+    task_client.get_task_snapshot.return_value = TaskSnapshot(
+        task_type="analysis",
+        status="IDLE",
+        busy=False,
+        analysis_candidate_count=0,
+    )
+    api_state_store = ApiStateStore()
+    api_state_store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
+    api_state_store.hydrate_task(
+        TaskSnapshot(
+            task_type="analysis",
+            status="STOPPING",
+            busy=True,
+            line=3,
+            total_line=10,
+        )
+    )
+
+    page = AnalysisPage(
+        "analysis_page",
+        None,
+        task_client,
+        api_state_store,
+    )
+    page.is_stopping_toast_active = True
+    page.update_button_status(Base.Event.PROJECT_UNLOADED, {})
+
+    assert page.action_start.isEnabled() is False
+    assert page.action_stop.isEnabled() is False
+
+    api_state_store.hydrate_task(
+        TaskSnapshot(
+            task_type="analysis",
+            status="DONE",
+            busy=False,
+            line=3,
+            total_line=10,
+        )
+    )
+
+    page.update_ui_tick()
+
+    assert page.action_start.isEnabled() is True
+    assert page.action_stop.isEnabled() is False
+    assert page.action_reset.isEnabled() is True
+    assert page.action_import.isEnabled() is False
+    assert page.action_start.text() == Localizer.get().analysis_page_continue
+    assert page.is_stopping_toast_active is False
+
+
 def test_workbench_page_uses_workbench_api_client() -> None:
     ensure_qt_application()
     workbench_client = Mock()
