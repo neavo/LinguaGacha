@@ -30,6 +30,7 @@ from model.Api.SettingsModels import RecentProjectEntry
 from model.Api.TaskModels import TaskSnapshot
 from model.Api.WorkbenchModels import WorkbenchFileEntry
 from model.Api.WorkbenchModels import WorkbenchSnapshot
+from module.Localizer.Localizer import Localizer
 
 
 def ensure_qt_application() -> QApplication:
@@ -166,6 +167,14 @@ def test_project_info_panel_accepts_project_preview_object() -> None:
     )
 
     assert panel.rows["file_count"].text() == "3"
+    caption_texts = {
+        widget.text() for widget in panel.findChildren(project_page_module.CaptionLabel)
+    }
+
+    assert (
+        Localizer.get().project_info_translated.replace("{COUNT}", "6") in caption_texts
+    )
+    assert Localizer.get().project_info_total.replace("{COUNT}", "12") in caption_texts
 
 
 def test_task_api_client_get_task_snapshot_supports_requested_task_type(

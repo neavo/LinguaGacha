@@ -179,6 +179,7 @@
 - `ProjectApiClient` 对外返回 `ProjectSnapshot` / `ProjectPreview`
 - `WorkbenchApiClient` 对外返回 `WorkbenchSnapshot`
 - `TaskApiClient` 对外返回 `TaskSnapshot`
+- `ProjectPreview` 需要显式建模当前摘要字段：`path`、`name`、`source_language`、`target_language`、`file_count`、`created_at`、`updated_at`、`total_items`、`translated_items`、`progress`
 
 ### 8.3 状态仓库约定
 
@@ -186,6 +187,7 @@
 - `ApiStateStore.task_snapshot` 只缓存 `TaskSnapshot`
 - SSE 增量事件进入 `ApiStateStore` 后，会先解码为 `TaskStatusUpdate` / `TaskProgressUpdate` 再合并
 - 页面层不得再直接依赖 `response.get(...)`、`snapshot.get(...)` 读取 API 响应
+- 页面层不得通过 `to_dict().get(...)`、`payload.get(...)` 回退为字典式读取对象字段
 
 ## 9. UI 边界
 

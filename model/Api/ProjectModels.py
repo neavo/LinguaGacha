@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Any
-from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -37,24 +35,27 @@ class ProjectSnapshot:
 
 @dataclass(frozen=True)
 class ProjectPreview:
-    """工程预览对象保留具名字段，并允许页面读取附加摘要信息。"""
+    """工程预览对象显式建模摘要字段，避免页面退回字典式读取。"""
 
     path: str = ""
     name: str = ""
     source_language: str = ""
+    target_language: str = ""
     file_count: int = 0
     created_at: str = ""
     updated_at: str = ""
+    total_items: int = 0
+    translated_items: int = 0
     progress: float = 0.0
-    payload: Mapping[str, Any] = MappingProxyType({})
+    has_progress: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ProjectPreview":
-        """把工程预览响应转换为冻结对象，同时保留原始摘要字段。"""
+        """把工程预览响应转换为冻结对象，统一页面消费入口。"""
 
         normalized: dict[str, Any]
         if isinstance(data, dict):
-            normalized = dict(data)
+            normalized = data
         else:
             normalized = {}
 
@@ -62,14 +63,28 @@ class ProjectPreview:
             path=str(normalized.get("path", "")),
             name=str(normalized.get("name", "")),
             source_language=str(normalized.get("source_language", "")),
+            target_language=str(normalized.get("target_language", "")),
             file_count=int(normalized.get("file_count", 0) or 0),
             created_at=str(normalized.get("created_at", "")),
             updated_at=str(normalized.get("updated_at", "")),
+            total_items=int(normalized.get("total_items", 0) or 0),
+            translated_items=int(normalized.get("translated_items", 0) or 0),
             progress=float(normalized.get("progress", 0.0) or 0.0),
-            payload=MappingProxyType(normalized),
+            has_progress="progress" in normalized,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """把预览对象恢复为字典，便于现有 UI 渐进迁移。"""
+        """把预览对象转换回显式摘要字典，避免泄漏未建模字段。"""
 
-        return dict(self.payload)
+        return {
+            "path": self.path,
+            "name": self.name,
+            "source_language": self.source_language,
+            "target_language": self.target_language,
+            "file_count": self.file_count,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "total_items": self.total_items,
+            "translated_items": self.translated_items,
+            "progress": self.progress,
+        }

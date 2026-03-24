@@ -508,6 +508,11 @@ class ProjectInfoPanel(SimpleCardWidget):
             ("created_at", Localizer.get().project_info_created_at),
             ("updated_at", Localizer.get().project_info_update),
         ]
+        field_values = {
+            "file_count": str(info.file_count),
+            "created_at": info.created_at,
+            "updated_at": info.updated_at,
+        }
 
         for key, label in fields:
             row = QFrame(self)
@@ -518,7 +523,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             row_layout.addWidget(label_widget)
 
             # 格式化时间
-            value = str(info.to_dict().get(key, ""))
+            value = field_values[key]
             if key in ["created_at", "updated_at"] and value:
                 value = self.format_time(value)
 
@@ -530,7 +535,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             layout.addWidget(row)
 
         # 添加进度条（如果有）
-        if "progress" in info.to_dict():
+        if info.has_progress:
             layout.addStretch()
 
             progress_header = QFrame(self)
@@ -564,9 +569,8 @@ class ProjectInfoPanel(SimpleCardWidget):
             stats_layout = QHBoxLayout(stats_frame)
             stats_layout.setContentsMargins(0, 4, 0, 0)
 
-            preview_payload = info.to_dict()
-            translated = int(preview_payload.get("translated_items", 0) or 0)
-            total = int(preview_payload.get("total_items", 0) or 0)
+            translated = info.translated_items
+            total = info.total_items
 
             left_stat = CaptionLabel(
                 Localizer.get().project_info_translated.replace(
