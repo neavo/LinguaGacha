@@ -18,10 +18,12 @@ from frontend.AppSettingsPage import AppSettingsPage
 import frontend.ProjectPage as project_page_module
 from frontend.Analysis.AnalysisPage import AnalysisPage
 from frontend.ProjectPage import ProjectPage
+from frontend.ProjectPage import ProjectInfoPanel
 from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
+from model.Api.ProjectModels import ProjectPreview
 from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
@@ -144,6 +146,26 @@ def test_project_page_get_recent_projects_projects_entries() -> None:
         {"path": "demo.lg", "name": "Demo"},
         {"path": "", "name": ""},
     ]
+
+
+def test_project_info_panel_accepts_project_preview_object() -> None:
+    ensure_qt_application()
+    panel = ProjectInfoPanel()
+
+    panel.set_info(
+        ProjectPreview.from_dict(
+            {
+                "file_count": 3,
+                "created_at": "2026-03-24T12:00:00",
+                "updated_at": "2026-03-24T12:30:00",
+                "progress": 0.5,
+                "translated_items": 6,
+                "total_items": 12,
+            }
+        )
+    )
+
+    assert panel.rows["file_count"].text() == "3"
 
 
 def test_task_api_client_get_task_snapshot_supports_requested_task_type(

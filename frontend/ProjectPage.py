@@ -564,8 +564,9 @@ class ProjectInfoPanel(SimpleCardWidget):
             stats_layout = QHBoxLayout(stats_frame)
             stats_layout.setContentsMargins(0, 4, 0, 0)
 
-            translated = info.get("translated_items", 0)
-            total = info.get("total_items", 0)
+            preview_payload = info.to_dict()
+            translated = int(preview_payload.get("translated_items", 0) or 0)
+            total = int(preview_payload.get("total_items", 0) or 0)
 
             left_stat = CaptionLabel(
                 Localizer.get().project_info_translated.replace(
