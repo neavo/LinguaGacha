@@ -1,7 +1,9 @@
 import threading
 from collections.abc import Callable
 
+from api.Application.EventStreamService import EventStreamService
 from api.Server.CoreApiServer import CoreApiServer
+from api.Server.Routes.EventRoutes import EventRoutes
 
 
 class ServerBootstrap:
@@ -12,7 +14,9 @@ class ServerBootstrap:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
         core_api_server = CoreApiServer()
+        event_stream_service = EventStreamService()
         core_api_server.register_routes()
+        EventRoutes.register(core_api_server, event_stream_service)
         http_server = core_api_server.create_http_server()
         serve_thread = threading.Thread(
             target=http_server.serve_forever,

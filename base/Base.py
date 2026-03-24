@@ -157,6 +157,14 @@ class Base:
         Event.ANALYSIS_RESET_ALL,
         Event.ANALYSIS_RESET_FAILED,
     )
+    API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
+        Event.PROJECT_LOADED,
+        Event.PROJECT_UNLOADED,
+        Event.TRANSLATION_PROGRESS,
+        Event.ANALYSIS_PROGRESS,
+        Event.WORKBENCH_SNAPSHOT,
+        Event.CONFIG_UPDATED,
+    )
     ENGINE_BUSY_STATUSES: tuple[TaskStatus, ...] = (
         TaskStatus.TRANSLATING,
         TaskStatus.ANALYZING,

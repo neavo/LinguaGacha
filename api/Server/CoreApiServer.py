@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from typing import Any
@@ -17,15 +18,22 @@ class CoreApiServer:
     HEALTH_PATH: str = "/api/health"
     CONTENT_TYPE_JSON: str = "application/json; charset=utf-8"
 
+    @dataclass(frozen=True)
+    class RouteDefinition:
+        """路由定义同时描述 JSON 与流式两类处理模式。"""
+
+        mode: str
+        handler: Callable[..., Any]
+
     def __init__(self, host: str = "127.0.0.1", port: int = 0) -> None:
         self.host = host
         self.port = port
-        self.route_map: dict[tuple[str, str], Callable[[], ApiResponse]] = {}
+        self.route_map: dict[tuple[str, str], CoreApiServer.RouteDefinition] = {}
 
     def register_routes(self) -> None:
         """统一注册公开路由，避免路由散落在处理器内部。"""
 
-        self.route_map[("GET", self.HEALTH_PATH)] = self.handle_health
+        self.add_json_route("GET", self.HEALTH_PATH, self.handle_health)
 
     def create_http_server(self) -> ThreadingHTTPServer:
         """创建 HTTP 服务实例，并把请求分发回当前服务对象。"""
@@ -52,8 +60,8 @@ class CoreApiServer:
     ) -> None:
         """把标准库 HTTP 请求转换为统一 API 响应。"""
 
-        route_handler = self.route_map.get((method, handler.path))
-        if route_handler is None:
+        route_definition = self.route_map.get((method, handler.path))
+        if route_definition is None:
             self.write_json(
                 handler,
                 status_code=404,
@@ -67,16 +75,38 @@ class CoreApiServer:
             )
             return
 
-        self.write_json(
-            handler,
-            status_code=200,
-            response=route_handler(),
-        )
+        if route_definition.mode == "stream":
+            route_definition.handler(handler)
+        else:
+            self.write_json(
+                handler,
+                status_code=200,
+                response=route_definition.handler(),
+            )
 
     def handle_health(self) -> ApiResponse:
         """最小健康检查接口，用于验证服务已启动并可响应 JSON。"""
 
         return ApiResponse(ok=True, data={"status": "ok"})
+
+    def add_json_route(
+        self,
+        method: str,
+        path: str,
+        handler: Callable[[], ApiResponse],
+    ) -> None:
+        """JSON 路由统一走响应包装，避免后续手写重复模板。"""
+
+        self.route_map[(method, path)] = self.RouteDefinition("json", handler)
+
+    def add_stream_route(
+        self,
+        path: str,
+        handler: Callable[[BaseHTTPRequestHandler], None],
+    ) -> None:
+        """SSE 长连接需要直接接触原始 handler，因此单独登记。"""
+
+        self.route_map[("GET", path)] = self.RouteDefinition("stream", handler)
 
     def write_json(
         self,
