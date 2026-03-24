@@ -23,7 +23,7 @@
 - Create: `api/Contract/TaskDtos.py`
 - Create: `api/Contract/WorkbenchDtos.py`
 - Create: `api/Application/__init__.py`
-- Create: `api/Application/AppContext.py`
+- Create: `api/Client/AppClientContext.py`
 - Create: `api/Application/ProjectAppService.py`
 - Create: `api/Application/TaskAppService.py`
 - Create: `api/Application/WorkbenchAppService.py`
@@ -296,7 +296,7 @@ git commit -m "feat: add project api service and ui server lifecycle"
 ### Task 4: 建立工程快照查询契约与 `ApiStateStore` 基础版
 
 **Files:**
-- Create: `api/Application/AppContext.py`
+- Create: `api/Client/AppClientContext.py`
 - Create: `api/Client/ApiStateStore.py`
 - Create: `tests/api/test_api_state_store.py`
 - Modify: `api/Application/ProjectAppService.py`
@@ -339,7 +339,7 @@ Expected: PASS，确认工程快照可查询且 UI 侧有单一缓存入口
 - [ ] **Step 5: 提交**
 
 ```bash
-git add api/Application/AppContext.py api/Client/ApiStateStore.py api/Application/ProjectAppService.py api/Server/Routes/ProjectRoutes.py api/Client/ProjectApiClient.py tests/api/test_project_app_service.py tests/api/test_api_state_store.py tests/api/test_api_client.py
+git add api/Client/AppClientContext.py api/Client/ApiStateStore.py api/Application/ProjectAppService.py api/Server/Routes/ProjectRoutes.py api/Client/ProjectApiClient.py tests/api/test_project_app_service.py tests/api/test_api_state_store.py tests/api/test_api_client.py
 git commit -m "feat: add project snapshot query and api state store"
 ```
 

@@ -119,7 +119,7 @@ api/
     TaskDtos.py
     WorkbenchDtos.py
   application/
-    AppContext.py
+    AppClientContext.py
     ProjectAppService.py
     TaskAppService.py
     WorkbenchAppService.py

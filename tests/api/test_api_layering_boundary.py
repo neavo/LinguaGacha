@@ -41,3 +41,17 @@ def test_ui_bootstrap_imports_app_client_context() -> None:
     assert "from api.Client.AppClientContext import AppClientContext" in window_content
     assert "from api.Application.AppContext import AppContext" not in app_content
     assert "from api.Application.AppContext import AppContext" not in window_content
+
+
+def test_frontend_core_design_doc_uses_app_client_context() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    spec_content = (
+        root_dir
+        / "docs"
+        / "superpowers"
+        / "specs"
+        / "2026-03-24-frontend-core-separation-design.md"
+    ).read_text(encoding="utf-8")
+
+    assert "AppClientContext.py" in spec_content
+    assert "AppContext.py" not in spec_content
