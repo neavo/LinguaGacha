@@ -56,9 +56,24 @@ class FakeEngine:
 
     def __init__(self) -> None:
         self.status = Base.TaskStatus.IDLE
+        self.request_in_flight_count: int = 0
+        self.active_task_type: str = ""
 
     def get_status(self) -> Base.TaskStatus:
         return self.status
+
+    def is_busy(self) -> bool:
+        return self.status in (
+            Base.TaskStatus.TRANSLATING,
+            Base.TaskStatus.ANALYZING,
+            Base.TaskStatus.STOPPING,
+        )
+
+    def get_request_in_flight_count(self) -> int:
+        return self.request_in_flight_count
+
+    def get_active_task_type(self) -> str:
+        return self.active_task_type
 
 
 class FakeTaskDataManager:
@@ -70,19 +85,38 @@ class FakeTaskDataManager:
             "total_line": 0,
             "processed_line": 0,
             "error_line": 0,
+            "total_tokens": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "time": 0.0,
+            "start_time": 0.0,
         }
         self.analysis_snapshot = {
             "line": 0,
             "total_line": 0,
             "processed_line": 0,
             "error_line": 0,
+            "total_tokens": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "time": 0.0,
+            "start_time": 0.0,
         }
+        self.analysis_candidate_count: int = 0
 
-    def get_translation_extras(self) -> dict[str, int]:
+    def get_translation_extras(self) -> dict[str, int | float]:
         return dict(self.translation_extras)
 
-    def get_analysis_progress_snapshot(self) -> dict[str, int]:
+    def get_analysis_progress_snapshot(self) -> dict[str, int | float]:
         return dict(self.analysis_snapshot)
+
+    def get_task_progress_snapshot(self, task_type: str) -> dict[str, int | float]:
+        if task_type == "analysis":
+            return self.get_analysis_progress_snapshot()
+        return self.get_translation_extras()
+
+    def get_analysis_candidate_count(self) -> int:
+        return self.analysis_candidate_count
 
 
 @pytest.fixture

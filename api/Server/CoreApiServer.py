@@ -33,7 +33,11 @@ class CoreApiServer:
     def register_routes(self) -> None:
         """统一注册公开路由，避免路由散落在处理器内部。"""
 
-        self.add_json_route("GET", self.HEALTH_PATH, self.handle_health)
+        self.add_json_route(
+            "GET",
+            self.HEALTH_PATH,
+            lambda request: self.handle_health(),
+        )
 
     def create_http_server(self) -> ThreadingHTTPServer:
         """创建 HTTP 服务实例，并把请求分发回当前服务对象。"""
@@ -45,6 +49,9 @@ class CoreApiServer:
 
             def do_GET(self) -> None:  # noqa: N802
                 core_api_server.handle_http_request(self, "GET")
+
+            def do_POST(self) -> None:  # noqa: N802
+                core_api_server.handle_http_request(self, "POST")
 
             def log_message(self, format: str, *args: Any) -> None:
                 # 测试服务默认静默，避免控制台被标准库 HTTP 噪音刷屏。
@@ -78,10 +85,11 @@ class CoreApiServer:
         if route_definition.mode == "stream":
             route_definition.handler(handler)
         else:
+            request_body = self.read_json_request(handler)
             self.write_json(
                 handler,
                 status_code=200,
-                response=route_definition.handler(),
+                response=route_definition.handler(request_body),
             )
 
     def handle_health(self) -> ApiResponse:
@@ -93,7 +101,7 @@ class CoreApiServer:
         self,
         method: str,
         path: str,
-        handler: Callable[[], ApiResponse],
+        handler: Callable[[dict[str, Any]], ApiResponse],
     ) -> None:
         """JSON 路由统一走响应包装，避免后续手写重复模板。"""
 
@@ -123,3 +131,19 @@ class CoreApiServer:
         handler.send_header("Content-Length", str(len(payload_bytes)))
         handler.end_headers()
         handler.wfile.write(payload_bytes)
+
+    def read_json_request(self, handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+        """统一读取 JSON 请求体，缺省场景返回空字典。"""
+
+        if handler.command != "POST":
+            return {}
+
+        raw_length = handler.headers.get("Content-Length", "0")
+        content_length = int(raw_length or 0)
+        if content_length <= 0:
+            return {}
+
+        payload_bytes = handler.rfile.read(content_length)
+        if payload_bytes == b"":
+            return {}
+        return dict(json.loads(payload_bytes.decode("utf-8")))

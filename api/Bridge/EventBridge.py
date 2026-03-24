@@ -68,7 +68,9 @@ class EventBridge:
             )
         elif event == Base.Event.CONFIG_UPDATED:
             keys = data.get("keys", [])
-            normalized_keys = [str(key) for key in keys] if isinstance(keys, list) else []
+            normalized_keys = (
+                [str(key) for key in keys] if isinstance(keys, list) else []
+            )
             return (
                 EventTopic.SETTINGS_CHANGED.value,
                 {"keys": normalized_keys},
@@ -90,6 +92,9 @@ class EventBridge:
             "processed_line": int(data.get("processed_line", 0) or 0),
             "error_line": int(data.get("error_line", 0) or 0),
             "total_tokens": int(data.get("total_tokens", 0) or 0),
+            "total_output_tokens": int(data.get("total_output_tokens", 0) or 0),
+            "total_input_tokens": int(data.get("total_input_tokens", 0) or 0),
+            "start_time": float(data.get("start_time", 0.0) or 0.0),
             "time": float(data.get("time", 0.0) or 0.0),
         }
 
@@ -101,7 +106,9 @@ class EventBridge:
     ) -> dict[str, Any]:
         """任务生命周期事件对外统一为状态变更通知。"""
 
-        sub_event = str(getattr(data.get("sub_event"), "value", data.get("sub_event", "")))
+        sub_event = str(
+            getattr(data.get("sub_event"), "value", data.get("sub_event", ""))
+        )
         status = "STOPPING" if stopping else sub_event
         return {
             "task_type": task_type,

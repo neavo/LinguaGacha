@@ -22,5 +22,8 @@ class TaskApiClient:
     def stop_analysis(self) -> dict[str, Any]:
         return self.api_client.post(TaskRoutes.STOP_ANALYSIS_PATH, {})
 
-    def get_task_snapshot(self) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.SNAPSHOT_PATH, {})
+    def get_task_snapshot(
+        self,
+        request: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self.api_client.post(TaskRoutes.SNAPSHOT_PATH, request or {})

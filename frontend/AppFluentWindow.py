@@ -3,6 +3,7 @@ import signal
 import time
 
 from api.Application.AppContext import AppContext
+from api.Client.SseClient import SseClient
 from PySide6.QtCore import QEvent
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -99,12 +100,21 @@ class AppFluentWindow(Base, FluentWindow):
             raise ValueError("UI 模式必须提供 AppContext")
         self.app_context = app_context
         self.project_api_client = app_context.project_api_client
+        self.task_api_client = app_context.task_api_client
         self.api_state_store = app_context.api_state_store
 
         super().__init__()
 
         project_snapshot = self.project_api_client.get_project_snapshot()
         self.api_state_store.hydrate_project(project_snapshot["project"])
+        task_snapshot = self.task_api_client.get_task_snapshot()
+        self.api_state_store.hydrate_task(task_snapshot["task"])
+        self.sse_client = SseClient(
+            self.task_api_client.api_client.base_url,
+            self.api_state_store,
+        )
+        self.sse_client.start()
+        self.destroyed.connect(lambda *args: self.sse_client.stop())
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.APP_THEME_COLOR)
@@ -171,7 +181,10 @@ class AppFluentWindow(Base, FluentWindow):
     def switchTo(self, interface: QWidget):
         """切换页面"""
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工程页
-        if not self.api_state_store.is_project_loaded() and interface != self.project_page:
+        if (
+            not self.api_state_store.is_project_loaded()
+            and interface != self.project_page
+        ):
             if self.is_project_dependent(interface):
                 # 记录用户的原始意图，以便加载后跳转
                 self.pending_target_interface = interface
@@ -647,7 +660,12 @@ class AppFluentWindow(Base, FluentWindow):
     # 添加任务类页面
     def add_task_pages(self) -> None:
         # 翻译任务
-        self.translation_page = TranslationPage("translation_page", self)
+        self.translation_page = TranslationPage(
+            "translation_page",
+            self,
+            self.task_api_client,
+            self.api_state_store,
+        )
         self.addSubInterface(
             self.translation_page,
             ICON_NAV_TRANSLATION.qicon(),
@@ -656,7 +674,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 术语分析任务
-        self.analysis_page = AnalysisPage("analysis_page", self)
+        self.analysis_page = AnalysisPage(
+            "analysis_page",
+            self,
+            self.task_api_client,
+            self.api_state_store,
+        )
         self.addSubInterface(
             self.analysis_page,
             ICON_NAV_ANALYSIS.qicon(),

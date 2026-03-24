@@ -1,6 +1,8 @@
 import time
 from enum import StrEnum
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.TaskApiClient import TaskApiClient
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -21,7 +23,6 @@ from qfluentwidgets import ToolTipPosition
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
-from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
@@ -46,9 +47,17 @@ class AnalysisPage(Base, QWidget):
         REMAINING = "REMAINING"
         ELAPSED = "ELAPSED"
 
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        text: str,
+        window: FluentWindow,
+        task_api_client: TaskApiClient,
+        api_state_store: ApiStateStore,
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
+        self.task_api_client = task_api_client
+        self.api_state_store = api_state_store
 
         self.data: dict = {}
         self.is_stopping_toast_active: bool = False
@@ -63,15 +72,6 @@ class AnalysisPage(Base, QWidget):
         self.add_widget_body(self.container)
         self.add_widget_foot(self.container, window)
 
-        self.subscribe(Base.Event.PROJECT_CHECK, self.update_button_status)
-        self.subscribe(Base.Event.APITEST, self.update_button_status)
-        self.subscribe(Base.Event.ANALYSIS_TASK, self.update_button_status)
-        self.subscribe(
-            Base.Event.ANALYSIS_REQUEST_STOP,
-            self.update_button_status,
-        )
-        self.subscribe(Base.Event.ANALYSIS_TASK, self.analysis_done)
-        self.subscribe(Base.Event.ANALYSIS_PROGRESS, self.analysis_update)
         self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.on_analysis_reset)
         self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.on_analysis_reset)
         self.subscribe(
@@ -89,13 +89,38 @@ class AnalysisPage(Base, QWidget):
 
     def showEvent(self, a0) -> None:
         super().showEvent(a0)
-        self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+        self.refresh_analysis_snapshot()
+        self.sync_task_snapshot()
+        self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
 
     def has_progress(self) -> bool:
         """分析页和翻译页统一口径：只要存在历史进度，就保留“继续”语义。"""
         if not isinstance(self.data, dict):
             return False
         return int(self.data.get("line", 0) or 0) > 0
+
+    def refresh_analysis_snapshot(self) -> None:
+        """分析页显式拉取分析快照，避免首屏被其他任务历史进度挤占。"""
+
+        result = self.task_api_client.get_task_snapshot({"task_type": "analysis"})
+        task_snapshot = result.get("task", {})
+        if isinstance(task_snapshot, dict):
+            self.analysis_candidate_count = int(
+                task_snapshot.get("analysis_candidate_count", 0) or 0
+            )
+            self.data = dict(task_snapshot)
+
+    def sync_task_snapshot(self) -> None:
+        """优先消费状态仓库中的实时任务快照，分析空闲时回退到本地快照。"""
+
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        task_type = str(task_snapshot.get("task_type", ""))
+        if task_type == "analysis":
+            self.data = task_snapshot
+            self.analysis_candidate_count = int(
+                task_snapshot.get("analysis_candidate_count", 0)
+                or self.analysis_candidate_count
+            )
 
     def set_action_enabled(
         self, *, start: bool, stop: bool, reset: bool, import_glossary: bool
@@ -105,33 +130,17 @@ class AnalysisPage(Base, QWidget):
         self.action_reset.setEnabled(reset)
         self.action_import.setEnabled(import_glossary)
 
-    def should_hide_stopping_toast(self, event: Base.Event, data: dict) -> bool:
-        if event == Base.Event.PROJECT_UNLOADED:
-            return True
-
-        if event == Base.Event.ANALYSIS_TASK:
-            return data.get("sub_event") in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
-
-        if event in (
-            Base.Event.ANALYSIS_RESET_ALL,
-            Base.Event.ANALYSIS_RESET_FAILED,
-        ):
-            return data.get("sub_event") in (
-                Base.SubEvent.DONE,
-                Base.SubEvent.ERROR,
-            )
-
-        return False
-
     def set_progress_ring(self, status_text: str) -> None:
         percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
         self.ring.setValue(int(percent * 10000))
         self.ring.setFormat(f"{status_text}\n{percent * 100:.2f}%")
 
     def get_total_time(self) -> int:
-        if Engine.get().get_status() in (
-            Base.TaskStatus.ANALYZING,
-            Base.TaskStatus.STOPPING,
+        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
+        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        if (
+            status in ("ANALYZING", "STOPPING", "RUN", "REQUEST")
+            and task_type == "analysis"
         ):
             start_time = float(self.data.get("start_time", 0) or 0)
             if start_time == 0:
@@ -145,19 +154,13 @@ class AnalysisPage(Base, QWidget):
         card.set_unit(unit)
 
     def update_button_status(self, event: Base.Event, data: dict) -> None:
-        status = Engine.get().get_status()
-
-        if event == Base.Event.PROJECT_CHECK:
-            if data.get("sub_event") != Base.SubEvent.DONE:
-                return
-            self.data = dict(data.get("analysis_extras", {}))
-            self.analysis_candidate_count = int(
-                data.get("analysis_candidate_count") or 0
-            )
-            if not self.data:
-                self.clear_ui_cards()
-            else:
-                self.update_ui_tick()
+        del event
+        del data
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        status = str(task_snapshot.get("status", "IDLE"))
+        is_busy = bool(task_snapshot.get("busy", False))
+        task_type = str(task_snapshot.get("task_type", ""))
+        is_project_loaded = self.api_state_store.is_project_loaded()
 
         if self.has_progress():
             self.action_start.setText(Localizer.get().analysis_page_continue)
@@ -166,13 +169,21 @@ class AnalysisPage(Base, QWidget):
             self.action_start.setText(Localizer.get().start)
             self.action_start.setIcon(ICON_ACTION_START)
 
-        if status == Base.TaskStatus.IDLE:
-            if self.is_stopping_toast_active and self.should_hide_stopping_toast(
-                event, data
-            ):
-                self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
-                self.is_stopping_toast_active = False
+        if self.is_stopping_toast_active and not is_busy:
+            self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
+            self.is_stopping_toast_active = False
 
+        if not self.data and not is_busy:
+            self.clear_ui_cards()
+
+        if not is_project_loaded:
+            self.set_action_enabled(
+                start=False,
+                stop=False,
+                reset=False,
+                import_glossary=False,
+            )
+        elif status in ("IDLE", "DONE", "ERROR"):
             self.set_action_enabled(
                 start=not self.is_importing_glossary,
                 stop=False,
@@ -181,18 +192,14 @@ class AnalysisPage(Base, QWidget):
                     not self.is_importing_glossary and self.analysis_candidate_count > 0
                 ),
             )
-        elif status == Base.TaskStatus.ANALYZING:
+        elif status in ("ANALYZING", "RUN") and task_type == "analysis":
             self.set_action_enabled(
                 start=False,
                 stop=True,
                 reset=False,
                 import_glossary=False,
             )
-        elif status in (
-            Base.TaskStatus.TESTING,
-            Base.TaskStatus.TRANSLATING,
-            Base.TaskStatus.STOPPING,
-        ):
+        else:
             self.set_action_enabled(
                 start=False,
                 stop=False,
@@ -200,38 +207,26 @@ class AnalysisPage(Base, QWidget):
                 import_glossary=False,
             )
 
-    def analysis_done(self, event: Base.Event, data: dict) -> None:
-        if event != Base.Event.ANALYSIS_TASK:
-            return
-        if data.get("sub_event") not in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
-            return
-        self.update_button_status(event, data)
-        self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
-
-    def analysis_update(self, event: Base.Event, data: dict) -> None:
-        del event
-        # 高频进度只覆盖最新快照，避免每个事件都直接重绘整页；
-        # 真正的卡片刷新统一交给定时器节流入口处理。
-        self.data = dict(data) if isinstance(data, dict) else {}
-
     def on_analysis_reset(self, event: Base.Event, data: dict) -> None:
         sub_event = data.get("sub_event")
         if sub_event == Base.SubEvent.DONE and event == Base.Event.ANALYSIS_RESET_ALL:
             self.analysis_candidate_count = 0
             self.clear_ui_cards()
 
-        self.update_button_status(event, data)
         if sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
-            self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+            self.refresh_analysis_snapshot()
+        self.update_button_status(event, data)
 
     def on_project_source_changed(self, event: Base.Event, data: dict) -> None:
         del event, data
-        self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+        self.refresh_analysis_snapshot()
+        self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
 
     def on_project_prefilter_changed(self, event: Base.Event, data: dict) -> None:
         del event
         if data.get("sub_event") == Base.ProjectPrefilterSubEvent.UPDATED:
-            self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+            self.refresh_analysis_snapshot()
+            self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
 
     def on_analysis_import_glossary(self, event: Base.Event, data: dict) -> None:
         del event
@@ -240,10 +235,12 @@ class AnalysisPage(Base, QWidget):
             self.is_importing_glossary = True
         elif sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR):
             self.is_importing_glossary = False
+            self.refresh_analysis_snapshot()
 
         self.update_button_status(Base.Event.ANALYSIS_IMPORT_GLOSSARY, data)
 
     def update_ui_tick(self) -> None:
+        self.sync_task_snapshot()
         self.update_time()
         self.update_line()
         self.update_speed()
@@ -438,17 +435,7 @@ class AnalysisPage(Base, QWidget):
 
     def add_command_bar_action_start(self, parent: CommandBarCard) -> None:
         def triggered() -> None:
-            self.emit(
-                Base.Event.ANALYSIS_TASK,
-                {
-                    "sub_event": Base.SubEvent.REQUEST,
-                    "mode": (
-                        Base.AnalysisMode.CONTINUE
-                        if self.has_progress()
-                        else Base.AnalysisMode.NEW
-                    ),
-                },
-            )
+            self.request_start_analysis()
 
         self.action_start = parent.add_action(
             Action(
@@ -479,10 +466,7 @@ class AnalysisPage(Base, QWidget):
                 },
             )
             self.is_stopping_toast_active = True
-            self.emit(
-                Base.Event.ANALYSIS_REQUEST_STOP,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
+            self.request_stop_analysis()
 
         self.action_stop = parent.add_action(
             Action(ICON_ACTION_STOP, Localizer.get().stop, parent, triggered=triggered)
@@ -591,9 +575,11 @@ class AnalysisPage(Base, QWidget):
         self.set_scaled_card_value(self.remaining_line, remaining_line, "Line")
 
     def update_speed(self) -> None:
-        if Engine.get().get_status() in (
-            Base.TaskStatus.ANALYZING,
-            Base.TaskStatus.STOPPING,
+        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
+        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        if (
+            status in ("ANALYZING", "STOPPING", "RUN", "REQUEST")
+            and task_type == "analysis"
         ):
             speed = int(self.data.get("total_output_tokens", 0) or 0) / max(
                 1, time.time() - float(self.data.get("start_time", 0) or 0)
@@ -619,13 +605,15 @@ class AnalysisPage(Base, QWidget):
         self.set_scaled_card_value(self.token, token, "Token")
 
     def update_task(self) -> None:
-        task = Engine.get().get_request_in_flight_count()
+        task = int(self.data.get("request_in_flight_count", 0) or 0)
         self.set_scaled_card_value(self.task, task, "Task")
 
     def update_status(self) -> None:
-        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+        status = str(self.api_state_store.get_task_snapshot().get("status", "IDLE"))
+        task_type = str(self.api_state_store.get_task_snapshot().get("task_type", ""))
+        if status == "STOPPING" and task_type == "analysis":
             self.set_progress_ring(Localizer.get().analysis_page_status_stopping)
-        elif Engine.get().get_status() == Base.TaskStatus.ANALYZING:
+        elif status in ("ANALYZING", "RUN", "REQUEST") and task_type == "analysis":
             self.set_progress_ring(Localizer.get().analysis_page_status_analyzing)
         elif self.data:
             self.set_progress_ring(Localizer.get().analysis_page_status_idle)
@@ -654,3 +642,20 @@ class AnalysisPage(Base, QWidget):
         self.is_importing_glossary = False
         self.clear_ui_cards()
         self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
+
+    def request_start_analysis(self) -> None:
+        """通过 TaskApiClient 发起分析命令，并把回执写入状态仓库。"""
+
+        mode = "CONTINUE" if self.has_progress() else "NEW"
+        result = self.task_api_client.start_analysis({"mode": mode})
+        task_snapshot = result.get("task", {})
+        if isinstance(task_snapshot, dict):
+            self.api_state_store.hydrate_task(task_snapshot)
+
+    def request_stop_analysis(self) -> None:
+        """通过 TaskApiClient 发起停止命令，并把回执写入状态仓库。"""
+
+        result = self.task_api_client.stop_analysis()
+        task_snapshot = result.get("task", {})
+        if isinstance(task_snapshot, dict):
+            self.api_state_store.hydrate_task(task_snapshot)
