@@ -173,6 +173,9 @@ class ProofreadingAppService:
             is_regex=is_regex,
             expected_revision=expected_revision,
         )
+        refreshed_result = self.snapshot_service.load_snapshot(
+            self.resolve_lg_path(request)
+        )
         if isinstance(mutation_result, dict):
             payload = dict(mutation_result)
         else:
@@ -183,15 +186,17 @@ class ProofreadingAppService:
                 "summary": load_result.summary,
             }
 
-        if "summary" not in payload:
-            payload["summary"] = load_result.summary
+        refreshed_items = self.build_items_dict(
+            refreshed_result.items,
+            refreshed_result,
+        )
 
         return {
             "result": build_mutation_result_payload(
-                revision=int(payload.get("revision", load_result.revision) or 0),
+                revision=refreshed_result.revision,
                 changed_item_ids=list(payload.get("changed_item_ids", [])),
-                items=list(payload.get("items", [])),
-                summary=payload.get("summary"),
+                items=refreshed_items,
+                summary=refreshed_result.summary,
             )["result"],
         }
 
@@ -399,3 +404,15 @@ class ProofreadingAppService:
         if load_result.kind == ProofreadingLoadKind.OK:
             payload["readonly"] = False
         return payload
+
+    def build_items_dict(
+        self,
+        items: list[Item],
+        load_result: ProofreadingLoadResult,
+    ) -> list[dict[str, Any]]:
+        """把条目对象列表统一转成稳定字典列表，供 mutation 回包复用。"""
+
+        item_dicts: list[dict[str, Any]] = []
+        for item in items:
+            item_dicts.append(self.build_item_dict(item, load_result))
+        return item_dicts

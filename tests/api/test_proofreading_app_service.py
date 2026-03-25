@@ -96,8 +96,49 @@ def build_app_service() -> tuple[
         ),
     ]
     load_result = build_load_result(items)
+    load_result.summary["warning_items"] = 99
+
+    refreshed_items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="Heroine arrived refreshed",
+            file_path="script/a.txt",
+            row=12,
+            status=Base.ProjectStatus.PROCESSED,
+        ),
+        build_item(
+            item_id=2,
+            src="旁白",
+            dst="Narration refreshed",
+            file_path="script/b.txt",
+            status=Base.ProjectStatus.NONE,
+        ),
+    ]
+    refreshed_result = ProofreadingLoadResult(
+        kind=ProofreadingLoadKind.OK,
+        lg_path="demo/project.lg",
+        revision=9,
+        config=SimpleNamespace(),
+        items_all=list(refreshed_items),
+        items=list(refreshed_items),
+        warning_map={id(refreshed_items[0]): ["GLOSSARY"]},
+        checker=SimpleNamespace(),
+        failed_terms_by_item_key={id(refreshed_items[0]): (("勇者", "Hero"),)},
+        filter_options=ProofreadingFilterOptions(
+            warning_types={"GLOSSARY"},
+            statuses={Base.ProjectStatus.NONE},
+            file_paths={"script/a.txt"},
+            glossary_terms={("勇者", "Hero")},
+        ),
+        summary={
+            "total_items": 2,
+            "filtered_items": 2,
+            "warning_items": 1,
+        },
+    )
     snapshot_service = SimpleNamespace(
-        load_snapshot=MagicMock(return_value=load_result),
+        load_snapshot=MagicMock(side_effect=[load_result, refreshed_result]),
     )
     def filter_items(
         items_ref,
@@ -244,7 +285,7 @@ def test_proofreading_save_item_uses_refreshed_snapshot_item() -> None:
 
 
 def test_proofreading_replace_all_returns_mutation_result() -> None:
-    app_service, _, _, mutation_service, _ = build_app_service()
+    app_service, snapshot_service, _, mutation_service, _ = build_app_service()
 
     result = app_service.replace_all(
         {
@@ -261,9 +302,12 @@ def test_proofreading_replace_all_returns_mutation_result() -> None:
         }
     )
 
+    assert snapshot_service.load_snapshot.call_count == 2
     mutation_service.replace_all.assert_called_once()
-    assert result["result"]["revision"] == 8
+    assert result["result"]["revision"] == 9
     assert result["result"]["changed_item_ids"] == [1]
+    assert result["result"]["items"][0]["dst"] == "Heroine arrived refreshed"
+    assert result["result"]["summary"]["warning_items"] == 1
 
 
 def test_proofreading_recheck_item_returns_mutation_result() -> None:
