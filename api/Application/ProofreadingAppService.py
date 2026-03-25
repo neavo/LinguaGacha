@@ -80,7 +80,8 @@ class ProofreadingAppService:
         """加载完整校对快照，并通过 payload 输出稳定 JSON。"""
 
         load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
-        return ProofreadingSnapshotPayload.from_load_result(load_result).to_dict()
+        snapshot_dict = self.build_snapshot_dict(load_result)
+        return ProofreadingSnapshotPayload.from_dict(snapshot_dict).to_dict()
 
     def filter_items(self, request: dict[str, Any]) -> dict[str, object]:
         """按筛选条件返回过滤后的快照，不在状态仓库里缓存整页结果。"""

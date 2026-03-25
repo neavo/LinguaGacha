@@ -30,3 +30,13 @@ def test_quality_rule_update_maps_to_snapshot_invalidated_topic() -> None:
 
     assert topic == "proofreading.snapshot_invalidated"
     assert payload["reason"] == "quality_rule_update"
+
+
+def test_quality_rule_update_irrelevant_rule_does_not_invalidate_proofreading_snapshot() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"rule_types": ["translation_prompt"]},
+    )
+
+    assert topic is None
+    assert payload == {}
