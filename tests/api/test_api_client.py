@@ -3,12 +3,14 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QApplication
 
 from api.Application.ProjectAppService import ProjectAppService
+from api.Application.QualityRuleAppService import QualityRuleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
@@ -25,6 +27,8 @@ from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from model.Api.ProjectModels import ProjectPreview
 from model.Api.ProjectModels import ProjectSnapshot
+from model.Api.QualityRuleModels import ProofreadingLookupQuery
+from model.Api.QualityRuleModels import QualityRuleSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
 from model.Api.TaskModels import TaskSnapshot
@@ -101,6 +105,58 @@ def test_project_api_client_get_project_preview_returns_preview(
         assert result.total_items == 8
         assert result.translated_items == 3
         assert result.progress == 0.375
+    finally:
+        shutdown()
+
+
+def test_quality_api_client_returns_object() -> None:
+    quality_rule_facade = Mock()
+    quality_rule_facade.get_rule_snapshot.return_value = {
+        "rule_type": "glossary",
+        "revision": 2,
+        "meta": {"enabled": True},
+        "statistics": {"available": False, "results": {}},
+        "entries": [
+            {
+                "entry_id": "glossary:0",
+                "src": "勇者",
+                "dst": "Hero",
+                "info": "",
+                "regex": False,
+                "case_sensitive": False,
+            }
+        ],
+    }
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
+    )
+    try:
+        api_client = ApiClient(base_url)
+        quality_client = QualityRuleApiClient(api_client)
+
+        snapshot = quality_client.get_rule_snapshot("glossary")
+
+        assert isinstance(snapshot, QualityRuleSnapshot)
+        assert snapshot.rule_type == "glossary"
+        assert snapshot.entries[0].src == "勇者"
+    finally:
+        shutdown()
+
+
+def test_quality_api_client_query_proofreading_returns_lookup_object() -> None:
+    quality_rule_facade = Mock()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
+    )
+    try:
+        api_client = ApiClient(base_url)
+        quality_client = QualityRuleApiClient(api_client)
+
+        query = quality_client.query_proofreading({"src": "^勇者$", "regex": True})
+
+        assert isinstance(query, ProofreadingLookupQuery)
+        assert query.keyword == "^勇者$"
+        assert query.is_regex is True
     finally:
         shutdown()
 
