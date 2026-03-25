@@ -75,6 +75,27 @@ class EventBridge:
                 EventTopic.SETTINGS_CHANGED.value,
                 {"keys": normalized_keys},
             )
+        elif event == Base.Event.QUALITY_RULE_UPDATE:
+            rule_types = data.get("rule_types", [])
+            meta_keys = data.get("meta_keys", [])
+            normalized_rule_types = (
+                [str(rule_type) for rule_type in rule_types]
+                if isinstance(rule_types, list)
+                else []
+            )
+            normalized_meta_keys = (
+                [str(meta_key) for meta_key in meta_keys]
+                if isinstance(meta_keys, list)
+                else []
+            )
+            return (
+                EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
+                {
+                    "reason": "quality_rule_update",
+                    "rule_types": normalized_rule_types,
+                    "meta_keys": normalized_meta_keys,
+                },
+            )
         else:
             return None, {}
 

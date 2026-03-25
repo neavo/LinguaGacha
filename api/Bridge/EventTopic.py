@@ -9,3 +9,4 @@ class EventTopic(StrEnum):
     TASK_PROGRESS_CHANGED = "task.progress_changed"
     WORKBENCH_SNAPSHOT_CHANGED = "workbench.snapshot_changed"
     SETTINGS_CHANGED = "settings.changed"
+    PROOFREADING_SNAPSHOT_INVALIDATED = "proofreading.snapshot_invalidated"

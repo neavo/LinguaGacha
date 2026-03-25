@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+from typing import Any
+
+from base.Base import Base
+from model.Item import Item
+from module.Data.Proofreading.ProofreadingFilterService import (
+    ProofreadingFilterOptions,
+)
+from module.Data.Proofreading.ProofreadingSnapshotService import (
+    ProofreadingLoadKind,
+)
+from module.Data.Proofreading.ProofreadingSnapshotService import (
+    ProofreadingLoadResult,
+)
+
+
+def build_item(
+    *,
+    item_id: int,
+    src: str,
+    dst: str,
+    file_path: str,
+    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+) -> Item:
+    """构造最小条目对象，方便固定校对 API 的返回快照。"""
+
+    return Item(
+        id=item_id,
+        src=src,
+        dst=dst,
+        file_path=file_path,
+        status=status,
+    )
+
+
+def build_load_result(items: list[Item]) -> ProofreadingLoadResult:
+    """构造最小校对快照结果，避免测试直接依赖 DataManager。"""
+
+    warning_map: dict[int, list[object]] = {}
+    if items:
+        warning_map[id(items[0])] = ["GLOSSARY"]
+
+    return ProofreadingLoadResult(
+        kind=ProofreadingLoadKind.OK,
+        lg_path="demo/project.lg",
+        revision=7,
+        config=SimpleNamespace(),
+        items_all=list(items),
+        items=list(items),
+        warning_map=warning_map,
+        checker=SimpleNamespace(),
+        failed_terms_by_item_key={id(items[0]): (("勇者", "Hero"),)} if items else {},
+        filter_options=ProofreadingFilterOptions(
+            warning_types={"GLOSSARY"},
+            statuses={Base.ProjectStatus.NONE},
+            file_paths={"script/a.txt"} if items else set(),
+            glossary_terms={("勇者", "Hero")} if items else set(),
+        ),
+        summary={
+            "total_items": len(items),
+            "filtered_items": len(items),
+            "warning_items": 1 if items else 0,
+        },
+    )
+
+
+def build_app_service() -> tuple[
+    Any,
+    Any,
+    Any,
+    Any,
+    Any,
+]:
+    """构造可注入依赖的校对应用服务，便于把协议层行为固定住。"""
+
+    items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="Hero arrived",
+            file_path="script/a.txt",
+            status=Base.ProjectStatus.PROCESSED,
+        ),
+        build_item(
+            item_id=2,
+            src="旁白",
+            dst="Narration",
+            file_path="script/b.txt",
+            status=Base.ProjectStatus.NONE,
+        ),
+    ]
+    load_result = build_load_result(items)
+    snapshot_service = SimpleNamespace(
+        load_snapshot=MagicMock(return_value=load_result),
+    )
+    def filter_items(
+        items_ref,
+        warning_map,
+        options,
+        checker,
+        *,
+        failed_terms_by_item_key=None,
+        search_keyword="",
+        search_is_regex=False,
+        search_dst_only=False,
+        enable_search_filter=False,
+        enable_glossary_term_filter=True,
+    ):
+        del warning_map, options, checker
+        del failed_terms_by_item_key
+        del search_is_regex, search_dst_only
+        del enable_search_filter, enable_glossary_term_filter
+        if search_keyword == "勇者":
+            return [items_ref[0]]
+        if search_keyword == "旁白":
+            return [items_ref[1]]
+        return list(items_ref)
+
+    filter_service = SimpleNamespace(
+        filter_items=MagicMock(side_effect=filter_items),
+        build_lookup_filter_options=MagicMock(return_value=load_result.filter_options),
+    )
+    mutation_service = SimpleNamespace(
+        apply_manual_edit=MagicMock(return_value=1),
+        replace_all=MagicMock(
+            return_value={
+                "revision": 8,
+                "changed_item_ids": [1],
+                "items": [
+                    {
+                        "id": 1,
+                        "dst": "Hero arrived again",
+                        "status": Base.ProjectStatus.PROCESSED,
+                    }
+                ],
+            }
+        ),
+    )
+    recheck_service = SimpleNamespace(
+        check_item=MagicMock(
+            return_value=(
+                ["GLOSSARY"],
+                (("勇者", "Hero"),),
+            )
+        ),
+    )
+
+    from api.Application.ProofreadingAppService import ProofreadingAppService
+
+    app_service = ProofreadingAppService(
+        snapshot_service=snapshot_service,
+        filter_service=filter_service,
+        mutation_service=mutation_service,
+        recheck_service=recheck_service,
+    )
+    return app_service, snapshot_service, filter_service, mutation_service, recheck_service
+
+
+def test_proofreading_snapshot_returns_revision() -> None:
+    app_service, snapshot_service, _, _, _ = build_app_service()
+
+    result = app_service.get_snapshot({})
+
+    snapshot_service.load_snapshot.assert_called_once()
+    assert result["snapshot"]["revision"] >= 0
+
+
+def test_proofreading_filter_returns_filtered_snapshot() -> None:
+    app_service, _, filter_service, _, _ = build_app_service()
+
+    result = app_service.filter_items(
+        {
+            "search_keyword": "旁白",
+            "search_is_regex": False,
+            "search_dst_only": False,
+        }
+    )
+
+    filter_service.filter_items.assert_called_once()
+    assert result["snapshot"]["items"][0]["item_id"] == 2
+
+
+def test_proofreading_search_returns_search_result() -> None:
+    app_service, _, filter_service, _, _ = build_app_service()
+
+    result = app_service.search(
+        {
+            "keyword": "勇者",
+            "is_regex": False,
+        }
+    )
+
+    filter_service.filter_items.assert_called_once()
+    assert result["search_result"]["keyword"] == "勇者"
+    assert result["search_result"]["matched_item_ids"] == [1]
+
+
+def test_proofreading_save_item_returns_mutation_result() -> None:
+    app_service, _, _, mutation_service, _ = build_app_service()
+
+    result = app_service.save_item(
+        {
+            "item": {
+                "id": 1,
+                "dst": "Hero arrived again",
+                "status": Base.ProjectStatus.PROCESSED,
+            },
+            "expected_revision": 7,
+        }
+    )
+
+    mutation_service.apply_manual_edit.assert_called_once()
+    assert result["result"]["revision"] >= 0
+    assert result["result"]["changed_item_ids"] == [1]
+
+
+def test_proofreading_replace_all_returns_mutation_result() -> None:
+    app_service, _, _, mutation_service, _ = build_app_service()
+
+    result = app_service.replace_all(
+        {
+            "items": [
+                {
+                    "id": 1,
+                    "dst": "Hero arrived",
+                    "status": Base.ProjectStatus.PROCESSED,
+                }
+            ],
+            "search_text": "Hero",
+            "replace_text": "Heroine",
+            "expected_revision": 7,
+        }
+    )
+
+    mutation_service.replace_all.assert_called_once()
+    assert result["result"]["revision"] == 8
+    assert result["result"]["changed_item_ids"] == [1]
+
+
+def test_proofreading_recheck_item_returns_mutation_result() -> None:
+    app_service, _, _, _, recheck_service = build_app_service()
+
+    result = app_service.recheck_item(
+        {
+            "item": {
+                "id": 1,
+                "src": "勇者が来た",
+                "dst": "Hero arrived",
+                "file_path": "script/a.txt",
+                "status": Base.ProjectStatus.PROCESSED,
+            }
+        }
+    )
+
+    recheck_service.check_item.assert_called_once()
+    assert result["result"]["changed_item_ids"] == [1]
+    assert result["result"]["items"][0]["item_id"] == 1

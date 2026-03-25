@@ -86,10 +86,13 @@ class CoreApiServer:
             route_definition.handler(handler)
         else:
             request_body = self.read_json_request(handler)
+            response = route_definition.handler(request_body)
+            if isinstance(response, dict):
+                response = ApiResponse(ok=True, data=response)
             self.write_json(
                 handler,
                 status_code=200,
-                response=route_definition.handler(request_body),
+                response=response,
             )
 
     def handle_health(self) -> ApiResponse:

@@ -1,14 +1,17 @@
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 from PySide6.QtWidgets import QApplication
 
 from api.Application.ProjectAppService import ProjectAppService
+from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.QualityRuleAppService import QualityRuleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
@@ -25,8 +28,12 @@ from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
+from model.Item import Item
 from model.Api.ProjectModels import ProjectPreview
 from model.Api.ProjectModels import ProjectSnapshot
+from model.Api.ProofreadingModels import ProofreadingMutationResult
+from model.Api.ProofreadingModels import ProofreadingSearchResult
+from model.Api.ProofreadingModels import ProofreadingSnapshot
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
 from model.Api.QualityRuleModels import QualityRuleSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
@@ -34,6 +41,10 @@ from model.Api.SettingsModels import RecentProjectEntry
 from model.Api.TaskModels import TaskSnapshot
 from model.Api.WorkbenchModels import WorkbenchFileEntry
 from model.Api.WorkbenchModels import WorkbenchSnapshot
+from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterOptions
+from module.Data.Proofreading.ProofreadingSnapshotService import ProofreadingLoadKind
+from module.Data.Proofreading.ProofreadingSnapshotService import ProofreadingLoadResult
+from module.ResultChecker import WarningType
 from module.Localizer.Localizer import Localizer
 
 
@@ -157,6 +168,291 @@ def test_quality_api_client_query_proofreading_returns_lookup_object() -> None:
         assert isinstance(query, ProofreadingLookupQuery)
         assert query.keyword == "^勇者$"
         assert query.is_regex is True
+    finally:
+        shutdown()
+
+
+def build_proofreading_app_service() -> tuple[
+    ProofreadingAppService,
+    list[Item],
+]:
+    """构造最小校对应用服务，方便把 HTTP 协议固定住。"""
+
+    items = [
+        Item(
+            id=1,
+            src="勇者が来た",
+            dst="Hero arrived",
+            file_path="script/a.txt",
+            status=Base.ProjectStatus.PROCESSED,
+        ),
+        Item(
+            id=2,
+            src="旁白",
+            dst="Narration",
+            file_path="script/b.txt",
+            status=Base.ProjectStatus.NONE,
+        ),
+    ]
+
+    snapshot_result = ProofreadingLoadResult(
+        kind=ProofreadingLoadKind.OK,
+        lg_path="demo/project.lg",
+        revision=7,
+        config=SimpleNamespace(),
+        items_all=list(items),
+        items=list(items),
+        warning_map={id(items[0]): [WarningType.GLOSSARY]},
+        checker=SimpleNamespace(),
+        failed_terms_by_item_key={id(items[0]): (("勇者", "Hero"),)},
+        filter_options=ProofreadingFilterOptions(
+            warning_types={"GLOSSARY"},
+            statuses={Base.ProjectStatus.NONE, Base.ProjectStatus.PROCESSED},
+            file_paths={"script/a.txt", "script/b.txt"},
+            glossary_terms={("勇者", "Hero")},
+        ),
+        summary={
+            "total_items": 2,
+            "filtered_items": 2,
+            "warning_items": 1,
+        },
+    )
+
+    snapshot_service = Mock()
+    snapshot_service.load_snapshot.return_value = snapshot_result
+
+    def filter_items(
+        items_ref,
+        warning_map,
+        options,
+        checker,
+        *,
+        failed_terms_by_item_key=None,
+        search_keyword="",
+        search_is_regex=False,
+        search_dst_only=False,
+        enable_search_filter=False,
+        enable_glossary_term_filter=True,
+    ):
+        del warning_map, options, checker
+        del failed_terms_by_item_key
+        del search_is_regex, search_dst_only
+        del enable_search_filter, enable_glossary_term_filter
+        if search_keyword == "勇者":
+            return [items_ref[0]]
+        if search_keyword == "旁白":
+            return [items_ref[1]]
+        return list(items_ref)
+
+    filter_service = Mock()
+    filter_service.filter_items.side_effect = filter_items
+    filter_service.build_lookup_filter_options.return_value = snapshot_result.filter_options
+
+    def apply_manual_edit(
+        item: Item,
+        new_dst: str,
+        *,
+        expected_revision: int | None = None,
+    ) -> int:
+        del expected_revision
+        item.set_dst(new_dst)
+        item.set_status(Base.ProjectStatus.PROCESSED)
+        return 1
+
+    def replace_all(
+        items_ref,
+        *,
+        search_text: str,
+        replace_text: str,
+        is_regex: bool = False,
+        expected_revision: int | None = None,
+    ) -> dict[str, object]:
+        del items_ref, search_text, replace_text, is_regex, expected_revision
+        return {
+            "revision": 8,
+            "changed_item_ids": [1],
+            "items": [
+                {
+                    "id": 1,
+                    "dst": "Hero arrived again",
+                    "status": Base.ProjectStatus.PROCESSED,
+                }
+            ],
+        }
+
+    mutation_service = Mock()
+    mutation_service.apply_manual_edit.side_effect = apply_manual_edit
+    mutation_service.replace_all.side_effect = replace_all
+
+    def check_item(
+        config,
+        item: Item,
+    ) -> tuple[list[WarningType], tuple[tuple[str, str], ...] | None]:
+        del config
+        if item.get_id() == 1:
+            return [WarningType.GLOSSARY], (("勇者", "Hero"),)
+        return [], None
+
+    recheck_service = Mock()
+    recheck_service.check_item.side_effect = check_item
+
+    return (
+        ProofreadingAppService(
+            snapshot_service=snapshot_service,
+            filter_service=filter_service,
+            mutation_service=mutation_service,
+            recheck_service=recheck_service,
+        ),
+        items,
+    )
+
+
+def test_proofreading_api_client_get_snapshot_returns_snapshot() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.get_snapshot({})
+
+        assert isinstance(result, ProofreadingSnapshot)
+        assert result.revision == 7
+        assert result.items[0].item_id == 1
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_filter_items_returns_snapshot() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.filter_items(
+            {
+                "search_keyword": "旁白",
+                "search_is_regex": False,
+            }
+        )
+
+        assert isinstance(result, ProofreadingSnapshot)
+        assert result.items[0].item_id == 2
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_search_returns_search_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.search(
+            {
+                "keyword": "勇者",
+                "is_regex": False,
+            }
+        )
+
+        assert isinstance(result, ProofreadingSearchResult)
+        assert result.keyword == "勇者"
+        assert result.matched_item_ids == (1,)
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_save_item_returns_mutation_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.save_item(
+            {
+                "item": {
+                    "id": 1,
+                    "dst": "Hero arrived again",
+                    "status": Base.ProjectStatus.PROCESSED,
+                },
+                "new_dst": "Hero arrived again",
+                "expected_revision": 7,
+            }
+        )
+
+        assert isinstance(result, ProofreadingMutationResult)
+        assert result.revision >= 0
+        assert result.changed_item_ids == (1,)
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_replace_all_returns_mutation_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.replace_all(
+            {
+                "items": [
+                    {
+                        "id": 1,
+                        "dst": "Hero arrived",
+                        "status": Base.ProjectStatus.PROCESSED,
+                    }
+                ],
+                "search_text": "Hero",
+                "replace_text": "Heroine",
+                "expected_revision": 7,
+            }
+        )
+
+        assert isinstance(result, ProofreadingMutationResult)
+        assert result.revision == 8
+        assert result.changed_item_ids == (1,)
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_recheck_item_returns_mutation_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.recheck_item(
+            {
+                "item": {
+                    "id": 1,
+                    "src": "勇者が来た",
+                    "dst": "Hero arrived",
+                    "file_path": "script/a.txt",
+                    "status": Base.ProjectStatus.PROCESSED,
+                }
+            }
+        )
+
+        assert isinstance(result, ProofreadingMutationResult)
+        assert result.changed_item_ids == (1,)
+        assert result.items[0].item_id == 1
     finally:
         shutdown()
 

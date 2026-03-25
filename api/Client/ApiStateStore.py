@@ -14,6 +14,7 @@ class ApiStateStore:
         self.lock = threading.RLock()
         self.project_snapshot: ProjectSnapshot = ProjectSnapshot.from_dict({})
         self.task_snapshot: TaskSnapshot = TaskSnapshot.from_dict({})
+        self.proofreading_snapshot_invalidated: bool = False
 
     def hydrate_project(self, snapshot: ProjectSnapshot) -> None:
         """用服务端快照覆盖本地工程状态，保持单一缓存入口。"""
@@ -75,6 +76,24 @@ class ApiStateStore:
         with self.lock:
             return self.task_snapshot.busy
 
+    def mark_proofreading_snapshot_invalidated(self) -> None:
+        """只记录校对快照是否过期，不缓存整页内容。"""
+
+        with self.lock:
+            self.proofreading_snapshot_invalidated = True
+
+    def clear_proofreading_snapshot_invalidated(self) -> None:
+        """当页面重新拉取快照后，由调用方显式清掉过期标记。"""
+
+        with self.lock:
+            self.proofreading_snapshot_invalidated = False
+
+    def is_proofreading_snapshot_invalidated(self) -> bool:
+        """给页面一个最小布尔值，判断是否需要重新拉取校对快照。"""
+
+        with self.lock:
+            return self.proofreading_snapshot_invalidated
+
     def apply_event(self, topic: str, payload: dict[str, object]) -> None:
         """统一把 SSE topic 合并进本地状态仓库。"""
 
@@ -87,3 +106,5 @@ class ApiStateStore:
             self.merge_task_status(TaskStatusUpdate.from_dict(payload))
         elif topic == EventTopic.TASK_PROGRESS_CHANGED.value:
             self.merge_task_progress(TaskProgressUpdate.from_dict(payload))
+        elif topic == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value:
+            self.mark_proofreading_snapshot_invalidated()

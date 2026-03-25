@@ -1,4 +1,5 @@
 from api.Client.ApiStateStore import ApiStateStore
+from api.Bridge.EventTopic import EventTopic
 from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.TaskModels import TaskProgressUpdate
 from model.Api.TaskModels import TaskSnapshot
@@ -68,3 +69,15 @@ def test_api_state_store_merges_task_progress_event_fields() -> None:
     assert snapshot.total_input_tokens == 7
     assert snapshot.start_time == 8.0
     assert snapshot.status == "TRANSLATING"
+
+
+def test_api_state_store_marks_proofreading_snapshot_invalidated() -> None:
+    store = ApiStateStore()
+
+    store.apply_event(EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value, {})
+
+    assert store.is_proofreading_snapshot_invalidated() is True
+
+    store.clear_proofreading_snapshot_invalidated()
+
+    assert store.is_proofreading_snapshot_invalidated() is False
