@@ -27,6 +27,11 @@ class QualityRuleSnapshotService:
         self.quality_rule_service = quality_rule_service
         self.meta_service = meta_service
 
+    def _get_state_lock(self) -> Any:
+        """复用工程会话锁，把内容、meta 和 revision 读取收进同一临界区。"""
+
+        return self.meta_service.session.state_lock
+
     @classmethod
     def normalize_rule_type(cls, rule_type: str | RuleType) -> RuleType:
         """把外部传入的规则类型统一收口为内部枚举。"""
@@ -118,8 +123,11 @@ class QualityRuleSnapshotService:
             "entries": entries,
         }
 
-    def get_rule_snapshot(self, rule_type: str | RuleType) -> dict[str, object]:
-        """读取指定规则的完整快照。"""
+    def build_rule_snapshot_payload(
+        self,
+        rule_type: str | RuleType,
+    ) -> dict[str, object]:
+        """在已持有锁的前提下构建规则快照，供写路径复用。"""
 
         normalized_rule_type = self.normalize_rule_type(rule_type)
         if normalized_rule_type == self.RuleType.GLOSSARY:
@@ -136,3 +144,9 @@ class QualityRuleSnapshotService:
         payload["rule_type"] = normalized_rule_type.value
         payload["revision"] = self.get_revision(normalized_rule_type)
         return payload
+
+    def get_rule_snapshot(self, rule_type: str | RuleType) -> dict[str, object]:
+        """读取指定规则的完整快照。"""
+
+        with self._get_state_lock():
+            return self.build_rule_snapshot_payload(rule_type)

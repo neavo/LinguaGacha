@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -46,12 +47,28 @@ def build_service() -> tuple[QualityRuleSnapshotService, dict[str, object]]:
         get_post_replacement_enable=MagicMock(return_value=False),
     )
     meta_service = SimpleNamespace(
+        session=SimpleNamespace(state_lock=threading.RLock()),
         get_meta=MagicMock(
             side_effect=lambda key, default=None: meta_store.get(key, default)
         ),
     )
     service = QualityRuleSnapshotService(quality_rule_service, meta_service)
     return service, meta_store
+
+
+class RecordingLock:
+    """记录是否进入临界区，验证快照读取收口到同一把锁。"""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def __enter__(self) -> RecordingLock:
+        self.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        self.events.append("exit")
+        return False
 
 
 def test_glossary_snapshot_contains_meta_and_entries() -> None:
@@ -83,3 +100,15 @@ def test_get_rule_snapshot_rejects_unknown_rule_type() -> None:
 
     with pytest.raises(ValueError):
         service.get_rule_snapshot("unknown")
+
+
+def test_get_rule_snapshot_uses_session_lock_for_atomic_read() -> None:
+    lock = RecordingLock()
+    service, meta_store = build_service()
+    service.meta_service.session.state_lock = lock
+    meta_store[service.build_revision_meta_key("glossary")] = 9
+
+    snapshot = service.get_rule_snapshot("glossary")
+
+    assert snapshot["revision"] == 9
+    assert lock.events == ["enter", "exit"]

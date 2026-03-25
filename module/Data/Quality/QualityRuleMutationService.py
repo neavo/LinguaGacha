@@ -94,7 +94,7 @@ class QualityRuleMutationService:
     ) -> list[dict[str, Any]]:
         """读取当前条目快照，作为删除与排序的统一输入。"""
 
-        snapshot = self.snapshot_service.get_rule_snapshot(rule_type)
+        snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
         entries = snapshot["entries"]
         if isinstance(entries, list):
             current_entries = [
@@ -146,7 +146,7 @@ class QualityRuleMutationService:
             current_revision = self.get_revision(rule_type)
             self._save_entries(rule_type, entries)
             new_revision = self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.get_rule_snapshot(rule_type) | {
+            return self.snapshot_service.build_rule_snapshot_payload(rule_type) | {
                 "revision": new_revision
             }
 
@@ -169,7 +169,7 @@ class QualityRuleMutationService:
             current_revision = self.get_revision(rule_type)
             self._save_entries(rule_type, current_entries)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.get_rule_snapshot(rule_type)
+            return self.snapshot_service.build_rule_snapshot_payload(rule_type)
 
     def sort_entries(
         self,
@@ -191,7 +191,7 @@ class QualityRuleMutationService:
             current_revision = self.get_revision(rule_type)
             self._save_entries(rule_type, sorted_entries)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.get_rule_snapshot(rule_type)
+            return self.snapshot_service.build_rule_snapshot_payload(rule_type)
 
     def set_rule_enabled(
         self,
@@ -218,7 +218,7 @@ class QualityRuleMutationService:
 
             current_revision = self.get_revision(rule_type)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.get_rule_snapshot(rule_type)
+            return self.snapshot_service.build_rule_snapshot_payload(rule_type)
 
     def _normalize_text_preserve_mode(
         self,
@@ -265,4 +265,4 @@ class QualityRuleMutationService:
 
             current_revision = self.get_revision(rule_type)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.get_rule_snapshot(rule_type)
+            return self.snapshot_service.build_rule_snapshot_payload(rule_type)

@@ -136,6 +136,21 @@ class PromptService:
         else:
             self.quality_rule_service.set_analysis_prompt_enable(enabled)
 
+    def _build_prompt_snapshot_payload(
+        self,
+        task_type: PromptPathResolver.TaskType,
+    ) -> dict[str, object]:
+        """在已持有锁的前提下构建提示词快照，供读写路径复用。"""
+
+        text = self._read_prompt_text(task_type)
+        meta = {"enabled": self._read_prompt_enabled(task_type)}
+        return {
+            "task_type": task_type.value,
+            "revision": self.get_revision(task_type),
+            "meta": meta,
+            "text": text,
+        }
+
     def get_prompt_snapshot(
         self,
         task_type: str | PromptPathResolver.TaskType,
@@ -143,14 +158,8 @@ class PromptService:
         """读取提示词文本、启用状态与 revision。"""
 
         normalized_task_type = self.normalize_task_type(task_type)
-        text = self._read_prompt_text(normalized_task_type)
-        meta = {"enabled": self._read_prompt_enabled(normalized_task_type)}
-        return {
-            "task_type": normalized_task_type.value,
-            "revision": self.get_revision(normalized_task_type),
-            "meta": meta,
-            "text": text,
-        }
+        with self._get_state_lock():
+            return self._build_prompt_snapshot_payload(normalized_task_type)
 
     def save_prompt(
         self,
@@ -170,7 +179,7 @@ class PromptService:
             if enabled is not None:
                 self._write_prompt_enabled(normalized_task_type, bool(enabled))
             self._bump_revision(normalized_task_type, current_revision)
-            snapshot = self.get_prompt_snapshot(normalized_task_type)
+            snapshot = self._build_prompt_snapshot_payload(normalized_task_type)
         return snapshot
 
     def export_prompt(

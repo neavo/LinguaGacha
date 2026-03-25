@@ -101,6 +101,18 @@ def test_prompt_snapshot_contains_text_meta_and_revision() -> None:
     assert snapshot["text"] == "请翻译以下内容。"
 
 
+def test_get_prompt_snapshot_uses_session_lock_for_atomic_read() -> None:
+    lock = RecordingLock()
+    service, meta_store = build_service()
+    service.meta_service.session.state_lock = lock
+    meta_store[service.build_revision_meta_key("translation")] = 6
+
+    snapshot = service.get_prompt_snapshot("translation")
+
+    assert snapshot["revision"] == 6
+    assert lock.events == ["enter", "exit"]
+
+
 def test_save_prompt_updates_text_enable_and_revision() -> None:
     service, meta_store = build_service()
     meta_store[service.build_revision_meta_key("translation")] = 1
