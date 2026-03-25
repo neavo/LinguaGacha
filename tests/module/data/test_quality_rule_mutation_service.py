@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Quality.QualityRuleMutationService import (
     QualityRuleMutationService,
     QualityRuleRevisionConflictError,
@@ -37,6 +38,18 @@ def build_service(
     def set_glossary_enable(enable: bool) -> None:
         rule_store["glossary_enable"] = bool(enable)
 
+    def get_text_preserve_mode() -> TextPreserveMode:
+        raw_value = meta_store.get("text_preserve_mode", TextPreserveMode.SMART.value)
+        if isinstance(raw_value, TextPreserveMode):
+            return raw_value
+        return TextPreserveMode(str(raw_value))
+
+    def set_text_preserve_mode(mode: TextPreserveMode) -> None:
+        normalized_mode = (
+            mode if isinstance(mode, TextPreserveMode) else TextPreserveMode(str(mode))
+        )
+        meta_store["text_preserve_mode"] = normalized_mode.value
+
     quality_rule_service = SimpleNamespace(
         get_glossary=MagicMock(side_effect=get_glossary),
         set_glossary=MagicMock(side_effect=set_glossary),
@@ -44,8 +57,8 @@ def build_service(
         set_glossary_enable=MagicMock(side_effect=set_glossary_enable),
         get_text_preserve=MagicMock(return_value=[]),
         set_text_preserve=MagicMock(),
-        get_text_preserve_mode=MagicMock(),
-        set_text_preserve_mode=MagicMock(),
+        get_text_preserve_mode=MagicMock(side_effect=get_text_preserve_mode),
+        set_text_preserve_mode=MagicMock(side_effect=set_text_preserve_mode),
         get_pre_replacement=MagicMock(return_value=[]),
         set_pre_replacement=MagicMock(),
         get_post_replacement=MagicMock(return_value=[]),
@@ -61,6 +74,7 @@ def build_service(
     )
     service = QualityRuleMutationService(quality_rule_service, meta_service)
     meta_store[service.build_revision_meta_key("glossary")] = revision
+    meta_store[service.build_revision_meta_key("text_preserve")] = revision
     return service, rule_store, meta_store
 
 
@@ -127,3 +141,21 @@ def test_toggle_rule_enabled_updates_meta_and_revision() -> None:
     assert rule_store["glossary_enable"] is False
     assert meta_store[service.build_revision_meta_key("glossary")] == 8
     assert result["meta"]["enabled"] is False
+
+
+def test_update_meta_supports_text_preserve_mode_and_revision() -> None:
+    service, _rule_store, meta_store = build_service(revision=3)
+
+    result = service.update_meta(
+        "text_preserve",
+        expected_revision=3,
+        meta_key="text_preserve_mode",
+        value=TextPreserveMode.CUSTOM,
+    )
+
+    assert meta_store["text_preserve_mode"] == TextPreserveMode.CUSTOM.value
+    assert meta_store[service.build_revision_meta_key("text_preserve")] == 4
+    assert result["rule_type"] == "text_preserve"
+    assert result["revision"] == 4
+    assert result["meta"]["mode"] == TextPreserveMode.CUSTOM.value
+    service.quality_rule_service.set_text_preserve_mode.assert_called_once()

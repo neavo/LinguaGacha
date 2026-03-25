@@ -4,9 +4,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
-from module.PromptPathResolver import PromptPathResolver
 from module.Data.Quality.PromptService import PromptService
+from module.Data.Quality.QualityRuleFacadeService import (
+    QualityRuleFacadeService,
+)
+from module.PromptPathResolver import PromptPathResolver
 
 
 def build_service() -> tuple[PromptService, dict[str, object]]:
@@ -122,8 +124,113 @@ def test_import_and_export_prompt_round_trip(tmp_path: Path) -> None:
 
 def test_prompt_preset_helpers_delegate_to_resolver(monkeypatch) -> None:
     service, _meta_store = build_service()
+    call_log: list[tuple[object, ...]] = []
+
     monkeypatch.setattr(
-        PromptPathResolver, "list_presets", lambda task_type: (["builtin"], ["user"])
+        PromptPathResolver,
+        "list_presets",
+        lambda task_type: (
+            call_log.append(("list", task_type)) or (["builtin"], ["user"])
+        ),
+    )
+    monkeypatch.setattr(
+        PromptPathResolver,
+        "read_preset",
+        lambda task_type, virtual_id: (
+            call_log.append(("read", task_type, virtual_id)) or "读取结果"
+        ),
+    )
+    monkeypatch.setattr(
+        PromptPathResolver,
+        "save_user_preset",
+        lambda task_type, name, text: (
+            call_log.append(("save", task_type, name, text)) or "/tmp/preset.txt"
+        ),
+    )
+    monkeypatch.setattr(
+        PromptPathResolver,
+        "rename_user_preset",
+        lambda task_type, virtual_id, new_name: (
+            call_log.append(("rename", task_type, virtual_id, new_name))
+            or {"name": new_name, "virtual_id": virtual_id}
+        ),
+    )
+    monkeypatch.setattr(
+        PromptPathResolver,
+        "delete_user_preset",
+        lambda task_type, virtual_id: (
+            call_log.append(("delete", task_type, virtual_id)) or "/tmp/deleted.txt"
+        ),
+    )
+    monkeypatch.setattr(
+        PromptPathResolver,
+        "get_default_preset_text",
+        lambda task_type, virtual_id: (
+            call_log.append(("default", task_type, virtual_id)) or "默认预设"
+        ),
     )
 
     assert service.list_presets("translation") == (["builtin"], ["user"])
+    assert service.read_preset("translation", "builtin:sample.txt") == "读取结果"
+    assert service.save_user_preset("analysis", "新预设", "文本") == "/tmp/preset.txt"
+    assert service.rename_user_preset(
+        "analysis",
+        "user:old.txt",
+        "新名字",
+    ) == {"name": "新名字", "virtual_id": "user:old.txt"}
+    assert service.delete_user_preset("analysis", "user:old.txt") == "/tmp/deleted.txt"
+    assert (
+        service.get_default_preset_text("translation", "builtin:default.txt")
+        == "默认预设"
+    )
+    assert call_log == [
+        ("list", PromptPathResolver.TaskType.TRANSLATION),
+        ("read", PromptPathResolver.TaskType.TRANSLATION, "builtin:sample.txt"),
+        ("save", PromptPathResolver.TaskType.ANALYSIS, "新预设", "文本"),
+        ("rename", PromptPathResolver.TaskType.ANALYSIS, "user:old.txt", "新名字"),
+        ("delete", PromptPathResolver.TaskType.ANALYSIS, "user:old.txt"),
+        (
+            "default",
+            PromptPathResolver.TaskType.TRANSLATION,
+            "builtin:default.txt",
+        ),
+    ]
+
+
+def test_facade_forwards_preset_and_prompt_methods() -> None:
+    facade = QualityRuleFacadeService(SimpleNamespace(), SimpleNamespace())
+    facade.preset_service = SimpleNamespace(
+        list_presets=MagicMock(return_value=(["builtin"], ["user"])),
+        read_preset=MagicMock(return_value="预设内容"),
+        save_user_preset=MagicMock(return_value="/tmp/preset.txt"),
+        rename_user_preset=MagicMock(return_value={"name": "新名字"}),
+        delete_user_preset=MagicMock(return_value="/tmp/deleted.txt"),
+    )
+    facade.prompt_service = SimpleNamespace(
+        get_prompt_snapshot=MagicMock(return_value={"task_type": "translation"}),
+        save_prompt=MagicMock(return_value={"task_type": "translation"}),
+        get_default_preset_text=MagicMock(return_value="默认预设"),
+    )
+
+    assert facade.list_presets("translation") == (["builtin"], ["user"])
+    assert facade.read_preset("translation", "builtin:sample.txt") == "预设内容"
+    assert facade.save_user_preset("translation", "新预设", "文本") == "/tmp/preset.txt"
+    assert facade.rename_user_preset(
+        "translation",
+        "user:old.txt",
+        "新名字",
+    ) == {"name": "新名字"}
+    assert (
+        facade.delete_user_preset("translation", "user:old.txt") == "/tmp/deleted.txt"
+    )
+    assert (
+        facade.get_default_preset_text("translation", "builtin:default.txt")
+        == "默认预设"
+    )
+    assert facade.get_prompt_snapshot("translation") == {"task_type": "translation"}
+    assert facade.save_prompt(
+        "translation",
+        expected_revision=0,
+        text="新内容",
+        enabled=True,
+    ) == {"task_type": "translation"}

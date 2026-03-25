@@ -38,6 +38,56 @@ class QualityRuleFacadeService:
 
         return self.snapshot_service.get_rule_snapshot(rule_type)
 
+    def list_presets(
+        self,
+        preset_dir_name: str,
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        """对外暴露质量规则预设列表。"""
+
+        return self.preset_service.list_presets(preset_dir_name)
+
+    def read_preset(
+        self,
+        preset_dir_name: str,
+        virtual_id: str,
+    ) -> list[dict[str, object]]:
+        """对外暴露质量规则预设读取。"""
+
+        return self.preset_service.read_preset(preset_dir_name, virtual_id)
+
+    def save_user_preset(
+        self,
+        preset_dir_name: str,
+        name: str,
+        data: list[dict[str, Any]],
+    ) -> dict[str, str]:
+        """对外暴露质量规则用户预设保存。"""
+
+        return self.preset_service.save_user_preset(preset_dir_name, name, data)
+
+    def rename_user_preset(
+        self,
+        preset_dir_name: str,
+        virtual_id: str,
+        new_name: str,
+    ) -> dict[str, str]:
+        """对外暴露质量规则用户预设重命名。"""
+
+        return self.preset_service.rename_user_preset(
+            preset_dir_name,
+            virtual_id,
+            new_name,
+        )
+
+    def delete_user_preset(
+        self,
+        preset_dir_name: str,
+        virtual_id: str,
+    ) -> str:
+        """对外暴露质量规则用户预设删除。"""
+
+        return self.preset_service.delete_user_preset(preset_dir_name, virtual_id)
+
     def save_entries(
         self,
         rule_type: str | QualityRuleSnapshotService.RuleType,
@@ -98,6 +148,23 @@ class QualityRuleFacadeService:
             enabled=enabled,
         )
 
+    def update_meta(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        *,
+        expected_revision: int,
+        meta_key: str,
+        value: Any,
+    ) -> dict[str, object]:
+        """对外暴露规则 meta 更新。"""
+
+        return self.mutation_service.update_meta(
+            rule_type,
+            expected_revision=expected_revision,
+            meta_key=meta_key,
+            value=value,
+        )
+
     def get_prompt_snapshot(
         self,
         task_type: str,
@@ -105,6 +172,11 @@ class QualityRuleFacadeService:
         """对外暴露提示词快照。"""
 
         return self.prompt_service.get_prompt_snapshot(task_type)
+
+    def get_default_preset_text(self, task_type: str, virtual_id: str) -> str:
+        """对外暴露提示词默认预设读取。"""
+
+        return self.prompt_service.get_default_preset_text(task_type, virtual_id)
 
     def save_prompt(
         self,

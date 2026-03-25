@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Quality.QualityRuleSnapshotService import (
     QualityRuleSnapshotService,
 )
@@ -205,3 +206,48 @@ class QualityRuleMutationService:
         current_revision = self.get_revision(rule_type)
         self._bump_revision(rule_type, current_revision)
         return self.snapshot_service.get_rule_snapshot(rule_type)
+
+    def _normalize_text_preserve_mode(
+        self,
+        value: Any,
+    ) -> TextPreserveMode:
+        """把文本保护模式统一收敛成枚举，避免调用方各自拼字符串。"""
+
+        if isinstance(value, TextPreserveMode):
+            normalized_mode = value
+        else:
+            normalized_mode = TextPreserveMode(str(value))
+        return normalized_mode
+
+    def update_meta(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        *,
+        expected_revision: int,
+        meta_key: str,
+        value: Any,
+    ) -> dict[str, object]:
+        """更新当前阶段明确需要的规则 meta。
+
+        现在只放开文本保护模式这一类非布尔元数据，避免把这里做成
+        一个泛化的配置写入口。
+        """
+
+        self._assert_revision(rule_type, expected_revision)
+        normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
+        if (
+            normalized_rule_type == self.snapshot_service.RuleType.TEXT_PRESERVE
+            and meta_key == self.TEXT_PRESERVE_MODE_META_KEY
+        ):
+            normalized_mode = self._normalize_text_preserve_mode(value)
+            self.quality_rule_service.set_text_preserve_mode(normalized_mode)
+        else:
+            raise ValueError(
+                f"当前规则类型不支持该 meta 写入：{rule_type} -> {meta_key}"
+            )
+
+        current_revision = self.get_revision(rule_type)
+        self._bump_revision(rule_type, current_revision)
+        return self.snapshot_service.get_rule_snapshot(rule_type)
+
+    TEXT_PRESERVE_MODE_META_KEY: str = "text_preserve_mode"
