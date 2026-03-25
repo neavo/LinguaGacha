@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from api.Client.ApiStateStore import ApiStateStore
@@ -56,6 +57,15 @@ def test_ui_bootstrap_imports_app_client_context() -> None:
     assert (
         "self.proofreading_api_client = app_client_context.proofreading_api_client"
         in window_content
+    )
+    assert re.search(
+        r"self\.proofreading_page = ProofreadingPage\(\s*"
+        r"\"proofreading_page\",\s*"
+        r"self\.proofreading_api_client,\s*"
+        r"self\.api_state_store,\s*"
+        r"self,\s*\)",
+        window_content,
+        re.MULTILINE,
     )
 
 

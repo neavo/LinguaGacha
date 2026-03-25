@@ -1,3 +1,4 @@
+import importlib
 import threading
 from collections import Counter
 from dataclasses import dataclass
@@ -45,14 +46,20 @@ from qfluentwidgets import themeColor
 from base.Base import Base
 from base.LogManager import LogManager
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
-from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
+from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
 from model.Item import Item
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
+
+
+def get_data_manager_class() -> Any:
+    module = importlib.import_module("module.Data.DataManager")
+    return getattr(module, "DataManager")
+
+
+NO_WARNING_TAG = "NO_WARNING"
 
 
 class FilterListItemWidget(QWidget):
@@ -255,7 +262,7 @@ class FilterDialog(MessageBoxBase):
         self,
         items: list[Item],
         warning_map: dict[int, list[WarningType]],
-        result_checker: ResultChecker,
+        result_checker: Any,
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
@@ -324,7 +331,7 @@ class FilterDialog(MessageBoxBase):
             return
 
         # 2. 准备导出路径
-        lg_path = DataManager.get().get_lg_path()
+        lg_path = get_data_manager_class().get().get_lg_path()
         if not lg_path:
             return
 
@@ -359,7 +366,7 @@ class FilterDialog(MessageBoxBase):
         valid_warning_buttons = {
             w: b
             for w, b in self.warning_buttons.items()
-            if w != ProofreadingFilterOptions.NO_WARNING_TAG
+            if w != NO_WARNING_TAG
         }
 
         selected_warnings = {
@@ -663,7 +670,7 @@ class FilterDialog(MessageBoxBase):
         self.warning_buttons: dict[str | WarningType, PillPushButton] = {}
         warning_types = [
             (
-                ProofreadingFilterOptions.NO_WARNING_TAG,
+                NO_WARNING_TAG,
                 Localizer.get().proofreading_page_filter_no_warning,
             ),
             (
@@ -870,7 +877,7 @@ class FilterDialog(MessageBoxBase):
     # 全量联动刷新（防抖 + 后台 compute + 主线程 apply）
     # =========================================
 
-    def build_linked_filter_options_snapshot(self) -> ProofreadingFilterOptions:
+    def build_linked_filter_options_snapshot(self) -> ProofreadingFilterOptionsSnapshot:
         """捕获“联动计数/术语统计”使用的筛选选项快照。"""
 
         selected_files = {
@@ -888,7 +895,7 @@ class FilterDialog(MessageBoxBase):
 
         # 保持历史行为：术语勾选仅用于“最终筛选结果”，不参与联动计数。
         # 这样用户在勾术语时 UI 不会被迫反复重算计数，也避免计数口径随术语变来变去。
-        return ProofreadingFilterOptions(
+        return ProofreadingFilterOptionsSnapshot(
             warning_types=selected_warnings,
             statuses=selected_statuses,
             file_paths=selected_files,
@@ -965,7 +972,7 @@ class FilterDialog(MessageBoxBase):
                             warning_counts[w] = warning_counts.get(w, 0) + 1
                     else:
                         no_warning_count += 1
-                warning_counts[ProofreadingFilterOptions.NO_WARNING_TAG] = (
+                warning_counts[NO_WARNING_TAG] = (
                     no_warning_count
                 )
 
@@ -1176,7 +1183,7 @@ class FilterDialog(MessageBoxBase):
         *,
         items: list[Item],
         warning_map: dict[int, list[WarningType]],
-        result_checker: ResultChecker,
+        result_checker: Any,
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
     ) -> None:
         """更新对话框的数据源与内部缓存。
@@ -1265,7 +1272,7 @@ class FilterDialog(MessageBoxBase):
         self.file_search.setText("")
         self.term_search.setText("")
 
-    def get_filter_options(self) -> ProofreadingFilterOptions:
+    def get_filter_options(self) -> ProofreadingFilterOptionsSnapshot:
         # 强制同步当前可见 widget 的状态到持久化存储，以防最后的操作没有触发刷新
         self.sync_term_widgets_to_state()
 
@@ -1285,18 +1292,20 @@ class FilterDialog(MessageBoxBase):
         if WarningType.GLOSSARY in selected_warnings:
             selected_terms = set(self.term_checked_state)
 
-        return ProofreadingFilterOptions(
+        return ProofreadingFilterOptionsSnapshot(
             warning_types=selected_warnings,
             statuses=selected_statuses,
             file_paths=selected_files,
             glossary_terms=selected_terms,
         )
 
-    def set_filter_options(self, options: ProofreadingFilterOptions | dict) -> None:
+    def set_filter_options(
+        self, options: ProofreadingFilterOptionsSnapshot | dict[str, Any]
+    ) -> None:
         resolved = (
             options
-            if isinstance(options, ProofreadingFilterOptions)
-            else ProofreadingFilterOptions.from_dict(options)
+            if isinstance(options, ProofreadingFilterOptionsSnapshot)
+            else ProofreadingFilterOptionsSnapshot.from_dict(options)
         )
 
         warning_types = resolved.warning_types

@@ -1,9 +1,12 @@
+import importlib
 import re
 import threading
 from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
@@ -34,12 +37,10 @@ from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadKind
 from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadResult
 from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadService
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
+from model.Api.ProofreadingModels import ProofreadingSnapshot
 from model.Item import Item
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ResultChecker
 from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
@@ -62,6 +63,21 @@ class ReplaceAllResult:
 class ProofreadingLookupRequest:
     keyword: str
     is_regex: bool
+
+
+def get_config_class() -> Any:
+    module = importlib.import_module("module.Config")
+    return getattr(module, "Config")
+
+
+def get_data_manager_class() -> Any:
+    module = importlib.import_module("module.Data.DataManager")
+    return getattr(module, "DataManager")
+
+
+def get_result_checker_class() -> Any:
+    module = importlib.import_module("module.ResultChecker")
+    return getattr(module, "ResultChecker")
 
 
 class ProofreadingPage(Base, QWidget):
@@ -92,23 +108,32 @@ class ProofreadingPage(Base, QWidget):
         object, object, object
     )  # (checker, warning_map, failed_terms_by_item_key)
 
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        text: str,
+        proofreading_api_client: ProofreadingApiClient,
+        api_state_store: ApiStateStore,
+        window: FluentWindow,
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
         # 成员变量
         self.main_window = window
+        self.proofreading_api_client = proofreading_api_client
+        self.api_state_store = api_state_store
         self.items_all: list[Item] = []  # 全量数据（含结构行）
         self.items: list[Item] = []  # 可校对数据
         self.filtered_items: list[Item] = []  # 筛选后数据
         self.warning_map: dict[int, list[WarningType]] = {}  # 警告映射表
-        self.result_checker: ResultChecker | None = None  # 结果检查器
+        self.result_checker: Any | None = None  # 结果检查器
         self.failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
         self.is_readonly: bool = False  # 只读模式标志
         self.is_resetting: bool = False  # 重置执行中标志（RUN 到终态）
-        self.config: Config | None = None  # 配置
+        self.config: Any | None = None  # 配置
         self.filter_options: ProofreadingFilterOptions = ProofreadingFilterOptions()
         self.filter_dialog: FilterDialog | None = None
+        self.selected_item_id: int | str | None = None
         self.search_keyword: str = ""  # 当前搜索关键词
         self.search_is_regex: bool = False  # 是否正则搜索
         self.search_replace_mode: bool = False  # True 表示仅在 dst 上查找/替换
@@ -237,12 +262,12 @@ class ProofreadingPage(Base, QWidget):
     def refresh_quality_rules(self) -> None:
         self.quality_rule_refresh_token += 1
         current_token: int = self.quality_rule_refresh_token
-        config = self.config or Config().load()
+        config = self.config or get_config_class()().load()
         items_snapshot = list(self.items)
 
         def task() -> None:
             try:
-                checker = ResultChecker(config)
+                checker = get_result_checker_class()(config)
                 warning_map = checker.check_items(items_snapshot)
                 if current_token != self.quality_rule_refresh_token:
                     return
@@ -261,7 +286,7 @@ class ProofreadingPage(Base, QWidget):
 
     def on_quality_rules_refreshed_ui(
         self,
-        checker: ResultChecker,
+        checker: Any,
         warning_map: dict[int, list[WarningType]],
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]],
     ) -> None:
@@ -424,10 +449,38 @@ class ProofreadingPage(Base, QWidget):
     def mark_data_stale(self) -> None:
         self.data_stale = True
 
+    def apply_snapshot(
+        self,
+        snapshot: ProofreadingSnapshot,
+        *,
+        preferred_item_id: int | str | None = None,
+    ) -> None:
+        """应用 API 返回的校对快照。
+
+        当前页面主体仍在逐步迁移，这里先收口最小入口，供失效重拉与后续状态恢复共用。
+        """
+
+        self.selected_item_id = preferred_item_id
+        self.data_stale = False
+
+        filters = snapshot.filters.to_dict()
+        self.filter_options = ProofreadingFilterOptions.from_dict(filters)
+
+    def reload_invalidated_snapshot_if_needed(self) -> None:
+        """当 SSE 标记校对快照失效时，重新通过 API 拉取一次。"""
+
+        if not self.api_state_store.is_proofreading_snapshot_invalidated():
+            return
+
+        snapshot = self.proofreading_api_client.get_snapshot({})
+        preferred_item_id = getattr(self, "selected_item_id", None)
+        self.apply_snapshot(snapshot, preferred_item_id=preferred_item_id)
+        self.api_state_store.clear_proofreading_snapshot_invalidated()
+
     def schedule_reload(self, reason: str) -> None:
         if not self.isVisible():
             return
-        if not DataManager.get().is_loaded():
+        if not get_data_manager_class().get().is_loaded():
             return
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             self.reload_pending = True
@@ -444,7 +497,7 @@ class ProofreadingPage(Base, QWidget):
     def try_reload(self) -> None:
         if not self.data_stale:
             return
-        if not DataManager.get().is_loaded():
+        if not get_data_manager_class().get().is_loaded():
             return
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             self.reload_pending = True
@@ -461,7 +514,7 @@ class ProofreadingPage(Base, QWidget):
         self.reload_token += 1
         token: int = self.reload_token
         self.loading_token = token
-        lg_path = DataManager.get().get_lg_path() or ""
+        lg_path = get_data_manager_class().get().get_lg_path() or ""
 
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
@@ -1416,7 +1469,7 @@ class ProofreadingPage(Base, QWidget):
                         )
                         return
 
-                    DataManager.get().update_batch(items=changed_payload)
+                    get_data_manager_class().get().update_batch(items=changed_payload)
                     self.replace_all_done.emit(
                         ReplaceAllResult(
                             success=True,
@@ -1563,6 +1616,7 @@ class ProofreadingPage(Base, QWidget):
         if row < 0:
             self.current_item = None
             self.current_row_index = -1
+            self.selected_item_id = None
             self.edit_panel.clear()
             return
 
@@ -1585,6 +1639,7 @@ class ProofreadingPage(Base, QWidget):
     def apply_selection(self, item: Item, row: int) -> None:
         self.current_item = item
         self.current_row_index = row
+        self.selected_item_id = item.get_id()
         warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
         index = row + 1
         self.edit_panel.bind_item(item, index, warnings)
@@ -1635,7 +1690,7 @@ class ProofreadingPage(Base, QWidget):
         def task() -> None:
             success = False
             try:
-                DataManager.get().save_item(item)
+                get_data_manager_class().get().save_item(item)
                 success = True
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
@@ -1709,7 +1764,7 @@ class ProofreadingPage(Base, QWidget):
 
         def task() -> None:
             try:
-                checker = ResultChecker(config)
+                checker = get_result_checker_class()(config)
                 warnings = checker.check_item(item)
 
                 failed_terms: tuple[tuple[str, str], ...] | None = None
@@ -1753,7 +1808,7 @@ class ProofreadingPage(Base, QWidget):
         if not self.config:
             return []
 
-        checker = ResultChecker(self.config)
+        checker = get_result_checker_class()(self.config)
         warnings = checker.check_item(item)
 
         key = ProofreadingDomain.get_warning_key(item)
@@ -1857,7 +1912,7 @@ class ProofreadingPage(Base, QWidget):
             item.set_retry_count(0)
 
             # 入库
-            DataManager.get().save_item(item)
+            get_data_manager_class().get().save_item(item)
 
             # 更新 UI 和检查结果
             self.recheck_item(item)
@@ -1918,7 +1973,7 @@ class ProofreadingPage(Base, QWidget):
         """执行批量翻译（单条和多条统一入口）"""
         count = len(items)
         # 使用最新配置，而非缓存的 self.config
-        config = Config().load()
+        config = get_config_class()().load()
 
         # 显示进度 Toast（初始显示"正在处理第 1 个"）
         self.progress_show(
@@ -2000,7 +2055,7 @@ class ProofreadingPage(Base, QWidget):
 
         # 保存按钮已移至编辑区，翻译完成后需要自动入库
         try:
-            DataManager.get().save_item(item)
+            get_data_manager_class().get().save_item(item)
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
 
@@ -2052,7 +2107,7 @@ class ProofreadingPage(Base, QWidget):
         def task() -> None:
             try:
                 # 直接写入工程数据库
-                DataManager.get().replace_all_items(items_all)
+                get_data_manager_class().get().replace_all_items(items_all)
                 self.update_project_status_after_save()
 
                 self.save_done.emit(True)
@@ -2063,7 +2118,7 @@ class ProofreadingPage(Base, QWidget):
         threading.Thread(target=task, daemon=True).start()
 
     def update_project_status_after_save(self) -> None:
-        dm = DataManager.get()
+        dm = get_data_manager_class().get()
         if not dm.is_loaded():
             return
 
@@ -2197,6 +2252,7 @@ class ProofreadingPage(Base, QWidget):
     def showEvent(self, a0: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(a0)
+        self.reload_invalidated_snapshot_if_needed()
         self.check_engine_status()
         if self.data_stale:
             self.schedule_reload("show")
@@ -2299,6 +2355,7 @@ class ProofreadingPage(Base, QWidget):
         self.filter_options = ProofreadingFilterOptions()
         self.current_item = None
         self.current_row_index = -1
+        self.selected_item_id = None
         self.data_stale = True
         self.reload_pending = False
         self.is_loading = False

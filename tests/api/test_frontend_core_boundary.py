@@ -162,3 +162,27 @@ def test_phase_two_proofreading_helper_files_do_not_import_core_singletons_direc
             assert forbidden_import not in content, (
                 f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
             )
+
+
+def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    page_content = (
+        root_dir / "frontend" / "Proofreading" / "ProofreadingPage.py"
+    ).read_text(encoding="utf-8")
+    dialog_content = (
+        root_dir / "frontend" / "Proofreading" / "FilterDialog.py"
+    ).read_text(encoding="utf-8")
+
+    assert "from api.Client.ProofreadingApiClient import ProofreadingApiClient" in (
+        page_content
+    )
+    assert "from api.Client.ApiStateStore import ApiStateStore" in page_content
+    assert "from module.Data.DataManager import DataManager" not in page_content
+    assert "from module.Config import Config" not in page_content
+    assert "from module.ResultChecker import ResultChecker" not in page_content
+
+    assert "from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot" in (
+        dialog_content
+    )
+    assert "from module.Data.DataManager import DataManager" not in dialog_content
+    assert "from module.ResultChecker import ResultChecker" not in dialog_content

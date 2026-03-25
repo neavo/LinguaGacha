@@ -695,7 +695,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 校对任务
-        self.proofreading_page = ProofreadingPage("proofreading_page", self)
+        self.proofreading_page = ProofreadingPage(
+            "proofreading_page",
+            self.proofreading_api_client,
+            self.api_state_store,
+            self,
+        )
         self.addSubInterface(
             self.proofreading_page,
             ICON_NAV_PROOFREADING.qicon(),
