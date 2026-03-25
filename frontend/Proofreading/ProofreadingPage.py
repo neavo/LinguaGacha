@@ -25,6 +25,7 @@ from qfluentwidgets import ToolTipPosition
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
+from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
 from frontend.Proofreading.FilterDialog import FilterDialog
 from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
 from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
@@ -73,22 +74,6 @@ class ProofreadingPage(Base, QWidget):
     # 防抖时间（毫秒）
     AUTO_RELOAD_DELAY_MS: int = 120
     QUALITY_RULE_REFRESH_DELAY_MS: int = 200
-
-    # 质量规则类型
-    QUALITY_RULE_TYPES: set[str] = {
-        DataManager.RuleType.GLOSSARY.value,
-        DataManager.RuleType.PRE_REPLACEMENT.value,
-        DataManager.RuleType.POST_REPLACEMENT.value,
-        DataManager.RuleType.TEXT_PRESERVE.value,
-    }
-
-    # 质量规则元数据键
-    QUALITY_META_KEYS: set[str] = {
-        "glossary_enable",
-        "pre_translation_replacement_enable",
-        "post_translation_replacement_enable",
-        "text_preserve_mode",
-    }
 
     # 信号定义
     items_loaded = Signal(int, object)  # (token, payload)
@@ -243,13 +228,7 @@ class ProofreadingPage(Base, QWidget):
         self.schedule_reload("project_file_update")
 
     def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
-        if not event_data:
-            return True
-        rule_types: list[str] = event_data.get("rule_types", [])
-        meta_keys: list[str] = event_data.get("meta_keys", [])
-        if any(rule_type in self.QUALITY_RULE_TYPES for rule_type in rule_types):
-            return True
-        return any(meta_key in self.QUALITY_META_KEYS for meta_key in meta_keys)
+        return ProofreadingRuleImpact.is_rule_update_relevant(event_data)
 
     def schedule_quality_rule_refresh(self) -> None:
         # 合并短时间内的多次规则变更，避免重复全量检查

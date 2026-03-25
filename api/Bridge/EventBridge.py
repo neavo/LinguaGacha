@@ -2,23 +2,11 @@ from typing import Any
 
 from base.Base import Base
 from api.Bridge.EventTopic import EventTopic
+from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
 
 
 class EventBridge:
     """把内部事件裁剪为对外稳定 topic。"""
-
-    PROOFREADING_RULE_TYPES: set[str] = {
-        "glossary",
-        "pre_replacement",
-        "post_replacement",
-        "text_preserve",
-    }
-    PROOFREADING_META_KEYS: set[str] = {
-        "glossary_enable",
-        "pre_translation_replacement_enable",
-        "post_translation_replacement_enable",
-        "text_preserve_mode",
-    }
 
     def map_event(
         self,
@@ -89,22 +77,9 @@ class EventBridge:
                 {"keys": normalized_keys},
             )
         elif event == Base.Event.QUALITY_RULE_UPDATE:
-            normalized_rule_types = self.normalize_strings(
-                data.get("rule_types", data.get("rule_type", []))
+            relevant_rule_types, relevant_meta_keys = (
+                ProofreadingRuleImpact.extract_relevant_rule_update(data)
             )
-            normalized_meta_keys = self.normalize_strings(
-                data.get("meta_keys", data.get("meta_key", []))
-            )
-            relevant_rule_types = [
-                rule_type
-                for rule_type in normalized_rule_types
-                if rule_type in self.PROOFREADING_RULE_TYPES
-            ]
-            relevant_meta_keys = [
-                meta_key
-                for meta_key in normalized_meta_keys
-                if meta_key in self.PROOFREADING_META_KEYS
-            ]
             if relevant_rule_types or relevant_meta_keys:
                 return (
                     EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
@@ -156,13 +131,3 @@ class EventBridge:
             "status": status,
             "busy": status not in ("DONE", "ERROR", "IDLE"),
         }
-
-    def normalize_strings(self, value: Any) -> list[str]:
-        """把单值或列表统一收口成字符串列表，方便做 topic 粒度判断。"""
-
-        if isinstance(value, str):
-            return [value]
-        elif isinstance(value, (list, tuple, set)):
-            return [str(item) for item in value]
-        else:
-            return []
