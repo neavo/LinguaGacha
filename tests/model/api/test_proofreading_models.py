@@ -3,6 +3,7 @@ from model.Api.ProofreadingModels import ProofreadingItemView
 from model.Api.ProofreadingModels import ProofreadingMutationResult
 from model.Api.ProofreadingModels import ProofreadingSnapshot
 from model.Api.ProofreadingModels import ProofreadingSummary
+import pytest
 
 
 def test_proofreading_filter_options_snapshot_from_dict_normalizes_collections() -> (
@@ -106,6 +107,36 @@ def test_proofreading_snapshot_from_dict_keeps_filters_and_items_contract() -> N
     assert snapshot.items[0].item_id == 123
     assert snapshot.items[0].row_number == 45
     assert snapshot.items[0].failed_glossary_terms == (("勇者", "Hero"),)
+
+
+def test_proofreading_snapshot_uses_filters_contract_and_ignores_legacy_alias() -> None:
+    snapshot = ProofreadingSnapshot.from_dict(
+        {
+            "revision": 11,
+            "project_id": "project-1",
+            "readonly": False,
+            "summary": {
+                "total_items": 3,
+                "filtered_items": 2,
+                "warning_items": 1,
+            },
+            "filter_options": {
+                "warning_types": ["GLOSSARY"],
+                "statuses": ["PROCESSED"],
+                "file_paths": ["chapter-1.txt"],
+                "glossary_terms": [["HP", "生命值"]],
+            },
+            "items": [],
+        }
+    )
+
+    assert snapshot.filters.warning_types == ()
+    assert snapshot.filters.statuses == ()
+    assert snapshot.filters.file_paths == ()
+    assert snapshot.filters.glossary_terms == ()
+
+    with pytest.raises(AttributeError):
+        _ = snapshot.filter_options
 
 
 def test_proofreading_snapshot_round_trip_keeps_stable_contract_keys() -> None:
@@ -230,3 +261,25 @@ def test_proofreading_mutation_result_round_trip_keeps_items_and_summary() -> No
         "filtered_items": 10,
         "warning_items": 1,
     }
+
+
+def test_proofreading_model_package_exports_match_module_contract() -> None:
+    from model.Api import ProofreadingSearchResult
+    from model.Api import ProofreadingWarningSummary
+
+    warning_summary = ProofreadingWarningSummary.from_dict(
+        {"warning_type": "GLOSSARY", "count": 4}
+    )
+    search_result = ProofreadingSearchResult.from_dict(
+        {
+            "keyword": "HP",
+            "is_regex": True,
+            "matched_item_ids": [1, 2],
+        }
+    )
+
+    assert warning_summary.warning_type == "GLOSSARY"
+    assert warning_summary.count == 4
+    assert search_result.keyword == "HP"
+    assert search_result.is_regex is True
+    assert search_result.matched_item_ids == (1, 2)

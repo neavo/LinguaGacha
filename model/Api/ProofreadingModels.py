@@ -348,7 +348,7 @@ class ProofreadingSnapshot:
                     normalized_items.append(ProofreadingItemView.from_dict(item))
             items = tuple(normalized_items)
 
-        filters_raw = normalized.get("filters", normalized.get("filter_options", {}))
+        filters_raw = normalized.get("filters", {})
         if isinstance(filters_raw, ProofreadingFilterOptionsSnapshot):
             filters = filters_raw
         else:
@@ -374,9 +374,3 @@ class ProofreadingSnapshot:
             "filters": self.filters.to_dict(),
             "items": [item.to_dict() for item in self.items],
         }
-
-    @property
-    def filter_options(self) -> ProofreadingFilterOptionsSnapshot:
-        """保留旧属性别名，避免迁移期间的读取方立刻断裂。"""
-
-        return self.filters

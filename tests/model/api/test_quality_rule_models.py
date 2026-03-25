@@ -109,6 +109,20 @@ def test_quality_rule_statistics_snapshot_from_dict_normalizes_nested_data() -> 
     assert snapshot.results["glossary"].subset_parents == ("root", "child")
 
 
+def test_quality_rule_statistics_snapshot_ignores_top_level_subset_parents() -> None:
+    snapshot = QualityRuleStatisticsSnapshot.from_dict(
+        {
+            "available": True,
+            "results": {"glossary": {"matched_item_count": 2}},
+            "subset_parents": {"glossary": ["root", "child"]},
+        }
+    )
+
+    assert snapshot.available is True
+    assert snapshot.results["glossary"].matched_item_count == 2
+    assert snapshot.results["glossary"].subset_parents == ()
+
+
 def test_quality_rule_statistics_result_round_trip_keeps_subset_parents() -> None:
     result = QualityRuleStatisticsResult.from_dict(
         {

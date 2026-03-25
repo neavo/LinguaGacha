@@ -210,14 +210,6 @@ class QualityRuleStatisticsSnapshot:
 
         results_raw = normalized.get("results", {})
         results: dict[str, QualityRuleStatisticsResult] = {}
-        subset_parents_raw = normalized.get("subset_parents", {})
-        subset_parents: dict[str, tuple[str, ...]] = {}
-        if isinstance(subset_parents_raw, dict):
-            for key, value in subset_parents_raw.items():
-                if isinstance(value, (list, tuple, set)):
-                    subset_parents[str(key)] = tuple(str(item) for item in value)
-                else:
-                    subset_parents[str(key)] = ()
         if isinstance(results_raw, dict):
             for key, value in results_raw.items():
                 if isinstance(value, dict):
@@ -225,14 +217,7 @@ class QualityRuleStatisticsSnapshot:
                 else:
                     result_payload = {"matched_item_count": value}
 
-                result_key = str(key)
-                if "subset_parents" not in result_payload:
-                    if result_key in subset_parents:
-                        result_payload["subset_parents"] = list(
-                            subset_parents[result_key]
-                        )
-
-                results[result_key] = QualityRuleStatisticsResult.from_dict(
+                results[str(key)] = QualityRuleStatisticsResult.from_dict(
                     result_payload
                 )
 

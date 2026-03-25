@@ -66,14 +66,12 @@ class PromptPresetEntry:
         else:
             normalized = {}
 
-        type_value = normalized.get("type", normalized.get("source", ""))
-
         return cls(
             name=str(normalized.get("name", "")),
             file_name=str(normalized.get("file_name", "")),
             virtual_id=str(normalized.get("virtual_id", "")),
             path=str(normalized.get("path", "")),
-            type=str(type_value),
+            type=str(normalized.get("type", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
