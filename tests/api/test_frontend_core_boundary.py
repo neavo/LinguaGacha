@@ -175,6 +175,12 @@ def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
     edit_panel_content = (
         root_dir / "frontend" / "Proofreading" / "ProofreadingEditPanel.py"
     ).read_text(encoding="utf-8")
+    labels_content = (
+        root_dir / "frontend" / "Proofreading" / "ProofreadingLabels.py"
+    ).read_text(encoding="utf-8")
+    delegate_content = (
+        root_dir / "frontend" / "Proofreading" / "ProofreadingStatusDelegate.py"
+    ).read_text(encoding="utf-8")
 
     assert "from api.Client.ProofreadingApiClient import ProofreadingApiClient" in (
         page_content
@@ -215,3 +221,5 @@ def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
     assert "self.failed_terms_by_item_key" not in dialog_content
     assert "self.result_checker" not in dialog_content
     assert "from module.ResultChecker import WarningType" not in edit_panel_content
+    assert "from module.ResultChecker import WarningType" not in labels_content
+    assert "from module.ResultChecker import WarningType" not in delegate_content

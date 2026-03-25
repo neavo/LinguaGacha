@@ -29,7 +29,6 @@ from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from frontend.Proofreading.ProofreadingTableModel import ProofreadingTableModel
 from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import WarningType
 
 
 class ProofreadingStatusDelegate(TableItemDelegate):
@@ -261,24 +260,14 @@ class ProofreadingStatusDelegate(TableItemDelegate):
             f"{Localizer.get().status}{ProofreadingLabels.get_status_label(resolved)}"
         )
 
-    def build_warning_tooltip(self, warnings: tuple[WarningType | str, ...]) -> str:
+    def build_warning_tooltip(self, warnings: tuple[str, ...]) -> str:
         if not warnings:
             return ""
 
-        warning_texts: list[str] = []
-        for warning_item in warnings:
-            if isinstance(warning_item, WarningType):
-                warning_texts.append(ProofreadingLabels.get_warning_label(warning_item))
-                continue
-            if isinstance(warning_item, str):
-                try:
-                    warning_texts.append(
-                        ProofreadingLabels.get_warning_label(WarningType(warning_item))
-                    )
-                except ValueError:
-                    warning_texts.append(warning_item)
-                continue
-            warning_texts.append(str(warning_item))
+        warning_texts = [
+            ProofreadingLabels.get_warning_label(warning_item)
+            for warning_item in warnings
+        ]
         return (
             f"{Localizer.get().proofreading_page_result_check}\n"
             f"{Localizer.get().status}{' | '.join(warning_texts)}"

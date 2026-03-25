@@ -71,6 +71,7 @@ class ProofreadingPage(Base, QWidget):
 
     # 防抖时间（毫秒）
     AUTO_RELOAD_DELAY_MS: int = 120
+    SNAPSHOT_INVALIDATION_POLL_MS: int = 150
 
     # 信号定义
     items_loaded = Signal(int, object)  # (token, payload)
@@ -141,6 +142,12 @@ class ProofreadingPage(Base, QWidget):
         self.reload_timer: QTimer = QTimer(self)
         self.reload_timer.setSingleShot(True)
         self.reload_timer.timeout.connect(self.try_reload)
+        self.snapshot_invalidation_timer: QTimer = QTimer(self)
+        self.snapshot_invalidation_timer.setInterval(self.SNAPSHOT_INVALIDATION_POLL_MS)
+        self.snapshot_invalidation_timer.timeout.connect(
+            self.poll_invalidated_snapshot_if_needed
+        )
+        self.snapshot_invalidation_timer.start()
         self.pending_quality_rule_refresh: bool = False
         self.task_busy_hint: bool = False
 
@@ -388,7 +395,7 @@ class ProofreadingPage(Base, QWidget):
         return self.api_state_store.get_project_path()
 
     def is_task_busy(self) -> bool:
-        return self.api_state_store.is_busy() or self.task_busy_hint
+        return self.api_state_store.is_busy() or getattr(self, "task_busy_hint", False)
 
     def find_filtered_item_index(self, item_id: int | str | None) -> int:
         if item_id is None:
@@ -466,11 +473,27 @@ class ProofreadingPage(Base, QWidget):
 
         if not self.api_state_store.is_proofreading_snapshot_invalidated():
             return
+        if getattr(self, "is_loading", False):
+            return
+        if hasattr(self, "is_task_busy") and self.is_task_busy():
+            return
+        edit_panel = getattr(self, "edit_panel", None)
+        if edit_panel is not None and edit_panel.has_unsaved_changes():
+            return
 
         snapshot = self.proofreading_api_client.get_snapshot({})
         preferred_item_id = getattr(self, "selected_item_id", None)
         self.apply_snapshot(snapshot, preferred_item_id=preferred_item_id)
         self.api_state_store.clear_proofreading_snapshot_invalidated()
+
+    def poll_invalidated_snapshot_if_needed(self) -> None:
+        """页面可见时主动消费快照失效标记，避免只能等下次 showEvent。"""
+
+        if not self.isVisible():
+            return
+        if not self.api_state_store.is_proofreading_snapshot_invalidated():
+            return
+        self.reload_invalidated_snapshot_if_needed()
 
     def schedule_reload(self, reason: str) -> None:
         del reason

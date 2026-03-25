@@ -45,6 +45,7 @@ def test_proofreading_page_reload_invalidated_snapshot_restores_selected_item_id
     page = ProofreadingPage.__new__(ProofreadingPage)
     page.proofreading_api_client = Mock()
     page.api_state_store = Mock()
+    page.api_state_store.is_busy.return_value = False
     page.selected_item_id = 22
 
     snapshot = build_snapshot(revision=9, item_ids=(11, 22))
@@ -77,6 +78,7 @@ def test_proofreading_page_reload_invalidated_snapshot_skips_when_state_is_fresh
     page = ProofreadingPage.__new__(ProofreadingPage)
     page.proofreading_api_client = Mock()
     page.api_state_store = Mock()
+    page.api_state_store.is_busy.return_value = False
     page.selected_item_id = 22
     page.api_state_store.is_proofreading_snapshot_invalidated.return_value = False
     page.apply_snapshot = Mock()
@@ -112,3 +114,29 @@ def test_proofreading_page_apply_snapshot_replaces_page_level_snapshot_state() -
     page.table_widget.set_items.assert_called_once_with(list(snapshot.items))
     page.restore_selected_item.assert_called_once_with()
     page.check_engine_status.assert_called_once_with()
+
+
+def test_proofreading_page_visible_poll_reloads_invalidated_snapshot() -> None:
+    page = ProofreadingPage.__new__(ProofreadingPage)
+    page.api_state_store = Mock()
+    page.isVisible = Mock(return_value=True)
+    page.reload_invalidated_snapshot_if_needed = Mock()
+
+    page.api_state_store.is_proofreading_snapshot_invalidated.return_value = True
+
+    page.poll_invalidated_snapshot_if_needed()
+
+    page.reload_invalidated_snapshot_if_needed.assert_called_once_with()
+
+
+def test_proofreading_page_hidden_poll_skips_invalidated_snapshot_reload() -> None:
+    page = ProofreadingPage.__new__(ProofreadingPage)
+    page.api_state_store = Mock()
+    page.isVisible = Mock(return_value=False)
+    page.reload_invalidated_snapshot_if_needed = Mock()
+
+    page.api_state_store.is_proofreading_snapshot_invalidated.return_value = True
+
+    page.poll_invalidated_snapshot_if_needed()
+
+    page.reload_invalidated_snapshot_if_needed.assert_not_called()
