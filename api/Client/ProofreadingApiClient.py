@@ -15,7 +15,9 @@ class ProofreadingApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def get_snapshot(self, request: dict[str, Any] | None = None) -> ProofreadingSnapshot:
+    def get_snapshot(
+        self, request: dict[str, Any] | None = None
+    ) -> ProofreadingSnapshot:
         """读取校对快照，供页面首屏与主动刷新共用。"""
 
         response = self.api_client.post(ProofreadingRoutes.SNAPSHOT_PATH, request or {})
@@ -39,6 +41,12 @@ class ProofreadingApiClient:
         response = self.api_client.post(ProofreadingRoutes.SAVE_ITEM_PATH, request)
         return ProofreadingMutationResult.from_dict(response.get("result", {}))
 
+    def save_all(self, request: dict[str, Any]) -> ProofreadingMutationResult:
+        """批量保存条目，并返回写入结果。"""
+
+        response = self.api_client.post(ProofreadingRoutes.SAVE_ALL_PATH, request)
+        return ProofreadingMutationResult.from_dict(response.get("result", {}))
+
     def replace_all(self, request: dict[str, Any]) -> ProofreadingMutationResult:
         """执行批量替换，并返回写入结果。"""
 
@@ -51,3 +59,11 @@ class ProofreadingApiClient:
         response = self.api_client.post(ProofreadingRoutes.RECHECK_ITEM_PATH, request)
         return ProofreadingMutationResult.from_dict(response.get("result", {}))
 
+    def retranslate_items(self, request: dict[str, Any]) -> ProofreadingMutationResult:
+        """单条/批量重译条目，并返回刷新后的写入结果。"""
+
+        response = self.api_client.post(
+            ProofreadingRoutes.RETRANSLATE_ITEMS_PATH,
+            request,
+        )
+        return ProofreadingMutationResult.from_dict(response.get("result", {}))

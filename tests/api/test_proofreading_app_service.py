@@ -83,6 +83,7 @@ def build_app_service() -> tuple[
     Any,
     Any,
     Any,
+    Any,
 ]:
     """构造可注入依赖的校对应用服务，便于把协议层行为固定住。"""
 
@@ -148,6 +149,7 @@ def build_app_service() -> tuple[
     snapshot_service = SimpleNamespace(
         load_snapshot=MagicMock(side_effect=[load_result, refreshed_result]),
     )
+
     def filter_items(
         items_ref,
         warning_map,
@@ -199,6 +201,14 @@ def build_app_service() -> tuple[
             )
         ),
     )
+    retranslate_service = SimpleNamespace(
+        retranslate_items=MagicMock(
+            return_value={
+                "revision": 9,
+                "changed_item_ids": [1, 2],
+            }
+        )
+    )
 
     from api.Application.ProofreadingAppService import ProofreadingAppService
 
@@ -207,12 +217,20 @@ def build_app_service() -> tuple[
         filter_service=filter_service,
         mutation_service=mutation_service,
         recheck_service=recheck_service,
+        retranslate_service=retranslate_service,
     )
-    return app_service, snapshot_service, filter_service, mutation_service, recheck_service
+    return (
+        app_service,
+        snapshot_service,
+        filter_service,
+        mutation_service,
+        recheck_service,
+        retranslate_service,
+    )
 
 
 def test_proofreading_snapshot_returns_revision() -> None:
-    app_service, snapshot_service, _, _, _ = build_app_service()
+    app_service, snapshot_service, _, _, _, _ = build_app_service()
 
     result = app_service.get_snapshot({})
 
@@ -221,7 +239,7 @@ def test_proofreading_snapshot_returns_revision() -> None:
 
 
 def test_proofreading_filter_returns_filtered_snapshot() -> None:
-    app_service, _, filter_service, _, _ = build_app_service()
+    app_service, _, filter_service, _, _, _ = build_app_service()
 
     result = app_service.filter_items(
         {
@@ -236,7 +254,7 @@ def test_proofreading_filter_returns_filtered_snapshot() -> None:
 
 
 def test_proofreading_search_returns_search_result() -> None:
-    app_service, _, filter_service, _, _ = build_app_service()
+    app_service, _, filter_service, _, _, _ = build_app_service()
 
     result = app_service.search(
         {
@@ -306,7 +324,7 @@ def test_proofreading_search_uses_snapshot_default_filter_options() -> None:
 
 
 def test_proofreading_save_item_returns_mutation_result() -> None:
-    app_service, _, _, mutation_service, _ = build_app_service()
+    app_service, _, _, mutation_service, _, _ = build_app_service()
 
     result = app_service.save_item(
         {
@@ -325,7 +343,7 @@ def test_proofreading_save_item_returns_mutation_result() -> None:
 
 
 def test_proofreading_save_item_uses_refreshed_snapshot_item() -> None:
-    app_service, snapshot_service, _, mutation_service, _ = build_app_service()
+    app_service, snapshot_service, _, mutation_service, _, _ = build_app_service()
 
     result = app_service.save_item(
         {
@@ -348,7 +366,7 @@ def test_proofreading_save_item_uses_refreshed_snapshot_item() -> None:
 
 
 def test_proofreading_replace_all_returns_mutation_result() -> None:
-    app_service, snapshot_service, _, mutation_service, _ = build_app_service()
+    app_service, snapshot_service, _, mutation_service, _, _ = build_app_service()
 
     result = app_service.replace_all(
         {
@@ -374,7 +392,7 @@ def test_proofreading_replace_all_returns_mutation_result() -> None:
 
 
 def test_proofreading_recheck_item_returns_mutation_result() -> None:
-    app_service, _, _, _, recheck_service = build_app_service()
+    app_service, _, _, _, recheck_service, _ = build_app_service()
 
     result = app_service.recheck_item(
         {
@@ -391,3 +409,62 @@ def test_proofreading_recheck_item_returns_mutation_result() -> None:
     recheck_service.check_item.assert_called_once()
     assert result["result"]["changed_item_ids"] == [1]
     assert result["result"]["items"][0]["item_id"] == 1
+
+
+def test_proofreading_save_all_returns_mutation_result() -> None:
+    app_service, snapshot_service, _, mutation_service, _, _ = build_app_service()
+    mutation_service.save_all = MagicMock(return_value=[1, 2])
+
+    result = app_service.save_all(
+        {
+            "items": [
+                {
+                    "id": 1,
+                    "dst": "",
+                    "status": Base.ProjectStatus.NONE,
+                },
+                {
+                    "id": 2,
+                    "dst": "",
+                    "status": Base.ProjectStatus.NONE,
+                },
+            ],
+            "expected_revision": 7,
+        }
+    )
+
+    snapshot_service.load_snapshot.assert_called()
+    mutation_service.save_all.assert_called_once()
+    assert result["result"]["revision"] >= 0
+    assert result["result"]["changed_item_ids"] == [1, 2]
+
+
+def test_proofreading_retranslate_items_returns_mutation_result() -> None:
+    app_service, snapshot_service, _, _, _, retranslate_service = build_app_service()
+
+    result = app_service.retranslate_items(
+        {
+            "items": [
+                {
+                    "id": 1,
+                    "src": "勇者が来た",
+                    "dst": "Hero arrived",
+                    "file_path": "script/a.txt",
+                    "status": Base.ProjectStatus.PROCESSED,
+                },
+                {
+                    "id": 2,
+                    "src": "旁白",
+                    "dst": "Narration",
+                    "file_path": "script/b.txt",
+                    "status": Base.ProjectStatus.NONE,
+                },
+            ],
+            "expected_revision": 7,
+        }
+    )
+
+    snapshot_service.load_snapshot.assert_called()
+    retranslate_service.retranslate_items.assert_called_once()
+    assert result["result"]["revision"] == 9
+    assert result["result"]["changed_item_ids"] == [1, 2]

@@ -417,7 +417,9 @@ def build_proofreading_app_service() -> tuple[
 
     filter_service = Mock()
     filter_service.filter_items.side_effect = filter_items
-    filter_service.build_lookup_filter_options.return_value = snapshot_result.filter_options
+    filter_service.build_lookup_filter_options.return_value = (
+        snapshot_result.filter_options
+    )
 
     def apply_manual_edit(
         item: Item,
@@ -454,6 +456,7 @@ def build_proofreading_app_service() -> tuple[
     mutation_service = Mock()
     mutation_service.apply_manual_edit.side_effect = apply_manual_edit
     mutation_service.replace_all.side_effect = replace_all
+    mutation_service.save_all.return_value = [1, 2]
 
     def check_item(
         config,
@@ -466,6 +469,11 @@ def build_proofreading_app_service() -> tuple[
 
     recheck_service = Mock()
     recheck_service.check_item.side_effect = check_item
+    retranslate_service = Mock()
+    retranslate_service.retranslate_items.return_value = {
+        "revision": 9,
+        "changed_item_ids": [1, 2],
+    }
 
     return (
         ProofreadingAppService(
@@ -473,6 +481,7 @@ def build_proofreading_app_service() -> tuple[
             filter_service=filter_service,
             mutation_service=mutation_service,
             recheck_service=recheck_service,
+            retranslate_service=retranslate_service,
         ),
         items,
     )
@@ -626,6 +635,77 @@ def test_proofreading_api_client_recheck_item_returns_mutation_result() -> None:
         assert isinstance(result, ProofreadingMutationResult)
         assert result.changed_item_ids == (1,)
         assert result.items[0].item_id == 1
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_save_all_returns_mutation_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.save_all(
+            {
+                "items": [
+                    {
+                        "id": 1,
+                        "dst": "",
+                        "status": Base.ProjectStatus.NONE,
+                    },
+                    {
+                        "id": 2,
+                        "dst": "",
+                        "status": Base.ProjectStatus.NONE,
+                    },
+                ],
+                "expected_revision": 7,
+            }
+        )
+
+        assert isinstance(result, ProofreadingMutationResult)
+        assert result.changed_item_ids == (1, 2)
+    finally:
+        shutdown()
+
+
+def test_proofreading_api_client_retranslate_items_returns_mutation_result() -> None:
+    app_service, _items = build_proofreading_app_service()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        proofreading_app_service=app_service
+    )
+    try:
+        api_client = ApiClient(base_url)
+        proofreading_client = ProofreadingApiClient(api_client)
+
+        result = proofreading_client.retranslate_items(
+            {
+                "items": [
+                    {
+                        "id": 1,
+                        "src": "勇者が来た",
+                        "dst": "Hero arrived",
+                        "file_path": "script/a.txt",
+                        "status": Base.ProjectStatus.PROCESSED,
+                    },
+                    {
+                        "id": 2,
+                        "src": "旁白",
+                        "dst": "Narration",
+                        "file_path": "script/b.txt",
+                        "status": Base.ProjectStatus.NONE,
+                    },
+                ],
+                "expected_revision": 7,
+            }
+        )
+
+        assert isinstance(result, ProofreadingMutationResult)
+        assert result.revision == 9
+        assert result.changed_item_ids == (1, 2)
     finally:
         shutdown()
 

@@ -172,17 +172,46 @@ def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
     dialog_content = (
         root_dir / "frontend" / "Proofreading" / "FilterDialog.py"
     ).read_text(encoding="utf-8")
+    edit_panel_content = (
+        root_dir / "frontend" / "Proofreading" / "ProofreadingEditPanel.py"
+    ).read_text(encoding="utf-8")
 
     assert "from api.Client.ProofreadingApiClient import ProofreadingApiClient" in (
         page_content
     )
     assert "from api.Client.ApiStateStore import ApiStateStore" in page_content
+    assert "from model.Api.ProofreadingModels import ProofreadingSnapshot" in (
+        page_content
+    )
+    assert "from model.Api.ProofreadingModels import ProofreadingMutationResult" in (
+        page_content
+    )
+    assert "from model.Api.ProofreadingModels import ProofreadingSearchResult" in (
+        page_content
+    )
     assert "from module.Data.DataManager import DataManager" not in page_content
     assert "from module.Config import Config" not in page_content
     assert "from module.ResultChecker import ResultChecker" not in page_content
+    assert "from module.Engine.Engine import Engine" not in page_content
+    assert "from model.Item import Item" not in page_content
+    assert (
+        "from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain"
+        not in page_content
+    )
+    assert "self.warning_map" not in page_content
+    assert "self.failed_terms_by_item_key" not in page_content
+    assert "self.result_checker" not in page_content
 
-    assert "from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot" in (
+    assert (
+        "from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot"
+        in (dialog_content)
+    )
+    assert "from model.Api.ProofreadingModels import ProofreadingItemView" in (
         dialog_content
     )
     assert "from module.Data.DataManager import DataManager" not in dialog_content
     assert "from module.ResultChecker import ResultChecker" not in dialog_content
+    assert "self.warning_map" not in dialog_content
+    assert "self.failed_terms_by_item_key" not in dialog_content
+    assert "self.result_checker" not in dialog_content
+    assert "from module.ResultChecker import WarningType" not in edit_panel_content

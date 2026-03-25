@@ -10,6 +10,9 @@ from module.Data.Proofreading.ProofreadingMutationService import (
 from module.Data.Proofreading.ProofreadingRecheckService import (
     ProofreadingRecheckService as ProofreadingRecheckService,
 )
+from module.Data.Proofreading.ProofreadingRetranslateService import (
+    ProofreadingRetranslateService as ProofreadingRetranslateService,
+)
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionConflictError as ProofreadingRevisionConflictError,
 )

@@ -9,8 +9,10 @@ class ProofreadingRoutes:
     FILTER_PATH: str = "/api/proofreading/filter"
     SEARCH_PATH: str = "/api/proofreading/search"
     SAVE_ITEM_PATH: str = "/api/proofreading/save-item"
+    SAVE_ALL_PATH: str = "/api/proofreading/save-all"
     REPLACE_ALL_PATH: str = "/api/proofreading/replace-all"
     RECHECK_ITEM_PATH: str = "/api/proofreading/recheck-item"
+    RETRANSLATE_ITEMS_PATH: str = "/api/proofreading/retranslate-items"
 
     @classmethod
     def register(
@@ -54,6 +56,14 @@ class ProofreadingRoutes:
         )
         core_api_server.add_json_route(
             "POST",
+            cls.SAVE_ALL_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=proofreading_app_service.save_all(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
             cls.REPLACE_ALL_PATH,
             lambda request: ApiResponse(
                 ok=True,
@@ -68,4 +78,11 @@ class ProofreadingRoutes:
                 data=proofreading_app_service.recheck_item(request),
             ),
         )
-
+        core_api_server.add_json_route(
+            "POST",
+            cls.RETRANSLATE_ITEMS_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=proofreading_app_service.retranslate_items(request),
+            ),
+        )

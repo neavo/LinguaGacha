@@ -66,6 +66,38 @@ class ProofreadingMutationService:
 
         self.revision_service.bump_revision(self.REVISION_SCOPE, current_revision)
 
+    def sync_project_translation_state(self) -> None:
+        """写入后同步工程翻译状态，避免页面继续直接维护 DataManager。"""
+
+        if not self.data_manager.is_loaded():
+            return
+
+        review_items = self.filter_service.build_review_items(
+            self.data_manager.get_all_items()
+        )
+        untranslated_count = sum(
+            1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
+        )
+        project_status = (
+            Base.ProjectStatus.PROCESSING
+            if untranslated_count > 0
+            else Base.ProjectStatus.PROCESSED
+        )
+        self.data_manager.set_project_status(project_status)
+
+        extras = self.data_manager.get_translation_extras()
+        translated_count = sum(
+            1
+            for item in review_items
+            if item.get_status()
+            in (
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+            )
+        )
+        extras["line"] = translated_count
+        self.data_manager.set_translation_extras(extras)
+
     def save_item(
         self,
         item: Item,
@@ -78,6 +110,7 @@ class ProofreadingMutationService:
             current_revision = self._guard_revision(expected_revision)
             saved_item_id = self.data_manager.save_item(item)
             self._bump_revision(current_revision)
+            self.sync_project_translation_state()
         return saved_item_id
 
     def save_all(
@@ -92,6 +125,7 @@ class ProofreadingMutationService:
             current_revision = self._guard_revision(expected_revision)
             saved_item_ids = self.data_manager.replace_all_items(items)
             self._bump_revision(current_revision)
+            self.sync_project_translation_state()
         return saved_item_ids
 
     def replace_batch(
@@ -106,6 +140,7 @@ class ProofreadingMutationService:
             current_revision = self._guard_revision(expected_revision)
             self.data_manager.update_batch(items=items)
             self._bump_revision(current_revision)
+            self.sync_project_translation_state()
 
     @staticmethod
     def replace_once_in_text(
@@ -201,6 +236,7 @@ class ProofreadingMutationService:
                     self.REVISION_SCOPE,
                     current_revision,
                 )
+                self.sync_project_translation_state()
             else:
                 new_revision = self.revision_service.get_revision(self.REVISION_SCOPE)
 
@@ -233,4 +269,5 @@ class ProofreadingMutationService:
             item.set_dst(new_dst)
             item.set_status(new_status)
             self._bump_revision(current_revision)
+            self.sync_project_translation_state()
         return saved_item_id

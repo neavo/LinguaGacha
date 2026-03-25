@@ -1,4 +1,3 @@
-import threading
 from typing import cast
 
 from PySide6.QtCore import QSize
@@ -30,11 +29,8 @@ from qfluentwidgets import qconfig
 
 from base.BaseIcon import BaseIcon
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
-from model.Item import Item
-from module.Data.DataManager import DataManager
+from model.Api.ProofreadingModels import ProofreadingItemView
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ResultChecker
-from module.ResultChecker import WarningType
 from widget.CustomTextEdit import CustomTextEdit
 from widget.StatusTag import StatusTag
 from widget.StatusTag import StatusTagType
@@ -46,6 +42,13 @@ ICON_SAVE_ENTRY: BaseIcon = BaseIcon.SAVE  # 操作按钮：保存当前编辑�
 ICON_MORE_ACTIONS: BaseIcon = BaseIcon.ELLIPSIS  # 操作按钮：更多操作菜单
 ICON_RETRANSLATE: BaseIcon = BaseIcon.REFRESH_CW  # 更多菜单：重翻当前条目
 ICON_RESET_TRANSLATION: BaseIcon = BaseIcon.RECYCLE  # 更多菜单：重置当前条目译文
+WARNING_TAG_ORDER: tuple[str, ...] = (
+    "KANA",
+    "HANGEUL",
+    "TEXT_PRESERVE",
+    "SIMILARITY",
+    "RETRY_THRESHOLD",
+)
 
 
 class ProofreadingEditPanel(QWidget):
@@ -72,9 +75,8 @@ class ProofreadingEditPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.current_item: Item | None = None
+        self.current_item: ProofreadingItemView | None = None
         self.saved_text = ""
-        self.result_checker: ResultChecker | None = None
         self.file_path_full_text = ""
         self.dividers: list[QWidget] = []
 
@@ -191,14 +193,8 @@ class ProofreadingEditPanel(QWidget):
         )
         self.status_flow.addWidget(self.glossary_status_tag)
 
-        self.warning_tags: dict[WarningType, StatusTag] = {}
-        for warning in (
-            WarningType.KANA,
-            WarningType.HANGEUL,
-            WarningType.TEXT_PRESERVE,
-            WarningType.SIMILARITY,
-            WarningType.RETRY_THRESHOLD,
-        ):
+        self.warning_tags: dict[str, StatusTag] = {}
+        for warning in WARNING_TAG_ORDER:
             tag = self.create_status_tag("", StatusTagType.INFO)
             tag.hide()
             self.warning_tags[warning] = tag
@@ -321,20 +317,17 @@ class ProofreadingEditPanel(QWidget):
         button.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
         button.setMinimumHeight(self.BTN_SIZE)
 
-    def set_result_checker(self, checker: ResultChecker | None) -> None:
-        self.result_checker = checker
-        if self.current_item is None:
-            return
-        self.glossary_status_dirty = True
-        self.set_status_tag_visible(self.glossary_status_tag, False)
-        QTimer.singleShot(0, self.start_glossary_status_compute)
-
-    def bind_item(self, item: Item, index: int, warnings: list[WarningType]) -> None:
+    def bind_item(
+        self,
+        item: ProofreadingItemView,
+        index: int,
+        warnings: tuple[str, ...] | list[str],
+    ) -> None:
         self.current_item = item
         self.src_text.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.dst_text.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self.file_path_full_text = item.get_file_path()
+        self.file_path_full_text = item.file_path
         self.file_path_label.setToolTip(self.file_path_full_text)
         self.row_index_label.setText(f"#{index}" if index > 0 else "")
         self.schedule_file_path_elide_refresh()
@@ -342,8 +335,8 @@ class ProofreadingEditPanel(QWidget):
 
         self.src_text.blockSignals(True)
         self.dst_text.blockSignals(True)
-        self.src_text.setPlainText(item.get_src())
-        self.dst_text.setPlainText(item.get_dst())
+        self.src_text.setPlainText(item.src)
+        self.dst_text.setPlainText(item.dst)
         self.src_text.blockSignals(False)
         self.dst_text.blockSignals(False)
 
@@ -354,11 +347,8 @@ class ProofreadingEditPanel(QWidget):
         self.update_button_states()
         self.refresh_status_tags(item, warnings)
         self.schedule_status_height_refresh()
-        # 先隐藏术语状态标签，等异步计算完成后再显示。
-        self.set_status_tag_visible(self.glossary_status_tag, False)
-        self.glossary_status_dirty = True
-        self.glossary_status_timer.stop()
-        QTimer.singleShot(0, self.start_glossary_status_compute)
+        self.glossary_status_dirty = False
+        self.refresh_glossary_status(item)
 
     def clear(self) -> None:
         self.current_item = None
@@ -491,8 +481,8 @@ class ProofreadingEditPanel(QWidget):
             return
 
         self.update_button_states()
-        # 输入过程只标记 dirty，不做重检查；离开编辑框后再异步计算。
         self.glossary_status_dirty = True
+        # 未保存内容无法对应到稳定快照，先隐藏术语标签，待保存刷新后再展示。
         self.set_status_tag_visible(self.glossary_status_tag, False)
 
     def schedule_glossary_status_recheck(self) -> None:
@@ -522,12 +512,16 @@ class ProofreadingEditPanel(QWidget):
         """译文框焦点离开后触发重检查（不做保存）。"""
         self.schedule_glossary_status_recheck()
 
-    def refresh_status_tags(self, item: Item, warnings: list[WarningType]) -> None:
+    def refresh_status_tags(
+        self,
+        item: ProofreadingItemView,
+        warnings: tuple[str, ...] | list[str],
+    ) -> None:
         self.clear_status_tags()
 
         # 统一从 Labels 层取文案与类型，避免多处维护导致颜色/文本漂移。
         status_text, tag_type = ProofreadingLabels.get_status_tag_spec(
-            item.get_status()
+            self.resolve_status(item.status)
         )
         self.translation_status_tag.setText(status_text)
         self.translation_status_tag.set_type(tag_type)
@@ -538,7 +532,7 @@ class ProofreadingEditPanel(QWidget):
                 tag = self.warning_tags.get(warning)
                 if tag is None:
                     continue
-                text, warn_tag_type = ProofreadingLabels.get_warning_tag_spec(warning)
+                text, warn_tag_type = self.get_warning_tag_spec(warning)
                 tag.setText(text)
                 tag.set_type(warn_tag_type)
                 self.set_status_tag_visible(tag, True)
@@ -592,76 +586,9 @@ class ProofreadingEditPanel(QWidget):
 
     def start_glossary_status_compute(self) -> None:
         item = self.current_item
-        checker = self.result_checker
-
         if item is None:
             return
-
-        # 关闭术语表功能或未准备数据时，按“无术语”处理。
-        if not DataManager.get().get_glossary_enable() or checker is None:
-            self.clear_glossary_status()
-            self.set_status_tag_visible(self.glossary_status_tag, True)
-            self.glossary_status_dirty = False
-            return
-        if not checker.prepared_glossary_data:
-            self.clear_glossary_status()
-            self.set_status_tag_visible(self.glossary_status_tag, True)
-            self.glossary_status_dirty = False
-            return
-
-        self.glossary_status_token += 1
-        token = self.glossary_status_token
-        item_id = id(item)
-        checker_id = id(checker)
-        src_text = self.src_text.toPlainText()
-        dst_text = self.dst_text.toPlainText()
-        self.glossary_status_checker_id = checker_id
-
-        def task() -> None:
-            try:
-                temp_item = Item()
-                temp_item.set_src(src_text)
-                temp_item.set_dst(dst_text)
-
-                src_repl, dst_repl = checker.get_replaced_text(temp_item)
-                applied: list[tuple[str, str]] = []
-                failed: list[tuple[str, str]] = []
-
-                for term in checker.prepared_glossary_data:
-                    glossary_src = term.get("src", "")
-                    glossary_dst = term.get("dst", "")
-                    if not glossary_src or glossary_src not in src_repl:
-                        continue
-                    # 与 ResultChecker 保持一致：空 dst 条目不参与判断。
-                    if not glossary_dst:
-                        continue
-                    if glossary_dst in dst_repl:
-                        applied.append((glossary_src, glossary_dst))
-                    else:
-                        failed.append((glossary_src, glossary_dst))
-
-                payload = {
-                    "token": token,
-                    "item_id": item_id,
-                    "checker_id": checker_id,
-                    "applied": applied,
-                    "failed": failed,
-                }
-                self.glossary_status_computed.emit(payload)
-            except Exception:
-                # 术语状态异常不应影响编辑；失败时保持隐藏。
-                self.glossary_status_computed.emit(
-                    {
-                        "token": token,
-                        "item_id": item_id,
-                        "checker_id": checker_id,
-                        "applied": [],
-                        "failed": [],
-                        "failed_compute": True,
-                    }
-                )
-
-        threading.Thread(target=task, daemon=True).start()
+        self.refresh_glossary_status(item)
 
     def clear_glossary_status(self) -> None:
         self.glossary_status_tag.setText(
@@ -671,16 +598,24 @@ class ProofreadingEditPanel(QWidget):
         self.glossary_status_tag.setToolTip("")
 
     def on_glossary_status_computed(self, payload: dict) -> None:
-        token = int(payload.get("token", 0))
-        if token != self.glossary_status_token:
+        del payload
+        item = self.current_item
+        if item is None:
             return
-        if id(self.current_item) != int(payload.get("item_id", 0)):
-            return
-        if self.glossary_status_checker_id != int(payload.get("checker_id", 0)):
+        self.refresh_glossary_status(item)
+
+    def refresh_glossary_status(self, item: ProofreadingItemView) -> None:
+        if self.has_unsaved_changes():
+            self.set_status_tag_visible(self.glossary_status_tag, False)
             return
 
-        applied = payload.get("applied", [])
-        failed = payload.get("failed", [])
+        if "GLOSSARY" not in item.warnings:
+            self.set_status_tag_visible(self.glossary_status_tag, False)
+            self.glossary_status_dirty = False
+            return
+
+        applied: list[tuple[str, str]] = []
+        failed = list(item.failed_glossary_terms)
         if not applied and not failed:
             self.set_status_tag_visible(self.glossary_status_tag, False)
             self.glossary_status_dirty = False
@@ -714,3 +649,38 @@ class ProofreadingEditPanel(QWidget):
         self.glossary_status_tag.setToolTip("\n".join(tooltip))
         self.set_status_tag_visible(self.glossary_status_tag, True)
         self.glossary_status_dirty = False
+
+    def resolve_status(self, status: str):
+        from base.Base import Base
+
+        try:
+            return Base.ProjectStatus(status)
+        except ValueError:
+            return status
+
+    def get_warning_tag_spec(self, warning: str) -> tuple[str, StatusTagType]:
+        if warning == "KANA":
+            return (Localizer.get().issue_kana_residue, StatusTagType.WARNING)
+        if warning == "HANGEUL":
+            return (Localizer.get().issue_hangeul_residue, StatusTagType.WARNING)
+        if warning == "TEXT_PRESERVE":
+            return (
+                Localizer.get().proofreading_page_warning_text_preserve,
+                StatusTagType.WARNING,
+            )
+        if warning == "SIMILARITY":
+            return (
+                Localizer.get().proofreading_page_warning_similarity,
+                StatusTagType.ERROR,
+            )
+        if warning == "GLOSSARY":
+            return (
+                Localizer.get().proofreading_page_warning_glossary,
+                StatusTagType.WARNING,
+            )
+        if warning == "RETRY_THRESHOLD":
+            return (
+                Localizer.get().proofreading_page_warning_retry,
+                StatusTagType.WARNING,
+            )
+        return (str(warning), StatusTagType.INFO)

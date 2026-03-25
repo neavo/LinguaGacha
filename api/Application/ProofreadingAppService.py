@@ -15,6 +15,9 @@ from module.Data.Proofreading.ProofreadingMutationService import (
 from module.Data.Proofreading.ProofreadingRecheckService import (
     ProofreadingRecheckService,
 )
+from module.Data.Proofreading.ProofreadingRetranslateService import (
+    ProofreadingRetranslateService,
+)
 from module.Data.Proofreading.ProofreadingSnapshotService import (
     ProofreadingLoadResult,
 )
@@ -37,6 +40,7 @@ class ProofreadingAppService:
         filter_service: ProofreadingFilterService | None = None,
         mutation_service: ProofreadingMutationService | None = None,
         recheck_service: ProofreadingRecheckService | None = None,
+        retranslate_service: ProofreadingRetranslateService | None = None,
     ) -> None:
         if data_manager is None:
             self.data_manager = DataManager.get()
@@ -62,6 +66,11 @@ class ProofreadingAppService:
             self.recheck_service = ProofreadingRecheckService()
         else:
             self.recheck_service = recheck_service
+
+        if retranslate_service is None:
+            self.retranslate_service = ProofreadingRetranslateService(self.data_manager)
+        else:
+            self.retranslate_service = retranslate_service
 
     def resolve_lg_path(self, request: dict[str, Any]) -> str:
         """统一解析工程路径，保证各个路由都从同一入口读当前工程。"""
@@ -156,6 +165,31 @@ class ProofreadingAppService:
             )["result"],
         }
 
+    def save_all(self, request: dict[str, Any]) -> dict[str, object]:
+        """批量保存条目，并返回刷新后的 mutation 结果。"""
+
+        items = self.resolve_request_items(request)
+        expected_revision = int(request.get("expected_revision", 0) or 0)
+        changed_item_ids = self.mutation_service.save_all(
+            items,
+            expected_revision=expected_revision,
+        )
+        refreshed_result = self.snapshot_service.load_snapshot(
+            self.resolve_lg_path(request)
+        )
+        refreshed_items = self.find_items_in_snapshot(
+            refreshed_result,
+            changed_item_ids,
+        )
+        return {
+            "result": build_mutation_result_payload(
+                revision=refreshed_result.revision,
+                changed_item_ids=list(changed_item_ids),
+                items=self.build_items_dict(refreshed_items, refreshed_result),
+                summary=refreshed_result.summary,
+            )["result"],
+        }
+
     def replace_all(self, request: dict[str, Any]) -> dict[str, object]:
         """批量替换所有命中项，并把写入结果统一收口成 mutation payload。"""
 
@@ -226,6 +260,33 @@ class ProofreadingAppService:
                 changed_item_ids=[item.get_id() or 0],
                 items=[item_dict],
                 summary=load_result.summary,
+            )["result"],
+        }
+
+    def retranslate_items(self, request: dict[str, Any]) -> dict[str, object]:
+        """单条/批量重译条目，并返回刷新后的 mutation 结果。"""
+
+        items = self.resolve_request_items(request)
+        expected_revision = int(request.get("expected_revision", 0) or 0)
+        raw_result = self.retranslate_service.retranslate_items(
+            items,
+            expected_revision=expected_revision,
+        )
+        changed_item_ids = list(raw_result.get("changed_item_ids", []))
+        refreshed_result = self.snapshot_service.load_snapshot(
+            self.resolve_lg_path(request)
+        )
+        refreshed_items = self.find_items_in_snapshot(
+            refreshed_result,
+            changed_item_ids,
+        )
+        revision_raw = raw_result.get("revision", refreshed_result.revision)
+        return {
+            "result": build_mutation_result_payload(
+                revision=int(revision_raw or 0),
+                changed_item_ids=changed_item_ids,
+                items=self.build_items_dict(refreshed_items, refreshed_result),
+                summary=refreshed_result.summary,
             )["result"],
         }
 
@@ -403,6 +464,22 @@ class ProofreadingAppService:
 
         return None
 
+    def find_items_in_snapshot(
+        self,
+        load_result: ProofreadingLoadResult,
+        item_ids: list[int | str],
+    ) -> list[Item]:
+        """按条目 id 列表批量找回刷新后的对象。"""
+
+        found_items: list[Item] = []
+        for item_id in item_ids:
+            if not isinstance(item_id, int):
+                continue
+            snapshot_item = self.find_item_in_snapshot(load_result, item_id)
+            if snapshot_item is not None:
+                found_items.append(snapshot_item)
+        return found_items
+
     def build_snapshot_dict(
         self,
         load_result: ProofreadingLoadResult,
@@ -420,7 +497,9 @@ class ProofreadingAppService:
                 warning_item_count += 1
 
         summary = dict(load_result.summary)
-        summary["total_items"] = int(summary.get("total_items", len(load_result.items_all)))
+        summary["total_items"] = int(
+            summary.get("total_items", len(load_result.items_all))
+        )
         summary["filtered_items"] = len(target_items)
         summary["warning_items"] = warning_item_count
 

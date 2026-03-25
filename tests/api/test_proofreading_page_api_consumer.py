@@ -39,7 +39,9 @@ def build_snapshot(*, revision: int, item_ids: tuple[int, ...]) -> ProofreadingS
     )
 
 
-def test_proofreading_page_reload_invalidated_snapshot_restores_selected_item_id() -> None:
+def test_proofreading_page_reload_invalidated_snapshot_restores_selected_item_id() -> (
+    None
+):
     page = ProofreadingPage.__new__(ProofreadingPage)
     page.proofreading_api_client = Mock()
     page.api_state_store = Mock()
@@ -69,7 +71,9 @@ def test_proofreading_page_reload_invalidated_snapshot_restores_selected_item_id
     assert consumed["preferred_item_id"] == 22
 
 
-def test_proofreading_page_reload_invalidated_snapshot_skips_when_state_is_fresh() -> None:
+def test_proofreading_page_reload_invalidated_snapshot_skips_when_state_is_fresh() -> (
+    None
+):
     page = ProofreadingPage.__new__(ProofreadingPage)
     page.proofreading_api_client = Mock()
     page.api_state_store = Mock()
@@ -82,3 +86,29 @@ def test_proofreading_page_reload_invalidated_snapshot_skips_when_state_is_fresh
     page.proofreading_api_client.get_snapshot.assert_not_called()
     page.api_state_store.clear_proofreading_snapshot_invalidated.assert_not_called()
     page.apply_snapshot.assert_not_called()
+
+
+def test_proofreading_page_apply_snapshot_replaces_page_level_snapshot_state() -> None:
+    page = ProofreadingPage.__new__(ProofreadingPage)
+    page.table_widget = Mock()
+    page.edit_panel = Mock()
+    page.search_card = Mock()
+    page.restore_selected_item = Mock()
+    page.check_engine_status = Mock()
+    page.current_snapshot = ProofreadingSnapshot()
+    page.filtered_items = []
+    page.current_item = None
+    page.current_row_index = -1
+    page.is_readonly = True
+
+    snapshot = build_snapshot(revision=15, item_ids=(11, 22, 33))
+
+    page.apply_snapshot(snapshot, preferred_item_id=22)
+
+    assert page.current_snapshot == snapshot
+    assert list(page.filtered_items) == list(snapshot.items)
+    assert page.selected_item_id == 22
+    assert page.is_readonly is False
+    page.table_widget.set_items.assert_called_once_with(list(snapshot.items))
+    page.restore_selected_item.assert_called_once_with()
+    page.check_engine_status.assert_called_once_with()

@@ -1,4 +1,3 @@
-import importlib
 import threading
 from collections import Counter
 from dataclasses import dataclass
@@ -45,21 +44,26 @@ from qfluentwidgets import themeColor
 
 from base.Base import Base
 from base.LogManager import LogManager
-from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
 from frontend.Proofreading.ProofreadingLabels import ProofreadingLabels
 from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
-from model.Item import Item
+from model.Api.ProofreadingModels import ProofreadingItemView
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import WarningType
 from widget.CustomLineEdit import CustomSearchLineEdit
 
 
-def get_data_manager_class() -> Any:
-    module = importlib.import_module("module.Data.DataManager")
-    return getattr(module, "DataManager")
-
-
 NO_WARNING_TAG = "NO_WARNING"
+WARNING_KANA = "KANA"
+WARNING_HANGEUL = "HANGEUL"
+WARNING_TEXT_PRESERVE = "TEXT_PRESERVE"
+WARNING_SIMILARITY = "SIMILARITY"
+WARNING_GLOSSARY = "GLOSSARY"
+WARNING_RETRY_THRESHOLD = "RETRY_THRESHOLD"
+DEFAULT_ACTIVE_STATUSES = {
+    Base.ProjectStatus.NONE,
+    Base.ProjectStatus.PROCESSED,
+    Base.ProjectStatus.ERROR,
+    Base.ProjectStatus.PROCESSED_IN_PAST,
+}
 
 
 class FilterListItemWidget(QWidget):
@@ -216,7 +220,7 @@ class FilterRefreshComputeResult:
     token: int
     file_counts: dict[str, int]
     status_counts: dict[Base.ProjectStatus, int]
-    warning_counts: dict[str | WarningType, int]
+    warning_counts: dict[str, int]
     term_counts_sorted: tuple[tuple[tuple[str, str], int], ...]
     glossary_active: bool
 
@@ -260,29 +264,20 @@ class FilterDialog(MessageBoxBase):
 
     def __init__(
         self,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]],
-        result_checker: Any,
+        items: list[ProofreadingItemView],
+        project_id: str,
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
 
         # 规则跳过与重复条目无需校对；EXCLUDED 由状态筛选控制显示。
         self.items = [
-            i
-            for i in items
-            if i.get_status()
-            not in (
-                Base.ProjectStatus.DUPLICATED,
-                Base.ProjectStatus.RULE_SKIPPED,
-            )
+            i for i in items if i.status not in ("DUPLICATED", "RULE_SKIPPED")
         ]
-        self.warning_map = warning_map
-        self.result_checker = result_checker
-
-        # glossary failure cache（由 Page 在加载/规则刷新后构建并传入）。
-        self.failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
-        self.all_glossary_terms: set[tuple[str, str]] = set()
+        self.project_id = project_id
+        self.all_glossary_terms: set[tuple[str, str]] = {
+            term for item in self.items for term in item.failed_glossary_terms
+        }
 
         # 持久化保存术语选中状态（跨 refresh 保持）。
         self.term_checked_state: set[tuple[str, str]] = set()
@@ -290,8 +285,8 @@ class FilterDialog(MessageBoxBase):
         # 计数文本的 base_label 与上一轮 count（用于避免无效 setText / repaint）。
         self.status_base_labels: dict[Base.ProjectStatus, str] = {}
         self.status_count_cache: dict[Base.ProjectStatus, int] = {}
-        self.warning_base_labels: dict[str | WarningType, str] = {}
-        self.warning_count_cache: dict[str | WarningType, int] = {}
+        self.warning_base_labels: dict[str, str] = {}
+        self.warning_count_cache: dict[str, int] = {}
 
         # 术语列表当前顺序（用于尽量避免重复 clear + rebuild）。
         self.term_list_order: tuple[tuple[str, str], ...] = ()
@@ -312,11 +307,7 @@ class FilterDialog(MessageBoxBase):
         """导出错误报告"""
         # 1. 获取当前筛选结果中的错误条目
         items = self.get_current_filtered_items()
-        error_items = [
-            i
-            for i in items
-            if ProofreadingDomain.get_item_warnings(i, self.warning_map)
-        ]
+        error_items = [item for item in items if item.warnings]
 
         if not error_items:
             InfoBar.warning(
@@ -331,7 +322,7 @@ class FilterDialog(MessageBoxBase):
             return
 
         # 2. 准备导出路径
-        lg_path = get_data_manager_class().get().get_lg_path()
+        lg_path = self.project_id
         if not lg_path:
             return
 
@@ -364,9 +355,7 @@ class FilterDialog(MessageBoxBase):
 
         # 警告筛选 (只列结果检查，忽略文件范围)
         valid_warning_buttons = {
-            w: b
-            for w, b in self.warning_buttons.items()
-            if w != NO_WARNING_TAG
+            w: b for w, b in self.warning_buttons.items() if w != NO_WARNING_TAG
         }
 
         selected_warnings = {
@@ -395,21 +384,22 @@ class FilterDialog(MessageBoxBase):
 
         # 4.2 错误条目
         for i, item in enumerate(error_items, 1):
-            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-            warning_strs = [ProofreadingLabels.get_warning_label(w) for w in warnings]
+            warning_strs = [
+                self.get_warning_label(warning) for warning in item.warnings
+            ]
             warning_line = " | ".join(warning_strs)
 
             # Item Header
             content_lines.append(f"No. {i}  [{warning_line}]")
-            content_lines.append(f"File: {item.get_file_path()}")
+            content_lines.append(f"File: {item.file_path}")
             content_lines.append(section_separator)
 
             # Content
-            content_lines.append(item.get_src())
+            content_lines.append(item.src)
             content_lines.append("▽")
             content_lines.append("▽")
             content_lines.append("▽")
-            content_lines.append(item.get_dst())
+            content_lines.append(item.dst)
 
             # Item Footer
             content_lines.append(separator_line)
@@ -540,7 +530,7 @@ class FilterDialog(MessageBoxBase):
         self.file_list.itemClicked.connect(self.on_file_item_clicked)
 
         # 统计每个文件的条目数，按路径排序
-        file_item_counts = Counter(item.get_file_path() for item in self.items)
+        file_item_counts = Counter(item.file_path for item in self.items)
         file_paths = sorted(file_item_counts.keys())
         self.file_list_items: dict[str, QListWidgetItem] = {}
         self.file_list_widgets: dict[str, FilterListItemWidget] = {}
@@ -620,7 +610,7 @@ class FilterDialog(MessageBoxBase):
         for status, label in status_types:
             btn = PillPushButton(f"{label} • 0")
             btn.setCheckable(True)
-            btn.setChecked(status in ProofreadingDomain.DEFAULT_STATUSES)
+            btn.setChecked(status in DEFAULT_ACTIVE_STATUSES)
             self.setup_small_button(btn)
             btn.clicked.connect(self.on_filter_changed)
             self.status_buttons[status] = btn
@@ -667,35 +657,35 @@ class FilterDialog(MessageBoxBase):
         warning_row.setSpacing(6)
         warning_row.setContentsMargins(0, 0, 0, 0)
 
-        self.warning_buttons: dict[str | WarningType, PillPushButton] = {}
+        self.warning_buttons: dict[str, PillPushButton] = {}
         warning_types = [
             (
                 NO_WARNING_TAG,
                 Localizer.get().proofreading_page_filter_no_warning,
             ),
             (
-                WarningType.KANA,
-                ProofreadingLabels.get_warning_label(WarningType.KANA),
+                WARNING_KANA,
+                self.get_warning_label(WARNING_KANA),
             ),
             (
-                WarningType.HANGEUL,
-                ProofreadingLabels.get_warning_label(WarningType.HANGEUL),
+                WARNING_HANGEUL,
+                self.get_warning_label(WARNING_HANGEUL),
             ),
             (
-                WarningType.TEXT_PRESERVE,
-                ProofreadingLabels.get_warning_label(WarningType.TEXT_PRESERVE),
+                WARNING_TEXT_PRESERVE,
+                self.get_warning_label(WARNING_TEXT_PRESERVE),
             ),
             (
-                WarningType.SIMILARITY,
-                ProofreadingLabels.get_warning_label(WarningType.SIMILARITY),
+                WARNING_SIMILARITY,
+                self.get_warning_label(WARNING_SIMILARITY),
             ),
             (
-                WarningType.GLOSSARY,
-                ProofreadingLabels.get_warning_label(WarningType.GLOSSARY),
+                WARNING_GLOSSARY,
+                self.get_warning_label(WARNING_GLOSSARY),
             ),
             (
-                WarningType.RETRY_THRESHOLD,
-                ProofreadingLabels.get_warning_label(WarningType.RETRY_THRESHOLD),
+                WARNING_RETRY_THRESHOLD,
+                self.get_warning_label(WARNING_RETRY_THRESHOLD),
             ),
         ]
 
@@ -873,6 +863,21 @@ class FilterDialog(MessageBoxBase):
         for widget in getattr(self, "term_list_widgets", {}).values():
             widget.set_checked(False)
 
+    def get_warning_label(self, warning: str) -> str:
+        if warning == WARNING_KANA:
+            return Localizer.get().issue_kana_residue
+        if warning == WARNING_HANGEUL:
+            return Localizer.get().issue_hangeul_residue
+        if warning == WARNING_TEXT_PRESERVE:
+            return Localizer.get().proofreading_page_warning_text_preserve
+        if warning == WARNING_SIMILARITY:
+            return Localizer.get().proofreading_page_warning_similarity
+        if warning == WARNING_GLOSSARY:
+            return Localizer.get().proofreading_page_warning_glossary
+        if warning == WARNING_RETRY_THRESHOLD:
+            return Localizer.get().proofreading_page_warning_retry
+        return str(warning)
+
     # =========================================
     # 全量联动刷新（防抖 + 后台 compute + 主线程 apply）
     # =========================================
@@ -902,17 +907,52 @@ class FilterDialog(MessageBoxBase):
             glossary_terms=set(),
         )
 
-    def get_current_filtered_items(self) -> list[Item]:
-        """根据当前所有筛选条件获取符合条件的条目列表"""
+    def get_current_filtered_items(self) -> list[ProofreadingItemView]:
+        """根据当前所有筛选条件获取符合条件的快照条目列表。"""
+
         options = self.build_linked_filter_options_snapshot()
-        return ProofreadingDomain.filter_items(
-            items=self.items,
-            warning_map=self.warning_map,
-            options=options,
-            checker=self.result_checker,
-            enable_search_filter=False,
+        return self.filter_items_snapshot(
+            self.items,
+            options,
             enable_glossary_term_filter=False,
         )
+
+    def filter_items_snapshot(
+        self,
+        items: list[ProofreadingItemView],
+        options: ProofreadingFilterOptionsSnapshot,
+        *,
+        enable_glossary_term_filter: bool,
+    ) -> list[ProofreadingItemView]:
+        selected_warnings = set(options.warning_types)
+        selected_statuses = {str(status) for status in options.statuses}
+        selected_files = set(options.file_paths)
+        selected_terms = {tuple(term) for term in options.glossary_terms}
+
+        filtered: list[ProofreadingItemView] = []
+        for item in items:
+            if selected_files and item.file_path not in selected_files:
+                continue
+            if selected_statuses and item.status not in selected_statuses:
+                continue
+
+            item_warnings = set(item.warnings)
+            if item_warnings:
+                if selected_warnings and item_warnings.isdisjoint(selected_warnings):
+                    continue
+            elif selected_warnings and NO_WARNING_TAG not in selected_warnings:
+                continue
+
+            if enable_glossary_term_filter and "GLOSSARY" in item_warnings:
+                if not selected_terms:
+                    continue
+                item_terms = {tuple(term) for term in item.failed_glossary_terms}
+                if item_terms.isdisjoint(selected_terms):
+                    continue
+
+            filtered.append(item)
+
+        return filtered
 
     def schedule_refresh(self, *, delay_ms: int | None = None) -> None:
         """安排一次联动刷新（防抖合并）。"""
@@ -934,66 +974,40 @@ class FilterDialog(MessageBoxBase):
 
         token = self.refresh_token
         options_snapshot = self.build_linked_filter_options_snapshot()
-        # items 是大列表：只在 UI 线程整体替换，不做原地修改；这里直接引用避免频繁 copy。
-        # warning_map / failed_terms 可能在后台任务回调里增量更新；为避免 compute 线程读到并发修改，
-        # 在 UI 线程先拷贝一份 dict 快照。
         items_snapshot = self.items
-        warning_map_snapshot = dict(self.warning_map) if self.warning_map else {}
-        checker_snapshot = self.result_checker
-        failed_terms_snapshot = (
-            dict(self.failed_terms_by_item_key) if self.failed_terms_by_item_key else {}
-        )
 
-        glossary_btn = self.warning_buttons.get(WarningType.GLOSSARY)
+        glossary_btn = self.warning_buttons.get(WARNING_GLOSSARY)
         glossary_active = bool(glossary_btn.isChecked()) if glossary_btn else False
 
         def task() -> None:
             try:
-                filtered_items = ProofreadingDomain.filter_items(
-                    items=items_snapshot,
-                    warning_map=warning_map_snapshot,
-                    options=options_snapshot,
-                    checker=checker_snapshot,
-                    enable_search_filter=False,
+                filtered_items = self.filter_items_snapshot(
+                    items_snapshot,
+                    options_snapshot,
                     enable_glossary_term_filter=False,
                 )
 
-                file_counts = Counter(item.get_file_path() for item in filtered_items)
-                status_counts = Counter(item.get_status() for item in filtered_items)
+                file_counts = Counter(item.file_path for item in filtered_items)
+                status_counts = Counter(item.status for item in filtered_items)
 
-                warning_counts: dict[str | WarningType, int] = {}
+                warning_counts: dict[str, int] = {}
                 no_warning_count = 0
                 for item in filtered_items:
-                    item_warnings = ProofreadingDomain.get_item_warnings(
-                        item, warning_map_snapshot
-                    )
+                    item_warnings = item.warnings
                     if item_warnings:
                         for w in item_warnings:
                             warning_counts[w] = warning_counts.get(w, 0) + 1
                     else:
                         no_warning_count += 1
-                warning_counts[NO_WARNING_TAG] = (
-                    no_warning_count
-                )
+                warning_counts[NO_WARNING_TAG] = no_warning_count
 
                 term_counts_sorted: tuple[tuple[tuple[str, str], int], ...] = ()
                 if glossary_active:
                     term_counts: dict[tuple[str, str], int] = {}
                     for item in filtered_items:
-                        item_warnings = ProofreadingDomain.get_item_warnings(
-                            item, warning_map_snapshot
-                        )
-                        if WarningType.GLOSSARY not in item_warnings:
+                        if "GLOSSARY" not in item.warnings:
                             continue
-
-                        key = ProofreadingDomain.get_warning_key(item)
-                        terms = failed_terms_snapshot.get(key)
-                        if terms is None:
-                            terms = (
-                                tuple(checker_snapshot.get_failed_glossary_terms(item))
-                                if checker_snapshot is not None
-                                else ()
-                            )
+                        terms = item.failed_glossary_terms
                         for term in terms:
                             term_counts[term] = term_counts.get(term, 0) + 1
 
@@ -1054,9 +1068,7 @@ class FilterDialog(MessageBoxBase):
             btn.setText(f"{base_label} • {count}")
             self.status_count_cache[status] = count
 
-    def apply_warning_counts(
-        self, warning_counts: dict[str | WarningType, int]
-    ) -> None:
+    def apply_warning_counts(self, warning_counts: dict[str, int]) -> None:
         for warning_type, btn in self.warning_buttons.items():
             count = warning_counts.get(warning_type, 0)
             if self.warning_count_cache.get(warning_type) == count:
@@ -1169,8 +1181,6 @@ class FilterDialog(MessageBoxBase):
         self.refresh_timer.stop()
 
         self.items = []
-        self.warning_map = {}
-        self.failed_terms_by_item_key = {}
         self.all_glossary_terms = set()
         self.term_list_order = ()
 
@@ -1181,10 +1191,8 @@ class FilterDialog(MessageBoxBase):
     def update_snapshot(
         self,
         *,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]],
-        result_checker: Any,
-        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
+        items: list[ProofreadingItemView],
+        project_id: str,
     ) -> None:
         """更新对话框的数据源与内部缓存。
 
@@ -1196,26 +1204,15 @@ class FilterDialog(MessageBoxBase):
         self.refresh_timer.stop()
 
         self.items = [
-            i
-            for i in items
-            if i.get_status()
-            not in (
-                Base.ProjectStatus.DUPLICATED,
-                Base.ProjectStatus.RULE_SKIPPED,
-            )
+            i for i in items if i.status not in ("DUPLICATED", "RULE_SKIPPED")
         ]
-        self.warning_map = warning_map
-        self.result_checker = result_checker
-
-        # 当成只读快照使用：Page 在刷新时会整体替换 dict，而不是原地 mutate。
-        self.failed_terms_by_item_key = failed_terms_by_item_key or {}
-        all_terms: set[tuple[str, str]] = set()
-        for terms in self.failed_terms_by_item_key.values():
-            all_terms.update(terms)
-        self.all_glossary_terms = all_terms
+        self.project_id = project_id
+        self.all_glossary_terms = {
+            term for item in self.items for term in item.failed_glossary_terms
+        }
 
         # 数据源变化可能导致文件列表范围变化：必要时重建列表。
-        new_paths = {item.get_file_path() for item in self.items}
+        new_paths = {item.file_path for item in self.items}
         old_paths = set(self.file_list_items.keys())
         if new_paths != old_paths:
             prev_checked = {
@@ -1289,7 +1286,7 @@ class FilterDialog(MessageBoxBase):
         }
 
         selected_terms: set[tuple[str, str]] = set()
-        if WarningType.GLOSSARY in selected_warnings:
+        if WARNING_GLOSSARY in selected_warnings:
             selected_terms = set(self.term_checked_state)
 
         return ProofreadingFilterOptionsSnapshot(
