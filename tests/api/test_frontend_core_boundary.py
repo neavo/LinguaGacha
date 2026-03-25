@@ -93,3 +93,27 @@ def test_phase_two_proofreading_frontend_files_are_listed_separately() -> None:
     assert set(PHASE_TWO_QUALITY_FRONTEND_FILES).isdisjoint(
         PHASE_TWO_PROOFREADING_FRONTEND_FILES
     )
+
+
+def test_phase_two_proofreading_helper_files_do_not_import_core_singletons_directly() -> (
+    None
+):
+    root_dir = Path(__file__).resolve().parents[2]
+
+    forbidden_imports: tuple[str, ...] = (
+        "from module.Data.DataManager import DataManager",
+        "from module.Config import Config",
+        "from module.ResultChecker import ResultChecker",
+    )
+    helper_files: tuple[str, ...] = (
+        "frontend/Proofreading/ProofreadingLoadService.py",
+        "frontend/Proofreading/ProofreadingDomain.py",
+    )
+
+    for relative_path in helper_files:
+        file_path = root_dir / relative_path
+        content = file_path.read_text(encoding="utf-8")
+        for forbidden_import in forbidden_imports:
+            assert forbidden_import not in content, (
+                f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
+            )

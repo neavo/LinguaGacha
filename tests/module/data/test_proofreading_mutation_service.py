@@ -1,0 +1,293 @@
+from __future__ import annotations
+
+import threading
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from base.Base import Base
+from model.Item import Item
+
+
+def build_item(
+    *,
+    item_id: int,
+    src: str,
+    dst: str,
+    file_path: str,
+    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+) -> Item:
+    """构造最小条目对象，方便验证写入与状态变更。"""
+
+    return Item(
+        id=item_id,
+        src=src,
+        dst=dst,
+        file_path=file_path,
+        status=status,
+    )
+
+
+def build_fake_data_manager(
+    *,
+    revision: int,
+) -> tuple[SimpleNamespace, dict[str, object]]:
+    """构造最小写入口假对象，方便验证 revision 与写回。"""
+
+    meta_store: dict[str, object] = {
+        "proofreading_revision.proofreading": revision,
+    }
+    fake_data_manager = SimpleNamespace(
+        session=SimpleNamespace(state_lock=threading.RLock()),
+        save_item=MagicMock(side_effect=lambda item: item.get_id() or 0),
+        replace_all_items=MagicMock(
+            side_effect=lambda items: [item.get_id() or 0 for item in items]
+        ),
+        update_batch=MagicMock(),
+        get_meta=MagicMock(
+            side_effect=lambda key, default=None: meta_store.get(key, default)
+        ),
+        set_meta=MagicMock(
+            side_effect=lambda key, value: meta_store.__setitem__(key, value)
+        ),
+    )
+    return fake_data_manager, meta_store
+
+
+def test_apply_manual_edit_updates_status_and_bumps_revision() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=3)
+    service = ProofreadingMutationService(data_manager=data_manager)
+    item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="",
+        file_path="script/a.txt",
+    )
+
+    result = service.apply_manual_edit(
+        item,
+        "Hero arrived",
+        expected_revision=3,
+    )
+
+    assert result == 1
+    assert item.get_dst() == "Hero arrived"
+    assert item.get_status() == Base.ProjectStatus.PROCESSED
+    assert data_manager.save_item.call_count == 1
+    assert meta_store["proofreading_revision.proofreading"] == 4
+
+
+def test_apply_manual_edit_rejects_stale_revision() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingRevisionConflictError,
+    )
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, _meta_store = build_fake_data_manager(revision=4)
+    service = ProofreadingMutationService(data_manager=data_manager)
+    item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="",
+        file_path="script/a.txt",
+    )
+
+    with pytest.raises(ProofreadingRevisionConflictError):
+        service.apply_manual_edit(
+            item,
+            "Hero arrived",
+            expected_revision=3,
+        )
+
+    assert data_manager.save_item.call_count == 0
+
+
+def test_apply_manual_edit_does_not_mutate_item_when_save_fails() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=4)
+    data_manager.save_item.side_effect = RuntimeError("save failed")
+    service = ProofreadingMutationService(data_manager=data_manager)
+    item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="旧译文",
+        file_path="script/a.txt",
+        status=Base.ProjectStatus.ERROR,
+    )
+
+    with pytest.raises(RuntimeError, match="save failed"):
+        service.apply_manual_edit(
+            item,
+            "新译文",
+            expected_revision=4,
+        )
+
+    assert item.get_dst() == "旧译文"
+    assert item.get_status() == Base.ProjectStatus.ERROR
+    assert meta_store["proofreading_revision.proofreading"] == 4
+
+
+def test_save_all_replaces_all_items_and_bumps_revision() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=8)
+    service = ProofreadingMutationService(data_manager=data_manager)
+    items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="Hero arrived",
+            file_path="script/a.txt",
+        ),
+        build_item(
+            item_id=2,
+            src="旁白",
+            dst="Narration",
+            file_path="script/b.txt",
+        ),
+    ]
+
+    result = service.save_all(items, expected_revision=8)
+
+    assert result == [1, 2]
+    assert data_manager.replace_all_items.call_count == 1
+    assert meta_store["proofreading_revision.proofreading"] == 9
+
+
+def test_replace_all_returns_changed_item_ids_and_bumps_revision() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=2)
+    service = ProofreadingMutationService(data_manager=data_manager)
+    items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="alpha alpha",
+            file_path="script/a.txt",
+        ),
+        build_item(
+            item_id=2,
+            src="旁白",
+            dst="beta",
+            file_path="script/b.txt",
+            status=Base.ProjectStatus.PROCESSED_IN_PAST,
+        ),
+    ]
+
+    result = service.replace_all(
+        items,
+        expected_revision=2,
+        search_text="alpha",
+        replace_text="bravo",
+    )
+
+    assert result["changed_item_ids"] == [1]
+    assert result["changed_count"] == 1
+    assert result["revision"] == 3
+    assert result["items"] == [
+        {
+            "id": 1,
+            "dst": "bravo bravo",
+            "status": Base.ProjectStatus.PROCESSED,
+        }
+    ]
+    assert items[0].get_dst() == "bravo bravo"
+    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
+    assert data_manager.update_batch.call_count == 1
+    assert meta_store["proofreading_revision.proofreading"] == 3
+
+
+def test_replace_all_does_not_mutate_items_when_write_fails() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=6)
+    data_manager.update_batch.side_effect = RuntimeError("batch failed")
+    service = ProofreadingMutationService(data_manager=data_manager)
+    item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="alpha",
+        file_path="script/a.txt",
+        status=Base.ProjectStatus.ERROR,
+    )
+
+    with pytest.raises(RuntimeError, match="batch failed"):
+        service.replace_all(
+            [item],
+            expected_revision=6,
+            search_text="alpha",
+            replace_text="bravo",
+        )
+
+    assert item.get_dst() == "alpha"
+    assert item.get_status() == Base.ProjectStatus.ERROR
+    assert meta_store["proofreading_revision.proofreading"] == 6
+
+
+def test_replace_all_skips_write_when_no_item_changed() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, meta_store = build_fake_data_manager(revision=5)
+    service = ProofreadingMutationService(data_manager=data_manager)
+    items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="alpha",
+            file_path="script/a.txt",
+        )
+    ]
+
+    result = service.replace_all(
+        items,
+        expected_revision=5,
+        search_text="missing",
+        replace_text="bravo",
+    )
+
+    assert result["changed_item_ids"] == []
+    assert result["changed_count"] == 0
+    assert result["revision"] == 5
+    assert result["items"] == []
+    assert data_manager.update_batch.call_count == 0
+    assert meta_store["proofreading_revision.proofreading"] == 5
+
+
+def test_replace_batch_forwards_payload_to_data_manager() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, _meta_store = build_fake_data_manager(revision=1)
+    service = ProofreadingMutationService(data_manager=data_manager)
+
+    service.replace_batch(
+        [
+            {
+                "id": 1,
+                "dst": "新的译文",
+                "status": Base.ProjectStatus.PROCESSED,
+            }
+        ]
+    )
+
+    assert data_manager.update_batch.call_count == 1
