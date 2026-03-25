@@ -149,6 +149,7 @@ class ProofreadingPage(Base, QWidget):
         )
         self.snapshot_invalidation_timer.start()
         self.pending_quality_rule_refresh: bool = False
+        self.local_mutation_inflight_count: int = 0
         self.task_busy_hint: bool = False
 
         self.ui_font_px = self.FONT_SIZE
@@ -394,8 +395,46 @@ class ProofreadingPage(Base, QWidget):
             return project_id
         return self.api_state_store.get_project_path()
 
+    def has_local_mutation_inflight(self) -> bool:
+        return getattr(self, "local_mutation_inflight_count", 0) > 0
+
+    def sync_task_busy_hint(self) -> None:
+        self.task_busy_hint = self.has_local_mutation_inflight()
+
+    def begin_local_mutation(self) -> None:
+        self.local_mutation_inflight_count = (
+            getattr(self, "local_mutation_inflight_count", 0) + 1
+        )
+        self.sync_task_busy_hint()
+        self.check_engine_status()
+
+    def end_local_mutation(self) -> None:
+        current = getattr(self, "local_mutation_inflight_count", 0)
+        self.local_mutation_inflight_count = max(0, current - 1)
+        self.sync_task_busy_hint()
+        self.check_engine_status()
+
     def is_task_busy(self) -> bool:
-        return self.api_state_store.is_busy() or getattr(self, "task_busy_hint", False)
+        return (
+            self.api_state_store.is_busy()
+            or getattr(self, "is_resetting", False)
+            or self.has_local_mutation_inflight()
+            or getattr(self, "task_busy_hint", False)
+        )
+
+    def reset_search_matches(self) -> None:
+        """在快照切换后清空所有依赖旧列表索引的搜索运行态。"""
+
+        self.search_result = None
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_next_anchor_index = None
+        self.search_refilter_deferred = False
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
+        self.replace_once_last_item_index = None
+        self.replace_once_keep_match = False
+        self.search_card.clear_match_info()
 
     def find_filtered_item_index(self, item_id: int | str | None) -> int:
         if item_id is None:
@@ -456,16 +495,21 @@ class ProofreadingPage(Base, QWidget):
         self.current_snapshot = snapshot
         self.filtered_items = list(snapshot.items)
         self.selected_item_id = preferred_item_id
-        self.search_result = None
         self.current_item = None
         self.current_row_index = -1
         self.data_stale = False
         self.filter_options = snapshot.filters
         self.is_readonly = snapshot.readonly
+        self.reset_search_matches()
         self.table_widget.set_items(list(snapshot.items))
         if not snapshot.items:
             self.edit_panel.clear()
-        self.restore_selected_item()
+        search_keyword = getattr(self, "search_keyword", "")
+        if search_keyword:
+            self.pending_selected_item_id = preferred_item_id
+            self.start_search()
+        else:
+            self.restore_selected_item()
         self.check_engine_status()
 
     def reload_invalidated_snapshot_if_needed(self) -> None:
@@ -965,6 +1009,7 @@ class ProofreadingPage(Base, QWidget):
             self.search_result = None
             self.search_match_indices = []
             self.search_current_match = -1
+            self.pending_selected_item_id = None
             self.search_card.set_match_info(0, 0)
             return
 
@@ -977,6 +1022,7 @@ class ProofreadingPage(Base, QWidget):
         ]
         if not self.search_match_indices:
             self.search_current_match = -1
+            self.pending_selected_item_id = None
             self.search_card.set_match_info(0, 0)
             self.emit(
                 Base.Event.TOAST,
@@ -987,7 +1033,13 @@ class ProofreadingPage(Base, QWidget):
             )
             return
 
-        self.search_current_match = 0
+        preferred_item_id = self.pending_selected_item_id
+        preferred_index = self.find_filtered_item_index(preferred_item_id)
+        if preferred_index in self.search_match_indices:
+            self.search_current_match = self.search_match_indices.index(preferred_index)
+        else:
+            self.search_current_match = 0
+        self.pending_selected_item_id = None
         self.jump_to_match()
 
     @staticmethod
@@ -1433,6 +1485,7 @@ class ProofreadingPage(Base, QWidget):
             self.indeterminate_show(
                 Localizer.get().proofreading_page_indeterminate_saving
             )
+            self.begin_local_mutation()
 
             def task() -> None:
                 try:
@@ -1456,6 +1509,7 @@ class ProofreadingPage(Base, QWidget):
         self.run_with_unsaved_guard(action)
 
     def on_replace_all_done_ui(self, result: object) -> None:
+        self.end_local_mutation()
         self.indeterminate_hide()
         if not isinstance(result, ProofreadingMutationResult):
             self.emit(
@@ -1613,6 +1667,8 @@ class ProofreadingPage(Base, QWidget):
                 action()
             return
 
+        self.begin_local_mutation()
+
         def task() -> None:
             success = False
             result: ProofreadingMutationResult | None = None
@@ -1634,6 +1690,7 @@ class ProofreadingPage(Base, QWidget):
         threading.Thread(target=task, daemon=True).start()
 
     def on_item_saved_ui(self, result: object, success: bool) -> None:
+        self.end_local_mutation()
         if not success or not isinstance(result, ProofreadingMutationResult):
             self.emit(
                 Base.Event.TOAST,
@@ -1671,6 +1728,8 @@ class ProofreadingPage(Base, QWidget):
             self.schedule_reload("after_save")
 
     def start_recheck_item(self, item: ProofreadingItemView) -> None:
+        self.begin_local_mutation()
+
         def task() -> None:
             try:
                 result = self.proofreading_api_client.recheck_item(
@@ -1687,6 +1746,7 @@ class ProofreadingPage(Base, QWidget):
         threading.Thread(target=task, daemon=True).start()
 
     def on_item_rechecked_ui(self, result: object, success: bool) -> None:
+        self.end_local_mutation()
         if not success or not isinstance(result, ProofreadingMutationResult):
             return
 
@@ -1773,6 +1833,7 @@ class ProofreadingPage(Base, QWidget):
         if not items:
             return
 
+        self.begin_local_mutation()
         self.indeterminate_show(Localizer.get().translation_page_toast_resetting)
 
         def task() -> None:
@@ -1841,6 +1902,7 @@ class ProofreadingPage(Base, QWidget):
         if not items:
             return
 
+        self.begin_local_mutation()
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
         def task() -> None:
@@ -1862,6 +1924,7 @@ class ProofreadingPage(Base, QWidget):
     def on_translate_done_ui(self, result: object, requested_count: int) -> None:
         """重译/重置完成后统一消费 mutation result。"""
 
+        self.end_local_mutation()
         self.indeterminate_hide()
         if not isinstance(result, ProofreadingMutationResult):
             self.emit(
@@ -1946,13 +2009,13 @@ class ProofreadingPage(Base, QWidget):
 
     def check_engine_status(self) -> None:
         """检查并更新只读模式"""
-        # 重置虽然不占用 API busy 标志，但后台会改写条目，需与翻译运行态一样锁定编辑。
-        is_busy = self.is_task_busy() or self.is_resetting
-
+        external_busy = self.api_state_store.is_busy() or self.is_resetting
+        local_busy = self.has_local_mutation_inflight()
+        is_busy = external_busy or local_busy
         was_busy = self.is_readonly
 
-        # 1. 如果处于翻译中/停止中，清空页面数据
-        if is_busy and (self.current_snapshot.items or self.filtered_items):
+        # 1. 只有外部任务运行时才清空页面，避免本页 mutation 把当前列表清掉。
+        if external_busy and (self.current_snapshot.items or self.filtered_items):
             self.current_snapshot = ProofreadingSnapshot(
                 revision=self.current_snapshot.revision,
                 project_id=self.current_snapshot.project_id,
@@ -1976,7 +2039,7 @@ class ProofreadingPage(Base, QWidget):
             self.edit_panel.clear()
 
         # 禁用态不保留搜索状态：若当前在搜索栏，直接回到主动作条。
-        if is_busy:
+        if external_busy:
             self.reset_search_state()
 
         # 2. 翻译结束后自动同步一次
