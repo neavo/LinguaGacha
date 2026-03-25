@@ -7,9 +7,41 @@ from typing import Self
 
 
 @dataclass(frozen=True)
+class ProofreadingLookupQuery:
+    """校对页反查请求在质量规则边界内冻结，避免页面继续传递可变字典。"""
+
+    keyword: str = ""
+    is_regex: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把反查条件统一成稳定对象，避免前端分支解析。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            keyword=str(normalized.get("keyword", "")),
+            is_regex=bool(normalized.get("is_regex", False)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把反查请求转回 JSON 字典，供边界层复用。"""
+
+        return {
+            "keyword": self.keyword,
+            "is_regex": self.is_regex,
+        }
+
+
+@dataclass(frozen=True)
 class QualityRuleEntry:
     """质量规则条目冻结后再传给前端，避免编辑态继续污染原始字典。"""
 
+    entry_id: str = ""
     src: str = ""
     dst: str = ""
     info: str = ""
@@ -27,6 +59,7 @@ class QualityRuleEntry:
             normalized = {}
 
         return cls(
+            entry_id=str(normalized.get("entry_id", "")),
             src=str(normalized.get("src", "")),
             dst=str(normalized.get("dst", "")),
             info=str(normalized.get("info", "")),
@@ -38,6 +71,7 @@ class QualityRuleEntry:
         """把冻结条目转回 JSON 字典，供边界层复用。"""
 
         return {
+            "entry_id": self.entry_id,
             "src": self.src,
             "dst": self.dst,
             "info": self.info,
@@ -80,6 +114,10 @@ class QualityRuleSnapshot:
 
     rule_type: str = ""
     revision: int = 0
+    meta: dict[str, Any] = field(default_factory=dict)
+    statistics: "QualityRuleStatisticsSnapshot" = field(
+        default_factory=lambda: QualityRuleStatisticsSnapshot()
+    )
     entries: tuple[QualityRuleEntry, ...] = ()
 
     @classmethod
@@ -106,6 +144,18 @@ class QualityRuleSnapshot:
         return cls(
             rule_type=str(normalized.get("rule_type", "")),
             revision=int(normalized.get("revision", 0) or 0),
+            meta=dict(normalized.get("meta", {}))
+            if isinstance(normalized.get("meta", {}), dict)
+            else {},
+            statistics=(
+                normalized["statistics"]
+                if isinstance(
+                    normalized.get("statistics"), QualityRuleStatisticsSnapshot
+                )
+                else QualityRuleStatisticsSnapshot.from_dict(
+                    normalized.get("statistics", {})
+                )
+            ),
             entries=entries,
         )
 
@@ -115,6 +165,8 @@ class QualityRuleSnapshot:
         return {
             "rule_type": self.rule_type,
             "revision": self.revision,
+            "meta": dict(self.meta),
+            "statistics": self.statistics.to_dict(),
             "entries": [entry.to_dict() for entry in self.entries],
         }
 
@@ -123,6 +175,7 @@ class QualityRuleSnapshot:
 class QualityRuleStatisticsSnapshot:
     """质量规则统计快照把结果和包含关系一起冻结，供页面一次性消费。"""
 
+    available: bool = False
     results: dict[str, QualityRuleStatisticsResult] = field(default_factory=dict)
     subset_parents: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
@@ -135,6 +188,8 @@ class QualityRuleStatisticsSnapshot:
             normalized = data
         else:
             normalized = {}
+
+        available = bool(normalized.get("available", False))
 
         results_raw = normalized.get("results", {})
         results: dict[str, QualityRuleStatisticsResult] = {}
@@ -151,12 +206,17 @@ class QualityRuleStatisticsSnapshot:
                 else:
                     subset_parents[str(key)] = ()
 
-        return cls(results=results, subset_parents=subset_parents)
+        return cls(
+            available=available,
+            results=results,
+            subset_parents=subset_parents,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """把统计快照转换回 JSON 字典，保持边界层输入稳定。"""
 
         return {
+            "available": self.available,
             "results": {key: value.to_dict() for key, value in self.results.items()},
             "subset_parents": {
                 key: list(value) for key, value in self.subset_parents.items()

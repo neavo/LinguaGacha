@@ -5,36 +5,7 @@ from dataclasses import field
 from typing import Any
 from typing import Self
 
-
-@dataclass(frozen=True)
-class ProofreadingLookupQuery:
-    """校对页反查请求冻结后传递，避免页面持有可变查询字典。"""
-
-    keyword: str = ""
-    is_regex: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> Self:
-        """把反查条件统一成稳定对象，避免前端分支解析。"""
-
-        normalized: dict[str, Any]
-        if isinstance(data, dict):
-            normalized = data
-        else:
-            normalized = {}
-
-        return cls(
-            keyword=str(normalized.get("keyword", "")),
-            is_regex=bool(normalized.get("is_regex", False)),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """把反查请求转回 JSON 字典，供边界层复用。"""
-
-        return {
-            "keyword": self.keyword,
-            "is_regex": self.is_regex,
-        }
+from model.Api.QualityRuleModels import ProofreadingLookupQuery
 
 
 @dataclass(frozen=True)
@@ -134,16 +105,40 @@ class ProofreadingWarningSummary:
 
 
 @dataclass(frozen=True)
+class ProofreadingSummary:
+    """校对页摘要冻结后传递，避免页面自己拼总数。"""
+
+    total_items: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把摘要统一转成稳定对象。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(total_items=int(normalized.get("total_items", 0) or 0))
+
+    def to_dict(self) -> dict[str, Any]:
+        """把摘要转回 JSON 字典，供边界层复用。"""
+
+        return {"total_items": self.total_items}
+
+
+@dataclass(frozen=True)
 class ProofreadingItemView:
     """校对页条目视图冻结后再展示，避免页面继续操作源 Item。"""
 
-    item_id: int = 0
+    row_number: int = 0
     src: str = ""
     dst: str = ""
     status: str = ""
     file_path: str = ""
     warnings: tuple[str, ...] = ()
-    failed_terms: tuple[tuple[str, str], ...] = ()
+    failed_glossary_terms: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Self:
@@ -155,14 +150,14 @@ class ProofreadingItemView:
         else:
             normalized = {}
 
-        item_id_value = normalized.get("item_id", normalized.get("id", 0))
+        row_number_value = normalized.get("row_number", normalized.get("row", 0))
         warnings_raw = normalized.get("warnings", normalized.get("warning_types", []))
         warnings: tuple[str, ...] = ()
         if isinstance(warnings_raw, (list, tuple, set)):
             warnings = tuple(str(item) for item in warnings_raw)
 
-        failed_terms_raw = normalized.get("failed_terms", [])
-        failed_terms: tuple[tuple[str, str], ...] = ()
+        failed_terms_raw = normalized.get("failed_glossary_terms", [])
+        failed_glossary_terms: tuple[tuple[str, str], ...] = ()
         if isinstance(failed_terms_raw, (list, tuple, set)):
             normalized_terms: list[tuple[str, str]] = []
             for term in failed_terms_raw:
@@ -172,29 +167,31 @@ class ProofreadingItemView:
                     )
                 elif isinstance(term, (list, tuple)) and len(term) >= 2:
                     normalized_terms.append((str(term[0]), str(term[1])))
-            failed_terms = tuple(normalized_terms)
+            failed_glossary_terms = tuple(normalized_terms)
 
         return cls(
-            item_id=int(item_id_value or 0),
+            row_number=int(row_number_value or 0),
             src=str(normalized.get("src", "")),
             dst=str(normalized.get("dst", "")),
             status=str(normalized.get("status", "")),
             file_path=str(normalized.get("file_path", "")),
             warnings=warnings,
-            failed_terms=failed_terms,
+            failed_glossary_terms=failed_glossary_terms,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """把条目视图转回 JSON 字典，保持边界层对象化。"""
 
         return {
-            "item_id": self.item_id,
+            "row_number": self.row_number,
             "src": self.src,
             "dst": self.dst,
             "status": self.status,
             "file_path": self.file_path,
             "warnings": list(self.warnings),
-            "failed_terms": [list(term) for term in self.failed_terms],
+            "failed_glossary_terms": [
+                list(term) for term in self.failed_glossary_terms
+            ],
         }
 
 
@@ -281,9 +278,12 @@ class ProofreadingSnapshot:
     """校对页完整快照把查询、筛选、列表和结果统一冻结。"""
 
     revision: int = 0
+    project_id: str = ""
+    readonly: bool = False
     lookup_query: ProofreadingLookupQuery = field(
         default_factory=ProofreadingLookupQuery
     )
+    summary: ProofreadingSummary = field(default_factory=ProofreadingSummary)
     items: tuple[ProofreadingItemView, ...] = ()
     filter_options: ProofreadingFilterOptionsSnapshot = field(
         default_factory=ProofreadingFilterOptionsSnapshot
@@ -306,11 +306,20 @@ class ProofreadingSnapshot:
         else:
             normalized = {}
 
+        project_id = str(normalized.get("project_id", ""))
+        readonly = bool(normalized.get("readonly", False))
+
         lookup_query_raw = normalized.get("lookup_query", {})
         if isinstance(lookup_query_raw, ProofreadingLookupQuery):
             lookup_query = lookup_query_raw
         else:
             lookup_query = ProofreadingLookupQuery.from_dict(lookup_query_raw)
+
+        summary_raw = normalized.get("summary", {})
+        if isinstance(summary_raw, ProofreadingSummary):
+            summary = summary_raw
+        else:
+            summary = ProofreadingSummary.from_dict(summary_raw)
 
         items_raw = normalized.get("items", [])
         items: tuple[ProofreadingItemView, ...] = ()
@@ -358,7 +367,10 @@ class ProofreadingSnapshot:
 
         return cls(
             revision=int(normalized.get("revision", 0) or 0),
+            project_id=project_id,
+            readonly=readonly,
             lookup_query=lookup_query,
+            summary=summary,
             items=items,
             filter_options=filter_options,
             warning_summaries=warning_summaries,
@@ -371,7 +383,10 @@ class ProofreadingSnapshot:
 
         return {
             "revision": self.revision,
+            "project_id": self.project_id,
+            "readonly": self.readonly,
             "lookup_query": self.lookup_query.to_dict(),
+            "summary": self.summary.to_dict(),
             "items": [item.to_dict() for item in self.items],
             "filter_options": self.filter_options.to_dict(),
             "warning_summaries": [

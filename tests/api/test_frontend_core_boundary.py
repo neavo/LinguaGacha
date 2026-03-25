@@ -60,6 +60,8 @@ def test_phase_one_frontend_files_do_not_import_core_singletons_directly() -> No
 
 
 def test_phase_two_quality_frontend_files_are_listed_separately() -> None:
+    # 这一阶段先固定文件分组清单，等后续任务真正迁移完旧 Core 依赖后，再把
+    # 内容级禁用导入断言收紧到这些分组里，避免当前 Task 1 先卡住后续任务。
     assert PHASE_TWO_QUALITY_FRONTEND_FILES == (
         "frontend/Quality/CustomPromptPage.py",
         "frontend/Quality/GlossaryEditPanel.py",
@@ -76,6 +78,7 @@ def test_phase_two_quality_frontend_files_are_listed_separately() -> None:
 
 
 def test_phase_two_proofreading_frontend_files_are_listed_separately() -> None:
+    # 这一阶段只固定 Proofreading 的文件分组边界，不提前要求它们全部无 Core 导入。
     assert PHASE_TWO_PROOFREADING_FRONTEND_FILES == (
         "frontend/Proofreading/FilterDialog.py",
         "frontend/Proofreading/ProofreadingDomain.py",
