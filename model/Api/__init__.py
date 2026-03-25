@@ -5,9 +5,7 @@ from model.Api.PromptModels import PromptPresetEntry
 from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
 from model.Api.ProofreadingModels import ProofreadingItemView
 from model.Api.ProofreadingModels import ProofreadingMutationResult
-from model.Api.ProofreadingModels import ProofreadingSearchResult
 from model.Api.ProofreadingModels import ProofreadingSnapshot
-from model.Api.ProofreadingModels import ProofreadingWarningSummary
 from model.Api.ProofreadingModels import ProofreadingSummary
 from model.Api.QualityRuleModels import QualityRuleEntry
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
@@ -32,10 +30,8 @@ __all__ = [
     "ProofreadingItemView",
     "ProofreadingLookupQuery",
     "ProofreadingMutationResult",
-    "ProofreadingSearchResult",
     "ProofreadingSnapshot",
     "ProofreadingSummary",
-    "ProofreadingWarningSummary",
     "QualityRuleEntry",
     "QualityRuleSnapshot",
     "QualityRuleStatisticsResult",

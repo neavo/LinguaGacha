@@ -1,6 +1,7 @@
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
 from model.Api.QualityRuleModels import QualityRuleEntry
 from model.Api.QualityRuleModels import QualityRuleSnapshot
+from model.Api.QualityRuleModels import QualityRuleStatisticsResult
 from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
 
 
@@ -15,7 +16,7 @@ def test_quality_rule_entry_from_dict_uses_safe_defaults() -> None:
     assert entry.case_sensitive is False
 
 
-def test_quality_rule_snapshot_from_dict_keeps_revision_and_entries() -> None:
+def test_quality_rule_snapshot_from_dict_keeps_revision_and_nested_statistics() -> None:
     snapshot = QualityRuleSnapshot.from_dict(
         {
             "rule_type": "glossary",
@@ -23,8 +24,12 @@ def test_quality_rule_snapshot_from_dict_keeps_revision_and_entries() -> None:
             "meta": {"enabled": True},
             "statistics": {
                 "available": True,
-                "results": {"glossary": {"matched_item_count": 2}},
-                "subset_parents": {"glossary": ["root"]},
+                "results": {
+                    "glossary": {
+                        "matched_item_count": 2,
+                        "subset_parents": ["root"],
+                    }
+                },
             },
             "entries": [{"entry_id": "1", "src": "a", "dst": "b"}],
         }
@@ -35,25 +40,89 @@ def test_quality_rule_snapshot_from_dict_keeps_revision_and_entries() -> None:
     assert snapshot.meta["enabled"] is True
     assert snapshot.statistics.available is True
     assert snapshot.statistics.results["glossary"].matched_item_count == 2
-    assert snapshot.statistics.subset_parents["glossary"] == ("root",)
+    assert snapshot.statistics.results["glossary"].subset_parents == ("root",)
     assert len(snapshot.entries) == 1
     assert snapshot.entries[0].entry_id == "1"
     assert snapshot.entries[0].src == "a"
     assert snapshot.entries[0].dst == "b"
 
 
+def test_quality_rule_snapshot_round_trip_keeps_contract_fields() -> None:
+    snapshot = QualityRuleSnapshot.from_dict(
+        {
+            "rule_type": "text-replacement",
+            "revision": 8,
+            "meta": {"enabled": False, "name": "示例"},
+            "statistics": {
+                "available": True,
+                "results": {
+                    "rule-a": {
+                        "matched_item_count": 5,
+                        "subset_parents": ["parent-a", "parent-b"],
+                    }
+                },
+            },
+            "entries": [
+                {
+                    "entry_id": "entry-9",
+                    "src": "甲",
+                    "dst": "乙",
+                    "info": "说明",
+                    "regex": True,
+                    "case_sensitive": True,
+                }
+            ],
+        }
+    )
+
+    payload = snapshot.to_dict()
+
+    assert payload["rule_type"] == "text-replacement"
+    assert payload["revision"] == 8
+    assert payload["meta"] == {"enabled": False, "name": "示例"}
+    assert payload["statistics"]["available"] is True
+    assert payload["statistics"]["results"]["rule-a"]["matched_item_count"] == 5
+    assert payload["statistics"]["results"]["rule-a"]["subset_parents"] == [
+        "parent-a",
+        "parent-b",
+    ]
+    assert payload["entries"][0]["entry_id"] == "entry-9"
+    assert payload["entries"][0]["src"] == "甲"
+    assert payload["entries"][0]["dst"] == "乙"
+
+
 def test_quality_rule_statistics_snapshot_from_dict_normalizes_nested_data() -> None:
     snapshot = QualityRuleStatisticsSnapshot.from_dict(
         {
             "available": True,
-            "results": {"glossary": 2},
-            "subset_parents": {"glossary": ["root", "child"]},
+            "results": {
+                "glossary": {
+                    "matched_item_count": 2,
+                    "subset_parents": ["root", "child"],
+                }
+            },
         }
     )
 
     assert snapshot.available is True
     assert snapshot.results["glossary"].matched_item_count == 2
-    assert snapshot.subset_parents["glossary"] == ("root", "child")
+    assert snapshot.results["glossary"].subset_parents == ("root", "child")
+
+
+def test_quality_rule_statistics_result_round_trip_keeps_subset_parents() -> None:
+    result = QualityRuleStatisticsResult.from_dict(
+        {
+            "matched_item_count": 4,
+            "subset_parents": ["root", "child"],
+        }
+    )
+
+    payload = result.to_dict()
+
+    assert result.matched_item_count == 4
+    assert result.subset_parents == ("root", "child")
+    assert payload["matched_item_count"] == 4
+    assert payload["subset_parents"] == ["root", "child"]
 
 
 def test_proofreading_lookup_query_from_dict_keeps_keyword_and_regex_flag() -> None:

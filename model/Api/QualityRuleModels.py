@@ -85,6 +85,7 @@ class QualityRuleStatisticsResult:
     """质量规则统计结果冻结后传递，避免前端再拆字段。"""
 
     matched_item_count: int = 0
+    subset_parents: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, data: int | dict[str, Any] | None) -> Self:
@@ -92,20 +93,37 @@ class QualityRuleStatisticsResult:
 
         if isinstance(data, dict):
             value = data.get("matched_item_count", 0)
-            return cls(matched_item_count=int(value or 0))
+            subset_parents_raw = data.get("subset_parents", [])
+            subset_parents: tuple[str, ...] = ()
+            if isinstance(subset_parents_raw, (list, tuple, set)):
+                subset_parents = tuple(str(item) for item in subset_parents_raw)
+            return cls(
+                matched_item_count=int(value or 0),
+                subset_parents=subset_parents,
+            )
 
         if hasattr(data, "matched_item_count"):
             value = getattr(data, "matched_item_count", 0)
-            return cls(matched_item_count=int(value or 0))
+            subset_parents_raw = getattr(data, "subset_parents", ())
+            subset_parents: tuple[str, ...] = ()
+            if isinstance(subset_parents_raw, (list, tuple, set)):
+                subset_parents = tuple(str(item) for item in subset_parents_raw)
+            return cls(
+                matched_item_count=int(value or 0),
+                subset_parents=subset_parents,
+            )
 
         if data is None:
             return cls()
         return cls(matched_item_count=int(data))
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, Any]:
         """把统计结果转回边界层 JSON 结构。"""
 
-        return {"matched_item_count": self.matched_item_count}
+        return {
+            "matched_item_count": self.matched_item_count,
+            "subset_parents": list(self.subset_parents),
+        }
 
 
 @dataclass(frozen=True)
@@ -173,11 +191,10 @@ class QualityRuleSnapshot:
 
 @dataclass(frozen=True)
 class QualityRuleStatisticsSnapshot:
-    """质量规则统计快照把结果和包含关系一起冻结，供页面一次性消费。"""
+    """质量规则统计快照把结果和子父项关系一起冻结，供页面一次性消费。"""
 
     available: bool = False
     results: dict[str, QualityRuleStatisticsResult] = field(default_factory=dict)
-    subset_parents: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Self:
@@ -193,23 +210,35 @@ class QualityRuleStatisticsSnapshot:
 
         results_raw = normalized.get("results", {})
         results: dict[str, QualityRuleStatisticsResult] = {}
-        if isinstance(results_raw, dict):
-            for key, value in results_raw.items():
-                results[str(key)] = QualityRuleStatisticsResult.from_dict(value)
-
         subset_parents_raw = normalized.get("subset_parents", {})
         subset_parents: dict[str, tuple[str, ...]] = {}
         if isinstance(subset_parents_raw, dict):
             for key, value in subset_parents_raw.items():
-                if isinstance(value, (list, tuple)):
+                if isinstance(value, (list, tuple, set)):
                     subset_parents[str(key)] = tuple(str(item) for item in value)
                 else:
                     subset_parents[str(key)] = ()
+        if isinstance(results_raw, dict):
+            for key, value in results_raw.items():
+                if isinstance(value, dict):
+                    result_payload = dict(value)
+                else:
+                    result_payload = {"matched_item_count": value}
+
+                result_key = str(key)
+                if "subset_parents" not in result_payload:
+                    if result_key in subset_parents:
+                        result_payload["subset_parents"] = list(
+                            subset_parents[result_key]
+                        )
+
+                results[result_key] = QualityRuleStatisticsResult.from_dict(
+                    result_payload
+                )
 
         return cls(
             available=available,
             results=results,
-            subset_parents=subset_parents,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -218,7 +247,4 @@ class QualityRuleStatisticsSnapshot:
         return {
             "available": self.available,
             "results": {key: value.to_dict() for key, value in self.results.items()},
-            "subset_parents": {
-                key: list(value) for key, value in self.subset_parents.items()
-            },
         }
