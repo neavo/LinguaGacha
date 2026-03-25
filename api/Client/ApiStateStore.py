@@ -21,12 +21,14 @@ class ApiStateStore:
 
         with self.lock:
             self.project_snapshot = snapshot
+            self.proofreading_snapshot_invalidated = False
 
     def reset_project(self) -> None:
         """工程关闭后恢复到未加载态，避免 UI 继续读到陈旧路径。"""
 
         with self.lock:
             self.project_snapshot = ProjectSnapshot.from_dict({})
+            self.proofreading_snapshot_invalidated = False
 
     def is_project_loaded(self) -> bool:
         """给 UI 提供稳定布尔值，减少页面自己猜状态。"""

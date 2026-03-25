@@ -23,6 +23,7 @@ def build_item(
     src: str,
     dst: str,
     file_path: str,
+    row: int = 0,
     status: Base.ProjectStatus = Base.ProjectStatus.NONE,
 ) -> Item:
     """构造最小条目对象，方便固定校对 API 的返回快照。"""
@@ -32,6 +33,7 @@ def build_item(
         src=src,
         dst=dst,
         file_path=file_path,
+        row=row,
         status=status,
     )
 
@@ -82,6 +84,7 @@ def build_app_service() -> tuple[
             src="勇者が来た",
             dst="Hero arrived",
             file_path="script/a.txt",
+            row=12,
             status=Base.ProjectStatus.PROCESSED,
         ),
         build_item(
@@ -215,6 +218,29 @@ def test_proofreading_save_item_returns_mutation_result() -> None:
     mutation_service.apply_manual_edit.assert_called_once()
     assert result["result"]["revision"] >= 0
     assert result["result"]["changed_item_ids"] == [1]
+
+
+def test_proofreading_save_item_uses_refreshed_snapshot_item() -> None:
+    app_service, snapshot_service, _, mutation_service, _ = build_app_service()
+
+    result = app_service.save_item(
+        {
+            "item": {
+                "id": 1,
+                "dst": "Hero arrived again",
+            },
+            "expected_revision": 7,
+        }
+    )
+
+    snapshot_service.load_snapshot.assert_called()
+    mutation_service.apply_manual_edit.assert_called_once()
+    saved_item = result["result"]["items"][0]
+    assert saved_item["src"] == "勇者が来た"
+    assert saved_item["file_path"] == "script/a.txt"
+    assert saved_item["row_number"] == 12
+    assert saved_item["warnings"] == ["GLOSSARY"]
+    assert saved_item["failed_glossary_terms"] == [["勇者", "Hero"]]
 
 
 def test_proofreading_replace_all_returns_mutation_result() -> None:

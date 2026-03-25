@@ -81,3 +81,19 @@ def test_api_state_store_marks_proofreading_snapshot_invalidated() -> None:
     store.clear_proofreading_snapshot_invalidated()
 
     assert store.is_proofreading_snapshot_invalidated() is False
+
+
+def test_api_state_store_clears_proofreading_snapshot_invalidated_on_project_change() -> None:
+    store = ApiStateStore()
+
+    store.mark_proofreading_snapshot_invalidated()
+    store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "project-b.lg"})
+    )
+
+    assert store.is_proofreading_snapshot_invalidated() is False
+
+    store.mark_proofreading_snapshot_invalidated()
+    store.reset_project()
+
+    assert store.is_proofreading_snapshot_invalidated() is False

@@ -136,11 +136,14 @@ class ProofreadingAppService:
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
+        refreshed_item = self.find_item_in_snapshot(refreshed_result, saved_item_id)
+        if refreshed_item is None:
+            refreshed_item = item
 
         raw_result = {
             "revision": refreshed_result.revision,
             "changed_item_ids": [saved_item_id],
-            "items": [self.build_item_dict(item, refreshed_result)],
+            "items": [self.build_item_dict(refreshed_item, refreshed_result)],
             "summary": refreshed_result.summary,
         }
         return {
@@ -342,6 +345,26 @@ class ProofreadingAppService:
             "warnings": warnings,
             "failed_glossary_terms": failed_terms,
         }
+
+    def find_item_in_snapshot(
+        self,
+        load_result: ProofreadingLoadResult,
+        item_id: int,
+    ) -> Item | None:
+        """按条目 id 从刷新后的快照里找回对象，避免依赖请求里的旧数据。"""
+
+        if not isinstance(item_id, int):
+            return None
+
+        for snapshot_item in load_result.items:
+            if snapshot_item.get_id() == item_id:
+                return snapshot_item
+
+        for snapshot_item in load_result.items_all:
+            if snapshot_item.get_id() == item_id:
+                return snapshot_item
+
+        return None
 
     def build_snapshot_dict(
         self,
