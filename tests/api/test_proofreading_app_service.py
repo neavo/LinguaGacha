@@ -9,6 +9,9 @@ from model.Item import Item
 from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterOptions,
 )
+from module.Data.Proofreading.ProofreadingFilterService import (
+    ProofreadingFilterService,
+)
 from module.Data.Proofreading.ProofreadingSnapshotService import (
     ProofreadingLoadKind,
 )
@@ -57,7 +60,12 @@ def build_load_result(items: list[Item]) -> ProofreadingLoadResult:
         failed_terms_by_item_key={id(items[0]): (("勇者", "Hero"),)} if items else {},
         filter_options=ProofreadingFilterOptions(
             warning_types={"GLOSSARY"},
-            statuses={Base.ProjectStatus.NONE},
+            statuses={
+                Base.ProjectStatus.NONE,
+                Base.ProjectStatus.PROCESSED,
+                Base.ProjectStatus.ERROR,
+                Base.ProjectStatus.PROCESSED_IN_PAST,
+            },
             file_paths={"script/a.txt"} if items else set(),
             glossary_terms={("勇者", "Hero")} if items else set(),
         ),
@@ -239,6 +247,61 @@ def test_proofreading_search_returns_search_result() -> None:
 
     filter_service.filter_items.assert_called_once()
     assert result["search_result"]["keyword"] == "勇者"
+    assert result["search_result"]["matched_item_ids"] == [1]
+
+
+def build_real_filter_app_service() -> tuple[Any, Any]:
+    """构造使用真实筛选服务的校对应用服务，用来锁定默认筛选语义。"""
+
+    items = [
+        build_item(
+            item_id=1,
+            src="勇者が来た",
+            dst="Hero arrived",
+            file_path="script/a.txt",
+            row=12,
+            status=Base.ProjectStatus.PROCESSED,
+        ),
+        build_item(
+            item_id=2,
+            src="旁白",
+            dst="Narration",
+            file_path="script/b.txt",
+            status=Base.ProjectStatus.NONE,
+        ),
+    ]
+    load_result = build_load_result(items)
+    snapshot_service = SimpleNamespace(
+        load_snapshot=MagicMock(return_value=load_result),
+    )
+
+    from api.Application.ProofreadingAppService import ProofreadingAppService
+
+    app_service = ProofreadingAppService(
+        snapshot_service=snapshot_service,
+        filter_service=ProofreadingFilterService(),
+        mutation_service=MagicMock(),
+        recheck_service=MagicMock(),
+    )
+    return app_service, snapshot_service
+
+
+def test_proofreading_filter_uses_snapshot_default_filter_options() -> None:
+    app_service, snapshot_service = build_real_filter_app_service()
+
+    result = app_service.filter_items({})
+
+    snapshot_service.load_snapshot.assert_called_once()
+    assert result["snapshot"]["items"][0]["item_id"] == 1
+    assert result["snapshot"]["items"][0]["warnings"] == ["GLOSSARY"]
+
+
+def test_proofreading_search_uses_snapshot_default_filter_options() -> None:
+    app_service, snapshot_service = build_real_filter_app_service()
+
+    result = app_service.search({"keyword": "勇者"})
+
+    snapshot_service.load_snapshot.assert_called_once()
     assert result["search_result"]["matched_item_ids"] == [1]
 
 

@@ -241,7 +241,38 @@ class ProofreadingAppService:
             filters_raw = request.get("filter_options")
         if not isinstance(filters_raw, dict):
             filters_raw = request
-        return ProofreadingFilterOptions.from_dict(filters_raw)
+        request_options = ProofreadingFilterOptions.from_dict(filters_raw)
+        return self.merge_filter_options(load_result.filter_options, request_options)
+
+    def merge_filter_options(
+        self,
+        base_options: ProofreadingFilterOptions,
+        request_options: ProofreadingFilterOptions,
+    ) -> ProofreadingFilterOptions:
+        """把请求筛选按字段覆盖到快照默认值上，保留最小请求的页面语义。"""
+
+        return ProofreadingFilterOptions(
+            warning_types=(
+                request_options.warning_types
+                if request_options.warning_types is not None
+                else base_options.warning_types
+            ),
+            statuses=(
+                request_options.statuses
+                if request_options.statuses is not None
+                else base_options.statuses
+            ),
+            file_paths=(
+                request_options.file_paths
+                if request_options.file_paths is not None
+                else base_options.file_paths
+            ),
+            glossary_terms=(
+                request_options.glossary_terms
+                if request_options.glossary_terms is not None
+                else base_options.glossary_terms
+            ),
+        )
 
     def resolve_search_options(
         self,
