@@ -184,13 +184,20 @@ class QualityRuleAppService:
     def query_proofreading(self, request: dict[str, Any]) -> dict[str, object]:
         """把质量规则条目转换成校对页可直接消费的查询参数。"""
 
+        rule_type = str(request.get("rule_type", ""))
         entry_raw = request.get("entry", {})
         if isinstance(entry_raw, dict):
             keyword = str(entry_raw.get("src", "")).strip()
-            is_regex = bool(entry_raw.get("regex", False))
+            if rule_type == "text_preserve":
+                is_regex = True
+            else:
+                is_regex = bool(entry_raw.get("regex", False))
         else:
             keyword = ""
-            is_regex = bool(request.get("is_regex", False))
+            if rule_type == "text_preserve":
+                is_regex = True
+            else:
+                is_regex = bool(request.get("is_regex", False))
 
         query = ProofreadingLookupQuery(keyword=keyword, is_regex=is_regex)
         return ProofreadingLookupPayload(query=query).to_dict()

@@ -170,6 +170,21 @@ def test_query_proofreading_returns_lookup_query() -> None:
     assert query.is_regex is True
 
 
+def test_query_proofreading_for_text_preserve_forces_regex_lookup() -> None:
+    app_service = QualityRuleAppService(build_fake_quality_rule_facade())
+
+    result = app_service.query_proofreading(
+        {
+            "rule_type": "text_preserve",
+            "entry": {"src": "[勇者]"},
+        }
+    )
+    query = ProofreadingLookupQuery.from_dict(result["query"])
+
+    assert query.keyword == "[勇者]"
+    assert query.is_regex is True
+
+
 def test_import_rules_returns_entries_payload() -> None:
     facade = build_fake_quality_rule_facade()
     facade.import_rules.return_value = [{"src": "勇者", "dst": "Hero"}]

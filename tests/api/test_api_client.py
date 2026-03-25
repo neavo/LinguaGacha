@@ -172,6 +172,29 @@ def test_quality_api_client_query_proofreading_returns_lookup_object() -> None:
         shutdown()
 
 
+def test_quality_api_client_query_text_preserve_uses_regex_lookup() -> None:
+    quality_rule_facade = Mock()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
+    )
+    try:
+        api_client = ApiClient(base_url)
+        quality_client = QualityRuleApiClient(api_client)
+
+        query = quality_client.query_proofreading(
+            {
+                "rule_type": "text_preserve",
+                "entry": {"src": "[勇者]"},
+            }
+        )
+
+        assert isinstance(query, ProofreadingLookupQuery)
+        assert query.keyword == "[勇者]"
+        assert query.is_regex is True
+    finally:
+        shutdown()
+
+
 def test_quality_api_client_rule_import_export_and_presets_round_trip() -> None:
     quality_rule_facade = Mock()
     quality_rule_facade.get_rule_snapshot.return_value = {

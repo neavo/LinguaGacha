@@ -100,6 +100,16 @@ class CustomPromptPage(Base, QWidget):
     def build_user_preset_virtual_id(self, name: str) -> str:
         return f"{self.USER_PRESET_PREFIX}{name}{self.PRESET_EXTENSION}"
 
+    def has_casefold_duplicate(
+        self,
+        existing_virtual_ids: set[str],
+        target_virtual_id: str,
+    ) -> bool:
+        """Windows 等大小写不敏感文件系统上，必须按 casefold 判断同名冲突。"""
+
+        target_key = target_virtual_id.casefold()
+        return target_key in {value.casefold() for value in existing_virtual_ids}
+
     def get_editor_prompt_data(self) -> str:
         """统一收口编辑框当前正文，避免多个保存入口写入口径漂移。"""
 
@@ -153,7 +163,18 @@ class CustomPromptPage(Base, QWidget):
         self.set_editor_prompt_text(prompt_text)
         self.set_prompt_switch_checked(self.prompt_enabled)
 
-    def save_prompt(self, *, enabled: bool | None = None) -> dict[str, object]:
+    def save_prompt(
+        self,
+        *,
+        enabled: bool | None = None,
+        rollback_text: str | None = None,
+        rollback_enabled: bool | None = None,
+    ) -> dict[str, object] | None:
+        if rollback_text is None:
+            rollback_text = self.get_editor_prompt_data()
+        if rollback_enabled is None:
+            rollback_enabled = self.get_current_prompt_enabled()
+
         request: dict[str, object] = {
             "task_type": self.task_type,
             "expected_revision": self.prompt_revision,
@@ -162,8 +183,20 @@ class CustomPromptPage(Base, QWidget):
         if enabled is not None:
             request["enabled"] = bool(enabled)
 
-        snapshot = self.quality_rule_api_client.save_prompt(request)
+        try:
+            snapshot = self.quality_rule_api_client.save_prompt(request)
+        except Exception as e:
+            LogManager.get().error(f"保存自定义提示词失败 - task={self.task_type}", e)
+            self.set_editor_prompt_text(rollback_text)
+            self.set_prompt_switch_checked(rollback_enabled)
+            self.emit_toast(Base.ToastType.ERROR, Localizer.get().task_failed)
+            return None
+
         self.apply_prompt_snapshot(snapshot)
+        prompt_text = str(snapshot.get("text", ""))
+        if prompt_text == "":
+            prompt_text = self.default_prompt_text
+        self.set_editor_prompt_text(prompt_text)
         self.set_prompt_switch_checked(self.prompt_enabled)
         return snapshot
 
@@ -239,8 +272,15 @@ class CustomPromptPage(Base, QWidget):
         if not message_box.exec():
             return
 
+        previous_text = self.get_editor_prompt_data()
+        previous_enabled = self.get_current_prompt_enabled()
         self.set_editor_prompt_text(self.default_prompt_text)
-        self.save_prompt()
+        snapshot = self.save_prompt(
+            rollback_text=previous_text,
+            rollback_enabled=previous_enabled,
+        )
+        if snapshot is None:
+            return
         self.emit_toast(Base.ToastType.SUCCESS, Localizer.get().toast_reset)
 
     def apply_prompt_preset(self, item: dict[str, str]) -> None:
@@ -249,11 +289,19 @@ class CustomPromptPage(Base, QWidget):
                 self.task_type,
                 item["virtual_id"],
             )
-            self.set_editor_prompt_text(text)
-            self.save_prompt()
         except Exception as e:
             LogManager.get().error(f"应用预设失败 - {item['virtual_id']}", e)
             self.emit_toast(Base.ToastType.ERROR, Localizer.get().task_failed)
+            return
+
+        previous_text = self.get_editor_prompt_data()
+        previous_enabled = self.get_current_prompt_enabled()
+        self.set_editor_prompt_text(text)
+        snapshot = self.save_prompt(
+            rollback_text=previous_text,
+            rollback_enabled=previous_enabled,
+        )
+        if snapshot is None:
             return
 
         self.emit_toast(Base.ToastType.SUCCESS, Localizer.get().quality_import_toast)
@@ -271,7 +319,7 @@ class CustomPromptPage(Base, QWidget):
                 return
 
             target_virtual_id = self.build_user_preset_virtual_id(normalized_name)
-            if target_virtual_id in existing_virtual_ids:
+            if self.has_casefold_duplicate(existing_virtual_ids, target_virtual_id):
                 message_box = MessageBox(
                     Localizer.get().warning,
                     Localizer.get().alert_preset_already_exists,
@@ -328,7 +376,7 @@ class CustomPromptPage(Base, QWidget):
                 return
 
             new_virtual_id = self.build_user_preset_virtual_id(normalized_name)
-            if new_virtual_id in existing_virtual_ids:
+            if self.has_casefold_duplicate(existing_virtual_ids, new_virtual_id):
                 self.emit_toast(
                     Base.ToastType.WARNING,
                     Localizer.get().alert_file_already_exists,
@@ -411,7 +459,11 @@ class CustomPromptPage(Base, QWidget):
         base_key = self.get_page_key_prefix()
 
         def checked_changed(button: SwitchButton) -> None:
-            self.save_prompt(enabled=button.isChecked())
+            self.save_prompt(
+                enabled=button.isChecked(),
+                rollback_text=self.get_editor_prompt_data(),
+                rollback_enabled=self.prompt_enabled,
+            )
 
         card = SettingCard(
             title=getattr(Localizer.get(), f"{base_key}_page_head"),
@@ -502,7 +554,9 @@ class CustomPromptPage(Base, QWidget):
     def add_command_bar_action_save(self, parent: CommandBarCard) -> None:
         def triggered(checked: bool = False) -> None:
             del checked
-            self.save_prompt()
+            snapshot = self.save_prompt()
+            if snapshot is None:
+                return
             self.emit_toast(Base.ToastType.SUCCESS, Localizer.get().toast_save)
 
         parent.add_action(

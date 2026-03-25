@@ -63,6 +63,16 @@ class QualityRulePresetManager:
             self.preset_dir_name,
         )
 
+    def has_casefold_duplicate(
+        self,
+        existing_virtual_ids: set[str],
+        target_virtual_id: str,
+    ) -> bool:
+        """Windows 等大小写不敏感文件系统上，必须按 casefold 判断同名冲突。"""
+
+        target_key = target_virtual_id.casefold()
+        return target_key in {value.casefold() for value in existing_virtual_ids}
+
     def apply_preset(self, item: dict[str, str]) -> None:
         entries = self.quality_rule_api_client.read_rule_preset(
             self.preset_dir_name,
@@ -79,7 +89,7 @@ class QualityRulePresetManager:
         virtual_id = f"user:{name}.json"
         existing_virtual_ids = {item.get("virtual_id", "") for item in user_presets}
 
-        if virtual_id in existing_virtual_ids:
+        if self.has_casefold_duplicate(existing_virtual_ids, virtual_id):
             message_box = MessageBox(
                 Localizer.get().warning,
                 Localizer.get().alert_preset_already_exists,
@@ -117,7 +127,7 @@ class QualityRulePresetManager:
             for preset in user_presets
             if preset.get("virtual_id", "") != item.get("virtual_id", "")
         }
-        if new_virtual_id in existing_virtual_ids:
+        if self.has_casefold_duplicate(existing_virtual_ids, new_virtual_id):
             self.show_toast(
                 Base.ToastType.WARNING, Localizer.get().alert_file_already_exists
             )
