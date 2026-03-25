@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -61,6 +62,7 @@ def build_service() -> tuple[PromptService, dict[str, object]]:
         set_analysis_prompt_enable=MagicMock(side_effect=set_analysis_prompt_enable),
     )
     meta_service = SimpleNamespace(
+        session=SimpleNamespace(state_lock=threading.RLock()),
         get_meta=MagicMock(
             side_effect=lambda key, default=None: meta_store.get(key, default)
         ),
@@ -70,6 +72,21 @@ def build_service() -> tuple[PromptService, dict[str, object]]:
     )
     service = PromptService(quality_rule_service, meta_service)
     return service, meta_store
+
+
+class RecordingLock:
+    """记录是否进入临界区，验证 revision 流程没有裸窗口。"""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def __enter__(self) -> RecordingLock:
+        self.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        self.events.append("exit")
+        return False
 
 
 def test_prompt_snapshot_contains_text_meta_and_revision() -> None:
@@ -120,6 +137,52 @@ def test_import_and_export_prompt_round_trip(tmp_path: Path) -> None:
     assert output_path.read_text(encoding="utf-8") == "请分析以下内容。"
     assert imported_snapshot["text"] == "导入的分析提示词"
     assert imported_snapshot["meta"]["enabled"] is True
+
+
+def test_import_prompt_strips_bom_and_trailing_newline(tmp_path: Path) -> None:
+    service, meta_store = build_service()
+    meta_store[service.build_revision_meta_key("analysis")] = 0
+    input_path = tmp_path / "analysis-import.txt"
+    input_path.write_bytes("\ufeff  导入的分析提示词  \r\n".encode("utf-8"))
+
+    imported_snapshot = service.import_prompt(
+        "analysis",
+        input_path,
+        expected_revision=0,
+        enabled=True,
+    )
+
+    assert imported_snapshot["text"] == "导入的分析提示词"
+
+
+def test_export_prompt_adds_txt_suffix_and_strips_text(tmp_path: Path) -> None:
+    service, _meta_store = build_service()
+    service.quality_rule_service.get_analysis_prompt = MagicMock(
+        return_value="  导出的分析提示词  \n"
+    )
+    output_path = tmp_path / "analysis-export"
+
+    exported_path = service.export_prompt("analysis", output_path)
+
+    assert exported_path.endswith(".txt")
+    assert Path(exported_path).read_text(encoding="utf-8") == "导出的分析提示词"
+    assert not output_path.exists()
+
+
+def test_save_prompt_uses_session_lock_for_revision_window() -> None:
+    lock = RecordingLock()
+    service, meta_store = build_service()
+    service.meta_service.session.state_lock = lock
+    meta_store[service.build_revision_meta_key("translation")] = 0
+
+    service.save_prompt(
+        "translation",
+        expected_revision=0,
+        text="新的翻译提示词。",
+        enabled=True,
+    )
+
+    assert lock.events == ["enter", "exit"]
 
 
 def test_prompt_preset_helpers_delegate_to_resolver(monkeypatch) -> None:
@@ -234,3 +297,7 @@ def test_facade_forwards_preset_and_prompt_methods() -> None:
         text="新内容",
         enabled=True,
     ) == {"task_type": "translation"}
+    assert (
+        facade.get_default_preset_text("translation", "builtin:default.txt")
+        == "默认预设"
+    )

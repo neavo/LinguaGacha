@@ -19,6 +19,11 @@ class PromptService:
         self.quality_rule_service = quality_rule_service
         self.meta_service = meta_service
 
+    def _get_state_lock(self) -> Any:
+        """复用工程会话锁，让 revision 检查、写入和 bump 处于同一临界区。"""
+
+        return self.meta_service.session.state_lock
+
     @classmethod
     def normalize_task_type(
         cls,
@@ -158,13 +163,15 @@ class PromptService:
         """保存提示词文本，并可选同步启用状态。"""
 
         normalized_task_type = self.normalize_task_type(task_type)
-        self._assert_revision(normalized_task_type, expected_revision)
-        current_revision = self.get_revision(normalized_task_type)
-        self._write_prompt_text(normalized_task_type, text)
-        if enabled is not None:
-            self._write_prompt_enabled(normalized_task_type, bool(enabled))
-        self._bump_revision(normalized_task_type, current_revision)
-        return self.get_prompt_snapshot(normalized_task_type)
+        with self._get_state_lock():
+            self._assert_revision(normalized_task_type, expected_revision)
+            current_revision = self.get_revision(normalized_task_type)
+            self._write_prompt_text(normalized_task_type, text)
+            if enabled is not None:
+                self._write_prompt_enabled(normalized_task_type, bool(enabled))
+            self._bump_revision(normalized_task_type, current_revision)
+            snapshot = self.get_prompt_snapshot(normalized_task_type)
+        return snapshot
 
     def export_prompt(
         self,
@@ -175,8 +182,13 @@ class PromptService:
 
         normalized_task_type = self.normalize_task_type(task_type)
         export_path = Path(path)
+        if export_path.suffix.lower() != ".txt":
+            if export_path.suffix == "":
+                export_path = Path(f"{export_path}.txt")
+            else:
+                export_path = export_path.with_suffix(".txt")
         export_path.write_text(
-            self._read_prompt_text(normalized_task_type),
+            self._read_prompt_text(normalized_task_type).strip(),
             encoding="utf-8",
         )
         return export_path.as_posix()
@@ -192,7 +204,7 @@ class PromptService:
         """从纯文本文件导入提示词，并复用保存逻辑。"""
 
         import_path = Path(path)
-        text = import_path.read_text(encoding="utf-8")
+        text = import_path.read_text(encoding="utf-8-sig").strip()
         return self.save_prompt(
             task_type,
             expected_revision=expected_revision,

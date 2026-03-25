@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -65,6 +66,7 @@ def build_service(
         set_post_replacement=MagicMock(),
     )
     meta_service = SimpleNamespace(
+        session=SimpleNamespace(state_lock=threading.RLock()),
         get_meta=MagicMock(
             side_effect=lambda key, default=None: meta_store.get(key, default)
         ),
@@ -76,6 +78,21 @@ def build_service(
     meta_store[service.build_revision_meta_key("glossary")] = revision
     meta_store[service.build_revision_meta_key("text_preserve")] = revision
     return service, rule_store, meta_store
+
+
+class RecordingLock:
+    """记录是否进入临界区，方便验证 revision 读写被收口。"""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def __enter__(self) -> RecordingLock:
+        self.events.append("enter")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        self.events.append("exit")
+        return False
 
 
 def test_save_rule_entries_rejects_stale_revision() -> None:
@@ -144,7 +161,9 @@ def test_toggle_rule_enabled_updates_meta_and_revision() -> None:
 
 
 def test_update_meta_supports_text_preserve_mode_and_revision() -> None:
+    lock = RecordingLock()
     service, _rule_store, meta_store = build_service(revision=3)
+    service.meta_service.session.state_lock = lock
 
     result = service.update_meta(
         "text_preserve",
@@ -159,3 +178,18 @@ def test_update_meta_supports_text_preserve_mode_and_revision() -> None:
     assert result["revision"] == 4
     assert result["meta"]["mode"] == TextPreserveMode.CUSTOM.value
     service.quality_rule_service.set_text_preserve_mode.assert_called_once()
+    assert lock.events == ["enter", "exit"]
+
+
+def test_update_meta_uses_off_fallback_for_invalid_text_preserve_mode() -> None:
+    service, _rule_store, meta_store = build_service(revision=2)
+
+    result = service.update_meta(
+        "text_preserve",
+        expected_revision=2,
+        meta_key="text_preserve_mode",
+        value="invalid",
+    )
+
+    assert meta_store["text_preserve_mode"] == TextPreserveMode.OFF.value
+    assert result["meta"]["mode"] == TextPreserveMode.OFF.value

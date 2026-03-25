@@ -19,6 +19,8 @@ class QualityRuleMutationService:
     直接改底层服务后再自己补版本号。
     """
 
+    TEXT_PRESERVE_MODE_META_KEY: str = "text_preserve_mode"
+
     def __init__(
         self,
         quality_rule_service: Any,
@@ -34,6 +36,11 @@ class QualityRuleMutationService:
             )
         else:
             self.snapshot_service = snapshot_service
+
+    def _get_state_lock(self) -> Any:
+        """复用工程会话锁，让检查、写入与 bump 落在同一临界区。"""
+
+        return self.meta_service.session.state_lock
 
     @classmethod
     def build_revision_meta_key(
@@ -134,13 +141,14 @@ class QualityRuleMutationService:
     ) -> dict[str, object]:
         """保存完整条目列表，并推进 revision。"""
 
-        self._assert_revision(rule_type, expected_revision)
-        current_revision = self.get_revision(rule_type)
-        self._save_entries(rule_type, entries)
-        new_revision = self._bump_revision(rule_type, current_revision)
-        return self.snapshot_service.get_rule_snapshot(rule_type) | {
-            "revision": new_revision
-        }
+        with self._get_state_lock():
+            self._assert_revision(rule_type, expected_revision)
+            current_revision = self.get_revision(rule_type)
+            self._save_entries(rule_type, entries)
+            new_revision = self._bump_revision(rule_type, current_revision)
+            return self.snapshot_service.get_rule_snapshot(rule_type) | {
+                "revision": new_revision
+            }
 
     def delete_entry(
         self,
@@ -151,16 +159,17 @@ class QualityRuleMutationService:
     ) -> dict[str, object]:
         """删除单条条目，并把结果写回底层规则列表。"""
 
-        self._assert_revision(rule_type, expected_revision)
-        current_entries = self._get_current_entries(rule_type)
-        if index < 0 or index >= len(current_entries):
-            raise IndexError("条目索引超出范围")
+        with self._get_state_lock():
+            self._assert_revision(rule_type, expected_revision)
+            current_entries = self._get_current_entries(rule_type)
+            if index < 0 or index >= len(current_entries):
+                raise IndexError("条目索引超出范围")
 
-        del current_entries[index]
-        current_revision = self.get_revision(rule_type)
-        self._save_entries(rule_type, current_entries)
-        self._bump_revision(rule_type, current_revision)
-        return self.snapshot_service.get_rule_snapshot(rule_type)
+            del current_entries[index]
+            current_revision = self.get_revision(rule_type)
+            self._save_entries(rule_type, current_entries)
+            self._bump_revision(rule_type, current_revision)
+            return self.snapshot_service.get_rule_snapshot(rule_type)
 
     def sort_entries(
         self,
@@ -171,17 +180,18 @@ class QualityRuleMutationService:
     ) -> dict[str, object]:
         """按稳定规则对条目排序，方便 UI 一键整理列表。"""
 
-        self._assert_revision(rule_type, expected_revision)
-        current_entries = self._get_current_entries(rule_type)
-        sorted_entries = sorted(
-            current_entries,
-            key=self._entry_sort_key,
-            reverse=reverse,
-        )
-        current_revision = self.get_revision(rule_type)
-        self._save_entries(rule_type, sorted_entries)
-        self._bump_revision(rule_type, current_revision)
-        return self.snapshot_service.get_rule_snapshot(rule_type)
+        with self._get_state_lock():
+            self._assert_revision(rule_type, expected_revision)
+            current_entries = self._get_current_entries(rule_type)
+            sorted_entries = sorted(
+                current_entries,
+                key=self._entry_sort_key,
+                reverse=reverse,
+            )
+            current_revision = self.get_revision(rule_type)
+            self._save_entries(rule_type, sorted_entries)
+            self._bump_revision(rule_type, current_revision)
+            return self.snapshot_service.get_rule_snapshot(rule_type)
 
     def set_rule_enabled(
         self,
@@ -192,20 +202,23 @@ class QualityRuleMutationService:
     ) -> dict[str, object]:
         """切换规则启用状态，并推进 revision。"""
 
-        self._assert_revision(rule_type, expected_revision)
-        normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
-        if normalized_rule_type == self.snapshot_service.RuleType.GLOSSARY:
-            self.quality_rule_service.set_glossary_enable(bool(enabled))
-        elif normalized_rule_type == self.snapshot_service.RuleType.PRE_REPLACEMENT:
-            self.quality_rule_service.set_pre_replacement_enable(bool(enabled))
-        elif normalized_rule_type == self.snapshot_service.RuleType.POST_REPLACEMENT:
-            self.quality_rule_service.set_post_replacement_enable(bool(enabled))
-        else:
-            raise ValueError(f"当前规则类型不支持布尔启用切换：{rule_type}")
+        with self._get_state_lock():
+            self._assert_revision(rule_type, expected_revision)
+            normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
+            if normalized_rule_type == self.snapshot_service.RuleType.GLOSSARY:
+                self.quality_rule_service.set_glossary_enable(bool(enabled))
+            elif normalized_rule_type == self.snapshot_service.RuleType.PRE_REPLACEMENT:
+                self.quality_rule_service.set_pre_replacement_enable(bool(enabled))
+            elif (
+                normalized_rule_type == self.snapshot_service.RuleType.POST_REPLACEMENT
+            ):
+                self.quality_rule_service.set_post_replacement_enable(bool(enabled))
+            else:
+                raise ValueError(f"当前规则类型不支持布尔启用切换：{rule_type}")
 
-        current_revision = self.get_revision(rule_type)
-        self._bump_revision(rule_type, current_revision)
-        return self.snapshot_service.get_rule_snapshot(rule_type)
+            current_revision = self.get_revision(rule_type)
+            self._bump_revision(rule_type, current_revision)
+            return self.snapshot_service.get_rule_snapshot(rule_type)
 
     def _normalize_text_preserve_mode(
         self,
@@ -216,7 +229,10 @@ class QualityRuleMutationService:
         if isinstance(value, TextPreserveMode):
             normalized_mode = value
         else:
-            normalized_mode = TextPreserveMode(str(value))
+            try:
+                normalized_mode = TextPreserveMode(str(value))
+            except ValueError:
+                normalized_mode = TextPreserveMode.OFF
         return normalized_mode
 
     def update_meta(
@@ -233,21 +249,20 @@ class QualityRuleMutationService:
         一个泛化的配置写入口。
         """
 
-        self._assert_revision(rule_type, expected_revision)
-        normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
-        if (
-            normalized_rule_type == self.snapshot_service.RuleType.TEXT_PRESERVE
-            and meta_key == self.TEXT_PRESERVE_MODE_META_KEY
-        ):
-            normalized_mode = self._normalize_text_preserve_mode(value)
-            self.quality_rule_service.set_text_preserve_mode(normalized_mode)
-        else:
-            raise ValueError(
-                f"当前规则类型不支持该 meta 写入：{rule_type} -> {meta_key}"
-            )
+        with self._get_state_lock():
+            self._assert_revision(rule_type, expected_revision)
+            normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
+            if (
+                normalized_rule_type == self.snapshot_service.RuleType.TEXT_PRESERVE
+                and meta_key == self.TEXT_PRESERVE_MODE_META_KEY
+            ):
+                normalized_mode = self._normalize_text_preserve_mode(value)
+                self.quality_rule_service.set_text_preserve_mode(normalized_mode)
+            else:
+                raise ValueError(
+                    f"当前规则类型不支持该 meta 写入：{rule_type} -> {meta_key}"
+                )
 
-        current_revision = self.get_revision(rule_type)
-        self._bump_revision(rule_type, current_revision)
-        return self.snapshot_service.get_rule_snapshot(rule_type)
-
-    TEXT_PRESERVE_MODE_META_KEY: str = "text_preserve_mode"
+            current_revision = self.get_revision(rule_type)
+            self._bump_revision(rule_type, current_revision)
+            return self.snapshot_service.get_rule_snapshot(rule_type)
