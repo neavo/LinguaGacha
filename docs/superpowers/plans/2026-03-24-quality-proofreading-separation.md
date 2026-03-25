@@ -196,6 +196,14 @@ git commit -m "feat: add quality rule core services"
 - Create: `module/Data/Proofreading/ProofreadingSnapshotService.py`, `module/Data/Proofreading/ProofreadingFilterService.py`, `module/Data/Proofreading/ProofreadingMutationService.py`, `module/Data/Proofreading/ProofreadingRecheckService.py`, `module/Data/Proofreading/ProofreadingRevisionService.py`
 - Create: `tests/module/data/test_proofreading_snapshot_service.py`, `tests/module/data/test_proofreading_filter_service.py`, `tests/module/data/test_proofreading_mutation_service.py`, `tests/module/data/test_proofreading_recheck_service.py`
 - Modify: `frontend/Proofreading/ProofreadingLoadService.py`, `frontend/Proofreading/ProofreadingDomain.py`
+- Modify: `tests/api/test_frontend_core_boundary.py`
+
+**终态要求：**
+
+- `frontend/Proofreading/ProofreadingLoadService.py` 与 `frontend/Proofreading/ProofreadingDomain.py` 在 Task 3 完成后只允许保留为无 Core 依赖的薄包装或纯数据转换层，不得再直接导入 `Config`、`DataManager`、`ResultChecker`
+- 若 Task 3 后 `ProofreadingPage` 仍临时通过这两个文件取数，只允许它们转调 `module/Data/Proofreading/*`；不得继续承载业务判定、revision、筛选或重检主逻辑
+- 到 Task 7 完成时，`ProofreadingPage.py` 与 `FilterDialog.py` 必须停止依赖这两个 helper；若文件仍保留，也只能作为兼容薄层存在
+- `tests/api/test_frontend_core_boundary.py` 必须新增针对这两个文件的专门断言，防止“逻辑搬走了但旧 Core 入口还活着”
 
 - [ ] **Step 1: 先写失败测试，固定快照、筛选与 mutation 语义**
 
@@ -208,12 +216,18 @@ def test_snapshot_service_builds_warning_summary(project_session) -> None:
 def test_replace_all_returns_changed_item_ids(service) -> None:
     result = service.replace_all(expected_revision=2, search_text="a", replace_text="b")
     assert result["changed_item_ids"] == [1]
+
+
+def test_proofreading_helper_files_do_not_import_core_singletons_directly() -> None:
+    assert "from module.Config import Config" not in content
+    assert "from module.Data.DataManager import DataManager" not in content
+    assert "from module.ResultChecker import ResultChecker" not in content
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `uv run pytest tests/module/data/test_proofreading_snapshot_service.py tests/module/data/test_proofreading_filter_service.py tests/module/data/test_proofreading_mutation_service.py tests/module/data/test_proofreading_recheck_service.py -v`
-Expected: FAIL，提示服务文件不存在，或旧逻辑仍停留在前端文件。
+Run: `uv run pytest tests/module/data/test_proofreading_snapshot_service.py tests/module/data/test_proofreading_filter_service.py tests/module/data/test_proofreading_mutation_service.py tests/module/data/test_proofreading_recheck_service.py tests/api/test_frontend_core_boundary.py -v`
+Expected: FAIL，提示服务文件不存在，或旧逻辑仍停留在前端文件，且前端 helper 仍直接依赖旧 Core 导入。
 
 - [ ] **Step 3: 写最小实现，先迁纯逻辑后补 revision**
 
@@ -229,16 +243,18 @@ class ProofreadingRevisionService:
 - 先把 `ProofreadingLoadService`、`ProofreadingDomain` 中不依赖 Qt 的逻辑迁过去
 - `ProofreadingMutationService` 统一保存、单次替换、批量替换、批量保存
 - `ProofreadingRecheckService` 统一 `ResultChecker` 调用与 failed glossary term 重建
+- `frontend/Proofreading/ProofreadingLoadService.py` 与 `frontend/Proofreading/ProofreadingDomain.py` 若暂不删除，必须收缩为只调用 `module/Data/Proofreading/*` 或只保留纯数据转换，禁止继续直接触碰 `Config`、`DataManager`、`ResultChecker`
+- `tests/api/test_frontend_core_boundary.py` 需要对这两个文件单独断言，避免旧 helper 作为隐藏回退入口长期存在
 
 - [ ] **Step 4: 运行模块测试确认通过**
 
-Run: `uv run pytest tests/module/data/test_proofreading_snapshot_service.py tests/module/data/test_proofreading_filter_service.py tests/module/data/test_proofreading_mutation_service.py tests/module/data/test_proofreading_recheck_service.py -v`
-Expected: PASS，校对快照、筛选、替换、重检与 revision 行为稳定。
+Run: `uv run pytest tests/module/data/test_proofreading_snapshot_service.py tests/module/data/test_proofreading_filter_service.py tests/module/data/test_proofreading_mutation_service.py tests/module/data/test_proofreading_recheck_service.py tests/api/test_frontend_core_boundary.py -v`
+Expected: PASS，校对快照、筛选、替换、重检与 revision 行为稳定，且旧前端 helper 已失去直接触碰 Core 的能力。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add module/Data/Proofreading frontend/Proofreading/ProofreadingLoadService.py frontend/Proofreading/ProofreadingDomain.py tests/module/data
+git add module/Data/Proofreading frontend/Proofreading/ProofreadingLoadService.py frontend/Proofreading/ProofreadingDomain.py tests/module/data tests/api/test_frontend_core_boundary.py
 git commit -m "feat: add proofreading core services"
 ```
 

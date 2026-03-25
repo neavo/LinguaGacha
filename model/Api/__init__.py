@@ -1,5 +1,18 @@
 from model.Api.ProjectModels import ProjectPreview
 from model.Api.ProjectModels import ProjectSnapshot
+from model.Api.PromptModels import CustomPromptSnapshot
+from model.Api.PromptModels import PromptPresetEntry
+from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
+from model.Api.ProofreadingModels import ProofreadingItemView
+from model.Api.ProofreadingModels import ProofreadingLookupQuery
+from model.Api.ProofreadingModels import ProofreadingMutationResult
+from model.Api.ProofreadingModels import ProofreadingSearchResult
+from model.Api.ProofreadingModels import ProofreadingSnapshot
+from model.Api.ProofreadingModels import ProofreadingWarningSummary
+from model.Api.QualityRuleModels import QualityRuleEntry
+from model.Api.QualityRuleModels import QualityRuleSnapshot
+from model.Api.QualityRuleModels import QualityRuleStatisticsResult
+from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
 from model.Api.TaskModels import TaskProgressUpdate
@@ -10,8 +23,21 @@ from model.Api.WorkbenchModels import WorkbenchSnapshot
 
 __all__ = [
     "AppSettingsSnapshot",
+    "CustomPromptSnapshot",
+    "PromptPresetEntry",
     "ProjectPreview",
     "ProjectSnapshot",
+    "ProofreadingFilterOptionsSnapshot",
+    "ProofreadingItemView",
+    "ProofreadingLookupQuery",
+    "ProofreadingMutationResult",
+    "ProofreadingSearchResult",
+    "ProofreadingSnapshot",
+    "ProofreadingWarningSummary",
+    "QualityRuleEntry",
+    "QualityRuleSnapshot",
+    "QualityRuleStatisticsResult",
+    "QualityRuleStatisticsSnapshot",
     "RecentProjectEntry",
     "TaskProgressUpdate",
     "TaskSnapshot",

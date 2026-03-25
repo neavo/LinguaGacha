@@ -19,6 +19,32 @@ PHASE_ONE_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Setting/ExpertSettingsPage.py",
 )
 
+PHASE_TWO_QUALITY_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Quality/CustomPromptPage.py",
+    "frontend/Quality/GlossaryEditPanel.py",
+    "frontend/Quality/GlossaryPage.py",
+    "frontend/Quality/QualityRuleEditPanelBase.py",
+    "frontend/Quality/QualityRuleIconHelper.py",
+    "frontend/Quality/QualityRulePageBase.py",
+    "frontend/Quality/QualityRulePresetManager.py",
+    "frontend/Quality/TextPreserveEditPanel.py",
+    "frontend/Quality/TextPreservePage.py",
+    "frontend/Quality/TextReplacementEditPanel.py",
+    "frontend/Quality/TextReplacementPage.py",
+)
+
+PHASE_TWO_PROOFREADING_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Proofreading/FilterDialog.py",
+    "frontend/Proofreading/ProofreadingDomain.py",
+    "frontend/Proofreading/ProofreadingEditPanel.py",
+    "frontend/Proofreading/ProofreadingLabels.py",
+    "frontend/Proofreading/ProofreadingLoadService.py",
+    "frontend/Proofreading/ProofreadingPage.py",
+    "frontend/Proofreading/ProofreadingStatusDelegate.py",
+    "frontend/Proofreading/ProofreadingTableModel.py",
+    "frontend/Proofreading/ProofreadingTableWidget.py",
+)
+
 
 def test_phase_one_frontend_files_do_not_import_core_singletons_directly() -> None:
     root_dir = Path(__file__).resolve().parents[2]
@@ -31,3 +57,33 @@ def test_phase_one_frontend_files_do_not_import_core_singletons_directly() -> No
             assert forbidden_import not in content, (
                 f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
             )
+
+
+def test_phase_two_quality_frontend_files_are_listed_separately() -> None:
+    assert PHASE_TWO_QUALITY_FRONTEND_FILES == (
+        "frontend/Quality/CustomPromptPage.py",
+        "frontend/Quality/GlossaryEditPanel.py",
+        "frontend/Quality/GlossaryPage.py",
+        "frontend/Quality/QualityRuleEditPanelBase.py",
+        "frontend/Quality/QualityRuleIconHelper.py",
+        "frontend/Quality/QualityRulePageBase.py",
+        "frontend/Quality/QualityRulePresetManager.py",
+        "frontend/Quality/TextPreserveEditPanel.py",
+        "frontend/Quality/TextPreservePage.py",
+        "frontend/Quality/TextReplacementEditPanel.py",
+        "frontend/Quality/TextReplacementPage.py",
+    )
+
+
+def test_phase_two_proofreading_frontend_files_are_listed_separately() -> None:
+    assert PHASE_TWO_PROOFREADING_FRONTEND_FILES == (
+        "frontend/Proofreading/FilterDialog.py",
+        "frontend/Proofreading/ProofreadingDomain.py",
+        "frontend/Proofreading/ProofreadingEditPanel.py",
+        "frontend/Proofreading/ProofreadingLabels.py",
+        "frontend/Proofreading/ProofreadingLoadService.py",
+        "frontend/Proofreading/ProofreadingPage.py",
+        "frontend/Proofreading/ProofreadingStatusDelegate.py",
+        "frontend/Proofreading/ProofreadingTableModel.py",
+        "frontend/Proofreading/ProofreadingTableWidget.py",
+    )
