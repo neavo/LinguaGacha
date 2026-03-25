@@ -97,4 +97,4 @@ class RuleFilter:
         if flags == []:
             return False
         else:
-            return all(v == True for v in flags)
+            return all(v for v in flags)
