@@ -53,6 +53,94 @@ class QualityRuleAppService:
         )
         return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
 
+    def import_rules(self, request: dict[str, Any]) -> dict[str, object]:
+        """从本地路径读取规则条目，返回给页面做后续合并。"""
+
+        rule_type = str(request.get("rule_type", ""))
+        path = str(request.get("path", ""))
+        expected_revision = int(request.get("expected_revision", 0) or 0)
+        entries = self.quality_rule_facade.import_rules(
+            rule_type,
+            path,
+            expected_revision=expected_revision,
+        )
+        return {"entries": entries}
+
+    def export_rules(self, request: dict[str, Any]) -> dict[str, object]:
+        """把页面当前规则条目导出到本地路径。"""
+
+        rule_type = str(request.get("rule_type", ""))
+        path = str(request.get("path", ""))
+        entries_raw = request.get("entries", [])
+        entries: list[dict[str, Any]] = []
+        if isinstance(entries_raw, list):
+            for entry in entries_raw:
+                if isinstance(entry, dict):
+                    entries.append(dict(entry))
+
+        exported_path = self.quality_rule_facade.export_rules(rule_type, path, entries)
+        return {"path": exported_path}
+
+    def list_rule_presets(self, request: dict[str, Any]) -> dict[str, object]:
+        """列出质量规则预设。"""
+
+        preset_dir_name = str(request.get("preset_dir_name", ""))
+        builtin_presets, user_presets = self.quality_rule_facade.list_presets(
+            preset_dir_name
+        )
+        return {
+            "builtin_presets": builtin_presets,
+            "user_presets": user_presets,
+        }
+
+    def read_rule_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """读取质量规则预设正文。"""
+
+        preset_dir_name = str(request.get("preset_dir_name", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        entries = self.quality_rule_facade.read_preset(preset_dir_name, virtual_id)
+        return {"entries": entries}
+
+    def save_rule_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """保存质量规则用户预设。"""
+
+        preset_dir_name = str(request.get("preset_dir_name", ""))
+        name = str(request.get("name", ""))
+        entries_raw = request.get("entries", [])
+        entries: list[dict[str, Any]] = []
+        if isinstance(entries_raw, list):
+            for entry in entries_raw:
+                if isinstance(entry, dict):
+                    entries.append(dict(entry))
+
+        item = self.quality_rule_facade.save_user_preset(
+            preset_dir_name,
+            name,
+            entries,
+        )
+        return {"item": item}
+
+    def rename_rule_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """重命名质量规则用户预设。"""
+
+        preset_dir_name = str(request.get("preset_dir_name", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        new_name = str(request.get("new_name", ""))
+        item = self.quality_rule_facade.rename_user_preset(
+            preset_dir_name,
+            virtual_id,
+            new_name,
+        )
+        return {"item": item}
+
+    def delete_rule_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """删除质量规则用户预设。"""
+
+        preset_dir_name = str(request.get("preset_dir_name", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        path = self.quality_rule_facade.delete_user_preset(preset_dir_name, virtual_id)
+        return {"path": path}
+
     def update_rule_meta(self, request: dict[str, Any]) -> dict[str, object]:
         """更新规则 meta，并把 enabled 与普通 meta 写入统一收口。"""
 

@@ -1,4 +1,3 @@
-import os
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -9,12 +8,12 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 
+from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
-from module.QualityRulePathResolver import QualityRulePathResolver
 from widget.LineEditMessageBox import LineEditMessageBox
 
 # ==================== 图标常量 ====================
@@ -42,12 +41,14 @@ class QualityRulePresetManager:
         self,
         preset_dir_name: str,
         default_preset_config_key: str,
+        quality_rule_api_client: QualityRuleApiClient,
         settings_api_client: SettingsApiClient,
         page: "QualityRulePageBase",
         window: FluentWindow,
     ) -> None:
         self.preset_dir_name: str = preset_dir_name
         self.default_preset_config_key: str = default_preset_config_key
+        self.quality_rule_api_client: QualityRuleApiClient = quality_rule_api_client
         self.settings_api_client: SettingsApiClient = settings_api_client
         self.page: "QualityRulePageBase" = page
         self.window: FluentWindow = window
@@ -58,28 +59,27 @@ class QualityRulePresetManager:
         return str(value)
 
     def get_preset_paths(self) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-        return QualityRulePathResolver.list_presets(
+        return self.quality_rule_api_client.list_rule_presets(
             self.preset_dir_name,
         )
 
-    def apply_preset(self, path: str) -> None:
-        self.page.import_rules_from_path(path)
+    def apply_preset(self, item: dict[str, str]) -> None:
+        entries = self.quality_rule_api_client.read_rule_preset(
+            self.preset_dir_name,
+            item["virtual_id"],
+        )
+        self.page.import_rules_entries(entries)
 
     def save_preset(self, name: str) -> bool:
         name = name.strip()
         if not name:
             return False
 
-        virtual_id = QualityRulePathResolver.build_virtual_id(
-            QualityRulePathResolver.PresetSource.USER,
-            f"{name}{QualityRulePathResolver.PRESET_EXTENSION}",
-        )
-        path = QualityRulePathResolver.resolve_virtual_id_path(
-            self.preset_dir_name,
-            virtual_id,
-        )
+        _builtin_presets, user_presets = self.get_preset_paths()
+        virtual_id = f"user:{name}.json"
+        existing_virtual_ids = {item.get("virtual_id", "") for item in user_presets}
 
-        if os.path.exists(path):
+        if virtual_id in existing_virtual_ids:
             message_box = MessageBox(
                 Localizer.get().warning,
                 Localizer.get().alert_preset_already_exists,
@@ -92,13 +92,17 @@ class QualityRulePresetManager:
 
         try:
             data = [v for v in self.page.entries if str(v.get("src", "")).strip()]
-            QualityRulePathResolver.save_user_preset(self.preset_dir_name, name, data)
+            self.quality_rule_api_client.save_rule_preset(
+                self.preset_dir_name,
+                name,
+                data,
+            )
             self.show_toast(
                 Base.ToastType.SUCCESS, Localizer.get().quality_save_preset_success
             )
             return True
         except Exception as e:
-            LogManager.get().error(f"保存预设失败 - {path}", e)
+            LogManager.get().error(f"保存预设失败 - {virtual_id}", e)
             return False
 
     def rename_preset(self, item: dict[str, str], new_name: str) -> bool:
@@ -106,21 +110,21 @@ class QualityRulePresetManager:
         if not new_name:
             return False
 
-        new_path = QualityRulePathResolver.resolve_virtual_id_path(
-            self.preset_dir_name,
-            QualityRulePathResolver.build_virtual_id(
-                QualityRulePathResolver.PresetSource.USER,
-                f"{new_name}{QualityRulePathResolver.PRESET_EXTENSION}",
-            ),
-        )
-        if os.path.exists(new_path):
+        _builtin_presets, user_presets = self.get_preset_paths()
+        new_virtual_id = f"user:{new_name}.json"
+        existing_virtual_ids = {
+            preset.get("virtual_id", "")
+            for preset in user_presets
+            if preset.get("virtual_id", "") != item.get("virtual_id", "")
+        }
+        if new_virtual_id in existing_virtual_ids:
             self.show_toast(
                 Base.ToastType.WARNING, Localizer.get().alert_file_already_exists
             )
             return False
 
         try:
-            renamed_item = QualityRulePathResolver.rename_user_preset(
+            renamed_item = self.quality_rule_api_client.rename_rule_preset(
                 self.preset_dir_name,
                 item["virtual_id"],
                 new_name,
@@ -136,7 +140,7 @@ class QualityRulePresetManager:
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
             return True
         except Exception as e:
-            LogManager.get().error(f"重命名预设失败 - {item['path']}", e)
+            LogManager.get().error(f"重命名预设失败 - {item['virtual_id']}", e)
             return False
 
     def delete_preset(self, item: dict[str, str], checked: bool = False) -> None:
@@ -151,7 +155,7 @@ class QualityRulePresetManager:
             return
 
         try:
-            QualityRulePathResolver.delete_user_preset(
+            self.quality_rule_api_client.delete_rule_preset(
                 self.preset_dir_name,
                 item["virtual_id"],
             )
@@ -165,7 +169,7 @@ class QualityRulePresetManager:
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
         except Exception as e:
-            LogManager.get().error(f"删除预设失败 - {item['path']}", e)
+            LogManager.get().error(f"删除预设失败 - {item['virtual_id']}", e)
 
     def set_default_preset(self, item: dict[str, str], checked: bool = False) -> None:
         self.settings_api_client.update_app_settings(
@@ -248,15 +252,15 @@ class QualityRulePresetManager:
             sub_menu.addAction(
                 Action(
                     ICON_PRESET_IMPORT,
-                    Localizer.get().quality_import,
-                    triggered=partial(
-                        lambda p, checked=False: self.page.run_with_unsaved_guard(
-                            lambda: self.apply_preset(p)
+                        Localizer.get().quality_import,
+                        triggered=partial(
+                            lambda preset_item, checked=False: self.page.run_with_unsaved_guard(
+                                lambda: self.apply_preset(preset_item)
+                            ),
+                            item,
                         ),
-                        item["path"],
-                    ),
+                    )
                 )
-            )
             sub_menu.addSeparator()
 
             if self.is_default_preset(item, default_preset_virtual_id):
@@ -288,15 +292,15 @@ class QualityRulePresetManager:
             sub_menu.addAction(
                 Action(
                     ICON_PRESET_IMPORT,
-                    Localizer.get().quality_import,
-                    triggered=partial(
-                        lambda p, checked=False: self.page.run_with_unsaved_guard(
-                            lambda: self.apply_preset(p)
+                        Localizer.get().quality_import,
+                        triggered=partial(
+                            lambda preset_item, checked=False: self.page.run_with_unsaved_guard(
+                                lambda: self.apply_preset(preset_item)
+                            ),
+                            item,
                         ),
-                        item["path"],
-                    ),
+                    )
                 )
-            )
             sub_menu.addAction(
                 Action(
                     ICON_PRESET_RENAME,

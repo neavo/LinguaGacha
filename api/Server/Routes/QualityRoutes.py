@@ -8,6 +8,13 @@ class QualityRoutes:
     SNAPSHOT_PATH: str = "/api/quality/rules/snapshot"
     UPDATE_META_PATH: str = "/api/quality/rules/update-meta"
     SAVE_ENTRIES_PATH: str = "/api/quality/rules/save-entries"
+    IMPORT_RULES_PATH: str = "/api/quality/rules/import"
+    EXPORT_RULES_PATH: str = "/api/quality/rules/export"
+    RULE_PRESETS_PATH: str = "/api/quality/rules/presets"
+    RULE_PRESET_READ_PATH: str = "/api/quality/rules/presets/read"
+    RULE_PRESET_SAVE_PATH: str = "/api/quality/rules/presets/save"
+    RULE_PRESET_RENAME_PATH: str = "/api/quality/rules/presets/rename"
+    RULE_PRESET_DELETE_PATH: str = "/api/quality/rules/presets/delete"
     QUERY_PROOFREADING_PATH: str = "/api/quality/rules/query-proofreading"
     STATISTICS_PATH: str = "/api/quality/rules/statistics"
     PROMPT_SNAPSHOT_PATH: str = "/api/quality/prompts/snapshot"
@@ -47,6 +54,62 @@ class QualityRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=quality_rule_app_service.save_rule_entries(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.IMPORT_RULES_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.import_rules(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.EXPORT_RULES_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.export_rules(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RULE_PRESETS_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.list_rule_presets(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RULE_PRESET_READ_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.read_rule_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RULE_PRESET_SAVE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.save_rule_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RULE_PRESET_RENAME_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.rename_rule_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RULE_PRESET_DELETE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.delete_rule_preset(request),
             ),
         )
         core_api_server.add_json_route(

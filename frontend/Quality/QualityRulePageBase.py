@@ -1,6 +1,5 @@
 import dataclasses
 import threading
-from pathlib import Path
 from typing import Any
 from typing import Callable
 from typing import TypeVar
@@ -41,7 +40,6 @@ from frontend.Quality.QualityRuleEditPanelBase import QualityRuleEditPanelBase
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
 from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleReorder import QualityRuleReorder
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
@@ -1814,12 +1812,13 @@ class QualityRulePageBase(Base, QWidget):
 
     # ==================== 命令栏 ====================
 
-    def import_rules_from_path(self, path: str) -> None:
+    def import_rules_entries(self, incoming: list[dict[str, Any]]) -> None:
+        """把外部导入的规则条目合并进当前页面并持久化。"""
+
         current_src = ""
         if 0 <= self.current_index < len(self.entries):
             current_src = str(self.entries[self.current_index].get("src", "")).strip()
 
-        incoming = QualityRuleIO.load_rules_from_file(path)
         merged, report = QualityRuleMerger.merge(
             rule_type=self.get_merge_rule_type(),
             existing=self.entries,
@@ -1840,6 +1839,16 @@ class QualityRulePageBase(Base, QWidget):
 
         if report.updated > 0 or report.deduped > 0:
             self.emit_warning_toast(Localizer.get().quality_merge_duplication)
+
+    def import_rules_from_path(self, path: str) -> None:
+        incoming = self.quality_rule_api_client.import_rules(
+            {
+                "rule_type": self.get_rule_type_name(),
+                "expected_revision": self.rule_revision,
+                "path": path,
+            }
+        )
+        self.import_rules_entries(incoming)
 
     def add_command_bar_action_import(self, window: FluentWindow) -> CommandButton:
         del window
@@ -1874,7 +1883,13 @@ class QualityRulePageBase(Base, QWidget):
             if not isinstance(path, str) or not path:
                 return
 
-            QualityRuleIO.export_rules(str(Path(path).with_suffix("")), self.entries)
+            self.quality_rule_api_client.export_rules(
+                {
+                    "rule_type": self.get_rule_type_name(),
+                    "path": path,
+                    "entries": [dict(entry) for entry in self.entries],
+                }
+            )
             self.emit_success_toast(Localizer.get().quality_export_toast)
 
         return self.command_bar_card.add_action(
@@ -1918,6 +1933,7 @@ class QualityRulePageBase(Base, QWidget):
         self.preset_manager = QualityRulePresetManager(
             preset_dir_name=self.PRESET_DIR_NAME,
             default_preset_config_key=self.DEFAULT_PRESET_CONFIG_KEY,
+            quality_rule_api_client=self.quality_rule_api_client,
             settings_api_client=self.settings_api_client,
             page=self,
             window=window,

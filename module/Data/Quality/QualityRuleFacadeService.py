@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from module.Data.Quality.PromptService import PromptService
@@ -8,6 +9,7 @@ from module.Data.Quality.QualityRulePresetService import QualityRulePresetServic
 from module.Data.Quality.QualityRuleSnapshotService import (
     QualityRuleSnapshotService,
 )
+from module.QualityRule.QualityRuleIO import QualityRuleIO
 
 
 class QualityRuleFacadeService:
@@ -102,6 +104,31 @@ class QualityRuleFacadeService:
             expected_revision=expected_revision,
             entries=entries,
         )
+
+    def import_rules(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        path: str,
+        *,
+        expected_revision: int = 0,
+    ) -> list[dict[str, Any]]:
+        """对外暴露规则文件导入读取。"""
+
+        del rule_type
+        del expected_revision
+        return QualityRuleIO.load_rules_from_file(path)
+
+    def export_rules(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        path: str,
+        entries: list[dict[str, Any]],
+    ) -> str:
+        """对外暴露规则文件导出。"""
+
+        del rule_type
+        QualityRuleIO.export_rules(str(Path(path).with_suffix("")), entries)
+        return str(Path(path).with_suffix(".json")).replace("\\", "/")
 
     def delete_entry(
         self,

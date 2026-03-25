@@ -91,6 +91,12 @@ def test_quality_pages_use_quality_rule_api_client() -> None:
     custom_prompt_content = (
         root_dir / "frontend" / "Quality" / "CustomPromptPage.py"
     ).read_text(encoding="utf-8")
+    quality_rule_page_base_content = (
+        root_dir / "frontend" / "Quality" / "QualityRulePageBase.py"
+    ).read_text(encoding="utf-8")
+    preset_manager_content = (
+        root_dir / "frontend" / "Quality" / "QualityRulePresetManager.py"
+    ).read_text(encoding="utf-8")
 
     assert "quality_rule_api_client" in window_content
     assert "proofreading_api_client" in window_content
@@ -104,6 +110,12 @@ def test_quality_pages_use_quality_rule_api_client() -> None:
     )
     assert (
         "from module.Data.DataManager import DataManager" not in custom_prompt_content
+    )
+    assert "from module.QualityRule.QualityRuleIO import QualityRuleIO" not in (
+        quality_rule_page_base_content
+    )
+    assert "from module.QualityRulePathResolver import QualityRulePathResolver" not in (
+        preset_manager_content
     )
 
 
