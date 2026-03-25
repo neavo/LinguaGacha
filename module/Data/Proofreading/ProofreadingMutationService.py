@@ -69,54 +69,36 @@ class ProofreadingMutationService:
     def sync_project_translation_state(self) -> None:
         """写入后同步工程翻译状态，避免页面继续直接维护 DataManager。"""
 
-        is_loaded = getattr(self.data_manager, "is_loaded", None)
-        get_all_items = getattr(self.data_manager, "get_all_items", None)
-        set_project_status = getattr(self.data_manager, "set_project_status", None)
-        get_translation_extras = getattr(
-            self.data_manager, "get_translation_extras", None
-        )
-        set_translation_extras = getattr(
-            self.data_manager, "set_translation_extras", None
-        )
+        # 这里依赖的是正式 DataManager 同步契约，缺少能力必须直接暴露，
+        # 否则会把“写入后没有刷新工程翻译态”的真实问题静默吞掉。
+        if self.data_manager.is_loaded():
+            review_items = self.filter_service.build_review_items(
+                self.data_manager.get_all_items()
+            )
+            untranslated_count = sum(
+                1
+                for item in review_items
+                if item.get_status() == Base.ProjectStatus.NONE
+            )
+            project_status = (
+                Base.ProjectStatus.PROCESSING
+                if untranslated_count > 0
+                else Base.ProjectStatus.PROCESSED
+            )
+            self.data_manager.set_project_status(project_status)
 
-        # 这里把“翻译态同步”视为可选能力，避免最小写入桩被迫实现完整 DataManager。
-        can_sync_translation_state = (
-            callable(is_loaded)
-            and callable(get_all_items)
-            and callable(set_project_status)
-            and callable(get_translation_extras)
-            and callable(set_translation_extras)
-        )
-
-        if can_sync_translation_state:
-            if bool(is_loaded()):
-                review_items = self.filter_service.build_review_items(get_all_items())
-                untranslated_count = sum(
-                    1
-                    for item in review_items
-                    if item.get_status() == Base.ProjectStatus.NONE
+            extras = self.data_manager.get_translation_extras()
+            translated_count = sum(
+                1
+                for item in review_items
+                if item.get_status()
+                in (
+                    Base.ProjectStatus.PROCESSED,
+                    Base.ProjectStatus.PROCESSED_IN_PAST,
                 )
-                project_status = (
-                    Base.ProjectStatus.PROCESSING
-                    if untranslated_count > 0
-                    else Base.ProjectStatus.PROCESSED
-                )
-                set_project_status(project_status)
-
-                extras = get_translation_extras()
-                translated_count = sum(
-                    1
-                    for item in review_items
-                    if item.get_status()
-                    in (
-                        Base.ProjectStatus.PROCESSED,
-                        Base.ProjectStatus.PROCESSED_IN_PAST,
-                    )
-                )
-                extras["line"] = translated_count
-                set_translation_extras(extras)
-            else:
-                pass
+            )
+            extras["line"] = translated_count
+            self.data_manager.set_translation_extras(extras)
         else:
             pass
 

@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from tests.api.test_api_layering_boundary import FRONTEND_CORE_FORBIDDEN_IMPORTS
-from tests.api.test_api_layering_boundary import PHASE_ONE_FRONTEND_FILES
-from tests.api.test_api_layering_boundary import PHASE_TWO_PROOFREADING_FRONTEND_FILES
-from tests.api.test_api_layering_boundary import PHASE_TWO_QUALITY_FRONTEND_FILES
-from tests.api.test_api_layering_boundary import PROOFREADING_HELPER_FILES
-from tests.api.test_api_layering_boundary import PROOFREADING_HELPER_FORBIDDEN_IMPORTS
+from tests.api.boundary_contracts import FRONTEND_CORE_FORBIDDEN_IMPORTS
+from tests.api.boundary_contracts import PHASE_ONE_FRONTEND_FILES
+from tests.api.boundary_contracts import PHASE_TWO_PROOFREADING_FRONTEND_FILES
+from tests.api.boundary_contracts import PHASE_TWO_QUALITY_FRONTEND_FILES
+from tests.api.boundary_contracts import PROOFREADING_HELPER_FILES
+from tests.api.boundary_contracts import PROOFREADING_HELPER_FORBIDDEN_IMPORTS
 
 
 QUALITY_RULE_LAYER_FORBIDDEN_IMPORTS: tuple[str, ...] = (

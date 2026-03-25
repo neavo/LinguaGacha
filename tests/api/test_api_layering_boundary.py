@@ -1,7 +1,12 @@
 import re
 from pathlib import Path
+from unittest.mock import Mock
 
+from base.Base import Base
+from api.Bridge.EventBridge import EventBridge
+from api.Bridge.EventTopic import EventTopic
 from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ApiClient import ApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
@@ -9,94 +14,20 @@ from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Client.AppClientContext import AppClientContext
-
-FRONTEND_CORE_FORBIDDEN_IMPORTS: tuple[str, ...] = (
-    "from module.Data.DataManager import DataManager",
-    "from module.Engine.Engine import Engine",
-    "from base.EventManager import EventManager",
-    "from module.Config import Config",
-)
-
-PHASE_ONE_FRONTEND_FILES: tuple[str, ...] = (
-    "frontend/AppFluentWindow.py",
-    "frontend/ProjectPage.py",
-    "frontend/Translation/TranslationPage.py",
-    "frontend/Analysis/AnalysisPage.py",
-    "frontend/Workbench/WorkbenchPage.py",
-    "frontend/AppSettingsPage.py",
-    "frontend/Setting/BasicSettingsPage.py",
-    "frontend/Setting/ExpertSettingsPage.py",
-)
-
-PHASE_TWO_QUALITY_FRONTEND_FILES: tuple[str, ...] = (
-    "frontend/Quality/CustomPromptPage.py",
-    "frontend/Quality/GlossaryEditPanel.py",
-    "frontend/Quality/GlossaryPage.py",
-    "frontend/Quality/QualityRuleEditPanelBase.py",
-    "frontend/Quality/QualityRuleIconHelper.py",
-    "frontend/Quality/QualityRulePageBase.py",
-    "frontend/Quality/QualityRulePresetManager.py",
-    "frontend/Quality/TextPreserveEditPanel.py",
-    "frontend/Quality/TextPreservePage.py",
-    "frontend/Quality/TextReplacementEditPanel.py",
-    "frontend/Quality/TextReplacementPage.py",
-)
-
-PHASE_TWO_PROOFREADING_FRONTEND_FILES: tuple[str, ...] = (
-    "frontend/Proofreading/FilterDialog.py",
-    "frontend/Proofreading/ProofreadingDomain.py",
-    "frontend/Proofreading/ProofreadingEditPanel.py",
-    "frontend/Proofreading/ProofreadingLabels.py",
-    "frontend/Proofreading/ProofreadingLoadService.py",
-    "frontend/Proofreading/ProofreadingPage.py",
-    "frontend/Proofreading/ProofreadingStatusDelegate.py",
-    "frontend/Proofreading/ProofreadingTableModel.py",
-    "frontend/Proofreading/ProofreadingTableWidget.py",
-)
-
-PROOFREADING_HELPER_FORBIDDEN_IMPORTS: tuple[str, ...] = (
-    "from module.Data.DataManager import DataManager",
-    "from module.Config import Config",
-    "from module.ResultChecker import ResultChecker",
-)
-
-PROOFREADING_HELPER_FILES: tuple[str, ...] = (
-    "frontend/Proofreading/ProofreadingLoadService.py",
-    "frontend/Proofreading/ProofreadingDomain.py",
-)
-
-PHASE_TWO_SPEC_ROUTE_PATHS: tuple[str, ...] = (
-    "/api/quality/rules/snapshot",
-    "/api/quality/rules/update-meta",
-    "/api/quality/rules/save-entries",
-    "/api/quality/rules/import",
-    "/api/quality/rules/export",
-    "/api/quality/rules/presets",
-    "/api/quality/rules/presets/read",
-    "/api/quality/rules/presets/save",
-    "/api/quality/rules/presets/rename",
-    "/api/quality/rules/presets/delete",
-    "/api/quality/rules/query-proofreading",
-    "/api/quality/rules/statistics",
-    "/api/quality/prompts/snapshot",
-    "/api/quality/prompts/template",
-    "/api/quality/prompts/save",
-    "/api/quality/prompts/import",
-    "/api/quality/prompts/export",
-    "/api/quality/prompts/presets",
-    "/api/quality/prompts/presets/read",
-    "/api/quality/prompts/presets/save",
-    "/api/quality/prompts/presets/rename",
-    "/api/quality/prompts/presets/delete",
-    "/api/proofreading/snapshot",
-    "/api/proofreading/filter",
-    "/api/proofreading/search",
-    "/api/proofreading/save-item",
-    "/api/proofreading/save-all",
-    "/api/proofreading/replace-all",
-    "/api/proofreading/recheck-item",
-    "/api/proofreading/retranslate-items",
-)
+from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
+from api.Server.Routes.QualityRoutes import QualityRoutes
+from model.Api.ProofreadingModels import ProofreadingMutationResult
+from model.Api.ProofreadingModels import ProofreadingSearchResult
+from model.Api.ProofreadingModels import ProofreadingSnapshot
+from model.Api.QualityRuleModels import ProofreadingLookupQuery
+from model.Api.QualityRuleModels import QualityRuleSnapshot
+from tests.api.boundary_contracts import PHASE_ONE_FRONTEND_FILES
+from tests.api.boundary_contracts import PHASE_TWO_PROOFREADING_FRONTEND_FILES
+from tests.api.boundary_contracts import PHASE_TWO_PROOFREADING_ROUTE_PATHS
+from tests.api.boundary_contracts import PHASE_TWO_QUALITY_FRONTEND_FILES
+from tests.api.boundary_contracts import PHASE_TWO_QUALITY_ROUTE_PATHS
+from tests.api.boundary_contracts import PHASE_TWO_SPEC_ROUTE_PATHS
+from tests.api.boundary_contracts import PROOFREADING_HELPER_FILES
 
 
 def test_app_client_context_groups_ui_clients() -> None:
@@ -190,6 +121,157 @@ def test_phase_two_frontend_boundary_lists_are_declared_in_single_source() -> No
     )
     assert set(PROOFREADING_HELPER_FILES).issubset(
         PHASE_TWO_PROOFREADING_FRONTEND_FILES
+    )
+
+
+def test_phase_two_routes_match_registered_server_contract() -> None:
+    quality_paths = (
+        QualityRoutes.SNAPSHOT_PATH,
+        QualityRoutes.UPDATE_META_PATH,
+        QualityRoutes.SAVE_ENTRIES_PATH,
+        QualityRoutes.IMPORT_RULES_PATH,
+        QualityRoutes.EXPORT_RULES_PATH,
+        QualityRoutes.RULE_PRESETS_PATH,
+        QualityRoutes.RULE_PRESET_READ_PATH,
+        QualityRoutes.RULE_PRESET_SAVE_PATH,
+        QualityRoutes.RULE_PRESET_RENAME_PATH,
+        QualityRoutes.RULE_PRESET_DELETE_PATH,
+        QualityRoutes.QUERY_PROOFREADING_PATH,
+        QualityRoutes.STATISTICS_PATH,
+        QualityRoutes.PROMPT_SNAPSHOT_PATH,
+        QualityRoutes.PROMPT_TEMPLATE_PATH,
+        QualityRoutes.PROMPT_SAVE_PATH,
+        QualityRoutes.PROMPT_IMPORT_PATH,
+        QualityRoutes.PROMPT_EXPORT_PATH,
+        QualityRoutes.PROMPT_PRESETS_PATH,
+        QualityRoutes.PROMPT_PRESET_READ_PATH,
+        QualityRoutes.PROMPT_PRESET_SAVE_PATH,
+        QualityRoutes.PROMPT_PRESET_RENAME_PATH,
+        QualityRoutes.PROMPT_PRESET_DELETE_PATH,
+    )
+    proofreading_paths = (
+        ProofreadingRoutes.SNAPSHOT_PATH,
+        ProofreadingRoutes.FILTER_PATH,
+        ProofreadingRoutes.SEARCH_PATH,
+        ProofreadingRoutes.SAVE_ITEM_PATH,
+        ProofreadingRoutes.SAVE_ALL_PATH,
+        ProofreadingRoutes.REPLACE_ALL_PATH,
+        ProofreadingRoutes.RECHECK_ITEM_PATH,
+        ProofreadingRoutes.RETRANSLATE_ITEMS_PATH,
+    )
+
+    assert quality_paths == PHASE_TWO_QUALITY_ROUTE_PATHS
+    assert proofreading_paths == PHASE_TWO_PROOFREADING_ROUTE_PATHS
+
+    quality_core_api_server = Mock()
+    proofreading_core_api_server = Mock()
+    quality_app_service = Mock()
+    proofreading_app_service = Mock()
+
+    QualityRoutes.register(quality_core_api_server, quality_app_service)
+    ProofreadingRoutes.register(
+        proofreading_core_api_server,
+        proofreading_app_service,
+    )
+
+    quality_calls = quality_core_api_server.add_json_route.call_args_list
+    proofreading_calls = proofreading_core_api_server.add_json_route.call_args_list
+
+    assert tuple(call.args[0] for call in quality_calls) == ("POST",) * len(
+        PHASE_TWO_QUALITY_ROUTE_PATHS
+    )
+    assert (
+        tuple(call.args[1] for call in quality_calls) == PHASE_TWO_QUALITY_ROUTE_PATHS
+    )
+    assert tuple(call.args[0] for call in proofreading_calls) == ("POST",) * len(
+        PHASE_TWO_PROOFREADING_ROUTE_PATHS
+    )
+    assert tuple(call.args[1] for call in proofreading_calls) == (
+        PHASE_TWO_PROOFREADING_ROUTE_PATHS
+    )
+
+
+def test_phase_two_sse_and_client_contracts_use_real_runtime_symbols() -> None:
+    assert (
+        EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value
+        == "proofreading.snapshot_invalidated"
+    )
+
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"rule_type": "glossary"},
+    )
+
+    assert topic == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value
+    assert payload["reason"] == "quality_rule_update"
+
+    api_client = Mock(spec=ApiClient)
+    api_client.post.side_effect = [
+        {
+            "snapshot": {
+                "rule_type": "glossary",
+                "revision": 1,
+            }
+        },
+        {
+            "snapshot": {
+                "rule_type": "glossary",
+                "revision": 2,
+            }
+        },
+        {
+            "query": {
+                "keyword": "勇者",
+                "is_regex": True,
+            }
+        },
+        {
+            "snapshot": {
+                "revision": 3,
+                "items": [{"item_id": 1}],
+            }
+        },
+        {
+            "search_result": {
+                "keyword": "勇者",
+                "is_regex": False,
+                "matched_item_ids": [1],
+            }
+        },
+        {
+            "result": {
+                "revision": 4,
+                "changed_item_ids": [1],
+            }
+        },
+    ]
+
+    quality_client = QualityRuleApiClient(api_client)
+    proofreading_client = ProofreadingApiClient(api_client)
+
+    quality_snapshot = quality_client.get_rule_snapshot("glossary")
+    updated_snapshot = quality_client.update_meta({"rule_type": "glossary"})
+    lookup_query = quality_client.query_proofreading({"src": "勇者", "regex": True})
+    proofreading_snapshot = proofreading_client.get_snapshot({})
+    search_result = proofreading_client.search({"keyword": "勇者"})
+    mutation_result = proofreading_client.save_item({"item": {"id": 1}})
+
+    assert isinstance(quality_snapshot, QualityRuleSnapshot)
+    assert isinstance(updated_snapshot, QualityRuleSnapshot)
+    assert isinstance(lookup_query, ProofreadingLookupQuery)
+    assert isinstance(proofreading_snapshot, ProofreadingSnapshot)
+    assert isinstance(search_result, ProofreadingSearchResult)
+    assert isinstance(mutation_result, ProofreadingMutationResult)
+    assert api_client.post.call_args_list[0].args[0] == QualityRoutes.SNAPSHOT_PATH
+    assert api_client.post.call_args_list[1].args[0] == QualityRoutes.UPDATE_META_PATH
+    assert (
+        api_client.post.call_args_list[2].args[0]
+        == QualityRoutes.QUERY_PROOFREADING_PATH
+    )
+    assert api_client.post.call_args_list[3].args[0] == ProofreadingRoutes.SNAPSHOT_PATH
+    assert api_client.post.call_args_list[4].args[0] == ProofreadingRoutes.SEARCH_PATH
+    assert (
+        api_client.post.call_args_list[5].args[0] == ProofreadingRoutes.SAVE_ITEM_PATH
     )
 
 

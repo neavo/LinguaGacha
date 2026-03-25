@@ -32,26 +32,74 @@ def build_item(
 def build_fake_data_manager(
     *,
     revision: int,
+    loaded: bool = True,
+    items_all: list[Item] | None = None,
 ) -> tuple[SimpleNamespace, dict[str, object]]:
     """构造最小写入口假对象，方便验证 revision 与写回。"""
 
     meta_store: dict[str, object] = {
         "proofreading_revision.proofreading": revision,
     }
+    all_items = list(items_all) if items_all is not None else []
+    project_state: dict[str, object] = {
+        "project_status": Base.ProjectStatus.NONE,
+        "translation_extras": {"line": 0},
+    }
+
+    def save_item(item: Item) -> int:
+        item_id = item.get_id() or 0
+        for index, current_item in enumerate(all_items):
+            if current_item.get_id() == item_id:
+                all_items[index] = item
+                break
+        else:
+            all_items.append(item)
+        return item_id
+
+    def replace_all_items(items: list[Item]) -> list[int]:
+        all_items.clear()
+        all_items.extend(items)
+        return [item.get_id() or 0 for item in items]
+
+    def update_batch(*, items: list[dict[str, object]]) -> None:
+        for payload in items:
+            for current_item in all_items:
+                if current_item.get_id() != payload.get("id"):
+                    continue
+                if "dst" in payload:
+                    current_item.set_dst(str(payload["dst"]))
+                if "status" in payload:
+                    current_item.set_status(payload["status"])
+                break
+
     fake_data_manager = SimpleNamespace(
         session=SimpleNamespace(state_lock=threading.RLock()),
-        save_item=MagicMock(side_effect=lambda item: item.get_id() or 0),
-        replace_all_items=MagicMock(
-            side_effect=lambda items: [item.get_id() or 0 for item in items]
-        ),
-        update_batch=MagicMock(),
+        save_item=MagicMock(side_effect=save_item),
+        replace_all_items=MagicMock(side_effect=replace_all_items),
+        update_batch=MagicMock(side_effect=update_batch),
         get_meta=MagicMock(
             side_effect=lambda key, default=None: meta_store.get(key, default)
         ),
         set_meta=MagicMock(
             side_effect=lambda key, value: meta_store.__setitem__(key, value)
         ),
+        is_loaded=MagicMock(return_value=loaded),
+        get_all_items=MagicMock(side_effect=lambda: list(all_items)),
+        set_project_status=MagicMock(
+            side_effect=lambda status: project_state.__setitem__(
+                "project_status", status
+            )
+        ),
+        get_translation_extras=MagicMock(
+            side_effect=lambda: dict(project_state["translation_extras"])
+        ),
+        set_translation_extras=MagicMock(
+            side_effect=lambda extras: project_state.__setitem__(
+                "translation_extras", dict(extras)
+            )
+        ),
     )
+    meta_store["project_state"] = project_state
     return fake_data_manager, meta_store
 
 
@@ -291,3 +339,52 @@ def test_replace_batch_forwards_payload_to_data_manager() -> None:
     )
 
     assert data_manager.update_batch.call_count == 1
+
+
+def test_apply_manual_edit_syncs_project_translation_state_and_line_count() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    edited_item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="",
+        file_path="script/a.txt",
+        status=Base.ProjectStatus.NONE,
+    )
+    data_manager, meta_store = build_fake_data_manager(
+        revision=10,
+        items_all=[edited_item],
+    )
+    service = ProofreadingMutationService(data_manager=data_manager)
+
+    result = service.apply_manual_edit(
+        edited_item,
+        "Hero arrived",
+        expected_revision=10,
+    )
+
+    assert result == 1
+    assert meta_store["proofreading_revision.proofreading"] == 11
+    assert meta_store["project_state"] == {
+        "project_status": Base.ProjectStatus.PROCESSED,
+        "translation_extras": {"line": 1},
+    }
+    data_manager.set_project_status.assert_called_once_with(
+        Base.ProjectStatus.PROCESSED
+    )
+    data_manager.set_translation_extras.assert_called_once_with({"line": 1})
+
+
+def test_sync_project_translation_state_requires_full_data_manager_contract() -> None:
+    from module.Data.Proofreading.ProofreadingMutationService import (
+        ProofreadingMutationService,
+    )
+
+    data_manager, _meta_store = build_fake_data_manager(revision=1)
+    delattr(data_manager, "is_loaded")
+    service = ProofreadingMutationService(data_manager=data_manager)
+
+    with pytest.raises(AttributeError):
+        service.sync_project_translation_state()
