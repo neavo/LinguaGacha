@@ -74,6 +74,39 @@ def test_phase_two_quality_frontend_files_are_listed_separately() -> None:
         assert relative_path.startswith("frontend/Quality/")
 
 
+def test_quality_pages_use_quality_rule_api_client() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    window_content = (root_dir / "frontend" / "AppFluentWindow.py").read_text(
+        encoding="utf-8"
+    )
+    glossary_content = (
+        root_dir / "frontend" / "Quality" / "GlossaryPage.py"
+    ).read_text(encoding="utf-8")
+    text_preserve_content = (
+        root_dir / "frontend" / "Quality" / "TextPreservePage.py"
+    ).read_text(encoding="utf-8")
+    text_replacement_content = (
+        root_dir / "frontend" / "Quality" / "TextReplacementPage.py"
+    ).read_text(encoding="utf-8")
+    custom_prompt_content = (
+        root_dir / "frontend" / "Quality" / "CustomPromptPage.py"
+    ).read_text(encoding="utf-8")
+
+    assert "quality_rule_api_client" in window_content
+    assert "proofreading_api_client" in window_content
+    assert "from module.Data.DataManager import DataManager" not in glossary_content
+    assert (
+        "from module.Data.DataManager import DataManager" not in text_preserve_content
+    )
+    assert (
+        "from module.Data.DataManager import DataManager"
+        not in text_replacement_content
+    )
+    assert (
+        "from module.Data.DataManager import DataManager" not in custom_prompt_content
+    )
+
+
 def test_phase_two_proofreading_frontend_files_are_listed_separately() -> None:
     root_dir = Path(__file__).resolve().parents[2]
 

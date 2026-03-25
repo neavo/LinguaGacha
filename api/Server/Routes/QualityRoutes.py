@@ -9,6 +9,17 @@ class QualityRoutes:
     UPDATE_META_PATH: str = "/api/quality/rules/update-meta"
     SAVE_ENTRIES_PATH: str = "/api/quality/rules/save-entries"
     QUERY_PROOFREADING_PATH: str = "/api/quality/rules/query-proofreading"
+    STATISTICS_PATH: str = "/api/quality/rules/statistics"
+    PROMPT_SNAPSHOT_PATH: str = "/api/quality/prompts/snapshot"
+    PROMPT_TEMPLATE_PATH: str = "/api/quality/prompts/template"
+    PROMPT_SAVE_PATH: str = "/api/quality/prompts/save"
+    PROMPT_IMPORT_PATH: str = "/api/quality/prompts/import"
+    PROMPT_EXPORT_PATH: str = "/api/quality/prompts/export"
+    PROMPT_PRESETS_PATH: str = "/api/quality/prompts/presets"
+    PROMPT_PRESET_READ_PATH: str = "/api/quality/prompts/presets/read"
+    PROMPT_PRESET_SAVE_PATH: str = "/api/quality/prompts/presets/save"
+    PROMPT_PRESET_RENAME_PATH: str = "/api/quality/prompts/presets/rename"
+    PROMPT_PRESET_DELETE_PATH: str = "/api/quality/prompts/presets/delete"
 
     @classmethod
     def register(cls, core_api_server: CoreApiServer, quality_rule_app_service) -> None:
@@ -44,5 +55,93 @@ class QualityRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=quality_rule_app_service.query_proofreading(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.STATISTICS_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.build_rule_statistics(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_SNAPSHOT_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.get_prompt_snapshot(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_TEMPLATE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.get_prompt_template(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_SAVE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.save_prompt(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_IMPORT_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.import_prompt(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_EXPORT_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.export_prompt(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_PRESETS_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.list_prompt_presets(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_PRESET_READ_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.read_prompt_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_PRESET_SAVE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.save_prompt_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_PRESET_RENAME_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.rename_prompt_preset(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.PROMPT_PRESET_DELETE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=quality_rule_app_service.delete_prompt_preset(request),
             ),
         )

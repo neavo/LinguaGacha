@@ -217,6 +217,12 @@ class FakeSettingsConfig:
         self.check_similarity: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
+        self.glossary_default_preset: str = ""
+        self.text_preserve_default_preset: str = ""
+        self.pre_translation_replacement_default_preset: str = ""
+        self.post_translation_replacement_default_preset: str = ""
+        self.translation_custom_prompt_default_preset: str = ""
+        self.analysis_custom_prompt_default_preset: str = ""
         self.recent_projects: list[dict[str, str]] = []
         self.load_calls: int = 0
         self.save_calls: int = 0

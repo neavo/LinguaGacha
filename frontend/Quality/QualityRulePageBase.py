@@ -6,6 +6,7 @@ from typing import Callable
 from typing import TypeVar
 from typing import cast
 
+from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -39,8 +40,6 @@ from base.LogManager import LogManager
 from frontend.Quality.QualityRuleEditPanelBase import QualityRuleEditPanelBase
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
 from frontend.Utils.StatusColumnIconStrip import StatusColumnIconStrip
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
@@ -120,8 +119,15 @@ class QualityRulePageBase(Base, QWidget):
         self.setObjectName(text.replace(" ", "-"))
 
         self.main_window = window
+        self.quality_rule_api_client: QualityRuleApiClient = (
+            window.quality_rule_api_client
+        )
+        self.settings_api_client = window.settings_api_client
+        self.api_state_store = window.api_state_store
 
         self.entries: list[dict[str, Any]] = []
+        self.rule_revision: int = 0
+        self.rule_meta: dict[str, Any] = {}
         self.current_index: int = -1
         self.block_selection_change: bool = False
         self.pending_action: Callable[[], None] | None = None
@@ -163,12 +169,6 @@ class QualityRulePageBase(Base, QWidget):
 
     # ==================== 子类需要实现的最小接口 ====================
 
-    def load_entries(self) -> list[dict[str, Any]]:
-        raise NotImplementedError
-
-    def save_entries(self, entries: list[dict[str, Any]]) -> None:
-        raise NotImplementedError
-
     def create_edit_panel(self, parent: QWidget) -> QWidget:
         raise NotImplementedError
 
@@ -183,16 +183,6 @@ class QualityRulePageBase(Base, QWidget):
 
     def create_empty_entry(self) -> dict[str, Any]:
         raise NotImplementedError
-
-    def build_proofreading_lookup(
-        self, entry: dict[str, Any]
-    ) -> tuple[str, bool] | None:
-        """把当前规则转换成校对页可直接消费的查询参数。"""
-
-        keyword = str(entry.get("src", "")).strip()
-        if not keyword:
-            return None
-        return keyword, False
 
     def get_merge_rule_type(self) -> QualityRuleMerger.RuleType:
         """返回当前页面对应的规则类型（用于判重 key 与字段级合并）。
@@ -265,6 +255,64 @@ class QualityRulePageBase(Base, QWidget):
         except TypeError, RuntimeError:
             # Qt 对象销毁或重复断开连接时可能抛异常，可忽略。
             pass
+
+    def get_rule_type_name(self) -> str:
+        """统一解析当前页面对应的规则类型字符串。"""
+
+        if len(self.QUALITY_RULE_TYPES) == 1:
+            return str(next(iter(self.QUALITY_RULE_TYPES)))
+
+        raw_rule_type = getattr(self, "rule_type", "")
+        if hasattr(raw_rule_type, "value"):
+            return str(raw_rule_type.value)
+        return str(raw_rule_type)
+
+    def apply_rule_snapshot(self, snapshot) -> None:
+        """把规则快照同步到当前页面状态。"""
+
+        self.rule_revision = int(snapshot.revision)
+        self.rule_meta = dict(snapshot.meta)
+        self.entries = [entry.to_dict() for entry in snapshot.entries]
+
+    def load_entries(self) -> list[dict[str, Any]]:
+        """通过 API 客户端读取当前规则快照。"""
+
+        snapshot = self.quality_rule_api_client.get_rule_snapshot(
+            self.get_rule_type_name()
+        )
+        self.apply_rule_snapshot(snapshot)
+        return list(self.entries)
+
+    def save_entries(self, entries: list[dict[str, Any]]) -> None:
+        """通过 API 客户端提交规则列表，并同步最新 revision。"""
+
+        snapshot = self.quality_rule_api_client.save_entries(
+            {
+                "rule_type": self.get_rule_type_name(),
+                "expected_revision": self.rule_revision,
+                "entries": [dict(entry) for entry in entries],
+            }
+        )
+        self.apply_rule_snapshot(snapshot)
+
+    def update_rule_meta(self, meta: dict[str, Any]) -> None:
+        """通过 API 客户端提交规则 meta 更新。"""
+
+        snapshot = self.quality_rule_api_client.update_meta(
+            {
+                "rule_type": self.get_rule_type_name(),
+                "expected_revision": self.rule_revision,
+                "meta": dict(meta),
+            }
+        )
+        self.apply_rule_snapshot(snapshot)
+
+    def get_rule_meta_value(self, key: str, default_value: Any) -> Any:
+        """统一读取当前页面缓存的规则 meta。"""
+
+        if key in self.rule_meta:
+            return self.rule_meta[key]
+        return default_value
 
     # ==================== UI 组装（供子类调用） ====================
 
@@ -1088,13 +1136,6 @@ class QualityRulePageBase(Base, QWidget):
             ],
         )
 
-    def collect_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        """提取统计使用的 src/dst 文本快照。
-
-        口径固定为“仅可翻译条目”，这样统计结果与翻译主流程一致。
-        """
-        return DataManager.get().collect_rule_statistics_texts()
-
     def get_statistics_entry_key(self, entry: dict[str, Any]) -> str:
         return self.build_statistics_entry_key(entry)
 
@@ -1275,27 +1316,43 @@ class QualityRulePageBase(Base, QWidget):
         entries_snapshot: tuple[dict[str, Any], ...],
     ) -> None:
         try:
-            rules = tuple(self.build_statistics_inputs(list(entries_snapshot)))
+            rules = self.build_statistics_inputs(list(entries_snapshot))
             relation_candidates = self.build_statistics_relation_candidates(
                 entries_snapshot
             )
-            src_texts, dst_texts = self.collect_statistics_texts()
             if not self.is_statistics_token_valid(token):
                 return
 
-            snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
-                rules=rules,
-                src_texts=src_texts,
-                dst_texts=dst_texts,
-                relation_candidates=relation_candidates,
-                should_stop=lambda: not self.is_statistics_token_valid(token),
+            snapshot = self.quality_rule_api_client.build_rule_statistics(
+                {
+                    "rule_type": self.get_rule_type_name(),
+                    "rules": [
+                        {
+                            "key": rule.key,
+                            "pattern": rule.pattern,
+                            "mode": rule.mode.value,
+                            "regex": rule.regex,
+                            "case_sensitive": rule.case_sensitive,
+                        }
+                        for rule in rules
+                    ],
+                    "relation_candidates": [
+                        {"key": key, "src": src} for key, src in relation_candidates
+                    ],
+                }
             )
             if not self.is_statistics_token_valid(token):
                 return
 
             payload = {
-                "results": snapshot.results,
-                "subset_parents": snapshot.subset_parents,
+                "results": {
+                    key: {"matched_item_count": result.matched_item_count}
+                    for key, result in snapshot.results.items()
+                },
+                "subset_parents": {
+                    key: result.subset_parents
+                    for key, result in snapshot.results.items()
+                },
             }
         except Exception as e:
             LogManager.get().error("规则统计失败", e)
@@ -1330,7 +1387,7 @@ class QualityRulePageBase(Base, QWidget):
         if self.statistics_running:
             return
 
-        if not DataManager.get().is_loaded():
+        if not self.api_state_store.is_project_loaded():
             self.start_statistics()
             return
 
@@ -1343,7 +1400,7 @@ class QualityRulePageBase(Base, QWidget):
     def start_statistics(self) -> None:
         if self.statistics_running:
             return
-        if not DataManager.get().is_loaded():
+        if not self.api_state_store.is_project_loaded():
             self.hide_statistics_preparing_progress()
             self.emit_warning_toast(Localizer.get().alert_project_not_loaded)
             return
@@ -1693,16 +1750,23 @@ class QualityRulePageBase(Base, QWidget):
                 return
 
             entry = self.entries[self.current_index]
-            lookup = self.build_proofreading_lookup(entry)
-            if lookup is None:
+            lookup = self.quality_rule_api_client.query_proofreading(
+                {
+                    "rule_type": self.get_rule_type_name(),
+                    "entry": entry,
+                }
+            )
+            if lookup.keyword.strip() == "":
                 return
 
-            keyword, is_regex = lookup
             proofreading_page = getattr(self.main_window, "proofreading_page", None)
             if proofreading_page is None:
                 return
 
-            proofreading_page.request_lookup(keyword=keyword, is_regex=is_regex)
+            proofreading_page.request_lookup(
+                keyword=lookup.keyword,
+                is_regex=lookup.is_regex,
+            )
             self.main_window.switchTo(proofreading_page)
 
         self.run_with_unsaved_guard(action)
@@ -1850,13 +1914,11 @@ class QualityRulePageBase(Base, QWidget):
         )
         return self.statistics_button
 
-    def add_command_bar_action_preset(
-        self, config: Config, window: FluentWindow
-    ) -> CommandButton:
+    def add_command_bar_action_preset(self, window: FluentWindow) -> CommandButton:
         self.preset_manager = QualityRulePresetManager(
             preset_dir_name=self.PRESET_DIR_NAME,
             default_preset_config_key=self.DEFAULT_PRESET_CONFIG_KEY,
-            config=config,
+            settings_api_client=self.settings_api_client,
             page=self,
             window=window,
         )
@@ -1879,7 +1941,6 @@ class QualityRulePageBase(Base, QWidget):
 
     def add_standard_command_bar_actions(
         self,
-        config: Config,
         window: FluentWindow,
         *,
         extra_right_actions: tuple[Callable[[], None], ...] = (),
@@ -1894,7 +1955,7 @@ class QualityRulePageBase(Base, QWidget):
         self.add_command_bar_action_search()
         self.add_command_bar_action_statistics()
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_preset(config, window)
+        self.add_command_bar_action_preset(window)
         self.command_bar_card.add_stretch(1)
 
         for action in extra_right_actions:

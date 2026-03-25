@@ -9,10 +9,10 @@ from qfluentwidgets import FluentWindow
 from qfluentwidgets import MessageBox
 from qfluentwidgets import RoundMenu
 
+from api.Client.SettingsApiClient import SettingsApiClient
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
-from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from module.QualityRulePathResolver import QualityRulePathResolver
 from widget.LineEditMessageBox import LineEditMessageBox
@@ -42,15 +42,20 @@ class QualityRulePresetManager:
         self,
         preset_dir_name: str,
         default_preset_config_key: str,
-        config: Config,
+        settings_api_client: SettingsApiClient,
         page: "QualityRulePageBase",
         window: FluentWindow,
     ) -> None:
         self.preset_dir_name: str = preset_dir_name
         self.default_preset_config_key: str = default_preset_config_key
-        self.config: Config = config
+        self.settings_api_client: SettingsApiClient = settings_api_client
         self.page: "QualityRulePageBase" = page
         self.window: FluentWindow = window
+
+    def get_default_preset_virtual_id(self) -> str:
+        settings_snapshot = self.settings_api_client.get_app_settings()
+        value = getattr(settings_snapshot, self.default_preset_config_key, "")
+        return str(value)
 
     def get_preset_paths(self) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         return QualityRulePathResolver.list_presets(
@@ -93,7 +98,7 @@ class QualityRulePresetManager:
             )
             return True
         except Exception as e:
-            LogManager.get().error(f"Failed to save preset - {path}", e)
+            LogManager.get().error(f"保存预设失败 - {path}", e)
             return False
 
     def rename_preset(self, item: dict[str, str], new_name: str) -> bool:
@@ -121,27 +126,17 @@ class QualityRulePresetManager:
                 new_name,
             )
 
-            current_config = Config().load()
-            if (
-                getattr(current_config, self.default_preset_config_key, "")
-                == item["virtual_id"]
-            ):
-                setattr(
-                    current_config,
-                    self.default_preset_config_key,
-                    renamed_item["virtual_id"],
-                )
-                current_config.save()
-                setattr(
-                    self.config,
-                    self.default_preset_config_key,
-                    renamed_item["virtual_id"],
+            if self.get_default_preset_virtual_id() == item["virtual_id"]:
+                self.settings_api_client.update_app_settings(
+                    {
+                        self.default_preset_config_key: renamed_item["virtual_id"],
+                    }
                 )
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
             return True
         except Exception as e:
-            LogManager.get().error(f"Failed to rename preset - {item['path']}", e)
+            LogManager.get().error(f"重命名预设失败 - {item['path']}", e)
             return False
 
     def delete_preset(self, item: dict[str, str], checked: bool = False) -> None:
@@ -161,33 +156,33 @@ class QualityRulePresetManager:
                 item["virtual_id"],
             )
 
-            current_config = Config().load()
-            if (
-                getattr(current_config, self.default_preset_config_key, "")
-                == item["virtual_id"]
-            ):
-                setattr(current_config, self.default_preset_config_key, "")
-                current_config.save()
-                setattr(self.config, self.default_preset_config_key, "")
+            if self.get_default_preset_virtual_id() == item["virtual_id"]:
+                self.settings_api_client.update_app_settings(
+                    {
+                        self.default_preset_config_key: "",
+                    }
+                )
 
             self.show_toast(Base.ToastType.SUCCESS, Localizer.get().task_success)
         except Exception as e:
-            LogManager.get().error(f"Failed to delete preset - {item['path']}", e)
+            LogManager.get().error(f"删除预设失败 - {item['path']}", e)
 
     def set_default_preset(self, item: dict[str, str], checked: bool = False) -> None:
-        current_config = Config().load()
-        setattr(current_config, self.default_preset_config_key, item["virtual_id"])
-        current_config.save()
-        setattr(self.config, self.default_preset_config_key, item["virtual_id"])
+        self.settings_api_client.update_app_settings(
+            {
+                self.default_preset_config_key: item["virtual_id"],
+            }
+        )
         self.show_toast(
             Base.ToastType.SUCCESS, Localizer.get().quality_set_default_preset_success
         )
 
     def cancel_default_preset(self, checked: bool = False) -> None:
-        current_config = Config().load()
-        setattr(current_config, self.default_preset_config_key, "")
-        current_config.save()
-        setattr(self.config, self.default_preset_config_key, "")
+        self.settings_api_client.update_app_settings(
+            {
+                self.default_preset_config_key: "",
+            }
+        )
         self.show_toast(
             Base.ToastType.SUCCESS,
             Localizer.get().quality_cancel_default_preset_success,
@@ -223,6 +218,7 @@ class QualityRulePresetManager:
     def build_preset_menu(self, parent_widget: QWidget) -> RoundMenu:
         menu = RoundMenu("", parent_widget)
         builtin_presets, user_presets = self.get_preset_paths()
+        default_preset_virtual_id = self.get_default_preset_virtual_id()
 
         menu.addAction(
             Action(
@@ -263,7 +259,7 @@ class QualityRulePresetManager:
             )
             sub_menu.addSeparator()
 
-            if self.is_default_preset(item):
+            if self.is_default_preset(item, default_preset_virtual_id):
                 sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                 sub_menu.addAction(
                     Action(
@@ -317,7 +313,7 @@ class QualityRulePresetManager:
             )
             sub_menu.addSeparator()
 
-            if self.is_default_preset(item):
+            if self.is_default_preset(item, default_preset_virtual_id):
                 sub_menu.setIcon(ICON_PRESET_DEFAULT_MARK)
                 sub_menu.addAction(
                     Action(
@@ -358,11 +354,12 @@ class QualityRulePresetManager:
         dialog.get_line_edit().setText(item["name"])
         dialog.exec()
 
-    def is_default_preset(self, item: dict[str, str]) -> bool:
-        return (
-            getattr(self.config, self.default_preset_config_key, "")
-            == item["virtual_id"]
-        )
+    def is_default_preset(
+        self,
+        item: dict[str, str],
+        default_preset_virtual_id: str,
+    ) -> bool:
+        return default_preset_virtual_id == item["virtual_id"]
 
     def show_toast(self, toast_type: Base.ToastType, message: str) -> None:
         self.page.emit(Base.Event.TOAST, {"type": toast_type, "message": message})

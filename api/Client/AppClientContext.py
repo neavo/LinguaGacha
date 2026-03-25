@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
 from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
@@ -15,4 +17,6 @@ class AppClientContext:
     task_api_client: TaskApiClient
     workbench_api_client: WorkbenchApiClient
     settings_api_client: SettingsApiClient
+    quality_rule_api_client: QualityRuleApiClient
+    proofreading_api_client: ProofreadingApiClient
     api_state_store: ApiStateStore

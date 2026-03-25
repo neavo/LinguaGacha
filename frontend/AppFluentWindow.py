@@ -50,7 +50,6 @@ from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
 from module.Localizer.Localizer import Localizer
-from module.PromptPathResolver import PromptPathResolver
 from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
@@ -93,6 +92,8 @@ class AppFluentWindow(Base, FluentWindow):
     HOMEPAGE_AVATAR_RADIUS: int = 10
     HOMEPAGE_AVATAR_X: int = 10
     HOMEPAGE_AVATAR_Y: int = 8
+    PROMPT_TASK_TYPE_TRANSLATION: str = "translation"
+    PROMPT_TASK_TYPE_ANALYSIS: str = "analysis"
 
     def __init__(self, app_client_context: AppClientContext | None) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
@@ -104,6 +105,8 @@ class AppFluentWindow(Base, FluentWindow):
         self.task_api_client = app_client_context.task_api_client
         self.workbench_api_client = app_client_context.workbench_api_client
         self.settings_api_client = app_client_context.settings_api_client
+        self.quality_rule_api_client = app_client_context.quality_rule_api_client
+        self.proofreading_api_client = app_client_context.proofreading_api_client
         self.api_state_store = app_client_context.api_state_store
 
         super().__init__()
@@ -805,7 +808,7 @@ class AppFluentWindow(Base, FluentWindow):
             CustomPromptPage(
                 "translation_prompt_page",
                 self,
-                PromptPathResolver.TaskType.TRANSLATION,
+                self.PROMPT_TASK_TYPE_TRANSLATION,
             ),
             ICON_NAV_TRANSLATION_PROMPT.qicon(),
             Localizer.get().app_translation_prompt_page,
@@ -815,7 +818,7 @@ class AppFluentWindow(Base, FluentWindow):
             CustomPromptPage(
                 "analysis_prompt_page",
                 self,
-                PromptPathResolver.TaskType.ANALYSIS,
+                self.PROMPT_TASK_TYPE_ANALYSIS,
             ),
             ICON_NAV_ANALYSIS_PROMPT.qicon(),
             Localizer.get().app_analysis_prompt_page,

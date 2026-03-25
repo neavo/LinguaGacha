@@ -1,4 +1,5 @@
 import re
+from enum import StrEnum
 from typing import Any
 from typing import cast
 
@@ -22,8 +23,6 @@ from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
 from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from frontend.Quality.TextReplacementEditPanel import TextReplacementEditPanel
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.AppTable.ColumnSpec import ColumnSpec
@@ -40,6 +39,10 @@ ICON_MENU_DISABLE: BaseIcon = BaseIcon.X  # 右键菜单：禁用
 
 
 class TextReplacementPage(QualityRulePageBase):
+    class RuleType(StrEnum):
+        PRE_REPLACEMENT = "pre_replacement"
+        POST_REPLACEMENT = "post_replacement"
+
     RULE_COLUMN_INDEX: int = 2
     RULE_ICON_SIZE: int = 24
     RULE_ICON_INNER_SIZE: int = 12
@@ -52,10 +55,10 @@ class TextReplacementPage(QualityRulePageBase):
         super().__init__(name, window)
 
         self.base_key: str = base_key
-        self.rule_type: DataManager.RuleType = (
-            DataManager.RuleType.PRE_REPLACEMENT
+        self.rule_type: TextReplacementPage.RuleType = (
+            self.RuleType.PRE_REPLACEMENT
             if base_key == "pre_translation_replacement"
-            else DataManager.RuleType.POST_REPLACEMENT
+            else self.RuleType.POST_REPLACEMENT
         )
         self.enable_meta_key: str = f"{base_key}_enable"
         self.PRESET_DIR_NAME: str = base_key
@@ -71,13 +74,11 @@ class TextReplacementPage(QualityRulePageBase):
         self.QUALITY_RULE_TYPES = {self.rule_type.value}
         self.QUALITY_META_KEYS = {self.enable_meta_key}
 
-        config = Config().load().save()
-
-        self.add_widget_head(self.root, config, window)
+        self.add_widget_head(self.root)
         self.setup_split_body(self.root)
         self.setup_table_columns()
         self.setup_split_foot(self.root)
-        self.add_standard_command_bar_actions(config, window)
+        self.add_standard_command_bar_actions(window)
 
         qconfig.themeChanged.connect(self.on_theme_changed)
         self.destroyed.connect(
@@ -89,29 +90,11 @@ class TextReplacementPage(QualityRulePageBase):
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-    # ==================== DataManager 适配 ====================
-
-    def load_entries(self) -> list[dict[str, Any]]:
-        if self.base_key == "pre_translation_replacement":
-            return DataManager.get().get_pre_replacement()
-        return DataManager.get().get_post_replacement()
-
-    def save_entries(self, entries: list[dict[str, Any]]) -> None:
-        if self.base_key == "pre_translation_replacement":
-            DataManager.get().set_pre_replacement(entries)
-        else:
-            DataManager.get().set_post_replacement(entries)
-
     def get_enable(self) -> bool:
-        if self.base_key == "pre_translation_replacement":
-            return DataManager.get().get_pre_replacement_enable()
-        return DataManager.get().get_post_replacement_enable()
+        return bool(self.get_rule_meta_value("enabled", True))
 
     def set_enable(self, enable: bool) -> None:
-        if self.base_key == "pre_translation_replacement":
-            DataManager.get().set_pre_replacement_enable(enable)
-        else:
-            DataManager.get().set_post_replacement_enable(enable)
+        self.update_rule_meta({"enabled": bool(enable)})
 
     # ==================== SplitPageBase hooks ====================
 
@@ -142,14 +125,6 @@ class TextReplacementPage(QualityRulePageBase):
 
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1)
-
-    def build_proofreading_lookup(
-        self, entry: dict[str, Any]
-    ) -> tuple[str, bool] | None:
-        keyword = str(entry.get("src", "")).strip()
-        if not keyword:
-            return None
-        return keyword, bool(entry.get("regex", False))
 
     def build_statistics_entry_key(self, entry: dict[str, Any]) -> str:
         src = str(entry.get("src", "")).strip()
@@ -252,9 +227,7 @@ class TextReplacementPage(QualityRulePageBase):
 
     # ==================== UI：头部 ====================
 
-    def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
-        del window
-
+    def add_widget_head(self, parent) -> None:
         def checked_changed(button: SwitchButton) -> None:
             self.set_enable(button.isChecked())
 

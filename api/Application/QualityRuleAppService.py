@@ -5,20 +5,24 @@ from typing import Any
 from api.Contract.QualityPayloads import ProofreadingLookupPayload
 from api.Contract.QualityPayloads import QualityRuleSnapshotPayload
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
+from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
+from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
 from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
+from module.PromptBuilder import PromptBuilder
+from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
 class QualityRuleAppService:
     """质量规则用例层，负责把 Core 结果映射成稳定 API 载荷。"""
 
     def __init__(self, quality_rule_facade: Any | None = None) -> None:
+        self.data_manager = DataManager.get()
         if quality_rule_facade is None:
-            data_manager = DataManager.get()
             self.quality_rule_facade = QualityRuleFacadeService(
-                data_manager,
-                data_manager,
+                self.data_manager,
+                self.data_manager,
             )
         else:
             self.quality_rule_facade = quality_rule_facade
@@ -102,3 +106,185 @@ class QualityRuleAppService:
 
         query = ProofreadingLookupQuery(keyword=keyword, is_regex=is_regex)
         return ProofreadingLookupPayload(query=query).to_dict()
+
+    def build_rule_statistics(self, request: dict[str, Any]) -> dict[str, object]:
+        """构建质量规则统计快照。"""
+
+        rules_raw = request.get("rules", [])
+        rules: list[QualityRuleStatistics.RuleStatInput] = []
+        if isinstance(rules_raw, list):
+            for rule in rules_raw:
+                if not isinstance(rule, dict):
+                    continue
+                rules.append(
+                    QualityRuleStatistics.RuleStatInput(
+                        key=str(rule.get("key", "")),
+                        pattern=str(rule.get("pattern", "")),
+                        mode=QualityRuleStatistics.RuleStatMode(
+                            str(rule.get("mode", "glossary"))
+                        ),
+                        regex=bool(rule.get("regex", False)),
+                        case_sensitive=bool(rule.get("case_sensitive", False)),
+                    )
+                )
+
+        relation_candidates_raw = request.get("relation_candidates", [])
+        relation_candidates: tuple[tuple[str, str], ...] = tuple(
+            (
+                str(candidate.get("key", "")),
+                str(candidate.get("src", "")),
+            )
+            for candidate in relation_candidates_raw
+            if isinstance(candidate, dict)
+        )
+
+        src_texts, dst_texts = self.data_manager.collect_rule_statistics_texts()
+        snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
+            rules=tuple(rules),
+            src_texts=src_texts,
+            dst_texts=dst_texts,
+            relation_candidates=relation_candidates,
+        )
+        payload = QualityRuleStatisticsSnapshot.from_dict(
+            {
+                "available": True,
+                "results": {
+                    key: {
+                        "matched_item_count": result.matched_item_count,
+                        "subset_parents": list(snapshot.subset_parents.get(key, ())),
+                    }
+                    for key, result in snapshot.results.items()
+                },
+            }
+        )
+        return {"statistics": payload.to_dict()}
+
+    def get_prompt_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
+        """读取指定任务类型的提示词快照。"""
+
+        task_type = str(request.get("task_type", ""))
+        snapshot = self.quality_rule_facade.get_prompt_snapshot(task_type)
+        return {"prompt": snapshot}
+
+    def get_prompt_template(self, request: dict[str, Any]) -> dict[str, object]:
+        """读取提示词编辑页所需的模板文本。"""
+
+        task_type = str(request.get("task_type", ""))
+        builder = PromptBuilder(Config().load())
+        language = builder.get_prompt_ui_language()
+        if task_type == "translation":
+            default_text = builder.get_base(language)
+            prefix_text = builder.get_prefix(language)
+            suffix_text = builder.get_suffix(language)
+        else:
+            default_text = builder.get_analysis_base(language)
+            prefix_text = builder.get_analysis_prefix(language)
+            suffix_text = builder.get_analysis_suffix(language)
+
+        return {
+            "template": {
+                "default_text": default_text,
+                "prefix_text": prefix_text,
+                "suffix_text": suffix_text,
+            }
+        }
+
+    def save_prompt(self, request: dict[str, Any]) -> dict[str, object]:
+        """保存提示词正文与启用状态。"""
+
+        task_type = str(request.get("task_type", ""))
+        expected_revision = int(request.get("expected_revision", 0) or 0)
+        text = str(request.get("text", ""))
+        enabled_raw = request.get("enabled")
+        enabled: bool | None
+        if enabled_raw is None:
+            enabled = None
+        else:
+            enabled = bool(enabled_raw)
+
+        snapshot = self.quality_rule_facade.save_prompt(
+            task_type,
+            expected_revision=expected_revision,
+            text=text,
+            enabled=enabled,
+        )
+        return {"prompt": snapshot}
+
+    def import_prompt(self, request: dict[str, Any]) -> dict[str, object]:
+        """从本地路径导入提示词。"""
+
+        task_type = str(request.get("task_type", ""))
+        expected_revision = int(request.get("expected_revision", 0) or 0)
+        path = str(request.get("path", ""))
+        enabled_raw = request.get("enabled")
+        enabled: bool | None
+        if enabled_raw is None:
+            enabled = None
+        else:
+            enabled = bool(enabled_raw)
+
+        snapshot = self.quality_rule_facade.import_prompt(
+            task_type,
+            path,
+            expected_revision=expected_revision,
+            enabled=enabled,
+        )
+        return {"prompt": snapshot}
+
+    def export_prompt(self, request: dict[str, Any]) -> dict[str, object]:
+        """导出提示词到本地路径。"""
+
+        task_type = str(request.get("task_type", ""))
+        path = str(request.get("path", ""))
+        exported_path = self.quality_rule_facade.export_prompt(task_type, path)
+        return {"path": exported_path}
+
+    def list_prompt_presets(self, request: dict[str, Any]) -> dict[str, object]:
+        """列出提示词预设。"""
+
+        task_type = str(request.get("task_type", ""))
+        builtin_presets, user_presets = self.quality_rule_facade.list_prompt_presets(
+            task_type
+        )
+        return {
+            "builtin_presets": builtin_presets,
+            "user_presets": user_presets,
+        }
+
+    def read_prompt_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """读取提示词预设正文。"""
+
+        task_type = str(request.get("task_type", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        text = self.quality_rule_facade.read_prompt_preset(task_type, virtual_id)
+        return {"text": text}
+
+    def save_prompt_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """保存提示词用户预设。"""
+
+        task_type = str(request.get("task_type", ""))
+        name = str(request.get("name", ""))
+        text = str(request.get("text", ""))
+        path = self.quality_rule_facade.save_prompt_preset(task_type, name, text)
+        return {"path": path}
+
+    def rename_prompt_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """重命名提示词用户预设。"""
+
+        task_type = str(request.get("task_type", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        new_name = str(request.get("new_name", ""))
+        item = self.quality_rule_facade.rename_prompt_preset(
+            task_type,
+            virtual_id,
+            new_name,
+        )
+        return {"item": item}
+
+    def delete_prompt_preset(self, request: dict[str, Any]) -> dict[str, object]:
+        """删除提示词用户预设。"""
+
+        task_type = str(request.get("task_type", ""))
+        virtual_id = str(request.get("virtual_id", ""))
+        path = self.quality_rule_facade.delete_prompt_preset(task_type, virtual_id)
+        return {"path": path}

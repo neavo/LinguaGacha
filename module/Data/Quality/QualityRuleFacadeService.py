@@ -178,6 +178,52 @@ class QualityRuleFacadeService:
 
         return self.prompt_service.get_default_preset_text(task_type, virtual_id)
 
+    def list_prompt_presets(
+        self,
+        task_type: str,
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        """对外暴露提示词预设列表。"""
+
+        return self.prompt_service.list_presets(task_type)
+
+    def read_prompt_preset(
+        self,
+        task_type: str,
+        virtual_id: str,
+    ) -> str:
+        """对外暴露提示词预设读取。"""
+
+        return self.prompt_service.read_preset(task_type, virtual_id)
+
+    def save_prompt_preset(
+        self,
+        task_type: str,
+        name: str,
+        text: str,
+    ) -> str:
+        """对外暴露提示词预设保存。"""
+
+        return self.prompt_service.save_user_preset(task_type, name, text)
+
+    def rename_prompt_preset(
+        self,
+        task_type: str,
+        virtual_id: str,
+        new_name: str,
+    ) -> dict[str, str]:
+        """对外暴露提示词预设重命名。"""
+
+        return self.prompt_service.rename_user_preset(task_type, virtual_id, new_name)
+
+    def delete_prompt_preset(
+        self,
+        task_type: str,
+        virtual_id: str,
+    ) -> str:
+        """对外暴露提示词预设删除。"""
+
+        return self.prompt_service.delete_user_preset(task_type, virtual_id)
+
     def save_prompt(
         self,
         task_type: str,

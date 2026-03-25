@@ -30,6 +30,12 @@ class SettingsAppService:
         "check_similarity",
         "write_translated_name_fields_to_file",
         "auto_process_prefix_suffix_preserved_text",
+        "glossary_default_preset",
+        "text_preserve_default_preset",
+        "pre_translation_replacement_default_preset",
+        "post_translation_replacement_default_preset",
+        "translation_custom_prompt_default_preset",
+        "analysis_custom_prompt_default_preset",
         "recent_projects",
     )
 
