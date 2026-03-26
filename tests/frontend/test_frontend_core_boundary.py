@@ -1,11 +1,60 @@
 from pathlib import Path
 
-from tests.api.boundary_contracts import FRONTEND_CORE_FORBIDDEN_IMPORTS
-from tests.api.boundary_contracts import PHASE_ONE_FRONTEND_FILES
-from tests.api.boundary_contracts import PHASE_TWO_PROOFREADING_FRONTEND_FILES
-from tests.api.boundary_contracts import PHASE_TWO_QUALITY_FRONTEND_FILES
-from tests.api.boundary_contracts import PROOFREADING_HELPER_FILES
-from tests.api.boundary_contracts import PROOFREADING_HELPER_FORBIDDEN_IMPORTS
+# 这组守卫只约束 frontend 目录，放在 tests/frontend 下可以避免继续污染 tests/api 的语义。
+FRONTEND_CORE_FORBIDDEN_IMPORTS: tuple[str, ...] = (
+    "from module.Data.DataManager import DataManager",
+    "from module.Engine.Engine import Engine",
+    "from base.EventManager import EventManager",
+    "from module.Config import Config",
+)
+
+PHASE_ONE_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/AppFluentWindow.py",
+    "frontend/ProjectPage.py",
+    "frontend/Translation/TranslationPage.py",
+    "frontend/Analysis/AnalysisPage.py",
+    "frontend/Workbench/WorkbenchPage.py",
+    "frontend/AppSettingsPage.py",
+    "frontend/Setting/BasicSettingsPage.py",
+    "frontend/Setting/ExpertSettingsPage.py",
+)
+
+PHASE_TWO_QUALITY_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Quality/CustomPromptPage.py",
+    "frontend/Quality/GlossaryEditPanel.py",
+    "frontend/Quality/GlossaryPage.py",
+    "frontend/Quality/QualityRuleEditPanelBase.py",
+    "frontend/Quality/QualityRuleIconHelper.py",
+    "frontend/Quality/QualityRulePageBase.py",
+    "frontend/Quality/QualityRulePresetManager.py",
+    "frontend/Quality/TextPreserveEditPanel.py",
+    "frontend/Quality/TextPreservePage.py",
+    "frontend/Quality/TextReplacementEditPanel.py",
+    "frontend/Quality/TextReplacementPage.py",
+)
+
+PHASE_TWO_PROOFREADING_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Proofreading/FilterDialog.py",
+    "frontend/Proofreading/ProofreadingDomain.py",
+    "frontend/Proofreading/ProofreadingEditPanel.py",
+    "frontend/Proofreading/ProofreadingLabels.py",
+    "frontend/Proofreading/ProofreadingLoadService.py",
+    "frontend/Proofreading/ProofreadingPage.py",
+    "frontend/Proofreading/ProofreadingStatusDelegate.py",
+    "frontend/Proofreading/ProofreadingTableModel.py",
+    "frontend/Proofreading/ProofreadingTableWidget.py",
+)
+
+PROOFREADING_HELPER_FORBIDDEN_IMPORTS: tuple[str, ...] = (
+    "from module.Data.DataManager import DataManager",
+    "from module.Config import Config",
+    "from module.ResultChecker import ResultChecker",
+)
+
+PROOFREADING_HELPER_FILES: tuple[str, ...] = (
+    "frontend/Proofreading/ProofreadingLoadService.py",
+    "frontend/Proofreading/ProofreadingDomain.py",
+)
 
 
 QUALITY_RULE_LAYER_FORBIDDEN_IMPORTS: tuple[str, ...] = (

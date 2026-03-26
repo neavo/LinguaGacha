@@ -6,19 +6,24 @@ from model.Api.TaskModels import TaskSnapshot
 
 
 def test_api_state_store_hydrates_project_snapshot() -> None:
+    # 准备
     store = ApiStateStore()
 
+    # 执行
     store.hydrate_project(
         ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
     )
 
+    # 断言
     assert store.is_project_loaded() is True
     assert store.get_project_path() == "demo.lg"
 
 
 def test_api_state_store_hydrates_task_snapshot() -> None:
+    # 准备
     store = ApiStateStore()
 
+    # 执行
     store.hydrate_task(
         TaskSnapshot.from_dict(
             {
@@ -30,11 +35,13 @@ def test_api_state_store_hydrates_task_snapshot() -> None:
         )
     )
 
+    # 断言
     assert store.get_task_snapshot().task_type == "translation"
     assert store.is_busy() is True
 
 
 def test_api_state_store_merges_task_progress_event_fields() -> None:
+    # 准备
     store = ApiStateStore()
     store.hydrate_task(
         TaskSnapshot.from_dict(
@@ -50,6 +57,7 @@ def test_api_state_store_merges_task_progress_event_fields() -> None:
         )
     )
 
+    # 执行
     store.merge_task_progress(
         TaskProgressUpdate.from_dict(
             {
@@ -62,6 +70,7 @@ def test_api_state_store_merges_task_progress_event_fields() -> None:
         )
     )
 
+    # 断言
     snapshot = store.get_task_snapshot()
 
     assert snapshot.line == 4
@@ -72,10 +81,13 @@ def test_api_state_store_merges_task_progress_event_fields() -> None:
 
 
 def test_api_state_store_marks_proofreading_snapshot_invalidated() -> None:
+    # 准备
     store = ApiStateStore()
 
+    # 执行
     store.apply_event(EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value, {})
 
+    # 断言
     assert store.is_proofreading_snapshot_invalidated() is True
 
     store.clear_proofreading_snapshot_invalidated()
@@ -83,14 +95,20 @@ def test_api_state_store_marks_proofreading_snapshot_invalidated() -> None:
     assert store.is_proofreading_snapshot_invalidated() is False
 
 
-def test_api_state_store_clears_proofreading_snapshot_invalidated_on_project_change() -> None:
+def test_api_state_store_clears_proofreading_snapshot_invalidated_on_project_change() -> (
+    None
+):
+    # 准备
     store = ApiStateStore()
 
     store.mark_proofreading_snapshot_invalidated()
+
+    # 执行
     store.hydrate_project(
         ProjectSnapshot.from_dict({"loaded": True, "path": "project-b.lg"})
     )
 
+    # 断言
     assert store.is_proofreading_snapshot_invalidated() is False
 
     store.mark_proofreading_snapshot_invalidated()

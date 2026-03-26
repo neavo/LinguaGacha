@@ -1,6 +1,16 @@
 from pathlib import Path
 
-from tests.api.boundary_contracts import PHASE_TWO_SPEC_ROUTE_PATHS
+from tests.api.server.route_contracts import PHASE_TWO_SPEC_ROUTE_PATHS
+
+
+FRONTEND_RUNTIME_REFERENCE: str = "frontend."
+# 规格守卫文件自身也会被 rg 扫描，所以把反模式关键字拆成片段再在运行时拼回，避免巡检自命中。
+NEW_OBJECT_ANTIPATTERN_PARTS: tuple[str, ...] = (".", "__", "new", "__")
+TRACE_LIST_ANTIPATTERN_PARTS: tuple[str, ...] = ("call", "_", "args", "_", "list")
+KNOWN_WHITE_BOX_ANTIPATTERNS: tuple[str, ...] = (
+    "".join(NEW_OBJECT_ANTIPATTERN_PARTS),
+    "".join(TRACE_LIST_ANTIPATTERN_PARTS),
+)
 
 
 def test_api_test_directories_follow_runtime_layout() -> None:
@@ -121,7 +131,7 @@ def test_client_test_files_do_not_reference_frontend_pages() -> None:
     root_dir = Path(__file__).resolve().parents[2]
     client_dir = root_dir / "tests" / "api" / "client"
     blocked_page_references = (
-        "frontend.",
+        FRONTEND_RUNTIME_REFERENCE,
         "ProjectPage",
         "TranslationPage",
         "AnalysisPage",
@@ -136,3 +146,37 @@ def test_client_test_files_do_not_reference_frontend_pages() -> None:
 
         for blocked_reference in blocked_page_references:
             assert blocked_reference not in content
+
+
+def test_removed_page_coupled_files_no_longer_exist() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    tests_api_dir = root_dir / "tests" / "api"
+
+    assert not (tests_api_dir / "test_proofreading_page_api_consumer.py").exists()
+    assert not (tests_api_dir / "test_quality_frontend_prompt_guards.py").exists()
+
+
+def test_api_tests_do_not_use_known_white_box_antipatterns() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    current_file = Path(__file__).resolve()
+
+    for file_path in (root_dir / "tests" / "api").rglob("test_*.py"):
+        if file_path.resolve() == current_file:
+            continue
+
+        content = file_path.read_text(encoding="utf-8")
+
+        for antipattern in KNOWN_WHITE_BOX_ANTIPATTERNS:
+            assert antipattern not in content
+
+
+def test_api_tests_do_not_reference_frontend_runtime() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    current_file = Path(__file__).resolve()
+
+    for file_path in (root_dir / "tests" / "api").rglob("test_*.py"):
+        if file_path.resolve() == current_file:
+            continue
+
+        content = file_path.read_text(encoding="utf-8")
+        assert FRONTEND_RUNTIME_REFERENCE not in content

@@ -518,7 +518,11 @@ git commit -m "test: remove page-coupled api tests"
 - Modify: `tests/api/test_proofreading_payloads.py`
 - Modify: `docs/superpowers/plans/2026-03-26-api-tests-restructure.md`
 
-- [ ] **Step 1: 先写失败测试，固定残余反模式和旧文件已清理**
+实际落地差异：
+- `tests/api/boundary_contracts.py` 已删除，服务端路由契约下沉到 `tests/api/server/route_contracts.py`
+- `tests/api/test_frontend_core_boundary.py` 已迁移到 `tests/frontend/test_frontend_core_boundary.py`，避免继续污染 `tests/api` 语义
+
+- [x] **Step 1: 先写失败测试，固定残余反模式和旧文件已清理**
 
 ```python
 from pathlib import Path
@@ -541,13 +545,13 @@ def test_api_tests_do_not_use_known_white_box_antipatterns() -> None:
         assert "call_args_list" not in content
 ```
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `uv run pytest tests/api/test_api_spec_contract.py::test_removed_page_coupled_files_no_longer_exist tests/api/test_api_spec_contract.py::test_api_tests_do_not_use_known_white_box_antipatterns -v`
 
 Expected: FAIL，直到旧文件与白盒反模式全部清理完成。
 
-- [ ] **Step 3: 收尾清理与静态搜索**
+- [x] **Step 3: 收尾清理与静态搜索**
 
 ```python
 # tests/api/test_api_spec_contract.py
@@ -565,7 +569,7 @@ def test_api_tests_do_not_reference_frontend_runtime() -> None:
 - `tests/api/boundary_contracts.py` 若只为单个测试文件服务，合并回该文件后删除；若仍服务多个 `server` 测试，迁到 `tests/api/server/` 最近作用域。
 - 完成后统一运行 `ruff format` 和 `ruff check --fix` 处理所有改动文件。
 
-- [ ] **Step 4: 运行完整验证**
+- [x] **Step 4: 运行完整验证**
 
 Run: `uv run pytest tests/api -v`
 
@@ -583,11 +587,13 @@ Run: `rg -n "__new__|call_args|call_args_list|tmp_path|mock_open" tests/api -S`
 
 Expected: 只允许保留 `tmp_path` 在根共享夹具 `lg_path` 的合理使用；其余结果为空。
 
-Run: `ast-grep scan --pattern "from frontend.\$X import \$Y" tests/api`
+Run: `ast-grep run --pattern "from frontend.\$X import \$Y" tests/api`
 
 Expected: 无结果。
 
 - [ ] **Step 5: 提交**
+
+说明：按当前任务要求，本次已完成实现与验证，但仍未执行提交，等待规格复核与代码质量复核后统一提交。
 
 ```bash
 git add tests/api api/Bridge docs/superpowers/plans/2026-03-26-api-tests-restructure.md

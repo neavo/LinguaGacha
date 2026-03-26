@@ -1,7 +1,9 @@
+from collections.abc import Callable
+
 from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
-from tests.api.boundary_contracts import PHASE_TWO_PROOFREADING_ROUTE_PATHS
-from tests.api.boundary_contracts import PHASE_TWO_QUALITY_ROUTE_PATHS
+from tests.api.server.route_contracts import PHASE_TWO_PROOFREADING_ROUTE_PATHS
+from tests.api.server.route_contracts import PHASE_TWO_QUALITY_ROUTE_PATHS
 
 
 class RouteRecorder:
@@ -10,7 +12,9 @@ class RouteRecorder:
     def __init__(self) -> None:
         self.routes: list[tuple[str, str]] = []
 
-    def add_json_route(self, method: str, path: str, handler) -> None:
+    def add_json_route(
+        self, method: str, path: str, handler: Callable[..., object]
+    ) -> None:
         del handler
         self.routes.append((method, path))
 
