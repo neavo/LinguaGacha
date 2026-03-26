@@ -159,12 +159,62 @@ class NameFieldEntryDraft:
     context: str = ""
     status: str = ""
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把姓名字段条目归一化为冻结对象，避免客户端继续散读字典。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            src=str(normalized.get("src", "")),
+            dst=str(normalized.get("dst", "")),
+            context=str(normalized.get("context", "")),
+            status=str(normalized.get("status", "")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把冻结条目恢复成 JSON 字典，供 payload 与页面适配复用。"""
+
+        return {
+            "src": self.src,
+            "dst": self.dst,
+            "context": self.context,
+            "status": self.status,
+        }
+
 
 @dataclass(frozen=True)
 class NameFieldSnapshot:
     """把名字字段页面快照收口成只读对象，避免 UI 自己维护条目列表。"""
 
     items: tuple[NameFieldEntryDraft, ...] = ()
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把快照字典归一化成冻结对象，避免客户端自己遍历协议字段。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        raw_items = normalized.get("items", ())
+        items: list[NameFieldEntryDraft] = []
+        if isinstance(raw_items, (list, tuple)):
+            for raw_item in raw_items:
+                items.append(NameFieldEntryDraft.from_dict(raw_item))
+
+        return cls(items=tuple(items))
+
+    def to_dict(self) -> dict[str, Any]:
+        """把冻结快照恢复成 JSON 字典，供响应层直接发送。"""
+
+        return {"items": [item.to_dict() for item in self.items]}
 
 
 @dataclass(frozen=True)
@@ -174,6 +224,37 @@ class NameFieldTranslateResult:
     items: tuple[NameFieldEntryDraft, ...] = ()
     success_count: int = 0
     failed_count: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把翻译结果字典归一化成冻结对象，保证客户端读取口径一致。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        raw_items = normalized.get("items", ())
+        items: list[NameFieldEntryDraft] = []
+        if isinstance(raw_items, (list, tuple)):
+            for raw_item in raw_items:
+                items.append(NameFieldEntryDraft.from_dict(raw_item))
+
+        return cls(
+            items=tuple(items),
+            success_count=int(normalized.get("success_count", 0) or 0),
+            failed_count=int(normalized.get("failed_count", 0) or 0),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把翻译结果恢复成 JSON 字典，供 payload 与客户端共用。"""
+
+        return {
+            "items": [item.to_dict() for item in self.items],
+            "success_count": self.success_count,
+            "failed_count": self.failed_count,
+        }
 
 
 @dataclass(frozen=True)

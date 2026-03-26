@@ -1,10 +1,13 @@
 from base.Base import Base
 from base.EventManager import EventManager
 from api.Contract.ExtraPayloads import LaboratorySnapshotPayload
+from api.Contract.ExtraPayloads import NameFieldSnapshotPayload
+from api.Contract.ExtraPayloads import NameFieldTranslateResultPayload
 from api.Contract.ExtraPayloads import TsConversionOptionsPayload
 from api.Contract.ExtraPayloads import TsConversionTaskPayload
 from model.Api.ExtraModels import ExtraTaskState
 from module.Data.Extra.LaboratoryService import LaboratoryService
+from module.Data.Extra.NameFieldExtractionService import NameFieldExtractionService
 from module.Data.Extra.TsConversionService import TsConversionService
 
 
@@ -15,6 +18,7 @@ class ExtraAppService:
         self,
         laboratory_service: LaboratoryService | None = None,
         ts_conversion_service: TsConversionService | None = None,
+        name_field_extraction_service: NameFieldExtractionService | None = None,
     ) -> None:
         self.laboratory_service = (
             laboratory_service
@@ -25,6 +29,11 @@ class ExtraAppService:
             ts_conversion_service
             if ts_conversion_service is not None
             else TsConversionService()
+        )
+        self.name_field_extraction_service = (
+            name_field_extraction_service
+            if name_field_extraction_service is not None
+            else NameFieldExtractionService()
         )
 
     def get_laboratory_snapshot(
@@ -77,6 +86,50 @@ class ExtraAppService:
             }
         )
         return TsConversionTaskPayload.from_dict(task).to_dict()
+
+    def get_name_field_snapshot(
+        self,
+        request: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """提供姓名字段快照入口，避免页面自己探测数据层。"""
+
+        del request
+        snapshot = self.name_field_extraction_service.get_name_field_snapshot()
+        return NameFieldSnapshotPayload.from_dict(snapshot).to_dict()
+
+    def extract_name_fields(
+        self,
+        request: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """统一受理姓名字段提取命令，保持快照返回结构稳定。"""
+
+        del request
+        snapshot = self.name_field_extraction_service.extract_name_fields()
+        return NameFieldSnapshotPayload.from_dict(snapshot).to_dict()
+
+    def translate_name_fields(
+        self,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        """统一受理姓名字段整表翻译，避免页面继续直接操作引擎。"""
+
+        raw_items = request.get("items", [])
+        items = raw_items if isinstance(raw_items, list) else []
+        result = self.name_field_extraction_service.translate_name_fields(items)
+        return NameFieldTranslateResultPayload.from_dict(result).to_dict()
+
+    def save_name_fields_to_glossary(
+        self,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        """统一受理姓名字段导入术语表命令，避免页面继续直接写 glossary。"""
+
+        raw_items = request.get("items", [])
+        items = raw_items if isinstance(raw_items, list) else []
+        snapshot = self.name_field_extraction_service.save_name_fields_to_glossary(
+            items
+        )
+        return NameFieldSnapshotPayload.from_dict(snapshot).to_dict()
 
     def publish_ts_conversion_progress(self, payload: dict[str, object]) -> None:
         """应用服务统一发出繁简转换进度事件，避免页面自行拼装内部事件。"""

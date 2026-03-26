@@ -10,8 +10,11 @@ from PySide6.QtWidgets import QApplication
 from api.Bridge.EventTopic import EventTopic
 from api.Client.ApiStateStore import ApiStateStore
 from base.Base import Base
+import frontend.Extra.NameFieldExtractionPage as name_field_extraction_page_module
 import frontend.Extra.TSConversionPage as ts_conversion_page_module
+from frontend.Extra.NameFieldExtractionPage import NameFieldExtractionPage
 from frontend.Extra.TSConversionPage import TSConversionPage
+from model.Api.ExtraModels import NameFieldSnapshot
 from model.Api.ExtraModels import TsConversionTaskAccepted
 from model.Api.ExtraModels import TsConversionOptionsSnapshot
 from model.Api.ProjectModels import ProjectSnapshot
@@ -137,6 +140,20 @@ class FakeTsConversionClient:
         return object()
 
 
+class FakeNameFieldExtractionClient:
+    """把姓名字段保存行为显式化，便于断言页面是否冻结了点击瞬间快照。"""
+
+    def __init__(self) -> None:
+        self.save_requests: list[list[dict[str, object]]] = []
+
+    def save_name_fields_to_glossary(
+        self,
+        items: list[dict[str, object]],
+    ) -> NameFieldSnapshot:
+        self.save_requests.append([dict(item) for item in items])
+        return NameFieldSnapshot.from_dict({"items": items})
+
+
 class AcceptingMessageBox:
     """统一让确认弹窗返回确认，避免测试被交互阻塞。"""
 
@@ -184,6 +201,19 @@ def build_ts_conversion_page(
     )
     page.ui_update_timer.stop()
     return page
+
+
+def build_name_field_extraction_page(
+    qapp: QApplication,
+    *,
+    extra_api_client: object | None = None,
+) -> NameFieldExtractionPage:
+    del qapp
+    return NameFieldExtractionPage(
+        "name_field_extraction_page",
+        None,
+        extra_api_client=extra_api_client,
+    )
 
 
 def create_fake_thread_factory(
@@ -327,6 +357,18 @@ def test_ts_conversion_page_uses_extra_api_client() -> None:
     assert "from module.Data.DataManager import DataManager" not in content
     assert "from module.File.FileManager import FileManager" not in content
     assert "from module.TextProcessor import TextProcessor" not in content
+
+
+def test_name_field_extraction_page_uses_extra_api_client() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (
+        root_dir / "frontend" / "Extra" / "NameFieldExtractionPage.py"
+    ).read_text(encoding="utf-8")
+
+    assert "from api.Client.ExtraApiClient import ExtraApiClient" in content
+    assert "from module.Data.DataManager import DataManager" not in content
+    assert "from module.Engine.Engine import Engine" not in content
+    assert "from module.Config import Config" not in content
 
 
 @pytest.mark.xfail(
@@ -706,3 +748,94 @@ def test_ts_conversion_page_clears_missing_active_task_after_real_snapshot_seen(
             {"sub_event": Base.SubEvent.ERROR},
         ),
     ]
+
+
+def test_name_field_extraction_page_save_uses_click_moment_snapshot(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    threads: list[FakeBackgroundThread] = []
+    client = FakeNameFieldExtractionClient()
+    original_thread = name_field_extraction_page_module.threading.Thread
+    name_field_extraction_page_module.threading.Thread = create_fake_thread_factory(
+        threads
+    )
+
+    try:
+        page = build_name_field_extraction_page(qapp, extra_api_client=client)
+        page.items = [
+            {
+                "src": "勇者",
+                "dst": "Hero",
+                "context": "勇者が来た",
+                "status": "翻译完成",
+            }
+        ]
+
+        # 执行
+        page.save_to_glossary()
+        page.items[0]["dst"] = "Changed After Click"
+        threads[0].target()
+
+        # 断言
+        assert client.save_requests == [
+            [
+                {
+                    "src": "勇者",
+                    "dst": "Hero",
+                    "context": "勇者が来た",
+                    "status": "翻译完成",
+                }
+            ]
+        ]
+    finally:
+        name_field_extraction_page_module.threading.Thread = original_thread
+
+
+def test_name_field_extraction_page_blocks_repeat_save_while_request_running(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    threads: list[FakeBackgroundThread] = []
+    client = FakeNameFieldExtractionClient()
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    original_thread = name_field_extraction_page_module.threading.Thread
+    name_field_extraction_page_module.threading.Thread = create_fake_thread_factory(
+        threads
+    )
+
+    try:
+        page = build_name_field_extraction_page(qapp, extra_api_client=client)
+        page.items = [
+            {
+                "src": "勇者",
+                "dst": "Hero",
+                "context": "勇者が来た",
+                "status": "翻译完成",
+            }
+        ]
+
+        def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+            emitted_events.append((event, data))
+            return True
+
+        page.emit = capture_emit  # type: ignore[method-assign]
+
+        # 执行
+        page.save_to_glossary()
+        page.save_to_glossary()
+
+        # 断言
+        assert len(threads) == 1
+        assert client.save_requests == []
+        assert emitted_events == [
+            (
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
+                },
+            )
+        ]
+    finally:
+        name_field_extraction_page_module.threading.Thread = original_thread
