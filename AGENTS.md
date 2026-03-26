@@ -104,6 +104,14 @@
 - `Localizer` 是界面文案单一入口
 - 只要改了用户可见文本，就同步检查 `LocalizerZH.py` 和 `LocalizerEN.py`
 
+## Agent 文档导航
+
+- 先看 `docs/overview/system-overview.md` 理解仓库总结构
+- 再看 `docs/overview/core-concepts.md` 与 `docs/overview/invariants.md` 建立术语与约束模型
+- 涉及模块边界时跳到 `docs/modules/*.md`
+- 涉及本地 HTTP / SSE / 错误码 / 客户端对象边界时直接看 `api/SPEC.md`
+- 涉及具体任务设计与执行步骤时看 `docs/superpowers/specs/*` 与 `docs/superpowers/plans/*`
+
 ## 6. 项目结构
 ```
 app.py                 # 应用入口
