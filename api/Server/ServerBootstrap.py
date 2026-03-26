@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from api.Application.EventStreamService import EventStreamService
+from api.Application.ExtraAppService import ExtraAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.QualityRuleAppService import QualityRuleAppService
@@ -11,6 +12,7 @@ from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.Routes.EventRoutes import EventRoutes
+from api.Server.Routes.ExtraRoutes import ExtraRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
 from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
@@ -39,6 +41,7 @@ class ServerBootstrap:
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
         settings_app_service = SettingsAppService()
+        extra_app_service = ExtraAppService()
         return cls.start_for_test(
             project_app_service=project_app_service,
             proofreading_app_service=proofreading_app_service,
@@ -46,6 +49,7 @@ class ServerBootstrap:
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
+            extra_app_service=extra_app_service,
             as_runtime=True,
         )
 
@@ -59,6 +63,7 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
         settings_app_service: SettingsAppService | None = None,
+        extra_app_service: ExtraAppService | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
@@ -79,6 +84,8 @@ class ServerBootstrap:
             WorkbenchRoutes.register(core_api_server, workbench_app_service)
         if settings_app_service is not None:
             SettingsRoutes.register(core_api_server, settings_app_service)
+        if extra_app_service is not None:
+            ExtraRoutes.register(core_api_server, extra_app_service)
         http_server = core_api_server.create_http_server()
         serve_thread = threading.Thread(
             target=http_server.serve_forever,

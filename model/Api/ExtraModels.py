@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+from typing import Self
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,33 @@ class LaboratorySnapshot:
 
     mtool_optimizer_enabled: bool = False
     force_thinking_enabled: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把实验室快照归一化为冻结对象，避免客户端自己兜默认值。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            mtool_optimizer_enabled=bool(
+                normalized.get("mtool_optimizer_enabled", False)
+            ),
+            force_thinking_enabled=bool(
+                normalized.get("force_thinking_enabled", False)
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把冻结快照恢复成 JSON 字典，供边界层直接发送。"""
+
+        return {
+            "mtool_optimizer_enabled": self.mtool_optimizer_enabled,
+            "force_thinking_enabled": self.force_thinking_enabled,
+        }
 
 
 @dataclass(frozen=True)

@@ -186,6 +186,17 @@ def test_extra_frontend_files_are_listed_separately() -> None:
         assert relative_path.startswith("frontend/Extra/")
 
 
+def test_laboratory_page_uses_extra_api_client() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (root_dir / "frontend" / "Extra" / "LaboratoryPage.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from api.Client.ExtraApiClient import ExtraApiClient" in content
+    assert "from module.Config import Config" not in content
+    assert "from module.Engine.Engine import Engine" not in content
+
+
 @pytest.mark.xfail(
     reason="Extra 页面去 Core 直连的迁移在后续任务完成前仍处于过渡阶段。",
 )
