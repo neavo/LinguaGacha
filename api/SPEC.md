@@ -2,7 +2,7 @@
 
 ## 1. 范围
 
-本文档描述第一阶段已经落地的本地 Core API 契约，以及第二阶段 `Quality` / `Proofreading` 分离后已经稳定的 HTTP、SSE 与 UI 边界。
+本文档描述第一阶段已经落地的本地 Core API 契约、第二阶段 `Quality` / `Proofreading` 分离后已经稳定的 HTTP / SSE / UI 边界，以及第三阶段 `Extra` UI/Core 分离完成后的最终收口契约。
 
 - 运行方式：UI 模式下由 `app.py` 启动 `ServerBootstrap`，在同一进程内开启本地 HTTP 服务线程
 - CLI 模式：不启动本地 API 服务
@@ -318,13 +318,94 @@
 }
 ```
 
-## 9. 错误码与冲突约定
+## 9. Extra 接口
+
+第三阶段 `Extra` 当前覆盖工具箱、实验室、繁简转换与姓名字段提取能力；这些页面只通过 `ExtraApiClient`、`ApiStateStore` 与 SSE topic 访问 Core，不再直连配置、数据管理器或引擎单例。
+
+### 9.1 工具箱与实验室
+
+| 方法 | 路径 | 请求体 | 响应 `data` |
+| --- | --- | --- | --- |
+| `POST` | `/api/extra/laboratory/snapshot` | `{}` | `{"snapshot": {...}}` |
+| `POST` | `/api/extra/laboratory/update` | `{"mtool_optimizer_enabled": true}` 或 `{"force_thinking_enabled": true}` | `{"snapshot": {...}}` |
+
+`snapshot` 当前包含以下稳定字段：
+
+```json
+{
+  "mtool_optimizer_enabled": false,
+  "force_thinking_enabled": true
+}
+```
+
+工具箱页当前只承担页面导航，不定义独立 HTTP 路由；工具元数据仍由前端导航层维护。
+
+### 9.2 繁简转换
+
+| 方法 | 路径 | 请求体 | 响应 `data` |
+| --- | --- | --- | --- |
+| `POST` | `/api/extra/ts-conversion/options` | `{}` | `{"options": {...}}` |
+| `POST` | `/api/extra/ts-conversion/start` | `{"direction": "TO_SIMPLIFIED" \| "TO_TRADITIONAL", "preserve_text": true, "convert_name": false}` | `{"task": {...}}` |
+
+`options` 当前包含以下稳定字段：
+
+```json
+{
+  "default_direction": "TO_TRADITIONAL",
+  "preserve_text_enabled": true,
+  "convert_name_enabled": true
+}
+```
+
+`task` 当前包含以下稳定字段：
+
+```json
+{
+  "accepted": true,
+  "task_id": "extra_ts_conversion"
+}
+```
+
+繁简转换启动后，后续进度与完成态统一只通过 `extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 推送；客户端读取口径固定为 `ApiStateStore.get_extra_task_state("extra_ts_conversion")`。
+
+### 9.3 姓名字段
+
+| 方法 | 路径 | 请求体 | 响应 `data` |
+| --- | --- | --- | --- |
+| `POST` | `/api/extra/name-fields/snapshot` | `{}` | `{"snapshot": {...}}` |
+| `POST` | `/api/extra/name-fields/extract` | `{}` | `{"snapshot": {...}}` |
+| `POST` | `/api/extra/name-fields/translate` | `{"items": [{...}]}` | `{"result": {...}}` |
+| `POST` | `/api/extra/name-fields/save-to-glossary` | `{"items": [{...}]}` | `{"snapshot": {...}}` |
+
+`snapshot` / `result.items` 当前稳定条目字段为：
+
+```json
+{
+  "src": "勇者",
+  "dst": "Hero",
+  "context": "勇者が来た",
+  "status": "翻译完成"
+}
+```
+
+`translate` 的 `result` 当前额外包含：
+
+```json
+{
+  "success_count": 1,
+  "failed_count": 0
+}
+```
+
+## 10. 错误码与冲突约定
 
 第二阶段 `Quality` / `Proofreading` 写入命令统一保留 `expected_revision` 字段，当前文档锁定以下错误码语义，避免后续实现与页面提示发生漂移：
 
 | 错误码 | 说明 |
 | --- | --- |
 | `REVISION_CONFLICT` | 页面持有的规则/校对快照版本已过期，请重新拉取快照后再重试 |
+| `NO_PROJECT` | 命令依赖已加载工程，但当前没有有效工程上下文 |
+| `TASK_RUNNING` | 同一入口已有任务正在执行中，当前命令被拒绝重复触发 |
 | `not_found` | 请求的 HTTP 路径不存在；这是 `CoreApiServer` 当前统一保证的基础错误码 |
 
 其中：
@@ -334,6 +415,19 @@
 - `Proofreading` 的 `save-item`、`save-all`、`replace-all`、`retranslate-items`
 
 都使用 `expected_revision` 作为并发写入保护字段。
+
+第三阶段 `Extra` 不新增新的错误码，只显式收口已有的 `NO_PROJECT` 与 `TASK_RUNNING`，并继续沿用统一响应壳与 `not_found` 基础错误码。
+
+其中：
+
+- `NO_PROJECT`
+  - `/api/extra/ts-conversion/start` 在未加载工程时拒绝启动，语义与页面当前“请先加载工程后再执行”保持一致
+  - `/api/extra/name-fields/snapshot`、`/api/extra/name-fields/extract`、`/api/extra/name-fields/save-to-glossary` 在缺少当前工程上下文时同样使用该错误码，避免把“未加载工程”误判为普通空结果
+- `TASK_RUNNING`
+  - `/api/extra/ts-conversion/start` 在同一 `extra_ts_conversion` 任务仍在运行或仍等待首个状态快照时，拒绝重复启动
+  - `/api/extra/name-fields/extract` 与 `/api/extra/name-fields/save-to-glossary` 在页面已有同类请求执行中时，语义上收口为同一错误码，保持与当前 `task_running` 提示一致
+
+繁简转换的运行期失败仍由页面通过任务终态与 Toast 提示处理，不额外定义新的 HTTP `error.code`。
 
 统一错误响应格式：
 
@@ -347,7 +441,7 @@
 }
 ```
 
-## 10. SSE Topic
+## 11. SSE Topic
 
 当前对外暴露以下 topic：
 
@@ -359,6 +453,8 @@
 | `workbench.snapshot_changed` | 工作台快照变化 |
 | `settings.changed` | 设置更新通知 |
 | `proofreading.snapshot_invalidated` | 质量规则变化导致校对快照失效 |
+| `extra.ts_conversion_progress` | Extra 繁简转换任务进度变化 |
+| `extra.ts_conversion_finished` | Extra 繁简转换任务进入终态 |
 
 统一事件包格式：
 
@@ -390,13 +486,33 @@
 }
 ```
 
-## 11. 客户端对象边界
+`extra.ts_conversion_finished` 当前稳定 payload 为：
+
+```json
+{
+  "event_id": "evt_3",
+  "topic": "extra.ts_conversion_finished",
+  "timestamp": "2026-03-24T12:36:00+08:00",
+  "payload": {
+    "task_id": "extra_ts_conversion",
+    "phase": "FINISHED",
+    "message": "finished",
+    "current": 10,
+    "total": 10,
+    "finished": true
+  }
+}
+```
+
+`extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 的 payload 结构一致，差异仅在 `phase` 与 `finished` 字段取值。
+
+## 12. 客户端对象边界
 
 本地 HTTP API 仍然以 JSON / `dict` 作为边界协议，但客户端内部已经统一切换到对象化响应。
 
 服务端 `api/Application` 层负责把内部状态收口为 `api/Contract/*Payloads.py` 中的响应载荷对象，再经 `ApiResponse` 序列化为 JSON。
 
-### 11.1 模型目录
+### 12.1 模型目录
 
 客户端内部新增以下冻结对象：
 
@@ -427,8 +543,18 @@
   - `ProofreadingFilterOptionsSnapshot`
   - `ProofreadingSearchResult`
   - `ProofreadingMutationResult`
+- `model/Api/ExtraModels.py`
+  - `LaboratorySnapshot`
+  - `ExtraToolEntry`
+  - `ExtraToolSnapshot`
+  - `TsConversionOptionsSnapshot`
+  - `TsConversionTaskAccepted`
+  - `ExtraTaskState`
+  - `NameFieldEntryDraft`
+  - `NameFieldSnapshot`
+  - `NameFieldTranslateResult`
 
-### 11.2 客户端返回值约定
+### 12.2 客户端返回值约定
 
 - `SettingsApiClient` 对外返回 `AppSettingsSnapshot`
 - `ProjectApiClient` 对外返回 `ProjectSnapshot` / `ProjectPreview`
@@ -444,8 +570,13 @@
 - `ProofreadingApiClient.get_snapshot()` / `filter_items()` 返回 `ProofreadingSnapshot`
 - `ProofreadingApiClient.search()` 返回 `ProofreadingSearchResult`
 - `ProofreadingApiClient.save_item()` / `save_all()` / `replace_all()` / `recheck_item()` / `retranslate_items()` 返回 `ProofreadingMutationResult`
+- `ExtraApiClient.get_laboratory_snapshot()` / `update_laboratory_settings()` 返回 `LaboratorySnapshot`
+- `ExtraApiClient.get_ts_conversion_options()` 返回 `TsConversionOptionsSnapshot`
+- `ExtraApiClient.start_ts_conversion()` 返回 `TsConversionTaskAccepted`
+- `ExtraApiClient.extract_name_fields()` / `save_name_fields_to_glossary()` 返回 `NameFieldSnapshot`
+- `ExtraApiClient.translate_name_fields()` 返回 `NameFieldTranslateResult`
 
-### 11.2.1 服务端载荷命名约定
+### 12.2.1 服务端载荷命名约定
 
 - `api/Contract` 中面向 HTTP `data` 载荷的对象统一使用 `*Payload` 命名，避免继续使用语义过泛的 `*Dto`
 - 当前服务端载荷对象包括：
@@ -460,16 +591,18 @@
   - `ProofreadingSearchResultPayload`
   - `ProofreadingMutationResultPayload`
 
-### 11.3 状态仓库约定
+### 12.3 状态仓库约定
 
 - `ApiStateStore.project_snapshot` 只缓存 `ProjectSnapshot`
 - `ApiStateStore.task_snapshot` 只缓存 `TaskSnapshot`
 - `ApiStateStore` 不缓存完整 `ProofreadingSnapshot`，只缓存 `proofreading_snapshot_invalidated` 过期标记
 - SSE 增量事件进入 `ApiStateStore` 后，会先解码为 `TaskStatusUpdate` / `TaskProgressUpdate` 再合并
+- `ApiStateStore.get_extra_task_state(task_id)` 只返回 `ExtraTaskState | None`，不返回 `dict`
+- `extra_ts_conversion` 的进度与完成态都通过 `ExtraTaskState` 合并，页面只读取 `task_id`、`phase`、`message`、`current`、`total`、`finished`
 - 页面层不得再直接依赖 `response.get(...)`、`snapshot.get(...)` 读取 API 响应
 - 页面层不得通过 `to_dict().get(...)`、`payload.get(...)` 回退为字典式读取对象字段
 
-## 12. UI 边界
+## 13. UI 边界
 
 以下页面已要求只通过 `api.Client` 与 `ApiStateStore` 访问 Core：
 
@@ -512,8 +645,24 @@
 - `frontend/Proofreading/ProofreadingTableModel.py`
 - `frontend/Proofreading/ProofreadingTableWidget.py`
 
+第三阶段补充边界声明如下：
+
+- `frontend/Extra/ToolBoxPage.py`
+- `frontend/Extra/LaboratoryPage.py`
+- `frontend/Extra/TSConversionPage.py`
+- `frontend/Extra/NameFieldExtractionPage.py`
+
 这些第二阶段文件同样不得直接导入上述 Core 单例；此外：
 
 - `frontend/Proofreading/ProofreadingLoadService.py` 与 `frontend/Proofreading/ProofreadingDomain.py` 不得直接导入 `module.ResultChecker.ResultChecker`
 - `frontend/Quality/QualityRulePageBase.py` 不得直接导入 `module.QualityRule.QualityRuleIO`
 - `frontend/Quality/QualityRulePresetManager.py` 不得直接导入 `module.QualityRulePathResolver`
+
+这些第三阶段 `Extra` 文件同样不得直接导入或调用以下直连语义：
+
+- `module.Config`
+- `module.Data.DataManager`
+- `module.Engine.Engine`
+- `Config().load()`
+- `DataManager.get()`
+- `Engine.get()`

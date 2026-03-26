@@ -1,3 +1,4 @@
+from model.Api.ExtraModels import ExtraTaskState
 from api.Client.ApiStateStore import ApiStateStore
 from api.Bridge.EventTopic import EventTopic
 from model.Api.ProjectModels import ProjectSnapshot
@@ -117,7 +118,7 @@ def test_api_state_store_clears_proofreading_snapshot_invalidated_on_project_cha
     assert store.is_proofreading_snapshot_invalidated() is False
 
 
-def test_api_state_store_merges_extra_task_progress_and_finished_state() -> None:
+def test_api_state_store_reads_extra_task_state_as_frozen_snapshot() -> None:
     # 准备
     store = ApiStateStore()
 
@@ -132,6 +133,34 @@ def test_api_state_store_merges_extra_task_progress_and_finished_state() -> None
             "total": 10,
         },
     )
+
+    # 断言
+    snapshot = store.get_extra_task_state("extra_ts_conversion")
+
+    assert isinstance(snapshot, ExtraTaskState)
+    assert snapshot.task_id == "extra_ts_conversion"
+    assert snapshot.phase == "RUNNING"
+    assert snapshot.message == "running"
+    assert snapshot.current == 2
+    assert snapshot.total == 10
+    assert snapshot.finished is False
+
+
+def test_api_state_store_merges_extra_task_finished_state() -> None:
+    # 准备
+    store = ApiStateStore()
+    store.apply_event(
+        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        {
+            "task_id": "extra_ts_conversion",
+            "phase": "RUNNING",
+            "message": "running",
+            "current": 2,
+            "total": 10,
+        },
+    )
+
+    # 执行
     store.apply_event(
         EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
         {
@@ -146,6 +175,7 @@ def test_api_state_store_merges_extra_task_progress_and_finished_state() -> None
     # 断言
     snapshot = store.get_extra_task_state("extra_ts_conversion")
 
+    assert isinstance(snapshot, ExtraTaskState)
     assert snapshot.task_id == "extra_ts_conversion"
     assert snapshot.phase == "FINISHED"
     assert snapshot.message == "done"

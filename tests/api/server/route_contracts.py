@@ -41,7 +41,6 @@ PHASE_TWO_SPEC_ROUTE_PATHS: tuple[str, ...] = (
 )
 
 PHASE_THREE_EXTRA_ROUTE_PATHS: tuple[str, ...] = (
-    "/api/extra/tools/snapshot",
     "/api/extra/ts-conversion/options",
     "/api/extra/ts-conversion/start",
     "/api/extra/name-fields/snapshot",
@@ -50,4 +49,9 @@ PHASE_THREE_EXTRA_ROUTE_PATHS: tuple[str, ...] = (
     "/api/extra/name-fields/save-to-glossary",
     "/api/extra/laboratory/snapshot",
     "/api/extra/laboratory/update",
+)
+
+PHASE_THREE_EXTRA_TOPIC_NAMES: tuple[str, ...] = (
+    "extra.ts_conversion_progress",
+    "extra.ts_conversion_finished",
 )

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from tests.api.server.route_contracts import PHASE_THREE_EXTRA_ROUTE_PATHS
+from tests.api.server.route_contracts import PHASE_THREE_EXTRA_TOPIC_NAMES
 from tests.api.server.route_contracts import PHASE_TWO_SPEC_ROUTE_PATHS
 
 
@@ -69,12 +70,48 @@ def test_api_spec_documents_phase_two_routes_topics_and_errors() -> None:
 
     assert "proofreading.snapshot_invalidated" in spec_content
     assert "REVISION_CONFLICT" in spec_content
-    assert '{"snapshot": {...}}' in spec_content
-    assert '{"search_result": {...}}' in spec_content
-    assert '{"result": {...}}' in spec_content
-    assert '{"prompt": {...}}' in spec_content
+    for field_name in (
+        "expected_revision",
+        "snapshot",
+        "search_result",
+        "result",
+        "prompt",
+    ):
+        assert f"`{field_name}`" in spec_content or f'"{field_name}"' in spec_content
 
 
-def test_extra_routes_are_documented_in_route_contracts() -> None:
+def test_api_spec_documents_phase_three_extra_routes_topics_errors_and_examples() -> (
+    None
+):
+    root_dir = Path(__file__).resolve().parents[2]
+    spec_content = (root_dir / "api" / "SPEC.md").read_text(encoding="utf-8")
+
+    assert "## 9. Extra 接口" in spec_content
+    for route_path in PHASE_THREE_EXTRA_ROUTE_PATHS:
+        assert route_path in spec_content
+
+    for topic_name in PHASE_THREE_EXTRA_TOPIC_NAMES:
+        assert topic_name in spec_content
+
+    for error_code in ("NO_PROJECT", "TASK_RUNNING", "not_found"):
+        assert f"`{error_code}`" in spec_content
+
+    for field_name in (
+        "default_direction",
+        "preserve_text_enabled",
+        "convert_name_enabled",
+        "task_id",
+        "success_count",
+        "failed_count",
+        "mtool_optimizer_enabled",
+        "force_thinking_enabled",
+        "finished",
+    ):
+        assert f'"{field_name}"' in spec_content or f"`{field_name}`" in spec_content
+
+
+def test_extra_routes_and_topics_are_documented_in_route_contracts() -> None:
     assert "/api/extra/ts-conversion/options" in PHASE_THREE_EXTRA_ROUTE_PATHS
     assert "/api/extra/name-fields/translate" in PHASE_THREE_EXTRA_ROUTE_PATHS
+    assert "extra.ts_conversion_progress" in PHASE_THREE_EXTRA_TOPIC_NAMES
+    assert "extra.ts_conversion_finished" in PHASE_THREE_EXTRA_TOPIC_NAMES

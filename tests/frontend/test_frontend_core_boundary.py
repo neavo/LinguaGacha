@@ -1,3 +1,4 @@
+import ast
 import os
 from pathlib import Path
 from typing import Callable
@@ -73,13 +74,40 @@ EXTRA_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Extra/LaboratoryPage.py",
 )
 
-EXTRA_FORBIDDEN_IMPORTS: tuple[str, ...] = (
-    "from module.Config import Config",
-    "from module.Data.DataManager import DataManager",
-    "from module.Engine.Engine import Engine",
-    "from module.File.FileManager import FileManager",
-    "from module.TextProcessor import TextProcessor",
+EXTRA_FORBIDDEN_IMPORT_MODULES: tuple[str, ...] = (
+    "module.Config",
+    "module.Data.DataManager",
+    "module.Engine.Engine",
+    "module.File.FileManager",
+    "module.TextProcessor",
 )
+
+EXTRA_FORBIDDEN_IMPORT_TARGETS: tuple[str, ...] = (
+    "module.Config",
+    "module.Config.Config",
+    "module.Data.DataManager",
+    "module.Data.DataManager.DataManager",
+    "module.Engine.Engine",
+    "module.Engine.Engine.Engine",
+    "module.File.FileManager",
+    "module.File.FileManager.FileManager",
+    "module.TextProcessor",
+)
+
+EXTRA_FORBIDDEN_CLASS_TARGETS: dict[str, tuple[str, ...]] = {
+    "Config": ("module.Config", "module.Config.Config"),
+    "DataManager": (
+        "module.Data.DataManager",
+        "module.Data.DataManager.DataManager",
+    ),
+    "Engine": ("module.Engine.Engine", "module.Engine.Engine.Engine"),
+}
+
+EXTRA_FORBIDDEN_CALL_PATTERNS: dict[str, tuple[str, str]] = {
+    "Config().load()": ("Config", "load"),
+    "DataManager.get()": ("DataManager", "get"),
+    "Engine.get()": ("Engine", "get"),
+}
 
 PROOFREADING_HELPER_FORBIDDEN_IMPORTS: tuple[str, ...] = (
     "from module.Data.DataManager import DataManager",
@@ -109,6 +137,122 @@ class FakeBackgroundThread:
 
     def start(self) -> None:
         self.started = True
+
+
+class ExtraBoundaryAstVisitor(ast.NodeVisitor):
+    """用 AST 收口 Extra 页面对 Core 的导入与直连调用，避免纯字符串扫描被绕过。"""
+
+    def __init__(self) -> None:
+        self.name_bindings: dict[str, str] = {}
+        self.violations: list[str] = []
+
+    def visit_Import(self, node: ast.Import) -> None:  # noqa: N802
+        for alias in node.names:
+            local_name = alias.asname or alias.name.split(".")[-1]
+            self.name_bindings[local_name] = alias.name
+            if alias.name in EXTRA_FORBIDDEN_IMPORT_MODULES:
+                self.violations.append(f"导入 {alias.name}")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+        module_name = node.module or ""
+        for alias in node.names:
+            full_name = f"{module_name}.{alias.name}" if module_name else alias.name
+            local_name = alias.asname or alias.name
+            self.name_bindings[local_name] = full_name
+            if is_forbidden_extra_import(module_name, full_name):
+                self.violations.append(f"导入 {full_name}")
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:  # noqa: N802
+        for target in node.targets:
+            self.bind_name_target(target, node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:  # noqa: N802
+        if node.value is not None:
+            self.bind_name_target(node.target, node.value)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+        for pattern_name, (
+            class_name,
+            method_name,
+        ) in EXTRA_FORBIDDEN_CALL_PATTERNS.items():
+            if is_forbidden_extra_call(
+                node,
+                self.name_bindings,
+                class_name,
+                method_name,
+            ):
+                self.violations.append(f"调用 {pattern_name}")
+        self.generic_visit(node)
+
+    def bind_name_target(self, target: ast.AST, value: ast.AST) -> None:
+        """统一处理名字绑定，覆盖普通赋值与注解赋值两种路径。"""
+
+        resolved_value = resolve_ast_name(value, self.name_bindings)
+        if resolved_value is not None and isinstance(target, ast.Name):
+            self.name_bindings[target.id] = resolved_value
+
+
+def resolve_ast_name(
+    node: ast.AST,
+    name_bindings: dict[str, str],
+) -> str | None:
+    """把 AST 表达式尽量解析成稳定的点路径，便于识别 alias 与属性链。"""
+
+    if isinstance(node, ast.Name):
+        return name_bindings.get(node.id, node.id)
+    if isinstance(node, ast.Attribute):
+        parent_name = resolve_ast_name(node.value, name_bindings)
+        if parent_name is None:
+            return None
+        return f"{parent_name}.{node.attr}"
+    if isinstance(node, ast.Call):
+        return resolve_ast_name(node.func, name_bindings)
+    return None
+
+
+def is_forbidden_extra_import(module_name: str, full_name: str) -> bool:
+    """识别受限模块的不同导入写法，避免 `from module import Config` 之类漏检。"""
+
+    return (
+        module_name in EXTRA_FORBIDDEN_IMPORT_MODULES
+        or full_name in EXTRA_FORBIDDEN_IMPORT_TARGETS
+    )
+
+
+def is_forbidden_extra_call(
+    node: ast.Call,
+    name_bindings: dict[str, str],
+    class_name: str,
+    method_name: str,
+) -> bool:
+    """识别 `Config().load()`、`DataManager.get()`、`Engine.get()` 这类直连语义。"""
+
+    if not isinstance(node.func, ast.Attribute):
+        return False
+
+    if node.func.attr != method_name:
+        return False
+
+    class_targets = EXTRA_FORBIDDEN_CLASS_TARGETS[class_name]
+    if method_name == "load" and isinstance(node.func.value, ast.Call):
+        constructor_name = resolve_ast_name(node.func.value.func, name_bindings)
+        return constructor_name in class_targets
+
+    receiver_name = resolve_ast_name(node.func.value, name_bindings)
+    return receiver_name in class_targets
+
+
+def collect_extra_boundary_violations(file_path: Path) -> list[str]:
+    """返回 Extra 页面内违反边界约束的结构化命中结果。"""
+
+    tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+    visitor = ExtraBoundaryAstVisitor()
+    visitor.visit(tree)
+    return visitor.violations
 
 
 class FakeTsConversionClient:
@@ -423,19 +567,14 @@ def test_extra_pages_accept_explicit_clients_in_constructor() -> None:
     assert "task_api_client: TaskApiClient | None = None" in laboratory_content
 
 
-@pytest.mark.xfail(
-    reason="Extra 页面去 Core 直连的迁移在后续任务完成前仍处于过渡阶段。",
-)
 def test_extra_frontend_files_do_not_import_core_singletons_directly() -> None:
     root_dir = Path(__file__).resolve().parents[2]
 
     for relative_path in EXTRA_FRONTEND_FILES:
         file_path = root_dir / relative_path
-        content = file_path.read_text(encoding="utf-8")
-        for forbidden_import in EXTRA_FORBIDDEN_IMPORTS:
-            assert forbidden_import not in content, (
-                f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
-            )
+        violations = collect_extra_boundary_violations(file_path)
+
+        assert violations == [], f"{relative_path} 仍然存在 Core 直连语义: {violations}"
 
 
 def test_phase_two_proofreading_helper_files_do_not_import_core_singletons_directly() -> (

@@ -72,5 +72,26 @@ def test_event_bridge_maps_extra_progress_topic() -> None:
 
     # 断言
     assert topic == "extra.ts_conversion_progress"
+    assert payload["task_id"] == "extra_ts_conversion"
     assert payload["phase"] == "RUNNING"
     assert payload["current"] == 2
+    assert payload["finished"] is False
+
+
+def test_event_bridge_maps_extra_finished_topic() -> None:
+    # 准备
+    topic, payload = EventBridge().map_event(
+        Base.Event.EXTRA_TS_CONVERSION_FINISHED,
+        {
+            "message": "done",
+            "current": 10,
+            "total": 10,
+        },
+    )
+
+    # 断言
+    assert topic == "extra.ts_conversion_finished"
+    assert payload["task_id"] == "extra_ts_conversion"
+    assert payload["phase"] == "FINISHED"
+    assert payload["message"] == "done"
+    assert payload["finished"] is True
