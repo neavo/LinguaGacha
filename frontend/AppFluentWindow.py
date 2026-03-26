@@ -107,6 +107,7 @@ class AppFluentWindow(Base, FluentWindow):
         self.settings_api_client = app_client_context.settings_api_client
         self.quality_rule_api_client = app_client_context.quality_rule_api_client
         self.proofreading_api_client = app_client_context.proofreading_api_client
+        self.extra_api_client = app_client_context.extra_api_client
         self.api_state_store = app_client_context.api_state_store
 
         super().__init__()
@@ -834,7 +835,12 @@ class AppFluentWindow(Base, FluentWindow):
     def add_extra_pages(self) -> None:
         # 实验室
         self.addSubInterface(
-            interface=LaboratoryPage("laboratory_page", self),
+            interface=LaboratoryPage(
+                "laboratory_page",
+                self,
+                extra_api_client=self.extra_api_client,
+                task_api_client=self.task_api_client,
+            ),
             icon=ICON_NAV_LABORATORY.qicon(),
             text=Localizer.get().app_laboratory_page,
             position=NavigationItemPosition.SCROLL,
@@ -850,12 +856,17 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 百宝箱 - 姓名字段注入
         self.name_field_extraction_page = NameFieldExtractionPage(
-            "name_field_extraction_page", self
+            "name_field_extraction_page", self, extra_api_client=self.extra_api_client
         )
         self.stackedWidget.addWidget(self.name_field_extraction_page)
 
         # 百宝箱 - 繁简转换
-        self.ts_conversion_page = TSConversionPage("ts_conversion_page", self)
+        self.ts_conversion_page = TSConversionPage(
+            "ts_conversion_page",
+            self,
+            extra_api_client=self.extra_api_client,
+            api_state_store=self.api_state_store,
+        )
         self.stackedWidget.addWidget(self.ts_conversion_page)
 
     # 工程加载后的处理

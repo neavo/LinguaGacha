@@ -347,6 +347,18 @@ def test_laboratory_page_uses_extra_api_client() -> None:
     assert "from module.Engine.Engine import Engine" not in content
 
 
+def test_tool_box_page_keeps_navigation_only_boundary() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (root_dir / "frontend" / "Extra" / "ToolBoxPage.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from module.Config import Config" not in content
+    assert "Config().load().save()" not in content
+    assert "window.switchTo(window.name_field_extraction_page)" in content
+    assert "window.switchTo(window.ts_conversion_page)" in content
+
+
 def test_ts_conversion_page_uses_extra_api_client() -> None:
     root_dir = Path(__file__).resolve().parents[2]
     content = (root_dir / "frontend" / "Extra" / "TSConversionPage.py").read_text(
@@ -359,6 +371,27 @@ def test_ts_conversion_page_uses_extra_api_client() -> None:
     assert "from module.TextProcessor import TextProcessor" not in content
 
 
+def test_app_fluent_window_injects_extra_page_clients() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (root_dir / "frontend" / "AppFluentWindow.py").read_text(encoding="utf-8")
+
+    assert "self.extra_api_client = app_client_context.extra_api_client" in content
+    assert 'ToolBoxPage("tool_box_page", self)' in content
+    assert 'LaboratoryPage(\n                "laboratory_page",' in content
+    assert "extra_api_client=self.extra_api_client" in content
+    assert "task_api_client=self.task_api_client" in content
+    assert (
+        "self.name_field_extraction_page = NameFieldExtractionPage(\n"
+        '            "name_field_extraction_page", self, '
+        "extra_api_client=self.extra_api_client" in content
+    )
+    assert (
+        'self.ts_conversion_page = TSConversionPage(\n            "ts_conversion_page",'
+        in content
+    )
+    assert "api_state_store=self.api_state_store" in content
+
+
 def test_name_field_extraction_page_uses_extra_api_client() -> None:
     root_dir = Path(__file__).resolve().parents[2]
     content = (
@@ -369,6 +402,25 @@ def test_name_field_extraction_page_uses_extra_api_client() -> None:
     assert "from module.Data.DataManager import DataManager" not in content
     assert "from module.Engine.Engine import Engine" not in content
     assert "from module.Config import Config" not in content
+
+
+def test_extra_pages_accept_explicit_clients_in_constructor() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    ts_content = (root_dir / "frontend" / "Extra" / "TSConversionPage.py").read_text(
+        encoding="utf-8"
+    )
+    name_field_content = (
+        root_dir / "frontend" / "Extra" / "NameFieldExtractionPage.py"
+    ).read_text(encoding="utf-8")
+    laboratory_content = (
+        root_dir / "frontend" / "Extra" / "LaboratoryPage.py"
+    ).read_text(encoding="utf-8")
+
+    assert "extra_api_client: ExtraApiClient | None = None" in ts_content
+    assert "api_state_store: ApiStateStore | None = None" in ts_content
+    assert "extra_api_client: ExtraApiClient | None = None" in name_field_content
+    assert "extra_api_client: ExtraApiClient | None = None" in laboratory_content
+    assert "task_api_client: TaskApiClient | None = None" in laboratory_content
 
 
 @pytest.mark.xfail(

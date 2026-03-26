@@ -21,6 +21,7 @@ from rich.console import Console
 from api.Client.ApiClient import ApiClient
 from api.Client.AppClientContext import AppClientContext
 from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ExtraApiClient import ExtraApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
@@ -276,6 +277,7 @@ if __name__ == "__main__":
             settings_api_client=SettingsApiClient(api_client),
             quality_rule_api_client=QualityRuleApiClient(api_client),
             proofreading_api_client=ProofreadingApiClient(api_client),
+            extra_api_client=ExtraApiClient(api_client),
             api_state_store=ApiStateStore(),
         )
 

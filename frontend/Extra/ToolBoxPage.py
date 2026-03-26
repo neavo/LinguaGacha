@@ -16,7 +16,6 @@ from qfluentwidgets import TransparentToolButton
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
-from module.Config import Config
 from module.Localizer.Localizer import Localizer
 from widget.Separator import Separator
 
@@ -92,9 +91,6 @@ class ToolBoxPage(Base, QWidget):
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
-        # 载入并保存默认配置
-        config = Config().load().save()
-
         # 设置主容器
         self.vbox = QVBoxLayout(self)
         self.vbox.setSpacing(8)
@@ -108,13 +104,11 @@ class ToolBoxPage(Base, QWidget):
         self.vbox.addWidget(self.flow_container)
 
         # 添加控件
-        self.add_name_field_extraction(self.flow_layout, config, window)
-        self.add_ts_conversion(self.flow_layout, config, window)
+        self.add_name_field_extraction(self.flow_layout, window)
+        self.add_ts_conversion(self.flow_layout, window)
 
     # 姓名字段提取
-    def add_name_field_extraction(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_name_field_extraction(self, parent: QLayout, window: FluentWindow) -> None:
         def clicked(widget: ItemCard) -> None:
             window.switchTo(window.name_field_extraction_page)
 
@@ -129,9 +123,7 @@ class ToolBoxPage(Base, QWidget):
         )
 
     # 繁简转换
-    def add_ts_conversion(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_ts_conversion(self, parent: QLayout, window: FluentWindow) -> None:
         def clicked(widget: ItemCard) -> None:
             window.switchTo(window.ts_conversion_page)
 
