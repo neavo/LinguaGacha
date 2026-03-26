@@ -6,6 +6,7 @@ import frontend.Quality.CustomPromptPage as custom_prompt_page_module
 import frontend.Quality.QualityRulePresetManager as preset_manager_module
 from frontend.Quality.CustomPromptPage import CustomPromptPage
 from frontend.Quality.QualityRulePresetManager import QualityRulePresetManager
+from widget.SettingCard import SettingCard
 
 
 class FakeDialogButton:
@@ -122,6 +123,26 @@ def build_custom_prompt_page() -> tuple[CustomPromptPage, dict[str, object]]:
     page.emit_toast = emit_toast
     page.apply_prompt_snapshot = apply_prompt_snapshot
     return page, state
+
+
+def test_custom_prompt_page_reload_prompt_template_updates_setting_card_description() -> (
+    None
+):
+    page = CustomPromptPage.__new__(CustomPromptPage)
+    page.task_type = CustomPromptPage.TASK_TYPE_TRANSLATION
+    page.quality_rule_api_client = Mock()
+    page.quality_rule_api_client.get_prompt_template.return_value = {
+        "default_text": "默认提示词",
+        "prefix_text": "前缀提示词",
+        "suffix_text": "后缀\n提示词",
+    }
+    page.prefix_body = Mock(spec=SettingCard)
+    page.suffix_body = Mock(spec=SettingCard)
+
+    page.reload_prompt_template()
+
+    page.prefix_body.set_description.assert_called_once_with("前缀提示词")
+    page.suffix_body.set_description.assert_called_once_with("后缀提示词")
 
 
 def test_quality_rule_preset_manager_save_preset_detects_casefold_duplicate(

@@ -148,8 +148,9 @@ class CustomPromptPage(Base, QWidget):
         self.default_prompt_text = str(template.get("default_text", ""))
         self.prefix_prompt_text = str(template.get("prefix_text", ""))
         self.suffix_prompt_text = str(template.get("suffix_text", ""))
-        self.prefix_body.setContent(self.prefix_prompt_text)
-        self.suffix_body.setContent(self.suffix_prompt_text.replace("\n", ""))
+        # SettingCard 统一通过描述接口刷新正文，避免沿用旧卡片 API 导致启动崩溃。
+        self.prefix_body.set_description(self.prefix_prompt_text)
+        self.suffix_body.set_description(self.suffix_prompt_text.replace("\n", ""))
 
     def reload_prompt_snapshot(self) -> None:
         if not self.api_state_store.is_project_loaded():
