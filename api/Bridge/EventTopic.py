@@ -10,3 +10,5 @@ class EventTopic(StrEnum):
     WORKBENCH_SNAPSHOT_CHANGED = "workbench.snapshot_changed"
     SETTINGS_CHANGED = "settings.changed"
     PROOFREADING_SNAPSHOT_INVALIDATED = "proofreading.snapshot_invalidated"
+    EXTRA_TS_CONVERSION_PROGRESS = "extra.ts_conversion_progress"
+    EXTRA_TS_CONVERSION_FINISHED = "extra.ts_conversion_finished"

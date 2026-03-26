@@ -4,10 +4,12 @@ from api.Server.CoreApiServer import CoreApiServer
 
 
 class ExtraRoutes:
-    """集中注册 Extra 页面的最小实验室路由，先打通首条 API 化闭环。"""
+    """集中注册 Extra 页面的最小路由，逐步把工具页迁到 API 边界。"""
 
     SNAPSHOT_PATH: str = "/api/extra/laboratory/snapshot"
     UPDATE_PATH: str = "/api/extra/laboratory/update"
+    TS_CONVERSION_OPTIONS_PATH: str = "/api/extra/ts-conversion/options"
+    TS_CONVERSION_START_PATH: str = "/api/extra/ts-conversion/start"
 
     @classmethod
     def register(
@@ -31,5 +33,21 @@ class ExtraRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=extra_app_service.update_laboratory_settings(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.TS_CONVERSION_OPTIONS_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=extra_app_service.get_ts_conversion_options(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.TS_CONVERSION_START_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=extra_app_service.start_ts_conversion(request),
             ),
         )

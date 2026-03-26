@@ -1,6 +1,7 @@
 import threading
 
 from api.Bridge.EventTopic import EventTopic
+from model.Api.ExtraModels import ExtraTaskState
 from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.TaskModels import TaskProgressUpdate
 from model.Api.TaskModels import TaskSnapshot
@@ -15,6 +16,7 @@ class ApiStateStore:
         self.project_snapshot: ProjectSnapshot = ProjectSnapshot.from_dict({})
         self.task_snapshot: TaskSnapshot = TaskSnapshot.from_dict({})
         self.proofreading_snapshot_invalidated: bool = False
+        self.extra_task_states: dict[str, ExtraTaskState] = {}
 
     def hydrate_project(self, snapshot: ProjectSnapshot) -> None:
         """用服务端快照覆盖本地工程状态，保持单一缓存入口。"""
@@ -22,6 +24,7 @@ class ApiStateStore:
         with self.lock:
             self.project_snapshot = snapshot
             self.proofreading_snapshot_invalidated = False
+            self.extra_task_states = {}
 
     def reset_project(self) -> None:
         """工程关闭后恢复到未加载态，避免 UI 继续读到陈旧路径。"""
@@ -29,6 +32,7 @@ class ApiStateStore:
         with self.lock:
             self.project_snapshot = ProjectSnapshot.from_dict({})
             self.proofreading_snapshot_invalidated = False
+            self.extra_task_states = {}
 
     def is_project_loaded(self) -> bool:
         """给 UI 提供稳定布尔值，减少页面自己猜状态。"""
@@ -96,6 +100,41 @@ class ApiStateStore:
         with self.lock:
             return self.proofreading_snapshot_invalidated
 
+    def merge_extra_task_state(
+        self,
+        payload: dict[str, object],
+        *,
+        finished: bool,
+    ) -> None:
+        """把 Extra 长任务事件合并成冻结状态，避免页面自己维护进度缓存。"""
+
+        task_id = str(payload.get("task_id", ""))
+        if task_id != "":
+            with self.lock:
+                current_state = self.extra_task_states.get(
+                    task_id,
+                    ExtraTaskState(task_id=task_id),
+                )
+                self.extra_task_states[task_id] = current_state.merge_dict(
+                    payload,
+                    finished=finished,
+                )
+
+    def get_extra_task_state(self, task_id: str) -> ExtraTaskState | None:
+        """按任务标识读取 Extra 长任务状态，未命中时返回 None 区分状态丢失。"""
+
+        with self.lock:
+            return self.extra_task_states.get(task_id)
+
+    def clear_extra_task_state(self, task_id: str) -> None:
+        """启动同标识新任务前清掉陈旧快照，避免旧终态污染新的生命周期。"""
+
+        if task_id == "":
+            return
+
+        with self.lock:
+            self.extra_task_states.pop(task_id, None)
+
     def apply_event(self, topic: str, payload: dict[str, object]) -> None:
         """统一把 SSE topic 合并进本地状态仓库。"""
 
@@ -110,3 +149,7 @@ class ApiStateStore:
             self.merge_task_progress(TaskProgressUpdate.from_dict(payload))
         elif topic == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value:
             self.mark_proofreading_snapshot_invalidated()
+        elif topic == EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value:
+            self.merge_extra_task_state(payload, finished=False)
+        elif topic == EventTopic.EXTRA_TS_CONVERSION_FINISHED.value:
+            self.merge_extra_task_state(payload, finished=True)

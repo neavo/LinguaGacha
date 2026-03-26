@@ -3,6 +3,8 @@ from typing import Any
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.ExtraRoutes import ExtraRoutes
 from model.Api.ExtraModels import LaboratorySnapshot
+from model.Api.ExtraModels import TsConversionOptionsSnapshot
+from model.Api.ExtraModels import TsConversionTaskAccepted
 
 
 class ExtraApiClient:
@@ -25,3 +27,18 @@ class ExtraApiClient:
 
         response = self.api_client.post(ExtraRoutes.UPDATE_PATH, request)
         return LaboratorySnapshot.from_dict(response.get("snapshot", {}))
+
+    def get_ts_conversion_options(self) -> TsConversionOptionsSnapshot:
+        """读取繁简转换默认选项，避免页面继续硬编码协议字典。"""
+
+        response = self.api_client.post(ExtraRoutes.TS_CONVERSION_OPTIONS_PATH, {})
+        return TsConversionOptionsSnapshot.from_dict(response.get("options", {}))
+
+    def start_ts_conversion(
+        self,
+        request: dict[str, Any],
+    ) -> TsConversionTaskAccepted:
+        """发起繁简转换任务，并返回稳定的任务受理对象。"""
+
+        response = self.api_client.post(ExtraRoutes.TS_CONVERSION_START_PATH, request)
+        return TsConversionTaskAccepted.from_dict(response.get("task", {}))

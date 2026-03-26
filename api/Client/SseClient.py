@@ -3,7 +3,6 @@ import threading
 
 import httpx
 
-from api.Bridge.EventTopic import EventTopic
 from api.Client.ApiStateStore import ApiStateStore
 
 
@@ -64,12 +63,8 @@ class SseClient:
     def dispatch_event(self, event_name: str, data_lines: list[str]) -> None:
         """把 SSE 事件解析为 JSON 并交给状态仓库。"""
 
-        if event_name == "" or not data_lines:
-            return
-        payload_text = "\n".join(data_lines)
-        payload = json.loads(payload_text)
-        if isinstance(payload, dict):
-            if event_name == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value:
-                self.api_state_store.mark_proofreading_snapshot_invalidated()
-                return
-            self.api_state_store.apply_event(event_name, payload)
+        if event_name != "" and data_lines:
+            payload_text = "\n".join(data_lines)
+            payload = json.loads(payload_text)
+            if isinstance(payload, dict):
+                self.api_state_store.apply_event(event_name, payload)

@@ -1,8 +1,24 @@
+import os
 from pathlib import Path
+from typing import Callable
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtWidgets import QApplication
+
+from api.Bridge.EventTopic import EventTopic
+from api.Client.ApiStateStore import ApiStateStore
+from base.Base import Base
+import frontend.Extra.TSConversionPage as ts_conversion_page_module
+from frontend.Extra.TSConversionPage import TSConversionPage
+from model.Api.ExtraModels import TsConversionTaskAccepted
+from model.Api.ExtraModels import TsConversionOptionsSnapshot
+from model.Api.ProjectModels import ProjectSnapshot
+from module.Localizer.Localizer import Localizer
 
 # 这组守卫只约束 frontend 目录，放在 tests/frontend 下可以避免继续污染 tests/api 的语义。
+
 FRONTEND_CORE_FORBIDDEN_IMPORTS: tuple[str, ...] = (
     "from module.Data.DataManager import DataManager",
     "from module.Engine.Engine import Engine",
@@ -78,6 +94,110 @@ QUALITY_RULE_LAYER_FORBIDDEN_IMPORTS: tuple[str, ...] = (
     "from module.QualityRule.QualityRuleIO import QualityRuleIO",
     "from module.QualityRulePathResolver import QualityRulePathResolver",
 )
+
+
+class FakeBackgroundThread:
+    """测试线程调度时只记录 target，避免在主线程同步执行后台任务。"""
+
+    def __init__(self, target: Callable[[], None], daemon: bool = False) -> None:
+        self.target = target
+        self.daemon = daemon
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+
+class FakeTsConversionClient:
+    """把繁简转换 API 行为显式化，便于断言页面是否真的切到后台线程。"""
+
+    def __init__(
+        self,
+        *,
+        options_snapshot: TsConversionOptionsSnapshot | None = None,
+        options_error: Exception | None = None,
+        start_error: Exception | None = None,
+    ) -> None:
+        self.options_snapshot = options_snapshot or TsConversionOptionsSnapshot()
+        self.options_error = options_error
+        self.start_error = start_error
+        self.options_call_count = 0
+        self.start_requests: list[dict[str, object]] = []
+
+    def get_ts_conversion_options(self) -> TsConversionOptionsSnapshot:
+        self.options_call_count += 1
+        if self.options_error is not None:
+            raise self.options_error
+        return self.options_snapshot
+
+    def start_ts_conversion(self, request: dict[str, object]) -> object:
+        self.start_requests.append(request)
+        if self.start_error is not None:
+            raise self.start_error
+        return object()
+
+
+class AcceptingMessageBox:
+    """统一让确认弹窗返回确认，避免测试被交互阻塞。"""
+
+    def __init__(self, title: str, content: str, parent: object) -> None:
+        self.title = title
+        self.content = content
+        self.parent = parent
+
+    def exec(self) -> int:
+        return 1
+
+
+class UnexpectedMessageBox:
+    """当逻辑本应提前拦截时，如果仍弹窗就让测试立刻失败。"""
+
+    def __init__(self, title: str, content: str, parent: object) -> None:
+        self.title = title
+        self.content = content
+        self.parent = parent
+
+    def exec(self) -> int:
+        raise AssertionError("不应进入确认弹窗")
+
+
+@pytest.fixture
+def qapp() -> QApplication:
+    application = QApplication.instance()
+    if application is None:
+        application = QApplication([])
+    return application
+
+
+def build_ts_conversion_page(
+    qapp: QApplication,
+    *,
+    extra_api_client: object | None = None,
+    api_state_store: ApiStateStore | None = None,
+) -> TSConversionPage:
+    del qapp
+    page = TSConversionPage(
+        "ts_conversion_page",
+        None,
+        extra_api_client=extra_api_client,
+        api_state_store=api_state_store,
+    )
+    page.ui_update_timer.stop()
+    return page
+
+
+def create_fake_thread_factory(
+    threads: list[FakeBackgroundThread],
+) -> Callable[[Callable[[], None], bool], FakeBackgroundThread]:
+    def factory(
+        target: Callable[[], None],
+        daemon: bool = False,
+    ) -> FakeBackgroundThread:
+        thread = FakeBackgroundThread(target, daemon)
+        threads.append(thread)
+        return thread
+
+    return factory
 
 
 def test_phase_one_frontend_files_do_not_import_core_singletons_directly() -> None:
@@ -197,6 +317,18 @@ def test_laboratory_page_uses_extra_api_client() -> None:
     assert "from module.Engine.Engine import Engine" not in content
 
 
+def test_ts_conversion_page_uses_extra_api_client() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (root_dir / "frontend" / "Extra" / "TSConversionPage.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from api.Client.ExtraApiClient import ExtraApiClient" in content
+    assert "from module.Data.DataManager import DataManager" not in content
+    assert "from module.File.FileManager import FileManager" not in content
+    assert "from module.TextProcessor import TextProcessor" not in content
+
+
 @pytest.mark.xfail(
     reason="Extra 页面去 Core 直连的迁移在后续任务完成前仍处于过渡阶段。",
 )
@@ -286,3 +418,291 @@ def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
     assert "from module.ResultChecker import WarningType" not in edit_panel_content
     assert "from module.ResultChecker import WarningType" not in labels_content
     assert "from module.ResultChecker import WarningType" not in delegate_content
+
+
+def test_ts_conversion_page_loads_options_in_background(qapp: QApplication) -> None:
+    # 准备
+    threads: list[FakeBackgroundThread] = []
+    client = FakeTsConversionClient(
+        options_snapshot=TsConversionOptionsSnapshot(
+            default_direction=TSConversionPage.DEFAULT_DIRECTION_TO_SIMPLIFIED,
+            preserve_text_enabled=False,
+            convert_name_enabled=False,
+        )
+    )
+    original_thread = ts_conversion_page_module.threading.Thread
+    ts_conversion_page_module.threading.Thread = create_fake_thread_factory(threads)
+
+    try:
+        # 执行
+        page = build_ts_conversion_page(qapp, extra_api_client=client)
+
+        # 断言
+        assert client.options_call_count == 0
+        assert len(threads) == 1
+        assert page.direction_combo.currentIndex() == 1
+        assert page.preserve_switch.isChecked() is True
+        assert page.target_name_switch.isChecked() is True
+
+        threads[0].target()
+
+        assert client.options_call_count == 1
+        assert page.direction_combo.currentIndex() == 0
+        assert page.preserve_switch.isChecked() is False
+        assert page.target_name_switch.isChecked() is False
+    finally:
+        ts_conversion_page_module.threading.Thread = original_thread
+
+
+def test_ts_conversion_page_keeps_default_options_when_background_load_fails(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    threads: list[FakeBackgroundThread] = []
+    client = FakeTsConversionClient(options_error=RuntimeError("load failed"))
+    original_thread = ts_conversion_page_module.threading.Thread
+    ts_conversion_page_module.threading.Thread = create_fake_thread_factory(threads)
+
+    try:
+        # 执行
+        page = build_ts_conversion_page(qapp, extra_api_client=client)
+        threads[0].target()
+
+        # 断言
+        assert client.options_call_count == 1
+        assert page.direction_combo.currentIndex() == 1
+        assert page.preserve_switch.isChecked() is True
+        assert page.target_name_switch.isChecked() is True
+    finally:
+        ts_conversion_page_module.threading.Thread = original_thread
+
+
+def test_ts_conversion_page_start_conversion_uses_background_thread_and_reports_error_toast(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    threads: list[FakeBackgroundThread] = []
+    store = ApiStateStore()
+    store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
+    client = FakeTsConversionClient(start_error=RuntimeError("start failed"))
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    original_thread = ts_conversion_page_module.threading.Thread
+    original_message_box = ts_conversion_page_module.MessageBox
+    ts_conversion_page_module.threading.Thread = create_fake_thread_factory(threads)
+    ts_conversion_page_module.MessageBox = AcceptingMessageBox
+
+    try:
+        page = build_ts_conversion_page(
+            qapp,
+            extra_api_client=client,
+            api_state_store=store,
+        )
+        threads.clear()
+
+        def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+            emitted_events.append((event, data))
+            return True
+
+        page.emit = capture_emit  # type: ignore[method-assign]
+
+        # 执行
+        page.start_conversion()
+
+        # 断言
+        assert client.start_requests == []
+        assert len(threads) == 1
+
+        threads[0].target()
+
+        assert len(client.start_requests) == 1
+        assert emitted_events == [
+            (
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+        ]
+    finally:
+        ts_conversion_page_module.threading.Thread = original_thread
+        ts_conversion_page_module.MessageBox = original_message_box
+
+
+def test_ts_conversion_page_does_not_clear_active_task_before_first_snapshot(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    store = ApiStateStore()
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    page = build_ts_conversion_page(qapp, api_state_store=store)
+
+    def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+        emitted_events.append((event, data))
+        return True
+
+    page.emit = capture_emit  # type: ignore[method-assign]
+
+    # 执行
+    page.handle_start_result(
+        TsConversionTaskAccepted(accepted=True, task_id="extra_ts_conversion")
+    )
+
+    # 断言
+    assert page.active_task_id == "extra_ts_conversion"
+    assert page.progress_toast_visible is True
+    assert emitted_events == [
+        (
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "message": Localizer.get().ts_conversion_action_preparing,
+                "indeterminate": True,
+            },
+        )
+    ]
+    assert page.awaiting_active_task_state is True
+
+
+def test_ts_conversion_page_restart_with_same_task_id_ignores_stale_finished_snapshot(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    store = ApiStateStore()
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    page = build_ts_conversion_page(qapp, api_state_store=store)
+    store.apply_event(
+        EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+        {
+            "task_id": "extra_ts_conversion",
+            "phase": "FINISHED",
+            "message": "done",
+            "current": 10,
+            "total": 10,
+        },
+    )
+
+    def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+        emitted_events.append((event, data))
+        return True
+
+    page.emit = capture_emit  # type: ignore[method-assign]
+
+    # 执行
+    page.handle_start_result(
+        TsConversionTaskAccepted(accepted=True, task_id="extra_ts_conversion")
+    )
+
+    # 断言
+    assert page.active_task_id == "extra_ts_conversion"
+    assert page.awaiting_active_task_state is True
+    assert page.progress_toast_visible is True
+    assert store.get_extra_task_state("extra_ts_conversion") is None
+    assert emitted_events == [
+        (
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.RUN,
+                "message": Localizer.get().ts_conversion_action_preparing,
+                "indeterminate": True,
+            },
+        )
+    ]
+
+
+def test_ts_conversion_page_blocks_repeat_start_while_waiting_for_first_snapshot(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    store = ApiStateStore()
+    store.hydrate_project(
+        ProjectSnapshot.from_dict({"loaded": True, "path": "demo.lg"})
+    )
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    page = build_ts_conversion_page(qapp, api_state_store=store)
+    page.handle_start_result(
+        TsConversionTaskAccepted(accepted=True, task_id="extra_ts_conversion")
+    )
+    original_message_box = ts_conversion_page_module.MessageBox
+    ts_conversion_page_module.MessageBox = UnexpectedMessageBox
+
+    try:
+
+        def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+            emitted_events.append((event, data))
+            return True
+
+        page.emit = capture_emit  # type: ignore[method-assign]
+
+        # 执行
+        page.start_conversion()
+
+        # 断言
+        assert page.awaiting_active_task_state is True
+        assert emitted_events == [
+            (
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().task_running,
+                },
+            )
+        ]
+    finally:
+        ts_conversion_page_module.MessageBox = original_message_box
+
+
+def test_ts_conversion_page_clears_missing_active_task_after_real_snapshot_seen(
+    qapp: QApplication,
+) -> None:
+    # 准备
+    store = ApiStateStore()
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+    page = build_ts_conversion_page(qapp, api_state_store=store)
+    page.active_task_id = "extra_ts_conversion"
+    page.progress_toast_visible = True
+    store.apply_event(
+        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        {
+            "task_id": "extra_ts_conversion",
+            "phase": "RUNNING",
+            "message": "running",
+            "current": 1,
+            "total": 10,
+        },
+    )
+
+    def capture_emit(event: Base.Event, data: dict[str, object]) -> bool:
+        emitted_events.append((event, data))
+        return True
+
+    page.emit = capture_emit  # type: ignore[method-assign]
+
+    # 执行
+    page.update_progress_from_state_store()
+    store.reset_project()
+    page.update_progress_from_state_store()
+
+    # 断言
+    assert page.active_task_id == ""
+    assert page.progress_toast_visible is False
+    assert emitted_events == [
+        (
+            Base.Event.PROGRESS_TOAST,
+            {
+                "sub_event": Base.SubEvent.UPDATE,
+                "message": Localizer.get()
+                .ts_conversion_action_progress.replace("{CURRENT}", "1")
+                .replace("{TOTAL}", "10"),
+                "indeterminate": False,
+                "current": 1,
+                "total": 10,
+            },
+        ),
+        (
+            Base.Event.PROGRESS_TOAST,
+            {"sub_event": Base.SubEvent.ERROR},
+        ),
+    ]

@@ -1,12 +1,15 @@
 from typing import Any
 
-from base.Base import Base
 from api.Bridge.EventTopic import EventTopic
 from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
+from base.Base import Base
+from model.Api.ExtraModels import ExtraTaskState
 
 
 class EventBridge:
     """把内部事件裁剪为对外稳定 topic。"""
+
+    EXTRA_TS_CONVERSION_TASK_ID: str = "extra_ts_conversion"
 
     def map_event(
         self,
@@ -76,6 +79,16 @@ class EventBridge:
                 EventTopic.SETTINGS_CHANGED.value,
                 {"keys": normalized_keys},
             )
+        elif event == Base.Event.EXTRA_TS_CONVERSION_PROGRESS:
+            return (
+                EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+                self.build_extra_task_payload(data, finished=False),
+            )
+        elif event == Base.Event.EXTRA_TS_CONVERSION_FINISHED:
+            return (
+                EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+                self.build_extra_task_payload(data, finished=True),
+            )
         elif event == Base.Event.QUALITY_RULE_UPDATE:
             relevant_rule_types, relevant_meta_keys = (
                 ProofreadingRuleImpact.extract_relevant_rule_update(data)
@@ -130,4 +143,33 @@ class EventBridge:
             "task_type": task_type,
             "status": status,
             "busy": status not in ("DONE", "ERROR", "IDLE"),
+        }
+
+    def build_extra_task_payload(
+        self,
+        data: dict[str, Any],
+        *,
+        finished: bool,
+    ) -> dict[str, Any]:
+        """Extra 长任务只暴露页面需要的最小进度字段，避免协议提前膨胀。"""
+
+        return {
+            "task_id": str(
+                data.get("task_id", self.EXTRA_TS_CONVERSION_TASK_ID)
+                or self.EXTRA_TS_CONVERSION_TASK_ID
+            ),
+            "phase": str(
+                data.get(
+                    "phase",
+                    (
+                        ExtraTaskState.PHASE_FINISHED
+                        if finished
+                        else ExtraTaskState.PHASE_RUNNING
+                    ),
+                )
+            ),
+            "message": str(data.get("message", "")),
+            "current": int(data.get("current", 0) or 0),
+            "total": int(data.get("total", 0) or 0),
+            "finished": finished,
         }

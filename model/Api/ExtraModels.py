@@ -13,6 +13,31 @@ class TsConversionOptionsSnapshot:
     preserve_text_enabled: bool = False
     convert_name_enabled: bool = False
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把服务端 options 响应归一化成冻结对象，避免页面自己补默认值。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            default_direction=str(normalized.get("default_direction", "")),
+            preserve_text_enabled=bool(normalized.get("preserve_text_enabled", False)),
+            convert_name_enabled=bool(normalized.get("convert_name_enabled", False)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把冻结 options 恢复为 JSON 字典，供响应载荷复用。"""
+
+        return {
+            "default_direction": self.default_direction,
+            "preserve_text_enabled": self.preserve_text_enabled,
+            "convert_name_enabled": self.convert_name_enabled,
+        }
+
 
 @dataclass(frozen=True)
 class TsConversionTaskAccepted:
@@ -20,6 +45,109 @@ class TsConversionTaskAccepted:
 
     accepted: bool = False
     task_id: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把任务受理响应转换成冻结对象，避免客户端继续读字典。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            accepted=bool(normalized.get("accepted", False)),
+            task_id=str(normalized.get("task_id", "")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """把任务受理对象恢复为 JSON 字典，供路由层直接返回。"""
+
+        return {
+            "accepted": self.accepted,
+            "task_id": self.task_id,
+        }
+
+
+@dataclass(frozen=True)
+class ExtraTaskState:
+    """把 Extra 长任务进度冻结缓存，避免页面继续散读可变字典。"""
+
+    PHASE_PREPARING: str = "PREPARING"
+    PHASE_RUNNING: str = "RUNNING"
+    PHASE_FINISHED: str = "FINISHED"
+
+    task_id: str = ""
+    phase: str = ""
+    message: str = ""
+    current: int = 0
+    total: int = 0
+    finished: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> Self:
+        """把 SSE 载荷归一化成最小任务状态对象。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        return cls(
+            task_id=str(normalized.get("task_id", "")),
+            phase=str(normalized.get("phase", "")),
+            message=str(normalized.get("message", "")),
+            current=int(normalized.get("current", 0) or 0),
+            total=int(normalized.get("total", 0) or 0),
+            finished=bool(normalized.get("finished", False)),
+        )
+
+    def merge_dict(
+        self,
+        data: dict[str, Any] | None,
+        *,
+        finished: bool | None = None,
+    ) -> Self:
+        """只按显式字段覆盖状态，保证同一任务的进度真相集中在仓库里。"""
+
+        normalized: dict[str, Any]
+        if isinstance(data, dict):
+            normalized = data
+        else:
+            normalized = {}
+
+        task_id = self.task_id
+        phase = self.phase
+        message = self.message
+        current = self.current
+        total = self.total
+        finished_value = self.finished
+
+        if "task_id" in normalized:
+            task_id = str(normalized.get("task_id", ""))
+        if "phase" in normalized:
+            phase = str(normalized.get("phase", ""))
+        if "message" in normalized:
+            message = str(normalized.get("message", ""))
+        if "current" in normalized:
+            current = int(normalized.get("current", 0) or 0)
+        if "total" in normalized:
+            total = int(normalized.get("total", 0) or 0)
+        if "finished" in normalized:
+            finished_value = bool(normalized.get("finished", False))
+        if finished is not None:
+            finished_value = finished
+
+        return ExtraTaskState(
+            task_id=task_id,
+            phase=phase,
+            message=message,
+            current=current,
+            total=total,
+            finished=finished_value,
+        )
 
 
 @dataclass(frozen=True)

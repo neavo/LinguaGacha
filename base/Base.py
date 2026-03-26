@@ -67,6 +67,12 @@ class Base:
         WORKBENCH_SNAPSHOT = "WORKBENCH_SNAPSHOT"  # 工作台 - 快照更新（跨线程回到 UI）
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
         QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
+        EXTRA_TS_CONVERSION_PROGRESS = (
+            "EXTRA_TS_CONVERSION_PROGRESS"  # Extra - 繁简转换进度更新
+        )
+        EXTRA_TS_CONVERSION_FINISHED = (
+            "EXTRA_TS_CONVERSION_FINISHED"  # Extra - 繁简转换结束通知
+        )
 
     # 通用生命周期子事件
     # 为什么需要它：多数事件都遵循“请求 -> 运行 -> 更新 -> 完成/失败”的同构流程，
@@ -168,6 +174,8 @@ class Base:
         Event.ANALYSIS_PROGRESS,
         Event.WORKBENCH_SNAPSHOT,
         Event.CONFIG_UPDATED,
+        Event.EXTRA_TS_CONVERSION_PROGRESS,
+        Event.EXTRA_TS_CONVERSION_FINISHED,
     )
     ENGINE_BUSY_STATUSES: tuple[TaskStatus, ...] = (
         TaskStatus.TRANSLATING,

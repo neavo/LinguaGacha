@@ -15,3 +15,32 @@ def test_sse_client_解析校对快照失效事件() -> None:
     )
 
     assert store.is_proofreading_snapshot_invalidated() is True
+
+
+def test_sse_client_合并额外繁简转换进度事件() -> None:
+    # 准备
+    store = ApiStateStore()
+    client = SseClient("http://127.0.0.1:1", store)
+
+    # 执行
+    client.dispatch_event(
+        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        [
+            '{"task_id":"extra_ts_conversion","phase":"RUNNING","message":"running","current":2,"total":10}'
+        ],
+    )
+    client.dispatch_event(
+        EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+        [
+            '{"task_id":"extra_ts_conversion","phase":"FINISHED","message":"done","current":10,"total":10}'
+        ],
+    )
+
+    # 断言
+    snapshot = store.get_extra_task_state("extra_ts_conversion")
+
+    assert snapshot.phase == "FINISHED"
+    assert snapshot.message == "done"
+    assert snapshot.current == 10
+    assert snapshot.total == 10
+    assert snapshot.finished is True

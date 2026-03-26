@@ -56,3 +56,21 @@ def test_quality_rule_update_uses_proofreading_rule_impact_single_source(
     assert payload["reason"] == "quality_rule_update"
     assert payload["rule_types"] == ["glossary"]
     assert payload["meta_keys"] == []
+
+
+def test_event_bridge_maps_extra_progress_topic() -> None:
+    # 准备
+    topic, payload = EventBridge().map_event(
+        Base.Event.EXTRA_TS_CONVERSION_PROGRESS,
+        {
+            "current": 2,
+            "total": 10,
+            "message": "running",
+            "phase": "RUNNING",
+        },
+    )
+
+    # 断言
+    assert topic == "extra.ts_conversion_progress"
+    assert payload["phase"] == "RUNNING"
+    assert payload["current"] == 2

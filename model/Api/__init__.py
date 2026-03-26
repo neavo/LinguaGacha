@@ -1,5 +1,6 @@
 from model.Api.ExtraModels import ExtraToolEntry
 from model.Api.ExtraModels import ExtraToolSnapshot
+from model.Api.ExtraModels import ExtraTaskState
 from model.Api.ExtraModels import LaboratorySnapshot
 from model.Api.ExtraModels import NameFieldEntryDraft
 from model.Api.ExtraModels import NameFieldSnapshot
@@ -35,6 +36,7 @@ __all__ = [
     "CustomPromptSnapshot",
     "ExtraToolEntry",
     "ExtraToolSnapshot",
+    "ExtraTaskState",
     "LaboratorySnapshot",
     "NameFieldEntryDraft",
     "NameFieldSnapshot",

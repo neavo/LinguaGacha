@@ -107,3 +107,42 @@ def test_extra_api_client_update_laboratory_settings_returns_snapshot(
     # Assert
     assert isinstance(result, LaboratorySnapshot)
     assert result.force_thinking_enabled is True
+
+
+def test_extra_api_client_get_ts_conversion_options_returns_snapshot(
+    start_api_server: Callable[..., str],
+) -> None:
+    # Arrange
+    base_url = start_api_server(extra_app_service=ExtraAppService())
+    extra_api_client = ExtraApiClient(ApiClient(base_url))
+
+    # Act
+    result = extra_api_client.get_ts_conversion_options()
+
+    # Assert
+    assert isinstance(result, TsConversionOptionsSnapshot)
+    assert result.default_direction == "TO_TRADITIONAL"
+    assert result.preserve_text_enabled is True
+    assert result.convert_name_enabled is True
+
+
+def test_extra_api_client_start_ts_conversion_returns_task_result(
+    start_api_server: Callable[..., str],
+) -> None:
+    # Arrange
+    base_url = start_api_server(extra_app_service=ExtraAppService())
+    extra_api_client = ExtraApiClient(ApiClient(base_url))
+
+    # Act
+    result = extra_api_client.start_ts_conversion(
+        {
+            "direction": "TO_SIMPLIFIED",
+            "preserve_text": True,
+            "convert_name": False,
+        }
+    )
+
+    # Assert
+    assert isinstance(result, TsConversionTaskAccepted)
+    assert result.accepted is True
+    assert result.task_id == "extra_ts_conversion"
