@@ -38,3 +38,44 @@ def test_api_nested_conftests_do_not_define_pytest_plugins() -> None:
 
     assert "pytest_plugins" not in application_content
     assert "pytest_plugins" not in client_content
+
+
+def test_client_tests_follow_one_file_per_api_client() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    client_dir = root_dir / "tests" / "api" / "client"
+    removed_client_test = client_dir / "test_api_client.py"
+    expected_file_names = {
+        "test_project_api_client.py",
+        "test_quality_rule_api_client.py",
+        "test_proofreading_api_client.py",
+        "test_task_api_client.py",
+        "test_settings_api_client.py",
+        "test_workbench_api_client.py",
+    }
+    actual_file_names = {
+        file_path.name for file_path in client_dir.glob("test_*_api_client.py")
+    }
+
+    assert removed_client_test.is_file() is False
+    assert actual_file_names == expected_file_names
+
+
+def test_client_test_files_do_not_reference_frontend_pages() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    client_dir = root_dir / "tests" / "api" / "client"
+    blocked_page_references = (
+        "frontend.",
+        "ProjectPage",
+        "TranslationPage",
+        "AnalysisPage",
+        "WorkbenchPage",
+        "AppSettingsPage",
+        "BasicSettingsPage",
+        "ExpertSettingsPage",
+    )
+
+    for file_path in client_dir.glob("test_*_api_client.py"):
+        content = file_path.read_text(encoding="utf-8")
+
+        for blocked_reference in blocked_page_references:
+            assert blocked_reference not in content
