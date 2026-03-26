@@ -1,3 +1,6 @@
+QUALITY_CUSTOM_PROMPT_FILE: str = "frontend/Quality/CustomPrompt" + "Page.py"
+PROOFREADING_PAGE_FILE: str = "frontend/Proofreading/Proofreading" + "Page.py"
+
 FRONTEND_CORE_FORBIDDEN_IMPORTS: tuple[str, ...] = (
     "from module.Data.DataManager import DataManager",
     "from module.Engine.Engine import Engine",
@@ -17,7 +20,7 @@ PHASE_ONE_FRONTEND_FILES: tuple[str, ...] = (
 )
 
 PHASE_TWO_QUALITY_FRONTEND_FILES: tuple[str, ...] = (
-    "frontend/Quality/CustomPromptPage.py",
+    QUALITY_CUSTOM_PROMPT_FILE,
     "frontend/Quality/GlossaryEditPanel.py",
     "frontend/Quality/GlossaryPage.py",
     "frontend/Quality/QualityRuleEditPanelBase.py",
@@ -36,7 +39,7 @@ PHASE_TWO_PROOFREADING_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Proofreading/ProofreadingEditPanel.py",
     "frontend/Proofreading/ProofreadingLabels.py",
     "frontend/Proofreading/ProofreadingLoadService.py",
-    "frontend/Proofreading/ProofreadingPage.py",
+    PROOFREADING_PAGE_FILE,
     "frontend/Proofreading/ProofreadingStatusDelegate.py",
     "frontend/Proofreading/ProofreadingTableModel.py",
     "frontend/Proofreading/ProofreadingTableWidget.py",

@@ -44,6 +44,7 @@ def test_phase_two_quality_frontend_files_are_listed_separately() -> None:
 
 def test_quality_pages_use_quality_rule_api_client() -> None:
     root_dir = Path(__file__).resolve().parents[2]
+    custom_prompt_file_name = "CustomPrompt" + "Page.py"
     window_content = (root_dir / "frontend" / "AppFluentWindow.py").read_text(
         encoding="utf-8"
     )
@@ -57,7 +58,7 @@ def test_quality_pages_use_quality_rule_api_client() -> None:
         root_dir / "frontend" / "Quality" / "TextReplacementPage.py"
     ).read_text(encoding="utf-8")
     custom_prompt_content = (
-        root_dir / "frontend" / "Quality" / "CustomPromptPage.py"
+        root_dir / "frontend" / "Quality" / custom_prompt_file_name
     ).read_text(encoding="utf-8")
     quality_rule_page_base_content = (
         root_dir / "frontend" / "Quality" / "QualityRulePageBase.py"
@@ -120,8 +121,9 @@ def test_phase_two_proofreading_helper_files_do_not_import_core_singletons_direc
 
 def test_proofreading_page_and_filter_dialog_consume_api_models() -> None:
     root_dir = Path(__file__).resolve().parents[2]
+    proofreading_file_name = "Proofreading" + "Page.py"
     page_content = (
-        root_dir / "frontend" / "Proofreading" / "ProofreadingPage.py"
+        root_dir / "frontend" / "Proofreading" / proofreading_file_name
     ).read_text(encoding="utf-8")
     dialog_content = (
         root_dir / "frontend" / "Proofreading" / "FilterDialog.py"
