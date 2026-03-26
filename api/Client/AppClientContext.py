@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
@@ -7,6 +10,9 @@ from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
+
+if TYPE_CHECKING:
+    from api.Client.ExtraApiClient import ExtraApiClient
 
 
 @dataclass(frozen=True)
@@ -20,3 +26,4 @@ class AppClientContext:
     quality_rule_api_client: QualityRuleApiClient
     proofreading_api_client: ProofreadingApiClient
     api_state_store: ApiStateStore
+    extra_api_client: "ExtraApiClient | None" = None

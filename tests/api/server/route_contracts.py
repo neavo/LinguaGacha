@@ -39,3 +39,15 @@ PHASE_TWO_SPEC_ROUTE_PATHS: tuple[str, ...] = (
     *PHASE_TWO_QUALITY_ROUTE_PATHS,
     *PHASE_TWO_PROOFREADING_ROUTE_PATHS,
 )
+
+PHASE_THREE_EXTRA_ROUTE_PATHS: tuple[str, ...] = (
+    "/api/extra/tools/snapshot",
+    "/api/extra/ts-conversion/options",
+    "/api/extra/ts-conversion/start",
+    "/api/extra/name-fields/snapshot",
+    "/api/extra/name-fields/extract",
+    "/api/extra/name-fields/translate",
+    "/api/extra/name-fields/save-to-glossary",
+    "/api/extra/laboratory/snapshot",
+    "/api/extra/laboratory/update",
+)

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 # 这组守卫只约束 frontend 目录，放在 tests/frontend 下可以避免继续污染 tests/api 的语义。
 FRONTEND_CORE_FORBIDDEN_IMPORTS: tuple[str, ...] = (
     "from module.Data.DataManager import DataManager",
@@ -43,6 +45,21 @@ PHASE_TWO_PROOFREADING_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Proofreading/ProofreadingStatusDelegate.py",
     "frontend/Proofreading/ProofreadingTableModel.py",
     "frontend/Proofreading/ProofreadingTableWidget.py",
+)
+
+EXTRA_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Extra/ToolBoxPage.py",
+    "frontend/Extra/TSConversionPage.py",
+    "frontend/Extra/NameFieldExtractionPage.py",
+    "frontend/Extra/LaboratoryPage.py",
+)
+
+EXTRA_FORBIDDEN_IMPORTS: tuple[str, ...] = (
+    "from module.Config import Config",
+    "from module.Data.DataManager import DataManager",
+    "from module.Engine.Engine import Engine",
+    "from module.File.FileManager import FileManager",
+    "from module.TextProcessor import TextProcessor",
 )
 
 PROOFREADING_HELPER_FORBIDDEN_IMPORTS: tuple[str, ...] = (
@@ -152,6 +169,36 @@ def test_phase_two_proofreading_frontend_files_are_listed_separately() -> None:
     assert set(PHASE_TWO_QUALITY_FRONTEND_FILES).isdisjoint(
         PHASE_TWO_PROOFREADING_FRONTEND_FILES
     )
+
+
+def test_extra_frontend_files_are_listed_separately() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    assert EXTRA_FRONTEND_FILES
+    assert len(set(EXTRA_FRONTEND_FILES)) == len(EXTRA_FRONTEND_FILES)
+    assert set(EXTRA_FRONTEND_FILES).isdisjoint(PHASE_ONE_FRONTEND_FILES)
+    assert set(EXTRA_FRONTEND_FILES).isdisjoint(PHASE_TWO_QUALITY_FRONTEND_FILES)
+    assert set(EXTRA_FRONTEND_FILES).isdisjoint(PHASE_TWO_PROOFREADING_FRONTEND_FILES)
+
+    for relative_path in EXTRA_FRONTEND_FILES:
+        file_path = root_dir / relative_path
+        assert file_path.exists()
+        assert relative_path.startswith("frontend/Extra/")
+
+
+@pytest.mark.xfail(
+    reason="Extra 页面去 Core 直连的迁移在后续任务完成前仍处于过渡阶段。",
+)
+def test_extra_frontend_files_do_not_import_core_singletons_directly() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+
+    for relative_path in EXTRA_FRONTEND_FILES:
+        file_path = root_dir / relative_path
+        content = file_path.read_text(encoding="utf-8")
+        for forbidden_import in EXTRA_FORBIDDEN_IMPORTS:
+            assert forbidden_import not in content, (
+                f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
+            )
 
 
 def test_phase_two_proofreading_helper_files_do_not_import_core_singletons_directly() -> (

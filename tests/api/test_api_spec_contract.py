@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from tests.api.server.route_contracts import PHASE_THREE_EXTRA_ROUTE_PATHS
 from tests.api.server.route_contracts import PHASE_TWO_SPEC_ROUTE_PATHS
 
 
@@ -72,3 +73,8 @@ def test_api_spec_documents_phase_two_routes_topics_and_errors() -> None:
     assert '{"search_result": {...}}' in spec_content
     assert '{"result": {...}}' in spec_content
     assert '{"prompt": {...}}' in spec_content
+
+
+def test_extra_routes_are_documented_in_route_contracts() -> None:
+    assert "/api/extra/ts-conversion/options" in PHASE_THREE_EXTRA_ROUTE_PATHS
+    assert "/api/extra/name-fields/translate" in PHASE_THREE_EXTRA_ROUTE_PATHS

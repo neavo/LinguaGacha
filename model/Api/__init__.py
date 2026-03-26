@@ -1,3 +1,11 @@
+from model.Api.ExtraModels import ExtraToolEntry
+from model.Api.ExtraModels import ExtraToolSnapshot
+from model.Api.ExtraModels import LaboratorySnapshot
+from model.Api.ExtraModels import NameFieldEntryDraft
+from model.Api.ExtraModels import NameFieldSnapshot
+from model.Api.ExtraModels import NameFieldTranslateResult
+from model.Api.ExtraModels import TsConversionOptionsSnapshot
+from model.Api.ExtraModels import TsConversionTaskAccepted
 from model.Api.ProjectModels import ProjectPreview
 from model.Api.ProjectModels import ProjectSnapshot
 from model.Api.PromptModels import CustomPromptSnapshot
@@ -25,6 +33,12 @@ from model.Api.WorkbenchModels import WorkbenchSnapshot
 __all__ = [
     "AppSettingsSnapshot",
     "CustomPromptSnapshot",
+    "ExtraToolEntry",
+    "ExtraToolSnapshot",
+    "LaboratorySnapshot",
+    "NameFieldEntryDraft",
+    "NameFieldSnapshot",
+    "NameFieldTranslateResult",
     "PromptPresetEntry",
     "ProjectPreview",
     "ProjectSnapshot",
@@ -44,6 +58,8 @@ __all__ = [
     "TaskProgressUpdate",
     "TaskSnapshot",
     "TaskStatusUpdate",
+    "TsConversionOptionsSnapshot",
+    "TsConversionTaskAccepted",
     "WorkbenchFileEntry",
     "WorkbenchSnapshot",
 ]

@@ -60,3 +60,7 @@ def test_ui_bootstrap_imports_app_client_context() -> None:
         in window_content
     )
     assert proofreading_page_uses_client_context
+
+
+def test_app_client_context_will_expose_extra_api_client() -> None:
+    assert "extra_api_client" in AppClientContext.__annotations__
