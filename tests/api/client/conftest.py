@@ -11,6 +11,8 @@ from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.ServerBootstrap import ServerBootstrap
 
+pytest_plugins = ["tests.api.support.application_fakes"]
+
 
 type ApiService = (
     ProjectAppService

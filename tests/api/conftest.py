@@ -2,12 +2,6 @@ from pathlib import Path
 
 import pytest
 
-pytest_plugins = [
-    "tests.api.support.application_fakes",
-    "tests.api.application.conftest",
-    "tests.api.client.conftest",
-]
-
 
 @pytest.fixture
 def lg_path(tmp_path: Path) -> str:

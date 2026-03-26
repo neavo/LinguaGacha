@@ -15,3 +15,13 @@ def test_api_root_conftest_only_keeps_shared_fixtures() -> None:
 
     assert "def fake_project_manager" not in content
     assert "def fake_settings_config" not in content
+
+
+def test_api_root_conftest_does_not_globally_load_domain_plugins() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    content = (root_dir / "tests" / "api" / "conftest.py").read_text(encoding="utf-8")
+
+    assert "pytest_plugins" not in content
+    assert "tests.api.support.application_fakes" not in content
+    assert "tests.api.application.conftest" not in content
+    assert "tests.api.client.conftest" not in content
