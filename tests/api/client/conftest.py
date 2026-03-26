@@ -10,8 +10,11 @@ from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.ServerBootstrap import ServerBootstrap
-
-pytest_plugins = ["tests.api.support.application_fakes"]
+from tests.api.support.application_fakes import FakeEngine
+from tests.api.support.application_fakes import FakeProjectManager
+from tests.api.support.application_fakes import FakeSettingsConfig
+from tests.api.support.application_fakes import FakeTaskDataManager
+from tests.api.support.application_fakes import FakeWorkbenchManager
 
 
 type ApiService = (
@@ -24,6 +27,31 @@ type ApiService = (
 )
 
 type StartApiServerFactory = Callable[..., str]
+
+
+@pytest.fixture
+def fake_project_manager() -> FakeProjectManager:
+    return FakeProjectManager()
+
+
+@pytest.fixture
+def fake_task_data_manager() -> FakeTaskDataManager:
+    return FakeTaskDataManager()
+
+
+@pytest.fixture
+def fake_engine() -> FakeEngine:
+    return FakeEngine()
+
+
+@pytest.fixture
+def fake_workbench_manager() -> FakeWorkbenchManager:
+    return FakeWorkbenchManager()
+
+
+@pytest.fixture
+def fake_settings_config() -> FakeSettingsConfig:
+    return FakeSettingsConfig()
 
 
 @pytest.fixture

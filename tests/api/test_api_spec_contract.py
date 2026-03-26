@@ -25,3 +25,16 @@ def test_api_root_conftest_does_not_globally_load_domain_plugins() -> None:
     assert "tests.api.support.application_fakes" not in content
     assert "tests.api.application.conftest" not in content
     assert "tests.api.client.conftest" not in content
+
+
+def test_api_nested_conftests_do_not_define_pytest_plugins() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    application_content = (
+        root_dir / "tests" / "api" / "application" / "conftest.py"
+    ).read_text(encoding="utf-8")
+    client_content = (root_dir / "tests" / "api" / "client" / "conftest.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pytest_plugins" not in application_content
+    assert "pytest_plugins" not in client_content

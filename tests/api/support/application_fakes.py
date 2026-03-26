@@ -3,13 +3,11 @@
 为什么这些桩属于测试支持层：
 - 它们模拟的是应用服务依赖的稳定边界，而不是某个单独测试文件的临时细节。
 - `application` 与 `client` 两类测试都会复用这些最小桩，因此放在支持层可以避免重复。
-- 根 `conftest.py` 只保留真正共享的基础夹具，领域桩则通过支持层统一提供。
+- pytest 9 不再允许在子目录 `conftest.py` 里借助插件注入夹具，因此这里主要承载 Fake 类与必要帮助。
 """
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-import pytest
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -267,28 +265,3 @@ class FakeSettingsConfig:
         self.recent_projects = [
             project for project in self.recent_projects if project.get("path") != path
         ]
-
-
-@pytest.fixture
-def fake_project_manager() -> FakeProjectManager:
-    return FakeProjectManager()
-
-
-@pytest.fixture
-def fake_task_data_manager() -> FakeTaskDataManager:
-    return FakeTaskDataManager()
-
-
-@pytest.fixture
-def fake_engine() -> FakeEngine:
-    return FakeEngine()
-
-
-@pytest.fixture
-def fake_workbench_manager() -> FakeWorkbenchManager:
-    return FakeWorkbenchManager()
-
-
-@pytest.fixture
-def fake_settings_config() -> FakeSettingsConfig:
-    return FakeSettingsConfig()
