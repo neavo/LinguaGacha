@@ -1,6 +1,11 @@
 # LinguaGacha Agent Guidelines
 本文档用于约束在本仓库工作的 Agent 的行为、命令与代码风格，**必须严格遵循**
 
+## 0. 文档入口
+- 仓库结构、模块关系与阅读路径：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- 前端页面结构、入口与状态约束：[`docs/FRONTEND.md`](docs/FRONTEND.md)
+- 文档体系规则、命名与互链规范：[`docs/DOCS.md`](docs/DOCS.md)
+
 ## 1. 项目背景
 - **简介**: 基于 LLM 的次世代视觉小说、电子书及字幕翻译工具
 - **技术栈**: Python 3.14, PySide6, PySide6-Fluent-Widgets
@@ -69,65 +74,11 @@
 ### 4.10 标准库优先
 - 优先使用标准库内置方法，仅在标准库无法满足业务需求时允许自行实现或使用第三方库
 
-## 5. 核心模块说明
-### 5.1 应用入口 `app.py`
-- 先看这里理解应用怎么启动、怎么在 GUI / CLI 之间分流，以及退出时怎么清理工程状态
-
-### 5.2 基础设施 `base`
-- `Base.py` 看事件、状态和基础能力
-- `BasePath.py` 负责解析运行时路径
-- `EventManager.py` 看事件怎么传
-- `LogManager.py` 看日志怎么记
-- `CLIManager.py` / `VersionManager.py` 看命令行和更新相关入口
-
-### 5.3 前端层 `frontend`
-- `AppFluentWindow.py` 是总导航入口
-- 具体功能页按目录找：`Project`、`Model`、`Translation`、`Analysis`、`Proofreading`、`Workbench`、`Quality`、`Setting`、`Extra`
-- 看页面逻辑时，顺手确认工程加载态和引擎忙碌态会不会影响按钮、跳转和只读状态
-
-### 5.4 数据层 `module/Data`
-- 外部只认 `DataManager`
-- 读到 `DataManager` 后，再按领域继续找 `Project / Quality / Analysis / Translation`
-- 如果问题涉及缓存、会话状态或 SQL，再往 `Core / ProjectSession / LGDatabase` 深挖
-
-### 5.5 任务引擎 `module/Engine`
-- 先看 `Engine.py`，再按任务类型进 `APITest / Analysis / Translation`
-- 看到调度、限流、请求发送、生命周期问题时，再看 `Task*` 系列模块
-
-### 5.6 文件层 `module/File`
-- `FileManager.py` 是统一读写入口
-- 具体格式支持到对应实现里找
-- 工程内文件增删改优先看 `DataManager` 和 `ProjectFileService`，不要直接绕开数据层
-
-### 5.7 配置与本地化 `module/Config.py` / `module/Localizer`
-- `Config` 是配置单一来源
-- `Localizer` 是界面文案单一入口
-- 只要改了用户可见文本，就同步检查 `LocalizerZH.py` 和 `LocalizerEN.py`
-
-## 6. 项目结构
-```
-app.py                 # 应用入口
-base/                  # 事件、日志、版本、CLI 等基础设施
-frontend/              # 各页面 UI
-  Project / Model / Translation / Analysis / Proofreading
-  Workbench / Quality / Setting / Extra
-module/                # 业务主逻辑
-  Data / Engine / File / Localizer
-  Filter / Fixer / QualityRule / Response / Text / Utils
-model/                 # 数据模型
-widget/                # 通用控件
-resource/              # 图标、预设、提示词模板、更新脚本
-buildtools/            # 构建和辅助脚本
-tests/                 # 自动化测试
-```
-
-## 7. 工作流程
-1. **理解需求**: 定位相关逻辑或 UI 页面
-2. **分析流向**: 查看继承关系、事件监听，理解数据流向和业务逻辑
-3. **实施变更**: 按计划逐步完成任务，每完成一个步骤立即更新任务进度状态；如果判断必须保留兼容层，必须先在计划中明确写出必要性、影响范围与后续清理方案，并在实施前得到用户确认
-4. **代码审查**: 完成变更后，审视代码差异 (Diff)，检查逻辑正确性与潜在隐患
-5. **测试验证**: 运行 `uv run pytest` 验证自动化测试，GUI 逻辑列出最小手动测试路径
-6. **格式与检查**（仅对有业务变更的文件）：
-   - 使用 Ruff 检查和格式化代码
-   - 检查与修正函数、变量、常量命名
-   - 清理冗余空行、死代码、无效注释与未使用的本地化字段
+## 5. 阅读顺序与交付要求
+执行任务时按下面流程推进，保持“先找入口、再进实现、最后验证”的节奏：
+1. **先读入口文档**：按任务类型先看 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)、[`docs/FRONTEND.md`](docs/FRONTEND.md)、[`docs/DOCS.md`](docs/DOCS.md)、[`module/Data/SPEC.md`](module/Data/SPEC.md) 中最相关的入口。
+2. **理解需求**：定位相关逻辑、页面或模块，明确这次改动影响的真实边界。
+3. **分析流向**：查看继承关系、事件监听、状态来源和模块边界，确认数据流与调用链。
+4. **实施变更**：按计划逐步修改；若判断必须保留兼容层，先说明必要性、影响范围与后续清理方案，再实施。
+5. **代码审查**：完成后审视代码差异 (Diff)，检查逻辑正确性、潜在回归和文档是否失真；若失真，同任务同步修正文档。
+6. **测试与整理**：有业务变更时运行 `uv run pytest`，并对相关文件执行必要的 `uv run ruff format <file_path>` 与 `uv run ruff check --fix <file_path>`。
