@@ -21,6 +21,7 @@ LinguaGacha 采用 `app.py -> base / frontend / module` 的分层组织方式：
 | `model/` | `Item`、`Project` 等核心数据对象 |
 | `widget/` | 可复用界面组件 |
 | `resource/` | 图标、提示词模板、预设与更新脚本资源 |
+| `buildtools/` | 构建流程与辅助脚本 |
 | `tests/` | 自动化测试 |
 
 ## 核心模块关系

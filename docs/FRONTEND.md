@@ -1,18 +1,18 @@
 # LinguaGacha 前端结构说明
 
 ## 一句话总览
-前端以 `frontend/AppFluentWindow.py` 为总导航入口，负责页面注册、工程加载态守卫、全局 Toast / 进度提示和主题语言切换；具体业务页面再按任务域拆分到 `frontend/` 的各个子目录中。
+前端以 [`frontend/AppFluentWindow.py`](../frontend/AppFluentWindow.py) 为总导航入口，负责页面注册、工程加载态守卫、全局 Toast / 进度提示和主题语言切换；具体业务页面再按任务域拆分到 `frontend/` 的各个子目录中。
 
 ## 总导航入口
-`AppFluentWindow.add_pages()` 负责组装整套导航结构，分为几组：
+[`AppFluentWindow.add_pages()`](../frontend/AppFluentWindow.py) 负责组装整套导航结构，分为几组：
 
 | 分组 | 主要入口 | 说明 |
 | --- | --- | --- |
-| 项目 | `ModelPage` | 模型管理入口 |
-| 任务 | `TranslationPage`、`AnalysisPage`、`ProofreadingPage`、`WorkbenchPage` | 核心业务页面 |
-| 设置 | `BasicSettingsPage`、`ExpertSettingsPage` | 基础设置与专家设置 |
-| 质量 | `GlossaryPage`、`TextPreservePage`、`TextReplacementPage`、`CustomPromptPage` | 规则、替换和提示词相关页面 |
-| 扩展 | `LaboratoryPage`、`ToolBoxPage` | 实验性与工具类页面 |
+| 项目 | [`ModelPage`](../frontend/Model/ModelPage.py) | 模型管理入口 |
+| 任务 | [`TranslationPage`](../frontend/Translation/TranslationPage.py)、[`AnalysisPage`](../frontend/Analysis/AnalysisPage.py)、[`ProofreadingPage`](../frontend/Proofreading/ProofreadingPage.py)、[`WorkbenchPage`](../frontend/Workbench/WorkbenchPage.py) | 核心业务页面 |
+| 设置 | [`BasicSettingsPage`](../frontend/Setting/BasicSettingsPage.py)、[`ExpertSettingsPage`](../frontend/Setting/ExpertSettingsPage.py) | 基础设置与专家设置 |
+| 质量 | `GlossaryPage`、`TextPreservePage`、`replacement_page`、`custom_prompt_page` | 规则、替换和提示词相关导航；替换与提示词通过父级占位页挂子页面 |
+| 扩展 | `LaboratoryPage`、`ToolBoxPage`、`NameFieldExtractionPage`、`TSConversionPage` | 实验性页面，以及由百宝箱跳转的工具页 |
 | 底部固定入口 | 主题切换、语言切换、应用设置、主页头像按钮 | 全局操作与项目主页 |
 
 ## 页面分区
@@ -28,10 +28,16 @@ flowchart TD
     C --> C3["ProofreadingPage"]
     C --> C4["WorkbenchPage"]
     E --> E1["GlossaryPage"]
-    E --> E2["TextReplacementPage"]
-    E --> E3["CustomPromptPage"]
+    E --> E2["replacement_page"]
+    E2 --> E21["pre_translation_replacement_page"]
+    E2 --> E22["post_translation_replacement_page"]
+    E --> E3["custom_prompt_page"]
+    E3 --> E31["translation_prompt_page"]
+    E3 --> E32["analysis_prompt_page"]
     F --> F1["LaboratoryPage"]
     F --> F2["ToolBoxPage"]
+    F2 --> F21["NameFieldExtractionPage"]
+    F2 --> F22["TSConversionPage"]
 ```
 
 ## 工程加载态与导航约束
@@ -44,15 +50,16 @@ flowchart TD
 ## 关键页面入口
 | 页面 | 文件 | 主要依赖 |
 | --- | --- | --- |
-| 工程页 | `frontend/ProjectPage.py` | 工程创建、最近项目、加载入口 |
-| 模型页 | `frontend/Model/ModelPage.py` | 模型配置与选择 |
-| 翻译页 | `frontend/Translation/TranslationPage.py` | `module/Engine/Translation/*`、`module/Data/DataManager.py` |
-| 分析页 | `frontend/Analysis/AnalysisPage.py` | `module/Engine/Analysis/*`、`module/Data/DataManager.py` |
-| 校对页 | `frontend/Proofreading/ProofreadingPage.py` | 校对任务与工程状态 |
-| 工作台 | `frontend/Workbench/WorkbenchPage.py` | 文件列表、工程文件操作、工作台刷新 |
-| 术语与规则 | `frontend/Quality/*` | `DataManager` 规则接口与质量事件 |
-| 设置页 | `frontend/Setting/*`、`frontend/AppSettingsPage.py` | `module/Config.py`、应用级设置 |
-| 扩展页 | `frontend/Extra/*` | 实验性工具与附加处理流程 |
+| 工程页 | [`frontend/ProjectPage.py`](../frontend/ProjectPage.py) | 工程创建、最近项目、加载入口 |
+| 模型页 | [`frontend/Model/ModelPage.py`](../frontend/Model/ModelPage.py) | 模型配置与选择 |
+| 翻译页 | [`frontend/Translation/TranslationPage.py`](../frontend/Translation/TranslationPage.py) | `module/Engine/Translation/*`、`module/Data/DataManager.py` |
+| 分析页 | [`frontend/Analysis/AnalysisPage.py`](../frontend/Analysis/AnalysisPage.py) | `module/Engine/Analysis/*`、`module/Data/DataManager.py` |
+| 校对页 | [`frontend/Proofreading/ProofreadingPage.py`](../frontend/Proofreading/ProofreadingPage.py) | 校对任务与工程状态 |
+| 工作台 | [`frontend/Workbench/WorkbenchPage.py`](../frontend/Workbench/WorkbenchPage.py) | 文件列表、工程文件操作、工作台刷新 |
+| 术语与规则 | [`frontend/Quality/`](../frontend/Quality) | `DataManager` 规则接口与质量事件 |
+| 设置页 | [`frontend/Setting/`](../frontend/Setting)、[`frontend/AppSettingsPage.py`](../frontend/AppSettingsPage.py) | `module/Config.py`、应用级设置 |
+| 扩展页 | [`frontend/Extra/`](../frontend/Extra) | 实验性工具与附加处理流程 |
+| 百宝箱子页 | [`frontend/Extra/NameFieldExtractionPage.py`](../frontend/Extra/NameFieldExtractionPage.py)、[`frontend/Extra/TSConversionPage.py`](../frontend/Extra/TSConversionPage.py) | 由 `ToolBoxPage` 卡片触发跳转，作为已注册但不直接出现在侧边栏的工具页 |
 
 ## 前端改动路径
 1. 新增或调整侧边栏入口时，优先修改 `frontend/AppFluentWindow.py` 的 `add_pages()` 及其分组方法。
