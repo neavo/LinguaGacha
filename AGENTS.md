@@ -1,6 +1,11 @@
 # LinguaGacha Agent Guidelines
 本文档用于约束在本仓库工作的 Agent 的行为、命令与代码风格，**必须严格遵循**
 
+## 0. 文档入口
+- 仓库结构、模块关系与阅读路径：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- 前端页面结构、入口与状态约束：[`docs/FRONTEND.md`](docs/FRONTEND.md)
+- 文档体系规则、命名与互链规范：[`docs/DOCS.md`](docs/DOCS.md)
+
 ## 1. 项目背景
 - **简介**: 基于 LLM 的次世代视觉小说、电子书及字幕翻译工具
 - **技术栈**: Python 3.14, PySide6, PySide6-Fluent-Widgets

@@ -42,7 +42,7 @@
 ```text
 module/Data/
 ├─ DataManager.py                 # 对外唯一公开入口
-├─ spec.md                        # 本说明文件
+├─ SPEC.md                        # 本说明文件
 ├─ Core/                          # 基础数据能力
 │  ├─ DataEnums.py
 │  ├─ DataTypes.py
@@ -292,3 +292,4 @@ AnalysisPage
 4. `Core` 放基础能力，`Project/Quality/Analysis/Translation` 放业务
 5. service 不直接发 UI 事件，事件统一由 `DataManager` 发
 6. 新需求先判断归属，再落到对应子包，不要回到根目录平铺
+
