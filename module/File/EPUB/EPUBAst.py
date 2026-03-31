@@ -604,6 +604,45 @@ class EPUBAst(Base):
             cur = cur.getparent()
         return False
 
+    @staticmethod
+    def merge_drop_cap_slots(
+        part_defs: list[dict[str, str]],
+        part_texts: list[str],
+    ) -> tuple[list[dict[str, str]], list[str]]:
+        """合并首字下沉槽位：当某个槽归一化后只有单个字母，且下一个槽以小写字母开头时，
+        说明它们原本属于同一个单词（EPUB 的 drop cap 样式导致拆分）。
+        合并后原单字母槽标记为空占位（"drop_cap_merged"），写回时该槽置空。
+        """
+        if len(part_defs) < 2:
+            return part_defs, part_texts
+
+        merged_defs: list[dict[str, str]] = []
+        merged_texts: list[str] = []
+        i = 0
+        while i < len(part_texts):
+            text = part_texts[i].strip()
+            # 检测：当前槽为单个字母，且下一个槽以小写字母开头
+            if (
+                i + 1 < len(part_texts)
+                and len(text) == 1
+                and text.isalpha()
+                and part_texts[i + 1].strip()
+                and part_texts[i + 1].strip()[0].islower()
+            ):
+                # 原单字母槽标记为空占位，写回时置空
+                merged_defs.append({**part_defs[i], "drop_cap_merged": "true"})
+                merged_texts.append("")
+                # 下一个槽吸收首字母
+                merged_defs.append(part_defs[i + 1])
+                merged_texts.append(text + part_texts[i + 1])
+                i += 2
+            else:
+                merged_defs.append(part_defs[i])
+                merged_texts.append(part_texts[i])
+                i += 1
+
+        return merged_defs, merged_texts
+
     def create_item_from_slots(
         self,
         doc_path: str,
@@ -627,8 +666,13 @@ class EPUBAst(Base):
         if not has_non_empty_text:
             return None
 
-        src = "\n".join(part_texts)
+        # digest 必须使用合并前的原始文本，以便写回时树中原始文本能匹配
         digest = self.sha1_hex_with_null_separator(part_texts)
+
+        # 合并首字下沉：单字母槽 + 小写开头的后续槽 → 合并为完整单词
+        part_defs, part_texts = self.merge_drop_cap_slots(part_defs, part_texts)
+
+        src = "\n".join(part_texts)
         return Item.from_dict(
             {
                 "src": src,
