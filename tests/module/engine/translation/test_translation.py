@@ -288,16 +288,83 @@ def test_should_emit_export_result_toast_only_for_manual_source() -> None:
     )
 
 
-def test_resolve_export_items_prefers_runtime_cache() -> None:
+@pytest.mark.parametrize(
+    "engine_status",
+    [
+        Base.TaskStatus.TRANSLATING,
+        Base.TaskStatus.STOPPING,
+    ],
+)
+def test_resolve_export_items_uses_runtime_cache_for_manual_export_when_translation_active(
+    engine_status: Base.TaskStatus,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     translation = create_translation_stub()
     cached_item = Item(src="live")
     translation.items_cache = [cached_item]
     copied_item = Item(src="copied")
     translation.copy_items = lambda: [copied_item]
+    engine = create_engine(engine_status)
+    def fail_if_read_data_manager() -> None:
+        raise AssertionError("不应读取 DataManager")
 
-    resolved = Translation.resolve_export_items(translation)
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(
+        translation_module.DataManager,
+        "get",
+        staticmethod(fail_if_read_data_manager),
+    )
+
+    resolved = Translation.resolve_export_items(
+        translation,
+        Translation.ExportSource.MANUAL,
+    )
 
     assert resolved == [copied_item]
+
+
+def test_resolve_export_items_reads_data_manager_for_manual_export_when_engine_idle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    translation = create_translation_stub()
+    translation.items_cache = [Item(src="stale")]
+    loaded_item = Item(src="db")
+    engine = create_engine(Base.TaskStatus.IDLE)
+    fake_dm = SimpleNamespace(
+        is_loaded=lambda: True, get_all_items=lambda: [loaded_item]
+    )
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
+    monkeypatch.setattr(
+        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
+    )
+
+    assert Translation.resolve_export_items(
+        translation,
+        Translation.ExportSource.MANUAL,
+    ) == [loaded_item]
+
+
+def test_resolve_export_items_uses_runtime_cache_for_auto_export(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    translation = create_translation_stub()
+    cached_item = Item(src="live")
+    translation.items_cache = [cached_item]
+    copied_item = Item(src="copied")
+    translation.copy_items = lambda: [copied_item]
+    def fail_if_read_data_manager() -> None:
+        raise AssertionError("不应读取 DataManager")
+
+    monkeypatch.setattr(
+        translation_module.DataManager,
+        "get",
+        staticmethod(fail_if_read_data_manager),
+    )
+
+    assert Translation.resolve_export_items(
+        translation,
+        Translation.ExportSource.AUTO_ON_FINISH,
+    ) == [copied_item]
 
 
 def test_resolve_export_items_reads_data_manager_when_cache_empty(
@@ -313,7 +380,10 @@ def test_resolve_export_items_reads_data_manager_when_cache_empty(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translation.resolve_export_items(translation) == [loaded_item]
+    assert Translation.resolve_export_items(
+        translation,
+        Translation.ExportSource.MANUAL,
+    ) == [loaded_item]
 
 
 def test_resolve_export_items_returns_empty_when_project_not_loaded(
@@ -326,7 +396,13 @@ def test_resolve_export_items_returns_empty_when_project_not_loaded(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translation.resolve_export_items(translation) == []
+    assert (
+        Translation.resolve_export_items(
+            translation,
+            Translation.ExportSource.MANUAL,
+        )
+        == []
+    )
 
 
 def test_get_item_count_by_status_and_copy_items() -> None:
@@ -471,7 +547,7 @@ def test_run_translation_export_manual_success_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
     translation.check_and_wirte_result = MagicMock()
     logger = FakeLogger()
@@ -519,7 +595,7 @@ def test_run_translation_export_emits_error_toast_when_write_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
     translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
     logger = FakeLogger()
@@ -892,7 +968,7 @@ def test_run_translation_export_finishes_progress_when_no_items(
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda: []
+    translation.resolve_export_items = lambda source: []
     translation.check_and_wirte_result = MagicMock()
 
     Translation.run_translation_export(
@@ -915,7 +991,7 @@ def test_run_translation_export_auto_source_error_has_no_result_toast(
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
     translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
 
@@ -937,7 +1013,7 @@ def test_run_translation_export_auto_source_success_skips_result_toast(
     dm = create_data_manager(loaded=True)
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda: [Item(src="a", dst="b")]
+    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
     translation.check_and_wirte_result = MagicMock()
 
