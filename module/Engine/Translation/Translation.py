@@ -259,16 +259,36 @@ class Translation(Base):
         """根据导出来源决定是否展示导出结果提示。"""
         return source == self.ExportSource.MANUAL
 
-    def resolve_export_items(self) -> list[Item]:
-        """统一导出数据来源，确保手动/自动导出读取口径一致。"""
-        if self.items_cache is not None:
-            # 手动导出可能发生在翻译过程中，使用内存快照保证实时性。
-            return self.copy_items()
+    def should_use_runtime_export_items(self, source: ExportSource) -> bool:
+        """判断当前导出是否应该优先信任翻译运行态快照。"""
+        if self.items_cache is None:
+            return False
+        elif source == self.ExportSource.AUTO_ON_FINISH:
+            return True
+        elif source == self.ExportSource.MANUAL:
+            # 手动导出只在翻译仍进行中时信任运行态快照；
+            # 引擎空闲后应回到工程事实，避免替换文件后的旧快照覆盖新数据。
+            engine_status = Engine.get().get_status()
+            return engine_status in (
+                Base.TaskStatus.TRANSLATING,
+                Base.TaskStatus.STOPPING,
+            )
+        else:
+            return False
 
-        dm = DataManager.get()
-        if not dm.is_loaded():
-            return []
-        return dm.get_all_items()
+    def resolve_export_items(
+        self,
+        source: ExportSource = ExportSource.MANUAL,
+    ) -> list[Item]:
+        """统一导出数据来源，默认按手动导出口径兼容历史无参调用。"""
+        if self.should_use_runtime_export_items(source):
+            return self.copy_items()
+        else:
+            dm = DataManager.get()
+            if not dm.is_loaded():
+                return []
+            else:
+                return dm.get_all_items()
 
     def run_translation_export(
         self,
@@ -291,7 +311,7 @@ class Translation(Base):
             )
             progress_toast_active = True
 
-            items = self.resolve_export_items()
+            items = self.resolve_export_items(source)
             if not items:
                 return
 
