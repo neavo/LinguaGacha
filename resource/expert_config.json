@@ -1,0 +1,5 @@
+{
+    "preceding_lines_threshold": 3,
+    "deduplication_in_bilingual": true,
+    "result_checker_retry_count_threshold": false
+}

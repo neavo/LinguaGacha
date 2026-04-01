@@ -13,3 +13,15 @@ __pycache__
 /*.json
 /resource/config.json
 /resource/preset/*/user/
+
+# System files
+.DS_Store
+
+# OMC files
+.omc/
+
+# Translation output directories
+*_译文/
+*_译文_*/
+*_双语对照/
+*_双语对照_*/
