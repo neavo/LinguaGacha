@@ -59,7 +59,8 @@ flowchart TD
 - `module/File/SPEC.md`：当前尚未补齐，后续需要时新增并从本文链接。
 
 ## 设计文档入口
-- [`docs/design/documentation-system-v1-design.md`](design/documentation-system-v1-design.md)：文档体系 v1 的背景、目标、命名和互链规则。
+- [`docs/DESIGN.md`](./DESIGN.md)：LinguaGacha 的全局设计语言、组件基线与 UI 约束。
+- `docs/design/*.md`：后续按功能或方案沉淀单次设计决策与取舍记录。
 
 ## 维护约束
 - 仓库级文档负责导航与总览，不复制模块 `SPEC.md` 的正文。
