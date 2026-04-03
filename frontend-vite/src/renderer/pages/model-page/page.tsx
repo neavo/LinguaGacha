@@ -1,6 +1,6 @@
 import { PageScaffold } from '@/widgets/page-scaffold/PageScaffold'
 
-import { model_page_mock } from '@/pages/project/model/mock'
+import { model_page_mock } from '@/pages/model-page/mock'
 
 type ModelPageProps = {
   is_sidebar_collapsed: boolean

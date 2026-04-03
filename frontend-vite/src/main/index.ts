@@ -9,9 +9,9 @@ const WINDOW_STANDARD_HEIGHT = 800
 const WINDOW_BACKGROUND_COLOR = '#F8FAFC'
 const TITLE_BAR_OVERLAY_HEIGHT = 39
 const IPC_CHANNEL_TITLE_BAR_THEME = 'window:set-title-bar-theme'
-const LIGHT_TITLE_BAR_OVERLAY_COLOR = '#F7F7F8'
+const LIGHT_TITLE_BAR_OVERLAY_COLOR = '#FAF7F4'
 const LIGHT_TITLE_BAR_SYMBOL_COLOR = '#1F2329'
-const DARK_TITLE_BAR_OVERLAY_COLOR = '#1C2025'
+const DARK_TITLE_BAR_OVERLAY_COLOR = '#121212'
 const DARK_TITLE_BAR_SYMBOL_COLOR = '#EEF2F7'
 
 // The built directory structure
@@ -105,11 +105,6 @@ function createWindow(): void {
 
   win.once('ready-to-show', () => {
     win?.show()
-  })
-
-  // 先保留一条主进程握手消息，方便后续验证预加载桥接是否仍然畅通。
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
   if (VITE_DEV_SERVER_URL) {

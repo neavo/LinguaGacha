@@ -1,3 +1,4 @@
+import { Badge } from '@/components/ui/badge'
 import { useI18n, type LocaleKey } from '@/i18n'
 
 type WorkspaceChip = {
@@ -23,12 +24,13 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps): JSX.Element {
       </div>
       <div className="workspace-header__chips">
         {props.chips.map((chip) => (
-          <span
+          <Badge
             key={chip.id}
+            variant={chip.tone === 'accent' ? 'brand' : 'secondary'}
             className={chip.tone === 'accent' ? 'workspace-chip workspace-chip--accent' : 'workspace-chip'}
           >
             {chip.label}
-          </span>
+          </Badge>
         ))}
       </div>
     </div>

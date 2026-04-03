@@ -1,13 +1,13 @@
-import { ProjectHomePage } from '@/pages/project/home'
-import { ModelPage } from '@/pages/project/model'
+import { AppSettingsPage } from '@/pages/app-settings-page/page'
+import { ModelPage } from '@/pages/model-page/page'
 import { create_placeholder_screen } from '@/pages/placeholder/createPlaceholderScreen'
-import { AppSettingsPage } from '@/pages/system/app-settings'
-import { WorkbenchPage } from '@/pages/task/workbench'
+import { ProjectPage } from '@/pages/project-page/page'
+import { WorkbenchPage } from '@/pages/workbench-page/page'
 import type { ScreenRegistry } from '@/shared/types/screens'
 
 export const SCREEN_REGISTRY: ScreenRegistry = {
   'project-home': {
-    component: ProjectHomePage,
+    component: ProjectPage,
     title_key: 'common.project.home.title',
     summary_key: 'common.project.home.summary',
   },

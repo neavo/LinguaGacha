@@ -9,14 +9,14 @@ type ProjectPreviewStat = {
   total_items: number
 }
 
-export type ProjectHomeRecentProject = {
+export type ProjectRecentProject = {
   id: string
   name: string
   path: string
   preview: ProjectPreviewStat
 }
 
-export const project_home_mock = {
+export const project_page_mock = {
   supported_formats: [
     {
       id: 'subtitle-bundle',
@@ -73,5 +73,5 @@ export const project_home_mock = {
         total_items: 245,
       },
     },
-  ] satisfies ProjectHomeRecentProject[],
+  ] satisfies ProjectRecentProject[],
 } as const

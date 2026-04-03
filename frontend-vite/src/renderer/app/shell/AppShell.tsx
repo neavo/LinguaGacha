@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from '@/app/navigation/schema'
 import type { BottomActionId, RouteId } from '@/app/navigation/types'
 import { SCREEN_REGISTRY } from '@/app/main/ScreenRegistry'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useI18n } from '@/i18n'
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@/lib/utils'
 import '@/shared/styles/app-shell.css'
 import { AppSidebar } from '@/widgets/app-sidebar/AppSidebar'
 import { AppTitlebar } from '@/widgets/app-titlebar/AppTitlebar'
@@ -76,10 +77,6 @@ export function AppShell(): JSX.Element {
     set_selected_route(route_id)
   }
 
-  function handle_toggle_sidebar(): void {
-    set_is_sidebar_collapsed((previous_state) => !previous_state)
-  }
-
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
       set_is_sidebar_collapsed(false)
@@ -120,24 +117,38 @@ export function AppShell(): JSX.Element {
   }
 
   return (
-    <main className={cn('app-shell', is_sidebar_collapsed && 'app-shell--sidebar-collapsed')}>
-      <AppTitlebar on_toggle_sidebar={handle_toggle_sidebar} />
-      <section className="shell-body">
-        <AppSidebar
-          groups={visible_navigation_groups}
-          bottom_actions={BOTTOM_ACTIONS}
-          selected_route={selected_route}
-          expanded_items={expanded_items}
-          is_collapsed={is_sidebar_collapsed}
-          on_select_route={handle_select_route}
-          on_toggle_group={handle_toggle_group}
-          on_bottom_action={handle_bottom_action}
-        />
+    <SidebarProvider
+      open={!is_sidebar_collapsed}
+      onOpenChange={(is_open) => {
+        // 统一由壳层持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
+        set_is_sidebar_collapsed(!is_open)
+      }}
+      style={
+        {
+          '--sidebar-width': '16rem',
+          '--sidebar-width-icon': '4.5rem',
+        } as CSSProperties
+      }
+    >
+      <main className={cn('app-shell', is_sidebar_collapsed && 'app-shell--sidebar-collapsed')}>
+        <AppTitlebar />
+        <section className="shell-body">
+          <AppSidebar
+            groups={visible_navigation_groups}
+            bottom_actions={BOTTOM_ACTIONS}
+            selected_route={selected_route}
+            expanded_items={expanded_items}
+            is_collapsed={is_sidebar_collapsed}
+            on_select_route={handle_select_route}
+            on_toggle_group={handle_toggle_group}
+            on_bottom_action={handle_bottom_action}
+          />
 
-        <section className="workspace-frame" aria-label={t(active_screen.title_key)}>
-          <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+          <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
+            <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+          </SidebarInset>
         </section>
-      </section>
-    </main>
+      </main>
+    </SidebarProvider>
   )
 }

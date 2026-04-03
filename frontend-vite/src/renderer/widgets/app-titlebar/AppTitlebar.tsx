@@ -1,14 +1,13 @@
-import { Menu } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { startTransition } from 'react'
 
+import { useSidebar } from '@/components/ui/sidebar'
 import { useI18n } from '@/i18n'
 
-type AppTitlebarProps = {
-  on_toggle_sidebar: () => void
-}
-
-export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
+export function AppTitlebar(): JSX.Element {
   const { t } = useI18n()
+  const { state, toggleSidebar } = useSidebar()
+  const SidebarToggleIcon = state === 'expanded' ? PanelLeftClose : PanelLeftOpen
 
   return (
     <header className="titlebar shell-topbar">
@@ -18,11 +17,11 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
           aria-label={t('common.aria.toggle_navigation')}
           onClick={() => {
             startTransition(() => {
-              props.on_toggle_sidebar()
+              toggleSidebar()
             })
           }}
         >
-          <Menu size={20} />
+          <SidebarToggleIcon size={18} />
         </button>
         <div className="topbar__brand">
           <strong>LinguaGacha v0.60.1</strong>

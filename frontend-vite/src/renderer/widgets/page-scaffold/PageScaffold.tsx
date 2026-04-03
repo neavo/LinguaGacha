@@ -1,6 +1,6 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n, type LocaleKey } from '@/i18n'
 import type { PageScaffoldMock } from '@/shared/mocks/pageScaffold'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { WorkspaceCommandBar } from '@/widgets/workspace-commandbar/WorkspaceCommandBar'
 import { WorkspaceHeader } from '@/widgets/workspace-header/WorkspaceHeader'
 

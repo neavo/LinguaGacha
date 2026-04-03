@@ -28,13 +28,11 @@ type DesktopShellInfo = {
 }
 
 type ThemeMode = 'light' | 'dark'
-type MainProcessMessageListener = (message: string) => void
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   desktopApp: {
     shell: DesktopShellInfo
-    onMainProcessMessage: (listener: MainProcessMessageListener) => () => void
     setTitleBarTheme: (theme_mode: ThemeMode) => void
   }
 }

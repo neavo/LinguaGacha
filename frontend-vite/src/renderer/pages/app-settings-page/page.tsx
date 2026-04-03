@@ -1,6 +1,6 @@
 import { PageScaffold } from '@/widgets/page-scaffold/PageScaffold'
 
-import { app_settings_page_mock } from '@/pages/system/app-settings/mock'
+import { app_settings_page_mock } from '@/pages/app-settings-page/mock'
 
 type AppSettingsPageProps = {
   is_sidebar_collapsed: boolean

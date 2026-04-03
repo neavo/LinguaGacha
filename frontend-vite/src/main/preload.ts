@@ -10,18 +10,6 @@ const DESKTOP_SHELL_INFO: DesktopShellInfo = {
 
 contextBridge.exposeInMainWorld('desktopApp', {
   shell: DESKTOP_SHELL_INFO,
-  onMainProcessMessage(listener: MainProcessMessageListener): () => void {
-    // 只暴露当前阶段真正需要的能力，避免把整个 ipcRenderer 裸送给渲染层。
-    const wrapped_listener = (_event: Electron.IpcRendererEvent, message: string) => {
-      listener(message)
-    }
-
-    ipcRenderer.on('main-process-message', wrapped_listener)
-
-    return () => {
-      ipcRenderer.off('main-process-message', wrapped_listener)
-    }
-  },
   setTitleBarTheme(theme_mode: ThemeMode): void {
     if (!DESKTOP_SHELL_INFO.usesTitleBarOverlay) {
       return

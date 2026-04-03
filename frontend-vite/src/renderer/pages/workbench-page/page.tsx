@@ -1,6 +1,6 @@
 import { PageScaffold } from '@/widgets/page-scaffold/PageScaffold'
 
-import { workbench_page_mock } from '@/pages/task/workbench/mock'
+import { workbench_page_mock } from '@/pages/workbench-page/mock'
 
 type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean
