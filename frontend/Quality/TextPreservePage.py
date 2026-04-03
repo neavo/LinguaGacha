@@ -1,4 +1,5 @@
 import re
+from enum import StrEnum
 from typing import Any
 from typing import cast
 
@@ -18,8 +19,6 @@ from frontend.Quality.QualityRuleIconHelper import IconColumnConfig
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconDelegate
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
 from frontend.Quality.TextPreserveEditPanel import TextPreserveEditPanel
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from widget.SettingCard import SettingCard
@@ -31,40 +30,39 @@ ICON_MENU_DELETE: BaseIcon = BaseIcon.TRASH_2  # 右键菜单：删除条目
 
 
 class TextPreservePage(QualityRulePageBase):
+    class Mode(StrEnum):
+        OFF = "OFF"
+        SMART = "SMART"
+        CUSTOM = "CUSTOM"
+
     PRESET_DIR_NAME: str = "text_preserve"
     DEFAULT_PRESET_CONFIG_KEY: str = "text_preserve_default_preset"
 
-    QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.TEXT_PRESERVE.value}
+    QUALITY_RULE_TYPES: set[str] = {"text_preserve"}
     QUALITY_META_KEYS: set[str] = {"text_preserve_mode"}
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(text, window)
 
-        config = Config().load().save()
-
-        self.add_widget_head(self.root, config, window)
+        self.add_widget_head(self.root)
         self.setup_split_body(self.root)
         self.setup_table_columns()
         self.setup_split_foot(self.root)
-        self.add_standard_command_bar_actions(config, window)
+        self.add_standard_command_bar_actions(window)
 
         self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-    # ==================== DataManager 适配 ====================
+    def get_mode(self) -> "TextPreservePage.Mode":
+        raw_mode = str(self.get_rule_meta_value("mode", self.Mode.OFF.value))
+        try:
+            return self.Mode(raw_mode)
+        except ValueError:
+            return self.Mode.OFF
 
-    def load_entries(self) -> list[dict[str, Any]]:
-        return DataManager.get().get_text_preserve()
-
-    def save_entries(self, entries: list[dict[str, Any]]) -> None:
-        DataManager.get().set_text_preserve(entries)
-
-    def get_mode(self) -> DataManager.TextPreserveMode:
-        return DataManager.get().get_text_preserve_mode()
-
-    def set_mode(self, mode: DataManager.TextPreserveMode) -> None:
-        DataManager.get().set_text_preserve_mode(mode)
+    def set_mode(self, mode: "TextPreservePage.Mode") -> None:
+        self.update_rule_meta({"mode": mode.value})
 
     # ==================== SplitPageBase hooks ====================
 
@@ -88,14 +86,6 @@ class TextPreservePage(QualityRulePageBase):
 
     def get_search_columns(self) -> tuple[int, ...]:
         return (0, 1)
-
-    def build_proofreading_lookup(
-        self, entry: dict[str, Any]
-    ) -> tuple[str, bool] | None:
-        keyword = str(entry.get("src", "")).strip()
-        if not keyword:
-            return None
-        return keyword, True
 
     def build_statistics_entry_key(self, entry: dict[str, Any]) -> str:
         return str(entry.get("src", "")).strip()
@@ -144,13 +134,11 @@ class TextPreservePage(QualityRulePageBase):
 
     def on_project_unloaded_ui(self) -> None:
         if hasattr(self, "mode_combo") and self.mode_combo is not None:
-            self.update_mode_ui(DataManager.TextPreserveMode.OFF)
+            self.update_mode_ui(self.Mode.OFF)
 
     # ==================== UI：头部 ====================
 
-    def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
-        del window
-
+    def add_widget_head(self, parent) -> None:
         self.mode_updating = False
 
         items = [
@@ -184,21 +172,21 @@ class TextPreservePage(QualityRulePageBase):
         self.mode_combo = combo_box
         self.update_mode_ui(self.get_mode())
 
-    def mode_from_index(self, index: int) -> DataManager.TextPreserveMode:
+    def mode_from_index(self, index: int) -> "TextPreservePage.Mode":
         if index == 2:
-            return DataManager.TextPreserveMode.CUSTOM
+            return self.Mode.CUSTOM
         if index == 1:
-            return DataManager.TextPreserveMode.SMART
-        return DataManager.TextPreserveMode.OFF
+            return self.Mode.SMART
+        return self.Mode.OFF
 
-    def index_from_mode(self, mode: DataManager.TextPreserveMode) -> int:
-        if mode == DataManager.TextPreserveMode.CUSTOM:
+    def index_from_mode(self, mode: "TextPreservePage.Mode") -> int:
+        if mode == self.Mode.CUSTOM:
             return 2
-        if mode == DataManager.TextPreserveMode.SMART:
+        if mode == self.Mode.SMART:
             return 1
         return 0
 
-    def update_mode_ui(self, mode: DataManager.TextPreserveMode) -> None:
+    def update_mode_ui(self, mode: "TextPreservePage.Mode") -> None:
         if not hasattr(self, "mode_combo") or self.mode_combo is None:
             return
 

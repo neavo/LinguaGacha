@@ -1,6 +1,8 @@
 import time
 from enum import StrEnum
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.TaskApiClient import TaskApiClient
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTime
@@ -23,8 +25,7 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Translation.DashboardCard import DashboardCard
 from frontend.Translation.TimerMessageBox import TimerMessageBox
-from module.Config import Config
-from module.Engine.Engine import Engine
+from model.Api.TaskModels import TaskSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CommandBarCard import CommandBarCard
 from widget.WaveformWidget import WaveformWidget
@@ -52,19 +53,24 @@ class TranslationPage(Base, QWidget):
         REMAINING = "REMAINING"
         ELAPSED = "ELAPSED"
 
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        text: str,
+        window: FluentWindow,
+        task_api_client: TaskApiClient,
+        api_state_store: ApiStateStore,
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
+        self.task_api_client = task_api_client
+        self.api_state_store = api_state_store
 
         # 初始化
-        self.data = {}
+        self.data: TaskSnapshot | None = None
         self.timer_delay_time: int | None = None  # 定时器剩余秒数，None 表示未激活
         self.is_prefiltering = False
         # 仅用于避免误关其他模块触发的进度 Toast。
         self.is_stopping_toast_active: bool = False
-
-        # 载入并保存默认配置
-        config = Config().load().save()
 
         # 设置主容器
         self.container = QVBoxLayout(self)
@@ -72,19 +78,11 @@ class TranslationPage(Base, QWidget):
         self.container.setContentsMargins(24, 24, 24, 24)  # 左、上、右、下
 
         # 添加控件
-        self.add_widget_head(self.container, config, window)
-        self.add_widget_body(self.container, config, window)
-        self.add_widget_foot(self.container, config, window)
+        self.add_widget_head(self.container, window)
+        self.add_widget_body(self.container, window)
+        self.add_widget_foot(self.container, window)
 
         # 注册事件
-        self.subscribe(Base.Event.PROJECT_CHECK, self.update_button_status)
-        self.subscribe(Base.Event.APITEST, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_TASK, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.update_button_status)
-        self.subscribe(Base.Event.ANALYSIS_TASK, self.update_button_status)
-        self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.update_button_status)
-        self.subscribe(Base.Event.TRANSLATION_TASK, self.translation_done)
-        self.subscribe(Base.Event.TRANSLATION_PROGRESS, self.translation_update)
         self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_reset)
         self.subscribe(
             Base.Event.TRANSLATION_RESET_FAILED,
@@ -101,19 +99,36 @@ class TranslationPage(Base, QWidget):
     # 页面显示事件
     def showEvent(self, a0) -> None:
         super().showEvent(a0)
-
-        # 触发事件
-        self.emit(Base.Event.PROJECT_CHECK, {"sub_event": Base.SubEvent.REQUEST})
+        self.sync_task_snapshot()
+        self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
 
     def update_ui_tick(self) -> None:
+        self.sync_task_snapshot()
         self.update_time(self.data)
         self.update_line(self.data)
         self.update_token(self.data)
         self.update_task(self.data)
         self.update_status(self.data)
+        self.update_button_status(Base.Event.PROJECT_UNLOADED, {})
+
+    def sync_task_snapshot(self) -> None:
+        """定时从状态仓库同步翻译任务快照，避免页面直连核心单例。"""
+
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        if task_snapshot.task_type == "translation":
+            self.data = task_snapshot
+        elif not self.api_state_store.is_busy():
+            self.data = None
+
+    def get_display_snapshot(self) -> TaskSnapshot:
+        """统一返回当前展示快照，避免页面散落空值判断。"""
+
+        if self.data is None:
+            return TaskSnapshot.from_dict({})
+        return self.data
 
     def has_progress(self) -> bool:
-        return self.data.get("line", 0) > 0 if isinstance(self.data, dict) else False
+        return self.get_display_snapshot().line > 0
 
     def set_scaled_card_value(
         self, card: DashboardCard, value: int | float, base_unit: str
@@ -129,22 +144,22 @@ class TranslationPage(Base, QWidget):
             card.set_value(f"{(value / 1000 / 1000):.2f}")
 
     def set_progress_ring(self, status_text: str) -> None:
-        percent = self.data.get("line", 0) / max(1, self.data.get("total_line", 0))
+        snapshot = self.get_display_snapshot()
+        percent = snapshot.line / max(1, snapshot.total_line)
         self.ring.setValue(int(percent * 10000))
         self.ring.setFormat(f"{status_text}\n{percent * 100:.2f}%")
 
     def update_button_status(self, event: Base.Event, data: dict) -> None:
-        status = Engine.get().get_status()
+        del event
+        del data
+        task_snapshot = self.api_state_store.get_task_snapshot()
+        status = task_snapshot.status
+        is_busy = task_snapshot.busy
+        task_type = task_snapshot.task_type
+        is_project_loaded = self.api_state_store.is_project_loaded()
 
-        # 如果是状态检查返回，同步更新进度数据
-        if event == Base.Event.PROJECT_CHECK:
-            sub_event = data.get("sub_event")
-            if sub_event != Base.SubEvent.DONE:
-                return
-            self.data = data.get("extras", {})
-            # 如果进度被清空，主动重置 UI 卡片显示
-            if not self.data:
-                self.clear_ui_cards()
+        if self.data is None and not is_busy:
+            self.clear_ui_cards()
 
         # 判定是否有进度
         # 更新开始按钮图标和文案
@@ -155,44 +170,37 @@ class TranslationPage(Base, QWidget):
             self.action_start.setText(Localizer.get().start)
             self.action_start.setIcon(ICON_ACTION_START)
 
-        if status == Base.TaskStatus.IDLE:
-            should_hide_stopping_toast = event in (Base.Event.PROJECT_UNLOADED,)
-            if event == Base.Event.TRANSLATION_TASK:
-                sub_event = data.get("sub_event")
-                should_hide_stopping_toast = sub_event in (
-                    Base.SubEvent.DONE,
-                    Base.SubEvent.ERROR,
-                )
-            if Base.is_terminal_reset_event(event, data):
-                should_hide_stopping_toast = True
+        if self.is_stopping_toast_active and not is_busy:
+            self.emit(
+                Base.Event.PROGRESS_TOAST,
+                {"sub_event": Base.SubEvent.DONE},
+            )
+            self.is_stopping_toast_active = False
 
-            if self.is_stopping_toast_active and should_hide_stopping_toast:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                self.is_stopping_toast_active = False
+        if not is_project_loaded:
+            self.action_start.setEnabled(False)
+            self.action_stop.setEnabled(False)
+            self.action_reset.setEnabled(False)
+            self.action_timer.setEnabled(False)
+        elif status in ("IDLE", "DONE", "ERROR"):
             self.action_start.setEnabled(True)
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(True)
             self.action_timer.setEnabled(True)
-        elif status == Base.TaskStatus.TESTING:
+        elif status in ("TESTING", "ANALYZING"):
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
-        elif status == Base.TaskStatus.ANALYZING:
-            self.action_start.setEnabled(False)
-            self.action_stop.setEnabled(False)
-            self.action_reset.setEnabled(False)
-            self.action_timer.setEnabled(False)
-        elif status == Base.TaskStatus.TRANSLATING:
+        # 命令回执的 REQUEST 已经代表“本页任务已受理”，这里先切到可停止态，
+        # 避免等待下一帧 SSE 期间按钮全部置灰，造成交互回退。
+        elif status in ("TRANSLATING", "RUN", "REQUEST") and task_type == "translation":
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(True)
             self.action_reset.setEnabled(False)
             self.action_timer.setEnabled(False)
             self.reset_timer()  # 翻译开始后自动取消定时器
-        elif status == Base.TaskStatus.STOPPING:
+        elif status == "STOPPING":
             self.action_start.setEnabled(False)
             self.action_stop.setEnabled(False)
             self.action_reset.setEnabled(False)
@@ -214,24 +222,6 @@ class TranslationPage(Base, QWidget):
             return
         self.update_button_status(event, {})
 
-    def translation_done(self, event: Base.Event, data: dict) -> None:
-        if event != Base.Event.TRANSLATION_TASK:
-            return
-        sub_event = data.get("sub_event")
-        if sub_event not in (
-            Base.SubEvent.DONE,
-            Base.SubEvent.ERROR,
-        ):
-            return
-        self.update_button_status(event, data)
-        self.emit(
-            Base.Event.PROJECT_CHECK,
-            {"sub_event": Base.SubEvent.REQUEST},
-        )
-
-    def translation_update(self, event: Base.Event, data: dict) -> None:
-        self.data = data
-
     def on_translation_reset(self, event: Base.Event, data: dict) -> None:
         """按重置阶段刷新 UI，避免把请求态误判为完成态。"""
         sub_event: Base.SubEvent = data["sub_event"]
@@ -244,34 +234,24 @@ class TranslationPage(Base, QWidget):
         # 无论是否清空卡片，都要同步按钮状态与运行态。
         self.update_button_status(event, data)
 
-        # 重置终态后主动拉取一次进度，确保失败项重置也能更新统计卡片。
-        if sub_event in (
-            Base.SubEvent.DONE,
-            Base.SubEvent.ERROR,
-        ):
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-
     # 更新时间
     def update_time(self, data: dict) -> None:
+        snapshot = self.get_display_snapshot()
         # 如果正在翻译，计算实时耗时；否则使用最后保存的累计耗时
-        if Engine.get().get_status() in (
-            Base.TaskStatus.STOPPING,
-            Base.TaskStatus.TRANSLATING,
+        if self.api_state_store.get_task_snapshot().status in (
+            "STOPPING",
+            "TRANSLATING",
+            "RUN",
         ):
-            if self.data.get("start_time", 0) == 0:
+            if snapshot.start_time == 0:
                 total_time = 0
             else:
-                total_time = int(time.time() - self.data.get("start_time", 0))
+                total_time = int(time.time() - snapshot.start_time)
         else:
-            total_time = int(self.data.get("time", 0))
+            total_time = int(snapshot.time)
 
         remaining_time = int(
-            total_time
-            / max(1, self.data.get("line", 0))
-            * (self.data.get("total_line", 0) - self.data.get("line", 0))
+            total_time / max(1, snapshot.line) * (snapshot.total_line - snapshot.line)
         )
 
         display_mode = getattr(
@@ -294,11 +274,12 @@ class TranslationPage(Base, QWidget):
     # 更新行数
     def update_line(self, data: dict) -> None:
         del data
-        processed_line = int(self.data.get("processed_line", self.data.get("line", 0)))
-        error_line = int(self.data.get("error_line", 0))
-        remaining_line = max(
-            0, self.data.get("total_line", 0) - self.data.get("line", 0)
+        snapshot = self.get_display_snapshot()
+        processed_line = (
+            snapshot.processed_line if snapshot.processed_line > 0 else snapshot.line
         )
+        error_line = snapshot.error_line
+        remaining_line = max(0, snapshot.total_line - snapshot.line)
 
         self.set_scaled_card_value(self.processed_line_card, processed_line, "Line")
         self.set_scaled_card_value(self.error_line_card, error_line, "Line")
@@ -308,34 +289,37 @@ class TranslationPage(Base, QWidget):
     def update_task(self, data: dict) -> None:
         # UI 上的“实时任务数”仅展示正在发送请求的数量（不包含限速等待）。
         del data
-        task = Engine.get().get_request_in_flight_count()
-        self.set_scaled_card_value(self.task, task, "Task")
+        self.set_scaled_card_value(
+            self.task,
+            self.get_display_snapshot().request_in_flight_count,
+            "Task",
+        )
 
     # 更新 Token 数据
     def update_token(self, data: dict) -> None:
         # 根据显示模式选择要展示的 Token 数量
         del data
+        snapshot = self.get_display_snapshot()
         display_mode = getattr(self, "token_display_mode", self.TokenDisplayMode.OUTPUT)
 
         if display_mode == self.TokenDisplayMode.OUTPUT:
-            token = self.data.get("total_output_tokens", 0)
+            token = snapshot.total_output_tokens
         else:
             # 兼容旧版本进度字段：若无 total_input_tokens，则用 total_tokens - total_output_tokens 估算
-            token = self.data.get("total_input_tokens", 0)
+            token = snapshot.total_input_tokens
             if token == 0:
-                token = self.data.get("total_tokens", 0) - self.data.get(
-                    "total_output_tokens", 0
-                )
+                token = snapshot.total_tokens - snapshot.total_output_tokens
 
         self.set_scaled_card_value(self.token, token, "Token")
 
         # 速度计算仅在翻译/停止状态下更新，避免空闲时干扰波形图
-        if Engine.get().get_status() in (
-            Base.TaskStatus.STOPPING,
-            Base.TaskStatus.TRANSLATING,
+        if self.api_state_store.get_task_snapshot().status in (
+            "STOPPING",
+            "TRANSLATING",
+            "RUN",
         ):
-            speed = self.data.get("total_output_tokens", 0) / max(
-                1, time.time() - self.data.get("start_time", 0)
+            speed = snapshot.total_output_tokens / max(
+                1, time.time() - snapshot.start_time
             )
             self.waveform.add_value(speed)
             if speed < 1000:
@@ -348,11 +332,12 @@ class TranslationPage(Base, QWidget):
     # 更新进度环
     def update_status(self, data: dict) -> None:
         del data
-        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
+        status = self.api_state_store.get_task_snapshot().status
+        if status == "STOPPING":
             self.set_progress_ring(Localizer.get().translation_page_status_stopping)
-        elif Engine.get().get_status() == Base.TaskStatus.TRANSLATING:
+        elif status in ("TRANSLATING", "RUN", "REQUEST"):
             self.set_progress_ring(Localizer.get().translation_page_status_translating)
-        elif self.data:
+        elif self.data is not None:
             # 即使在空闲状态，如果存在进度数据，也要显示最终的进度百分比
             self.set_progress_ring(Localizer.get().translation_page_status_idle)
         else:
@@ -360,9 +345,8 @@ class TranslationPage(Base, QWidget):
             self.ring.setFormat(Localizer.get().translation_page_status_idle)
 
     # 头部
-    def add_widget_head(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_head(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.head_hbox_container = QWidget(self)
         self.head_hbox = QHBoxLayout(self.head_hbox_container)
         parent.addWidget(self.head_hbox_container)
@@ -398,45 +382,40 @@ class TranslationPage(Base, QWidget):
         self.head_hbox.addStretch(1)
 
     # 中部
-    def add_widget_body(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_body(self, parent: QLayout, window: FluentWindow) -> None:
         self.flow_container = QWidget(self)
         self.flow_layout = FlowLayout(self.flow_container, needAni=False)
         self.flow_layout.setSpacing(8)
         self.flow_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.add_time_card(self.flow_layout, config, window)
-        self.add_line_card(self.flow_layout, config, window)
-        self.add_remaining_line_card(self.flow_layout, config, window)
-        self.add_speed_card(self.flow_layout, config, window)
-        self.add_token_card(self.flow_layout, config, window)
-        self.add_task_card(self.flow_layout, config, window)
+        self.add_time_card(self.flow_layout, window)
+        self.add_line_card(self.flow_layout, window)
+        self.add_remaining_line_card(self.flow_layout, window)
+        self.add_speed_card(self.flow_layout, window)
+        self.add_token_card(self.flow_layout, window)
+        self.add_task_card(self.flow_layout, window)
 
         self.container.addWidget(self.flow_container, 1)
 
     # 底部
-    def add_widget_foot(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_foot(self, parent: QLayout, window: FluentWindow) -> None:
         self.command_bar_card = CommandBarCard()
         parent.addWidget(self.command_bar_card)
 
         # 添加命令
         self.command_bar_card.set_minimum_width(640)
-        self.add_command_bar_action_start(self.command_bar_card, config, window)
-        self.add_command_bar_action_stop(self.command_bar_card, config, window)
+        self.add_command_bar_action_start(self.command_bar_card, window)
+        self.add_command_bar_action_stop(self.command_bar_card, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_reset(self.command_bar_card, config, window)
+        self.add_command_bar_action_reset(self.command_bar_card, window)
         self.command_bar_card.add_separator()
-        self.add_command_bar_action_timer(self.command_bar_card, config, window)
+        self.add_command_bar_action_timer(self.command_bar_card, window)
 
         self.command_bar_card.add_stretch(1)
 
     # 累计时间
-    def add_time_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_time_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.time_display_mode = self.TimeDisplayMode.REMAINING
 
         def on_time_card_clicked(card: DashboardCard) -> None:
@@ -465,9 +444,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.time)
 
     # 翻译行数
-    def add_line_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_line_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.processed_line_card = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_line_processed,
@@ -493,9 +471,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.error_line_card)
 
     # 剩余行数
-    def add_remaining_line_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_remaining_line_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.remaining_line = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_remaining_line,
@@ -506,9 +483,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.remaining_line)
 
     # 平均速度
-    def add_speed_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_speed_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.speed = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_speed,
@@ -519,9 +495,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.speed)
 
     # 累计消耗
-    def add_token_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_token_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         # 默认显示输出 Token
         self.token_display_mode = self.TokenDisplayMode.OUTPUT
 
@@ -556,9 +531,8 @@ class TranslationPage(Base, QWidget):
         parent.addWidget(self.token)
 
     # 并行任务
-    def add_task_card(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_task_card(self, parent: QLayout, window: FluentWindow) -> None:
+        del window
         self.task = DashboardCard(
             parent=self,
             title=Localizer.get().translation_page_card_task,
@@ -570,19 +544,13 @@ class TranslationPage(Base, QWidget):
 
     # 开始
     def add_command_bar_action_start(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
+        del window
+
         def triggered() -> None:
             # 根据是否有进度决定模式：有进度则 CONTINUE，无进度则 NEW
-            self.emit(
-                Base.Event.TRANSLATION_TASK,
-                {
-                    "sub_event": Base.SubEvent.REQUEST,
-                    "mode": Base.TranslationMode.CONTINUE
-                    if self.has_progress()
-                    else Base.TranslationMode.NEW,
-                },
-            )
+            self.request_start_translation()
 
         self.action_start = parent.add_action(
             Action(
@@ -592,7 +560,7 @@ class TranslationPage(Base, QWidget):
 
     # 停止
     def add_command_bar_action_stop(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         def triggered() -> None:
             message_box = MessageBox(
@@ -614,12 +582,7 @@ class TranslationPage(Base, QWidget):
                     },
                 )
                 self.is_stopping_toast_active = True
-                self.emit(
-                    Base.Event.TRANSLATION_REQUEST_STOP,
-                    {
-                        "sub_event": Base.SubEvent.REQUEST,
-                    },
-                )
+                self.request_stop_translation()
 
         self.action_stop = parent.add_action(
             Action(
@@ -633,7 +596,7 @@ class TranslationPage(Base, QWidget):
 
     # 重置翻译进度
     def add_command_bar_action_reset(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         def triggered() -> None:
             def confirm_and_emit(message: str, reset_event: Base.Event) -> None:
@@ -697,7 +660,7 @@ class TranslationPage(Base, QWidget):
 
     # 定时器
     def add_command_bar_action_timer(
-        self, parent: CommandBarCard, config: Config, window: FluentWindow
+        self, parent: CommandBarCard, window: FluentWindow
     ) -> None:
         interval = 1
 
@@ -716,13 +679,7 @@ class TranslationPage(Base, QWidget):
                 self.timer_delay_time = self.timer_delay_time - interval
                 self.action_timer.setText(format_time(self.timer_delay_time))
             else:
-                self.emit(
-                    Base.Event.TRANSLATION_TASK,
-                    {
-                        "sub_event": Base.SubEvent.REQUEST,
-                        "status": Base.ProjectStatus.NONE,
-                    },
-                )
+                self.request_start_translation()
                 self.reset_timer()
 
         def message_box_close(widget: TimerMessageBox, input_time: QTime) -> None:
@@ -766,7 +723,7 @@ class TranslationPage(Base, QWidget):
 
     def clear_ui_cards(self) -> None:
         """清理所有 UI 卡片和进度显示"""
-        self.data = {}
+        self.data = None
         self.waveform.clear()
         self.ring.setValue(0)
         self.ring.setFormat(Localizer.get().translation_page_status_idle)
@@ -800,3 +757,16 @@ class TranslationPage(Base, QWidget):
 
         # 重置定时器
         self.reset_timer()
+
+    def request_start_translation(self) -> None:
+        """通过 TaskApiClient 发起翻译命令，并把回执写入状态仓库。"""
+
+        mode = "CONTINUE" if self.has_progress() else "NEW"
+        result = self.task_api_client.start_translation({"mode": mode})
+        self.api_state_store.hydrate_task(result)
+
+    def request_stop_translation(self) -> None:
+        """通过 TaskApiClient 发起停止命令，并把回执写入状态仓库。"""
+
+        result = self.task_api_client.stop_translation()
+        self.api_state_store.hydrate_task(result)

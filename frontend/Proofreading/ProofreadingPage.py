@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
@@ -25,21 +27,16 @@ from qfluentwidgets import ToolTipPosition
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from base.LogManager import LogManager
+from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
 from frontend.Proofreading.FilterDialog import FilterDialog
-from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
-from frontend.Proofreading.ProofreadingDomain import ProofreadingFilterOptions
 from frontend.Proofreading.ProofreadingEditPanel import ProofreadingEditPanel
-from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadKind
-from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadResult
-from frontend.Proofreading.ProofreadingLoadService import ProofreadingLoadService
 from frontend.Proofreading.ProofreadingTableWidget import ProofreadingTableWidget
-from model.Item import Item
-from module.Config import Config
-from module.Data.DataManager import DataManager
-from module.Engine.Engine import Engine
+from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
+from model.Api.ProofreadingModels import ProofreadingItemView
+from model.Api.ProofreadingModels import ProofreadingMutationResult
+from model.Api.ProofreadingModels import ProofreadingSearchResult
+from model.Api.ProofreadingModels import ProofreadingSnapshot
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import ResultChecker
-from module.ResultChecker import WarningType
 from widget.CommandBarCard import CommandBarCard
 from widget.SearchCard import SearchCard
 
@@ -50,17 +47,19 @@ ICON_ACTION_FILTER: BaseIcon = BaseIcon.FUNNEL  # 命令栏：打开筛选面板
 
 
 @dataclass(frozen=True)
-class ReplaceAllResult:
-    success: bool
-    changed_count: int
-    # (item_id, new_dst, new_status)
-    changes: tuple[tuple[int, str, Base.ProjectStatus], ...] = tuple()
-
-
-@dataclass(frozen=True)
 class ProofreadingLookupRequest:
     keyword: str
     is_regex: bool
+
+
+def resolve_status_after_manual_edit(old_status: str, new_dst: str) -> str:
+    if old_status == Base.ProjectStatus.PROCESSED_IN_PAST.value:
+        return Base.ProjectStatus.PROCESSED.value
+    if not new_dst:
+        return old_status
+    if old_status == Base.ProjectStatus.PROCESSED.value:
+        return old_status
+    return Base.ProjectStatus.PROCESSED.value
 
 
 class ProofreadingPage(Base, QWidget):
@@ -72,58 +71,43 @@ class ProofreadingPage(Base, QWidget):
 
     # 防抖时间（毫秒）
     AUTO_RELOAD_DELAY_MS: int = 120
-    QUALITY_RULE_REFRESH_DELAY_MS: int = 200
-
-    # 质量规则类型
-    QUALITY_RULE_TYPES: set[str] = {
-        DataManager.RuleType.GLOSSARY.value,
-        DataManager.RuleType.PRE_REPLACEMENT.value,
-        DataManager.RuleType.POST_REPLACEMENT.value,
-        DataManager.RuleType.TEXT_PRESERVE.value,
-    }
-
-    # 质量规则元数据键
-    QUALITY_META_KEYS: set[str] = {
-        "glossary_enable",
-        "pre_translation_replacement_enable",
-        "post_translation_replacement_enable",
-        "text_preserve_mode",
-    }
+    SNAPSHOT_INVALIDATION_POLL_MS: int = 150
 
     # 信号定义
     items_loaded = Signal(int, object)  # (token, payload)
-    filter_done = Signal(int, list)  # (data_version, filtered_items)
-    translate_done = Signal(object, bool)  # 翻译完成信号
-    save_done = Signal(bool)  # 保存完成信号
+    filter_done = Signal(int, object)  # (data_version, filtered_snapshot)
+    search_done = Signal(object)  # 搜索结果
+    translate_done = Signal(object, int)  # (result, requested_count)
     item_saved = Signal(object, bool)  # 单条保存完成信号
-    item_rechecked = Signal(object, list, object)  # (item, warnings, failed_terms)
+    item_rechecked = Signal(object, bool)  # (result, success)
     progress_updated = Signal(str, int, int)  # 进度更新信号 (content, current, total)
     progress_finished = Signal()  # 进度完成信号
     replace_all_done = Signal(object)  # 批量替换完成信号
-    # 这里必须用 object：warning_map 的 key 来自 id(item)（int），
-    # 若声明为 dict，PySide6 会尝试把 dict 转为 C++ QVariantMap（要求 key 可转为 QString），
-    # 从而触发 Shiboken::Conversions::_pythonToCppCopy 的转换失败日志。
-    quality_rules_refreshed = Signal(
-        object, object, object
-    )  # (checker, warning_map, failed_terms_by_item_key)
 
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        text: str,
+        proofreading_api_client: ProofreadingApiClient,
+        api_state_store: ApiStateStore,
+        window: FluentWindow,
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
 
         # 成员变量
         self.main_window = window
-        self.items_all: list[Item] = []  # 全量数据（含结构行）
-        self.items: list[Item] = []  # 可校对数据
-        self.filtered_items: list[Item] = []  # 筛选后数据
-        self.warning_map: dict[int, list[WarningType]] = {}  # 警告映射表
-        self.result_checker: ResultChecker | None = None  # 结果检查器
-        self.failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
+        self.proofreading_api_client = proofreading_api_client
+        self.api_state_store = api_state_store
+        self.current_snapshot: ProofreadingSnapshot = ProofreadingSnapshot()
+        self.filtered_items: list[ProofreadingItemView] = []  # 当前展示的快照条目
+        self.search_result: ProofreadingSearchResult | None = None
         self.is_readonly: bool = False  # 只读模式标志
         self.is_resetting: bool = False  # 重置执行中标志（RUN 到终态）
-        self.config: Config | None = None  # 配置
-        self.filter_options: ProofreadingFilterOptions = ProofreadingFilterOptions()
+        self.filter_options: ProofreadingFilterOptionsSnapshot = (
+            ProofreadingFilterOptionsSnapshot()
+        )
         self.filter_dialog: FilterDialog | None = None
+        self.selected_item_id: int | str | None = None
         self.search_keyword: str = ""  # 当前搜索关键词
         self.search_is_regex: bool = False  # 是否正则搜索
         self.search_replace_mode: bool = False  # True 表示仅在 dst 上查找/替换
@@ -137,8 +121,8 @@ class ProofreadingPage(Base, QWidget):
         self.replace_once_keep_match: bool = False
         self.replace_once_pending_jump: bool = False
         self.replace_once_pending_refilter_apply: bool = False
-        self.pending_selected_item: Item | None = None
-        self.current_item: Item | None = None
+        self.pending_selected_item_id: int | str | None = None
+        self.current_item: ProofreadingItemView | None = None
         # 分页已移除：该值表示当前条目在 filtered_items 中的绝对行索引。
         self.current_row_index: int = -1
         self.block_selection_change: bool = False
@@ -158,11 +142,15 @@ class ProofreadingPage(Base, QWidget):
         self.reload_timer: QTimer = QTimer(self)
         self.reload_timer.setSingleShot(True)
         self.reload_timer.timeout.connect(self.try_reload)
-        self.quality_rule_refresh_token: int = 0
-        self.quality_rule_refresh_timer: QTimer = QTimer(self)
-        self.quality_rule_refresh_timer.setSingleShot(True)
-        self.quality_rule_refresh_timer.timeout.connect(self.refresh_quality_rules)
+        self.snapshot_invalidation_timer: QTimer = QTimer(self)
+        self.snapshot_invalidation_timer.setInterval(self.SNAPSHOT_INVALIDATION_POLL_MS)
+        self.snapshot_invalidation_timer.timeout.connect(
+            self.poll_invalidated_snapshot_if_needed
+        )
+        self.snapshot_invalidation_timer.start()
         self.pending_quality_rule_refresh: bool = False
+        self.local_mutation_inflight_count: int = 0
+        self.task_busy_hint: bool = False
 
         self.ui_font_px = self.FONT_SIZE
         self.ui_icon_px = self.ICON_SIZE
@@ -200,13 +188,12 @@ class ProofreadingPage(Base, QWidget):
         # 连接信号
         self.items_loaded.connect(self.on_items_loaded_ui)
         self.filter_done.connect(self.on_filter_done_ui)
+        self.search_done.connect(self.on_search_done_ui)
         self.translate_done.connect(self.on_translate_done_ui)
-        self.save_done.connect(self.on_save_done_ui)
         self.item_saved.connect(self.on_item_saved_ui)
         self.item_rechecked.connect(self.on_item_rechecked_ui)
         self.progress_updated.connect(self.on_progress_updated_ui)
         self.progress_finished.connect(self.on_progress_finished_ui)
-        self.quality_rules_refreshed.connect(self.on_quality_rules_refreshed_ui)
         self.replace_all_done.connect(self.on_replace_all_done_ui)
 
     def on_quality_rule_update(self, event: Base.Event, event_data: dict) -> None:
@@ -215,12 +202,12 @@ class ProofreadingPage(Base, QWidget):
         if not self.is_quality_rule_update_relevant(event_data):
             return
         if not self.isVisible():
-            # 页面不可见时避免触发筛选导致全局进度 toast。
             self.pending_quality_rule_refresh = True
             return
-        if not self.items:
+        if not self.current_snapshot.items:
             return
-        self.schedule_quality_rule_refresh()
+        self.mark_data_stale()
+        self.schedule_reload("quality_rule_updated")
 
     def on_project_prefilter_updated(self, event: Base.Event, event_data: dict) -> None:
         del event
@@ -243,82 +230,7 @@ class ProofreadingPage(Base, QWidget):
         self.schedule_reload("project_file_update")
 
     def is_quality_rule_update_relevant(self, event_data: dict) -> bool:
-        if not event_data:
-            return True
-        rule_types: list[str] = event_data.get("rule_types", [])
-        meta_keys: list[str] = event_data.get("meta_keys", [])
-        if any(rule_type in self.QUALITY_RULE_TYPES for rule_type in rule_types):
-            return True
-        return any(meta_key in self.QUALITY_META_KEYS for meta_key in meta_keys)
-
-    def schedule_quality_rule_refresh(self) -> None:
-        # 合并短时间内的多次规则变更，避免重复全量检查
-        self.quality_rule_refresh_timer.start(self.QUALITY_RULE_REFRESH_DELAY_MS)
-
-    def refresh_quality_rules(self) -> None:
-        self.quality_rule_refresh_token += 1
-        current_token: int = self.quality_rule_refresh_token
-        config = self.config or Config().load()
-        items_snapshot = list(self.items)
-
-        def task() -> None:
-            try:
-                checker = ResultChecker(config)
-                warning_map = checker.check_items(items_snapshot)
-                if current_token != self.quality_rule_refresh_token:
-                    return
-                failed_terms_by_item_key = (
-                    ProofreadingDomain.build_failed_glossary_terms_cache(
-                        items_snapshot, warning_map, checker
-                    )
-                )
-                self.quality_rules_refreshed.emit(
-                    checker, warning_map, failed_terms_by_item_key
-                )
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def on_quality_rules_refreshed_ui(
-        self,
-        checker: ResultChecker,
-        warning_map: dict[int, list[WarningType]],
-        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]],
-    ) -> None:
-        self.result_checker = checker
-        self.warning_map = warning_map
-        self.failed_terms_by_item_key = dict(failed_terms_by_item_key)
-        self.edit_panel.set_result_checker(self.result_checker)
-
-        if self.filter_dialog is not None and self.filter_dialog.isVisible():
-            self.filter_dialog.update_snapshot(
-                items=self.items,
-                warning_map=self.warning_map,
-                result_checker=checker,
-                failed_terms_by_item_key=self.failed_terms_by_item_key,
-            )
-
-        # Replace 场景下先只更新状态，不改变当前列表范围。
-        if self.search_refilter_deferred:
-            self.refresh_warning_state_without_refilter()
-            return
-
-        # 重新应用筛选/刷新当前页 UI，确保状态图标与高亮同步到最新规则。
-        self.apply_filter()
-
-    def refresh_warning_state_without_refilter(self) -> None:
-        """仅刷新当前列表状态，避免 Replace 后立即重筛导致条目瞬间消失。"""
-
-        for row, item in enumerate(self.filtered_items):
-            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-            self.table_widget.update_row_status(row, warnings)
-
-        if self.current_item is not None:
-            warnings = ProofreadingDomain.get_item_warnings(
-                self.current_item, self.warning_map
-            )
-            self.edit_panel.refresh_status_tags(self.current_item, warnings)
+        return ProofreadingRuleImpact.is_rule_update_relevant(event_data)
 
     # ========== 主体：表格 ==========
     def add_widget_body(self, parent: QVBoxLayout, main_window: FluentWindow) -> None:
@@ -338,7 +250,7 @@ class ProofreadingPage(Base, QWidget):
             self.on_batch_reset_translation_clicked
         )
         self.table_widget.itemSelectionChanged.connect(self.on_table_selection_changed)
-        self.table_widget.set_items([], {})
+        self.table_widget.set_items([])
 
         self.edit_panel = ProofreadingEditPanel(self)
         self.edit_panel.save_requested.connect(self.on_edit_save_requested)
@@ -445,12 +357,195 @@ class ProofreadingPage(Base, QWidget):
     def mark_data_stale(self) -> None:
         self.data_stale = True
 
-    def schedule_reload(self, reason: str) -> None:
+    def build_item_payload(self, item: ProofreadingItemView) -> dict[str, Any]:
+        status_value = item.status
+        try:
+            status_value = Base.ProjectStatus(item.status)
+        except ValueError:
+            status_value = item.status
+        return {
+            "id": item.item_id,
+            "row": item.row_number,
+            "src": item.src,
+            "dst": item.dst,
+            "file_path": item.file_path,
+            "status": status_value,
+        }
+
+    def build_item_payloads(
+        self,
+        items: list[ProofreadingItemView],
+        *,
+        dst_override: str | None = None,
+        status_override: str | Base.ProjectStatus | None = None,
+    ) -> list[dict[str, Any]]:
+        payloads: list[dict[str, Any]] = []
+        for item in items:
+            payload = self.build_item_payload(item)
+            if dst_override is not None:
+                payload["dst"] = dst_override
+            if status_override is not None:
+                payload["status"] = status_override
+            payloads.append(payload)
+        return payloads
+
+    def get_project_id(self) -> str:
+        project_id = self.current_snapshot.project_id
+        if project_id:
+            return project_id
+        return self.api_state_store.get_project_path()
+
+    def has_local_mutation_inflight(self) -> bool:
+        return getattr(self, "local_mutation_inflight_count", 0) > 0
+
+    def sync_task_busy_hint(self) -> None:
+        self.task_busy_hint = self.has_local_mutation_inflight()
+
+    def begin_local_mutation(self) -> None:
+        self.local_mutation_inflight_count = (
+            getattr(self, "local_mutation_inflight_count", 0) + 1
+        )
+        self.sync_task_busy_hint()
+        self.check_engine_status()
+
+    def end_local_mutation(self) -> None:
+        current = getattr(self, "local_mutation_inflight_count", 0)
+        self.local_mutation_inflight_count = max(0, current - 1)
+        self.sync_task_busy_hint()
+        self.check_engine_status()
+
+    def is_task_busy(self) -> bool:
+        return (
+            self.api_state_store.is_busy()
+            or getattr(self, "is_resetting", False)
+            or self.has_local_mutation_inflight()
+            or getattr(self, "task_busy_hint", False)
+        )
+
+    def reset_search_matches(self) -> None:
+        """在快照切换后清空所有依赖旧列表索引的搜索运行态。"""
+
+        self.search_result = None
+        self.search_match_indices = []
+        self.search_current_match = -1
+        self.search_next_anchor_index = None
+        self.search_refilter_deferred = False
+        self.replace_once_pending_jump = False
+        self.replace_once_pending_refilter_apply = False
+        self.replace_once_last_item_index = None
+        self.replace_once_keep_match = False
+        self.search_card.clear_match_info()
+
+    def find_filtered_item_index(self, item_id: int | str | None) -> int:
+        if item_id is None:
+            return -1
+        for index, item in enumerate(self.filtered_items):
+            if item.item_id == item_id:
+                return index
+        return -1
+
+    def replace_items_in_snapshot(
+        self,
+        source_items: tuple[ProofreadingItemView, ...],
+        changed_items: tuple[ProofreadingItemView, ...],
+    ) -> tuple[ProofreadingItemView, ...]:
+        changed_map = {item.item_id: item for item in changed_items}
+        if not changed_map:
+            return source_items
+        return tuple(changed_map.get(item.item_id, item) for item in source_items)
+
+    def apply_mutation_result(
+        self,
+        result: ProofreadingMutationResult,
+        *,
+        preferred_item_id: int | str | None = None,
+    ) -> None:
+        merged_items = self.replace_items_in_snapshot(
+            self.current_snapshot.items,
+            result.items,
+        )
+        self.current_snapshot = ProofreadingSnapshot(
+            revision=result.revision,
+            project_id=self.current_snapshot.project_id,
+            readonly=self.current_snapshot.readonly,
+            summary=result.summary,
+            filters=self.current_snapshot.filters,
+            items=merged_items,
+        )
+        self.filtered_items = list(
+            self.replace_items_in_snapshot(tuple(self.filtered_items), result.items)
+        )
+        if preferred_item_id is not None:
+            self.selected_item_id = preferred_item_id
+
+        self.table_widget.set_items(list(self.filtered_items))
+        self.restore_selected_item()
+        if self.search_keyword:
+            self.start_search()
+        self.check_engine_status()
+
+    def apply_snapshot(
+        self,
+        snapshot: ProofreadingSnapshot,
+        *,
+        preferred_item_id: int | str | None = None,
+    ) -> None:
+        """应用 API 返回的校对快照。"""
+
+        self.current_snapshot = snapshot
+        self.filtered_items = list(snapshot.items)
+        self.selected_item_id = preferred_item_id
+        self.current_item = None
+        self.current_row_index = -1
+        self.data_stale = False
+        self.filter_options = snapshot.filters
+        self.is_readonly = snapshot.readonly
+        self.reset_search_matches()
+        self.table_widget.set_items(list(snapshot.items))
+        if not snapshot.items:
+            self.edit_panel.clear()
+        search_keyword = getattr(self, "search_keyword", "")
+        if search_keyword:
+            self.pending_selected_item_id = preferred_item_id
+            self.start_search()
+        else:
+            self.restore_selected_item()
+        self.check_engine_status()
+
+    def reload_invalidated_snapshot_if_needed(self) -> None:
+        """当 SSE 标记校对快照失效时，重新通过 API 拉取一次。"""
+
+        if not self.api_state_store.is_proofreading_snapshot_invalidated():
+            return
+        if getattr(self, "is_loading", False):
+            return
+        if hasattr(self, "is_task_busy") and self.is_task_busy():
+            return
+        edit_panel = getattr(self, "edit_panel", None)
+        if edit_panel is not None and edit_panel.has_unsaved_changes():
+            return
+
+        snapshot = self.proofreading_api_client.get_snapshot({})
+        preferred_item_id = getattr(self, "selected_item_id", None)
+        self.apply_snapshot(snapshot, preferred_item_id=preferred_item_id)
+        self.api_state_store.clear_proofreading_snapshot_invalidated()
+
+    def poll_invalidated_snapshot_if_needed(self) -> None:
+        """页面可见时主动消费快照失效标记，避免只能等下次 showEvent。"""
+
         if not self.isVisible():
             return
-        if not DataManager.get().is_loaded():
+        if not self.api_state_store.is_proofreading_snapshot_invalidated():
             return
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+        self.reload_invalidated_snapshot_if_needed()
+
+    def schedule_reload(self, reason: str) -> None:
+        del reason
+        if not self.isVisible():
+            return
+        if not self.api_state_store.is_project_loaded():
+            return
+        if self.is_task_busy():
             self.reload_pending = True
             return
         if self.is_loading:
@@ -465,9 +560,9 @@ class ProofreadingPage(Base, QWidget):
     def try_reload(self) -> None:
         if not self.data_stale:
             return
-        if not DataManager.get().is_loaded():
+        if not self.api_state_store.is_project_loaded():
             return
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+        if self.is_task_busy():
             self.reload_pending = True
             return
         if self.is_loading:
@@ -482,28 +577,23 @@ class ProofreadingPage(Base, QWidget):
         self.reload_token += 1
         token: int = self.reload_token
         self.loading_token = token
-        lg_path = DataManager.get().get_lg_path() or ""
+        project_id = self.get_project_id()
 
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
         def task() -> None:
             try:
-                # 加载流程下沉到 LoadService，避免 Page 内联大量 dict payload 与分支逻辑。
-                result = ProofreadingLoadService.load_snapshot(lg_path)
-                self.items_loaded.emit(token, result)
+                snapshot = self.proofreading_api_client.get_snapshot(
+                    {"project_id": project_id}
+                )
+                self.items_loaded.emit(token, snapshot)
             except Exception as e:
                 LogManager.get().error(Localizer.get().alert_no_data, e)
-                self.items_loaded.emit(
-                    token,
-                    ProofreadingLoadResult(
-                        kind=ProofreadingLoadKind.ERROR,
-                        lg_path=lg_path,
-                    ),
-                )
+                self.items_loaded.emit(token, None)
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_items_loaded_ui(self, token: int, payload: ProofreadingLoadResult) -> None:
+    def on_items_loaded_ui(self, token: int, payload: object) -> None:
         """数据加载完成的 UI 更新（主线程）"""
         if token != self.loading_token:
             return
@@ -511,13 +601,7 @@ class ProofreadingPage(Base, QWidget):
         self.is_loading = False
         self.indeterminate_hide()
 
-        kind = payload.kind
-
-        if kind == ProofreadingLoadKind.STALE:
-            # 工程已切换/卸载，丢弃旧线程结果。
-            return
-
-        if kind == ProofreadingLoadKind.ERROR:
+        if not isinstance(payload, ProofreadingSnapshot):
             self.data_stale = True
             self.emit(
                 Base.Event.TOAST,
@@ -528,29 +612,10 @@ class ProofreadingPage(Base, QWidget):
             )
             return
 
-        # 更新页面数据快照（只在主线程写入）。
-        self.config = payload.config
-        self.items_all = payload.items_all
-        self.items = payload.items
-        self.warning_map = payload.warning_map
-        self.result_checker = payload.checker
-        self.failed_terms_by_item_key = dict(payload.failed_terms_by_item_key)
-        self.filter_options = payload.filter_options
         self.data_version = token
-
-        self.edit_panel.set_result_checker(self.result_checker)
-
+        self.apply_snapshot(payload, preferred_item_id=self.selected_item_id)
         if self.pending_lookup_request is not None:
             self.apply_pending_lookup_if_ready()
-        elif self.items:
-            self.apply_filter(False)
-        else:
-            self.table_widget.set_items([], {})
-            self.current_item = None
-            self.current_row_index = -1
-            self.edit_panel.clear()
-
-        self.check_engine_status()
 
         if self.reload_pending:
             self.reload_pending = False
@@ -560,26 +625,21 @@ class ProofreadingPage(Base, QWidget):
     # ========== 筛选功能 ==========
     def on_filter_clicked(self) -> None:
         """筛选按钮点击"""
-        if not self.items or not self.result_checker:
+        if not self.current_snapshot.items:
             return
-
-        checker = self.result_checker
 
         if self.filter_dialog is None:
             self.filter_dialog = FilterDialog(
-                items=self.items,
-                warning_map=self.warning_map,
-                result_checker=checker,
+                items=list(self.current_snapshot.items),
+                project_id=self.current_snapshot.project_id,
                 parent=self.main_window,
             )
 
         dialog = self.filter_dialog
         dialog.reset_for_open()
         dialog.update_snapshot(
-            items=self.items,
-            warning_map=self.warning_map,
-            result_checker=checker,
-            failed_terms_by_item_key=self.failed_terms_by_item_key,
+            items=list(self.current_snapshot.items),
+            project_id=self.current_snapshot.project_id,
         )
         dialog.set_filter_options(self.filter_options)
 
@@ -588,7 +648,7 @@ class ProofreadingPage(Base, QWidget):
 
             def action() -> None:
                 self.filter_options = new_options
-                self.pending_selected_item = None
+                self.pending_selected_item_id = None
                 self.apply_filter(False)
 
             self.run_with_unsaved_guard(action)
@@ -599,31 +659,14 @@ class ProofreadingPage(Base, QWidget):
             self.run_with_unsaved_guard(lambda: self.apply_filter(False))
             return
 
-        # 任意显式筛选都视为一次“刷新确认”，消费 Replace 的延迟刷新标记。
-        self.search_refilter_deferred = False
-
-        # 如果正在加载，则不重复触发
         self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
-
-        # 捕获当前需要的参数快照，避免竞态
         data_version = self.data_version
-        options = self.filter_options
-        items_ref = self.items
-        # warning_map / failed_terms_by_item_key 会在 UI 线程增量更新；
-        # 这里拷贝 dict 快照，避免后台线程读到并发修改（兼容 No-GIL）。
-        warning_map_ref = dict(self.warning_map) if self.warning_map else {}
-        checker_ref = self.result_checker
-        failed_terms_by_item_key_ref = (
-            dict(self.failed_terms_by_item_key) if self.failed_terms_by_item_key else {}
-        )
-        keyword = self.search_keyword
-        use_regex = self.search_is_regex
-        search_dst_only = self.search_replace_mode
+        filter_options = self.filter_options.to_dict()
+        project_id = self.get_project_id()
 
-        if keyword and use_regex:
-            # 保持原有体验：正则非法时直接在 UI 线程提示，而不是让后台线程吞掉异常。
+        if self.search_keyword and self.search_is_regex:
             try:
-                re.compile(keyword)
+                re.compile(self.search_keyword)
             except re.error as e:
                 self.indeterminate_hide()
                 self.emit(
@@ -637,37 +680,36 @@ class ProofreadingPage(Base, QWidget):
 
         def filter_task() -> None:
             try:
-                # 筛选规则由 Domain 层统一实现，避免 Page/Dialog 两套逻辑逐渐漂移。
-                filtered = ProofreadingDomain.filter_items(
-                    items=items_ref,
-                    warning_map=warning_map_ref,
-                    options=options,
-                    checker=checker_ref,
-                    failed_terms_by_item_key=failed_terms_by_item_key_ref,
-                    search_keyword=keyword,
-                    search_is_regex=use_regex,
-                    search_dst_only=search_dst_only,
-                    enable_search_filter=True,
-                    enable_glossary_term_filter=True,
+                filtered_snapshot = self.proofreading_api_client.filter_items(
+                    {
+                        "project_id": project_id,
+                        "filters": filter_options,
+                    }
                 )
-                self.filter_done.emit(data_version, filtered)
+                self.filter_done.emit(data_version, filtered_snapshot)
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
-                self.filter_done.emit(data_version, [])
+                self.filter_done.emit(data_version, None)
 
         threading.Thread(target=filter_task, daemon=True).start()
 
-    def on_filter_done_ui(self, data_version: int, filtered: list[Item]) -> None:
+    def on_filter_done_ui(self, data_version: int, payload: object) -> None:
         """筛选完成的 UI 更新 (主线程)"""
         if data_version != self.data_version:
             self.replace_once_pending_refilter_apply = False
             return
 
         self.indeterminate_hide()
-        self.filtered_items = filtered
+        if not isinstance(payload, ProofreadingSnapshot):
+            self.filtered_items = []
+            self.table_widget.set_items([])
+            self.edit_panel.clear()
+            return
+
+        self.filtered_items = list(payload.items)
 
         # 分页已迁移为无限滚动：筛选完成后一次性设置数据源，由 TableModel 负责 lazyload。
-        self.table_widget.set_items(self.filtered_items, self.warning_map)
+        self.table_widget.set_items(list(self.filtered_items))
         if not self.filtered_items:
             self.current_item = None
             self.current_row_index = -1
@@ -702,12 +744,14 @@ class ProofreadingPage(Base, QWidget):
             self.search_next_anchor_index = None
 
         self.restore_selected_item()
+        if self.search_keyword:
+            self.start_search()
 
         if self.replace_once_pending_refilter_apply:
             self.replace_once_pending_refilter_apply = False
             self.on_replace_once_clicked()
 
-    # build_default_filter_options/build_review_items 已迁移到 ProofreadingDomain/ProofreadingLoadService。
+    # 默认筛选与校对条目构建已下沉到快照加载服务。
 
     # ========== 搜索功能 ==========
     def show_search_panel(self, *, replace_mode: bool) -> None:
@@ -734,7 +778,7 @@ class ProofreadingPage(Base, QWidget):
         self.search_match_indices = []
         self.search_current_match = -1
         self.search_next_anchor_index = None
-        self.pending_selected_item = None
+        self.pending_selected_item_id = None
 
     def on_search_clicked(self) -> None:
         """搜索按钮点击"""
@@ -845,19 +889,13 @@ class ProofreadingPage(Base, QWidget):
             )
             self.search_keyword = current_lookup.keyword
             self.search_is_regex = current_lookup.is_regex
-            self.filter_options = ProofreadingDomain.build_lookup_filter_options(
-                self.items,
-                self.warning_map,
-                self.result_checker,
-                failed_terms_by_item_key=self.failed_terms_by_item_key,
-            )
-            self.apply_filter(False)
+            self.start_search()
             self.search_card.get_line_edit().setFocus()
 
         self.run_with_unsaved_guard(action)
 
     def do_search(self) -> None:
-        """执行搜索，构建匹配索引列表并跳转到第一个匹配项"""
+        """执行搜索，并让页面只消费 API 返回的匹配结果。"""
         keyword = self.search_card.get_keyword()
         self.search_replace_mode = self.search_card.is_replace_mode()
         self.replace_once_pending_jump = False
@@ -869,8 +907,8 @@ class ProofreadingPage(Base, QWidget):
             self.search_card.clear_match_info()
             self.search_keyword = ""
             self.search_is_regex = self.search_card.is_regex_mode()
-            self.pending_selected_item = None
-            self.apply_filter()
+            self.pending_selected_item_id = None
+            self.search_result = None
             return
 
         is_regex = self.search_card.is_regex_mode()
@@ -893,8 +931,8 @@ class ProofreadingPage(Base, QWidget):
         self.search_next_anchor_index = None
 
         def action() -> None:
-            self.pending_selected_item = None
-            self.apply_filter(False)
+            self.pending_selected_item_id = None
+            self.start_search()
 
         self.run_with_unsaved_guard(action)
 
@@ -926,17 +964,91 @@ class ProofreadingPage(Base, QWidget):
         if not self.search_keyword:
             if not had_keyword:
                 return
+            self.search_result = None
+            self.search_match_indices = []
+            self.search_card.clear_match_info()
+            return
 
         row = self.table_widget.get_selected_row()
-        self.pending_selected_item = (
-            self.table_widget.get_item_at_row(row) if row >= 0 else None
+        selected_item = self.table_widget.get_item_at_row(row) if row >= 0 else None
+        self.pending_selected_item_id = (
+            selected_item.item_id if selected_item is not None else None
         )
 
-        self.run_with_unsaved_guard(lambda: self.apply_filter(False))
+        self.run_with_unsaved_guard(self.start_search)
+
+    def start_search(self) -> None:
+        if not self.search_keyword:
+            self.search_result = None
+            self.search_match_indices = []
+            self.search_current_match = -1
+            self.search_card.clear_match_info()
+            return
+
+        project_id = self.get_project_id()
+        request = {
+            "project_id": project_id,
+            "filters": self.filter_options.to_dict(),
+            "keyword": self.search_keyword,
+            "is_regex": self.search_is_regex,
+            "search_dst_only": self.search_replace_mode,
+        }
+
+        def task() -> None:
+            try:
+                result = self.proofreading_api_client.search(request)
+                self.search_done.emit(result)
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                self.search_done.emit(None)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def on_search_done_ui(self, payload: object) -> None:
+        if not isinstance(payload, ProofreadingSearchResult):
+            self.search_result = None
+            self.search_match_indices = []
+            self.search_current_match = -1
+            self.pending_selected_item_id = None
+            self.search_card.set_match_info(0, 0)
+            return
+
+        self.search_result = payload
+        matched_ids = set(payload.matched_item_ids)
+        self.search_match_indices = [
+            index
+            for index, item in enumerate(self.filtered_items)
+            if item.item_id in matched_ids
+        ]
+        if not self.search_match_indices:
+            self.search_current_match = -1
+            self.pending_selected_item_id = None
+            self.search_card.set_match_info(0, 0)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get().search_no_match,
+                },
+            )
+            return
+
+        preferred_item_id = self.pending_selected_item_id
+        preferred_index = self.find_filtered_item_index(preferred_item_id)
+        if preferred_index in self.search_match_indices:
+            self.search_current_match = self.search_match_indices.index(preferred_index)
+        else:
+            self.search_current_match = 0
+        self.pending_selected_item_id = None
+        self.jump_to_match()
 
     @staticmethod
     def compute_match_indices(
-        items: list[Item], *, keyword: str, is_regex: bool, match_dst_only: bool = False
+        items: list[ProofreadingItemView],
+        *,
+        keyword: str,
+        is_regex: bool,
+        match_dst_only: bool = False,
     ) -> list[int]:
         if not keyword:
             return []
@@ -950,8 +1062,8 @@ class ProofreadingPage(Base, QWidget):
                 return []
 
             for idx, item in enumerate(items):
-                src = item.get_src()
-                dst = item.get_dst()
+                src = item.src
+                dst = item.dst
                 if match_dst_only:
                     if pattern.search(dst):
                         indices.append(idx)
@@ -962,8 +1074,8 @@ class ProofreadingPage(Base, QWidget):
 
         keyword_lower = keyword.lower()
         for idx, item in enumerate(items):
-            src = item.get_src()
-            dst = item.get_dst()
+            src = item.src
+            dst = item.dst
             if match_dst_only:
                 if keyword_lower in dst.lower():
                     indices.append(idx)
@@ -989,7 +1101,7 @@ class ProofreadingPage(Base, QWidget):
         return 0
 
     def restore_selected_item(self) -> None:
-        if self.pending_selected_item is None:
+        if self.pending_selected_item_id is None:
             if self.search_match_indices:
                 if self.search_current_match < 0 or self.search_current_match >= len(
                     self.search_match_indices
@@ -1007,9 +1119,8 @@ class ProofreadingPage(Base, QWidget):
                 return
 
             # 默认行为：尽量保留当前条目，否则选中首行。
-            if self.current_item in self.filtered_items:
-                target_index = self.filtered_items.index(self.current_item)
-            else:
+            target_index = self.find_filtered_item_index(self.selected_item_id)
+            if target_index < 0:
                 target_index = 0
 
             self.block_selection_change = True
@@ -1018,14 +1129,14 @@ class ProofreadingPage(Base, QWidget):
             self.apply_selection(self.filtered_items[target_index], target_index)
             return
 
-        if self.pending_selected_item not in self.filtered_items:
-            self.pending_selected_item = None
+        item_index = self.find_filtered_item_index(self.pending_selected_item_id)
+        if item_index < 0:
+            self.pending_selected_item_id = None
             if self.search_match_indices:
                 self.search_current_match = 0
                 self.jump_to_match()
             return
 
-        item_index = self.filtered_items.index(self.pending_selected_item)
         if self.search_match_indices:
             if item_index in self.search_match_indices:
                 self.search_current_match = self.search_match_indices.index(item_index)
@@ -1033,7 +1144,7 @@ class ProofreadingPage(Base, QWidget):
         else:
             self.jump_to_row(item_index)
 
-        self.pending_selected_item = None
+        self.pending_selected_item_id = None
 
     def on_search_prev_clicked(self) -> None:
         """上一个匹配项"""
@@ -1224,7 +1335,7 @@ class ProofreadingPage(Base, QWidget):
                 self.search_is_regex = is_regex
                 self.search_replace_mode = True
                 self.search_next_anchor_index = None
-                self.pending_selected_item = None
+                self.pending_selected_item_id = None
                 self.apply_filter(False)
                 return
 
@@ -1243,7 +1354,7 @@ class ProofreadingPage(Base, QWidget):
             target_item = self.filtered_items[item_index]
             replace_text = self.search_card.get_replace_text()
             new_dst, replaced_count = self.replace_once_in_text(
-                text=target_item.get_dst(),
+                text=target_item.dst,
                 keyword=self.search_keyword,
                 replacement=replace_text,
                 is_regex=self.search_is_regex,
@@ -1374,97 +1485,33 @@ class ProofreadingPage(Base, QWidget):
             self.indeterminate_show(
                 Localizer.get().proofreading_page_indeterminate_saving
             )
+            self.begin_local_mutation()
 
             def task() -> None:
-                changed_payload: list[dict[str, Any]] = []
-                changes: list[tuple[int, str, Base.ProjectStatus]] = []
-                changed_count = 0
-
-                if is_regex:
-                    try:
-                        pattern = re.compile(keyword, re.IGNORECASE)
-                    except re.error as e:
-                        LogManager.get().error(Localizer.get().task_failed, e)
-                        self.replace_all_done.emit(
-                            ReplaceAllResult(
-                                success=False,
-                                changed_count=0,
-                                changes=tuple(),
-                            )
-                        )
-                        return
-                else:
-                    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
-
                 try:
-                    for item in target_items:
-                        old_dst = item.get_dst()
-                        old_status = item.get_status()
-
-                        if is_regex:
-                            new_dst, replaced_count = pattern.subn(replacement, old_dst)
-                        else:
-                            # 非正则替换：字面量、不区分大小写；replacement 按纯文本处理。
-                            new_dst, replaced_count = pattern.subn(
-                                lambda m: replacement, old_dst
-                            )
-
-                        if replaced_count <= 0 or new_dst == old_dst:
-                            continue
-
-                        item_dict = item.to_dict()
-                        if isinstance(item_dict.get("id"), int):
-                            # 状态流转统一走 Domain，避免单条保存/批量替换规则漂移。
-                            new_status = (
-                                ProofreadingDomain.resolve_status_after_manual_edit(
-                                    old_status=old_status, new_dst=new_dst
-                                )
-                            )
-
-                            item_dict["dst"] = new_dst
-                            item_dict["status"] = new_status
-                            changed_payload.append(item_dict)
-                            changes.append((item_dict["id"], new_dst, new_status))
-                            changed_count += 1
-
-                    if changed_count <= 0 or not changed_payload:
-                        self.replace_all_done.emit(
-                            ReplaceAllResult(
-                                success=True,
-                                changed_count=0,
-                                changes=tuple(),
-                            )
-                        )
-                        return
-
-                    DataManager.get().update_batch(items=changed_payload)
-                    self.replace_all_done.emit(
-                        ReplaceAllResult(
-                            success=True,
-                            changed_count=changed_count,
-                            changes=tuple(changes),
-                        )
+                    result = self.proofreading_api_client.replace_all(
+                        {
+                            "project_id": self.get_project_id(),
+                            "items": self.build_item_payloads(target_items),
+                            "search_text": keyword,
+                            "replace_text": replacement,
+                            "is_regex": is_regex,
+                            "expected_revision": self.current_snapshot.revision,
+                        }
                     )
+                    self.replace_all_done.emit(result)
                 except Exception as e:
                     LogManager.get().error(Localizer.get().task_failed, e)
-                    self.replace_all_done.emit(
-                        ReplaceAllResult(
-                            success=False,
-                            changed_count=0,
-                            changes=tuple(),
-                        )
-                    )
+                    self.replace_all_done.emit(None)
 
             threading.Thread(target=task, daemon=True).start()
 
         self.run_with_unsaved_guard(action)
 
     def on_replace_all_done_ui(self, result: object) -> None:
+        self.end_local_mutation()
         self.indeterminate_hide()
-        if not isinstance(result, ReplaceAllResult):
-            return
-
-        if not result.success:
+        if not isinstance(result, ProofreadingMutationResult):
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -1474,7 +1521,8 @@ class ProofreadingPage(Base, QWidget):
             )
             return
 
-        if result.changed_count <= 0:
+        changed_count = len(result.changed_item_ids)
+        if changed_count <= 0:
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -1484,48 +1532,19 @@ class ProofreadingPage(Base, QWidget):
             )
             return
 
-        item_by_id: dict[int, Item] = {}
-        # 全量可校对条目是页面内存状态的唯一来源，避免替换期间筛选变化导致漏回写。
-        for item in self.items:
-            item_id = item.get_id()
-            if isinstance(item_id, int):
-                item_by_id[item_id] = item
-
-        # UI 线程应用变更：避免后台线程直接修改共享 Item。
-        for item_id, new_dst, new_status in result.changes:
-            item = item_by_id.get(item_id)
-            if item is None:
-                continue
-
-            item.set_status(new_status)
-            item.set_dst(new_dst)
-
-            row = self.table_widget.find_row_by_item(item)
-            if row >= 0:
-                self.table_widget.update_row_dst(row)
-                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-                self.table_widget.update_row_status(row, warnings)
-
-        if self.current_item is not None:
-            row = self.table_widget.find_row_by_item(self.current_item)
-            if row >= 0:
-                warnings = ProofreadingDomain.get_item_warnings(
-                    self.current_item, self.warning_map
-                )
-                self.edit_panel.bind_item(self.current_item, row + 1, warnings)
-                self.edit_panel.set_readonly(self.is_readonly)
-
-        self.update_project_status_after_save()
+        self.apply_mutation_result(
+            result,
+            preferred_item_id=self.selected_item_id,
+        )
         # Replace 路径下延后列表重筛，仅刷新状态。
         self.search_refilter_deferred = True
-        self.schedule_quality_rule_refresh()
 
         self.emit(
             Base.Event.TOAST,
             {
                 "type": Base.ToastType.SUCCESS,
                 "message": Localizer.get().proofreading_page_replace_done.replace(
-                    "{N}", str(result.changed_count)
+                    "{N}", str(changed_count)
                 ),
             },
         )
@@ -1584,6 +1603,7 @@ class ProofreadingPage(Base, QWidget):
         if row < 0:
             self.current_item = None
             self.current_row_index = -1
+            self.selected_item_id = None
             self.edit_panel.clear()
             return
 
@@ -1603,12 +1623,12 @@ class ProofreadingPage(Base, QWidget):
 
         self.run_with_unsaved_guard(action, revert)
 
-    def apply_selection(self, item: Item, row: int) -> None:
+    def apply_selection(self, item: ProofreadingItemView, row: int) -> None:
         self.current_item = item
         self.current_row_index = row
-        warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
+        self.selected_item_id = item.item_id
         index = row + 1
-        self.edit_panel.bind_item(item, index, warnings)
+        self.edit_panel.bind_item(item, index, item.warnings)
         self.edit_panel.set_readonly(self.is_readonly)
 
     def run_with_unsaved_guard(
@@ -1630,11 +1650,15 @@ class ProofreadingPage(Base, QWidget):
             self.current_item, self.edit_panel.get_current_text()
         )
 
-    def on_edit_save_requested(self, item: Item, new_dst: str) -> None:
+    def on_edit_save_requested(
+        self,
+        item: ProofreadingItemView,
+        new_dst: str,
+    ) -> None:
         if self.is_readonly:
             return
 
-        if new_dst == item.get_dst():
+        if new_dst == item.dst:
             self.edit_panel.apply_saved_state()
             if self.pending_action:
                 action = self.pending_action
@@ -1643,32 +1667,31 @@ class ProofreadingPage(Base, QWidget):
                 action()
             return
 
-        old_dst = item.get_dst()
-        old_status = item.get_status()
-        new_status = ProofreadingDomain.resolve_status_after_manual_edit(
-            old_status=old_status, new_dst=new_dst
-        )
-        if new_status != old_status:
-            item.set_status(new_status)
-
-        item.set_dst(new_dst)
+        self.begin_local_mutation()
 
         def task() -> None:
             success = False
+            result: ProofreadingMutationResult | None = None
             try:
-                DataManager.get().save_item(item)
+                result = self.proofreading_api_client.save_item(
+                    {
+                        "project_id": self.get_project_id(),
+                        "item": self.build_item_payload(item),
+                        "new_dst": new_dst,
+                        "expected_revision": self.current_snapshot.revision,
+                    }
+                )
                 success = True
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
-                item.set_dst(old_dst)
-                item.set_status(old_status)
 
-            self.item_saved.emit(item, success)
+            self.item_saved.emit(result, success)
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_item_saved_ui(self, item: Item, success: bool) -> None:
-        if not success:
+    def on_item_saved_ui(self, result: object, success: bool) -> None:
+        self.end_local_mutation()
+        if not success or not isinstance(result, ProofreadingMutationResult):
             self.emit(
                 Base.Event.TOAST,
                 {
@@ -1682,26 +1705,8 @@ class ProofreadingPage(Base, QWidget):
             self.pending_revert = None
             return
 
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            self.table_widget.update_row_dst(row)
-
-        if self.current_item is item:
-            if self.edit_panel.get_current_text() != item.get_dst():
-                # 替换条等外部动作会直接改写 item，保存成功后需要回填编辑区文本。
-                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-                index = row + 1 if row >= 0 else max(self.current_row_index + 1, 1)
-                self.edit_panel.bind_item(item, index, warnings)
-                self.edit_panel.set_readonly(self.is_readonly)
-            else:
-                self.edit_panel.apply_saved_state()
-        else:
-            self.edit_panel.apply_saved_state()
-
-        # 结果检查可能较重，放到后台线程执行，避免 UI 卡顿。
-        self.start_recheck_item(item)
-
-        self.update_project_status_after_save()
+        preferred_item_id = self.current_item.item_id if self.current_item else None
+        self.apply_mutation_result(result, preferred_item_id=preferred_item_id)
 
         # 自动保存成功后给用户反馈，避免用户疑惑修改是否生效
         self.emit(
@@ -1722,86 +1727,37 @@ class ProofreadingPage(Base, QWidget):
             self.reload_pending = False
             self.schedule_reload("after_save")
 
-    def start_recheck_item(self, item: Item) -> None:
-        config = self.config
-        if config is None:
-            self.item_rechecked.emit(item, [], None)
-            return
+    def start_recheck_item(self, item: ProofreadingItemView) -> None:
+        self.begin_local_mutation()
 
         def task() -> None:
             try:
-                checker = ResultChecker(config)
-                warnings = checker.check_item(item)
-
-                failed_terms: tuple[tuple[str, str], ...] | None = None
-                if WarningType.GLOSSARY in warnings:
-                    failed_terms = tuple(checker.get_failed_glossary_terms(item))
-
-                self.item_rechecked.emit(item, warnings, failed_terms)
+                result = self.proofreading_api_client.recheck_item(
+                    {
+                        "project_id": self.get_project_id(),
+                        "item": self.build_item_payload(item),
+                    }
+                )
+                self.item_rechecked.emit(result, True)
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
-                self.item_rechecked.emit(item, [], None)
+                self.item_rechecked.emit(None, False)
 
         threading.Thread(target=task, daemon=True).start()
 
-    def on_item_rechecked_ui(
-        self,
-        item: Item,
-        warnings: list[WarningType],
-        failed_terms: tuple[tuple[str, str], ...] | None,
-    ) -> None:
-        key = ProofreadingDomain.get_warning_key(item)
-        if warnings:
-            self.warning_map[key] = list(warnings)
-        else:
-            self.warning_map.pop(key, None)
+    def on_item_rechecked_ui(self, result: object, success: bool) -> None:
+        self.end_local_mutation()
+        if not success or not isinstance(result, ProofreadingMutationResult):
+            return
 
-        # 术语失败明细缓存必须与 warning_map 同步，否则筛选/统计会长期不准。
-        if WarningType.GLOSSARY in warnings and failed_terms is not None:
-            self.failed_terms_by_item_key[key] = failed_terms
-        else:
-            # 失效缓存：避免残留旧值导致术语筛选/统计长期不准。
-            self.failed_terms_by_item_key.pop(key, None)
+        preferred_item_id = self.current_item.item_id if self.current_item else None
+        self.apply_mutation_result(result, preferred_item_id=preferred_item_id)
 
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            self.table_widget.update_row_status(row, warnings)
-        if self.current_item is item:
-            self.edit_panel.refresh_status_tags(item, warnings)
-
-    def recheck_item(self, item: Item) -> list[WarningType]:
-        """重新检查单个条目"""
-        if not self.config:
-            return []
-
-        checker = ResultChecker(self.config)
-        warnings = checker.check_item(item)
-
-        key = ProofreadingDomain.get_warning_key(item)
-        if warnings:
-            self.warning_map[key] = warnings
-        else:
-            self.warning_map.pop(key, None)
-
-        # 同步更新术语失败明细缓存，避免筛选对话框/术语筛选使用过期数据。
-        if WarningType.GLOSSARY in warnings:
-            self.failed_terms_by_item_key[key] = tuple(
-                checker.get_failed_glossary_terms(item)
-            )
-        else:
-            self.failed_terms_by_item_key.pop(key, None)
-
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            self.table_widget.update_row_status(row, warnings)
-
-        return warnings
-
-    def on_copy_src_clicked(self, item: Item) -> None:
+    def on_copy_src_clicked(self, item: ProofreadingItemView) -> None:
         """复制原文到剪贴板"""
         clipboard = QApplication.clipboard()
         if clipboard:
-            clipboard.setText(item.get_src())
+            clipboard.setText(item.src)
 
         self.emit(
             Base.Event.TOAST,
@@ -1811,11 +1767,11 @@ class ProofreadingPage(Base, QWidget):
             },
         )
 
-    def on_copy_dst_clicked(self, item: Item) -> None:
+    def on_copy_dst_clicked(self, item: ProofreadingItemView) -> None:
         """复制译文到剪贴板"""
         clipboard = QApplication.clipboard()
         if clipboard:
-            text = item.get_dst()
+            text = item.dst
             # 右侧编辑面板的“复制译文”应复制当前编辑框内容（可能未保存）。
             if self.sender() is self.edit_panel and self.current_item is item:
                 text = self.edit_panel.get_current_text()
@@ -1830,8 +1786,9 @@ class ProofreadingPage(Base, QWidget):
         )
 
     # ========== 重置翻译功能 ==========
-    def on_reset_translation_clicked(self, item: Item) -> None:
-        """重置翻译按钮点击"""
+    def on_reset_translation_clicked(self, item: ProofreadingItemView) -> None:
+        """重置当前条目的译文与状态。"""
+
         if self.is_readonly:
             return
 
@@ -1842,14 +1799,16 @@ class ProofreadingPage(Base, QWidget):
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
-
         if not message_box.exec():
             return
 
-        self.do_batch_reset_translation([item])
+        self.run_with_unsaved_guard(lambda: self.do_batch_reset_translation([item]))
 
-    def on_batch_reset_translation_clicked(self, items: list[Item]) -> None:
-        """批量重置翻译按钮点击"""
+    def on_batch_reset_translation_clicked(
+        self, items: list[ProofreadingItemView]
+    ) -> None:
+        """重置当前选中条目的译文与状态。"""
+
         if self.is_readonly or not items:
             return
 
@@ -1863,40 +1822,45 @@ class ProofreadingPage(Base, QWidget):
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
-
         if not message_box.exec():
             return
 
-        self.do_batch_reset_translation(items)
+        self.run_with_unsaved_guard(lambda: self.do_batch_reset_translation(items))
 
-    def do_batch_reset_translation(self, items: list[Item]) -> None:
-        """执行批量重置"""
-        # 保存按钮已移至编辑区，重置操作需要自动入库
-        for item in items:
-            item.set_dst("")
-            item.set_status(Base.ProjectStatus.NONE)
-            item.set_retry_count(0)
+    def do_batch_reset_translation(self, items: list[ProofreadingItemView]) -> None:
+        """通过 API 批量重置当前条目。"""
 
-            # 入库
-            DataManager.get().save_item(item)
+        if not items:
+            return
 
-            # 更新 UI 和检查结果
-            self.recheck_item(item)
-            row = self.table_widget.find_row_by_item(item)
-            if row >= 0:
-                self.table_widget.update_row_dst(row)
-            if self.current_item is item:
-                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-                index = self.current_row_index + 1
-                self.edit_panel.bind_item(item, index, warnings)
-                self.edit_panel.set_readonly(self.is_readonly)
+        self.begin_local_mutation()
+        self.indeterminate_show(Localizer.get().translation_page_toast_resetting)
 
-        self.update_project_status_after_save()
+        def task() -> None:
+            try:
+                result = self.proofreading_api_client.save_all(
+                    {
+                        "project_id": self.get_project_id(),
+                        "items": self.build_item_payloads(
+                            items,
+                            dst_override="",
+                            status_override=Base.ProjectStatus.NONE,
+                        ),
+                        "expected_revision": self.current_snapshot.revision,
+                    }
+                )
+                self.translate_done.emit(result, len(items))
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                self.translate_done.emit(None, 0)
+
+        threading.Thread(target=task, daemon=True).start()
 
     # ========== 重新翻译功能 ==========
-    def on_retranslate_clicked(self, item: Item) -> None:
-        """重新翻译按钮点击 - 单条翻译也使用批量翻译流程"""
-        if self.is_readonly or not self.config:
+    def on_retranslate_clicked(self, item: ProofreadingItemView) -> None:
+        """重新翻译按钮点击。"""
+
+        if self.is_readonly:
             return
 
         message_box = MessageBox(
@@ -1906,19 +1870,17 @@ class ProofreadingPage(Base, QWidget):
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
-
         if not message_box.exec():
             return
 
-        # 使用统一的批量翻译流程（单条也走这个逻辑）
-        self.do_batch_retranslate([item])
+        self.run_with_unsaved_guard(lambda: self.do_batch_retranslate([item]))
 
-    def on_batch_retranslate_clicked(self, items: list[Item]) -> None:
-        """批量重新翻译按钮点击"""
-        if self.is_readonly or not self.config or not items:
+    def on_batch_retranslate_clicked(self, items: list[ProofreadingItemView]) -> None:
+        """批量重新翻译按钮点击。"""
+
+        if self.is_readonly or not items:
             return
 
-        # 确认对话框
         count = len(items)
         message_box = MessageBox(
             Localizer.get().confirm,
@@ -1929,122 +1891,84 @@ class ProofreadingPage(Base, QWidget):
         )
         message_box.yesButton.setText(Localizer.get().confirm)
         message_box.cancelButton.setText(Localizer.get().cancel)
-
         if not message_box.exec():
             return
 
-        self.do_batch_retranslate(items)
+        self.run_with_unsaved_guard(lambda: self.do_batch_retranslate(items))
 
-    def do_batch_retranslate(self, items: list[Item]) -> None:
-        """执行批量翻译（单条和多条统一入口）"""
-        count = len(items)
-        # 使用最新配置，而非缓存的 self.config
-        config = Config().load()
+    def do_batch_retranslate(self, items: list[ProofreadingItemView]) -> None:
+        """通过 API 统一处理单条/批量重译。"""
 
-        # 显示进度 Toast（初始显示"正在处理第 1 个"）
-        self.progress_show(
-            Localizer.get()
-            .task_batch_translation_progress.replace("{CURRENT}", "1")
-            .replace("{TOTAL}", str(count)),
-            1,
-            count,
-        )
+        if not items:
+            return
 
-        def batch_translate_task() -> None:
-            success_count = 0
-            fail_count = 0
-            total = len(items)
+        self.begin_local_mutation()
+        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_loading)
 
-            for idx, item in enumerate(items):
-                # 更新进度（在任务开始前显示"正在处理第 N 个"）
-                current = idx + 1
-                self.progress_updated.emit(
-                    Localizer.get()
-                    .task_batch_translation_progress.replace("{CURRENT}", str(current))
-                    .replace("{TOTAL}", str(total)),
-                    current,
-                    total,
+        def task() -> None:
+            try:
+                result = self.proofreading_api_client.retranslate_items(
+                    {
+                        "project_id": self.get_project_id(),
+                        "items": self.build_item_payloads(items),
+                        "expected_revision": self.current_snapshot.revision,
+                    }
                 )
+                self.translate_done.emit(result, len(items))
+            except Exception as e:
+                LogManager.get().error(Localizer.get().task_failed, e)
+                self.translate_done.emit(None, len(items))
 
-                # 重置状态
-                item.set_status(Base.ProjectStatus.NONE)
-                item.set_retry_count(0)
+        threading.Thread(target=task, daemon=True).start()
 
-                # 同步翻译（使用 Event 等待完成，兼容 No-GIL）
-                complete_event = threading.Event()
-                result_container = {"success": False}
+    def on_translate_done_ui(self, result: object, requested_count: int) -> None:
+        """重译/重置完成后统一消费 mutation result。"""
 
-                def callback(i: Item, s: bool) -> None:
-                    result_container["success"] = s
-                    # 发射信号通知 UI 逐条刷新
-                    self.translate_done.emit(i, s)
-                    complete_event.set()
-
-                Engine.get().translate_single_item(
-                    item=item, config=config, callback=callback
-                )
-
-                # 阻塞等待翻译完成，避免忙轮询
-                complete_event.wait()
-
-                if result_container["success"]:
-                    success_count += 1
-                else:
-                    fail_count += 1
-                    item.set_status(Base.ProjectStatus.ERROR)
-
-            # 完成后隐藏 Toast（通过信号在主线程执行）
-            self.progress_finished.emit()
-
-            # 显示结果
+        self.end_local_mutation()
+        self.indeterminate_hide()
+        if not isinstance(result, ProofreadingMutationResult):
             self.emit(
                 Base.Event.TOAST,
                 {
-                    "type": Base.ToastType.SUCCESS
-                    if fail_count == 0
-                    else Base.ToastType.WARNING,
+                    "type": Base.ToastType.ERROR,
+                    "message": Localizer.get().task_failed,
+                },
+            )
+            return
+
+        changed_count = len(result.changed_item_ids)
+        self.apply_mutation_result(
+            result,
+            preferred_item_id=self.selected_item_id,
+        )
+
+        if changed_count == requested_count and changed_count > 0:
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.SUCCESS,
                     "message": Localizer.get()
                     .task_batch_translation_success.replace(
-                        "{SUCCESS}", str(success_count)
+                        "{SUCCESS}", str(changed_count)
+                    )
+                    .replace("{FAILED}", "0"),
+                },
+            )
+            return
+
+        if requested_count > 0:
+            fail_count = max(requested_count - changed_count, 0)
+            self.emit(
+                Base.Event.TOAST,
+                {
+                    "type": Base.ToastType.WARNING,
+                    "message": Localizer.get()
+                    .task_batch_translation_success.replace(
+                        "{SUCCESS}", str(changed_count)
                     )
                     .replace("{FAILED}", str(fail_count)),
                 },
             )
-
-        threading.Thread(target=batch_translate_task, daemon=True).start()
-
-    def on_translate_done_ui(self, item: Item, success: bool) -> None:
-        """翻译完成的 UI 更新（主线程）- 逐条刷新，不显示 Toast（批量流程统一显示）"""
-        # 失败时先落状态，保证后续持久化与 UI 刷新一致。
-        if not success:
-            item.set_status(Base.ProjectStatus.ERROR)
-
-        # 保存按钮已移至编辑区，翻译完成后需要自动入库
-        try:
-            DataManager.get().save_item(item)
-        except Exception as e:
-            LogManager.get().error(Localizer.get().task_failed, e)
-
-        # 1. 无论是否可见，都更新数据层面的警告状态，确保翻页后状态正确
-        if success:
-            self.recheck_item(item)
-
-        # 2. 如果条目在当前页可见，更新 UI 显示
-        row = self.table_widget.find_row_by_item(item)
-        if row >= 0:
-            if success:
-                self.table_widget.update_row_dst(row)
-            else:
-                # 失败也要刷新状态图标，否则 UI 可能仍显示旧状态。
-                warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-                self.table_widget.update_row_status(row, warnings)
-        if self.current_item is item:
-            warnings = ProofreadingDomain.get_item_warnings(item, self.warning_map)
-            index = self.current_row_index + 1
-            self.edit_panel.bind_item(item, index, warnings)
-            self.edit_panel.set_readonly(self.is_readonly)
-
-        self.update_project_status_after_save()
 
     def on_progress_updated_ui(self, content: str, current: int, total: int) -> None:
         """进度更新的 UI 处理（主线程）"""
@@ -2054,83 +1978,6 @@ class ProofreadingPage(Base, QWidget):
         """进度完成的 UI 处理（主线程）"""
         self.indeterminate_hide()
         # 逐条刷新已在 on_translate_done_ui 中完成，无需再次刷新
-
-    # ========== 保存功能 ==========
-    def on_save_clicked(self) -> None:
-        """保存按钮点击"""
-        self.indeterminate_show(Localizer.get().proofreading_page_indeterminate_saving)
-        self.save_data()
-
-    def save_data(self) -> None:
-        """保存数据到工程数据库（异步执行）。"""
-        if self.is_readonly or not self.config or not self.items_all:
-            self.indeterminate_hide()
-            return
-
-        # 捕获当前状态的引用，避免在子线程中访问 self 时产生竞态
-        items_all = self.items_all
-
-        def task() -> None:
-            try:
-                # 直接写入工程数据库
-                DataManager.get().replace_all_items(items_all)
-                self.update_project_status_after_save()
-
-                self.save_done.emit(True)
-            except Exception as e:
-                LogManager.get().error(Localizer.get().proofreading_page_save_failed, e)
-                self.save_done.emit(False)
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def update_project_status_after_save(self) -> None:
-        dm = DataManager.get()
-        if not dm.is_loaded():
-            return
-
-        review_items = self.items
-        untranslated_count = sum(
-            1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
-        )
-        project_status = (
-            Base.ProjectStatus.PROCESSING
-            if untranslated_count > 0
-            else Base.ProjectStatus.PROCESSED
-        )
-        dm.set_project_status(project_status)
-
-        extras = dm.get_translation_extras()
-        translated_count = sum(
-            1
-            for item in review_items
-            if item.get_status()
-            in (
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.PROCESSED_IN_PAST,
-            )
-        )
-        extras["line"] = translated_count
-        dm.set_translation_extras(extras)
-
-    def on_save_done_ui(self, success: bool) -> None:
-        """保存完成的 UI 更新（主线程）"""
-        # 普通保存流程：成功时触发项目状态检查，失败时弹出错误提示
-        self.indeterminate_hide()
-        if success:
-            # 通知翻译页更新按钮状态
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-            return
-
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": Localizer.get().proofreading_page_save_failed,
-            },
-        )
 
     # ========== 只读模式控制 ==========
     def on_engine_status_changed(self, event: Base.Event, data: dict) -> None:
@@ -2162,38 +2009,37 @@ class ProofreadingPage(Base, QWidget):
 
     def check_engine_status(self) -> None:
         """检查并更新只读模式"""
-        # 获取全局引擎状态，确保 UI 状态与后台任务一致
-        engine_status = Engine.get().get_status()
-        is_engine_busy = engine_status in (
-            Base.TaskStatus.ANALYZING,
-            Base.TaskStatus.TRANSLATING,
-            Base.TaskStatus.STOPPING,
-        )
-        # 重置虽然不占用 Engine 状态，但后台会重写条目，需与翻译运行态一样锁定编辑。
-        is_busy = is_engine_busy or self.is_resetting
-
+        external_busy = self.api_state_store.is_busy() or self.is_resetting
+        local_busy = self.has_local_mutation_inflight()
+        is_busy = external_busy or local_busy
         was_busy = self.is_readonly
 
-        # 1. 如果处于翻译中/停止中，清空页面数据
-        if is_busy and (self.items or self.items_all):
-            self.items_all = []
-            self.items = []
+        # 1. 只有外部任务运行时才清空页面，避免本页 mutation 把当前列表清掉。
+        if external_busy and (self.current_snapshot.items or self.filtered_items):
+            self.current_snapshot = ProofreadingSnapshot(
+                revision=self.current_snapshot.revision,
+                project_id=self.current_snapshot.project_id,
+                readonly=True,
+                summary=self.current_snapshot.summary,
+                filters=self.filter_options,
+                items=tuple(),
+            )
             self.filtered_items = []
-            self.warning_map = {}
             self.data_stale = True
             self.reload_pending = True
             # 繁忙态清空选择态，避免 current_item 等指向旧对象造成 UI 同步错乱。
-            self.pending_selected_item = None
+            self.pending_selected_item_id = None
+            self.selected_item_id = None
             self.current_item = None
             self.current_row_index = -1
             # 使在途的加载线程结果自动失效，避免翻译中被旧数据覆盖。
             self.loading_token = 0
             self.is_loading = False
-            self.table_widget.set_items([], {})
+            self.table_widget.set_items([])
             self.edit_panel.clear()
 
         # 禁用态不保留搜索状态：若当前在搜索栏，直接回到主动作条。
-        if is_busy:
+        if external_busy:
             self.reset_search_state()
 
         # 2. 翻译结束后自动同步一次
@@ -2201,7 +2047,7 @@ class ProofreadingPage(Base, QWidget):
             self.schedule_reload("engine_idle")
 
         # 2. 更新按钮状态
-        has_items = bool(self.items)
+        has_items = bool(self.filtered_items)
 
         # 其他按钮只有在不繁忙且有数据时启用
         can_operate_review = not is_busy and has_items
@@ -2218,12 +2064,13 @@ class ProofreadingPage(Base, QWidget):
     def showEvent(self, a0: QShowEvent) -> None:
         """页面显示时自动刷新状态，确保与全局翻译任务同步"""
         super().showEvent(a0)
+        self.reload_invalidated_snapshot_if_needed()
         self.check_engine_status()
         if self.data_stale:
             self.schedule_reload("show")
         elif self.pending_lookup_request is not None:
             self.apply_pending_lookup_if_ready()
-        if self.pending_quality_rule_refresh and self.items:
+        if self.pending_quality_rule_refresh and self.current_snapshot.items:
             self.pending_quality_rule_refresh = False
             self.schedule_quality_rule_refresh()
 
@@ -2299,27 +2146,26 @@ class ProofreadingPage(Base, QWidget):
         del event
         del data
         self.clear_all_data()
-        self.config = None
         self.mark_data_stale()
         self.schedule_reload("project_loaded")
 
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后清理数据"""
+        del event
+        del data
         self.clear_all_data()
-        self.config = None
 
     def clear_all_data(self) -> None:
         """彻底清理页面所有数据和 UI 状态"""
         # 清空数据
-        self.items_all = []
-        self.items = []
+        self.current_snapshot = ProofreadingSnapshot()
         self.filtered_items = []
-        self.warning_map = {}
-        self.result_checker = None
-        self.failed_terms_by_item_key = {}
-        self.filter_options = ProofreadingFilterOptions()
+        self.search_result = None
+        self.filter_options = ProofreadingFilterOptionsSnapshot()
         self.current_item = None
         self.current_row_index = -1
+        self.selected_item_id = None
+        self.pending_selected_item_id = None
         self.data_stale = True
         self.reload_pending = False
         self.is_loading = False
@@ -2330,8 +2176,7 @@ class ProofreadingPage(Base, QWidget):
         self.reset_search_state()
 
         # 重置表格
-        self.table_widget.set_items([], {})
-        self.edit_panel.set_result_checker(None)
+        self.table_widget.set_items([])
         self.edit_panel.clear()
 
         # 释放筛选对话框持有的工程快照（对话框实例本身仍复用）。

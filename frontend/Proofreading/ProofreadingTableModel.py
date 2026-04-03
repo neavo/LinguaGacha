@@ -9,10 +9,8 @@ from PySide6.QtCore import QObject
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
-from frontend.Proofreading.ProofreadingDomain import ProofreadingDomain
-from model.Item import Item
+from model.Api.ProofreadingModels import ProofreadingItemView
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import WarningType
 
 
 class ProofreadingTableModel(QAbstractTableModel):
@@ -47,10 +45,8 @@ class ProofreadingTableModel(QAbstractTableModel):
         self.readonly: bool = False
         self.start_index: int = 0
 
-        self.source_items: list[Item] = []
-        self.warning_map: dict[int, list[WarningType]] = {}
-        self.warning_tuples: dict[int, tuple[WarningType, ...]] = {}
-        self.row_by_item_key: dict[int, int] = {}
+        self.source_items: list[ProofreadingItemView] = []
+        self.row_by_item_key: dict[int | str, int] = {}
 
         # DisplayRole 热路径缓存：按需缓存 compact 结果，避免滚动重绘时重复计算/分配。
         self.display_src_cache: dict[int, str] = {}
@@ -59,35 +55,20 @@ class ProofreadingTableModel(QAbstractTableModel):
     # ========== 数据源与状态 ==========
     def set_data_source(
         self,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]],
+        items: list[ProofreadingItemView],
         start_index: int = 0,
     ) -> None:
         self.beginResetModel()
         self.source_items = list(items)
-        self.warning_map = dict(warning_map) if warning_map else {}
-        self.warning_tuples = {
-            k: tuple(v)
-            for k, v in self.warning_map.items()
-            if isinstance(v, list) and v
-        }
         self.start_index = max(0, int(start_index))
-        self.row_by_item_key = {id(item): i for i, item in enumerate(self.source_items)}
+        self.row_by_item_key = {
+            item.item_id: i for i, item in enumerate(self.source_items)
+        }
 
         # 数据源切换意味着所有派生缓存均失效。
         self.display_src_cache.clear()
         self.display_dst_cache.clear()
         self.endResetModel()
-
-    def set_item_warnings(self, item: Item, warnings: list[WarningType]) -> None:
-        key = ProofreadingDomain.get_warning_key(item)
-        if warnings:
-            resolved = list(warnings)
-            self.warning_map[key] = resolved
-            self.warning_tuples[key] = tuple(resolved)
-        else:
-            self.warning_map.pop(key, None)
-            self.warning_tuples.pop(key, None)
 
     def invalidate_display_cache_by_row(
         self, row: int, *, src: bool = False, dst: bool = False
@@ -95,7 +76,7 @@ class ProofreadingTableModel(QAbstractTableModel):
         item = self.get_source_item(row)
         if item is None:
             return
-        key = id(item)
+        key = item.item_id
         if src:
             self.display_src_cache.pop(key, None)
         if dst:
@@ -107,10 +88,10 @@ class ProofreadingTableModel(QAbstractTableModel):
     def total_count(self) -> int:
         return len(self.source_items)
 
-    def find_row_by_item(self, item: Item) -> int:
-        return self.row_by_item_key.get(id(item), -1)
+    def find_row_by_item(self, item: ProofreadingItemView) -> int:
+        return self.row_by_item_key.get(item.item_id, -1)
 
-    def get_source_item(self, row: int) -> Item | None:
+    def get_source_item(self, row: int) -> ProofreadingItemView | None:
         if row < 0 or row >= len(self.source_items):
             return None
         return self.source_items[row]
@@ -191,10 +172,9 @@ class ProofreadingTableModel(QAbstractTableModel):
         if role == self.ITEM_ROLE:
             return item
         if role == self.STATUS_ROLE:
-            return item.get_status()
+            return item.status
         if role == self.WARNINGS_ROLE:
-            key = ProofreadingDomain.get_warning_key(item)
-            return self.warning_tuples.get(key, tuple())
+            return item.warnings
         if role == self.PLACEHOLDER_ROLE:
             return False
         if role == Qt.ItemDataRole.FontRole:
@@ -208,19 +188,19 @@ class ProofreadingTableModel(QAbstractTableModel):
             return None
 
         if index.column() == self.COL_SRC:
-            key = id(item)
+            key = item.item_id
             cached = self.display_src_cache.get(key)
             if cached is not None:
                 return cached
-            text = self.compact_multiline_text(item.get_src())
+            text = self.compact_multiline_text(item.src)
             self.display_src_cache[key] = text
             return text
         if index.column() == self.COL_DST:
-            key = id(item)
+            key = item.item_id
             cached = self.display_dst_cache.get(key)
             if cached is not None:
                 return cached
-            text = self.compact_multiline_text(item.get_dst())
+            text = self.compact_multiline_text(item.dst)
             self.display_dst_cache[key] = text
             return text
         return ""

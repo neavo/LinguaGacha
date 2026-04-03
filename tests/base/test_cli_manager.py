@@ -1462,6 +1462,26 @@ def test_execute_analysis_plan_skips_optional_steps_when_not_requested(
     assert emitted_events == [Base.Event.ANALYSIS_TASK]
 
 
+def test_cli_mode_does_not_start_local_api_server() -> None:
+    import app as app_module
+
+    start_calls: list[bool] = []
+
+    class FakeBootstrap:
+        @staticmethod
+        def start() -> object:
+            start_calls.append(True)
+            return object()
+
+    runtime = app_module.start_local_api_server_if_needed(
+        is_cli_mode=True,
+        server_bootstrap=FakeBootstrap,
+    )
+
+    assert runtime is None
+    assert start_calls == []
+
+
 @pytest.mark.parametrize(
     ("step_name", "expected_calls"),
     [

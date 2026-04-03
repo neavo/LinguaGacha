@@ -2,6 +2,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.SettingsApiClient import SettingsApiClient
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
@@ -40,10 +43,10 @@ from qfluentwidgets import themeColor
 
 from base.Base import Base
 from base.BaseIcon import BaseIcon
-from base.EventManager import EventManager
 from base.LogManager import LogManager
-from module.Config import Config
-from module.Data.DataManager import DataManager
+from model.Api.ProjectModels import ProjectPreview
+from model.Api.ProjectModels import ProjectSnapshot
+from model.Api.SettingsModels import AppSettingsSnapshot
 from module.Localizer.Localizer import Localizer
 
 # ==================== 图标常量 ====================
@@ -59,40 +62,45 @@ ICON_DROP_SOURCE_READY: BaseIcon = BaseIcon.FOLDER  # 新建工程：源文件/�
 ICON_DROP_PROJECT_EMPTY: BaseIcon = BaseIcon.FILE  # 打开工程：待选择 .lg 文件
 
 
+def emit_toast(toast_type: Base.ToastType, message: str) -> None:
+    """给非 Base 组件提供统一的 Toast 出口，避免直接依赖 EventManager。"""
+
+    Base().emit(
+        Base.Event.TOAST,
+        {
+            "type": toast_type,
+            "message": message,
+        },
+    )
+
+
 class CreateProjectThread(QThread):
     """创建工程后台线程"""
 
     # 信号：(是否成功, 结果数据/错误信息)
     finished_signal = Signal(bool, object)
 
-    def __init__(self, source_path: str, output_path: str) -> None:
+    def __init__(
+        self,
+        project_api_client: ProjectApiClient,
+        source_path: str,
+        output_path: str,
+    ) -> None:
         super().__init__()
+        self.project_api_client = project_api_client
         self.source_path = source_path
         self.output_path = output_path
 
     def run(self) -> None:
         try:
-            # 设置进度回调
-            def progress_callback(current: int, total: int, message: str) -> None:
-                EventManager.get().emit_event(
-                    Base.Event.PROGRESS_TOAST,
-                    {
-                        "sub_event": Base.SubEvent.UPDATE,
-                        "message": message,
-                        "current": current,
-                        "total": total,
-                    },
-                )
-
-            # 执行创建
-            DataManager.get().create_project(
-                self.source_path,
-                self.output_path,
-                progress_callback=progress_callback,
+            result = self.project_api_client.create_project(
+                {
+                    "source_path": self.source_path,
+                    "path": self.output_path,
+                }
             )
 
-            # 成功
-            self.finished_signal.emit(True, None)
+            self.finished_signal.emit(True, result)
         except Exception as e:
             LogManager.get().error(
                 f"Failed to create project: {self.source_path} -> {self.output_path}",
@@ -107,15 +115,19 @@ class OpenProjectThread(QThread):
     # 信号：(是否成功, 结果数据/错误信息)
     finished_signal = Signal(bool, object)
 
-    def __init__(self, lg_path: str) -> None:
+    def __init__(
+        self,
+        project_api_client: ProjectApiClient,
+        lg_path: str,
+    ) -> None:
         super().__init__()
+        self.project_api_client = project_api_client
         self.lg_path = lg_path
 
     def run(self) -> None:
         try:
-            # 旧工程打开期间没有可复用的细粒度进度，只需要保证整段加载脱离 UI 线程。
-            DataManager.get().load_project(self.lg_path)
-            self.finished_signal.emit(True, None)
+            result = self.project_api_client.load_project({"path": self.lg_path})
+            self.finished_signal.emit(True, result)
         except Exception as e:
             LogManager.get().error(f"Failed to open project: {self.lg_path}", e)
             self.finished_signal.emit(False, str(e))
@@ -274,12 +286,9 @@ class DropZone(FileDisplayCard):
             return
 
         if len(urls) != 1:
-            EventManager.get().emit_event(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().project_toast_drop_multi_not_supported,
-                },
+            emit_toast(
+                Base.ToastType.WARNING,
+                Localizer.get().project_toast_drop_multi_not_supported,
             )
             return
 
@@ -369,12 +378,9 @@ class SelectedFileDisplay(FileDisplayCard):
             return
 
         if len(urls) != 1:
-            EventManager.get().emit_event(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.WARNING,
-                    "message": Localizer.get().project_toast_drop_multi_not_supported,
-                },
+            emit_toast(
+                Base.ToastType.WARNING,
+                Localizer.get().project_toast_drop_multi_not_supported,
             )
             return
 
@@ -486,7 +492,7 @@ class ProjectInfoPanel(SimpleCardWidget):
         # 信息行容器
         self.rows: dict[str, QLabel] = {}
 
-    def set_info(self, info: dict) -> None:
+    def set_info(self, info: ProjectPreview) -> None:
         """设置项目信息"""
         # 清空现有内容
         layout = self.layout()
@@ -502,6 +508,11 @@ class ProjectInfoPanel(SimpleCardWidget):
             ("created_at", Localizer.get().project_info_created_at),
             ("updated_at", Localizer.get().project_info_update),
         ]
+        field_values = {
+            "file_count": str(info.file_count),
+            "created_at": info.created_at,
+            "updated_at": info.updated_at,
+        }
 
         for key, label in fields:
             row = QFrame(self)
@@ -512,7 +523,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             row_layout.addWidget(label_widget)
 
             # 格式化时间
-            value = str(info.get(key, ""))
+            value = field_values[key]
             if key in ["created_at", "updated_at"] and value:
                 value = self.format_time(value)
 
@@ -524,7 +535,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             layout.addWidget(row)
 
         # 添加进度条（如果有）
-        if "progress" in info:
+        if info.has_progress:
             layout.addStretch()
 
             progress_header = QFrame(self)
@@ -536,7 +547,7 @@ class ProjectInfoPanel(SimpleCardWidget):
             )
             progress_header_layout.addWidget(progress_label)
 
-            percent = int(info["progress"] * 100)
+            percent = int(info.progress * 100)
             percent_label = QLabel(f"{percent}%", progress_header)
             color = "#ffffff" if isDarkTheme() else "#000000"
             percent_label.setStyleSheet(
@@ -558,8 +569,8 @@ class ProjectInfoPanel(SimpleCardWidget):
             stats_layout = QHBoxLayout(stats_frame)
             stats_layout.setContentsMargins(0, 4, 0, 0)
 
-            translated = info.get("translated_items", 0)
-            total = info.get("total_items", 0)
+            translated = info.translated_items
+            total = info.total_items
 
             left_stat = CaptionLabel(
                 Localizer.get().project_info_translated.replace(
@@ -646,14 +657,28 @@ class SupportedFormatItem(CardWidget):
 class ProjectPage(Base, ScrollArea):
     """工程页（新建/打开工程）"""
 
+    PROJECT_SAVE_MODE_MANUAL: str = "MANUAL"
+    PROJECT_SAVE_MODE_SOURCE: str = "SOURCE"
+    PROJECT_SAVE_MODE_FIXED: str = "FIXED"
+
     @staticmethod
     def get_project_file_filter() -> str:
         """返回 .lg 工程文件的文件选择器筛选文本。"""
 
         return Localizer.get().project_file_filter_lg
 
-    def __init__(self, object_name: str, parent=None) -> None:
+    def __init__(
+        self,
+        object_name: str,
+        project_api_client: ProjectApiClient,
+        settings_api_client: SettingsApiClient,
+        api_state_store: ApiStateStore,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
+        self.project_api_client = project_api_client
+        self.settings_api_client = settings_api_client
+        self.api_state_store = api_state_store
         self.setObjectName(object_name)
         self.setWidgetResizable(True)
         self.enableTransparentBackground()  # 启用透明背景
@@ -683,6 +708,25 @@ class ProjectPage(Base, ScrollArea):
 
         # 订阅事件
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
+
+    def get_settings_snapshot(self) -> AppSettingsSnapshot:
+        """统一读取当前设置快照对象，避免工程页继续直连 Config。"""
+
+        return self.settings_api_client.get_app_settings()
+
+    def get_recent_projects(self) -> list[dict[str, str]]:
+        """返回最近项目列表副本，避免外部持有内部可变引用。"""
+
+        settings_snapshot = self.get_settings_snapshot()
+        normalized_projects: list[dict[str, str]] = []
+        for project in settings_snapshot.recent_projects:
+            normalized_projects.append(
+                {
+                    "path": project.path,
+                    "name": project.name,
+                }
+            )
+        return normalized_projects
 
     def create_header(
         self, title_text: str, subtitle_text: str, color: str
@@ -917,10 +961,8 @@ class ProjectPage(Base, ScrollArea):
                 item.widget().deleteLater()
 
         # 加载最近项目
-        config = Config().load()
-
         valid_items_count = 0
-        for project in config.recent_projects:
+        for project in self.get_recent_projects():
             # 最多显示 4 条
             if valid_items_count >= 4:
                 break
@@ -943,9 +985,7 @@ class ProjectPage(Base, ScrollArea):
 
     def on_remove_recent_project(self, path: str) -> None:
         """移除最近打开的项目"""
-        config = Config().load()
-        config.remove_recent_project(path)
-        config.save()
+        self.settings_api_client.remove_recent_project(path)
         self.refresh_recent_list()
 
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
@@ -999,7 +1039,7 @@ class ProjectPage(Base, ScrollArea):
     def select_source_file(self):
         """选择源文件"""
         extensions = [
-            f"*{ext}" for ext in sorted(DataManager.get().get_supported_extensions())
+            f"*{ext}" for ext in self.project_api_client.get_supported_extensions()
         ]
         filter_str = f"{Localizer.get().supported_files} ({' '.join(extensions)})"
 
@@ -1022,7 +1062,7 @@ class ProjectPage(Base, ScrollArea):
             return
 
         # 检查是否包含支持的文件
-        source_files = DataManager.get().collect_source_files(path)
+        source_files = self.project_api_client.collect_source_files(path)
 
         if not source_files:
             self.emit(
@@ -1092,7 +1132,7 @@ class ProjectPage(Base, ScrollArea):
             1, self.selected_file_display
         )  # 插入到 drop_zone 位置 (index 1 after header)
 
-        info = DataManager.get().get_project_preview(path)
+        info = self.project_api_client.get_project_preview(path)
         self.project_info_panel = ProjectInfoPanel(self.open_project_card)
         self.project_info_panel.set_info(info)
         self.open_project_card.layout().insertWidget(
@@ -1121,9 +1161,7 @@ class ProjectPage(Base, ScrollArea):
                 self,
             )
             if box.exec():
-                config = Config().load()
-                config.remove_recent_project(path)
-                config.save()
+                self.settings_api_client.remove_recent_project(path)
                 self.refresh_recent_list()
             return
 
@@ -1151,11 +1189,11 @@ class ProjectPage(Base, ScrollArea):
         if not self.selected_source_path:
             return
 
-        config = Config().load()
-        mode = config.project_save_mode
+        settings_snapshot = self.get_settings_snapshot()
+        mode = settings_snapshot.project_save_mode
         path = ""
 
-        if mode == Config.ProjectSaveMode.MANUAL:
+        if mode == self.PROJECT_SAVE_MODE_MANUAL:
             # 弹出另存为对话框
             default_name = Path(self.selected_source_path).name + ".lg"
             path, _ = QFileDialog.getSaveFileName(
@@ -1178,10 +1216,10 @@ class ProjectPage(Base, ScrollArea):
             filename = f"{base_name}_{timestamp}.lg"
 
             target_dir = ""
-            if mode == Config.ProjectSaveMode.SOURCE:
+            if mode == self.PROJECT_SAVE_MODE_SOURCE:
                 target_dir = parent_dir
-            elif mode == Config.ProjectSaveMode.FIXED:
-                target_dir = config.project_fixed_path
+            elif mode == self.PROJECT_SAVE_MODE_FIXED:
+                target_dir = settings_snapshot.project_fixed_path
                 # 如果固定目录无效，回退到手动选择或提示
                 if not target_dir or not os.path.exists(target_dir):
                     # 尝试请求用户选择
@@ -1189,8 +1227,9 @@ class ProjectPage(Base, ScrollArea):
                         self, Localizer.get().select_folder, ""
                     )
                     if target_dir:
-                        config.project_fixed_path = target_dir
-                        config.save()
+                        self.settings_api_client.update_app_settings(
+                            {"project_fixed_path": target_dir}
+                        )
                     else:
                         # 用户取消，终止
                         return
@@ -1219,7 +1258,11 @@ class ProjectPage(Base, ScrollArea):
         )
 
         # 启动后台线程
-        self.create_thread = CreateProjectThread(self.selected_source_path, path)
+        self.create_thread = CreateProjectThread(
+            self.project_api_client,
+            self.selected_source_path,
+            path,
+        )
         self.create_thread.finished_signal.connect(
             lambda success, result: self.on_create_finished(path, success, result)
         )
@@ -1236,15 +1279,11 @@ class ProjectPage(Base, ScrollArea):
 
         if success:
             try:
-                DataManager.get().load_project(path)
+                if isinstance(result, ProjectSnapshot):
+                    self.api_state_store.hydrate_project(result)
 
-                # 更新最近打开列表（避免 UI 层直接触达数据库实例）
-                config = Config().load()
-                name = DataManager.get().get_meta("name", "")
-                if not isinstance(name, str) or not name:
-                    name = Path(path).stem
-                config.add_recent_project(path, name)
-                config.save()
+                name = Path(path).stem
+                self.settings_api_client.add_recent_project(path, name)
 
                 self.reset_new_project_state()
             except Exception as e:
@@ -1289,7 +1328,10 @@ class ProjectPage(Base, ScrollArea):
             },
         )
 
-        self.open_thread = OpenProjectThread(selected_lg_path)
+        self.open_thread = OpenProjectThread(
+            self.project_api_client,
+            selected_lg_path,
+        )
         self.open_thread.finished_signal.connect(
             lambda success, result: self.on_open_finished(
                 selected_lg_path,
@@ -1310,11 +1352,11 @@ class ProjectPage(Base, ScrollArea):
         self.open_thread = None
 
         if success:
+            if isinstance(result, ProjectSnapshot):
+                self.api_state_store.hydrate_project(result)
             # 打开成功后再更新最近项目，避免失败路径污染最近列表。
-            config = Config().load()
             name = Path(path).stem
-            config.add_recent_project(path, name)
-            config.save()
+            self.settings_api_client.add_recent_project(path, name)
             return
 
         self.emit(

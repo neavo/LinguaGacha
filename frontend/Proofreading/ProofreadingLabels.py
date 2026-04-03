@@ -1,6 +1,5 @@
 from base.Base import Base
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import WarningType
 from widget.StatusTag import StatusTagType
 
 
@@ -10,6 +9,13 @@ class ProofreadingLabels:
     这里不缓存映射结果，原因是语言可能在运行时切换：每次调用都走 Localizer.get()
     能确保 UI 文案始终与当前语言一致。
     """
+
+    WARNING_KANA: str = "KANA"
+    WARNING_HANGEUL: str = "HANGEUL"
+    WARNING_TEXT_PRESERVE: str = "TEXT_PRESERVE"
+    WARNING_SIMILARITY: str = "SIMILARITY"
+    WARNING_GLOSSARY: str = "GLOSSARY"
+    WARNING_RETRY_THRESHOLD: str = "RETRY_THRESHOLD"
 
     @staticmethod
     def get_status_label(status: Base.ProjectStatus) -> str:
@@ -24,16 +30,22 @@ class ProofreadingLabels:
         return mapping.get(status, str(status))
 
     @staticmethod
-    def get_warning_label(warning: WarningType) -> str:
-        mapping: dict[WarningType, str] = {
-            WarningType.KANA: Localizer.get().issue_kana_residue,
-            WarningType.HANGEUL: Localizer.get().issue_hangeul_residue,
-            WarningType.TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
-            WarningType.SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
-            WarningType.GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
-            WarningType.RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
+    def resolve_warning_code(warning: object) -> str:
+        raw_value = getattr(warning, "value", warning)
+        return str(raw_value)
+
+    @classmethod
+    def get_warning_label(cls, warning: object) -> str:
+        code = cls.resolve_warning_code(warning)
+        mapping: dict[str, str] = {
+            cls.WARNING_KANA: Localizer.get().issue_kana_residue,
+            cls.WARNING_HANGEUL: Localizer.get().issue_hangeul_residue,
+            cls.WARNING_TEXT_PRESERVE: Localizer.get().proofreading_page_warning_text_preserve,
+            cls.WARNING_SIMILARITY: Localizer.get().proofreading_page_warning_similarity,
+            cls.WARNING_GLOSSARY: Localizer.get().proofreading_page_warning_glossary,
+            cls.WARNING_RETRY_THRESHOLD: Localizer.get().proofreading_page_warning_retry,
         }
-        return mapping.get(warning, str(warning))
+        return mapping.get(code, code)
 
     @staticmethod
     def get_status_tag_spec(status: Base.ProjectStatus) -> tuple[str, StatusTagType]:
@@ -66,31 +78,32 @@ class ProofreadingLabels:
         return mapping.get(status, (str(status), StatusTagType.INFO))
 
     @staticmethod
-    def get_warning_tag_spec(warning: WarningType) -> tuple[str, StatusTagType]:
-        mapping: dict[WarningType, tuple[str, StatusTagType]] = {
-            WarningType.KANA: (
+    def get_warning_tag_spec(cls, warning: object) -> tuple[str, StatusTagType]:
+        code = cls.resolve_warning_code(warning)
+        mapping: dict[str, tuple[str, StatusTagType]] = {
+            cls.WARNING_KANA: (
                 Localizer.get().issue_kana_residue,
                 StatusTagType.WARNING,
             ),
-            WarningType.HANGEUL: (
+            cls.WARNING_HANGEUL: (
                 Localizer.get().issue_hangeul_residue,
                 StatusTagType.WARNING,
             ),
-            WarningType.TEXT_PRESERVE: (
+            cls.WARNING_TEXT_PRESERVE: (
                 Localizer.get().proofreading_page_warning_text_preserve,
                 StatusTagType.WARNING,
             ),
-            WarningType.SIMILARITY: (
+            cls.WARNING_SIMILARITY: (
                 Localizer.get().proofreading_page_warning_similarity,
                 StatusTagType.ERROR,
             ),
-            WarningType.GLOSSARY: (
+            cls.WARNING_GLOSSARY: (
                 Localizer.get().proofreading_page_warning_glossary,
                 StatusTagType.WARNING,
             ),
-            WarningType.RETRY_THRESHOLD: (
+            cls.WARNING_RETRY_THRESHOLD: (
                 Localizer.get().proofreading_page_warning_retry,
                 StatusTagType.WARNING,
             ),
         }
-        return mapping.get(warning, (str(warning), StatusTagType.INFO))
+        return mapping.get(code, (code, StatusTagType.INFO))

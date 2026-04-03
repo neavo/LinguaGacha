@@ -19,8 +19,6 @@ from frontend.Quality.QualityRuleIconHelper import IconColumnConfig
 from frontend.Quality.QualityRuleIconHelper import QualityRuleIconRenderer
 from frontend.Quality.QualityRuleIconHelper import RuleIconSpec
 from frontend.Quality.QualityRulePageBase import QualityRulePageBase
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 from qfluentwidgets import SwitchButton
@@ -48,7 +46,7 @@ class GlossaryPage(QualityRulePageBase):
     CASE_ICON_LUMA_THRESHOLD: float = 0.75
     CASE_ICON_SPACING: int = 4
 
-    QUALITY_RULE_TYPES: set[str] = {DataManager.RuleType.GLOSSARY.value}
+    QUALITY_RULE_TYPES: set[str] = {"glossary"}
     QUALITY_META_KEYS: set[str] = {"glossary_enable"}
 
     def __init__(self, text: str, window: FluentWindow) -> None:
@@ -62,17 +60,11 @@ class GlossaryPage(QualityRulePageBase):
             icon_spacing=self.CASE_ICON_SPACING,
         )
 
-        # 载入并保存默认配置
-        config = Config().load().save()
-
-        self.add_widget_head(self.root, config, window)
+        self.add_widget_head(self.root)
         self.setup_split_body(self.root)
         self.setup_table_columns()
         self.setup_split_foot(self.root)
-        self.add_standard_command_bar_actions(
-            config,
-            window,
-        )
+        self.add_standard_command_bar_actions(window)
 
         qconfig.themeChanged.connect(self.on_theme_changed)
         self.destroyed.connect(
@@ -84,19 +76,11 @@ class GlossaryPage(QualityRulePageBase):
         self.subscribe(Base.Event.PROJECT_LOADED, self.on_project_loaded)
         self.subscribe(Base.Event.PROJECT_UNLOADED, self.on_project_unloaded)
 
-    # ==================== DataManager 适配 ====================
-
-    def load_entries(self) -> list[dict[str, Any]]:
-        return DataManager.get().get_glossary()
-
-    def save_entries(self, entries: list[dict[str, Any]]) -> None:
-        DataManager.get().set_glossary(entries)
-
     def get_glossary_enable(self) -> bool:
-        return DataManager.get().get_glossary_enable()
+        return bool(self.get_rule_meta_value("enabled", True))
 
     def set_glossary_enable(self, enable: bool) -> None:
-        DataManager.get().set_glossary_enable(enable)
+        self.update_rule_meta({"enabled": bool(enable)})
 
     # ==================== SplitPageBase hooks ====================
 
@@ -183,9 +167,7 @@ class GlossaryPage(QualityRulePageBase):
 
     # ==================== UI：头部 ====================
 
-    def add_widget_head(self, parent, config: Config, window: FluentWindow) -> None:
-        del window
-
+    def add_widget_head(self, parent) -> None:
         def checked_changed(button: SwitchButton) -> None:
             self.set_glossary_enable(button.isChecked())
 

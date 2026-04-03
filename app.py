@@ -18,6 +18,17 @@ from qfluentwidgets import Theme
 from qfluentwidgets import setTheme
 from rich.console import Console
 
+from api.Client.ApiClient import ApiClient
+from api.Client.AppClientContext import AppClientContext
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ExtraApiClient import ExtraApiClient
+from api.Client.ProofreadingApiClient import ProofreadingApiClient
+from api.Client.ProjectApiClient import ProjectApiClient
+from api.Client.QualityRuleApiClient import QualityRuleApiClient
+from api.Client.SettingsApiClient import SettingsApiClient
+from api.Client.TaskApiClient import TaskApiClient
+from api.Client.WorkbenchApiClient import WorkbenchApiClient
+from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
 from base.CLIManager import CLIManager
@@ -46,6 +57,18 @@ QT_SCALE_FACTOR_MAP: dict[str, str] = {
     "150%": "1.50",
     "200%": "2.00",
 }
+
+
+def start_local_api_server_if_needed(
+    *,
+    is_cli_mode: bool,
+    server_bootstrap: type[ServerBootstrap],
+) -> ServerBootstrap.ServerRuntime | None:
+    """本地 Core 服务只属于 UI 边界，CLI 仍维持内部入口语义。"""
+
+    if is_cli_mode:
+        return None
+    return server_bootstrap.start()
 
 
 def excepthook(
@@ -239,8 +262,30 @@ if __name__ == "__main__":
     # 创建版本管理器
     VersionManager.get().set_version(version)
 
+    cli_requested = CLIManager.get().build_parser().parse_args().cli
+    local_api_server_runtime = start_local_api_server_if_needed(
+        is_cli_mode=cli_requested,
+        server_bootstrap=ServerBootstrap,
+    )
+    app_client_context: AppClientContext | None = None
+    if local_api_server_runtime is not None:
+        api_client = ApiClient(local_api_server_runtime.base_url)
+        app_client_context = AppClientContext(
+            project_api_client=ProjectApiClient(api_client),
+            task_api_client=TaskApiClient(api_client),
+            workbench_api_client=WorkbenchApiClient(api_client),
+            settings_api_client=SettingsApiClient(api_client),
+            quality_rule_api_client=QualityRuleApiClient(api_client),
+            proofreading_api_client=ProofreadingApiClient(api_client),
+            extra_api_client=ExtraApiClient(api_client),
+            api_state_store=ApiStateStore(),
+        )
+
     # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）
     def cleanup_on_exit() -> None:
+        runtime_shutdown = getattr(local_api_server_runtime, "shutdown", None)
+        if callable(runtime_shutdown):
+            runtime_shutdown()
         dm = DataManager.get()
         if dm.is_loaded():
             dm.unload_project()
@@ -249,8 +294,9 @@ if __name__ == "__main__":
     app.aboutToQuit.connect(cleanup_on_exit)
 
     # 处理启动参数
-    if not CLIManager.get().run():
-        app_fluent_window = AppFluentWindow()
+    is_cli_mode = CLIManager.get().run()
+    if not is_cli_mode:
+        app_fluent_window = AppFluentWindow(app_client_context)
         app_fluent_window.show()
 
     # 进入事件循环，等待用户操作；CLI 模式额外以 CLIManager 记录的退出码为准。

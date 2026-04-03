@@ -21,9 +21,8 @@ from qfluentwidgets import setCustomStyleSheet
 from base.BaseIcon import BaseIcon
 from frontend.Proofreading.ProofreadingStatusDelegate import ProofreadingStatusDelegate
 from frontend.Proofreading.ProofreadingTableModel import ProofreadingTableModel
-from model.Item import Item
+from model.Api.ProofreadingModels import ProofreadingItemView
 from module.Localizer.Localizer import Localizer
-from module.ResultChecker import WarningType
 
 
 class ProofreadingTableWidget(TableView):
@@ -122,8 +121,7 @@ class ProofreadingTableWidget(TableView):
     # ========== 数据填充/更新 ==========
     def set_items(
         self,
-        items: list[Item],
-        warning_map: dict[int, list[WarningType]],
+        items: list[ProofreadingItemView],
         start_index: int = 0,
     ) -> None:
         """填充表格数据。
@@ -144,7 +142,7 @@ class ProofreadingTableWidget(TableView):
             self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.table_model.set_readonly(self.readonly)
-        self.table_model.set_data_source(items, warning_map, start_index)
+        self.table_model.set_data_source(items, start_index)
 
         if not items:
             self.update_row_number_width(0)
@@ -167,17 +165,17 @@ class ProofreadingTableWidget(TableView):
         self.readonly = bool(readonly)
         self.table_model.set_readonly(self.readonly)
 
-    def get_item_at_row(self, row: int) -> Item | None:
-        """获取指定行绑定的 Item 对象（可见行）。"""
+    def get_item_at_row(self, row: int) -> ProofreadingItemView | None:
+        """获取指定行绑定的快照条目（可见行）。"""
 
         index = self.table_model.index(row, self.COL_SRC)
         if not index.isValid():
             return None
         item = index.data(ProofreadingTableModel.ITEM_ROLE)
-        return item if isinstance(item, Item) else None
+        return item if isinstance(item, ProofreadingItemView) else None
 
-    def find_row_by_item(self, item: Item) -> int:
-        """根据 Item 对象查找行索引（绝对行号，O(1)）。"""
+    def find_row_by_item(self, item: ProofreadingItemView) -> int:
+        """根据快照条目查找行索引（绝对行号，O(1)）。"""
 
         return self.table_model.find_row_by_item(item)
 
@@ -193,14 +191,9 @@ class ProofreadingTableWidget(TableView):
             index, index, [int(Qt.ItemDataRole.DisplayRole)]
         )
 
-    def update_row_status(self, row: int, warnings: list[WarningType]) -> None:
-        """更新指定行的状态/告警图标（通过更新 warning_map + dataChanged 刷新）。"""
+    def update_row_status(self, row: int) -> None:
+        """更新指定行的状态/告警图标。"""
 
-        item = self.table_model.get_source_item(row)
-        if item is None:
-            return
-
-        self.table_model.set_item_warnings(item, warnings)
         index = self.table_model.index(row, self.COL_STATUS)
         if not index.isValid():
             return
@@ -215,8 +208,8 @@ class ProofreadingTableWidget(TableView):
 
     # ========== 选择 ==========
 
-    def get_selected_items(self) -> list[Item]:
-        """获取所有选中行对应的 Item 对象。"""
+    def get_selected_items(self) -> list[ProofreadingItemView]:
+        """获取所有选中行对应的快照条目。"""
 
         selection_model = self.selectionModel()
         if selection_model is None:
@@ -227,7 +220,7 @@ class ProofreadingTableWidget(TableView):
         if not rows:
             return []
 
-        items: list[Item] = []
+        items: list[ProofreadingItemView] = []
         for row in sorted(rows):
             item = self.get_item_at_row(row)
             if item is not None:

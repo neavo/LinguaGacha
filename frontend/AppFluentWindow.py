@@ -2,6 +2,8 @@ import os
 import signal
 import time
 
+from api.Client.AppClientContext import AppClientContext
+from api.Client.SseClient import SseClient
 from PySide6.QtCore import QEvent
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -47,10 +49,7 @@ from frontend.Setting.BasicSettingsPage import BasicSettingsPage
 from frontend.Setting.ExpertSettingsPage import ExpertSettingsPage
 from frontend.Translation.TranslationPage import TranslationPage
 from frontend.Workbench.WorkbenchPage import WorkbenchPage
-from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
-from module.PromptPathResolver import PromptPathResolver
 from widget.ProgressToast import ProgressToast
 
 # ==================== 图标常量 ====================
@@ -87,16 +86,42 @@ class AppFluentWindow(Base, FluentWindow):
     APP_WIDTH: int = 1280
     APP_HEIGHT: int = 800
     APP_THEME_COLOR: str = "#BCA483"
+    APP_THEME_DARK: str = "DARK"
+    APP_THEME_LIGHT: str = "LIGHT"
     HOMEPAGE: str = " Ciallo～(∠・ω< )⌒✮"
     HOMEPAGE_AVATAR_RADIUS: int = 10
     HOMEPAGE_AVATAR_X: int = 10
     HOMEPAGE_AVATAR_Y: int = 8
+    PROMPT_TASK_TYPE_TRANSLATION: str = "translation"
+    PROMPT_TASK_TYPE_ANALYSIS: str = "analysis"
 
-    def __init__(self) -> None:
+    def __init__(self, app_client_context: AppClientContext | None) -> None:
         # FramelessWindow 在构造过程中可能触发 resizeEvent；先占位避免属性尚未初始化。
         self.progress_toast: ProgressToast | None = None
+        if app_client_context is None:
+            raise ValueError("UI 模式必须提供 AppClientContext")
+        self.app_client_context = app_client_context
+        self.project_api_client = app_client_context.project_api_client
+        self.task_api_client = app_client_context.task_api_client
+        self.workbench_api_client = app_client_context.workbench_api_client
+        self.settings_api_client = app_client_context.settings_api_client
+        self.quality_rule_api_client = app_client_context.quality_rule_api_client
+        self.proofreading_api_client = app_client_context.proofreading_api_client
+        self.extra_api_client = app_client_context.extra_api_client
+        self.api_state_store = app_client_context.api_state_store
 
         super().__init__()
+
+        project_snapshot = self.project_api_client.get_project_snapshot()
+        self.api_state_store.hydrate_project(project_snapshot)
+        task_snapshot = self.task_api_client.get_task_snapshot()
+        self.api_state_store.hydrate_task(task_snapshot)
+        self.sse_client = SseClient(
+            self.task_api_client.api_client.base_url,
+            self.api_state_store,
+        )
+        self.sse_client.start()
+        self.destroyed.connect(lambda *args: self.sse_client.stop())
 
         # 设置主题颜色
         setThemeColor(AppFluentWindow.APP_THEME_COLOR)
@@ -163,7 +188,10 @@ class AppFluentWindow(Base, FluentWindow):
     def switchTo(self, interface: QWidget):
         """切换页面"""
         # 如果未加载工程且目标页面是工程依赖页面，则重定向到工程页
-        if not DataManager.get().is_loaded() and interface != self.project_page:
+        if (
+            not self.api_state_store.is_project_loaded()
+            and interface != self.project_page
+        ):
             if self.is_project_dependent(interface):
                 # 记录用户的原始意图，以便加载后跳转
                 self.pending_target_interface = interface
@@ -178,7 +206,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     def update_navigation_status(self) -> None:
         """根据工程加载状态更新侧边栏导航项的可点击状态"""
-        is_loaded = DataManager.get().is_loaded()
+        is_loaded = self.api_state_store.is_project_loaded()
 
         # 只有这些页面在未加载工程时需要彻底禁用
         disable_names = [
@@ -381,14 +409,14 @@ class AppFluentWindow(Base, FluentWindow):
         # 避免 qfluentwidgets styleSheetManager 遍历时字典大小变化
         QApplication.processEvents()
 
-        config = Config().load()
         if not isDarkTheme():
             setTheme(Theme.DARK)
-            config.theme = Config.Theme.DARK
+            self.settings_api_client.update_app_settings({"theme": self.APP_THEME_DARK})
         else:
             setTheme(Theme.LIGHT)
-            config.theme = Config.Theme.LIGHT
-        config.save()
+            self.settings_api_client.update_app_settings(
+                {"theme": self.APP_THEME_LIGHT}
+            )
 
     # 切换语言
     def switch_language(self) -> None:
@@ -399,13 +427,13 @@ class AppFluentWindow(Base, FluentWindow):
         message_box.cancelButton.setText("English")
 
         if message_box.exec():
-            config = Config().load()
-            config.app_language = BaseLanguage.Enum.ZH
-            config.save()
+            self.settings_api_client.update_app_settings(
+                {"app_language": BaseLanguage.Enum.ZH}
+            )
         else:
-            config = Config().load()
-            config.app_language = BaseLanguage.Enum.EN
-            config.save()
+            self.settings_api_client.update_app_settings(
+                {"app_language": BaseLanguage.Enum.EN}
+            )
 
         self.emit(
             Base.Event.TOAST,
@@ -417,8 +445,7 @@ class AppFluentWindow(Base, FluentWindow):
 
     # 关闭当前项目
     def close_current_project(self) -> None:
-        data_manager = DataManager.get()
-        if not data_manager.is_loaded():
+        if not self.api_state_store.is_project_loaded():
             return
 
         # 二次确认
@@ -433,7 +460,8 @@ class AppFluentWindow(Base, FluentWindow):
         if not box.exec():
             return
 
-        data_manager.unload_project()
+        project_result = self.project_api_client.unload_project()
+        self.api_state_store.hydrate_project(project_result)
         self.emit(
             Base.Event.TOAST,
             {
@@ -544,7 +572,13 @@ class AppFluentWindow(Base, FluentWindow):
     # 开始添加页面
     def add_pages(self) -> None:
         # 创建工程页（不添加到侧边栏，仅在未加载工程时通过翻译/校对页面跳转）
-        self.project_page = ProjectPage("project_page", self)
+        self.project_page = ProjectPage(
+            "project_page",
+            self.project_api_client,
+            self.settings_api_client,
+            self.api_state_store,
+            self,
+        )
 
         # 重要：不要在这里把 project_page 先塞进 stackedWidget。
         # QFluentWidgets 只有在添加第一个 SubInterface（stackedWidget.count() == 1）时
@@ -588,7 +622,7 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 应用设置按钮
         self.addSubInterface(
-            AppSettingsPage("app_settings_page", self),
+            AppSettingsPage("app_settings_page", self.settings_api_client, self),
             ICON_NAV_APP_SETTINGS.qicon(),
             Localizer.get().app_settings_page,
             NavigationItemPosition.BOTTOM,
@@ -634,7 +668,12 @@ class AppFluentWindow(Base, FluentWindow):
     # 添加任务类页面
     def add_task_pages(self) -> None:
         # 翻译任务
-        self.translation_page = TranslationPage("translation_page", self)
+        self.translation_page = TranslationPage(
+            "translation_page",
+            self,
+            self.task_api_client,
+            self.api_state_store,
+        )
         self.addSubInterface(
             self.translation_page,
             ICON_NAV_TRANSLATION.qicon(),
@@ -643,7 +682,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 术语分析任务
-        self.analysis_page = AnalysisPage("analysis_page", self)
+        self.analysis_page = AnalysisPage(
+            "analysis_page",
+            self,
+            self.task_api_client,
+            self.api_state_store,
+        )
         self.addSubInterface(
             self.analysis_page,
             ICON_NAV_ANALYSIS.qicon(),
@@ -652,7 +696,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 校对任务
-        self.proofreading_page = ProofreadingPage("proofreading_page", self)
+        self.proofreading_page = ProofreadingPage(
+            "proofreading_page",
+            self.proofreading_api_client,
+            self.api_state_store,
+            self,
+        )
         self.addSubInterface(
             self.proofreading_page,
             ICON_NAV_PROOFREADING.qicon(),
@@ -661,7 +710,12 @@ class AppFluentWindow(Base, FluentWindow):
         )
 
         # 工作台（文件管理）
-        self.workbench_page = WorkbenchPage("workbench_page", self)
+        self.workbench_page = WorkbenchPage(
+            "workbench_page",
+            self.workbench_api_client,
+            self.api_state_store,
+            self,
+        )
         self.addSubInterface(
             self.workbench_page,
             ICON_NAV_WORKBENCH.qicon(),
@@ -673,7 +727,12 @@ class AppFluentWindow(Base, FluentWindow):
     def add_setting_pages(self) -> None:
         # 基础设置
         self.addSubInterface(
-            BasicSettingsPage("basic_settings_page", self),
+            BasicSettingsPage(
+                "basic_settings_page",
+                self.settings_api_client,
+                self.api_state_store,
+                self,
+            ),
             ICON_NAV_BASIC_SETTINGS.qicon(),
             Localizer.get().basic_settings,
             NavigationItemPosition.SCROLL,
@@ -682,7 +741,11 @@ class AppFluentWindow(Base, FluentWindow):
         # 专家设置
         if LogManager.get().is_expert_mode():
             self.addSubInterface(
-                ExpertSettingsPage("expert_settings_page", self),
+                ExpertSettingsPage(
+                    "expert_settings_page",
+                    self.settings_api_client,
+                    self,
+                ),
                 ICON_NAV_EXPERT_SETTINGS.qicon(),
                 Localizer.get().app_expert_settings_page,
                 NavigationItemPosition.SCROLL,
@@ -751,7 +814,7 @@ class AppFluentWindow(Base, FluentWindow):
             CustomPromptPage(
                 "translation_prompt_page",
                 self,
-                PromptPathResolver.TaskType.TRANSLATION,
+                self.PROMPT_TASK_TYPE_TRANSLATION,
             ),
             ICON_NAV_TRANSLATION_PROMPT.qicon(),
             Localizer.get().app_translation_prompt_page,
@@ -761,7 +824,7 @@ class AppFluentWindow(Base, FluentWindow):
             CustomPromptPage(
                 "analysis_prompt_page",
                 self,
-                PromptPathResolver.TaskType.ANALYSIS,
+                self.PROMPT_TASK_TYPE_ANALYSIS,
             ),
             ICON_NAV_ANALYSIS_PROMPT.qicon(),
             Localizer.get().app_analysis_prompt_page,
@@ -772,7 +835,12 @@ class AppFluentWindow(Base, FluentWindow):
     def add_extra_pages(self) -> None:
         # 实验室
         self.addSubInterface(
-            interface=LaboratoryPage("laboratory_page", self),
+            interface=LaboratoryPage(
+                "laboratory_page",
+                self,
+                extra_api_client=self.extra_api_client,
+                task_api_client=self.task_api_client,
+            ),
             icon=ICON_NAV_LABORATORY.qicon(),
             text=Localizer.get().app_laboratory_page,
             position=NavigationItemPosition.SCROLL,
@@ -788,17 +856,27 @@ class AppFluentWindow(Base, FluentWindow):
 
         # 百宝箱 - 姓名字段注入
         self.name_field_extraction_page = NameFieldExtractionPage(
-            "name_field_extraction_page", self
+            "name_field_extraction_page", self, extra_api_client=self.extra_api_client
         )
         self.stackedWidget.addWidget(self.name_field_extraction_page)
 
         # 百宝箱 - 繁简转换
-        self.ts_conversion_page = TSConversionPage("ts_conversion_page", self)
+        self.ts_conversion_page = TSConversionPage(
+            "ts_conversion_page",
+            self,
+            extra_api_client=self.extra_api_client,
+            api_state_store=self.api_state_store,
+        )
         self.stackedWidget.addWidget(self.ts_conversion_page)
 
     # 工程加载后的处理
     def on_project_loaded(self, event: Base.Event, data: dict) -> None:
         """工程加载后切换到默认页面"""
+        del event
+        del data
+        project_snapshot = self.project_api_client.get_project_snapshot()
+        self.api_state_store.hydrate_project(project_snapshot)
+
         # 更新侧边栏状态
         self.update_navigation_status()
 
@@ -815,6 +893,10 @@ class AppFluentWindow(Base, FluentWindow):
     # 工程卸载后的处理
     def on_project_unloaded(self, event: Base.Event, data: dict) -> None:
         """工程卸载后返回工程页"""
+        del event
+        del data
+        self.api_state_store.reset_project()
+
         # 更新侧边栏状态
         self.update_navigation_status()
         self.switchTo(self.project_page)
