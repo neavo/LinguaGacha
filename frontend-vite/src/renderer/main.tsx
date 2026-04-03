@@ -10,6 +10,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 // 使用预加载脚本暴露的桥接能力，确保后续 Electron 事件接入路径稳定。
-window.ipcRenderer.on('main-process-message', (_event, message) => {
+window.desktopApp.onMainProcessMessage((message) => {
   console.log(message)
 })

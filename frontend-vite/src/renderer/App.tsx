@@ -136,6 +136,14 @@ function App(): JSX.Element {
   // 侧边栏启动时默认回到工作台，并保持二级菜单收起，避免初始视觉过载。
   const [selected_route, set_selected_route] = useState<string>('workbench')
   const [expanded_items, set_expanded_items] = useState<Set<string>>(() => new Set())
+  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() => {
+    const stored_sidebar_state = window.localStorage.getItem('lg-sidebar-collapsed')
+    if (stored_sidebar_state === 'true') {
+      return true
+    } else {
+      return false
+    }
+  })
   const [theme_mode, set_theme_mode] = useState<'light' | 'dark'>(() => {
     const stored_theme = window.localStorage.getItem('lg-theme-mode')
     if (stored_theme === 'light' || stored_theme === 'dark') {
@@ -150,14 +158,28 @@ function App(): JSX.Element {
     const root_element = document.documentElement
     root_element.classList.toggle('dark', theme_mode === 'dark')
     window.localStorage.setItem('lg-theme-mode', theme_mode)
+    window.desktopApp.setTitleBarTheme(theme_mode)
   }, [theme_mode])
 
+  useEffect(() => {
+    window.localStorage.setItem('lg-sidebar-collapsed', String(is_sidebar_collapsed))
+  }, [is_sidebar_collapsed])
+
   return (
-    <main className="app-shell">
+    <main className={cn('app-shell', is_sidebar_collapsed && 'app-shell--sidebar-collapsed')}>
       <header className="titlebar shell-topbar">
         <div className="topbar__left">
-          <button className="topbar__menu-button" aria-label="打开导航">
-            <Menu size={15} />
+          <button
+            className="topbar__menu-button"
+            aria-label="切换导航"
+            aria-expanded={!is_sidebar_collapsed}
+            onClick={() => {
+              startTransition(() => {
+                set_is_sidebar_collapsed((previous_state) => !previous_state)
+              })
+            }}
+          >
+            <Menu size={20} />
           </button>
           <div className="topbar__brand">
             <strong>LinguaGacha v0.60.1</strong>
@@ -178,6 +200,7 @@ function App(): JSX.Element {
                     const has_active_child = item.children?.some((child) => child.id === selected_route) ?? false
                     const is_active = selected_route === item.id
                     const is_expanded = has_children && expanded_items.has(item.id)
+                    const is_subitems_open = !is_sidebar_collapsed && is_expanded
 
                     return (
                       <div key={item.id} className="sidebar-entry">
@@ -190,54 +213,74 @@ function App(): JSX.Element {
                           onClick={() => {
                             startTransition(() => {
                               if (has_children) {
-                                set_expanded_items((previous_items) => {
-                                  const next_items = new Set(previous_items)
-                                  if (next_items.has(item.id)) {
-                                    next_items.delete(item.id)
-                                  } else {
+                                if (is_sidebar_collapsed) {
+                                  set_is_sidebar_collapsed(false)
+                                  set_expanded_items((previous_items) => {
+                                    const next_items = new Set(previous_items)
                                     next_items.add(item.id)
-                                  }
-                                  return next_items
-                                })
+                                    return next_items
+                                  })
+                                } else {
+                                  set_expanded_items((previous_items) => {
+                                    const next_items = new Set(previous_items)
+                                    if (next_items.has(item.id)) {
+                                      next_items.delete(item.id)
+                                    } else {
+                                      next_items.add(item.id)
+                                    }
+                                    return next_items
+                                  })
+                                }
                                 set_selected_route(item.id)
                               } else {
                                 set_selected_route(item.id)
                               }
                             })
                           }}
+                          aria-label={item.label}
                         >
                           <span className="sidebar-item__rail" />
-                          <Icon size={16} className="sidebar-item__icon" />
+                          <Icon size={18} className="sidebar-item__icon" />
                           <span className="sidebar-item__label">{item.label}</span>
                           {has_children ? (
                             <ChevronDown
-                              size={13}
+                              size={15}
                               className={cn('sidebar-item__chevron', is_expanded && 'sidebar-item__chevron--expanded')}
                             />
                           ) : null}
                         </button>
-                        {is_expanded ? (
-                          <div className="sidebar-subitems">
-                            {item.children?.map((child) => {
-                              const ChildIcon = child.icon
-                              const is_child_active = child.id === selected_route
+                        {has_children ? (
+                          <div
+                            className={cn(
+                              'sidebar-subitems-shell',
+                              is_subitems_open && 'sidebar-subitems-shell--expanded'
+                            )}
+                            aria-hidden={!is_subitems_open}
+                          >
+                            <div className="sidebar-subitems">
+                              {item.children?.map((child) => {
+                                const ChildIcon = child.icon
+                                const is_child_active = child.id === selected_route
 
-                              return (
-                                <button
-                                  key={child.id}
-                                  className={cn('sidebar-subitem', is_child_active && 'sidebar-subitem--active')}
-                                  onClick={() => {
-                                    startTransition(() => {
-                                      set_selected_route(child.id)
-                                    })
-                                  }}
-                                >
-                                  <span className="sidebar-subitem__rail" />
-                                  <ChildIcon size={15} className="sidebar-subitem__icon" />
-                                  <span className="sidebar-subitem__label">{child.label}</span>
-                                </button>
-                              )
-                            })}
+                                return (
+                                  <button
+                                    key={child.id}
+                                    className={cn('sidebar-subitem', is_child_active && 'sidebar-subitem--active')}
+                                    onClick={() => {
+                                      startTransition(() => {
+                                        set_selected_route(child.id)
+                                      })
+                                    }}
+                                    aria-label={child.label}
+                                    tabIndex={is_subitems_open ? 0 : -1}
+                                  >
+                                    <span className="sidebar-subitem__rail" />
+                                    <ChildIcon size={16} className="sidebar-subitem__icon" />
+                                    <span className="sidebar-subitem__label">{child.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -265,8 +308,8 @@ function App(): JSX.Element {
                       }
                     }}
                   >
-                    <ActionIcon size={14} />
-                    <span>{action.label}</span>
+                    <ActionIcon size={16} />
+                    <span className="sidebar-bottom-button__text">{action.label}</span>
                   </button>
                 )
               })}
@@ -289,7 +332,7 @@ function App(): JSX.Element {
                 <h1 className="workspace-header__title">{active_page_title}</h1>
               </div>
               <div className="workspace-header__chips">
-                <span className="workspace-chip">导航宽度 256px</span>
+                <span className="workspace-chip">{is_sidebar_collapsed ? '导航宽度 72px' : '导航宽度 256px'}</span>
                 <span className="workspace-chip workspace-chip--accent">右侧内容暂为占位</span>
               </div>
             </div>
@@ -322,14 +365,14 @@ function App(): JSX.Element {
             <Card className="workspace-commandbar">
               <CardContent className="workspace-commandbar__content">
                 <div className="workspace-commandbar__group">
-                  <Button size="sm">开始</Button>
-                  <Button size="sm" variant="outline">
+                  <Button>开始</Button>
+                  <Button variant="outline">
                     停止
                   </Button>
-                  <Button size="sm" variant="outline">
+                  <Button variant="outline">
                     重置
                   </Button>
-                  <Button size="sm" variant="ghost">
+                  <Button variant="ghost">
                     定时器
                   </Button>
                 </div>

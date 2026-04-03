@@ -1,4 +1,4 @@
-import { app, BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, type BrowserWindowConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -7,9 +7,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const WINDOW_STANDARD_WIDTH = 1280
 const WINDOW_STANDARD_HEIGHT = 800
 const WINDOW_BACKGROUND_COLOR = '#F8FAFC'
-const TITLE_BAR_OVERLAY_COLOR = '#F8FAFC'
-const TITLE_BAR_SYMBOL_COLOR = '#0F172A'
-const TITLE_BAR_OVERLAY_HEIGHT = 40
+const TITLE_BAR_OVERLAY_HEIGHT = 39
+const IPC_CHANNEL_TITLE_BAR_THEME = 'window:set-title-bar-theme'
+const LIGHT_TITLE_BAR_OVERLAY_COLOR = '#F7F7F8'
+const LIGHT_TITLE_BAR_SYMBOL_COLOR = '#1F2329'
+const DARK_TITLE_BAR_OVERLAY_COLOR = '#1C2025'
+const DARK_TITLE_BAR_SYMBOL_COLOR = '#EEF2F7'
 
 // The built directory structure
 //
@@ -30,6 +33,33 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+
+function build_title_bar_overlay(theme_mode: 'light' | 'dark'): Electron.TitleBarOverlay {
+  if (theme_mode === 'dark') {
+    return {
+      color: DARK_TITLE_BAR_OVERLAY_COLOR,
+      symbolColor: DARK_TITLE_BAR_SYMBOL_COLOR,
+      height: TITLE_BAR_OVERLAY_HEIGHT,
+    }
+  } else {
+    return {
+      color: LIGHT_TITLE_BAR_OVERLAY_COLOR,
+      symbolColor: LIGHT_TITLE_BAR_SYMBOL_COLOR,
+      height: TITLE_BAR_OVERLAY_HEIGHT,
+    }
+  }
+}
+
+function sync_title_bar_overlay(theme_mode: 'light' | 'dark'): void {
+  if (win === null) {
+    return
+  }
+  if (process.platform !== 'win32' && process.platform !== 'linux') {
+    return
+  }
+
+  win.setTitleBarOverlay(build_title_bar_overlay(theme_mode))
+}
 
 function createWindowOptions(): BrowserWindowConstructorOptions {
   // 统一在这里定义窗口能力，避免主进程别处偷偷改动窗口边框策略。
@@ -56,11 +86,7 @@ function createWindowOptions(): BrowserWindowConstructorOptions {
   } else if (process.platform === 'win32' || process.platform === 'linux') {
     // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳。
     window_options.titleBarStyle = 'hidden'
-    window_options.titleBarOverlay = {
-      color: TITLE_BAR_OVERLAY_COLOR,
-      symbolColor: TITLE_BAR_SYMBOL_COLOR,
-      height: TITLE_BAR_OVERLAY_HEIGHT,
-    }
+    window_options.titleBarOverlay = build_title_bar_overlay(nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
   } else {
     // 未知平台兜底为真正无边框，至少保证自定义壳层策略仍然成立。
     window_options.frame = false
@@ -107,3 +133,7 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(createWindow)
+
+ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (_event, theme_mode: 'light' | 'dark') => {
+  sync_title_bar_overlay(theme_mode)
+})
