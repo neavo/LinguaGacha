@@ -1,3 +1,4 @@
+import { ProjectHomePage } from '@/pages/project/home'
 import { ModelPage } from '@/pages/project/model'
 import { create_placeholder_screen } from '@/pages/placeholder/createPlaceholderScreen'
 import { AppSettingsPage } from '@/pages/system/app-settings'
@@ -5,6 +6,11 @@ import { WorkbenchPage } from '@/pages/task/workbench'
 import type { ScreenRegistry } from '@/shared/types/screens'
 
 export const SCREEN_REGISTRY: ScreenRegistry = {
+  'project-home': {
+    component: ProjectHomePage,
+    title_key: 'common.project.home.title',
+    summary_key: 'common.project.home.summary',
+  },
   model: {
     component: ModelPage,
     title_key: 'nav.item.model',

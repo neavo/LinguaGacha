@@ -23,7 +23,7 @@ import {
 import type { BottomAction, NavigationGroup, RouteId } from '@/app/navigation/types'
 import type { ScreenRegistry } from '@/shared/types/screens'
 
-export const DEFAULT_ROUTE_ID: RouteId = 'workbench'
+export const DEFAULT_ROUTE_ID: RouteId = 'project-home'
 
 export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {

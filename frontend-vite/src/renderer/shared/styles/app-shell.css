@@ -40,11 +40,15 @@
 .topbar__right {
   display: flex;
   align-items: center;
-  gap: 12px;
   min-width: 0;
 }
 
+.topbar__left {
+  gap: 4px;
+}
+
 .topbar__right {
+  gap: 12px;
   padding-right: 144px;
 }
 
@@ -52,6 +56,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-left: -4px;
   width: 32px;
   height: 32px;
   border: 0;

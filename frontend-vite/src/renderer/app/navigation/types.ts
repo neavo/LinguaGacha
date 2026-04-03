@@ -2,6 +2,7 @@ import type { LocaleKey } from '@/i18n'
 import type { LucideIcon } from 'lucide-react'
 
 export const ROUTE_IDS = [
+  'project-home',
   'model',
   'translation',
   'analysis',

@@ -32,6 +32,11 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
+if (VITE_DEV_SERVER_URL) {
+  // 开发态暴露 Chromium 调试端口，方便 Playwright 直接附着现有 Electron 实例。
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+}
+
 let win: BrowserWindow | null
 
 function build_title_bar_overlay(theme_mode: 'light' | 'dark'): Electron.TitleBarOverlay {
