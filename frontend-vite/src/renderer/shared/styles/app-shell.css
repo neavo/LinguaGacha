@@ -657,9 +657,30 @@
   background: linear-gradient(180deg, rgba(31, 36, 42, 0.95) 0%, rgba(28, 32, 37, 1) 100%);
 }
 
-.workspace-commandbar {
+.placeholder-card--accent {
+  background: linear-gradient(180deg, rgba(244, 236, 223, 0.98) 0%, rgba(255, 249, 241, 1) 100%);
+}
+
+.dark .placeholder-card--accent {
+  background: linear-gradient(180deg, rgba(72, 57, 39, 0.82) 0%, rgba(52, 42, 30, 0.92) 100%);
+}
+
+.workspace-commandbar-card {
   margin-top: auto;
   border-radius: 16px;
+}
+
+.workspace-commandbar-card__content {
+  padding: 0;
+}
+
+.workspace-commandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 80px;
+  padding: 24px;
 }
 
 .workspace-commandbar__content {
@@ -667,7 +688,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  min-height: 80px;
 }
 
 .workspace-commandbar__group {
@@ -791,6 +811,11 @@
 
   .placeholder-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-commandbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .workspace-commandbar__content {
