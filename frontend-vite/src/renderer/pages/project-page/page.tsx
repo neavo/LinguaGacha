@@ -41,7 +41,7 @@ type ProjectPreviewPanelProps = {
 
 function PanelHeader(props: PanelHeaderProps): JSX.Element {
   return (
-    <CardHeader className="project-home__panel-header">
+    <CardHeader>
       <div className="flex items-start gap-3">
         <span className={cn('project-home__section-rail', props.accent_class_name)} aria-hidden="true" />
         <div className="space-y-2">
@@ -110,18 +110,19 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
 
 function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   const { t } = useI18n()
+  const preview = props.project.preview
   const stats = [
     {
       label: t('common.project.home.preview.file_count'),
-      value: props.project.preview.file_count.toLocaleString(),
+      value: preview.file_count.toLocaleString(),
     },
     {
       label: t('common.project.home.preview.created_at'),
-      value: props.project.preview.created_at,
+      value: preview.created_at,
     },
     {
       label: t('common.project.home.preview.updated_at'),
-      value: props.project.preview.last_updated_at,
+      value: preview.last_updated_at,
     },
   ]
 
@@ -138,19 +139,19 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
         <div className="space-y-2.5 pt-1">
           <div className="flex items-center justify-between gap-4">
             <span className="text-[0.77rem] text-foreground">{t('common.project.home.preview.progress')}</span>
-            <span className="text-[0.77rem] font-semibold text-foreground">{props.project.preview.progress_percent}%</span>
+            <span className="text-[0.77rem] font-semibold text-foreground">{preview.progress_percent}%</span>
           </div>
           <Progress
-            value={props.project.preview.progress_percent}
+            value={preview.progress_percent}
             className="h-1.5 bg-[color:var(--project-home-progress-track)]"
           />
           <div className="flex items-center justify-between gap-4 text-[0.77rem] text-foreground">
             <span>
-              {t('common.project.home.preview.translated')} {props.project.preview.translated_items.toLocaleString()}{' '}
+              {t('common.project.home.preview.translated')} {preview.translated_items.toLocaleString()}{' '}
               {t('common.project.home.preview.rows_unit')}
             </span>
             <span>
-              {t('common.project.home.preview.total')} {props.project.preview.total_items.toLocaleString()}{' '}
+              {t('common.project.home.preview.total')} {preview.total_items.toLocaleString()}{' '}
               {t('common.project.home.preview.rows_unit')}
             </span>
           </div>
@@ -164,18 +165,77 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const { t } = useI18n()
   const [selected_project, set_selected_project] = useState<ProjectRecentProject | null>(null)
   const has_recent_projects = project_page_mock.recent_projects.length > 0
+  const open_footer_class_name = cn('mt-auto justify-center', selected_project === null ? 'pt-4' : 'pt-6')
+
+  function select_project(project: ProjectRecentProject): void {
+    set_selected_project(project)
+  }
+
+  function clear_selected_project(): void {
+    set_selected_project(null)
+  }
+
+  const open_dropzone = selected_project === null
+    ? <DropZoneCard icon="project" tone="purple" title={t('common.project.home.open.drop_title')} />
+    : (
+        <div className="project-home__selected-card project-home__selected-card--purple relative">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="project-home__selected-close h-[30px] w-[30px] p-0"
+            onClick={clear_selected_project}
+            aria-label={t('common.action.reset')}
+          >
+            <X className="size-4" />
+          </Button>
+
+          <div className="project-home__selected-content">
+            <span className="project-home__dropzone-icon">
+              <File className="size-12 stroke-[1.85]" />
+            </span>
+            <div className="space-y-0.5">
+              <p className="text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">{selected_project.name}.lg</p>
+              <p className="text-[0.76rem] text-[color:var(--project-home-subtitle)]">
+                {t('common.project.home.open.ready_status')}
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+
+  const recent_project_content = selected_project === null
+    ? has_recent_projects
+      ? (
+          <div className="space-y-1">
+            {project_page_mock.recent_projects.map((project_item) => (
+              <RecentProjectRow key={project_item.id} project={project_item} on_select={select_project} />
+            ))}
+          </div>
+        )
+      : (
+          <Empty variant="inset" className="project-home__empty-state">
+            <EmptyHeader>
+              <EmptyMedia>
+                <ShieldAlert className="size-7 stroke-[1.8]" />
+              </EmptyMedia>
+              <EmptyTitle>{t('common.project.home.open.recent_title')}</EmptyTitle>
+              <EmptyDescription>{t('common.project.home.open.empty')}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )
+    : <ProjectPreviewPanel project={selected_project} />
 
   return (
     <div className="project-home workspace-scroll" data-sidebar-collapsed={String(props.is_sidebar_collapsed)}>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <Card className="project-home__panel min-h-[696px]">
+        <Card variant="panel" className="project-home__panel min-h-[696px]">
           <PanelHeader
             accent_class_name="bg-[color:var(--project-home-blue)]"
             title={t('common.project.home.create.title')}
             subtitle={t('common.project.home.create.subtitle')}
           />
 
-          <CardContent className="flex flex-1 flex-col gap-6 px-6 pt-0 pb-0">
+          <CardContent className="flex flex-1 flex-col gap-6 pt-0">
             <DropZoneCard icon="source" tone="blue" title={t('common.project.home.create.drop_title')} />
 
             <section className="space-y-4 pt-4">
@@ -194,83 +254,36 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             </section>
           </CardContent>
 
-          <CardFooter className="mt-auto justify-center px-6 pt-4 pb-6">
-            <Button variant="brand" className="project-home__action min-w-[160px]" disabled>
+          <CardFooter className="mt-auto justify-center pt-4">
+            <Button variant="brand" size="lg" className="project-home__action min-w-[160px]" disabled>
               {t('common.project.home.create.action')}
             </Button>
           </CardFooter>
         </Card>
 
-        <Card className="project-home__panel min-h-[696px]">
+        <Card variant="panel" className="project-home__panel min-h-[696px]">
           <PanelHeader
             accent_class_name="bg-[color:var(--project-home-purple)]"
             title={t('common.project.home.open.title')}
             subtitle={t('common.project.home.open.subtitle')}
           />
 
-          <CardContent className="flex flex-1 flex-col gap-6 px-6 pt-0 pb-0">
-            {selected_project !== null ? (
-              <div className="project-home__selected-card project-home__selected-card--purple relative">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="project-home__selected-close h-[30px] w-[30px] p-0"
-                  onClick={() => set_selected_project(null)}
-                  aria-label={t('common.action.reset')}
-                >
-                  <X className="size-4" />
-                </Button>
-
-                <div className="project-home__selected-content">
-                  <span className="project-home__dropzone-icon">
-                    <File className="size-12 stroke-[1.85]" />
-                  </span>
-                  <div className="space-y-0.5">
-                    <p className="text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">
-                      {selected_project.name}.lg
-                    </p>
-                    <p className="text-[0.76rem] text-[color:var(--project-home-subtitle)]">{t('common.project.home.open.ready_status')}</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <DropZoneCard icon="project" tone="purple" title={t('common.project.home.open.drop_title')} />
-            )}
+          <CardContent className="flex flex-1 flex-col gap-6 pt-0">
+            {open_dropzone}
 
             <section className="space-y-4 pt-4">
               <h3 className="text-[1rem] leading-none font-semibold tracking-[-0.02em] text-foreground">
                 {t('common.project.home.open.recent_title')}
               </h3>
 
-              {selected_project !== null ? (
-                <ProjectPreviewPanel project={selected_project} />
-              ) : has_recent_projects ? (
-                <div className="space-y-1">
-                  {project_page_mock.recent_projects.map((project_item) => (
-                    <RecentProjectRow
-                      key={project_item.id}
-                      project={project_item}
-                      on_select={(project) => set_selected_project(project)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Empty className="project-home__empty-state">
-                  <EmptyHeader>
-                    <EmptyMedia>
-                      <ShieldAlert className="size-7 stroke-[1.8]" />
-                    </EmptyMedia>
-                    <EmptyTitle>{t('common.project.home.open.recent_title')}</EmptyTitle>
-                    <EmptyDescription>{t('common.project.home.open.empty')}</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
+              {recent_project_content}
             </section>
           </CardContent>
 
-          <CardFooter className={cn('mt-auto justify-center px-6 pb-6', selected_project === null ? 'pt-4' : 'pt-6')}>
+          <CardFooter className={open_footer_class_name}>
             <Button
               variant="brand"
+              size="lg"
               className="project-home__action min-w-[160px]"
               disabled={selected_project === null}
             >

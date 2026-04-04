@@ -17,11 +17,9 @@ import {
   SlidersHorizontal,
   Sparkles,
   SunMoon,
-  type LucideIcon,
 } from 'lucide-react'
 
 import type { BottomAction, NavigationGroup, RouteId } from '@/app/navigation/types'
-import type { ScreenRegistry } from '@/shared/types/screens'
 
 export const DEFAULT_ROUTE_ID: RouteId = 'project-home'
 
@@ -177,31 +175,3 @@ export const BOTTOM_ACTIONS: BottomAction[] = [
     route_id: 'app-settings',
   },
 ]
-
-export function collect_registered_navigation_icons(
-  screen_registry: ScreenRegistry,
-): ReadonlyMap<RouteId, LucideIcon> {
-  const registered_navigation_icons: Map<RouteId, LucideIcon> = new Map()
-
-  for (const navigation_group of NAVIGATION_GROUPS) {
-    for (const navigation_item of navigation_group.items) {
-      if (screen_registry[navigation_item.id] !== undefined) {
-        registered_navigation_icons.set(navigation_item.id, navigation_item.icon)
-      }
-
-      for (const child_navigation_item of navigation_item.children ?? []) {
-        if (screen_registry[child_navigation_item.id] !== undefined) {
-          registered_navigation_icons.set(child_navigation_item.id, child_navigation_item.icon)
-        }
-      }
-    }
-  }
-
-  for (const bottom_action of BOTTOM_ACTIONS) {
-    if (bottom_action.route_id !== undefined && screen_registry[bottom_action.route_id] !== undefined) {
-      registered_navigation_icons.set(bottom_action.route_id, bottom_action.icon)
-    }
-  }
-
-  return registered_navigation_icons
-}

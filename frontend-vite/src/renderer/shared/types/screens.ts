@@ -6,7 +6,7 @@ export type ScreenComponentProps = {
   is_sidebar_collapsed: boolean
 }
 
-export type ScreenModule = {
+type ScreenModule = {
   component: ComponentType<ScreenComponentProps>
   title_key: LocaleKey
   summary_key: LocaleKey

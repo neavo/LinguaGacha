@@ -4,7 +4,7 @@ import type { PageScaffoldMock } from '@/shared/mocks/pageScaffold'
 import { WorkspaceCommandBar } from '@/widgets/workspace-commandbar/WorkspaceCommandBar'
 import { WorkspaceHeader } from '@/widgets/workspace-header/WorkspaceHeader'
 
-export type PageScaffoldProps = {
+type PageScaffoldProps = {
   title_key: LocaleKey
   summary_key: LocaleKey
   mock: PageScaffoldMock
@@ -13,12 +13,13 @@ export type PageScaffoldProps = {
 
 export function PageScaffold(props: PageScaffoldProps): JSX.Element {
   const { t } = useI18n()
+  const sidebar_width_label = props.is_sidebar_collapsed
+    ? t('common.workspace.sidebar_width_collapsed')
+    : t('common.workspace.sidebar_width_expanded')
   const chips = [
     {
       id: 'sidebar-width',
-      label: props.is_sidebar_collapsed
-        ? t('common.workspace.sidebar_width_collapsed')
-        : t('common.workspace.sidebar_width_expanded'),
+      label: sidebar_width_label,
     },
     {
       id: 'placeholder',
@@ -31,8 +32,8 @@ export function PageScaffold(props: PageScaffoldProps): JSX.Element {
     <div className="workspace-scroll">
       <WorkspaceHeader eyebrow_key="common.workspace.preview_eyebrow" title_key={props.title_key} chips={chips} />
 
-      <Card className="workspace-placeholder">
-        <CardHeader className="workspace-placeholder__header">
+      <Card variant="panel" className="workspace-placeholder">
+        <CardHeader>
           <CardTitle className="workspace-placeholder__title">{t('common.workspace.content_title')}</CardTitle>
           <CardDescription className="workspace-placeholder__description">{t(props.summary_key)}</CardDescription>
         </CardHeader>
@@ -59,11 +60,7 @@ export function PageScaffold(props: PageScaffoldProps): JSX.Element {
         </CardContent>
       </Card>
 
-      <Card className="workspace-commandbar-card">
-        <CardContent className="workspace-commandbar-card__content">
-          <WorkspaceCommandBar hint_key="common.workspace.commandbar_hint" />
-        </CardContent>
-      </Card>
+      <WorkspaceCommandBar hint_key="common.workspace.commandbar_hint" />
     </div>
   )
 }

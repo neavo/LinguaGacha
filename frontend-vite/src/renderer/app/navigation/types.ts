@@ -1,7 +1,7 @@
 import type { LocaleKey } from '@/i18n'
 import type { LucideIcon } from 'lucide-react'
 
-export const ROUTE_IDS = [
+const ROUTE_IDS = [
   'project-home',
   'model',
   'translation',
@@ -25,7 +25,7 @@ export const ROUTE_IDS = [
 
 export type RouteId = (typeof ROUTE_IDS)[number]
 
-export type NavigationNode = {
+type NavigationNode = {
   id: RouteId
   icon: LucideIcon
   title_key: LocaleKey

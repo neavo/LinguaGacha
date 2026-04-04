@@ -1,13 +1,34 @@
 import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-function Empty({ className, ...props }: React.ComponentProps<"section">) {
+const emptyVariants = cva(
+  "flex min-h-[180px] flex-col items-center justify-center gap-4 rounded-[var(--ui-radius-card)] px-6 py-8 text-center text-card-foreground",
+  {
+    variants: {
+      variant: {
+        dashed: "border border-dashed border-border bg-card/70",
+        inset: "bg-[linear-gradient(180deg,var(--ui-surface-card-top),var(--ui-surface-card-bottom))] shadow-[var(--ui-shadow-card)]",
+      },
+    },
+    defaultVariants: {
+      variant: "dashed",
+    },
+  }
+)
+
+function Empty({
+  className,
+  variant = "dashed",
+  ...props
+}: React.ComponentProps<"section"> &
+  VariantProps<typeof emptyVariants>) {
   return (
     <section
       data-slot="empty"
       className={cn(
-        "flex min-h-[180px] flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border bg-card/70 px-6 py-8 text-center text-card-foreground",
+        emptyVariants({ variant }),
         className
       )}
       {...props}
@@ -61,19 +82,8 @@ function EmptyDescription({
   )
 }
 
-function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="empty-content"
-      className={cn("flex flex-wrap items-center justify-center gap-3", className)}
-      {...props}
-    />
-  )
-}
-
 export {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,

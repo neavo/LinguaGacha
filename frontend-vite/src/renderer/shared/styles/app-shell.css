@@ -48,7 +48,7 @@
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--foreground);
   transition:
@@ -169,7 +169,7 @@
   min-height: 38px;
   padding: 0 14px 0 22px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sidebar-foreground);
   text-align: left;
@@ -283,7 +283,7 @@
   min-height: 36px;
   padding: 0 12px 0 18px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sidebar-foreground);
   text-align: left;
@@ -343,7 +343,7 @@
   min-height: 34px;
   padding: 0 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sidebar-foreground);
   text-align: left;
@@ -417,6 +417,10 @@
   overflow-y: auto;
 }
 
+.workbench-page.workspace-scroll {
+  gap: 12px;
+}
+
 .workspace-header {
   display: flex;
   align-items: flex-start;
@@ -461,14 +465,6 @@
   color: var(--primary);
 }
 
-.workspace-placeholder {
-  border-radius: 16px;
-}
-
-.workspace-placeholder__header {
-  padding-bottom: 0;
-}
-
 .workspace-placeholder__title {
   font-size: 20px;
 }
@@ -491,13 +487,9 @@
   gap: 28px;
   min-height: 256px;
   padding: 24px;
-  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-  border-radius: 14px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--card) 94%, var(--background)) 0%,
-    color-mix(in srgb, var(--card) 98%, var(--background)) 100%
-  );
+  border-radius: var(--ui-radius-card);
+  background: linear-gradient(180deg, var(--ui-surface-card-top) 0%, var(--ui-surface-card-bottom) 100%);
+  box-shadow: var(--ui-shadow-card);
 }
 
 .placeholder-hero__ring {
@@ -547,13 +539,9 @@
 
 .placeholder-card {
   min-height: 188px;
-  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-  border-radius: 14px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--card) 96%, var(--background)) 0%,
-    color-mix(in srgb, var(--card) 100%, var(--background)) 100%
-  );
+  border-radius: var(--ui-radius-card);
+  background: linear-gradient(180deg, var(--ui-surface-card-top) 0%, var(--ui-surface-card-bottom) 100%);
+  box-shadow: var(--ui-shadow-card);
 }
 
 .placeholder-card--accent {
@@ -562,46 +550,6 @@
     color-mix(in srgb, var(--primary) 12%, var(--card)) 0%,
     color-mix(in srgb, var(--primary) 4%, var(--card)) 100%
   );
-}
-
-.workspace-commandbar-card {
-  margin-top: auto;
-  border-radius: 16px;
-}
-
-.workspace-commandbar-card__content {
-  padding: 0;
-}
-
-.workspace-commandbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  min-height: 80px;
-  padding: 24px;
-}
-
-.workspace-commandbar__content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.workspace-commandbar__group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.workspace-commandbar__separator {
-  height: 20px;
-}
-
-.workspace-commandbar__hint {
-  font-size: 13px;
-  color: var(--muted-foreground);
 }
 
 .app-shell--sidebar-collapsed .shell-sidebar__bottom {
@@ -628,7 +576,7 @@
   min-height: 40px;
   margin-inline: auto;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .app-shell--sidebar-collapsed .sidebar-item__label,
@@ -658,7 +606,7 @@
   min-height: 34px;
   margin-inline: auto;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .app-shell--sidebar-collapsed .sidebar-subitems-shell {
@@ -711,13 +659,4 @@
     grid-template-columns: 1fr;
   }
 
-  .workspace-commandbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .workspace-commandbar__content {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
