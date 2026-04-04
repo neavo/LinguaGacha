@@ -45,22 +45,6 @@ def test_api_application_layer_does_not_import_client() -> None:
 
         assert "from api.Client" not in content
         assert "import api.Client" not in content
-
-
-def test_frontend_core_design_doc_uses_app_client_context() -> None:
-    root_dir = Path(__file__).resolve().parents[2]
-    spec_content = (
-        root_dir
-        / "docs"
-        / "superpowers"
-        / "specs"
-        / "2026-03-24-frontend-core-separation-design.md"
-    ).read_text(encoding="utf-8")
-
-    assert "AppClientContext.py" in spec_content
-    assert "AppContext.py" not in spec_content
-
-
 def test_api_spec_documents_phase_two_routes_topics_and_errors() -> None:
     root_dir = Path(__file__).resolve().parents[2]
     spec_content = (root_dir / "api" / "SPEC.md").read_text(encoding="utf-8")

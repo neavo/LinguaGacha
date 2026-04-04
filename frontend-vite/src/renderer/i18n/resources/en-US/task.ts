@@ -58,27 +58,27 @@ export const en_us_task = {
         cancel: 'Cancel',
         replace: {
           title: 'Confirm File Replacement',
-          description: 'Replacing keeps the row selected while updating the current entry with the new mock file.',
+          description: 'Replacing updates the current file with the new content and keeps the selection whenever possible after refresh.',
           confirm: 'Replace File',
         },
         reset: {
           title: 'Confirm File Reset',
-          description: 'Reset restores the selected file back to its initial mock state for desktop parity.',
+          description: 'Reset restores the file back to its original project content and recalculates the stats.',
           confirm: 'Reset File',
         },
         delete: {
           title: 'Confirm File Deletion',
-          description: 'Deleting removes the file from the workbench immediately and recalculates the stat cards.',
+          description: 'Deleting removes the file from the current project and refreshes the stat cards afterwards.',
           confirm: 'Delete File',
         },
         export: {
           title: 'Confirm Translation Export',
-          description: 'This mock only reproduces the confirmation flow and does not write any files yet.',
+          description: 'Generating will export real translation files with the current project settings.',
           confirm: 'Generate Output',
         },
         close_project: {
           title: 'Confirm Project Close',
-          description: 'Closing switches the workbench into the unloaded and read-only mock state.',
+          description: 'Closing unloads the current project and sends you back to the project home.',
           confirm: 'Close Project',
         },
       },

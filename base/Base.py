@@ -174,6 +174,7 @@ class Base:
         Event.ANALYSIS_PROGRESS,
         Event.WORKBENCH_SNAPSHOT,
         Event.CONFIG_UPDATED,
+        Event.QUALITY_RULE_UPDATE,
         Event.EXTRA_TS_CONVERSION_PROGRESS,
         Event.EXTRA_TS_CONVERSION_FINISHED,
     )

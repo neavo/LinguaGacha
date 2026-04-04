@@ -27,6 +27,9 @@ class TaskApiClient:
         response = self.api_client.post(TaskRoutes.STOP_ANALYSIS_PATH, {})
         return TaskSnapshot.from_dict(response.get("task", {}))
 
+    def export_translation(self) -> dict[str, Any]:
+        return self.api_client.post(TaskRoutes.EXPORT_TRANSLATION_PATH, {})
+
     def get_task_snapshot(
         self,
         request: dict[str, Any] | None = None,

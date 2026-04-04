@@ -7,7 +7,7 @@ const project_root = path.resolve(script_dir, "..")
 
 const css_files = [
   path.join(project_root, "src/renderer/index.css"),
-  path.join(project_root, "src/renderer/shared/styles/app-shell.css"),
+  path.join(project_root, "src/renderer/app/shell/app-shell.css"),
 ]
 
 const token_owner = path.join(project_root, "src/renderer/index.css")

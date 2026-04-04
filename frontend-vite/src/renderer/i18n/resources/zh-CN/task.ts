@@ -55,27 +55,27 @@ export const zh_cn_task = {
         cancel: '取消',
         replace: {
           title: '确认替换文件',
-          description: '替换后会用新文件内容覆盖当前条目，并保持当前行选中状态。',
+          description: '替换后会用新文件内容覆盖当前文件，并在刷新后尽量保持选中状态。',
           confirm: '确认替换',
         },
         reset: {
           title: '确认重置文件',
-          description: '重置后会回到该文件的初始 mock 状态，用于对照桌面端重置流程。',
+          description: '重置后会恢复该文件的初始工程内容，并重新计算统计数据。',
           confirm: '确认重置',
         },
         delete: {
           title: '确认删除文件',
-          description: '删除后会立刻从工作台列表移除该文件，并重新计算统计卡片。',
+          description: '删除后会把该文件从当前工程移除，并在刷新后更新统计卡片。',
           confirm: '确认删除',
         },
         export: {
           title: '确认生成译文',
-          description: '当前版本只模拟确认流程，不会真正导出文件。',
+          description: '生成后会按当前工程设置导出真实译文文件。',
           confirm: '确认生成',
         },
         close_project: {
           title: '确认关闭项目',
-          description: '关闭后工作台会切换到未加载项目的只读状态。',
+          description: '关闭后会卸载当前工程，并返回工程主页。',
           confirm: '确认关闭',
         },
       },

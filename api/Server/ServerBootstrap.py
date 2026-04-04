@@ -1,6 +1,7 @@
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from http.server import ThreadingHTTPServer
 
 from api.Application.EventStreamService import EventStreamService
 from api.Application.ExtraAppService import ExtraAppService
@@ -11,6 +12,7 @@ from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
+from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.ExtraRoutes import ExtraRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
@@ -23,6 +25,8 @@ from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
 
 class ServerBootstrap:
     """统一维护本地 HTTP 服务的启动与关闭入口。"""
+
+    TEST_DEFAULT_PORTS: tuple[int, ...] = (0,)
 
     @dataclass(frozen=True)
     class ServerRuntime:
@@ -50,6 +54,7 @@ class ServerBootstrap:
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
             extra_app_service=extra_app_service,
+            candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
 
@@ -64,29 +69,26 @@ class ServerBootstrap:
         workbench_app_service: WorkbenchAppService | None = None,
         settings_app_service: SettingsAppService | None = None,
         extra_app_service: ExtraAppService | None = None,
+        candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
-        core_api_server = CoreApiServer()
         event_stream_service = EventStreamService()
-        core_api_server.register_routes()
-        EventRoutes.register(core_api_server, event_stream_service)
-        if project_app_service is not None:
-            ProjectRoutes.register(core_api_server, project_app_service)
-        if proofreading_app_service is not None:
-            ProofreadingRoutes.register(core_api_server, proofreading_app_service)
-        if quality_rule_app_service is not None:
-            QualityRoutes.register(core_api_server, quality_rule_app_service)
-        if task_app_service is not None:
-            TaskRoutes.register(core_api_server, task_app_service)
-        if workbench_app_service is not None:
-            WorkbenchRoutes.register(core_api_server, workbench_app_service)
-        if settings_app_service is not None:
-            SettingsRoutes.register(core_api_server, settings_app_service)
-        if extra_app_service is not None:
-            ExtraRoutes.register(core_api_server, extra_app_service)
-        http_server = core_api_server.create_http_server()
+        resolved_candidate_ports = (
+            cls.TEST_DEFAULT_PORTS if candidate_ports is None else candidate_ports
+        )
+        http_server = cls.create_http_server_with_candidates(
+            candidate_ports=resolved_candidate_ports,
+            event_stream_service=event_stream_service,
+            project_app_service=project_app_service,
+            proofreading_app_service=proofreading_app_service,
+            quality_rule_app_service=quality_rule_app_service,
+            task_app_service=task_app_service,
+            workbench_app_service=workbench_app_service,
+            settings_app_service=settings_app_service,
+            extra_app_service=extra_app_service,
+        )
         serve_thread = threading.Thread(
             target=http_server.serve_forever,
             daemon=True,
@@ -99,6 +101,7 @@ class ServerBootstrap:
         def shutdown() -> None:
             """测试结束时统一关闭监听线程，避免端口泄漏。"""
 
+            event_stream_service.dispose()
             http_server.shutdown()
             http_server.server_close()
             serve_thread.join(timeout=1)
@@ -106,3 +109,48 @@ class ServerBootstrap:
         if as_runtime:
             return cls.ServerRuntime(base_url=base_url, shutdown=shutdown)
         return base_url, shutdown
+
+    @classmethod
+    def create_http_server_with_candidates(
+        cls,
+        *,
+        candidate_ports: tuple[int, ...],
+        event_stream_service: EventStreamService,
+        project_app_service: ProjectAppService | None,
+        proofreading_app_service: ProofreadingAppService | None,
+        quality_rule_app_service: QualityRuleAppService | None,
+        task_app_service: TaskAppService | None,
+        workbench_app_service: WorkbenchAppService | None,
+        settings_app_service: SettingsAppService | None,
+        extra_app_service: ExtraAppService | None,
+    ) -> ThreadingHTTPServer:
+        """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
+
+        last_error: OSError | None = None
+        for port in candidate_ports:
+            core_api_server = CoreApiServer(port=port)
+            core_api_server.register_routes()
+            EventRoutes.register(core_api_server, event_stream_service)
+            if project_app_service is not None:
+                ProjectRoutes.register(core_api_server, project_app_service)
+            if proofreading_app_service is not None:
+                ProofreadingRoutes.register(core_api_server, proofreading_app_service)
+            if quality_rule_app_service is not None:
+                QualityRoutes.register(core_api_server, quality_rule_app_service)
+            if task_app_service is not None:
+                TaskRoutes.register(core_api_server, task_app_service)
+            if workbench_app_service is not None:
+                WorkbenchRoutes.register(core_api_server, workbench_app_service)
+            if settings_app_service is not None:
+                SettingsRoutes.register(core_api_server, settings_app_service)
+            if extra_app_service is not None:
+                ExtraRoutes.register(core_api_server, extra_app_service)
+
+            try:
+                return core_api_server.create_http_server()
+            except OSError as e:
+                last_error = e
+
+        raise RuntimeError(
+            "Core API 候选端口全部被占用，无法启动服务。"
+        ) from last_error

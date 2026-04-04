@@ -206,7 +206,12 @@ flowchart TD
 - 变更文案时，`LocalizerZH` 与 `LocalizerEN` 必须保持行数对齐。
 - 文案语气应贴近工具界面：清楚、可执行、少歧义，不写空泛的产品口号。
 
-## 9. Do 与 Don't
+## 9. 前端实现入口
+`docs/DESIGN.md` 只定义 LinguaGacha 仓库级的设计目标、视觉基调、状态语义和布局节奏，不再重复维护 `frontend-vite/` 的实现级规则。
+
+涉及 `frontend-vite/` 时，请直接阅读 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)。本文负责“LinguaGacha 整体应该长什么样”，而 `frontend-vite/SPEC.md` 负责“Electron / React 子工程里这些规则具体落到哪里、怎么改才不越界”。
+
+## 10. Do 与 Don't
 
 ### Do
 - 使用 Fluent 风格的壳层与卡片组织复杂任务。
@@ -224,7 +229,7 @@ flowchart TD
 - 不要让后台线程直接操作 UI。
 - 不要硬编码任何用户可见文本。
 
-## 10. Agent / AI 生成界面提示
+## 11. Agent / AI 生成界面提示
 后续如果让 Agent 为 LG 生成新页面、重构旧页面或补齐设计稿，应默认套用下面这组提示语言。
 
 ### 快速设计摘要

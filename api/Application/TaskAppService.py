@@ -75,6 +75,13 @@ class TaskAppService:
             "task": self.build_command_ack("analysis", "STOPPING", True),
         }
 
+    def export_translation(self, request: dict[str, str]) -> dict[str, object]:
+        """请求导出当前工程译文。"""
+
+        del request
+        self.event_emitter(Base.Event.TRANSLATION_EXPORT, {})
+        return {"accepted": True}
+
     def get_task_snapshot(self, request: dict[str, str]) -> dict[str, object]:
         """显式查询当前任务快照。"""
 

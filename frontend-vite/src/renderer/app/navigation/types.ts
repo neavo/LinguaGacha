@@ -1,5 +1,6 @@
 import type { LocaleKey } from '@/i18n'
 import type { LucideIcon } from 'lucide-react'
+import type { ComponentType } from 'react'
 
 const ROUTE_IDS = [
   'project-home',
@@ -46,3 +47,15 @@ export type BottomAction = {
   icon: LucideIcon
   route_id?: RouteId
 }
+
+export type ScreenComponentProps = {
+  is_sidebar_collapsed: boolean
+}
+
+type ScreenModule = {
+  component: ComponentType<ScreenComponentProps>
+  title_key: LocaleKey
+  summary_key: LocaleKey
+}
+
+export type ScreenRegistry = Record<RouteId, ScreenModule>

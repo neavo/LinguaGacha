@@ -1,0 +1,186 @@
+.project-home {
+  position: relative;
+  min-height: 100%;
+  padding: 24px 6px 0;
+  --project-home-muted: var(--muted-foreground);
+  --project-home-subtitle: color-mix(in srgb, var(--foreground) 72%, transparent);
+  --project-home-line: color-mix(in srgb, var(--border) 92%, transparent);
+  --project-home-hover: color-mix(in srgb, var(--accent) 70%, transparent);
+  --project-home-blue: oklch(0.58 0.18 254);
+  --project-home-purple: oklch(0.58 0.2 302);
+  --project-home-interactive: var(--primary);
+  --project-home-interactive-bg: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.dark .project-home {
+  --project-home-subtitle: color-mix(in srgb, var(--foreground) 84%, transparent);
+  --project-home-line: color-mix(in srgb, var(--border) 100%, transparent);
+  --project-home-hover: color-mix(in srgb, var(--accent) 90%, transparent);
+  --project-home-blue: oklch(0.73 0.13 255);
+  --project-home-purple: oklch(0.76 0.17 305);
+  --project-home-interactive-bg: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.project-home__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-home__section-rail {
+  display: block;
+  width: 4px;
+  min-width: 4px;
+  height: 50px;
+  margin-top: 2px;
+  border-radius: 2px;
+}
+
+.project-home__dropzone {
+  border: 2px dashed var(--project-home-line);
+  border-radius: 4px;
+  background: transparent;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.project-home__dropzone:hover,
+.project-home__dropzone:focus-visible {
+  border-color: var(--project-home-interactive);
+  background: var(--project-home-interactive-bg);
+  box-shadow: none;
+}
+
+.project-home__selected-card:hover,
+.project-home__selected-card:focus-within {
+  border-color: var(--project-home-interactive);
+  background: var(--project-home-interactive-bg);
+  box-shadow: none;
+}
+
+.project-home__dropzone-icon,
+.project-home__recent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.project-home__selected-card {
+  min-height: 145px;
+  padding: 0;
+  border: 2px dashed var(--project-home-line);
+  background: transparent;
+}
+
+.project-home__format-card {
+  min-height: 58px;
+}
+
+.project-home__recent-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  border-radius: 4px;
+  background: transparent;
+  transition: background-color 180ms ease;
+}
+
+.project-home__recent-row:hover,
+.project-home__recent-row:focus-within {
+  background: color-mix(in srgb, var(--project-home-hover) 72%, transparent);
+}
+
+.project-home__recent-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0 10px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.project-home__recent-remove {
+  margin-right: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    background-color 180ms ease;
+}
+
+.project-home__recent-row:hover .project-home__recent-remove,
+.project-home__recent-row:focus-within .project-home__recent-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-home__selected-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 24px;
+  text-align: center;
+  pointer-events: auto;
+}
+
+.project-home__empty-state {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--project-home-muted);
+}
+
+.project-home__recent-empty {
+  min-height: 232px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0 8px;
+}
+
+.project-home__recent-empty-icon {
+  color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.project-home__recent-empty-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  font-weight: 400;
+  text-align: center;
+}
+
+.project-home__selected-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  border-radius: 999px;
+  color: var(--foreground);
+}
+
+.project-home__footer {
+  padding-bottom: 12px;
+}
+
+@media (max-width: 1280px) {
+  .project-home {
+    padding: 18px 4px 0;
+  }
+}

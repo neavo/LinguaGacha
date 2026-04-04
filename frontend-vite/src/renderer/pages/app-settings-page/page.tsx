@@ -1,4 +1,4 @@
-import { PageScaffold } from '@/widgets/page-scaffold/PageScaffold'
+import { PageScaffold } from '@/widgets/page-scaffold/page-scaffold'
 
 import { app_settings_page_mock } from '@/pages/app-settings-page/mock'
 

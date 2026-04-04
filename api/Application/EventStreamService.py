@@ -15,6 +15,20 @@ class EventStreamService:
     def __init__(self, event_bridge: EventBridge | None = None) -> None:
         self.event_bridge = event_bridge if event_bridge is not None else EventBridge()
         self.subscribers: list[Queue[EventEnvelope]] = []
+        self.subscribed_events: tuple[Base.Event, ...] = Base.API_STREAM_SOURCE_EVENTS
+        self.subscribe_internal_events()
+
+    def subscribe_internal_events(self) -> None:
+        """启动时统一接入允许出站的内部事件，避免 SSE 长连只是空壳。"""
+
+        for event in self.subscribed_events:
+            Base().subscribe(event, self.publish_internal_event)
+
+    def dispose(self) -> None:
+        """服务结束时主动退订，避免测试反复启动后留下悬空处理器。"""
+
+        for event in self.subscribed_events:
+            Base().unsubscribe(event, self.publish_internal_event)
 
     def add_subscriber(self) -> Queue[EventEnvelope]:
         """为每条 SSE 连接分配独立队列，避免订阅者之间互相干扰。"""
@@ -53,6 +67,9 @@ class EventStreamService:
             handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
             handler.send_header("Cache-Control", "no-cache")
             handler.send_header("Connection", "keep-alive")
+            handler.send_header("Access-Control-Allow-Origin", "*")
+            handler.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+            handler.send_header("Access-Control-Allow-Headers", "Content-Type")
             handler.end_headers()
 
             while True:

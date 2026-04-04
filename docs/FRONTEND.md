@@ -1,7 +1,7 @@
 # LinguaGacha 前端结构说明
 
 ## 一句话总览
-前端以 [`frontend/AppFluentWindow.py`](../frontend/AppFluentWindow.py) 为总导航入口，负责页面注册、工程加载态守卫、全局 Toast / 进度提示和主题语言切换；具体业务页面再按任务域拆分到 `frontend/` 的各个子目录中。
+仓库当前有两套前端实现：主线 Qt 前端以 [`frontend/AppFluentWindow.py`](../frontend/AppFluentWindow.py) 为总导航入口，负责页面注册、工程加载态守卫、全局 Toast / 进度提示和主题语言切换；`frontend-vite/` 是独立的 Electron + React 子工程，结构、分层与样式约束统一见 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)。本文只展开 `frontend/` 的导航结构与状态约束。
 
 ## 总导航入口
 [`AppFluentWindow.add_pages()`](../frontend/AppFluentWindow.py) 负责组装整套导航结构，分为几组：
@@ -67,3 +67,7 @@ flowchart TD
 3. 涉及全局 Toast、进度条或更新流程时，优先检查 `toast()`、`progress_toast_event()` 与应用更新相关事件处理函数。
 4. 涉及页面文案时，不要直接写字符串，统一改 `module/Localizer/`。
 5. 涉及后台任务触发 UI 刷新时，保持事件总线路径，避免后台线程直接碰界面控件。
+
+## `frontend-vite` 阅读入口
+- `frontend-vite/` 已作为独立子工程维护，实现级目录结构、入口约束、样式边界与联调规则统一收敛在 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)。
+- `docs/FRONTEND.md` 不再重复转写 `frontend-vite` 的实现细节；修改 Electron / React 子工程前，先读 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)，再回来看本文的仓库级前端入口关系。

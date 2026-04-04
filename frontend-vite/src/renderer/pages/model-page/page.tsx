@@ -1,4 +1,4 @@
-import { PageScaffold } from '@/widgets/page-scaffold/PageScaffold'
+import { PageScaffold } from '@/widgets/page-scaffold/page-scaffold'
 
 import { model_page_mock } from '@/pages/model-page/mock'
 
