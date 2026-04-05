@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, type BrowserWindowConstructorOptions } from 'electron'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 import {
@@ -33,6 +33,7 @@ const DEVTOOLS_TOGGLE_KEY = 'F12'
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = 'i'
 const WINDOW_LOAD_FAILURE_TITLE = 'LinguaGacha Frontend 加载失败'
 const WINDOW_LOAD_FAILURE_BODY_MAX_LENGTH = 240
+const WINDOW_FONT_STACK = '"LGConsolas", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
 
 // The built directory structure
 //
@@ -131,9 +132,50 @@ function escape_html(raw_text: string): string {
   })
 }
 
+function build_window_load_failure_font_face_css(): string {
+  const consolas_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'Consolas.ttf')).href
+  const base_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont.ttf')).href
+
+  // data: 页面没有稳定的相对资源基址，这里直接注入 file URL，保证开发态和构建态都能命中同一份字体资源。
+  return `
+      @font-face {
+        font-family: "LGConsolas";
+        src: url("${consolas_font_url}") format("truetype");
+        font-weight: 400 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGConsolas";
+        src: url("${consolas_font_url}") format("truetype");
+        font-weight: 400 700;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("${base_font_url}") format("truetype");
+        font-weight: 400 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("${base_font_url}") format("truetype");
+        font-weight: 400 700;
+        font-style: italic;
+        font-display: swap;
+      }
+`
+}
+
 function build_window_load_failure_page(url: string, message: string): string {
   const escaped_url = escape_html(url)
   const escaped_message = escape_html(truncate_error_message(message))
+  const font_face_css = build_window_load_failure_font_face_css()
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -142,9 +184,10 @@ function build_window_load_failure_page(url: string, message: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${WINDOW_LOAD_FAILURE_TITLE}</title>
     <style>
+${font_face_css}
       :root {
         color-scheme: light dark;
-        font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        font-family: ${WINDOW_FONT_STACK};
         background: #f8f7f7;
         color: #282522;
       }

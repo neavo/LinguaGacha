@@ -2,10 +2,44 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@font-face {
+  font-family: "LGConsolas";
+  src: url("/fonts/Consolas.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGConsolas";
+  src: url("/fonts/Consolas.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
   font-family:
+    "LGConsolas",
+    "LGBaseFont",
     "Segoe UI",
     "Microsoft YaHei UI",
     "PingFang SC",
@@ -131,6 +165,8 @@ a,
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans:
+    "LGConsolas",
+    "LGBaseFont",
     "Segoe UI",
     "Microsoft YaHei UI",
     "PingFang SC",
