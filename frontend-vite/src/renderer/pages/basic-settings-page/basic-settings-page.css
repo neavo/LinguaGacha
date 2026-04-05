@@ -12,54 +12,6 @@
   gap: var(--ui-list-gap-dense);
 }
 
-.basic-settings-page__card {
-  overflow: hidden;
-}
-
-.basic-settings-page__card-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 12px 12px;
-  container-type: inline-size;
-}
-
-.basic-settings-page__card-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-}
-
-.basic-settings-page__card-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.basic-settings-page__card-title {
-  margin: 0;
-  color: var(--foreground);
-  font-size: 14px;
-}
-
-.basic-settings-page__card-description {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.basic-settings-page__card-action {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: flex-end;
-  align-self: center;
-}
-
 .basic-settings-page__select {
   min-width: 120px;
 }
@@ -84,17 +36,6 @@
 }
 
 @container (max-width: 760px) {
-  .basic-settings-page__card-content {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .basic-settings-page__card-action {
-    width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-  }
-
   .basic-settings-page__select {
     width: min(100%, 300px);
   }

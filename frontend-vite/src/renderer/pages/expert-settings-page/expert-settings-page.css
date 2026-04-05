@@ -1,0 +1,55 @@
+.expert-settings-page {
+  min-height: 100%;
+}
+
+.expert-settings-page__notice {
+  align-items: start;
+}
+
+.expert-settings-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.expert-settings-page__menu-button {
+  min-width: 120px;
+}
+
+.expert-settings-page__number-field {
+  display: flex;
+  align-items: center;
+}
+
+.expert-settings-page__number-input {
+  min-width: 120px;
+  text-align: right;
+}
+
+.expert-settings-page__toggle-group {
+  min-width: 120px;
+  justify-content: stretch;
+}
+
+.expert-settings-page__toggle-item {
+  flex: 1 1 0;
+}
+
+@container (max-width: 760px) {
+  .expert-settings-page__menu-button {
+    width: min(100%, 300px);
+  }
+
+  .expert-settings-page__number-field {
+    width: 100%;
+  }
+
+  .expert-settings-page__number-input {
+    width: min(100%, 300px);
+    min-width: 0;
+  }
+
+  .expert-settings-page__toggle-group {
+    width: min(100%, 300px);
+  }
+}

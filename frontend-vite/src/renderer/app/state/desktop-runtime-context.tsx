@@ -24,6 +24,15 @@ export type SettingsSnapshot = {
   project_fixed_path: string
   output_folder_open_on_finish: boolean
   request_timeout: number
+  preceding_lines_threshold: number
+  clean_ruby: boolean
+  deduplication_in_trans: boolean
+  deduplication_in_bilingual: boolean
+  check_kana_residue: boolean
+  check_hangeul_residue: boolean
+  check_similarity: boolean
+  write_translated_name_fields_to_file: boolean
+  auto_process_prefix_suffix_preserved_text: boolean
   recent_projects: RecentProjectEntry[]
 }
 
@@ -87,6 +96,15 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   project_fixed_path: '',
   output_folder_open_on_finish: true,
   request_timeout: 60,
+  preceding_lines_threshold: 0,
+  clean_ruby: false,
+  deduplication_in_trans: true,
+  deduplication_in_bilingual: true,
+  check_kana_residue: true,
+  check_hangeul_residue: true,
+  check_similarity: true,
+  write_translated_name_fields_to_file: true,
+  auto_process_prefix_suffix_preserved_text: true,
   recent_projects: [],
 }
 
@@ -141,6 +159,31 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
       snapshot.output_folder_open_on_finish ?? DEFAULT_SETTINGS_SNAPSHOT.output_folder_open_on_finish,
     ),
     request_timeout: Number(snapshot.request_timeout ?? DEFAULT_SETTINGS_SNAPSHOT.request_timeout),
+    preceding_lines_threshold: Number(
+      snapshot.preceding_lines_threshold ?? DEFAULT_SETTINGS_SNAPSHOT.preceding_lines_threshold,
+    ),
+    clean_ruby: Boolean(snapshot.clean_ruby ?? DEFAULT_SETTINGS_SNAPSHOT.clean_ruby),
+    deduplication_in_trans: Boolean(
+      snapshot.deduplication_in_trans ?? DEFAULT_SETTINGS_SNAPSHOT.deduplication_in_trans,
+    ),
+    deduplication_in_bilingual: Boolean(
+      snapshot.deduplication_in_bilingual ?? DEFAULT_SETTINGS_SNAPSHOT.deduplication_in_bilingual,
+    ),
+    check_kana_residue: Boolean(
+      snapshot.check_kana_residue ?? DEFAULT_SETTINGS_SNAPSHOT.check_kana_residue,
+    ),
+    check_hangeul_residue: Boolean(
+      snapshot.check_hangeul_residue ?? DEFAULT_SETTINGS_SNAPSHOT.check_hangeul_residue,
+    ),
+    check_similarity: Boolean(snapshot.check_similarity ?? DEFAULT_SETTINGS_SNAPSHOT.check_similarity),
+    write_translated_name_fields_to_file: Boolean(
+      snapshot.write_translated_name_fields_to_file
+      ?? DEFAULT_SETTINGS_SNAPSHOT.write_translated_name_fields_to_file,
+    ),
+    auto_process_prefix_suffix_preserved_text: Boolean(
+      snapshot.auto_process_prefix_suffix_preserved_text
+      ?? DEFAULT_SETTINGS_SNAPSHOT.auto_process_prefix_suffix_preserved_text,
+    ),
     recent_projects: normalize_recent_projects(snapshot.recent_projects),
   }
 }

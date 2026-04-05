@@ -1,5 +1,6 @@
 import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
+import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
 import { WorkbenchPage } from '@/pages/workbench-page/page'
 import type { ScreenRegistry } from '@/app/navigation/types'
@@ -53,10 +54,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'setting.page.basic.summary',
   },
   'expert-settings': {
-    component: create_debug_panel_screen({
-      title_key: 'nav.item.expert_settings',
-      summary_key: 'setting.page.expert.summary',
-    }),
+    component: ExpertSettingsPage,
     title_key: 'nav.item.expert_settings',
     summary_key: 'setting.page.expert.summary',
   },

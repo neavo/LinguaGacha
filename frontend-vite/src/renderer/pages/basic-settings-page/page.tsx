@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/basic-settings-page/basic-settings-page.css'
-import { SettingCardRow } from '@/pages/basic-settings-page/components/setting-card-row'
+import '@/widgets/setting-card-row/setting-card-row.css'
 import {
   ALL_LANGUAGE_VALUE,
   LANGUAGE_CODES,
@@ -18,6 +18,7 @@ import { useBasicSettingsState } from '@/pages/basic-settings-page/use-basic-set
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
 import { Button } from '@/ui/button'
 import { Input } from '@/ui/input'
+import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 import {
   Select,
   SelectContent,
