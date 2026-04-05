@@ -309,7 +309,8 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
     className,
     ...button_props
   } = props
-  const Icon = SquareMousePointer
+  // 让创建与打开入口保留不同图标语义，避免 props 只传不消费导致 lint 失败。
+  const Icon = icon === 'source' ? File : FolderOpen
 
   return (
     <button
@@ -463,7 +464,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime()
-  const { push_toast } = useDesktopToast()
+  const { push_progress_toast, push_toast, dismiss_toast } = useDesktopToast()
   const { t } = useI18n()
   const [selected_source, set_selected_source] = useState<SelectedSource | null>(null)
   const [selected_project, set_selected_project] = useState<SelectedProject | null>(null)
@@ -644,6 +645,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     }
 
     set_is_creating_project(true)
+    let progress_toast_id: string | number | null = null
 
     try {
       const output_path = await resolve_project_output_path(selected_source.path)
@@ -651,6 +653,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         return
       }
       const normalized_output_path = output_path.endsWith('.lg') ? output_path : `${output_path}.lg`
+      // 创建工程会阻塞用户继续点击入口，用不定进度通知明确告知“正在处理”。
+      progress_toast_id = push_progress_toast({
+        message: t('common.project.home.create.loading_toast'),
+      })
 
       const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/create', {
         source_path: selected_source.path,
@@ -668,6 +674,9 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       push_toast('error', error instanceof Error ? error.message : t('common.project.home.create.unavailable'))
       return
     } finally {
+      if (progress_toast_id !== null) {
+        dismiss_toast(progress_toast_id)
+      }
       set_is_creating_project(false)
     }
   }
@@ -678,6 +687,9 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     }
 
     set_is_opening_project(true)
+    const progress_toast_id = push_progress_toast({
+      message: t('common.project.home.open.loading_toast'),
+    })
 
     try {
       const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/load', {
@@ -693,6 +705,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       push_toast('error', error instanceof Error ? error.message : t('common.project.home.open.preview_unavailable'))
       return
     } finally {
+      dismiss_toast(progress_toast_id)
       set_is_opening_project(false)
     }
   }

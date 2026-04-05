@@ -236,6 +236,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     async function hydrate_runtime(): Promise<void> {
       try {
+        // 把每次启动都视为新的客户端会话，避免渲染层继承上一次残留的工程加载态。
+        await api_fetch<ProjectSnapshotPayload>('/api/project/unload', {})
+
         const [next_settings, next_project, next_task] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>('/api/settings/app', {}),
           api_fetch<ProjectSnapshotPayload>('/api/project/snapshot', {}),

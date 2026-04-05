@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { ThemeProvider, useTheme } from 'next-themes'
 
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from '@/app/navigation/schema'
 import { SCREEN_REGISTRY } from '@/app/navigation/screen-registry'
@@ -65,6 +66,10 @@ function read_sidebar_state(): boolean {
 }
 
 function read_theme_mode(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'light'
+  }
+
   const stored_theme = window.localStorage.getItem(THEME_STORAGE_KEY)
 
   if (stored_theme === 'light' || stored_theme === 'dark') {
@@ -85,20 +90,22 @@ function AppContent(): JSX.Element {
     set_pending_target_route,
   } = useDesktopRuntime()
   const { toggle_locale, t } = useI18n()
+  const { resolvedTheme, setTheme } = useTheme()
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID)
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set())
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() => read_sidebar_state())
-  const [theme_mode, set_theme_mode] = useState<ThemeMode>(() => read_theme_mode())
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded)
   const previous_project_path_ref = useRef<string>(project_snapshot.path)
   const active_screen = SCREEN_REGISTRY[selected_route]
   const ScreenComponent = active_screen.component
   const document_title = `${t('common.metadata.app_name')} · ${t(active_screen.title_key)}`
+  const theme_mode: ThemeMode = resolvedTheme === 'dark'
+    ? 'dark'
+    : resolvedTheme === 'light'
+      ? 'light'
+      : read_theme_mode()
 
   useEffect(() => {
-    const root_element = document.documentElement
-    root_element.classList.toggle('dark', theme_mode === 'dark')
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme_mode)
     window.desktopApp.setTitleBarTheme(theme_mode)
   }, [theme_mode])
 
@@ -225,13 +232,11 @@ function AppContent(): JSX.Element {
 
   function handle_bottom_action(action_id: BottomActionId): void {
     if (action_id === 'theme') {
-      set_theme_mode((previous_mode) => {
-        if (previous_mode === 'light') {
-          return 'dark'
-        } else {
-          return 'light'
-        }
-      })
+      if (theme_mode === 'light') {
+        setTheme('dark')
+      } else {
+        setTheme('light')
+      }
     } else if (action_id === 'language') {
       toggle_locale()
     } else {
@@ -281,12 +286,20 @@ function AppContent(): JSX.Element {
 function App(): JSX.Element {
   return (
     <LocaleProvider>
-      <DesktopRuntimeProvider>
-        <TooltipProvider delayDuration={120}>
-          <AppContent />
-          <Toaster />
-        </TooltipProvider>
-      </DesktopRuntimeProvider>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme={read_theme_mode()}
+        enableSystem={false}
+        storageKey={THEME_STORAGE_KEY}
+        themes={['light', 'dark']}
+      >
+        <DesktopRuntimeProvider>
+          <TooltipProvider delayDuration={120}>
+            <AppContent />
+            <Toaster />
+          </TooltipProvider>
+        </DesktopRuntimeProvider>
+      </ThemeProvider>
     </LocaleProvider>
   )
 }

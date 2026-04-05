@@ -1,0 +1,227 @@
+.debug-panel-page {
+  --debug-panel-border: color-mix(in srgb, var(--border) 88%, transparent);
+  --debug-panel-muted: color-mix(in srgb, var(--muted-foreground) 84%, transparent);
+  padding: 4px 4px 18px;
+}
+
+.debug-panel-page__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 4px 4px 0;
+}
+
+.debug-panel-page__hero-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.debug-panel-page__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.debug-panel-page__title {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 44px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: var(--foreground);
+}
+
+.debug-panel-page__summary {
+  max-width: 72ch;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--debug-panel-muted);
+}
+
+.debug-panel-page__hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.debug-panel-page__badge {
+  gap: 6px;
+}
+
+.debug-panel-page__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.debug-panel-page__card {
+  min-height: 0;
+}
+
+.debug-panel-page__card--wide {
+  grid-column: 1 / -1;
+}
+
+.debug-panel-page__card-header {
+  gap: 8px;
+}
+
+.debug-panel-page__card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debug-panel-page__button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.debug-panel-page__button-grid--compact {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.debug-panel-page__button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.debug-panel-page__note {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px dashed var(--debug-panel-border);
+  border-radius: calc(var(--ui-radius-card) - 2px);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.debug-panel-page__note-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.debug-panel-page__note-value {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+
+.debug-panel-page__progress-card {
+  gap: 18px;
+}
+
+.debug-panel-page__progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.debug-panel-page__progress-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.debug-panel-page__progress-value {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1;
+  letter-spacing: -0.06em;
+  color: var(--foreground);
+}
+
+.debug-panel-page__slider-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.debug-panel-page__slider-label {
+  font-size: 13px;
+  color: var(--debug-panel-muted);
+}
+
+.debug-panel-page__slider {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.debug-panel-page__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.debug-panel-page__meta-row {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--debug-panel-border);
+  border-radius: calc(var(--ui-radius-card) - 2px);
+  background: color-mix(in srgb, var(--background) 80%, var(--card));
+}
+
+.debug-panel-page__meta-row dt {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.debug-panel-page__meta-row dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--foreground);
+  word-break: break-word;
+}
+
+.debug-panel-page__meta-row code {
+  font-family: 'Geist Variable', sans-serif;
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .debug-panel-page__grid,
+  .debug-panel-page__meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-panel-page__button-grid--compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .debug-panel-page__hero {
+    flex-direction: column;
+  }
+
+  .debug-panel-page__hero-badges {
+    justify-content: flex-start;
+  }
+
+  .debug-panel-page__button-grid,
+  .debug-panel-page__button-grid--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-panel-page__button-row {
+    flex-direction: column;
+  }
+}

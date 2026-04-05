@@ -1,51 +1,33 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
-function read_toaster_theme(): ToasterProps['theme'] {
-  if (typeof document === 'undefined') {
+function resolve_toaster_theme(resolved_theme: string | undefined): ToasterProps['theme'] {
+  if (resolved_theme === 'dark') {
+    return 'dark'
+  } else if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
+    return 'dark'
+  } else {
     return 'light'
   }
-
-  return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 }
 
-export function Toaster(props: ToasterProps): JSX.Element {
-  const [theme, set_theme] = useState<ToasterProps['theme']>(() => read_toaster_theme())
-
-  useEffect(() => {
-    const root_element = document.documentElement
-
-    function sync_theme(): void {
-      set_theme(read_toaster_theme())
-    }
-
-    sync_theme()
-
-    // 监听根元素类名变化，让 toast 跟随应用主题切换
-    const observer = new MutationObserver(sync_theme)
-    observer.observe(root_element, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { resolvedTheme } = useTheme()
+  const theme = resolve_toaster_theme(resolvedTheme)
 
   return (
     <Sonner
       theme={theme}
-      position="top-right"
+      position="top-center"
       offset={{
         top: 56,
-        right: 20,
       }}
       visibleToasts={4}
       closeButton
       expand={false}
-      className="toaster"
+      className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
@@ -58,7 +40,7 @@ export function Toaster(props: ToasterProps): JSX.Element {
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
-          '--border-radius': '12px',
+          '--border-radius': 'var(--radius)',
         } as CSSProperties
       }
       toastOptions={{
@@ -81,3 +63,5 @@ export function Toaster(props: ToasterProps): JSX.Element {
     />
   )
 }
+
+export { Toaster }
