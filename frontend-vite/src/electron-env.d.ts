@@ -26,7 +26,7 @@ declare global {
       pickProjectFilePath: () => Promise<DesktopPathPickResult>
       pickProjectSavePath: (default_name: string) => Promise<DesktopPathPickResult>
       pickWorkbenchFilePath: () => Promise<DesktopPathPickResult>
-      pickFixedProjectDirectory: () => Promise<DesktopPathPickResult>
+      pickFixedProjectDirectory: (default_path?: string) => Promise<DesktopPathPickResult>
     }
   }
 }

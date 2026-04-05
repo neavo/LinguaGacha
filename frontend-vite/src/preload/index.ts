@@ -89,7 +89,7 @@ contextBridge.exposeInMainWorld('desktopApp', {
   async pickWorkbenchFilePath(): Promise<DesktopPathPickResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH)
   },
-  async pickFixedProjectDirectory(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY)
+  async pickFixedProjectDirectory(default_path?: string): Promise<DesktopPathPickResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, default_path)
   },
 })

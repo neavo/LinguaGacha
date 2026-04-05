@@ -18,8 +18,12 @@ export type RecentProjectEntry = {
 
 export type SettingsSnapshot = {
   expert_mode: boolean
+  source_language: string
+  target_language: string
   project_save_mode: string
   project_fixed_path: string
+  output_folder_open_on_finish: boolean
+  request_timeout: number
   recent_projects: RecentProjectEntry[]
 }
 
@@ -61,7 +65,7 @@ type DesktopRuntimeContextValue = {
   refresh_task: () => Promise<TaskSnapshot>
 }
 
-type SettingsSnapshotPayload = {
+export type SettingsSnapshotPayload = {
   settings?: Partial<SettingsSnapshot> & {
     recent_projects?: Array<Partial<RecentProjectEntry>>
   }
@@ -77,8 +81,12 @@ type TaskSnapshotPayload = {
 
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   expert_mode: false,
+  source_language: 'JA',
+  target_language: 'ZH',
   project_save_mode: 'MANUAL',
   project_fixed_path: '',
+  output_folder_open_on_finish: true,
+  request_timeout: 60,
   recent_projects: [],
 }
 
@@ -121,12 +129,18 @@ function normalize_recent_projects(
     }))
 }
 
-function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
+export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   const snapshot = payload.settings ?? {}
   return {
     expert_mode: Boolean(snapshot.expert_mode),
+    source_language: String(snapshot.source_language ?? DEFAULT_SETTINGS_SNAPSHOT.source_language),
+    target_language: String(snapshot.target_language ?? DEFAULT_SETTINGS_SNAPSHOT.target_language),
     project_save_mode: String(snapshot.project_save_mode ?? DEFAULT_SETTINGS_SNAPSHOT.project_save_mode),
     project_fixed_path: String(snapshot.project_fixed_path ?? ''),
+    output_folder_open_on_finish: Boolean(
+      snapshot.output_folder_open_on_finish ?? DEFAULT_SETTINGS_SNAPSHOT.output_folder_open_on_finish,
+    ),
+    request_timeout: Number(snapshot.request_timeout ?? DEFAULT_SETTINGS_SNAPSHOT.request_timeout),
     recent_projects: normalize_recent_projects(snapshot.recent_projects),
   }
 }

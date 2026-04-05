@@ -483,8 +483,9 @@ ipcMain.handle(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH, async () => {
   })
 })
 
-ipcMain.handle(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, async () => {
+ipcMain.handle(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, async (_event, default_path?: string) => {
   return pick_open_path({
+    defaultPath: typeof default_path === 'string' && default_path !== '' ? default_path : undefined,
     properties: ['openDirectory', 'createDirectory'],
   })
 })
