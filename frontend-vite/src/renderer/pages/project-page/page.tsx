@@ -22,6 +22,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/ui/context-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/empty'
 import { Progress } from '@/ui/progress'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import '@/pages/project-page/project-page.css'
@@ -359,12 +360,19 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         <span className="project-home__recent-icon">
           <File className="size-[18px] stroke-[1.8]" />
         </span>
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-[0.76rem] font-bold tracking-[-0.012em] text-foreground">{props.name}</span>
-          <span className="mt-0.5 block truncate text-[0.66rem] text-[color:var(--project-home-muted)]">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate text-[0.76rem] font-bold tracking-[-0.012em] text-foreground">{props.name}</span>
+              <span className="mt-0.5 block truncate text-[0.66rem] text-[color:var(--project-home-muted)]">
+                {props.path}
+              </span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start" sideOffset={8} className="max-w-[32rem] break-all">
             {props.path}
-          </span>
-        </span>
+          </TooltipContent>
+        </Tooltip>
       </button>
 
       <Button

@@ -13,6 +13,7 @@ dist-electron
 release
 dist-ssr
 *.local
+*.tsbuildinfo
 package-lock.json
 
 # Editor directories and files
