@@ -29,22 +29,19 @@ export const LANGUAGE_CODES = [
   'VI',
 ] as const
 
-export const BASIC_SETTINGS_PENDING_FIELDS = [
-  'source_language',
-  'target_language',
-  'project_save_mode',
-  'output_folder_open_on_finish',
-  'request_timeout',
-] as const
-
 export const REQUEST_TIMEOUT_MIN = 0
 export const REQUEST_TIMEOUT_MAX = 9_999_999
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODE)[keyof typeof PROJECT_SAVE_MODE]
 
-export type LanguageCode = (typeof LANGUAGE_CODES)[number]
+type LanguageCode = (typeof LANGUAGE_CODES)[number]
 
-export type BasicSettingsPendingField = (typeof BASIC_SETTINGS_PENDING_FIELDS)[number]
+export type BasicSettingsPendingField =
+  | 'source_language'
+  | 'target_language'
+  | 'project_save_mode'
+  | 'output_folder_open_on_finish'
+  | 'request_timeout'
 
 export type SettingPendingState = Record<BasicSettingsPendingField, boolean>
 
@@ -57,11 +54,6 @@ export type BasicSettingsSnapshot = Pick<
   | 'output_folder_open_on_finish'
   | 'request_timeout'
 >
-
-export type LanguageOption = {
-  value: LanguageCode | typeof ALL_LANGUAGE_VALUE
-  label_key: LocaleKey
-}
 
 export const LANGUAGE_LABEL_KEYS: Readonly<Record<LanguageCode | typeof ALL_LANGUAGE_VALUE, LocaleKey>> = {
   ALL: 'setting.language.ALL',

@@ -331,7 +331,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
       <span className="project-home__dropzone-icon">
         <Icon className="size-11 stroke-[1.8]" />
       </span>
-      <p className="mt-2.5 text-[0.96rem] font-semibold tracking-[-0.018em] text-foreground">
+      <p className="mt-2.5 text-[0.96rem] tracking-[-0.018em] text-foreground" data-ui-text="emphasis">
         {title}
       </p>
     </button>
@@ -342,7 +342,7 @@ function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
   return (
     <Card className="project-home__format-card">
       <CardContent className="space-y-0.5 px-3 py-3">
-        <h3 className="text-[0.78rem] leading-[1.35] font-semibold tracking-[-0.015em] text-foreground">{props.title}</h3>
+        <h3 className="text-[0.78rem] leading-[1.35] tracking-[-0.015em] text-foreground" data-ui-text="emphasis">{props.title}</h3>
         <p className="text-[0.72rem] leading-[1.35] text-[color:var(--project-home-muted)]">{props.extensions}</p>
       </CardContent>
     </Card>
@@ -364,7 +364,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[0.76rem] font-bold tracking-[-0.012em] text-foreground">{props.name}</span>
+              <span className="block truncate text-[0.76rem] tracking-[-0.012em] text-foreground" data-ui-text="emphasis">{props.name}</span>
               <span className="mt-0.5 block truncate text-[0.66rem] text-[color:var(--project-home-muted)]">
                 {props.path}
               </span>
@@ -428,14 +428,14 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
         {stats.map((stat) => (
           <div key={stat.label} className="flex items-center justify-between gap-5">
             <span className="text-[0.77rem] text-foreground">{stat.label}</span>
-            <span className="text-[0.77rem] font-medium text-foreground">{stat.value}</span>
+            <span className="text-[0.77rem] text-foreground">{stat.value}</span>
           </div>
         ))}
 
         <div className="space-y-2.5 pt-1">
           <div className="flex items-center justify-between gap-4">
             <span className="text-[0.77rem] text-foreground">{t('common.project.home.preview.progress')}</span>
-            <span className="text-[0.77rem] font-semibold text-foreground">{preview.progress_percent}%</span>
+            <span className="text-[0.77rem] text-foreground">{preview.progress_percent}%</span>
           </div>
           <Progress
             value={preview.progress_percent}
@@ -788,7 +788,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                   <SquareMousePointer className="size-11 stroke-[1.85]" />
                 </span>
                 <div className="mx-auto flex w-full max-w-[18rem] flex-col items-center space-y-0.5 text-center">
-                  <p className="w-full truncate text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">
+                  <p className="w-full truncate text-[0.9rem] tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
                     {selected_source.name}
                   </p>
                   <p className="w-full text-[0.76rem] text-[color:var(--project-home-subtitle)]">
@@ -862,7 +862,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               <SquareMousePointer className="size-11 stroke-[1.85]" />
             </span>
             <div className="mx-auto flex w-full max-w-[18rem] flex-col items-center space-y-0.5 text-center">
-              <p className="w-full truncate text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">
+              <p className="w-full truncate text-[0.9rem] tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
                 {extract_file_name(selected_project.path)}
               </p>
               <p className="w-full text-[0.76rem] text-[color:var(--project-home-subtitle)]">
@@ -964,9 +964,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="project-home workspace-scroll" data-sidebar-collapsed={String(props.is_sidebar_collapsed)}>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
-          <Card variant="panel" className="project-home__panel min-h-[696px]">
+      <div
+        className="project-home page-shell page-shell--full"
+        data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
+      >
+        <div className="project-home__layout grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
+          <Card variant="panel" className="project-home__panel">
           <PanelHeader
             accent_class_name="bg-[color:var(--project-home-blue)]"
             title={t('common.project.home.create.title')}
@@ -977,7 +980,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             {source_dropzone}
 
             <section className="space-y-4 pt-4">
-              <h3 className="text-[1rem] leading-none font-semibold tracking-[-0.02em] text-foreground">
+              <h3 className="text-[1rem] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
                 {t('common.project.home.formats.title')}
               </h3>
               <div className="grid grid-cols-2 gap-2">
@@ -1007,7 +1010,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           </CardFooter>
           </Card>
 
-          <Card variant="panel" className="project-home__panel min-h-[696px]">
+          <Card variant="panel" className="project-home__panel">
             <PanelHeader
               accent_class_name="bg-[color:var(--project-home-purple)]"
               title={t('common.project.home.open.title')}
@@ -1018,7 +1021,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               {open_dropzone}
 
               <section className="space-y-4 pt-4">
-                <h3 className="text-[1rem] leading-none font-semibold tracking-[-0.02em] text-foreground">
+                <h3 className="text-[1rem] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
                   {t('common.project.home.open.recent_title')}
                 </h3>
 

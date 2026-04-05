@@ -86,7 +86,9 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                       aria-label={t(item.title_key)}
                     >
                       <Icon size={18} className="sidebar-item__icon" />
-                      <span className="sidebar-item__label">{t(item.title_key)}</span>
+                      <span className="sidebar-item__label" data-ui-text={is_active ? 'emphasis' : undefined}>
+                        {t(item.title_key)}
+                      </span>
                       {has_children ? (
                         <ChevronDown
                           size={15}
@@ -123,7 +125,12 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                                     tabIndex={is_subitems_open ? 0 : -1}
                                   >
                                     <ChildIcon size={16} className="sidebar-subitem__icon" />
-                                    <span className="sidebar-subitem__label">{t(child.title_key)}</span>
+                                    <span
+                                      className="sidebar-subitem__label"
+                                      data-ui-text={is_child_active ? 'emphasis' : undefined}
+                                    >
+                                      {t(child.title_key)}
+                                    </span>
                                   </button>
                                 </SidebarMenuSubButton>
                               </SidebarMenuSubItem>
@@ -173,7 +180,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
               <span className="sidebar-profile__avatar">
                 <img className="sidebar-profile__avatar-image" src="/icon.png" alt="LinguaGacha" />
               </span>
-              <span className="sidebar-profile__text">{t('common.profile.status')}</span>
+              <span className="sidebar-profile__text" data-ui-text="emphasis">{t('common.profile.status')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

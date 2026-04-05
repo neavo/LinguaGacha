@@ -1,5 +1,6 @@
 .workbench-page {
   flex: 1;
+  min-height: 100%;
   --workbench-unit: color-mix(in srgb, var(--foreground) 42%, transparent);
   --workbench-success: #22c55e;
   --workbench-warning: #f59e0b;
@@ -10,10 +11,6 @@
   --workbench-table-hover: color-mix(in srgb, var(--ui-table-hover) 90%, var(--accent) 10%);
   --workbench-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
   --workbench-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
-}
-
-.workbench-page.workspace-scroll {
-  gap: 12px;
 }
 
 .dark .workbench-page {
@@ -41,7 +38,6 @@
 
 .workbench-page__stat-card-title {
   font-size: 14px;
-  font-weight: 700;
   letter-spacing: -0.018em;
 }
 
@@ -49,7 +45,6 @@
   margin: 0;
   font-size: 48px;
   line-height: 1;
-  font-weight: 500;
   letter-spacing: -0.05em;
   color: var(--foreground);
 }
@@ -168,7 +163,6 @@
 }
 
 .workbench-page__table-file-cell {
-  font-weight: 500;
   color: var(--foreground);
   text-align: left;
 }
@@ -210,10 +204,6 @@
 }
 
 .workbench-page__table-row {
-  position: relative;
-}
-
-.workbench-page__table-drag-cell {
   position: relative;
 }
 
@@ -297,10 +287,4 @@
 .workbench-page__empty-state {
   width: 100%;
   min-height: 220px;
-}
-
-@media (max-width: 1180px) {
-  .workbench-page__stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }

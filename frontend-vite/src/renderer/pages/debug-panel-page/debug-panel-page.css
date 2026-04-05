@@ -1,7 +1,6 @@
 .debug-panel-page {
   --debug-panel-border: color-mix(in srgb, var(--border) 88%, transparent);
   --debug-panel-muted: color-mix(in srgb, var(--muted-foreground) 84%, transparent);
-  padding: 4px 4px 18px;
 }
 
 .debug-panel-page__hero {
@@ -9,7 +8,6 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  padding: 4px 4px 0;
 }
 
 .debug-panel-page__hero-copy {
@@ -194,34 +192,4 @@
 .debug-panel-page__meta-row code {
   font-family: 'Geist Variable', sans-serif;
   font-size: 12px;
-}
-
-@media (max-width: 1100px) {
-  .debug-panel-page__grid,
-  .debug-panel-page__meta-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .debug-panel-page__button-grid--compact {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .debug-panel-page__hero {
-    flex-direction: column;
-  }
-
-  .debug-panel-page__hero-badges {
-    justify-content: flex-start;
-  }
-
-  .debug-panel-page__button-grid,
-  .debug-panel-page__button-grid--compact {
-    grid-template-columns: 1fr;
-  }
-
-  .debug-panel-page__button-row {
-    flex-direction: column;
-  }
 }

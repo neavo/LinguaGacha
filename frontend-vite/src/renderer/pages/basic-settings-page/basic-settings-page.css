@@ -1,8 +1,5 @@
 .basic-settings-page {
-  display: flex;
   min-height: 100%;
-  flex-direction: column;
-  gap: 16px;
 }
 
 .basic-settings-page__notice {
@@ -12,9 +9,7 @@
 .basic-settings-page__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  gap: var(--ui-list-gap-dense);
 }
 
 .basic-settings-page__card {
@@ -48,21 +43,12 @@
   margin: 0;
   color: var(--foreground);
   font-size: 14px;
-  -webkit-text-stroke: 0.2px currentColor;
-}
-
-.basic-settings-page__card-status {
-  color: color-mix(in srgb, var(--primary) 74%, var(--foreground));
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .basic-settings-page__card-description {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -72,7 +58,6 @@
   align-items: center;
   justify-content: flex-end;
   align-self: center;
-  min-width: 300px;
 }
 
 .basic-settings-page__select {
@@ -82,6 +67,15 @@
 .basic-settings-page__number-field {
   display: flex;
   align-items: center;
+}
+
+.basic-settings-page__toggle-group {
+  min-width: 120px;
+  justify-content: stretch;
+}
+
+.basic-settings-page__toggle-item {
+  flex: 1 1 0;
 }
 
 .basic-settings-page__number-input {
@@ -108,10 +102,9 @@
   .basic-settings-page__number-field {
     width: 100%;
   }
-}
 
-@media (max-width: 720px) {
-  .basic-settings-page {
-    padding: 16px 14px;
+  .basic-settings-page__toggle-group {
+    width: min(100%, 300px);
   }
 }
+

@@ -1,7 +1,8 @@
 .project-home {
   position: relative;
+  display: flex;
+  height: 100%;
   min-height: 100%;
-  padding: 24px 6px 0;
   --project-home-muted: var(--muted-foreground);
   --project-home-subtitle: color-mix(in srgb, var(--foreground) 72%, transparent);
   --project-home-line: color-mix(in srgb, var(--border) 92%, transparent);
@@ -25,6 +26,15 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.project-home__layout {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
 }
 
 .project-home__section-rail {
@@ -131,7 +141,6 @@
   gap: 6px;
   padding: 0 24px;
   text-align: center;
-  pointer-events: auto;
 }
 
 .project-home__empty-state {
@@ -173,14 +182,4 @@
   z-index: 1;
   border-radius: 999px;
   color: var(--foreground);
-}
-
-.project-home__footer {
-  padding-bottom: 12px;
-}
-
-@media (max-width: 1280px) {
-  .project-home {
-    padding: 18px 4px 0;
-  }
 }

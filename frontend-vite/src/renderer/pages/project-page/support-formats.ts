@@ -1,6 +1,6 @@
 import type { LocaleKey } from '@/i18n'
 
-export type ProjectFormatSupportItem = {
+type ProjectFormatSupportItem = {
   id: string
   title_key: LocaleKey
   extensions: string

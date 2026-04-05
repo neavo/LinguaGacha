@@ -11,7 +11,7 @@ import {
 import type { RouteId } from '@/app/navigation/types'
 import { api_fetch, open_event_stream } from '@/app/desktop-api'
 
-export type RecentProjectEntry = {
+type RecentProjectEntry = {
   path: string
   name: string
 }
@@ -32,7 +32,7 @@ export type ProjectSnapshot = {
   loaded: boolean
 }
 
-export type TaskSnapshot = {
+type TaskSnapshot = {
   task_type: string
   status: string
   busy: boolean

@@ -5,7 +5,7 @@
 @font-face {
   font-family: "LGConsolas";
   src: url("/fonts/Consolas.ttf") format("truetype");
-  font-weight: 400 700;
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -13,7 +13,7 @@
 @font-face {
   font-family: "LGConsolas";
   src: url("/fonts/Consolas.ttf") format("truetype");
-  font-weight: 400 700;
+  font-weight: 400;
   font-style: italic;
   font-display: swap;
 }
@@ -21,7 +21,7 @@
 @font-face {
   font-family: "LGBaseFont";
   src: url("/fonts/LGBaseFont.ttf") format("truetype");
-  font-weight: 400 700;
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -29,7 +29,7 @@
 @font-face {
   font-family: "LGBaseFont";
   src: url("/fonts/LGBaseFont.ttf") format("truetype");
-  font-weight: 400 700;
+  font-weight: 400;
   font-style: italic;
   font-display: swap;
 }
@@ -37,7 +37,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family:
+  --ui-font-family-base:
     "LGConsolas",
     "LGBaseFont",
     "Segoe UI",
@@ -45,6 +45,8 @@
     "PingFang SC",
     system-ui,
     sans-serif;
+  font-family:
+    var(--ui-font-family-base);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -109,7 +111,13 @@
   --ui-space-card-y: 16px;
   --ui-space-panel-x: 24px;
   --ui-space-panel-y: 24px;
-  --ui-space-panel-header-bottom: 12px;
+  --ui-page-pad-top: 16px;
+  --ui-page-pad-x: 16px;
+  --ui-page-pad-bottom: 16px;
+  --ui-page-gap: 16px;
+  --ui-section-gap: 16px;
+  --ui-section-gap-dense: 12px;
+  --ui-list-gap-dense: 8px;
   --ui-space-toolbar-x: 12px;
   --ui-space-toolbar-y: 0px;
   --ui-toolbar-height: 60px;
@@ -121,6 +129,7 @@
   --ui-table-head-height: 36px;
   --ui-table-row-height: 39px;
   --ui-table-cell-x: 12px;
+  --ui-font-stroke-emphasis: 0.2px;
   --ui-table-divider: color-mix(in srgb, var(--border) 72%, transparent);
   --ui-table-divider-soft: color-mix(in srgb, var(--border) 55%, transparent);
   --ui-table-hover: color-mix(in srgb, var(--accent) 78%, transparent);
@@ -141,6 +150,7 @@ body {
   user-select: none;
   background: var(--background);
   color: var(--foreground);
+  font-synthesis: none;
 }
 
 img,
@@ -164,14 +174,7 @@ a,
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans:
-    "LGConsolas",
-    "LGBaseFont",
-    "Segoe UI",
-    "Microsoft YaHei UI",
-    "PingFang SC",
-    system-ui,
-    sans-serif;
+  --font-sans: var(--ui-font-family-base);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -289,7 +292,7 @@ a,
     --card-surface-bottom-current: var(--ui-surface-panel-bottom);
     --card-padding-x: var(--ui-space-panel-x);
     --card-header-top: var(--ui-space-panel-y);
-    --card-header-bottom: var(--ui-space-panel-header-bottom);
+    --card-header-bottom: var(--ui-space-panel-y);
     --card-content-bottom: var(--ui-space-panel-y);
     --card-footer-bottom: var(--ui-space-panel-y);
   }
@@ -391,6 +394,13 @@ a,
     color: var(--muted-foreground);
   }
 
+  .ui-text-emphasis,
+  [data-ui-text='emphasis'],
+  .cn-toast__title {
+    font-weight: 400;
+    -webkit-text-stroke: var(--ui-font-stroke-emphasis) currentColor;
+  }
+
   [data-slot='toolbar-separator'] {
     height: var(--ui-toolbar-separator-height);
     align-self: center !important;
@@ -450,7 +460,11 @@ a,
 
 @layer components {
   [data-sonner-toaster] {
-    font-family: inherit;
+    font-family: var(--ui-font-family-base);
+  }
+
+  [data-sonner-toast] {
+    font-family: var(--ui-font-family-base);
   }
 
   .cn-toast {
@@ -493,7 +507,6 @@ a,
     white-space: nowrap;
     font-size: 0.86rem;
     line-height: 1.45;
-    font-weight: 600;
   }
 
   .cn-toast__description {

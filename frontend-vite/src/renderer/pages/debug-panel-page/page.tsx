@@ -142,7 +142,7 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
 
   return (
     <div
-      className="debug-panel-page workspace-scroll"
+      className="debug-panel-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       <header className="debug-panel-page__hero">

@@ -140,7 +140,7 @@ function WorkbenchFileTableRow(props: WorkbenchFileTableRowProps): JSX.Element {
             </Button>
           </TableCell>
           <TableCell className="workbench-page__table-file-cell">
-            <span className="workbench-page__table-file-text">{props.entry.rel_path}</span>
+            <span className="workbench-page__table-file-text" data-ui-text="emphasis">{props.entry.rel_path}</span>
           </TableCell>
           <TableCell className="workbench-page__table-format-cell">{format_label}</TableCell>
           <TableCell className="workbench-page__table-line-cell">{props.entry.item_count}</TableCell>

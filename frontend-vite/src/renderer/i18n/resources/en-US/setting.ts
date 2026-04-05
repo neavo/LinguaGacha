@@ -37,16 +37,16 @@ export const en_us_setting = {
       fields: {
         source_language: {
           title: 'Source Language',
-          description: 'Controls source detection and language filtering. "All" means the source language stays unrestricted.',
+          description: 'Set the language of the input text in the current project',
         },
         target_language: {
           title: 'Target Language',
-          description: 'Constrains the model output language so the translation pipeline keeps a single language target.',
+          description: 'Set the language of the output text in the current project',
         },
         project_save_mode: {
           title: 'Project Save Location',
-          description: 'Decides where new .lg project files are saved by default.',
-          description_fixed: 'Fixed directory: {PATH}',
+          description: 'Set the save location for project files when creating a new project',
+          description_fixed: 'Set the save location for project files when creating a new project<br>currently {PATH}',
           options: {
             manual: 'Choose every time',
             fixed: 'Fixed directory',
@@ -55,11 +55,15 @@ export const en_us_setting = {
         },
         output_folder_open_on_finish: {
           title: 'Open Output Folder When Finished',
-          description: 'Open the output directory automatically after translation or export so the result is ready for review.',
+          description: 'When enabled, the output folder will be automatically opened upon task completion',
+          options: {
+            disabled: 'Off',
+            enabled: 'On',
+          },
         },
         request_timeout: {
           title: 'Request Timeout',
-          description: 'Treat the request as timed out once the configured seconds elapse without a response, and save each change immediately.',
+          description: 'The maximum time (seconds) to wait for response when making a request<br>If no reply is received after the timeout, the task will be considered failed',
         },
       },
       feedback: {

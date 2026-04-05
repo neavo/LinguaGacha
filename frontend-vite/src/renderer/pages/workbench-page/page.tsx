@@ -13,7 +13,10 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
   const workbench_state = useWorkbenchLiveState()
 
   return (
-    <div className="workbench-page workspace-scroll" data-sidebar-collapsed={String(props.is_sidebar_collapsed)}>
+    <div
+      className="workbench-page page-shell page-shell--full"
+      data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
+    >
       <WorkbenchStatsSection stats={workbench_state.stats} />
       <WorkbenchFileTable
         entries={workbench_state.entries}

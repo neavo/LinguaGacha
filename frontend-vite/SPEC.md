@@ -66,12 +66,19 @@
 
 ## UI 设计系统
 ### 一句话目标
-把视觉决定权收回到基础组件与全局 token 层，页面层只负责布局、信息密度和语义状态，避免“同样是卡片/按钮却长得不一样”。
+把视觉决定权收回到全局 token 与基础组件，页面层只负责布局、信息密度和语义状态，避免“同样是卡片/按钮却长得不一样”。
 
-### token、主题与全局皮肤
-所有 UI 语义 token 统一定义在 [`src/renderer/index.css`](./src/renderer/index.css)。
+### 文档与门闩如何分工
+| 内容 | 权威来源 | 说明 |
+| --- | --- | --- |
+| 分层职责、组件落位、设计取舍 | `frontend-vite/SPEC.md` | 回答“为什么这样设计”和“该改到哪一层” |
+| 可稳定自动判定的硬规则 | `npm run ui:audit` / `scripts/check-ui-design-system.mjs` | 负责直接拦截明显越权写法 |
+| 未自动化的架构判断与跨页面回归 | 代码评审 + 手工验证 | 门闩不能替代设计判断与联调 |
 
-当前统一使用的语义前缀：
+约定：下文标记 `（门闩）` 的规则已经接入 `npm run ui:audit`。
+
+### 全局 token、主题与中文强调
+所有 UI 语义 token 统一定义在 [`src/renderer/index.css`](./src/renderer/index.css)，当前统一使用的语义前缀如下：
 
 - `--ui-radius-*`
 - `--ui-surface-*`
@@ -80,14 +87,27 @@
 - `--ui-space-*`
 - `--ui-toolbar-*`
 - `--ui-table-*`
+- `--ui-font-stroke-*`
 
 约束：
 
-- 禁止在页面、部件或业务组件文件里新增 `--ui-*`。
 - 新视觉语义必须先进入全局 token，再由基础组件消费。
 - 组件主题只能跟随应用根主题源；单个基础组件或适配层不得自行监听 DOM、直接读写 `localStorage`，或维护第二份并行主题状态。
+- `.ui-text-emphasis` 与 `[data-ui-text='emphasis']` 是唯一允许的中文强调语义入口。
+- `--ui-*` 只能在 `src/renderer/index.css` 定义。`（门闩）`
+- `-webkit-text-stroke` 只能出现在 `src/renderer/index.css`。`（门闩）`
+- 中文主字体不依赖原生粗体；渲染层禁止重新引入 `font-weight: 500/600/700+` 与 `font-medium`、`font-semibold`、`font-bold`、`font-extrabold`、`font-black`。`（门闩）`
+- `@font-face` 只能声明字体文件真实支持的 `font-weight`，不要把单一字库伪装成多字重范围。
 
-### 第三方基础组件定制门闩
+### 单位规范
+- `src/renderer/app/`、`src/renderer/pages/`、`src/renderer/widgets/`、[`src/renderer/index.css`](./src/renderer/index.css) 与 [`src/renderer/app/shell/app-shell.css`](./src/renderer/app/shell/app-shell.css) 默认执行 `px-first`。
+- 上述范围中的长度、字号、圆角、边框、阴影偏移、间距、容器宽高统一使用 `px`；已有公共尺寸优先沉到全局 token 或基础组件变体，不要在页面层重复发明一套私有尺寸。
+- `letter-spacing` 允许且仅允许使用 `em`，因为它需要跟随当前字体大小一起缩放；除此之外不要在这些目录里继续写 `em`。
+- `line-height` 统一使用无单位数值，例如 `1.4`、`1.45`、`1.5`，不要改成 `px` 或 `rem`。
+- 响应式字号允许使用 `clamp()`，但只允许 `px + vw + px` 组合，禁止在 `clamp()` 中混入 `rem`。
+- `src/renderer/ui/` 里的 `shadcn` 基础组件本轮不纳入字面量 `px` 约束；如果后续要继续推进单位收敛，必须单独立项并先评估组件层影响范围。
+
+### 第三方基础组件定制路径
 `ui/` 里的 `shadcn` 组件和其他第三方基础组件适配层都视为项目自有源码，但所有定制都必须先判断“这次变化到底属于哪一层”，再决定落点。
 
 #### 判定路径
@@ -135,13 +155,6 @@
 - `table`
 - `toolbar`
 
-页面层禁止再单独改卡片：
-
-- `background`
-- `box-shadow`
-- `border-radius`
-- `border-color`
-
 #### Button
 [`Button`](./src/renderer/ui/button.tsx) 负责：
 
@@ -155,12 +168,6 @@
 - 卡片圆角：`4px`
 - 按钮圆角：`8px`
 - 工具条按钮使用 `size="toolbar"`
-
-页面层禁止再单独改按钮：
-
-- `border-radius`
-- `box-shadow`
-- `background`
 
 #### Table
 [`Table`](./src/renderer/ui/table.tsx) 负责：
@@ -204,12 +211,18 @@
 - 响应式规则
 - 语义色，例如 success / warning 文本
 
-业务页面和部件层禁止：
+业务页面和部件层不承担基础视觉基线，页面私有 CSS 只能调布局、密度与局部语义色。对已接入门闩的页面命名空间，下面这些越权会被 `ui:audit` 直接拦截：
 
-- 自己定义卡片表面
-- 自己定义卡片阴影
-- 自己定义按钮圆角
-- 自己定义基础表格分隔线强度
+| 基础组件 | 页面层不得重写 |
+| --- | --- |
+| `Card` | `background`、`box-shadow`、`border-radius`、`border-color` |
+| `Button` | `border-radius`、`box-shadow`、`background` |
+| `Table` | `border-bottom`、`background`、`height`、`font-size`、`color` |
+
+额外约束：
+
+- 页面和部件层不要自己定义卡片表面、卡片阴影、按钮圆角与基础表格分隔线强度。
+- 需要中文强调时，只能消费 `.ui-text-emphasis` 或 `[data-ui-text='emphasis']`，不要在页面层另起一套强调样式。
 
 ### 组件演化规则
 - 新组件默认先放最靠近使用点的位置，只有在复用边界已经清晰后再上提。
@@ -224,17 +237,28 @@
 - 如果未来需要跟进上游 shadcn 更新，必须通过 `npx shadcn@latest add --dry-run` 与 `--diff` 比对，再决定如何合并本地改动。
 - 不要把系统级修改硬塞进外挂 CSS；这会退回到脆弱覆写模式，不符合当前项目对设计系统可维护性的要求。
 
-运行下面的命令检查页面层视觉越权：
+### 门闩覆盖范围
+运行下面的命令执行当前已接入的设计系统门闩：
 
 ```bash
 npm run ui:audit
 ```
 
-当前审查会检查：
+当前 `ui:audit` 会检查：
 
-- `--ui-*` 是否只在全局 token 文件中定义
-- 页面命名空间是否直接改卡片阴影 / 边界 / 圆角
-- 工作台表格是否重新定义基础表格分隔线与 hover 视觉
+- `--ui-*` 是否只在 `src/renderer/index.css` 中定义
+- 中文强调相关写法是否回到 `src/renderer/index.css` 与统一强调入口
+- `font-weight: 500/600/700+` 与 Tailwind 粗体类是否重新出现在渲染层源码中
+- 已接入页面命名空间是否越权改写 Card / Button / Table 的基础视觉
+
+当前 `ui:audit` 不负责：
+
+- 判断一个改动究竟该落在 `app/`、`ui/`、`widgets/` 还是页面目录
+- 判断第三方基础组件定制应该走 token、组件变体、应用级适配还是全局覆写
+- 自动覆盖所有页面命名空间；新页面接入后要同步扩门闩
+- 替代跨页面回归、主题联调与运行时交互验证
+
+不要把“脚本没报错”误解成“设计层判断已经完成”。
 
 ## 改动入口建议
 1. 调整 Electron 入口或产物路径时，优先修改 `electron.vite.config.ts`，再同步检查 `package.json` 与 `electron-builder.json5`。

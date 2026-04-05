@@ -41,6 +41,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
           '--border-radius': 'var(--radius)',
+          fontFamily: 'var(--ui-font-family-base)',
         } as CSSProperties
       }
       toastOptions={{

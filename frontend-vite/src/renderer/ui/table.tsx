@@ -57,8 +57,9 @@ const TableFooter = React.forwardRef<
     <tfoot
       ref={ref}
       data-slot="table-footer"
+      data-ui-text="emphasis"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        "border-t bg-muted/50 [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -91,8 +92,9 @@ const TableHead = React.forwardRef<
     <th
       ref={ref}
       data-slot="table-head"
+      data-ui-text="emphasis"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-2 text-left align-middle whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

@@ -26,11 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/select'
-import { Switch } from '@/ui/switch'
+import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 
 type BasicSettingsPageProps = {
   is_sidebar_collapsed: boolean
 }
+
+const OUTPUT_FOLDER_TOGGLE_VALUE = {
+  DISABLED: 'disabled',
+  ENABLED: 'enabled',
+} as const
 
 function replace_placeholder(template: string, value: string): string {
   return template.replace('{PATH}', value)
@@ -86,10 +91,13 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
     : t('setting.page.basic.fields.project_save_mode.description')
 
   const language_locked = basic_settings_state.is_task_busy
+  const output_folder_toggle_value = basic_settings_state.snapshot.output_folder_open_on_finish
+    ? OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED
+    : OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED
 
   return (
     <div
-      className="basic-settings-page workspace-scroll"
+      className="basic-settings-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       {basic_settings_state.refresh_error !== null
@@ -209,13 +217,34 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
           title={t('setting.page.basic.fields.output_folder_open_on_finish.title')}
           description={t('setting.page.basic.fields.output_folder_open_on_finish.description')}
           action={(
-            <Switch
-              checked={basic_settings_state.snapshot.output_folder_open_on_finish}
+            <ToggleGroup
+              type="single"
+              variant="segmented"
+              className="basic-settings-page__toggle-group"
+              aria-label={t('setting.page.basic.fields.output_folder_open_on_finish.title')}
+              value={output_folder_toggle_value}
               disabled={basic_settings_state.pending_state.output_folder_open_on_finish}
-              onCheckedChange={(checked) => {
-                void basic_settings_state.update_output_folder_open_on_finish(Boolean(checked))
+              onValueChange={(next_value) => {
+                if (next_value === OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED) {
+                  void basic_settings_state.update_output_folder_open_on_finish(false)
+                } else if (next_value === OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED) {
+                  void basic_settings_state.update_output_folder_open_on_finish(true)
+                }
               }}
-            />
+            >
+              <ToggleGroupItem
+                className="basic-settings-page__toggle-item"
+                value={OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED}
+              >
+                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                className="basic-settings-page__toggle-item"
+                value={OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED}
+              >
+                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+              </ToggleGroupItem>
+            </ToggleGroup>
           )}
         />
 

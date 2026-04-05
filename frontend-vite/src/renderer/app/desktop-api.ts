@@ -82,7 +82,7 @@ async function probe_core_api_candidate(base_url: string): Promise<boolean> {
   }
 }
 
-export async function resolve_core_api_base_url(): Promise<string> {
+async function resolve_core_api_base_url(): Promise<string> {
   if (cached_core_api_base_url !== null) {
     return cached_core_api_base_url
   }

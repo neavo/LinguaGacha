@@ -25,7 +25,7 @@ type NestedMessageKey<tree, prefix extends string = ''> = {
         : never
 }[keyof tree & string]
 
-export type LocaleMessages = LocaleMessageSchema<typeof zh_cn_messages>
+type LocaleMessages = LocaleMessageSchema<typeof zh_cn_messages>
 export type LocaleKey = NestedMessageKey<LocaleMessages>
 
 type LocaleContextValue = {

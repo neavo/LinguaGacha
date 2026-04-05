@@ -48,8 +48,8 @@ process.env.APP_ROOT = path.join(__dirname, '..')
 
 // electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露 renderer dev server 地址；
 // 这里顺带兼容旧的 VITE_DEV_SERVER_URL，避免仓库内其他脚本尚未同步时直接掉回生产分支。
-export const VITE_DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? process.env['VITE_DEV_SERVER_URL']
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const VITE_DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? process.env['VITE_DEV_SERVER_URL']
+const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 const VITE_PUBLIC = process.env.VITE_PUBLIC ?? RENDERER_DIST

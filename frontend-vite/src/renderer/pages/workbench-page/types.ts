@@ -1,6 +1,6 @@
 import type { LocaleKey } from '@/i18n'
 
-export type WorkbenchActionKind =
+type WorkbenchActionKind =
   | 'replace-file'
   | 'reset-file'
   | 'delete-file'
